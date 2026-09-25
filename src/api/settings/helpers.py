@@ -132,12 +132,20 @@ def _default_embedding_model(provider: str) -> str:
     incident: hardcoded "text-embedding-3-small" was selected in an
     environment whose gateway only served "text-embedding-3-large").
 
-    Instead, defer to whatever the deployment itself declared via
+    Azure is the exception: its model IDs are customer-defined deployment
+    names, so removal always leaves the model empty for an explicit user
+    choice. For other providers, defer to whatever the deployment declared via
     EMBEDDING_MODEL/EMBEDDING_PROVIDER (see
     ``get_declared_default_embedding_model``). If the deployment hasn't
-    declared a default for this provider, return "" and force the admin
+    declared a default for the provider, return "" and force the admin
     to pick a model the settings UI confirms is actually available.
     """
+    # Azure model identifiers are customer-defined deployment names. Even an
+    # operator-declared default may belong to a different workspace/resource,
+    # so provider removal must leave the choice open for the user.
+    if provider == "azure":
+        return ""
+
     from config.embedding_constants import get_declared_default_embedding_model
 
     return get_declared_default_embedding_model(provider)

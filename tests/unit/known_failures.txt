@@ -1,0 +1,35 @@
+# Unit tests that already fail on main.
+#
+# CI runs the whole unit suite. Each test listed here is marked strict xfail:
+#   - if it still fails, CI stays green;
+#   - if it starts PASSING, CI goes red until you delete its line here.
+# So this list can only shrink. Never add a line to get a new failure through CI —
+# fix the test instead.
+#
+# Lines starting with "ignore:" name modules that cannot even be imported. They
+# are skipped at collection, so CI cannot tell when they get fixed; check them by
+# hand when touching agent.py.
+#
+# Baseline taken 2026-09-17 against main, in a clean checkout with no .env.
+
+ignore:test_agent_response.py
+ignore:test_agent_sources.py
+
+tests/unit/api/test_langflow_sync_bug_1587.py::test_explicit_llm_arguments_bypass_fallback
+tests/unit/api/test_model_providers_endpoint.py::test_oss_and_on_prem_still_publish_ollama[on_prem]
+tests/unit/api/test_model_providers_endpoint.py::test_an_override_file_drives_the_payload
+tests/unit/config/test_model_providers_config.py::test_shipped_defaults_keep_ollama_out_of_saas_only
+tests/unit/config/test_model_providers_config.py::test_both_azure_providers_ship_in_every_mode
+tests/unit/services/test_model_catalog.py::test_catalog_publishes_azure_ai_where_the_config_enables_it
+tests/unit/services/test_model_catalog.py::test_azure_openai_is_the_row_that_carries_the_gpt_41_family
+tests/unit/services/test_model_catalog.py::test_the_shipped_config_excludes_on_azure_as_well_as_openai
+tests/unit/services/test_skip_os_security_setup_startup.py::test_setup_runs_when_flag_false
+tests/unit/services/test_skip_os_security_setup_startup.py::test_setup_skipped_when_flag_true
+tests/unit/test_agent_sources_fence_stripped.py::test_fence_untrusted_text_escapes_embedded_end_delimiter
+tests/unit/test_openai_compatible_langflow_components.py::test_component_index_sha256_matches_langflow_integrity_check
+tests/unit/test_settings_async_post_save.py::test_update_settings_retains_background_task_reference
+tests/unit/test_settings_async_post_save.py::test_provider_removal_triggers_mcp_server_update
+tests/unit/test_settings_refresh_endpoint.py::test_refresh_endpoint_requires_auth_in_auth_mode
+tests/unit/test_settings_refresh_endpoint.py::test_refresh_endpoint_returns_expected_http_response_shape
+tests/unit/test_document_index_writer_bulk_retry.py::test_odd_length_bulk_body_raises
+tests/unit/test_processor_mapping_client.py::test_standard_processor_uses_shared_writer_for_embedding_mapping_and_writes

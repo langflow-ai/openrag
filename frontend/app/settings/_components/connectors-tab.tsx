@@ -35,7 +35,7 @@ export function ConnectorsTab() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="bg-muted rounded-md p-4 font-mono text-sm">
+            <div className="bg-muted rounded-md p-4 font-mono text-sm overflow-x-auto">
               <div className="text-muted-foreground">
                 <div>
                   <span className="mr-3 text-placeholder-foreground">27</span>
@@ -45,9 +45,11 @@ export function ConnectorsTab() {
                   <span className="mr-3 text-placeholder-foreground">28</span>
                   <span># Create credentials here:</span>
                 </div>
-                <div>
-                  <span className="mr-3 text-placeholder-foreground">29</span>
-                  <span>
+                <div className="flex flex-wrap">
+                  <span className="mr-3 text-placeholder-foreground shrink-0">
+                    29
+                  </span>
+                  <span className="break-all">
                     # https://console.cloud.google.com/apis/credentials
                   </span>
                 </div>

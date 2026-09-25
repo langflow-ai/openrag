@@ -29,12 +29,16 @@ import {
 import { formatTaskTimestamp, parseTimestamp } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
 
+/** Stops both click and keyboard events from bubbling to parent handlers. */
+const stopEvent = (e: React.SyntheticEvent) => e.stopPropagation();
+
 interface TaskErrorContentProps {
   task: Task;
   mode?: "recent" | "past";
   nowMs?: number;
   showHeader?: boolean;
   defaultExpanded?: boolean;
+  headerEnd?: React.ReactNode;
 }
 
 export function TaskErrorContent({
@@ -43,6 +47,7 @@ export function TaskErrorContent({
   nowMs = Date.now(),
   showHeader = true,
   defaultExpanded = false,
+  headerEnd,
 }: TaskErrorContentProps) {
   const isCloudBrand = useIsCloudBrand();
   const { openTaskDialog } = useTask();
@@ -100,10 +105,14 @@ export function TaskErrorContent({
   }
 
   const ossIconColumn = showHeader && !isCloudBrand;
+  const toggleAccordion = () =>
+    setAccordionValue((value) =>
+      value === "failed-files" ? "" : "failed-files",
+    );
 
   const accordionSummary = (
-    <div className="flex min-w-0 flex-1 items-center gap-1">
-      <span className="text-xs">
+    <div className="flex min-w-0 flex-1 items-center gap-1 leading-4">
+      <span className="text-xs leading-4">
         {ingestedSuccessCount} success
         {warningCount > 0 ? ` · ${warningCount} warning` : ""}
         {failedCount > 0 ? ` · ${failedCount} failed` : ""}
@@ -118,28 +127,24 @@ export function TaskErrorContent({
       type="button"
       aria-label="Open task details"
       className="inline-flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
-      onClick={() => openTaskDialog(task.task_id)}
+      onClick={(event) => {
+        event.stopPropagation();
+        openTaskDialog(task.task_id);
+      }}
     >
       <IncidentReporterIcon className="size-4" />
     </button>
   );
 
   const accordionHeader = (
-    <AccordionPrimitive.Header
-      className={cn(
-        "flex w-full min-w-0 items-center gap-2",
-        ossIconColumn && "gap-2.5",
-      )}
-    >
+    <AccordionPrimitive.Header className="flex w-full min-w-0 items-center gap-2 leading-4">
       {ossIconColumn ? <div className="size-5 shrink-0" aria-hidden /> : null}
       <AccordionPrimitive.Trigger
-        className={cn(
-          "group inline-flex min-w-0 flex-1 items-center justify-start gap-1 px-0 py-0 text-sm text-muted-foreground transition-colors hover:text-foreground",
-        )}
+        className="group inline-flex min-w-0 flex-1 items-center justify-start gap-1 p-0 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        onClick={(event) => event.stopPropagation()}
       >
         {accordionSummary}
       </AccordionPrimitive.Trigger>
-      {openTaskDialogButton}
     </AccordionPrimitive.Header>
   );
 
@@ -154,41 +159,65 @@ export function TaskErrorContent({
               ? "border-t border-muted"
               : "rounded-mmd border border-muted",
           ),
-        !showHeader && "pt-2",
+        !showHeader && "pt-1",
       )}
     >
-      <div className="flex w-full min-w-0 flex-col gap-1">
+      <div className="flex w-full min-w-0 flex-col">
         {showHeader && (
           <div
-            className={cn("flex min-w-0 w-full", ossIconColumn && "gap-2.5")}
+            className="flex min-w-0 w-full cursor-pointer items-start gap-3"
+            role="button"
+            tabIndex={0}
+            aria-expanded={isExpanded}
+            onClick={toggleAccordion}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                toggleAccordion();
+              }
+            }}
           >
             {ossIconColumn &&
               (isCancelledOnly ? (
                 <XCircle
-                  className="size-5 shrink-0 text-muted-foreground"
+                  className="size-4 mt-0.5 shrink-0 text-muted-foreground"
                   aria-hidden
                 />
               ) : isFailedStatus ? (
                 <XCircle
-                  className="size-5 shrink-0 text-destructive"
+                  className="size-4 mt-1.5 shrink-0 text-destructive"
                   aria-hidden
                 />
               ) : (
                 <AlertCircle
-                  className="size-5 shrink-0 text-brand-amber"
+                  className="size-4 mt-0.5 shrink-0 text-brand-amber"
                   aria-hidden
                 />
               ))}
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <div className="flex min-w-0 items-center justify-between gap-1.5">
-                <p className="text-mmd truncate">
+            <div className="flex min-w-0 flex-1 flex-col gap-0">
+              <div className="flex min-w-0 items-center justify-between gap-1.5 leading-4">
+                <p className="truncate text-xs font-medium leading-4">
                   Task {task.task_id.slice(0, 8)}...
                 </p>
-                {!isExpanded && (
-                  <p className={statusPillClassName}>{statusLabel}</p>
-                )}
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {!isExpanded && (
+                    <p className={statusPillClassName}>{statusLabel}</p>
+                  )}
+                  {/* biome-ignore lint/a11y/noStaticElementInteractions: presentation wrapper; stopPropagation only, no interactive semantics */}
+                  <div
+                    role="presentation"
+                    onClick={stopEvent}
+                    onKeyDown={stopEvent}
+                  >
+                    {openTaskDialogButton}
+                  </div>
+                  {/* biome-ignore lint/a11y/noStaticElementInteractions: stop-propagation wrapper */}
+                  <span onClick={(event) => event.stopPropagation()}>
+                    {headerEnd}
+                  </span>
+                </div>
               </div>
-              <p className="min-h-4 text-xxs leading-4 text-muted-foreground whitespace-nowrap">
+              <p className="text-xs leading-4 text-muted-foreground">
                 {formatTaskTimestamp(timestamp, mode, nowMs)}
               </p>
             </div>
@@ -206,8 +235,8 @@ export function TaskErrorContent({
         >
           <AccordionItem value="failed-files" className="border-0 rounded-none">
             {accordionHeader}
-            <AccordionContent className="w-full p-0 pt-2">
-              <div className="flex w-full flex-col gap-2">
+            <AccordionContent className="w-full p-1 pt-1">
+              <div className="flex w-full flex-col gap-1">
                 {issueEntries.map(([filePath, fileInfo], index) => {
                   const fileName = getTaskFileName(filePath, fileInfo);
                   const line = resolveTaskFileError(fileInfo, task.error);
@@ -230,7 +259,7 @@ export function TaskErrorContent({
                                   : "border-l-destructive",
                             )
                           : cn(
-                              "flex flex-col gap-1 rounded py-mmd px-4",
+                              "flex flex-col gap-1 rounded p-2",
                               isCancelled
                                 ? "border border-muted bg-muted/50"
                                 : isWarning
@@ -239,18 +268,20 @@ export function TaskErrorContent({
                             ),
                       )}
                     >
-                      <p
-                        className={cn(
-                          "w-full truncate text-xs",
-                          isCancelled
-                            ? "font-normal text-muted-foreground"
-                            : isCloudBrand
-                              ? "font-normal text-foreground"
-                              : "font-semibold text-failure-file",
-                        )}
-                      >
-                        {fileName}
-                      </p>
+                      <div className="flex min-w-0 w-full items-center gap-1">
+                        <p
+                          className={cn(
+                            "min-w-0 flex-1 truncate text-xs",
+                            isCancelled
+                              ? "font-normal text-muted-foreground"
+                              : isCloudBrand
+                                ? "font-normal text-foreground"
+                                : "font-semibold text-failure-file",
+                          )}
+                        >
+                          {fileName}
+                        </p>
+                      </div>
                       <p
                         className={cn(
                           "w-full truncate text-xs",

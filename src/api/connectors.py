@@ -1,6 +1,6 @@
 import copy
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import get_index_name, is_workspace_oauth_overrides_enabled
+from connectors.base import normalize_etag
 from connectors.sharepoint.utils import is_valid_sharepoint_url
 from dependencies import (
     get_connector_service,
@@ -88,9 +89,10 @@ def _connector_sync_should_replace(connector_type: str) -> bool:
 
 
 def _connector_uses_timestamp_change_detection(connector_type: str) -> bool:
-    """True when sync should re-ingest only files whose remote modified_time is
-    newer than the stored one (see bucket_changed_file_ids), instead of
-    replacing every indexed file.
+    """True when sync should re-ingest only the files that actually differ at
+    source — by entity tag, or by a newer remote modified_time where there are
+    no tags to compare (see bucket_changed_file_ids) — instead of replacing
+    every indexed file.
 
     Declared per connector via ``BaseConnector.CHANGE_DETECTION`` — the bucket
     connectors set ``"timestamp"``; the default is ``"replace_always"``.
@@ -228,73 +230,15 @@ async def get_synced_id_to_filename_map(
     session_manager,
     jwt_token: str | None = None,
 ) -> dict[str, str]:
-    """Return a {document_id: filename} map for files ingested under this connector_type.
-
-    Uses a sub-aggregation so each document_id is paired with its top filename in
-    a single OpenSearch round trip.
-    """
-    try:
-        opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
-
-        query_body: dict[str, Any] = {
-            "size": 0,
-            "query": {"term": {"connector_type": connector_type}},
-            "aggs": {
-                "by_document_id": {
-                    "terms": {"field": "document_id", "size": OPENSEARCH_TERMS_AGG_LIMIT},
-                    "aggs": {
-                        "top_filename": {"terms": {"field": "filename", "size": 1}},
-                    },
-                }
-            },
-        }
-
-        result = await opensearch_client.search(index=get_index_name(), body=query_body)
-        buckets = result.get("aggregations", {}).get("by_document_id", {}).get("buckets", [])
-        if len(buckets) == OPENSEARCH_TERMS_AGG_LIMIT:
-            logger.warning(
-                "Document ID to filename mapping hit 10k limit - results may be truncated",
-                connector_type=connector_type,
-                returned_count=len(buckets),
-            )
-
-        mapping: dict[str, str] = {}
-        for bucket in buckets:
-            doc_id = bucket.get("key")
-            if not doc_id:
-                continue
-            fn_buckets = bucket.get("top_filename", {}).get("buckets", [])
-            mapping[doc_id] = fn_buckets[0]["key"] if fn_buckets else ""
-        return mapping
-    except Exception as e:
-        logger.error(
-            "Failed to build id→filename map",
-            connector_type=connector_type,
-            error=str(e),
-        )
-        return {}
-
-
-async def get_synced_id_to_modified_time_map(
-    connector_type: str,
-    user_id: str,
-    session_manager,
-    jwt_token: str | None = None,
-) -> dict[str, float | None]:
-    """Map each ingested connector source id → its stored ``modified_time`` (epoch ms).
-
-    Powers change detection for bucket connectors: callers compare a blob's remote
-    ``modified_time`` against the stored value to decide whether a re-ingest is needed.
-
-    A key being **present** means the source id is already ingested under this
-    ``connector_type``. A value of **None** means it was ingested but no
-    ``modified_time`` was persisted (pre-change-detection docs, or an ingest path that
-    didn't enrich it) — callers treat that as *unchanged* to avoid a mass re-ingest.
+    """Return an {id: filename} map for files ingested under this connector_type.
 
     Keys cover both ingest layouts (mirrors ``get_synced_file_ids_for_connector``):
     the non-Langflow path stores the connector id in ``connector_file_id`` (where
     ``document_id`` is a content hash), while the Langflow path stores it in
     ``document_id``. ``connector_file_id`` wins when both are present for the same id.
+
+    Uses a sub-aggregation so each id is paired with its top filename in a single
+    OpenSearch round trip.
     """
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
@@ -304,12 +248,16 @@ async def get_synced_id_to_modified_time_map(
             "query": {"term": {"connector_type": connector_type}},
             "aggs": {
                 "by_connector_file_id": {
-                    "terms": {"field": "connector_file_id", "size": 10000},
-                    "aggs": {"latest_modified": {"max": {"field": "modified_time"}}},
+                    "terms": {"field": "connector_file_id", "size": OPENSEARCH_TERMS_AGG_LIMIT},
+                    "aggs": {
+                        "top_filename": {"terms": {"field": "filename", "size": 1}},
+                    },
                 },
                 "by_document_id": {
-                    "terms": {"field": "document_id", "size": 10000},
-                    "aggs": {"latest_modified": {"max": {"field": "modified_time"}}},
+                    "terms": {"field": "document_id", "size": OPENSEARCH_TERMS_AGG_LIMIT},
+                    "aggs": {
+                        "top_filename": {"terms": {"field": "filename", "size": 1}},
+                    },
                 },
             },
         }
@@ -325,9 +273,140 @@ async def get_synced_id_to_modified_time_map(
                 "connector_file_id.keyword"
             )
             result = await opensearch_client.search(index=get_index_name(), body=query_body)
+
         aggs = result.get("aggregations", {})
 
-        mapping: dict[str, float | None] = {}
+        mapping: dict[str, str] = {}
+        # document_id first; connector_file_id overlays it (connector_file_id wins),
+        # matching get_synced_id_to_modified_time_map's precedence.
+        for agg_name in ("by_document_id", "by_connector_file_id"):
+            buckets = aggs.get(agg_name, {}).get("buckets", [])
+            if len(buckets) == OPENSEARCH_TERMS_AGG_LIMIT:
+                logger.warning(
+                    "ID to filename mapping hit 10k limit - results may be truncated",
+                    connector_type=connector_type,
+                    agg=agg_name,
+                    returned_count=len(buckets),
+                )
+            for bucket in buckets:
+                key = bucket.get("key")
+                if not key:
+                    continue
+                fn_buckets = bucket.get("top_filename", {}).get("buckets", [])
+                mapping[key] = fn_buckets[0]["key"] if fn_buckets else ""
+        return mapping
+    except Exception as e:
+        logger.error(
+            "Failed to build id→filename map",
+            connector_type=connector_type,
+            error=str(e),
+        )
+        return {}
+
+
+class SyncedFileState(NamedTuple):
+    """What the index knows about an already-ingested connector file.
+
+    ``modified_time_ms`` is the stored source timestamp; ``content_etag`` is the
+    object's stored entity tag. Either can be None for a file ingested before
+    that signal was recorded, or by a path that didn't persist it.
+    """
+
+    modified_time_ms: float | None = None
+    content_etag: str | None = None
+
+
+async def get_synced_file_state_map(
+    connector_type: str,
+    user_id: str,
+    session_manager,
+    jwt_token: str | None = None,
+) -> dict[str, SyncedFileState]:
+    """Map each ingested connector source id → the change-detection state stored for it.
+
+    Powers change detection for bucket connectors: callers compare a blob's
+    remote entity tag and ``modified_time`` against the stored ones to decide
+    whether a re-ingest is needed.
+
+    A key being **present** means the source id is already ingested under this
+    ``connector_type``. Its fields may still be None — ingested before change
+    detection recorded that signal, or by a path that didn't enrich it — and
+    callers treat a file with no comparable signal at all as *unchanged*, to
+    avoid a mass re-ingest.
+
+    Keys cover both ingest layouts (mirrors ``get_synced_file_ids_for_connector``):
+    the non-Langflow path stores the connector id in ``connector_file_id`` (where
+    ``document_id`` is a content hash), while the Langflow path stores it in
+    ``document_id``. ``connector_file_id`` wins when both are present for the same id.
+    """
+    try:
+        opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
+
+        def _sub_aggs(etag_field: str) -> dict[str, Any]:
+            return {
+                "latest_modified": {"max": {"field": "modified_time"}},
+                # All chunks of one file carry the same etag, so one bucket is enough.
+                "etag": {"terms": {"field": etag_field, "size": 1}},
+            }
+
+        def _build_body(id_field: str, etag_field: str) -> dict[str, Any]:
+            return {
+                "size": 0,
+                "query": {"term": {"connector_type": connector_type}},
+                "aggs": {
+                    "by_connector_file_id": {
+                        "terms": {"field": id_field, "size": 10000},
+                        "aggs": _sub_aggs(etag_field),
+                    },
+                    "by_document_id": {
+                        "terms": {"field": "document_id", "size": 10000},
+                        "aggs": _sub_aggs(etag_field),
+                    },
+                },
+            }
+
+        # See get_synced_file_ids_for_connector: some indices predate the explicit
+        # keyword mapping for these fields, so they were dynamically mapped as
+        # analyzed text with a `.keyword` multi-field and must be aggregated via
+        # that sub-field instead.
+        #
+        # A field may only be switched once a failure has PROVEN the drift: a
+        # terms agg on an analyzed text field raises, but one on a field that
+        # does not exist returns no buckets and no error. Switching speculatively
+        # therefore empties that aggregation silently.
+        #
+        # The two fields drift independently — connector_file_id predates the
+        # explicit mapping by far longer than content_etag, and an index can have
+        # either one stale — so each candidate switches only what the previous
+        # failure proved and leaves the other in the form that resolves. Retrying
+        # both together would silently drop every etag on a legacy index (whose
+        # content_etag, being newer, is correctly mapped and has no `.keyword`
+        # sub-field) or, worse, drop every connector source id from the map,
+        # leaving change detection to report every file as unchanged.
+        field_candidates = (
+            ("connector_file_id", "content_etag"),
+            ("connector_file_id.keyword", "content_etag"),
+            ("connector_file_id", "content_etag.keyword"),
+            ("connector_file_id.keyword", "content_etag.keyword"),
+        )
+
+        async def _search_through_mapping_drift() -> dict[str, Any]:
+            agg_err: Exception | None = None
+            for id_field, etag_field in field_candidates:
+                try:
+                    return await opensearch_client.search(
+                        index=get_index_name(), body=_build_body(id_field, etag_field)
+                    )
+                except Exception as err:
+                    if not _is_unmapped_keyword_agg_error(err):
+                        raise
+                    agg_err = err
+            raise agg_err  # field_candidates is never empty
+
+        result = await _search_through_mapping_drift()
+        aggs = result.get("aggregations", {})
+
+        mapping: dict[str, SyncedFileState] = {}
         # document_id first; connector_file_id overlays it (connector_file_id wins).
         # The content-hash document_ids from the non-Langflow path are harmless noise —
         # they never match an enumerated connector source id.
@@ -336,11 +415,15 @@ async def get_synced_id_to_modified_time_map(
                 key = bucket.get("key")
                 if not key:
                     continue
-                mapping[key] = bucket.get("latest_modified", {}).get("value")
+                etag_buckets = bucket.get("etag", {}).get("buckets", [])
+                mapping[key] = SyncedFileState(
+                    modified_time_ms=bucket.get("latest_modified", {}).get("value"),
+                    content_etag=normalize_etag(etag_buckets[0]["key"]) if etag_buckets else None,
+                )
         return mapping
     except Exception as e:
         logger.error(
-            "Failed to build id→modified_time map",
+            "Failed to build connector file state map",
             connector_type=connector_type,
             error=str(e),
         )
@@ -371,14 +454,15 @@ def _parse_iso_to_epoch_ms(value: str | None) -> float | None:
 def remote_is_newer_than_synced(
     file_id: str,
     remote_modified_time: str | None,
-    synced_modified_map: dict[str, float | None],
+    synced_state_map: dict[str, SyncedFileState],
 ) -> bool:
     """True only when a stored ``modified_time`` exists and the remote is strictly newer.
 
     Missing/unparseable timestamps (remote or stored) → False, so we never re-ingest
     on ambiguity (backfill-safe).
     """
-    stored_ms = synced_modified_map.get(file_id)
+    stored = synced_state_map.get(file_id)
+    stored_ms = stored.modified_time_ms if stored else None
     if stored_ms is None:
         return False
     remote_ms = _parse_iso_to_epoch_ms(remote_modified_time)
@@ -391,20 +475,58 @@ def classify_remote_file_change(
     file_id: str,
     remote_modified_time: str | None,
     is_ingested: bool,
-    synced_modified_map: dict[str, float | None],
+    synced_state_map: dict[str, SyncedFileState],
+    remote_etag: str | None = None,
 ) -> str:
     """Classify a remote blob as ``"new"`` / ``"changed"`` / ``"unchanged"``.
 
     - ``new``       — not yet ingested.
-    - ``changed``   — ingested and the remote version is strictly newer than stored.
-    - ``unchanged`` — ingested and same-age/older, or the change can't be proven
-                      (no stored token, e.g. backfill).
+    - ``changed``   — ingested, and either the entity tags differ or (with no
+                      tags to compare) the remote version is strictly newer.
+    - ``unchanged`` — ingested and provably identical, same-age/older, or the
+                      change can't be proven at all (no stored signal, e.g. a
+                      file ingested before change detection existed).
+
+    The entity tag is checked first and is decisive in both directions. Object
+    stores change it on every overwrite, so it catches a modification whose
+    timestamp we can't compare — and equal tags mean identical bytes, so a
+    timestamp that moved without the content changing (a copy, a re-upload of
+    the same file) no longer triggers a pointless re-ingest.
     """
     if not is_ingested:
         return "new"
-    if remote_is_newer_than_synced(file_id, remote_modified_time, synced_modified_map):
+    stored = synced_state_map.get(file_id)
+    stored_etag = stored.content_etag if stored else None
+    remote_etag = normalize_etag(remote_etag)
+    if stored_etag and remote_etag:
+        return "unchanged" if stored_etag == remote_etag else "changed"
+    if remote_is_newer_than_synced(file_id, remote_modified_time, synced_state_map):
         return "changed"
     return "unchanged"
+
+
+def has_comparable_change_signal(
+    file_id: str,
+    remote_modified_time: str | None,
+    synced_state_map: dict[str, SyncedFileState],
+    remote_etag: str | None = None,
+) -> bool:
+    """Whether a modification to this file could be detected at all.
+
+    False means no stored etag matching a remote one AND no stored timestamp to
+    compare — so the file is reported "unchanged" no matter what happened to it
+    at the source. Callers log the count: silently classifying an unknowable
+    file as up to date is exactly how a stale copy goes unnoticed.
+    """
+    stored = synced_state_map.get(file_id)
+    if stored is None:
+        return False
+    if stored.content_etag and normalize_etag(remote_etag):
+        return True
+    return (
+        stored.modified_time_ms is not None
+        and _parse_iso_to_epoch_ms(remote_modified_time) is not None
+    )
 
 
 async def bucket_changed_file_ids(
@@ -415,20 +537,21 @@ async def bucket_changed_file_ids(
     jwt_token: str | None,
     existing_file_ids: list[str],
 ) -> list[str]:
-    """Return the already-ingested bucket file ids whose remote copy is newer.
+    """Return the already-ingested bucket file ids whose remote copy has changed.
 
     Updates-only change detection for the Sync path: list the connector's blobs
-    once and keep the ids that are (a) already ingested and (b) strictly newer at
-    source than the stored ``modified_time``. New blobs that aren't ingested yet
-    are intentionally ignored — Sync reconciles existing files; new files are
-    added via the connector's "Add from" panel. Listing exceptions propagate to
-    the caller (same as the bucket_filter sync path).
+    once and keep the ids that are (a) already ingested and (b) differ at source
+    — by entity tag where both sides have one, otherwise by a strictly newer
+    ``modified_time``. New blobs that aren't ingested yet are intentionally
+    ignored — Sync reconciles existing files; new files are added via the
+    connector's "Add from" panel. Listing exceptions propagate to the caller
+    (same as the bucket_filter sync path).
     """
     existing_set = set(existing_file_ids)
     if not existing_set:
         return []
 
-    modified_map = await get_synced_id_to_modified_time_map(
+    state_map = await get_synced_file_state_map(
         connector_type=connector_type,
         user_id=user_id,
         session_manager=session_manager,
@@ -436,6 +559,7 @@ async def bucket_changed_file_ids(
     )
 
     changed_ids: list[str] = []
+    undetectable: list[str] = []
     page_token = None
     while True:
         result = await connector.list_files(page_token=page_token)
@@ -443,55 +567,71 @@ async def bucket_changed_file_ids(
             fid = f.get("id")
             if not fid or fid not in existing_set:
                 continue
+            remote_modified_time = f.get("modified_time")
+            remote_etag = f.get("etag")
             if (
-                classify_remote_file_change(fid, f.get("modified_time"), True, modified_map)
+                classify_remote_file_change(fid, remote_modified_time, True, state_map, remote_etag)
                 == "changed"
             ):
                 changed_ids.append(fid)
+            elif not has_comparable_change_signal(
+                fid, remote_modified_time, state_map, remote_etag
+            ):
+                undetectable.append(fid)
         page_token = result.get("next_page_token")
         if not page_token:
             break
 
+    if undetectable:
+        # These report "unchanged" whatever happened to them at the source —
+        # nothing stored to compare against. Say so, rather than letting a stale
+        # copy look up to date. Re-ingesting them once (via the connector's
+        # "Add from" panel, overwriting) records a signal and fixes it for good.
+        logger.warning(
+            "Files have no stored change-detection signal and cannot be checked for updates",
+            connector_type=connector_type,
+            count=len(undetectable),
+            sample=undetectable[:5],
+        )
+
     return changed_ids
 
 
-async def compute_orphans_for_connector_type(
+async def list_remote_files_for_connector_type(
     connector_type: str,
     user_id: str,
     connector_service,
-    session_manager,
-    jwt_token: str | None,
     existing_file_ids: list[str],
-    id_to_filename: dict[str, str] | None = None,
-) -> list[dict[str, str]] | None:
-    """Compute orphan documents (ingested but no longer present at the source)
-    for this connector_type without deleting them.
+) -> dict[str, dict[str, Any]] | None:
+    """Enumerate what currently exists at the source, as {file_id: record}.
 
-    Returns a list of {"document_id", "filename"} dicts. Returns None when strict
-    gating aborts the pass (unauthenticated connection or listing exception) so
-    callers can distinguish "no orphans" from "could not determine safely".
+    One listing pass shared by everything that needs to diff the index against
+    the source — orphan detection and sync preview both read it, so a preview
+    doesn't enumerate the whole bucket twice.
+
+    Returns None (not {}) when strict gating aborts the pass: no active
+    connection, an unauthenticated one, or a listing that raised. Callers must
+    treat that as "could not determine safely" rather than "nothing there" —
+    the difference between leaving the index alone and deleting all of it.
     """
-    if not existing_file_ids:
-        return []
-
     connections = await connector_service.connection_manager.list_connections(
         user_id=user_id, connector_type=connector_type
     )
     active = [c for c in connections if c.is_active]
     if not active:
         logger.info(
-            "Skipping orphan compute — no active connections",
+            "Skipping remote listing — no active connections",
             connector_type=connector_type,
         )
         return None
 
-    remote_ids: set = set()
+    remote_files: dict[str, dict[str, Any]] = {}
     for conn in active:
         try:
             connector = await connector_service.get_connector(conn.connection_id)
             if not connector or not connector.is_authenticated:
                 logger.info(
-                    "Skipping orphan compute — connection unauthenticated",
+                    "Skipping remote listing — connection unauthenticated",
                     connector_type=connector_type,
                     connection_id=conn.connection_id,
                 )
@@ -502,11 +642,11 @@ async def compute_orphans_for_connector_type(
             # The flat default of list_files() only returns the *root* listing
             # (e.g. /drive/root/children for SharePoint, files-only, no folder
             # traversal), so any folder-internal file in OpenSearch would be
-            # absent from remote_ids and wrongly flagged as an orphan.
+            # absent from the result and wrongly flagged as an orphan.
             # list_selected_files iterates each id via _get_file_metadata_by_id
-            # and silently drops missing ids, so the resulting `remote_ids` is
-            # exactly "the subset of existing_file_ids that still exists at
-            # source" — which is what orphan detection actually needs.
+            # and silently drops missing ids, so the result is exactly "the
+            # subset of existing_file_ids that still exists at source" — which
+            # is what orphan detection actually needs.
             # cfg is None on bucket connectors (BaseConnector declares it as a
             # class default), so guard on cfg-is-not-None rather than hasattr:
             # otherwise bucket connectors route through list_selected_files ->
@@ -518,7 +658,7 @@ async def compute_orphans_for_connector_type(
                 for f in page.get("files", []):
                     fid = f.get("id")
                     if fid:
-                        remote_ids.add(fid)
+                        remote_files[fid] = f
             else:
                 page_token = None
                 while True:
@@ -526,20 +666,56 @@ async def compute_orphans_for_connector_type(
                     for f in page.get("files", []):
                         fid = f.get("id")
                         if fid:
-                            remote_ids.add(fid)
+                            remote_files[fid] = f
                     page_token = page.get("nextPageToken") or page.get("next_page_token")
                     if not page_token:
                         break
         except Exception as e:
             logger.warning(
-                "Skipping orphan compute — listing failed",
+                "Skipping remote listing — listing failed",
                 connector_type=connector_type,
                 connection_id=conn.connection_id,
                 error=str(e),
             )
             return None
 
-    orphan_ids = [fid for fid in existing_file_ids if fid not in remote_ids]
+    return remote_files
+
+
+async def compute_orphans_for_connector_type(
+    connector_type: str,
+    user_id: str,
+    connector_service,
+    session_manager,
+    jwt_token: str | None,
+    existing_file_ids: list[str],
+    id_to_filename: dict[str, str] | None = None,
+    remote_files: dict[str, dict[str, Any]] | None = None,
+) -> list[dict[str, str]] | None:
+    """Compute orphan documents (ingested but no longer present at the source)
+    for this connector_type without deleting them.
+
+    Returns a list of {"document_id", "filename"} dicts. Returns None when strict
+    gating aborts the pass (unauthenticated connection or listing exception) so
+    callers can distinguish "no orphans" from "could not determine safely".
+
+    ``remote_files`` lets a caller that has already enumerated the source pass
+    the listing in instead of paying for a second pass.
+    """
+    if not existing_file_ids:
+        return []
+
+    if remote_files is None:
+        remote_files = await list_remote_files_for_connector_type(
+            connector_type=connector_type,
+            user_id=user_id,
+            connector_service=connector_service,
+            existing_file_ids=existing_file_ids,
+        )
+    if remote_files is None:
+        return None
+
+    orphan_ids = [fid for fid in existing_file_ids if fid not in remote_files]
     if not orphan_ids:
         return []
 
@@ -554,7 +730,8 @@ async def delete_orphan_documents(
     jwt_token: str | None,
     *,
     connector_type: str | None = None,
-    shared: bool = False,
+    shared: bool | None = False,
+    allow_anonymous_delete: bool = False,
 ) -> int:
     """Delete OpenSearch chunks for the given orphan IDs. Returns the number of
     chunks deleted (0 on failure).
@@ -563,10 +740,38 @@ async def delete_orphan_documents(
     ingest path, ``document_id`` for the Langflow path) via
     ``connectors.chunk_cleanup``, so callers no longer need to track which
     field the ids came from.
+
+    ``shared`` is the caller's explicit intent and is None on the re-sync paths,
+    which have no record of how each file was ingested.
+
+    ``allow_anonymous_delete`` is the resolved ``knowledge:delete:anonymous``
+    permission and is what puts ownerless (share-all) chunks in scope at all.
+    Without it this stays owner-scoped, even on a re-sync that would otherwise
+    widen to "owned by me OR ownerless".
+
+    That gate is not paranoia about the caller's own files. The orphan id set
+    comes from ``get_synced_file_ids_for_connector``, which filters only on
+    ``connector_type`` and reads through the user-scoped client — and DLS makes
+    every ownerless chunk visible to every authenticated user
+    (securityconfig/roles.yml). So the set can include shared files ingested by
+    a *different* user's connection, which this user's own remote listing will
+    not contain and orphan detection will therefore classify as deleted at
+    source. Widening the delete scope without the permission would let any
+    authenticated user erase another connection's shared documents by running
+    an ordinary sync.
     """
     if not orphan_ids:
         return 0
     from connectors.chunk_cleanup import delete_connector_file_chunks
+
+    include_shared = allow_anonymous_delete and not shared
+    if shared and not allow_anonymous_delete:
+        logger.warning(
+            "Skipping shared orphan cleanup — caller lacks knowledge:delete:anonymous",
+            connector_type=connector_type,
+            orphan_count=len(orphan_ids),
+        )
+        return 0
 
     try:
         opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
@@ -575,7 +780,8 @@ async def delete_orphan_documents(
             opensearch_client,
             connector_type=connector_type,
             owner_user_id=None if shared else user_id,
-            shared=shared,
+            shared=bool(shared),
+            include_shared=include_shared,
             refresh=True,
         )
     except Exception as e:
@@ -595,11 +801,16 @@ async def reconcile_orphans_for_connector_type(
     jwt_token: str | None,
     existing_file_ids: list[str],
     *,
-    shared: bool = False,
+    shared: bool | None = False,
+    allow_anonymous_delete: bool = False,
 ) -> list[str]:
     """Compute and delete orphans for a connector type. Thin wrapper around
     compute_orphans_for_connector_type + delete_orphan_documents preserved for
     callers that perform sync immediately after reconcile.
+
+    ``allow_anonymous_delete`` (the resolved ``knowledge:delete:anonymous``
+    permission) is forwarded to the deletion; see delete_orphan_documents for
+    why ownerless chunks must not be in scope without it.
 
     Returns the list of orphan file IDs that were deleted (or []).
     """
@@ -616,6 +827,7 @@ async def reconcile_orphans_for_connector_type(
 
     orphan_ids = [o["document_id"] for o in orphans]
     deleted = await delete_orphan_documents(
+        allow_anonymous_delete=allow_anonymous_delete,
         orphan_ids=orphan_ids,
         user_id=user_id,
         session_manager=session_manager,
@@ -646,7 +858,8 @@ async def _sync_existing_connector_files(
     id_field: str,
     *,
     ingest_settings: dict[str, Any] | None = None,
-    shared: bool = False,
+    shared: bool | None = None,
+    allow_anonymous_delete: bool = False,
     reconcile: bool = True,
     max_files: int | None = None,
 ) -> dict[str, Any]:
@@ -658,6 +871,13 @@ async def _sync_existing_connector_files(
     True, then either timestamp change detection (updates-only re-ingest) or a
     full re-sync runs depending on the connector's ``CHANGE_DETECTION``
     capability; connectors with no stored ids fall back to filename filtering.
+
+    ``shared`` defaults to None — "inherit". This flow re-syncs files that are
+    already indexed, and nothing records whether each was ingested with the COS
+    share-all toggle, so each file's current indexed state decides (see
+    ``ConnectorFileProcessor._resolve_shared``). Passing False here instead
+    would make sync treat every shared COS file as private, skip it as an
+    unreplaceable duplicate, and leave the stale content in the index.
 
     Returns an outcome dict the caller maps onto its own response shape:
       * ``{"outcome": "synced", "task_id": ...}``
@@ -686,6 +906,7 @@ async def _sync_existing_connector_files(
                 jwt_token=jwt_token,
                 existing_file_ids=existing_file_ids,
                 shared=shared,
+                allow_anonymous_delete=allow_anonymous_delete,
             )
             if orphan_ids:
                 orphan_id_set = set(orphan_ids)
@@ -719,6 +940,7 @@ async def _sync_existing_connector_files(
                 ingest_settings=ingest_settings,
                 replace_duplicates=True,
                 shared=shared,
+                allow_anonymous_delete=allow_anonymous_delete,
             )
         else:
             if max_files is not None:
@@ -731,6 +953,7 @@ async def _sync_existing_connector_files(
                 ingest_settings=ingest_settings,
                 replace_duplicates=_connector_sync_should_replace(connector_type),
                 shared=shared,
+                allow_anonymous_delete=allow_anonymous_delete,
             )
     else:
         # Fallback: use filename filtering (for Langflow-ingested files without document_id)
@@ -748,11 +971,18 @@ async def _sync_existing_connector_files(
             ingest_settings=ingest_settings,
             replace_duplicates=_connector_sync_should_replace(connector_type),
             shared=shared,
+            allow_anonymous_delete=allow_anonymous_delete,
         )
     return {"outcome": "synced", "task_id": task_id}
 
 
 class ConnectorSyncBody(BaseModel):
+    # The connection this sync targets. The upload UI is rendered per connection
+    # and sends it on every request; connector_check_duplicates resolves the same
+    # id, so honouring it here keeps the dialog and the sync it confirms pointed
+    # at one connection. Unset (or unknown) falls back to the first that
+    # authenticates, as before.
+    connection_id: str | None = None
     max_files: int | None = None
     selected_files: list[Any] | None = None
     # When True, ingest ALL files from the connector (bypasses the existing-files gate).
@@ -764,15 +994,20 @@ class ConnectorSyncBody(BaseModel):
     settings: dict[str, Any] | None = None
     # When True, files whose filename already exists in the index are replaced
     # rather than failing. Set by the provider upload UI after the user confirms
-    # overwrite in the duplicate dialog.
+    # overwrite in the duplicate dialog. Honored for an explicit ``selected_files``
+    # sync and for a whole-container ``bucket_filter`` sync, where it also
+    # bypasses the modified-time/etag gate (see connector_sync).
     replace_duplicates: bool = False
     # When True (OSS only for now; SaaS deferred), run the ingest in preview mode
     # (same as direct upload). Honored only when is_ingest_preview_enabled().
     preview: bool = False
     # When True (COS only), index chunks without an owner field so OpenSearch DLS
     # makes them visible to all users in the instance. Temporary CIO mechanism;
-    # not a full ACL feature. Defaults to False (private).
-    shared: bool = False
+    # not a full ACL feature.
+    # Omitted/None means "no explicit intent": new files are indexed private,
+    # and files already in the index keep the sharing state they have. The
+    # connector UI already sends the flag only when the toggle is on screen.
+    shared: bool | None = None
 
 
 class ConnectorCheckDuplicatesBody(BaseModel):
@@ -917,6 +1152,161 @@ def _connector_scoped_to_buckets(connector, bucket_names: list[str]):
     return scoped
 
 
+def _cleaned_blob_filename(file_info: dict[str, Any]) -> str:
+    """The name a remote blob would be indexed under, cleaned exactly as
+    ingestion cleans it — so name comparisons here mean what they say."""
+    from utils.file_utils import clean_connector_filename
+
+    return clean_connector_filename(
+        file_info.get("name", ""),
+        file_info.get("mimeType") or file_info.get("mime_type") or file_info.get("mimetype") or "",
+    )
+
+
+# Ids travel to OpenSearch in `terms` clauses, which are capped by
+# index.max_terms_count (65_536 by default). Whole-container syncs can exceed
+# that, so id lookups go out in batches.
+_ID_LOOKUP_BATCH_SIZE = 1024
+
+
+async def _bucket_blob_ids_already_synced(
+    file_ids: list[str],
+    connector_type: str,
+    session_manager,
+    user_id: str,
+    jwt_token: str | None,
+) -> set[str]:
+    """Which of exactly these blob ids already have chunks under this connector.
+
+    ``get_synced_file_ids_for_connector`` answers the same question for the
+    whole connector in one terms aggregation, which is capped at
+    ``OPENSEARCH_TERMS_AGG_LIMIT``: past the cap it omits ids that ARE ingested.
+    Reading "absent from that set" as "this connector never synced it" would
+    then turn an already-synced blob into a name collision — its own indexed
+    document is what holds the name — and re-ingest it under overwrite, in
+    exactly the large containers where the cap is reached. Asking about the
+    handful of ids actually in question keeps the answer independent of how much
+    the connector has ingested in total.
+
+    The id is matched in both fields it can live in, as
+    ``connectors.chunk_cleanup`` does: the standard ingest path stores it in
+    ``connector_file_id``, the Langflow path in ``document_id``.
+    """
+    ids = [fid for fid in file_ids if fid]
+    if not ids:
+        return set()
+
+    opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
+    synced: set[str] = set()
+
+    for start in range(0, len(ids), _ID_LOOKUP_BATCH_SIZE):
+        batch = ids[start : start + _ID_LOOKUP_BATCH_SIZE]
+        body: dict[str, Any] = {
+            "size": 0,
+            "query": {
+                "bool": {
+                    "filter": [
+                        {"term": {"connector_type": connector_type}},
+                        {
+                            "bool": {
+                                "should": [
+                                    {"terms": {"document_id": batch}},
+                                    {"terms": {"connector_file_id": batch}},
+                                    # Indices predating the explicit keyword
+                                    # mapping dynamically mapped this as text.
+                                    {"terms": {"connector_file_id.keyword": batch}},
+                                ],
+                                "minimum_should_match": 1,
+                            }
+                        },
+                    ]
+                }
+            },
+            "aggs": {
+                "connector_file_ids": {"terms": {"field": "connector_file_id", "size": len(batch)}},
+                "document_ids": {"terms": {"field": "document_id", "size": len(batch)}},
+            },
+        }
+
+        try:
+            response = await opensearch_client.search(index=get_index_name(), body=body)
+        except Exception as search_err:
+            if _is_unmapped_keyword_agg_error(search_err):
+                body["aggs"]["connector_file_ids"]["terms"]["field"] = "connector_file_id.keyword"
+                response = await opensearch_client.search(index=get_index_name(), body=body)
+            elif "index_not_found_exception" in str(search_err):
+                return set()
+            else:
+                raise
+
+        aggregations = response.get("aggregations", {})
+        for agg_name in ("connector_file_ids", "document_ids"):
+            for bucket in aggregations.get(agg_name, {}).get("buckets", []):
+                if bucket.get("key"):
+                    synced.add(bucket["key"])
+
+    # Only ids we asked about; the aggregations can also surface an id that
+    # merely shares a chunk with one of them.
+    return synced & set(ids)
+
+
+async def _bucket_blob_ids_with_indexed_filename(
+    files: list[dict[str, Any]],
+    session_manager,
+    user_id: str,
+    jwt_token: str | None,
+) -> dict[str, str]:
+    """Map each blob whose filename already has indexed chunks — from any source,
+    a direct upload, another connector, or an earlier sync of this one — to the
+    indexed name it lands on.
+
+    The name, not just the id, because two blobs in one container can land on
+    the same one: a bucket connector names a blob after its key's basename, so
+    ``a/report.pdf`` and ``b/report.pdf`` are both ``report.pdf``. Callers that
+    act on the collision need to know which of them compete.
+
+    One batched terms aggregation for the whole listing, through the same
+    ``find_existing_filenames`` the OAuth connector classifier and the per-file
+    processor backstop use, so the duplicate question gets one answer at every
+    altitude. A missing index means nothing is indexed yet, not a failure.
+    """
+    from utils.file_utils import get_filename_aliases
+    from utils.opensearch_filenames import find_existing_filenames
+
+    aliases_by_id: dict[str, list[str]] = {}
+    all_candidates: set[str] = set()
+    for f in files:
+        fid = f.get("id")
+        if not fid:
+            continue
+        aliases = get_filename_aliases(_cleaned_blob_filename(f))
+        aliases_by_id[fid] = aliases
+        all_candidates.update(aliases)
+
+    if not all_candidates:
+        return {}
+
+    opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
+    try:
+        existing_filenames = await find_existing_filenames(
+            all_candidates, opensearch_client, get_index_name()
+        )
+    except Exception as search_err:
+        if "index_not_found_exception" not in str(search_err):
+            raise
+        return {}
+
+    # Listing order, so a caller resolving a contested name gets a stable winner
+    # (bucket listings are ordered by key).
+    matched: dict[str, str] = {}
+    for fid, aliases in aliases_by_id.items():
+        for alias in aliases:
+            if alias in existing_filenames:
+                matched[fid] = alias
+                break
+    return matched
+
+
 async def _classify_bucket_connector_duplicates(
     connector,
     connector_type: str,
@@ -925,13 +1315,14 @@ async def _classify_bucket_connector_duplicates(
     user_id: str,
     jwt_token: str | None,
 ) -> dict[str, Any]:
-    """Preview a bucket_filter sync: classify remote blobs new/changed/unchanged
-    without ingesting anything, mirroring the reconciliation in connector_sync's
-    bucket_filter branch. "changed" blobs are reported as duplicates (they would
-    overwrite an already-indexed version); "unchanged" blobs are silently
-    dropped (the real sync would skip them too); "new" blobs are returned as
-    ``non_duplicate_files`` so the caller can sync just those when the user
-    chooses to skip duplicates.
+    """Preview a bucket_filter sync: classify remote blobs as duplicate or new
+    without ingesting anything, so the upload UI can confirm an overwrite.
+
+    A blob is a duplicate when it is already indexed under THIS connector type
+    (id match) or when its filename is already in the index from any other
+    source — a direct upload, a different connector. Blobs that match neither
+    are returned as ``non_duplicate_files`` so the caller can sync just those
+    when the user chooses to skip duplicates.
     """
     scoped_connector = _connector_scoped_to_buckets(connector, bucket_filter)
     all_files: list[dict[str, Any]] = []
@@ -960,33 +1351,39 @@ async def _classify_bucket_connector_duplicates(
     )
     existing_set = set(existing_ids)
 
-    # Existence-based, like the OAuth connector duplicate check: any blob
-    # already ingested under this connector_type is a "duplicate" regardless
-    # of whether the remote copy is newer. (The real bucket_filter sync uses
-    # modified_time to auto-skip unchanged blobs on ITS OWN — that's a
-    # separate, silent optimization; the confirm dialog here is about whether
-    # the user wants to touch an already-indexed file at all, same as it
-    # would for Google Drive/OneDrive/SharePoint.)
+    # The id half answers "did this connector already ingest this blob?"; the
+    # filename half answers "is this name already in the index at all?" — the
+    # question a direct upload, or an ingest through a different connector,
+    # makes relevant. Only the id half existed here, so a bucket whose blobs
+    # collide by name with files ingested elsewhere reported zero duplicates,
+    # skipped the confirm dialog, and then had every colliding file skipped at
+    # ingest time with "A file with this name already exists".
+    name_taken_ids = await _bucket_blob_ids_with_indexed_filename(
+        all_files, session_manager, user_id, jwt_token
+    )
+
     duplicate_files: list[dict[str, Any]] = []
     duplicate_names: list[str] = []
     non_duplicate_files: list[dict[str, Any]] = []
+    total = 0
     for f in all_files:
         fid = f.get("id")
         if not fid:
             continue
-        if fid in existing_set:
-            response_file = _connector_file_response(f)
+        total += 1
+        response_file = _connector_file_response(f, cleaned_name=_cleaned_blob_filename(f))
+        if fid in existing_set or fid in name_taken_ids:
             duplicate_files.append(response_file)
             duplicate_names.append(response_file["name"])
         else:
-            non_duplicate_files.append(_connector_file_response(f))
+            non_duplicate_files.append(response_file)
 
     return {
         "duplicate_names": list(dict.fromkeys(duplicate_names)),
         "duplicate_files": duplicate_files,
         "non_duplicate_files": non_duplicate_files,
         "duplicate_count": len(duplicate_files),
-        "total_files": len(all_files),
+        "total_files": total,
     }
 
 
@@ -1290,9 +1687,15 @@ async def connector_sync(
                 status_code=400,
             )
 
-        if body.shared and not await has_effective_permission(
+        # Resolved for every sync, not just an explicitly shared one: orphan
+        # cleanup on a plain re-sync can also reach ownerless chunks (see
+        # delete_orphan_documents), and those are visible to every authenticated
+        # user under DLS regardless of who ingested them.
+        allow_anonymous_delete = await has_effective_permission(
             request, user, rbac, "knowledge:delete:anonymous"
-        ):
+        )
+
+        if body.shared and not allow_anonymous_delete:
             return JSONResponse(
                 {"error": "Shared sync requires the knowledge:delete:anonymous permission"},
                 status_code=403,
@@ -1310,9 +1713,27 @@ async def connector_sync(
                 status_code=404,
             )
 
+        # Try the requested connection first, then the rest. Ordering rather than
+        # selecting outright keeps today's behaviour when that connection cannot
+        # authenticate: the sync falls through to another, or reports that none
+        # work, instead of failing later inside the connector.
+        candidate_connections = active_connections
+        if body.connection_id:
+            requested = [c for c in active_connections if c.connection_id == body.connection_id]
+            if requested:
+                candidate_connections = requested + [
+                    c for c in active_connections if c.connection_id != body.connection_id
+                ]
+            else:
+                logger.warning(
+                    "Requested connection is not active for this connector type",
+                    connector_type=connector_type,
+                    connection_id=body.connection_id,
+                )
+
         # Find the first connection that actually works
         working_connection = None
-        for connection in active_connections:
+        for connection in candidate_connections:
             logger.debug(
                 "Testing connection authentication",
                 connection_id=connection.connection_id,
@@ -1399,6 +1820,7 @@ async def connector_sync(
                 replace_duplicates=body.replace_duplicates,
                 preview_mode=preview_mode,
                 shared=body.shared,
+                allow_anonymous_delete=allow_anonymous_delete,
             )
         elif body.sync_all or body.bucket_filter:
             # Full ingest: discover and ingest all files (or files from specific buckets).
@@ -1435,6 +1857,23 @@ async def connector_sync(
                         status_code=200,
                     )
 
+                # Carry the listing's names into the task so its file rows read
+                # "report.pdf" rather than the raw "<bucket>::<key>" id, which is
+                # all the task has until each blob is fetched.
+                infos_by_id = {
+                    f["id"]: _connector_file_response(f) for f in all_files if f.get("id")
+                }
+                if not infos_by_id:
+                    # Nothing addressable: every listed blob came back without an
+                    # id, so there is no sync to start.
+                    return JSONResponse(
+                        {
+                            "status": "no_files",
+                            "message": "No files found in the selected buckets.",
+                        },
+                        status_code=200,
+                    )
+
                 # Classify each remote blob as new / changed / unchanged.
                 existing_ids, _, _ = await get_synced_file_ids_for_connector(
                     connector_type=connector_type,
@@ -1443,29 +1882,70 @@ async def connector_sync(
                     jwt_token=jwt_token,
                 )
                 existing_set = set(existing_ids)
-                modified_map = await get_synced_id_to_modified_time_map(
+                state_map = await get_synced_file_state_map(
                     connector_type=connector_type,
                     user_id=user.user_id,
                     session_manager=session_manager,
                     jwt_token=jwt_token,
                 )
 
+                # "Overwrite duplicates", confirmed in the UI dialog, is about
+                # blobs whose name is already indexed but which this connector
+                # has never synced — a direct upload, another connector. Nothing
+                # we store about them can say whether the source is newer, so
+                # change detection cannot decide them and they are replaced
+                # outright. It deliberately does NOT cover blobs this connector
+                # already synced: those keep the modified-time/etag gate, so
+                # confirming an overwrite re-ingests the colliding files rather
+                # than every object in the container.
+                colliding_ids: set[str] = set()
+                if body.replace_duplicates:
+                    # One winner per contested name. Two blobs in the same
+                    # container can land on the same indexed filename (a bucket
+                    # connector names a blob after its key's basename, so
+                    # a/report.pdf and b/report.pdf are both "report.pdf"), and
+                    # files within a task are ingested concurrently — replacing
+                    # one document from two of them at once has no defined
+                    # winner. The first in listing order takes the name; the
+                    # rest fall through to the per-file backstop, which skips
+                    # them as duplicates exactly as it does today.
+                    claimed_names: set[str] = set()
+                    collisions = await _bucket_blob_ids_with_indexed_filename(
+                        all_files, session_manager, user.user_id, jwt_token
+                    )
+                    # "Synced here already?" is asked of these ids directly
+                    # rather than read off existing_set, whose aggregation is
+                    # capped: above the cap an ingested blob is missing from it,
+                    # and would look like a collision with its own document.
+                    synced_collisions = await _bucket_blob_ids_already_synced(
+                        list(collisions), connector_type, session_manager, user.user_id, jwt_token
+                    )
+                    for fid, indexed_name in collisions.items():
+                        if fid in synced_collisions or indexed_name in claimed_names:
+                            continue
+                        claimed_names.add(indexed_name)
+                        colliding_ids.add(fid)
+
                 new_ids: list[str] = []
-                changed_ids: list[str] = []
+                replace_ids: list[str] = []
                 for f in all_files:
                     fid = f.get("id")
                     if not fid:
+                        continue
+                    if fid in colliding_ids:
+                        replace_ids.append(fid)
                         continue
                     status = classify_remote_file_change(
                         fid,
                         f.get("modified_time"),
                         fid in existing_set,
-                        modified_map,
+                        state_map,
+                        f.get("etag"),
                     )
                     if status == "new":
                         new_ids.append(fid)
                     elif status == "changed":
-                        changed_ids.append(fid)
+                        replace_ids.append(fid)
                     # "unchanged" → skip; already ingested and not newer at source.
 
                 logger.info(
@@ -1473,11 +1953,12 @@ async def connector_sync(
                     connector_type=connector_type,
                     total=len(all_files),
                     new=len(new_ids),
-                    changed=len(changed_ids),
-                    skipped=len(all_files) - len(new_ids) - len(changed_ids),
+                    replaced=len(replace_ids),
+                    overwritten_duplicates=len(colliding_ids),
+                    skipped=len(all_files) - len(new_ids) - len(replace_ids),
                 )
 
-                if not new_ids and not changed_ids:
+                if not new_ids and not replace_ids:
                     return JSONResponse(
                         {
                             "status": "no_files",
@@ -1486,10 +1967,10 @@ async def connector_sync(
                         status_code=200,
                     )
 
-                # Two batches: new files are created; changed files replace the
-                # indexed copy (replace_duplicates=True bypasses the filename-skip
-                # and deletes stale chunks before re-ingest). replace is batch-level,
-                # hence the split.
+                # Two batches: new files are created; changed and overwritten
+                # files replace the indexed copy (replace_duplicates=True bypasses
+                # the filename-skip and deletes stale chunks before re-ingest).
+                # replace is batch-level, hence the split.
                 if new_ids:
                     task_ids.append(
                         await connector_service.sync_specific_files(
@@ -1497,22 +1978,26 @@ async def connector_sync(
                             user.user_id,
                             new_ids,
                             jwt_token=jwt_token,
+                            file_infos=[infos_by_id[fid] for fid in new_ids],
                             ingest_settings=body.settings,
                             preview_mode=preview_mode,
                             shared=body.shared,
+                            allow_anonymous_delete=allow_anonymous_delete,
                         )
                     )
-                if changed_ids:
+                if replace_ids:
                     task_ids.append(
                         await connector_service.sync_specific_files(
                             working_connection.connection_id,
                             user.user_id,
-                            changed_ids,
+                            replace_ids,
                             jwt_token=jwt_token,
+                            file_infos=[infos_by_id[fid] for fid in replace_ids],
                             ingest_settings=body.settings,
                             replace_duplicates=True,
                             preview_mode=preview_mode,
                             shared=body.shared,
+                            allow_anonymous_delete=allow_anonymous_delete,
                         )
                     )
             else:
@@ -1524,6 +2009,7 @@ async def connector_sync(
                     jwt_token=jwt_token,
                     ingest_settings=body.settings,
                     shared=body.shared,
+                    allow_anonymous_delete=allow_anonymous_delete,
                 )
         else:
             # No files specified - sync only files already in OpenSearch for this connector
@@ -1560,6 +2046,7 @@ async def connector_sync(
                 id_field=id_field,
                 ingest_settings=body.settings,
                 shared=body.shared,
+                allow_anonymous_delete=allow_anonymous_delete,
                 # Strict gating: skip orphan reconcile when sync is capped — we'd
                 # see a partial remote listing and delete legitimate files.
                 reconcile=body.max_files is None,
@@ -1577,7 +2064,10 @@ async def connector_sync(
                 return JSONResponse(
                     {
                         "status": "no_files",
-                        "message": f"All {connector_type} files are already up to date.",
+                        # Scoped to indexed files. Unlike the bucket_filter branch
+                        # above, this path never enumerates new remote files, so
+                        # it cannot claim the whole connector is up to date.
+                        "message": (f"All indexed {connector_type} files are up to date."),
                     },
                     status_code=200,
                 )
@@ -1848,12 +2338,16 @@ async def connector_webhook(
                 # Trigger incremental sync for affected files. The webhook fires
                 # because the file changed, so replace the indexed copy instead of
                 # tripping the duplicate-filename guard meant for manual uploads.
+                # shared=None like the other re-sync paths: no user is in the
+                # loop to express an intent, so each file keeps the sharing state
+                # it already has.
                 task_id = await connector_service.sync_specific_files(
                     connection.connection_id,
                     connection.user_id,
                     in_scope,
                     jwt_token=jwt_token,
                     replace_duplicates=_connector_sync_should_replace(connector_type),
+                    shared=None,
                 )
 
                 result = {
@@ -2011,6 +2505,7 @@ async def sync_all_connectors(
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
     session: AsyncSession = Depends(get_db_session),
+    rbac=Depends(get_rbac_service),
 ):
     """
     Sync files from all active cloud connector connections.
@@ -2020,6 +2515,11 @@ async def sync_all_connectors(
             Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_START
         )
         jwt_token = user.jwt_token
+        # Sync-all reconciles orphans across every connector type, so it can
+        # reach ownerless chunks too — same gate as the per-connector endpoint.
+        allow_anonymous_delete = await has_effective_permission(
+            request, user, rbac, "knowledge:delete:anonymous"
+        )
 
         all_task_ids = []
         synced_connectors = []
@@ -2098,6 +2598,7 @@ async def sync_all_connectors(
                     existing_file_ids=existing_file_ids,
                     existing_filenames=existing_filenames,
                     id_field=id_field,
+                    allow_anonymous_delete=allow_anonymous_delete,
                 )
                 if sync_result["outcome"] == "deleted_only":
                     deleted_only_connectors.append(connector_type)
@@ -2181,17 +2682,36 @@ def _cloud_connector_types() -> list[str]:
     return [cls.CONNECTOR_TYPE for cls in get_connector_classes()]
 
 
-async def _preview_orphans_for_connector_type(
+class ConnectorSyncPreview(NamedTuple):
+    """What a sync would do to one connector type, without doing any of it.
+
+    ``orphans`` is None when strict gating aborted the pass (so the caller can
+    say "couldn't determine" rather than "nothing to delete"). ``updates`` is
+    None when this connector can't answer the question ahead of time — see
+    ``_preview_for_connector_type``.
+    """
+
+    orphans: list[dict[str, str]] | None
+    updates: list[dict[str, str]] | None
+    synced_count: int
+
+
+async def _preview_for_connector_type(
     connector_type: str,
     user_id: str,
     connector_service,
     session_manager,
     jwt_token: str | None,
-) -> tuple[list[dict[str, str]] | None, int]:
-    """Helper: compute orphans (no deletion) + return total synced count.
+) -> ConnectorSyncPreview:
+    """Compute what a sync would delete and re-ingest, without touching anything.
 
-    Returns (orphans, synced_count). `orphans` is None when strict gating aborts
-    (so the caller can surface a "couldn't determine" state); [] when no orphans.
+    Deletions and updates come out of a single remote listing, so previewing
+    costs the same as the orphan pass used to.
+
+    Updates are only knowable for connectors that declare timestamp change
+    detection: they compare a listing against stored signals. ``replace_always``
+    connectors decide per file after downloading it, so their update count is
+    reported as unavailable rather than guessed at.
     """
     existing_file_ids, existing_filenames, _ = await get_synced_file_ids_for_connector(
         connector_type=connector_type,
@@ -2204,13 +2724,20 @@ async def _preview_orphans_for_connector_type(
     if not existing_file_ids:
         # No document_ids to diff against (e.g. Langflow-only ingest). Filename-only
         # fallback can't detect orphans safely — surface empty list.
-        return [], synced_count
+        return ConnectorSyncPreview(orphans=[], updates=None, synced_count=synced_count)
 
     id_to_filename = await get_synced_id_to_filename_map(
         connector_type=connector_type,
         user_id=user_id,
         session_manager=session_manager,
         jwt_token=jwt_token,
+    )
+
+    remote_files = await list_remote_files_for_connector_type(
+        connector_type=connector_type,
+        user_id=user_id,
+        connector_service=connector_service,
+        existing_file_ids=existing_file_ids,
     )
 
     orphans = await compute_orphans_for_connector_type(
@@ -2221,10 +2748,34 @@ async def _preview_orphans_for_connector_type(
         jwt_token=jwt_token,
         existing_file_ids=existing_file_ids,
         id_to_filename=id_to_filename,
+        remote_files=remote_files,
     )
     if orphans is not None:
         synced_count = max(0, synced_count - len(orphans))
-    return orphans, synced_count
+
+    updates = None
+    if remote_files is not None and _connector_uses_timestamp_change_detection(connector_type):
+        state_map = await get_synced_file_state_map(
+            connector_type=connector_type,
+            user_id=user_id,
+            session_manager=session_manager,
+            jwt_token=jwt_token,
+        )
+        updates = [
+            {"document_id": fid, "filename": id_to_filename.get(fid, "")}
+            for fid in existing_file_ids
+            if fid in remote_files
+            and classify_remote_file_change(
+                fid,
+                remote_files[fid].get("modified_time"),
+                True,
+                state_map,
+                remote_files[fid].get("etag"),
+            )
+            == "changed"
+        ]
+
+    return ConnectorSyncPreview(orphans=orphans, updates=updates, synced_count=synced_count)
 
 
 async def connector_sync_preview(
@@ -2236,14 +2787,15 @@ async def connector_sync_preview(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Preview the impact of syncing a connector type without performing any
-    deletion or ingest. Returns the list of orphan files (present in OpenSearch
-    but no longer at the source) by filename, plus the total synced count.
+    deletion or ingest. Returns the orphan files (present in OpenSearch but no
+    longer at the source) and the files whose source copy has changed, both by
+    filename, plus the total synced count.
     """
     if denied := await _connector_access_denied(request, session, connector_type):
         return denied
 
     try:
-        orphans, synced_count = await _preview_orphans_for_connector_type(
+        preview = await _preview_for_connector_type(
             connector_type=connector_type,
             user_id=user.user_id,
             connector_service=connector_service,
@@ -2253,9 +2805,13 @@ async def connector_sync_preview(
         return JSONResponse(
             {
                 "connector_type": connector_type,
-                "synced_count": synced_count,
-                "orphans": orphans or [],
-                "orphans_available": orphans is not None,
+                "synced_count": preview.synced_count,
+                "orphans": preview.orphans or [],
+                "orphans_available": preview.orphans is not None,
+                "updates": preview.updates or [],
+                # False means this connector can't tell ahead of time (it decides
+                # per file during ingest), not that nothing will be updated.
+                "updates_available": preview.updates is not None,
             },
             status_code=200,
         )
@@ -2272,20 +2828,22 @@ async def connectors_sync_all_preview(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Preview the impact of sync-all-connectors across every cloud connector
-    type. Returns orphan filenames grouped by connector_type plus a per-type
-    synced count.
+    type. Returns orphan and changed filenames grouped by connector_type plus a
+    per-type synced count.
     """
     try:
         orphans_by_type: dict[str, list[dict[str, str]]] = {}
         synced_count_by_type: dict[str, int] = {}
         orphans_available_by_type: dict[str, bool] = {}
+        updates_by_type: dict[str, list[dict[str, str]]] = {}
+        updates_available_by_type: dict[str, bool] = {}
 
         connector_types = await _allowed_connector_types_for_request(
             request, session, _cloud_connector_types()
         )
         for connector_type in connector_types:
             try:
-                orphans, synced_count = await _preview_orphans_for_connector_type(
+                preview = await _preview_for_connector_type(
                     connector_type=connector_type,
                     user_id=user.user_id,
                     connector_service=connector_service,
@@ -2298,21 +2856,25 @@ async def connectors_sync_all_preview(
                     connector_type=connector_type,
                     error=str(e),
                 )
-                orphans, synced_count = None, 0
+                preview = ConnectorSyncPreview(orphans=None, updates=None, synced_count=0)
 
             # Only include connector types that have something synced.
-            if synced_count == 0 and not orphans:
+            if preview.synced_count == 0 and not preview.orphans:
                 continue
 
-            synced_count_by_type[connector_type] = synced_count
-            orphans_by_type[connector_type] = orphans or []
-            orphans_available_by_type[connector_type] = orphans is not None
+            synced_count_by_type[connector_type] = preview.synced_count
+            orphans_by_type[connector_type] = preview.orphans or []
+            orphans_available_by_type[connector_type] = preview.orphans is not None
+            updates_by_type[connector_type] = preview.updates or []
+            updates_available_by_type[connector_type] = preview.updates is not None
 
         return JSONResponse(
             {
                 "orphans_by_type": orphans_by_type,
                 "synced_count_by_type": synced_count_by_type,
                 "orphans_available_by_type": orphans_available_by_type,
+                "updates_by_type": updates_by_type,
+                "updates_available_by_type": updates_available_by_type,
             },
             status_code=200,
         )
@@ -2507,8 +3069,9 @@ async def browse_connection_files(
         )
         ingested_set = set(ingested_ids) | set(ingested_filenames)
 
-        # Stored modified_time per ingested source id, for "update available" detection.
-        modified_map = await get_synced_id_to_modified_time_map(
+        # Stored change-detection state per ingested source id, for "update
+        # available" detection.
+        state_map = await get_synced_file_state_map(
             connector_type=connector_type,
             user_id=user.user_id,
             session_manager=session_manager,
@@ -2520,11 +3083,15 @@ async def browse_connection_files(
         for f in remote_files:
             file_id = f.get("id", "")
             is_ingested = file_id in ingested_set or f.get("name", "") in ingested_set
-            # "Update available": ingested, but the source version is newer than what
-            # we indexed. The frontend keeps unchanged files disabled but lets the user
-            # re-ingest stale ones (with replace_duplicates).
-            is_stale = is_ingested and remote_is_newer_than_synced(
-                file_id, f.get("modified_time"), modified_map
+            # "Update available": ingested, but the source copy differs from what we
+            # indexed. Uses the same classification as sync so the browser and the
+            # sync agree. The frontend keeps unchanged files disabled but lets the
+            # user re-ingest stale ones (with replace_duplicates).
+            is_stale = (
+                classify_remote_file_change(
+                    file_id, f.get("modified_time"), is_ingested, state_map, f.get("etag")
+                )
+                == "changed"
             )
             enriched_files.append(
                 {

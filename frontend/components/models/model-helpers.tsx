@@ -6,6 +6,7 @@ import GenericProviderLogo from "@/components/icons/generic-provider-logo";
 import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
+import OpenShiftAILogo from "@/components/icons/openshift-ai-logo";
 
 /**
  * A provider key as the backend names it.
@@ -24,12 +25,22 @@ export const KNOWN_PROVIDERS = [
   "ollama",
   "watsonx",
   "watsonx_onprem",
+  "rhoai",
   "azure_ai",
   "azure",
   "local",
 ] as const;
 
 export type KnownModelProvider = (typeof KNOWN_PROVIDERS)[number];
+
+/** Providers whose catalogue model IDs are not safe deployment defaults. */
+export function requiresExplicitModelSelection(
+  provider: ModelProvider | undefined,
+): boolean {
+  // Azure lets customers name deployments independently of the underlying
+  // model family, so a catalogue row such as `gpt-4.1` is only a suggestion.
+  return provider === "azure";
+}
 
 // Preferred auto-select order for the LLM onboarding step. Only a preference:
 // providers this run mode hides are dropped, and anything the API returns that
@@ -163,6 +174,14 @@ const PROVIDER_CHROME: Record<string, ProviderChrome> = {
     logoColor: "text-white",
     logoBgColor: "bg-[#1063FE]",
   },
+  // Models served by KServe + vLLM inside the customer's own OpenShift
+  // cluster. One card, though it is two InferenceServices behind the scenes.
+  rhoai: {
+    name: "Red Hat OpenShift AI",
+    logo: OpenShiftAILogo,
+    logoColor: "text-white",
+    logoBgColor: "bg-[#EE0000]",
+  },
   // Microsoft draws the two Azure model services differently, and neither is
   // the generic Azure logo. AiFoundryLogo paints its own gradient, so
   // logoColor does nothing for it and the tile stays white.
@@ -217,6 +236,8 @@ export function getModelLogo(modelValue: string, provider?: string) {
     return <OllamaLogo className="w-4 h-4" />;
   } else if (provider === "watsonx" || provider === "watsonx_onprem") {
     return <IBMLogo className="w-4 h-4" />;
+  } else if (provider === "rhoai") {
+    return <OpenShiftAILogo className="w-4 h-4" />;
   } else if (provider === "azure") {
     return <AzureOpenAILogo className="w-4 h-4" />;
   } else if (provider === "azure_ai") {

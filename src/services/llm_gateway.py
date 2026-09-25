@@ -147,7 +147,9 @@ def legacy_embedding_provider(model: str, config: Any | None = None) -> str | No
     return provider or None
 
 
-def provider_credentials(provider: str, config=None) -> dict[str, Any]:
+def provider_credentials(
+    provider: str, config=None, *, kind: Literal["chat", "embedding"] = "chat"
+) -> dict[str, Any]:
     """LiteLLM kwargs for any configured OpenRAG provider. Never logs secrets."""
     cfg = config or _get_config()
     key = (provider or "").strip().lower()
@@ -157,7 +159,7 @@ def provider_credentials(provider: str, config=None) -> dict[str, Any]:
         raise LlmGatewayError("LLM providers are not configured", 400) from exc
 
     if hasattr(prov, "credential_values"):
-        credentials = prov.credential_values(key)
+        credentials = prov.credential_values(key, kind=kind)
     else:
         provider_config = getattr(prov, key, None)
         if provider_config is None:
@@ -196,6 +198,27 @@ def provider_credentials(provider: str, config=None) -> dict[str, Any]:
     return credentials
 
 
+def _provider_runtime_kwargs(provider: str, config=None) -> dict[str, Any]:
+    """Non-serializable transport kwargs for the immediate LiteLLM invocation."""
+    cfg = config or _get_config()
+    prov = cfg.providers
+    if not hasattr(prov, "credential_values"):
+        return {}
+
+    from enhancements.providers.registry import get, runtime_kwargs_for
+
+    key = (provider or "").strip().lower()
+    enhancement = get(key)
+    if enhancement is None:
+        return {}
+    stored = (
+        prov.stored_credentials(key)
+        if hasattr(prov, "stored_credentials")
+        else prov.credential_values(key)
+    )
+    return runtime_kwargs_for(enhancement, stored)
+
+
 def resolve_call(
     model: str | None,
     *,
@@ -232,7 +255,7 @@ def resolve_call(
     if provider is None:
         provider = default_provider(kind, cfg)
         name = requested
-    credentials = provider_credentials(provider, cfg)
+    credentials = provider_credentials(provider, cfg, kind=kind)
     # An OpenRAG provider that LiteLLM does not know by that name is routed
     # under the key it aliases (`watsonx_onprem` -> `watsonx`). The OpenRAG key
     # is still what the caller sees and what credentials are stored under.
@@ -638,6 +661,7 @@ async def chat_completions(
     """OpenAI `POST /v1/chat/completions`. Streams SSE lines when `stream` is true."""
     cfg = config or _get_config()
     litellm_model, provider, credentials = resolve_call(body.get("model"), kind="chat", config=cfg)
+    runtime_kwargs = _provider_runtime_kwargs(provider, cfg)
     kwargs = {key: body[key] for key in _LITELLM_FORWARDED_PARAMS if key in body}
     stream = bool(body.get("stream"))
     if litellm_model in _TOOLS_NEED_REASONING_OFF:
@@ -659,6 +683,7 @@ async def chat_completions(
             # provider's capabilities instead of failing the request.
             drop_params=True,
             **credentials,
+            **runtime_kwargs,
             **kwargs,
         )
 
@@ -1015,6 +1040,9 @@ def _log_stream_shape(tally: _StreamTally, provider: str, model: str) -> None:
         logger.debug("Could not summarise stream shape", exc_info=True)
 
 
+_WATSONX_ONPREM_EMBEDDING_BATCH_SIZE = 32
+
+
 def _embedding_input(value: Any) -> Any:
     """OpenAI's `input`, in the shape every provider behind us accepts.
 
@@ -1034,14 +1062,56 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
     litellm_model, provider, credentials = resolve_call(
         body.get("model"), kind="embedding", config=cfg
     )
+    runtime_kwargs = _provider_runtime_kwargs(provider, cfg)
+    embedding_input = _embedding_input(body.get("input"))
+    should_batch = (
+        provider == "watsonx_onprem"
+        and isinstance(embedding_input, list)
+        and len(embedding_input) > _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE
+        and not all(isinstance(item, int) for item in embedding_input)
+    )
     try:
         import litellm
 
-        result = await litellm.aembedding(
-            model=litellm_model,
-            input=_embedding_input(body.get("input")),
-            **credentials,
-        )
+        if not should_batch:
+            result = await litellm.aembedding(
+                model=litellm_model,
+                input=embedding_input,
+                **credentials,
+                **runtime_kwargs,
+            )
+            response = _to_openai_dict(result)
+        else:
+            response = {}
+            data: list[dict[str, Any]] = []
+            usage: dict[str, int | float] = {}
+            for offset in range(
+                0,
+                len(embedding_input),
+                _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE,
+            ):
+                batch = embedding_input[offset : offset + _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE]
+                result = await litellm.aembedding(
+                    model=litellm_model,
+                    input=batch,
+                    **credentials,
+                    **runtime_kwargs,
+                )
+                payload = _to_openai_dict(result)
+                if not response:
+                    response = {
+                        key: value for key, value in payload.items() if key not in {"data", "usage"}
+                    }
+                for position, item in enumerate(payload.get("data", [])):
+                    merged_item = dict(item)
+                    merged_item["index"] = offset + int(item.get("index", position))
+                    data.append(merged_item)
+                for key, value in payload.get("usage", {}).items():
+                    if isinstance(value, (int, float)):
+                        usage[key] = usage.get(key, 0) + value
+            response["data"] = data
+            if usage:
+                response["usage"] = usage
     except LlmGatewayError:
         raise
     except Exception as exc:
@@ -1055,4 +1125,4 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
             detail=detail,
         ) from exc
     provider_error_log.record_success(provider, "embedding")
-    return _to_openai_dict(result)
+    return response

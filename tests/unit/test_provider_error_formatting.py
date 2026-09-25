@@ -241,7 +241,7 @@ async def test_resolve_ingest_error_message_probes_generic_embedding_with_creden
         watsonx = None
         ollama = None
 
-        def credential_values(self, provider):
+        def credential_values(self, provider, *, kind="chat"):
             assert provider == "azure"
             return dict(credentials)
 
@@ -282,6 +282,84 @@ async def test_resolve_ingest_error_message_probes_generic_embedding_with_creden
 
 
 @pytest.mark.asyncio
+async def test_ingest_recovery_probes_request_embedding_credentials(monkeypatch):
+    """The embedding probes must ask for the *embedding* endpoint's credentials.
+
+    A provider that serves chat and embeddings from separate endpoints (Red Hat
+    OpenShift AI) narrows ``credential_values`` by ``kind``; probing the
+    embedding model against the chat endpoint would report a bogus "model not
+    found" and hide the real embedding-endpoint failure.
+    """
+
+    by_kind = {
+        "chat": {"api_key": "token", "api_base": "https://chat.example/v1"},
+        "embedding": {"api_key": "token", "api_base": "https://embed.example/v1"},
+    }
+
+    class GenericProvider:
+        configured = True
+
+    class FakeProviders:
+        custom = {"rhoai": GenericProvider()}
+        openai = None
+        anthropic = None
+        watsonx = None
+        ollama = None
+
+        def credential_values(self, provider, *, kind="chat"):
+            assert provider == "rhoai"
+            return dict(by_kind[kind])
+
+    class FakeConfig:
+        class knowledge:
+            embedding_provider = "rhoai"
+            embedding_model = "granite-embedding"
+
+        class agent:
+            llm_provider = "rhoai"
+            llm_model = "granite-chat"
+
+        providers = FakeProviders()
+
+        def get_embedding_provider_config(self):
+            return self.providers.custom["rhoai"]
+
+        def get_llm_provider_config(self):
+            return self.providers.custom["rhoai"]
+
+    calls = []
+
+    async def fake_validate(**kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr("config.settings.get_openrag_config", lambda: FakeConfig())
+    monkeypatch.setattr("api.provider_validation.validate_provider_setup", fake_validate)
+
+    from api.provider_validation import (
+        probe_chat_llm_error,
+        probe_embedding_error,
+        probe_provider_credential_error,
+    )
+
+    assert await probe_embedding_error() is None
+    assert await probe_chat_llm_error() is None
+    assert await probe_provider_credential_error() is None
+
+    # probe_embedding_error, probe_chat_llm_error, then the credential probe's
+    # single rhoai candidate (the embedding row is checked first, so it wins).
+    assert [c["credentials"]["api_base"] for c in calls] == [
+        "https://embed.example/v1",
+        "https://chat.example/v1",
+        "https://embed.example/v1",
+    ]
+    assert [c["endpoint"] for c in calls] == [
+        "https://embed.example/v1",
+        "https://chat.example/v1",
+        "https://embed.example/v1",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_probe_chat_llm_error_uses_generic_provider_credentials(monkeypatch):
     credentials = {
         "api_key": "azure-key",
@@ -295,7 +373,7 @@ async def test_probe_chat_llm_error_uses_generic_provider_credentials(monkeypatc
     class FakeProviders:
         custom = {"azure": GenericProvider()}
 
-        def credential_values(self, provider):
+        def credential_values(self, provider, *, kind="chat"):
             assert provider == "azure"
             return dict(credentials)
 

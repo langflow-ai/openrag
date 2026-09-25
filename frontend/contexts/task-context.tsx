@@ -39,8 +39,10 @@ import {
   didTaskReachTerminalState,
   finalizeProcessingOverlaysForEnhancedTask,
   findTaskFileOverlayIndex,
+  getDuplicateContentFileCount,
   getEnhancedListDisappearedFilePaths,
   getFailedFileCount,
+  getSkippedFileCount,
   getSuccessfulFileCount,
   hasFailedFileEntries,
   isTaskInProgressStatus,
@@ -56,11 +58,18 @@ export interface TaskFile {
   source_url: string;
   size: number;
   connector_type: string;
-  status: "active" | "failed" | "processing" | "cancelled";
+  status: "active" | "failed" | "processing" | "cancelled" | "skipped";
   task_id: string;
   created_at: string;
   updated_at: string;
   error?: string;
+  /**
+   * Skip reason forwarded from result.reason (e.g. "duplicate_content",
+   * "deleted_at_source"). Only set when status === "skipped".
+   */
+  skip_reason?: string;
+  /** Warning message surfaced for skipped files (e.g. duplicate_content). */
+  warning?: string;
   embedding_model?: string;
   embedding_dimensions?: number;
 }
@@ -391,6 +400,9 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                   mappedStatus =
                     currentTask.status === "cancelled" ? "cancelled" : "failed";
                   break;
+                case "skipped":
+                  mappedStatus = "skipped";
+                  break;
                 default:
                   mappedStatus = "processing";
               }
@@ -402,6 +414,26 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 );
                 return resolved === "Unknown error" ? undefined : resolved;
               })();
+
+              // Extract skip reason and warning from result (set by the backend).
+              // Only surface duplicate-specific UI for duplicate_content skips;
+              // other reasons (e.g. deleted_at_source) are silent/informational.
+              const skipReason =
+                mappedStatus === "skipped"
+                  ? ((
+                      fileInfoEntry.result as
+                        | Record<string, unknown>
+                        | undefined
+                    )?.reason as string | undefined)
+                  : undefined;
+              const fileWarning =
+                mappedStatus === "skipped" &&
+                skipReason === "duplicate_content" &&
+                typeof (fileInfoEntry.result as Record<string, unknown>)
+                  ?.warning === "string"
+                  ? ((fileInfoEntry.result as Record<string, unknown>)
+                      .warning as string)
+                  : undefined;
 
               setFiles((prevFiles) => {
                 const existingFileIndex = findTaskFileOverlayIndex(
@@ -441,6 +473,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                       ? fileInfoEntry.updated_at
                       : now,
                   error: fileError,
+                  skip_reason: skipReason,
+                  warning: fileWarning,
                   embedding_model:
                     typeof fileInfoEntry.embedding_model === "string"
                       ? fileInfoEntry.embedding_model
@@ -498,6 +532,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           currentTask.status === "completed"
         ) {
           const successfulFiles = getSuccessfulFileCount(currentTask);
+          const skippedFiles = getSkippedFileCount(currentTask);
+          const duplicateFiles = getDuplicateContentFileCount(currentTask);
           const failedFiles = getFailedFileCount(currentTask);
           const isTotalFailure = failedFiles > 0 && successfulFiles === 0;
 
@@ -560,6 +596,18 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 failedFiles !== 1 ? "s" : ""
               } failed`;
             }
+          } else if (duplicateFiles > 0 && successfulFiles === 0) {
+            // All files were duplicate-skipped — no new content was indexed.
+            description = `${duplicateFiles} file${
+              duplicateFiles !== 1 ? "s" : ""
+            } skipped — duplicate content already in knowledge base`;
+          } else if (duplicateFiles > 0) {
+            // Mix of uploaded and skipped.
+            description = `${successfulFiles} file${
+              successfulFiles !== 1 ? "s" : ""
+            } uploaded successfully, ${duplicateFiles} file${
+              duplicateFiles !== 1 ? "s" : ""
+            } skipped (duplicate content)`;
           } else {
             description = `${successfulFiles} file${
               successfulFiles !== 1 ? "s" : ""
@@ -581,6 +629,15 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               });
             } else if (allFailuresAreCancellations && failedFiles > 0) {
               toast.info("File ingestion cancelled", {
+                description,
+                action: toastAction,
+              });
+            } else if (
+              duplicateFiles > 0 &&
+              successfulFiles === 0 &&
+              failedFiles === 0
+            ) {
+              toast.warning("Duplicate file skipped", {
                 description,
                 action: toastAction,
               });
@@ -655,6 +712,16 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                   }
                   if (file.status === "failed") {
                     return completedHasFailures;
+                  }
+                  // Keep duplicate-content skipped overlays so the user sees the
+                  // "Duplicate" badge — unless the same filename was later
+                  // successfully indexed (a subsequent upload supersedes it).
+                  if (file.status === "skipped") {
+                    const filename = file.filename?.trim();
+                    if (filename && indexedFilenames.has(filename)) {
+                      return false;
+                    }
+                    return true;
                   }
                   if (file.status === "processing") {
                     return false;

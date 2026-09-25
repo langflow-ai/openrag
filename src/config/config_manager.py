@@ -3,6 +3,7 @@
 import json
 import os
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional, Protocol
@@ -77,6 +78,41 @@ def is_permitted_index_name(index_name: str) -> bool:
     """True if index_name matches an index_pattern the OpenSearch security
     role (securityconfig/roles.yml) actually grants read/search access to."""
     return bool(_PERMITTED_INDEX_NAME.match(index_name))
+
+
+def apply_index_name_env_override(knowledge: dict[str, Any]) -> None:
+    """Apply ``OPENSEARCH_INDEX_NAME`` onto a ``knowledge`` config dict in place.
+
+    The index name is a role-gated infra setting (``securityconfig/roles.yml``),
+    shared by every workspace on a deployment, not a user preference. This
+    override therefore always wins when the env var is set — independent of the
+    storage mode or the ``edited`` flag — so the ingest-write path and the
+    connector enrichment path can never resolve different index names (issue
+    81583). Mirrors the unconditional ``legacy_embedding_provider_map`` override.
+
+    An env value outside the security role's index patterns is rejected and the
+    prior value kept, since applying it would break search/write with a 403.
+    """
+    from config.settings import get_opensearch_index_name_override
+
+    env_index_name = get_opensearch_index_name_override()
+    if not env_index_name:
+        return
+    if not is_permitted_index_name(env_index_name):
+        logger.error(
+            f"OPENSEARCH_INDEX_NAME={env_index_name!r} is not permitted by the "
+            f"OpenSearch security role (must match one of "
+            f"{ALLOWED_INDEX_NAME_PATTERNS}); ignoring and keeping "
+            f"{knowledge.get('index_name', 'documents')!r}. "
+            "See securityconfig/roles.yml."
+        )
+        return
+    if knowledge.get("index_name") not in (None, env_index_name):
+        logger.warning(
+            f"Stored index_name {knowledge.get('index_name')!r} overridden by "
+            f"OPENSEARCH_INDEX_NAME={env_index_name!r}"
+        )
+    knowledge["index_name"] = env_index_name
 
 
 def _validate_config_path(config_file: str | Path) -> Path:
@@ -196,20 +232,25 @@ class ProvidersConfig:
         return self.custom.get(provider_lower, GenericProviderConfig())
 
     def set_credentials(
-        self, provider: str, credentials: dict[str, str], *, auth_method: str | None = None
+        self,
+        provider: str,
+        credentials: dict[str, str],
+        *,
+        auth_method: str | None = None,
+        remove: set[str] | None = None,
     ) -> None:
-        """Upsert arbitrary LiteLLM credentials while preserving legacy config."""
+        """Upsert credentials and apply explicitly requested field removals."""
         key = provider.strip().lower()
         clean = {
             str(name): str(value).strip()
             for name, value in credentials.items()
             if str(name).strip() and str(value).strip()
         }
-        if not clean:
-            # Every submitted value was blank. Creating the entry anyway would
-            # register a provider that reports `configured` with zero
-            # credentials, which then satisfies `any_configured()` and can be
-            # picked as a fallback provider and called with no key at all.
+        removals = {str(name).strip() for name in remove or set() if str(name).strip()}
+        if not clean and not removals:
+            # Blank values remain "leave unchanged" because secret fields are
+            # intentionally not echoed to forms. Deletion is an explicit,
+            # separate operation so an empty password cannot erase a secret.
             return
         previous = self.custom.get(key, GenericProviderConfig())
         if key == "azure" and auth_method:
@@ -231,21 +272,30 @@ class ProvidersConfig:
             }
             previous.auth_method = auth_method
         if key == "watsonx_onprem" and auth_method:
-            methods = {
-                "username_api_key": {"username", "api_key"},
-                "zen_api_key": {"zen_api_key"},
-            }
-            active = methods.get(auth_method)
-            if active is None:
-                raise ValueError(f"Unknown watsonx.ai on-prem authentication method: {auth_method}")
+            from enhancements.providers.watsonx.onprem import (
+                credential_fields_for_auth_method,
+            )
+
+            allowed = credential_fields_for_auth_method(auth_method)
             previous.credentials = {
-                name: value
-                for name, value in previous.credentials.items()
-                if name in {"api_base", "space_id", "project_id"} or name in active
+                name: value for name, value in previous.credentials.items() if name in allowed
             }
             previous.auth_method = auth_method
+        for name in removals:
+            previous.credentials.pop(name, None)
         previous.credentials.update(clean)
-        previous.configured = True
+        # Complete against the form's required fields, not merely non-empty:
+        # a submission of just `ssl_verify` must not make a provider look
+        # callable. Same gate as the environment seed.
+        required = _required_credential_keys(key)
+        previous.configured = _credentials_complete(previous.credentials, required)
+        if not previous.configured:
+            logger.warning(
+                "Model provider credentials are incomplete; it is left unconfigured "
+                "until every required field is set",
+                provider=key,
+                missing=[name for name in required if not previous.credentials.get(name)],
+            )
         self.custom[key] = previous
         if key == "openai":
             self.openai.api_key = clean.get("api_key", self.openai.api_key)
@@ -262,9 +312,39 @@ class ProvidersConfig:
             self.ollama.endpoint = clean.get("api_base", self.ollama.endpoint)
             self.ollama.configured = bool(self.ollama.endpoint)
 
-    def pending_credentials(
-        self, provider: str, submitted: dict[str, str] | None = None
+    def stored_credentials(self, provider: str) -> dict[str, str]:
+        """The provider's credentials exactly as the operator entered them.
+
+        Untranslated, and therefore complete: `credential_values()` narrows a
+        multi-endpoint provider down to the one endpoint a given call needs, so
+        anything that has to see *all* of them — model discovery across an
+        OpenShift AI deployment's chat and embedding `InferenceService`s — has
+        to read the stored form instead.
+        """
+        return dict(self.custom.get(provider.strip().lower(), GenericProviderConfig()).credentials)
+
+    def pending_stored_credentials(
+        self,
+        provider: str,
+        submitted: dict[str, str] | None = None,
+        *,
+        remove: set[str] | None = None,
     ) -> dict[str, str]:
+        """`stored_credentials()` as it would read after one pending update."""
+        pending = self.stored_credentials(provider)
+        for name in remove or set():
+            pending.pop(name, None)
+        pending.update(_clean_submitted(submitted))
+        return pending
+
+    def pending_credentials(
+        self,
+        provider: str,
+        submitted: dict[str, str] | None = None,
+        *,
+        kind: str = "chat",
+        remove: set[str] | None = None,
+    ) -> dict[str, Any]:
         """LiteLLM kwargs for `provider` as it would be once `submitted` is saved.
 
         Validation runs before the write, so it has to reason about the union of
@@ -274,29 +354,39 @@ class ProvidersConfig:
         halves have to be merged *before* the translation, or a request that
         changes the API key would be validated against a stale credential built
         from the old one.
+
+        `kind` selects which endpoint a multi-endpoint provider is validated
+        against, so the pre-save probe hits the same one the real call will.
         """
+        from enhancements.providers.registry import credentials_for
         from enhancements.providers.registry import get as get_provider_enhancement
 
         key = provider.strip().lower()
-        clean = {
-            str(name): str(value).strip()
-            for name, value in (submitted or {}).items()
-            if str(name).strip() and str(value).strip()
-        }
+        clean = _clean_submitted(submitted)
         enhancement = get_provider_enhancement(key)
         if enhancement:
-            stored = self.custom.get(key, GenericProviderConfig()).credentials
-            return enhancement.litellm_credentials({**stored, **clean})
-        values = self.credential_values(key)
+            stored = self.pending_stored_credentials(key, clean, remove=remove)
+            return credentials_for(enhancement, stored, kind)
+        values = self.credential_values(key, kind=kind)
+        for name in remove or set():
+            values.pop(name, None)
         values.update(clean)
         return values
 
-    def credential_values(self, provider: str) -> dict[str, str]:
-        """Return LiteLLM keyword arguments for a configured provider."""
+    def credential_values(self, provider: str, *, kind: str = "chat") -> dict[str, Any]:
+        """Return LiteLLM keyword arguments for a configured provider.
+
+        `kind` is `"chat"` or `"embedding"`. It matters only to a provider whose
+        two kinds of call go to different endpoints — Red Hat OpenShift AI, where
+        `vLLM` serves one model per `InferenceService` — and is ignored by every
+        other provider. Callers that need the untranslated form should use
+        `stored_credentials()`.
+        """
+        from enhancements.providers.registry import credentials_for
         from enhancements.providers.registry import get as get_provider_enhancement
 
         key = provider.strip().lower()
-        custom = dict(self.custom.get(key, GenericProviderConfig()).credentials)
+        custom: dict[str, Any] = dict(self.custom.get(key, GenericProviderConfig()).credentials)
         if key == "openai":
             if self.openai.api_key:
                 custom.setdefault("api_key", self.openai.api_key)
@@ -306,7 +396,7 @@ class ProvidersConfig:
                 custom.setdefault("api_key", self.anthropic.api_key)
             return custom
         if key == "watsonx":
-            legacy = {
+            legacy: dict[str, Any] = {
                 name: value
                 for name, value in {
                     "api_key": self.watsonx.api_key,
@@ -327,8 +417,52 @@ class ProvidersConfig:
             # (cluster URL, username, API key); LiteLLM wants a ZenApiKey. The
             # translation lives with the provider so the gateway, the health
             # check and the validator all issue the same call.
-            return enhancement.litellm_credentials(custom)
+            return credentials_for(enhancement, custom, kind)
         return custom
+
+
+def _clean_submitted(submitted: dict[str, str] | None) -> dict[str, str]:
+    """Submitted credential fields, trimmed, with blank names and values dropped."""
+    return {
+        str(name): str(value).strip()
+        for name, value in (submitted or {}).items()
+        if str(name).strip() and str(value).strip()
+    }
+
+
+def _required_credential_keys(provider: str) -> tuple[str, ...]:
+    """The fields `provider`'s form marks required, per the catalogue's spec.
+
+    Empty for a provider without a spec, or when the catalogue cannot be read
+    (LiteLLM absent, or a context where `services` is not importable): callers
+    then fall back to "any credential at all", which is what `set_credentials`
+    always did.
+    """
+    try:
+        from services.model_catalog import required_field_keys
+
+        return tuple(required_field_keys(provider))
+    except Exception:
+        logger.debug(
+            "Could not read the required credential fields for a provider",
+            provider=provider,
+            exc_info=True,
+        )
+        return ()
+
+
+def _credentials_complete(stored: Mapping[str, Any], required: Sequence[str]) -> bool:
+    """Whether a stored credential set is enough to call the provider at all.
+
+    This is what `configured` means for both write paths — the environment
+    seed and a settings save — so a provider that got half its fields cannot
+    satisfy `any_configured()`, be picked as a fallback, and then be called with
+    nothing useful (or, for `hosted_vllm`, with LiteLLM falling back to an
+    `HOSTED_VLLM_API_BASE` from the environment that points somewhere else).
+    """
+    if not required:
+        return any(str(value or "").strip() for value in stored.values())
+    return all(str(stored.get(name) or "").strip() for name in required)
 
 
 @dataclass
@@ -595,6 +729,47 @@ class ConfigManager:
             credentials["api_version"] = api_version
         entry["configured"] = bool(credentials.get("api_key") and credentials.get("api_base"))
 
+    @staticmethod
+    def _seed_custom_provider_credentials(
+        config_data: dict[str, Any],
+        provider: str,
+        credentials: dict[str, str | None],
+        *,
+        required: tuple[str, ...],
+    ) -> None:
+        """Fill a custom provider's credentials from an arbitrary field map.
+
+        The sibling `_seed_custom_provider` understands exactly `api_key` /
+        `api_base` / `api_version`, which is all Azure needs. A provider with its
+        own form — OpenShift AI carries a second endpoint URL and a TLS setting —
+        needs every field it declares, so this takes the map instead.
+
+        `required` names the fields without which the provider cannot be called
+        at all. It gates `configured` through the same `_credentials_complete`
+        check `set_credentials` applies to a settings save, so a provider that
+        got half its fields on either path cannot satisfy `any_configured()`,
+        be picked as a fallback, and be called with nothing useful.
+        """
+        supplied = {
+            name: str(value).strip()
+            for name, value in credentials.items()
+            if str(value or "").strip()
+        }
+        if not supplied:
+            return
+        custom_providers = config_data.setdefault("providers", {}).setdefault("custom", {})
+        entry = custom_providers.setdefault(provider, {})
+        stored = entry.setdefault("credentials", {})
+        stored.update(supplied)
+        entry["configured"] = _credentials_complete(stored, required)
+        if not entry["configured"]:
+            logger.warning(
+                "Environment variables for a model provider are incomplete; it is left "
+                "unconfigured until every required field is set",
+                provider=provider,
+                missing=[name for name in required if not stored.get(name)],
+            )
+
     def _load_env_overrides(
         self, config_data: dict[str, Any], temp_config: Optional["OpenRAGConfig"] = None
     ) -> None:
@@ -623,6 +798,10 @@ class ConfigManager:
                     error=str(e),
                 )
 
+        # The index name is infra, not a user preference: it must resolve the
+        # same way after onboarding marks the config edited (issue 81583).
+        apply_index_name_env_override(config_data["knowledge"])
+
         # Skip all environment overrides if config has been manually edited
         if temp_config and temp_config.edited:
             logger.debug("Skipping all env overrides - config marked as edited")
@@ -643,6 +822,32 @@ class ConfigManager:
             config_data["providers"]["watsonx"]["endpoint"] = os.getenv("WATSONX_ENDPOINT")
         if os.getenv("WATSONX_PROJECT_ID"):
             config_data["providers"]["watsonx"]["project_id"] = os.getenv("WATSONX_PROJECT_ID")
+
+        # IBM watsonx.ai on-prem (Cloud Pak for Data / Software Hub).
+        onprem_credentials = {
+            "api_base": os.getenv("WATSONX_ENDPOINT_ONPREM"),
+            "username": os.getenv("WATSONX_USERNAME_ONPREM"),
+            "api_key": os.getenv("WATSONX_API_KEY_ONPREM"),
+            "zen_api_key": os.getenv("WATSONX_ZEN_API_KEY_ONPREM"),
+            "space_id": os.getenv("WATSONX_SPACE_ID_ONPREM"),
+            "project_id": os.getenv("WATSONX_PROJECT_ID_ONPREM"),
+            "ssl_verify": os.getenv("WATSONX_TLS_VERIFY_ONPREM"),
+        }
+        if any(onprem_credentials.values()):
+            self._seed_custom_provider_credentials(
+                config_data,
+                "watsonx_onprem",
+                onprem_credentials,
+                required=("api_base",),
+            )
+            entry = config_data["providers"]["custom"]["watsonx_onprem"]
+            stored = entry["credentials"]
+            has_zen = bool(stored.get("zen_api_key"))
+            entry["auth_method"] = "zen_api_key" if has_zen else "username_api_key"
+            entry["configured"] = bool(
+                stored.get("api_base")
+                and (has_zen or (stored.get("username") and stored.get("api_key")))
+            )
 
         # Ollama provider settings
         if os.getenv("OLLAMA_ENDPOINT"):
@@ -675,6 +880,29 @@ class ConfigManager:
                 config_data, "azure_ai", azure_ai_key, azure_ai_endpoint, azure_ai_version
             )
 
+        # Red Hat OpenShift AI. Two endpoints rather than one, because vLLM
+        # serves a single model per InferenceService — see
+        # enhancements/providers/redhat/openshift_ai.py. Seeding these is what
+        # lets a Helm (`llmProviders.rhoai.*`) or operator (`spec.rhoai`) install
+        # come up configured with no human clicking through Settings, which is
+        # the point on an air-gapped cluster.
+        rhoai_endpoint = os.getenv("RHOAI_ENDPOINT")
+        rhoai_embeddings_endpoint = os.getenv("RHOAI_EMBEDDINGS_ENDPOINT")
+        rhoai_api_key = os.getenv("RHOAI_API_KEY")
+        rhoai_tls_verify = os.getenv("RHOAI_TLS_VERIFY")
+        if rhoai_endpoint or rhoai_embeddings_endpoint or rhoai_api_key or rhoai_tls_verify:
+            self._seed_custom_provider_credentials(
+                config_data,
+                "rhoai",
+                {
+                    "api_base": rhoai_endpoint,
+                    "embedding_api_base": rhoai_embeddings_endpoint,
+                    "api_key": rhoai_api_key,
+                    "ssl_verify": rhoai_tls_verify,
+                },
+                required=("api_base", "api_key"),
+            )
+
         # Knowledge settings
         if os.getenv("EMBEDDING_PROVIDER"):
             config_data["knowledge"]["embedding_provider"] = os.getenv("EMBEDDING_PROVIDER")
@@ -689,18 +917,7 @@ class ConfigManager:
             config_data["knowledge"]["chunk_size"] = int(os.getenv("CHUNK_SIZE"))
         if os.getenv("CHUNK_OVERLAP"):
             config_data["knowledge"]["chunk_overlap"] = int(os.getenv("CHUNK_OVERLAP"))
-        if os.getenv("OPENSEARCH_INDEX_NAME"):
-            env_index_name = os.getenv("OPENSEARCH_INDEX_NAME")
-            if is_permitted_index_name(env_index_name):
-                config_data["knowledge"]["index_name"] = env_index_name
-            else:
-                logger.error(
-                    f"OPENSEARCH_INDEX_NAME={env_index_name!r} is not permitted by the "
-                    f"OpenSearch security role (must match one of "
-                    f"{ALLOWED_INDEX_NAME_PATTERNS}); ignoring and keeping "
-                    f"{config_data['knowledge'].get('index_name', 'documents')!r}. "
-                    "See securityconfig/roles.yml."
-                )
+        # OPENSEARCH_INDEX_NAME is applied above, before the edited-flag gate.
         if os.getenv("OCR_ENABLED"):
             config_data["knowledge"]["ocr"] = os.getenv("OCR_ENABLED").lower() in (
                 "true",

@@ -1,5 +1,6 @@
 "use client";
 
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
@@ -44,7 +45,11 @@ import { AnthropicOnboarding } from "./anthropic-onboarding";
 import { GenericOnboarding } from "./generic-onboarding";
 import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
-import { canCompleteOnboarding } from "./onboarding-completion";
+import {
+  canCompleteOnboarding,
+  fetchEditedForRollbackCheck,
+  shouldRollbackFailedOnboarding,
+} from "./onboarding-completion";
 import { OpenAIOnboarding } from "./openai-onboarding";
 import { TabTrigger } from "./tab-trigger";
 
@@ -335,7 +340,7 @@ const OnboardingCard = ({
         setCurrentStep(0);
       }
     },
-    onError: (error) => {
+    onError: async (error) => {
       const message = formatProviderErrorMessage(error.message);
       trackProcessFailure({
         processType: "Onboarding",
@@ -344,8 +349,17 @@ const OnboardingCard = ({
         category: "Setup",
       });
       setError(message);
-      setCurrentStep(totalSteps);
-      rollbackMutation.mutate({ embedding_only: isEmbedding });
+
+      const freshEdited = await fetchEditedForRollbackCheck(
+        queryClient,
+        currentSettings?.edited,
+      );
+      if (shouldRollbackFailedOnboarding(freshEdited)) {
+        setCurrentStep(totalSteps);
+        rollbackMutation.mutate({ embedding_only: isEmbedding });
+      } else {
+        setCurrentStep(null);
+      }
     },
   });
 
@@ -547,6 +561,13 @@ const OnboardingCard = ({
     if (generic && Object.keys(generic).length > 0) {
       onboardingData.provider_credentials = { [currentProvider]: generic };
     }
+    const credentialRemovals =
+      settings.provider_credential_removals?.[currentProvider];
+    if (credentialRemovals && credentialRemovals.length > 0) {
+      onboardingData.provider_credential_removals = {
+        [currentProvider]: credentialRemovals,
+      };
+    }
     const authMethod = settings.provider_auth_methods?.[currentProvider];
     if (authMethod) {
       onboardingData.provider_auth_methods = { [currentProvider]: authMethod };
@@ -620,48 +641,65 @@ const OnboardingCard = ({
                     const Logo = chrome.logo;
                     const selected = modelProvider === providerKey;
                     return (
-                      <TabsTrigger
-                        key={providerKey}
-                        value={providerKey}
-                        data-testid={`${providerKey}-${isEmbedding ? "embedding" : "llm"}-tab`}
-                        className={cn(
-                          error &&
-                            selected &&
-                            "data-[state=active]:border-destructive",
-                          // Fixed 3-up basis so every card is the same width
-                          // (like a grid) while flex still fills the row.
-                          "min-w-52 grow-0 basis-[calc((100%_-_1.5rem)/3)]",
-                        )}
-                      >
-                        <TabTrigger
-                          selected={selected}
-                          isLoading={isLoadingModels}
-                        >
-                          <div
+                      <Tooltip key={providerKey}>
+                        <TooltipTrigger asChild>
+                          <TabsTrigger
+                            value={providerKey}
+                            data-testid={`${providerKey}-${isEmbedding ? "embedding" : "llm"}-tab`}
                             className={cn(
-                              "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
-                              selected
-                                ? (chrome.tabLogoBgColor ?? chrome.logoBgColor)
-                                : "bg-muted",
+                              error &&
+                                selected &&
+                                "data-[state=active]:border-destructive",
+                              // Fixed 3-up basis so every card is the same width
+                              // (like a grid) while flex still fills the row.
+                              "min-w-52 grow-0 basis-[calc((100%_-_1.5rem)/3)]",
                             )}
                           >
-                            <Logo
-                              className={cn(
-                                "w-4 h-4 shrink-0",
-                                selected
-                                  ? (chrome.tabLogoColor ?? chrome.logoColor)
-                                  : "text-muted-foreground",
+                            <TabTrigger
+                              selected={selected}
+                              isLoading={isLoadingModels}
+                            >
+                              <div
+                                className={cn(
+                                  "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
+                                  selected
+                                    ? (chrome.tabLogoBgColor ??
+                                        chrome.logoBgColor)
+                                    : "bg-muted",
+                                )}
+                              >
+                                <Logo
+                                  className={cn(
+                                    "w-4 h-4 shrink-0",
+                                    selected
+                                      ? (chrome.tabLogoColor ??
+                                          chrome.logoColor)
+                                      : "text-muted-foreground",
+                                  )}
+                                />
+                              </div>
+                              {chrome.name}
+                              {providerBadges[providerKey] && (
+                                <span className="absolute right-0 top-0 rounded border border-muted-foreground/40 bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                                  {providerBadges[providerKey]}
+                                </span>
                               )}
-                            />
-                          </div>
+                            </TabTrigger>
+                          </TabsTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          side="bottom"
+                          sideOffset={6}
+                          className="bg-black text-white border-none rounded-md px-2.5 py-1.5 text-xs shadow-lg [&>svg]:fill-black"
+                        >
                           {chrome.name}
-                          {providerBadges[providerKey] && (
-                            <span className="absolute right-0 top-0 rounded border border-muted-foreground/40 bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
-                              {providerBadges[providerKey]}
-                            </span>
-                          )}
-                        </TabTrigger>
-                      </TabsTrigger>
+                          <TooltipPrimitive.Arrow
+                            className="fill-black"
+                            width={10}
+                            height={5}
+                          />
+                        </TooltipContent>
+                      </Tooltip>
                     );
                   })}
                 </TabsList>

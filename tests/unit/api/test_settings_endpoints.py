@@ -5,6 +5,7 @@ Validates error handling in update_docling_preset endpoint.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -258,6 +259,134 @@ async def test_update_settings_validates_azure_credentials_before_saving():
     save.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_update_settings_rejects_invalid_azure_foundry_key_before_saving():
+    """The Azure OpenAI form must probe Foundry resource keys on Save too."""
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    body = SettingsUpdateBody(
+        provider_credentials={
+            "azure": {
+                "api_key": "wrong-key",
+                "api_base": "https://example.services.ai.azure.com",
+            }
+        },
+        provider_auth_methods={"azure": "api_key"},
+    )
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.provider_validation._http_request_with_retry",
+            new_callable=AsyncMock,
+            return_value=httpx.Response(
+                401, json={"error": {"message": "Invalid subscription key"}}
+            ),
+        ) as request,
+        patch("api.settings.endpoints.config_manager.save_config_file") as save,
+    ):
+        response = await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    assert response.status_code == 400
+    assert b"Invalid subscription key" in response.body
+    request.assert_awaited_once()
+    save.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_settings_validates_enhancement_credentials_before_saving():
+    """A credential-only save runs a provider enhancement's model-free check.
+
+    `ProviderSettingsDialog` submits nothing but `provider_credentials`, so the
+    `llm_provider` / `embedding_provider` branches never fire. Without a branch
+    of its own, a bad OpenShift AI URL or token was stored and the UI reported
+    success; the check is handed the untranslated pending form so it sees both
+    endpoints, not the one LiteLLM was narrowed to.
+    """
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    submitted = {
+        "api_base": "https://granite-chat.openrag.svc:8443/v1",
+        "embedding_api_base": "https://granite-embed.openrag.svc:8443/v1",
+        "api_key": "expired-token",
+    }
+    body = SettingsUpdateBody(provider_credentials={"rhoai": submitted})
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.validate_provider_setup",
+            new_callable=AsyncMock,
+            side_effect=Exception("The OpenShift AI chat endpoint rejected the token"),
+        ) as validate,
+        patch("api.settings.endpoints.config_manager.save_config_file") as save,
+    ):
+        response = await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    assert response.status_code == 400
+    assert b"rejected the token" in response.body
+    validate.assert_awaited_once()
+    kwargs = validate.await_args.kwargs
+    assert kwargs["provider"] == "rhoai"
+    assert kwargs.get("llm_model") is None and kwargs.get("embedding_model") is None
+    assert kwargs["stored_credentials"] == submitted
+    save.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_settings_skips_pre_save_check_for_litellm_only_providers():
+    """Providers without an enhancement have no model-free probe to run."""
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    body = SettingsUpdateBody(
+        provider_credentials={"openai_like": {"api_base": "https://llm.example", "api_key": "k"}}
+    )
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.validate_provider_setup", new_callable=AsyncMock) as validate,
+        patch("api.settings.endpoints.config_manager.save_config_file"),
+        patch("api.settings.endpoints._update_langflow_global_variables", new_callable=AsyncMock),
+    ):
+        response = await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    assert getattr(response, "status_code", 200) == 200
+    validate.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     "provider",
     ["openai", "watsonx", "anthropic", "local", "ollama", "azure", "azure_ai", "openai_like"],
@@ -277,3 +406,293 @@ def test_settings_update_body_accepts_configurable_vlm_providers(provider):
 def test_settings_update_body_rejects_malformed_vlm_provider(provider):
     with pytest.raises(ValidationError):
         SettingsUpdateBody(vlm_provider=provider)
+
+
+@pytest.mark.asyncio
+async def test_update_settings_persists_case_insensitive_removal_only_request():
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    config.providers.set_credentials(
+        "gemini",
+        {"api_key": "secret", "api_base": "https://gemini.example.com"},
+    )
+    body = SettingsUpdateBody(
+        provider_credential_removals={"Gemini": ["api_key"]},
+    )
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.config_manager.save_config_file",
+            return_value=True,
+        ) as save,
+        patch(
+            "api.settings.endpoints.clients.refresh_patched_client",
+            new_callable=AsyncMock,
+        ),
+    ):
+        response = await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+    assert getattr(response, "status_code", 200) == 200
+    saved_config = save.call_args.args[0]
+    assert saved_config.providers.stored_credentials("gemini") == {
+        "api_base": "https://gemini.example.com"
+    }
+
+
+@pytest.mark.asyncio
+async def test_removal_only_provider_update_requires_provider_write_permission():
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=False)
+    rbac.audit_denied = AsyncMock()
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.is_rbac_enforced", return_value=True),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await update_settings(
+            body=SettingsUpdateBody(
+                provider_credential_removals={"gemini": ["api_key"]},
+            ),
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User, db_user_id="user-1", user_id="user-1"),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    assert exc_info.value.status_code == 403
+    rbac.audit_denied.assert_awaited_once_with("user-1", "providers:write")
+
+
+@pytest.mark.asyncio
+async def test_failed_onboarding_validation_does_not_mutate_cached_config():
+    from api.settings.endpoints import onboarding
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.agent.llm_provider = "openai"
+    config.agent.llm_model = "old-model"
+    body = OnboardingBody(
+        llm_provider="openai",
+        llm_model="new-model",
+        openai_api_key="sk-new",
+    )
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.TelemetryClient.send_event",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.validate_provider_setup",
+            new_callable=AsyncMock,
+            side_effect=Exception("validation failed"),
+        ),
+    ):
+        response = await onboarding(
+            body=body,
+            flows_service=MagicMock(),
+            session_manager=AsyncMock(),
+            document_service=MagicMock(),
+            models_service=MagicMock(),
+            task_service=MagicMock(),
+            langflow_file_service=MagicMock(),
+            knowledge_filter_service=MagicMock(),
+            user=MagicMock(spec=User),
+        )
+
+    assert response.status_code == 400
+    assert config.agent.llm_model == "old-model"
+    assert config.providers.openai.api_key == ""
+
+
+@pytest.mark.asyncio
+async def test_onboarding_validation_receives_onprem_tls_policy():
+    from api.settings.endpoints import onboarding
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    body = OnboardingBody(
+        llm_provider="watsonx_onprem",
+        llm_model="ibm/granite-3-3-8b-instruct",
+        provider_credentials={
+            "watsonx_onprem": {
+                "api_base": "https://cpd.example.com",
+                "username": "cpd-user",
+                "api_key": "secret",
+                "ssl_verify": "false",
+            }
+        },
+        provider_auth_methods={"watsonx_onprem": "username_api_key"},
+    )
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.TelemetryClient.send_event",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.validate_provider_setup",
+            new_callable=AsyncMock,
+            side_effect=Exception("stop after validation arguments are captured"),
+        ) as validate,
+    ):
+        response = await onboarding(
+            body=body,
+            flows_service=MagicMock(),
+            session_manager=AsyncMock(),
+            document_service=MagicMock(),
+            models_service=MagicMock(),
+            task_service=MagicMock(),
+            langflow_file_service=MagicMock(),
+            knowledge_filter_service=MagicMock(),
+            user=MagicMock(spec=User),
+        )
+
+    assert response.status_code == 400
+    assert validate.await_args.kwargs["stored_credentials"]["ssl_verify"] == "false"
+
+
+@pytest.mark.asyncio
+async def test_onboarding_embedding_validation_receives_onprem_tls_policy():
+    from api.settings.endpoints import onboarding
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    body = OnboardingBody(
+        embedding_provider="watsonx_onprem",
+        embedding_model="ibm/slate-125m-english-rtrvr",
+        provider_credentials={
+            "watsonx_onprem": {
+                "api_base": "https://cpd.example.com",
+                "username": "cpd-user",
+                "api_key": "secret",
+                "ssl_verify": "false",
+            }
+        },
+        provider_auth_methods={"watsonx_onprem": "username_api_key"},
+    )
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.TelemetryClient.send_event",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.validate_provider_setup",
+            new_callable=AsyncMock,
+            side_effect=Exception("stop after validation arguments are captured"),
+        ) as validate,
+    ):
+        response = await onboarding(
+            body=body,
+            flows_service=MagicMock(),
+            session_manager=AsyncMock(),
+            document_service=MagicMock(),
+            models_service=MagicMock(),
+            task_service=MagicMock(),
+            langflow_file_service=MagicMock(),
+            knowledge_filter_service=MagicMock(),
+            user=MagicMock(spec=User),
+        )
+
+    assert response.status_code == 400
+    assert validate.await_args.kwargs["stored_credentials"]["ssl_verify"] == "false"
+
+
+@pytest.mark.asyncio
+async def test_onboarding_caps_chunk_size_for_watsonx_onprem_embeddings():
+    from api.settings.endpoints import onboarding
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.knowledge.chunk_size = 1000
+    body = OnboardingBody(
+        embedding_provider="watsonx_onprem",
+        embedding_model="ibm/slate-30m-english-rtrvr",
+        provider_credentials={
+            "watsonx_onprem": {
+                "api_base": "https://cpd.example.com",
+                "username": "cpd-user",
+                "api_key": "secret",
+                "ssl_verify": "false",
+            }
+        },
+        provider_auth_methods={"watsonx_onprem": "username_api_key"},
+    )
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.INGEST_SAMPLE_DATA", False),
+        patch(
+            "api.settings.endpoints.TelemetryClient.send_event",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.validate_provider_setup",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.wait_for_langflow",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints._update_langflow_global_variables",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints._update_mcp_server_urls",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints._update_langflow_model_values",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.config_manager.save_config_file",
+            return_value=True,
+        ) as save_config,
+        patch(
+            "api.settings.endpoints.clients.refresh_patched_client",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.clients.create_index_admin_opensearch_client",
+            return_value=MagicMock(),
+        ),
+        patch("main.init_index", new_callable=AsyncMock),
+    ):
+        response = await onboarding(
+            body=body,
+            flows_service=MagicMock(),
+            session_manager=AsyncMock(),
+            document_service=MagicMock(),
+            models_service=MagicMock(),
+            task_service=MagicMock(),
+            langflow_file_service=MagicMock(),
+            knowledge_filter_service=MagicMock(),
+            user=MagicMock(spec=User),
+        )
+
+    saved_config = save_config.call_args.args[0]
+    assert saved_config.knowledge.chunk_size == 500
+    assert response.chunk_size_adjusted_to == 500

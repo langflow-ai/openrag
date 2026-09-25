@@ -60,6 +60,7 @@ const sanitizeCitationResult = (item: ToolCallResult): ToolCallResult => {
     page: item.page ?? item.data?.page,
     score: item.score ?? item.data?.score,
     text: item.text ?? item.data?.text,
+    highlights: item.highlights,
     embedding_model: item.embedding_model ?? item.data?.embedding_model,
     parser: item.parser ?? item.data?.parser,
     chunk_size: item.chunk_size ?? item.data?.chunk_size,
@@ -292,9 +293,9 @@ export function OnboardingContent({
       initial="instant"
       mass={1}
     >
-      <StickToBottom.Content className="flex flex-col min-h-full overflow-x-hidden px-8 py-6">
+      <StickToBottom.Content className="flex flex-col min-h-full w-full px-4 py-6 sm:px-8">
         <div
-          className="flex flex-col place-self-center w-full space-y-6"
+          className="flex flex-col w-full max-w-full space-y-6"
           data-testid="onboarding-content"
         >
           {/* Step 1 - LLM Provider */}
@@ -370,7 +371,7 @@ export function OnboardingContent({
               />
             )}
 
-          {/* Step 4 */}
+          {/* Step 4 — data upload */}
           <OnboardingStep
             isVisible={currentStep >= 3 && !isLoading && !!displayMessage}
             isCompleted={currentStep > 3}

@@ -57,6 +57,8 @@ export default defineConfig({
         "app/**/global-error.tsx",
         "app/**/loading.tsx",
         "app/**/route.ts",
+        // Pure presentational SVG wrappers, no logic to cover.
+        "components/icons/**",
       ],
     },
   },

@@ -33,6 +33,15 @@ def get_legacy_embedding_provider_map_json() -> str | None:
     return os.getenv("OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP")
 
 
+def get_opensearch_index_name_override() -> str | None:
+    """Return the raw ``OPENSEARCH_INDEX_NAME`` env override.
+
+    This is a role-gated infra setting, not a user preference; it is resolved
+    into the ``knowledge`` config by ``apply_index_name_env_override``.
+    """
+    return os.getenv("OPENSEARCH_INDEX_NAME")
+
+
 # Environment variables
 OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
 OPENSEARCH_PORT = get_env_int("OPENSEARCH_PORT", 9200)
@@ -314,6 +323,21 @@ def is_dev_azure_blob_enabled() -> bool:
     Requires ``OPENRAG_DEV_AZURE_BLOB=true``.
     """
     raw = os.getenv("OPENRAG_DEV_AZURE_BLOB", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_dev_aws_s3_enabled() -> bool:
+    """Local dev: enable the AWS S3 connector without IBM_AUTH_ENABLED.
+
+    Allows testing the S3 connector (e.g. against MinIO) in a local environment
+    where IBM auth is not configured. Never enable in production. Requires
+    ``OPENRAG_DEV_AWS_S3=true``.
+
+    S3 was the only bucket connector with no dev bypass, so it could not be
+    exercised end to end without standing up IBM auth — which is why its sync
+    behaviour has historically had less real-world validation than COS's.
+    """
+    raw = os.getenv("OPENRAG_DEV_AWS_S3", "false").strip().lower()
     return raw in ("true", "1", "yes", "on")
 
 
@@ -800,6 +824,8 @@ INDEX_BODY = {
             "connector_type": {"type": "keyword"},
             "ingest_run_id": {"type": "keyword"},
             "connector_file_id": {"type": "keyword"},
+            # Object-store entity tag of the source file, for sync change detection.
+            "content_etag": {"type": "keyword"},
             "owner": {"type": "keyword"},
             "allowed_users": {"type": "keyword"},
             "allowed_groups": {"type": "keyword"},

@@ -206,6 +206,54 @@ async def test_delete_document_by_filename_shared_without_owner(monkeypatch):
     assert {"bool": {"must_not": {"exists": {"field": "owner"}}}} in filters
 
 
+@pytest.mark.asyncio
+async def test_delete_document_by_filename_replaces_owned_and_ownerless(monkeypatch):
+    """With an owner in hand the replace scope is "mine OR ownerless", always.
+
+    ``shared`` says how the replacement will be written; it must not narrow what
+    gets deleted. An owner-only scope matched none of a shared document's
+    chunks, so the caller saw zero deletions, reported "nothing to replace" and
+    skipped the file — even though the (owner-agnostic) duplicate check had just
+    found it and the user had confirmed the overwrite.
+    """
+    from types import SimpleNamespace
+
+    from models.processors import TaskProcessor
+
+    admin_client = AsyncMock()
+    admin_client.delete = AsyncMock(return_value={"result": "deleted"})
+    monkeypatch.setattr(
+        "config.settings.clients",
+        SimpleNamespace(opensearch=admin_client),
+    )
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "test-index")
+
+    opensearch_client = AsyncMock()
+    opensearch_client.search = AsyncMock(
+        return_value={"_scroll_id": None, "hits": {"hits": [{"_id": "chunk-1"}]}}
+    )
+
+    processor = TaskProcessor()
+    deleted = await processor.delete_document_by_filename(
+        "report.pdf",
+        opensearch_client,
+        owner_user_id="user-123",
+        shared=False,
+    )
+
+    assert deleted == 1
+    filters = opensearch_client.search.await_args.kwargs["body"]["query"]["bool"]["filter"]
+    assert {
+        "bool": {
+            "should": [
+                {"term": {"owner": "user-123"}},
+                {"bool": {"must_not": {"exists": {"field": "owner"}}}},
+            ],
+            "minimum_should_match": 1,
+        }
+    } in filters
+
+
 def _build_s3_processor(replace_duplicates: bool) -> S3FileProcessor:
     document_service = MagicMock()
     document_service.session_manager = MagicMock()
@@ -286,3 +334,98 @@ async def test_s3_processor_no_duplicate_proceeds():
     assert file_task.status == TaskStatus.COMPLETED
     processor.delete_document_by_filename.assert_not_called()
     processor.process_document_standard.assert_awaited_once()
+
+
+def _delete_scope_env(monkeypatch):
+    """Admin write client + a user client that reports one visible chunk."""
+    from types import SimpleNamespace
+
+    admin_client = AsyncMock()
+    admin_client.delete = AsyncMock(return_value={"result": "deleted"})
+    monkeypatch.setattr(
+        "config.settings.clients",
+        SimpleNamespace(opensearch=admin_client),
+    )
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "test-index")
+
+    opensearch_client = AsyncMock()
+    opensearch_client.search = AsyncMock(
+        return_value={"_scroll_id": None, "hits": {"hits": [{"_id": "chunk-1"}]}}
+    )
+    return opensearch_client
+
+
+@pytest.mark.asyncio
+async def test_replace_without_anonymous_delete_permission_stays_owner_scoped(monkeypatch):
+    """Ownerless chunks are visible to the whole instance, so replacing a
+    document that turns out to be one is a deletion of shared content. Without
+    knowledge:delete:anonymous the scope must stay owner-only, leaving someone
+    else's shared document alone."""
+    from models.processors import TaskProcessor
+
+    opensearch_client = _delete_scope_env(monkeypatch)
+
+    await TaskProcessor().delete_document_by_filename(
+        "report.pdf",
+        opensearch_client,
+        owner_user_id="user-123",
+        shared=False,
+        allow_anonymous_delete=False,
+    )
+
+    from utils.opensearch_queries import build_owned_filename_query
+
+    query = opensearch_client.search.await_args.kwargs["body"]["query"]
+    assert query == build_owned_filename_query("report.pdf", "user-123")
+
+
+@pytest.mark.asyncio
+async def test_shared_write_still_widens_without_the_flag(monkeypatch):
+    """A shared write already required the permission upstream (connector_sync
+    returns 403 without it), so the flag must not narrow that path."""
+    from models.processors import TaskProcessor
+
+    opensearch_client = _delete_scope_env(monkeypatch)
+
+    await TaskProcessor().delete_document_by_filename(
+        "report.pdf",
+        opensearch_client,
+        owner_user_id="user-123",
+        shared=True,
+        allow_anonymous_delete=False,
+    )
+
+    from utils.opensearch_queries import build_replace_filename_query
+
+    query = opensearch_client.search.await_args.kwargs["body"]["query"]
+    assert query == build_replace_filename_query("report.pdf", "user-123")
+
+
+@pytest.mark.asyncio
+async def test_resolve_duplicate_filename_forwards_the_permission(monkeypatch):
+    """The gate every processor shares hands its caller's resolved permission to
+    the delete, rather than deciding the scope on its own."""
+    from models.processors import TaskProcessor
+
+    processor = TaskProcessor()
+    processor.check_filename_exists = AsyncMock(return_value=True)
+    processor.delete_document_by_filename = AsyncMock(return_value=1)
+
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        "models.processors.clients",
+        SimpleNamespace(opensearch=AsyncMock()),
+    )
+
+    await processor.resolve_duplicate_filename(
+        "report.pdf",
+        AsyncMock(),
+        replace=True,
+        owner_user_id="user-123",
+        allow_anonymous_delete=False,
+    )
+
+    assert (
+        processor.delete_document_by_filename.await_args.kwargs["allow_anonymous_delete"] is False
+    )

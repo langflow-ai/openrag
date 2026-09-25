@@ -21,7 +21,7 @@ from utils.file_utils import (
 )
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
-from utils.opensearch_queries import build_replace_filename_query
+from utils.opensearch_queries import build_owned_filename_query, build_replace_filename_query
 
 from .tasks import FileTask, TaskStatus, UploadTask
 
@@ -31,6 +31,9 @@ DOCLING_PARSER_LABEL = "Docling Serve 1.20.0"
 TEXT_PARSER_LABEL = "Text Parser"
 
 DUPLICATE_FILENAME_WARNING = "A file with this name already exists."
+DUPLICATE_CONTENT_WARNING = (
+    "Identical content already exists in the knowledge base under a different filename."
+)
 
 if TYPE_CHECKING:
     from connectors.base import DocumentACL
@@ -256,6 +259,7 @@ class TaskProcessor:
         replace: bool,
         owner_user_id: str | None,
         shared: bool = False,
+        allow_anonymous_delete: bool = True,
     ) -> Literal["proceed", "skip", "replaced"]:
         """Single duplicate-filename policy shared by every processor.
 
@@ -280,6 +284,7 @@ class TaskProcessor:
             opensearch_client,
             owner_user_id=owner_user_id,
             shared=shared,
+            allow_anonymous_delete=allow_anonymous_delete,
         )
         if deleted == 0:
             logger.warning(
@@ -319,9 +324,31 @@ class TaskProcessor:
         opensearch_client,
         owner_user_id: str | None = None,
         shared: bool = False,
+        allow_anonymous_delete: bool = True,
     ) -> int:
         """Delete all chunks of a document with the given filename from
-        OpenSearch.  Returns the number of chunks deleted."""
+        OpenSearch.  Returns the number of chunks deleted.
+
+        ``shared`` describes how the replacement is about to be *written*, not
+        what is already indexed, so it must not narrow what we delete: with an
+        owner in hand the scope is "owned by this user OR ownerless".
+        Choosing an owner-only scope for a shared document matched none of its
+        chunks, and the caller read that zero as "nothing to replace" and
+        skipped the file — leaving the stale copy in the index even though the
+        duplicate check (which is owner-agnostic) had just found it and the user
+        had confirmed the overwrite.
+
+        ``allow_anonymous_delete`` is the caller's resolved
+        ``knowledge:delete:anonymous``. Ownerless chunks are visible to everyone
+        in the instance, so replacing a document that turns out to be one is a
+        deletion of shared content: without that permission the scope stays
+        owner-only and someone else's shared document is left alone (the file
+        then resolves as a duplicate the user may not replace). It defaults to
+        True because callers that have not resolved the permission — uploads,
+        the Langflow path, sample docs — keep their existing behaviour; see the
+        note in the PR about closing that across every entry point.
+        Deliberately ignored when ``shared`` is True: a shared write already
+        required the permission upstream."""
         from config.settings import clients, get_index_name
         from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
         from utils.opensearch_queries import (
@@ -347,8 +374,10 @@ class TaskProcessor:
                     )
                     return 0
 
+            elif shared or allow_anonymous_delete:
+                build_query = build_replace_filename_query
             else:
-                build_query = build_replace_filename_query if shared else build_owned_filename_query
+                build_query = build_owned_filename_query
 
             candidate_filenames = get_filename_aliases(filename)
             if not candidate_filenames:
@@ -398,6 +427,15 @@ class TaskProcessor:
         ``connector_type`` scopes the match to one connector type — the same
         value the chunks were indexed under — so an id that collides with a
         different connector's id can't take its chunks down with it.
+
+        Callers pass the sharing mode resolved from what is actually indexed
+        (``_resolve_shared``), so this deletes under exactly that layout —
+        ownerless chunks for a share-all file, owner-scoped ones otherwise.
+        It must NOT widen to "owned OR ownerless" on top of that: the resolved
+        mode already matches the file, and widening would let a sync of an owned
+        file reach ownerless chunks that another user's connection ingested,
+        with none of the ``knowledge:delete:anonymous`` gating that deliberate
+        shared deletion goes through.
         """
         from connectors.chunk_cleanup import delete_connector_file_chunks
 
@@ -559,13 +597,25 @@ class TaskProcessor:
 
         text_batches = chunk_texts_for_embeddings(texts, max_tokens=max_tokens)
         embeddings = []
+        from services.model_catalog import litellm_provider_key, public_model_id
+
+        gateway_model = None
+        if litellm_provider_key(embedding_provider) != embedding_provider:
+            from services.llm_gateway import embeddings as gateway_embeddings
+
+            gateway_model = public_model_id(embedding_provider, embedding_model)
 
         for batch in text_batches:
-            resp = await clients.patched_embedding_client.embeddings.create(
-                model=litellm_embedding_model, input=batch
-            )
+            if gateway_model is not None:
+                response = await gateway_embeddings({"model": gateway_model, "input": batch})
+                data = response.get("data", [])
+            else:
+                response = await clients.patched_embedding_client.embeddings.create(
+                    model=litellm_embedding_model, input=batch
+                )
+                data = response.data
             embeddings.extend(
-                [d["embedding"] if isinstance(d, dict) else d.embedding for d in resp.data]
+                [item["embedding"] if isinstance(item, dict) else item.embedding for item in data]
             )
 
         if not embeddings or len(embeddings) == 0:
@@ -867,7 +917,8 @@ class ConnectorFileProcessor(TaskProcessor):
         replace_duplicates: bool = False,
         connector_type: str | None = None,
         preview_mode: bool = False,
-        shared: bool = False,
+        shared: bool | None = False,
+        allow_anonymous_delete: bool = True,
     ):
         super().__init__(
             document_service=document_service,
@@ -886,10 +937,80 @@ class ConnectorFileProcessor(TaskProcessor):
         self.connector_type = connector_type
         self.preview_mode = preview_mode
         self.shared = shared
+        # The syncing user's resolved knowledge:delete:anonymous, threaded down
+        # to the replace path so an overwrite cannot delete a shared document
+        # the user is not allowed to delete.
+        self.allow_anonymous_delete = allow_anonymous_delete
 
-    async def _reconcile_shared_owner(self, filename: str) -> None:
+    async def _indexed_shared_state(
+        self,
+        file_id: str,
+        opensearch_client,
+        connector_type: str | None,
+    ) -> bool | None:
+        """Whether this connector file is ALREADY indexed as shared (ownerless).
+
+        Returns True when the indexed chunks carry no ``owner`` (the share-all
+        layout), False when they carry one, and None when the file isn't indexed
+        yet or the lookup failed — callers fall back to their own default.
+
+        Read with the caller's (user-scoped) client, so DLS keeps documents we
+        cannot see out of the answer.
+        """
+        if not file_id:
+            return None
+        from connectors.chunk_cleanup import build_connector_file_chunks_query
+
+        try:
+            response = await opensearch_client.search(
+                index=get_index_name(),
+                body={
+                    "size": 1,
+                    "_source": ["owner"],
+                    "query": build_connector_file_chunks_query(
+                        [file_id], connector_type=connector_type
+                    ),
+                },
+            )
+        except Exception as e:
+            logger.warning(
+                "Could not read indexed sharing state for connector file",
+                file_id=file_id,
+                error=str(e),
+            )
+            return None
+        hits = response.get("hits", {}).get("hits", [])
+        if not hits:
+            return None
+        return not hits[0].get("_source", {}).get("owner")
+
+    async def _resolve_shared(
+        self,
+        file_id: str,
+        opensearch_client,
+        connector_type: str | None,
+    ) -> bool:
+        """Resolve the sharing mode to index this file under.
+
+        ``self.shared`` is the caller's explicit intent — the connector upload
+        UI's "Make documents available to all users" toggle. It is None on the
+        re-sync paths, which run with no user in the loop and no record of what
+        each file was ingested as; those inherit whatever is already in the
+        index. Without that inheritance a sync would treat a shared file as
+        private, and every owner-scoped step downstream (the replace-delete, the
+        chunk cleanup, the owner fields on re-index) would either match nothing
+        or silently un-share the document.
+
+        Files not yet indexed fall back to private, matching the previous
+        default for a caller that expressed no intent.
+        """
+        if self.shared is not None:
+            return self.shared
+        return bool(await self._indexed_shared_state(file_id, opensearch_client, connector_type))
+
+    async def _reconcile_shared_owner(self, filename: str, shared: bool) -> None:
         """Update owner fields on already-indexed chunks for `filename` to match
-        the connector's current `shared` setting.
+        the `shared` setting resolved for this file.
 
         Called on the duplicate/unchanged skip paths below, where a file's
         content and name haven't changed since a prior sync but the connector's
@@ -897,22 +1018,44 @@ class ConnectorFileProcessor(TaskProcessor):
         since then. Without this, those chunks would keep whatever owner they
         got on their original ingest forever, since a byte-identical re-sync
         never reaches resolve_shared_owner_fields(). Scoped to chunks owned by
-        this user or already ownerless (matching the same boundary
-        delete_document_by_filename uses), so it can't touch another user's
-        private document that happens to share this filename.
+        this user — and to ownerless ones only under the same
+        ``knowledge:delete:anonymous`` boundary delete_document_by_filename
+        uses — so it can't touch another user's document that happens to share
+        this filename.
+
+        That boundary matters here even more than it does for a delete. An
+        ownerless document is visible to the whole instance, and this script
+        writes an owner onto what it matches: without the permission check, a
+        private sync of a file whose name collides with a shared document would
+        quietly claim that document for the syncing user, taking it out of
+        everyone else's view. ``_indexed_shared_state`` cannot prevent it — it
+        keys on the connector file id, and a collision by definition comes from
+        a document this connector never ingested, so the lookup returns None and
+        ``shared`` falls back to the sync's own (private) intent.
+
+        `shared` comes from _resolve_shared, never straight from self.shared: on
+        a re-sync it reflects the file's current indexed state, so this is a
+        no-op rather than an unrequested ownership change.
         """
         write_client = clients.opensearch
         if write_client is None:
             return
         owner, owner_name, owner_email = resolve_shared_owner_fields(
-            self.user_id, self.owner_name, self.owner_email, self.shared
+            self.user_id, self.owner_name, self.owner_email, shared
+        )
+        # A shared write already cleared the permission upstream (connector_sync
+        # rejects shared syncs without it), so it keeps the wider scope.
+        build_query = (
+            build_replace_filename_query
+            if shared or self.allow_anonymous_delete
+            else build_owned_filename_query
         )
         for candidate in get_filename_aliases(filename):
             try:
                 await write_client.update_by_query(
                     index=get_index_name(),
                     body={
-                        "query": build_replace_filename_query(candidate, self.user_id),
+                        "query": build_query(candidate, self.user_id),
                         "script": {
                             "source": """
                                 if (params.shared) {
@@ -924,7 +1067,7 @@ class ConnectorFileProcessor(TaskProcessor):
                                 ctx._source.owner_email = params.owner_email;
                             """,
                             "params": {
-                                "shared": self.shared,
+                                "shared": shared,
                                 "owner": owner,
                                 "owner_name": owner_name,
                                 "owner_email": owner_email,
@@ -1020,7 +1163,9 @@ class ConnectorFileProcessor(TaskProcessor):
                         file_id,
                         opensearch_client,
                         self.user_id,
-                        shared=self.shared,
+                        shared=await self._resolve_shared(
+                            file_id, opensearch_client, connector_type
+                        ),
                         connector_type=connector_type,
                     )
 
@@ -1069,15 +1214,22 @@ class ConnectorFileProcessor(TaskProcessor):
                 self.user_id, self.jwt_token
             )
 
+            # Resolve once, up front: every owner-scoped step below (the
+            # replace-delete, the rename cleanup, the owner fields written at
+            # index time) has to agree on how this file is shared, or the sync
+            # skips it and leaves the stale copy in place.
+            shared = await self._resolve_shared(document.id, opensearch_client, connector_type)
+
             duplicate_action = await self.resolve_duplicate_filename(
                 file_task.filename,
                 opensearch_client,
                 replace=self.replace_duplicates,
                 owner_user_id=self.user_id,
-                shared=self.shared,
+                shared=shared,
+                allow_anonymous_delete=self.allow_anonymous_delete,
             )
             if duplicate_action == "skip":
-                await self._reconcile_shared_owner(file_task.filename)
+                await self._reconcile_shared_owner(file_task.filename, shared)
                 self.mark_duplicate_skipped(upload_task, file_task)
                 return
 
@@ -1096,7 +1248,7 @@ class ConnectorFileProcessor(TaskProcessor):
                     opensearch_client,
                     self.user_id,
                     keep_filenames=get_filename_aliases(file_task.filename),
-                    shared=self.shared,
+                    shared=shared,
                     connector_type=connector_type,
                 )
                 > 0
@@ -1115,7 +1267,7 @@ class ConnectorFileProcessor(TaskProcessor):
                 file_hash = hash_id(tmp_path)
 
                 if not renamed and await self.check_document_exists(file_hash, opensearch_client):
-                    await self._reconcile_shared_owner(file_task.filename)
+                    await self._reconcile_shared_owner(file_task.filename, shared)
                     file_task.status = TaskStatus.COMPLETED
                     file_task.result = {"status": "unchanged", "id": file_hash}
                     file_task.updated_at = time.time()
@@ -1214,7 +1366,7 @@ class ConnectorFileProcessor(TaskProcessor):
 
                     effective_owner, effective_owner_name, effective_owner_email = (
                         resolve_shared_owner_fields(
-                            self.user_id, self.owner_name, self.owner_email, self.shared
+                            self.user_id, self.owner_name, self.owner_email, shared
                         )
                     )
                     file_task.document_id = document.id
@@ -1309,7 +1461,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         connector_type=connector_type,
                         acl=document.acl,
                         connector_file_id=document.id,
-                        shared=self.shared,
+                        shared=shared,
                         **standard_kwargs,
                     )
 
@@ -1513,6 +1665,38 @@ class LangflowFileProcessor(TaskProcessor):
                 self.mark_duplicate_skipped(upload_task, file_task)
                 return
 
+            # Compute the content hash early — before reading file bytes into
+            # memory and before submitting any work to Docling so the duplicate
+            # guard fires as cheaply as possible.
+            #
+            # The guard only runs on the "proceed" path (no filename match).
+            # When duplicate_action == "replaced" the caller asked to replace an
+            # existing same-name document: the old chunks were already deleted
+            # above, so we must not short-circuit here even if the hash matches
+            # (that would leave the index empty after the delete).
+            file_hash = hash_id(item)
+            file_task.document_id = file_hash
+
+            if duplicate_action == "proceed" and await self.check_document_exists(
+                file_hash, opensearch_client
+            ):
+                # Identical content is already indexed under a different filename.
+                # Report it as a warning rather than silently overwriting.
+                # Mirrors the connector path (processors.py:1212) but uses a
+                # distinct reason so the UI can distinguish it from a filename
+                # collision.
+                file_task.status = TaskStatus.SKIPPED
+                file_task.error = None
+                file_task.result = {
+                    "status": "skipped",
+                    "reason": "duplicate_content",
+                    "warning": DUPLICATE_CONTENT_WARNING,
+                    "document_id": file_hash,
+                }
+                file_task.updated_at = time.time()
+                upload_task.successful_files += 1
+                return
+
             # Read file content for processing
             with open(item, "rb") as f:
                 content = f.read()
@@ -1538,9 +1722,6 @@ class LangflowFileProcessor(TaskProcessor):
 
             # Prepare metadata tweaks similar to API endpoint
             final_tweaks = self.tweaks.copy() if self.tweaks else {}
-
-            file_hash = hash_id(item)
-            file_task.document_id = file_hash
 
             # Build settings with fresh OCR/pictureDescriptions from live
             # config so retries pick up configuration changes.

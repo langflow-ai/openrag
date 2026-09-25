@@ -2,6 +2,7 @@
 
 import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
 import { useDeferredValue, useId, useMemo, useState } from "react";
+import { useGetModelProvidersQuery } from "@/app/api/queries/useGetModelProvidersQuery";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -90,6 +91,7 @@ export function ModelSelector({
   icon,
   placeholder = "Select model...",
   searchPlaceholder,
+  previewLimit,
   noOptionsPlaceholder = "No models available",
   custom = false,
   hasError = false,
@@ -99,6 +101,20 @@ export function ModelSelector({
   variant = "outline",
   ...props
 }: ModelSelectorProps) {
+  // Badges come from `config/model_providers.yaml` via the providers API, so a
+  // provider that declares one gets it in the picker heading without a
+  // frontend change — the same list Settings and Onboarding already read.
+  const { data: modelProviders } = useGetModelProvidersQuery();
+  const providerBadges = useMemo(() => {
+    const badges: Record<string, string> = {};
+    for (const provider of modelProviders?.providers ?? []) {
+      if (provider.badge) {
+        badges[provider.name] = provider.badge;
+      }
+    }
+    return badges;
+  }, [modelProviders]);
+
   const [open, setOpen] = useState(defaultOpen);
   const [prevDefaultOpen, setPrevDefaultOpen] = useState(defaultOpen);
   if (defaultOpen !== prevDefaultOpen) {
@@ -117,6 +133,7 @@ export function ModelSelector({
     (custom ? "Search or type a model name" : "Search model...");
 
   const [searchValue, setSearchValue] = useState("");
+  const [showAllFlatOptions, setShowAllFlatOptions] = useState(false);
   // The option filter runs on the trimmed, lowercased search text, so the
   // custom entry has to use the trimmed text too — otherwise typing trailing
   // whitespace both defeats the duplicate check and stores a model id with
@@ -223,11 +240,29 @@ export function ModelSelector({
   const visibleOptions = useMemo(() => {
     if (groupedOptions) return [];
     const source = options ?? [];
-    if (!deferredSearch) return source.slice(0, 40);
-    return source
-      .filter((option) => option.label.toLowerCase().includes(deferredSearch))
-      .slice(0, 100);
-  }, [deferredSearch, groupedOptions, options]);
+    if (!deferredSearch) {
+      if (previewLimit !== undefined) {
+        return showAllFlatOptions ? source : source.slice(0, previewLimit);
+      }
+      return source.slice(0, 40);
+    }
+    const matches = source.filter((option) =>
+      option.label.toLowerCase().includes(deferredSearch),
+    );
+    return previewLimit !== undefined ? matches : matches.slice(0, 100);
+  }, [
+    deferredSearch,
+    groupedOptions,
+    options,
+    previewLimit,
+    showAllFlatOptions,
+  ]);
+  const showFlatPreviewHint =
+    previewLimit !== undefined &&
+    !groupedOptions &&
+    !deferredSearch &&
+    !showAllFlatOptions &&
+    (options?.length ?? 0) > previewLimit;
 
   // `shouldFilter={false}` means cmdk's own item count no longer reflects the
   // manual filtering above, so `CommandEmpty` cannot be trusted to appear.
@@ -248,8 +283,13 @@ export function ModelSelector({
 
   return (
     <Popover open={open} onOpenChange={setOpen} modal={false}>
-      <PopoverTrigger asChild>
+      <PopoverTrigger
+        asChild
+        role="combobox"
+        aria-label={props["aria-label"] ?? placeholder}
+      >
         <Button
+          {...props}
           variant={variant}
           role="combobox"
           disabled={disabled || (allOptions.length === 0 && !allowCustomEntry)}
@@ -260,7 +300,6 @@ export function ModelSelector({
             hasError && "!border-destructive",
             className,
           )}
-          {...props}
         >
           {value ? (
             <div className="flex items-center gap-2">
@@ -296,6 +335,12 @@ export function ModelSelector({
             value={searchValue}
             onValueChange={setSearchValue}
           />
+          {showFlatPreviewHint && (
+            <p className="px-3 py-2 text-xs text-muted-foreground">
+              Showing {previewLimit} of {options?.length} models. Search all
+              models or choose Show all.
+            </p>
+          )}
           <CommandList
             id={listboxId}
             className="max-h-[300px] overflow-y-auto"
@@ -330,9 +375,9 @@ export function ModelSelector({
                             <div className="w-4 h-4">{group.icon}</div>
                           )}
                           <span>{group.group}</span>
-                          {groupProvider === "watsonx_onprem" && (
+                          {groupProvider && providerBadges[groupProvider] && (
                             <Badge variant="secondary" className="text-xs">
-                              On-prem
+                              {providerBadges[groupProvider]}
                             </Badge>
                           )}
                         </div>
@@ -561,6 +606,17 @@ export function ModelSelector({
                     </div>
                   </CommandItem>
                 ))}
+                {showFlatPreviewHint && (
+                  <CommandItem
+                    value="__show-all-models"
+                    aria-label={`Show all ${options?.length} models`}
+                    data-testid="model-show-all-options"
+                    className="text-xs text-muted-foreground"
+                    onSelect={() => setShowAllFlatOptions(true)}
+                  >
+                    Show all {options?.length} models
+                  </CommandItem>
+                )}
                 {showFlatCustomEntry && (
                   <CommandItem
                     value={customValue}

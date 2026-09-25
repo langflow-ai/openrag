@@ -16,13 +16,12 @@ on:
       - 'frontend/**'
       - '.github/workflows/test-frontend-unit.yml'
 
-permissions:
-  contents: read
-
 jobs:
   vitest:
     name: Vitest
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -48,6 +47,8 @@ jobs:
     # PRs only: there is no meaningful base to diff against on a push to main.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
         with:

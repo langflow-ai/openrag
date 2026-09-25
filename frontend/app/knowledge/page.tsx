@@ -156,6 +156,88 @@ function buildFilterPageResetKey(
   });
 }
 
+/** Pure helper — exported for unit tests, used by the status column comparator. */
+export function getStatusSortRank(status?: File["status"]): number {
+  switch (status) {
+    case "active":
+      return 0;
+    case "processing":
+      return 1;
+    case "sync":
+      return 2;
+    case "failed":
+      return 3;
+    case "skipped":
+      return 4;
+    case "cancelled":
+      return 5;
+    case "unavailable":
+      return 6;
+    case "hidden":
+      return 7;
+    default:
+      return 0;
+  }
+}
+
+/**
+ * Pure helper — exported for unit tests, used by the status column cell renderer.
+ * Returns the warning text for a skipped (duplicate-content) file.
+ */
+export function getSkippedWarningText(warning?: string): string {
+  return warning ?? "Duplicate content — already exists in the knowledge base.";
+}
+
+/**
+ * Pure helper — exported for unit tests, used by the status column cell renderer.
+ * Returns true only for skipped rows that are content duplicates.
+ * Other skip reasons (e.g. deleted_at_source) fall through to the normal StatusBadge.
+ */
+export function isSkippedStatus(
+  rawStatus?: string,
+  skipReason?: string,
+): boolean {
+  return rawStatus === "skipped" && skipReason === "duplicate_content";
+}
+
+/**
+ * Exported for unit tests — renders the amber "Duplicate" badge with tooltip
+ * used by the status column cell renderer when a file was skipped.
+ */
+export function SkippedStatusCell({ warning }: { warning?: string }) {
+  const warningText = getSkippedWarningText(warning);
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex items-center gap-1 text-sm text-amber-600 dark:text-amber-400 cursor-default">
+          Duplicate
+        </span>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        align="end"
+        className="max-w-80 whitespace-pre-wrap break-words"
+      >
+        {warningText}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Builds the URL for navigating from a knowledge search result to its chunks page.
+ *  Exported for unit testing; the click handler in SearchPage calls this directly. */
+export function buildChunksUrl(
+  filename: string,
+  effectiveSearchText: string,
+): string {
+  const params = new URLSearchParams({ filename });
+  const trimmed = effectiveSearchText.trim();
+  if (trimmed && trimmed !== "*") {
+    params.set("q", trimmed);
+  }
+  return `/knowledge/chunks?${params.toString()}`;
+}
+
 function SearchPage() {
   const isCloudBrand = useIsCloudBrand();
   const queryClient = useQueryClient();
@@ -450,27 +532,6 @@ function SearchPage() {
     return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
   }, []);
 
-  const getStatusSortRank = useCallback((status?: File["status"]): number => {
-    switch (status) {
-      case "active":
-        return 0;
-      case "processing":
-        return 1;
-      case "sync":
-        return 2;
-      case "failed":
-        return 3;
-      case "cancelled":
-        return 4;
-      case "unavailable":
-        return 5;
-      case "hidden":
-        return 6;
-      default:
-        return 0;
-    }
-  }, []);
-
   const hasOpenragRefreshCueFromTasks = tasks.some((task) => {
     const isTaskActive =
       task.status === "pending" ||
@@ -628,9 +689,7 @@ function SearchPage() {
               onClick={() => {
                 if (!isActive) return;
                 router.push(
-                  `/knowledge/chunks?filename=${encodeURIComponent(
-                    data?.filename ?? "",
-                  )}`,
+                  buildChunksUrl(data?.filename ?? "", effectiveSearchText),
                 );
               }}
             >
@@ -830,7 +889,15 @@ function SearchPage() {
           return <StatusBadge status="cancelled" />;
         }
 
-        return <StatusBadge status={status} />;
+        if (isSkippedStatus(rawStatus, data?.skip_reason)) {
+          return <SkippedStatusCell warning={data?.warning} />;
+        }
+
+        return (
+          <StatusBadge
+            status={status as import("@/components/ui/status-badge").Status}
+          />
+        );
       },
     },
     {
@@ -1247,6 +1314,8 @@ function SearchPage() {
         isSyncAll
         orphansByType={syncPreview?.orphans_by_type}
         orphansAvailableByType={syncPreview?.orphans_available_by_type}
+        updatesByType={syncPreview?.updates_by_type}
+        updatesAvailableByType={syncPreview?.updates_available_by_type}
         syncedCountByType={syncPreview?.synced_count_by_type}
       />
     </>
