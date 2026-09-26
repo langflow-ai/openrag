@@ -7,6 +7,8 @@ routes by model prefix / configured provider. Callers never see upstream keys.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import re
 from collections.abc import AsyncIterator, Mapping
@@ -220,6 +222,77 @@ def _provider_runtime_kwargs(provider: str, config=None) -> dict[str, Any]:
     return runtime_kwargs_for(enhancement, stored)
 
 
+#: Per-provider embedding bulkheads: provider key -> (limit, loop, semaphore).
+#: The backend runs a single worker (enforced in `app/lifespan.py`), so a
+#: process-local semaphore bounds the provider's traffic globally. Keyed on the
+#: loop too, because an asyncio primitive must not be shared across loops.
+_embedding_limiters: dict[str, tuple[int, asyncio.AbstractEventLoop, asyncio.Semaphore]] = {}
+
+
+def _embedding_limiter(provider: str, config=None) -> asyncio.Semaphore | None:
+    """The semaphore bounding concurrent embedding calls to `provider`, if any.
+
+    The limit comes from the provider enhancement (`embedding_max_concurrency`),
+    so providers without one — and every provider whose enhancement sets no
+    limit — are unaffected. Excess callers wait here instead of queueing at the
+    upstream, where a slow model server lets a fronting proxy time them out
+    (RHOAI's kube-rbac-proxy answers 502 after 30s). A limit changed in
+    Settings takes effect on the next call; calls already holding a slot of
+    the old semaphore finish normally.
+    """
+    cfg = config or _get_config()
+    prov = getattr(cfg, "providers", None)
+    if prov is None or not hasattr(prov, "credential_values"):
+        return None
+
+    from enhancements.providers.registry import embedding_concurrency_for, get
+
+    key = (provider or "").strip().lower()
+    if get(key) is None:
+        return None
+    stored = (
+        prov.stored_credentials(key)
+        if hasattr(prov, "stored_credentials")
+        else prov.credential_values(key)
+    )
+    limit = embedding_concurrency_for(key, stored)
+    if limit is None:
+        _embedding_limiters.pop(key, None)
+        return None
+
+    loop = asyncio.get_running_loop()
+    cached = _embedding_limiters.get(key)
+    if cached is not None and cached[0] == limit and cached[1] is loop:
+        return cached[2]
+    semaphore = asyncio.Semaphore(limit)
+    _embedding_limiters[key] = (limit, loop, semaphore)
+    logger.info(
+        "Bounding concurrent embedding calls for provider",
+        provider=key,
+        max_concurrency=limit,
+        previous_max_concurrency=cached[0] if cached is not None else None,
+    )
+    return semaphore
+
+
+@contextlib.asynccontextmanager
+async def _embedding_slot(
+    limiter: asyncio.Semaphore | None, provider: str, model: str
+) -> AsyncIterator[None]:
+    """Hold one of the provider's embedding slots for the duration of a call."""
+    if limiter is None:
+        yield
+        return
+    if limiter.locked():
+        logger.debug(
+            "Embedding call waiting for a free provider slot",
+            provider=provider,
+            model=model,
+        )
+    async with limiter:
+        yield
+
+
 def resolve_call(
     model: str | None,
     *,
@@ -277,6 +350,28 @@ _UPSTREAM_TLS_MESSAGE = (
     "The provider's TLS certificate is not trusted by this deployment. An operator needs to "
     "add the provider's CA certificate to OpenRAG's trust store."
 )
+#: An upstream 502/504 with no body to quote — typically a proxy in front of
+#: the model server (RHOAI's kube-rbac-proxy) giving up while the server is
+#: still busy. LiteLLM then reports only its own wrapper names
+#: ("BadGatewayError: Hosted_vllmException -"), which reads like a bug.
+_UPSTREAM_GATEWAY_MESSAGE = (
+    "The model server did not respond in time or is unavailable (upstream 502/504). It may "
+    "be overloaded: check its capacity and any proxy timeout in front of it, or lower the "
+    "provider's max concurrent requests."
+)
+_GATEWAY_FAILURE_STATUSES = frozenset({502, 504})
+#: LiteLLM exception class names that wrap an upstream error, e.g.
+#: "litellm.BadGatewayError: BadGatewayError: Hosted_vllmException -".
+_EXCEPTION_WRAPPER_RE = re.compile(r"(?:litellm\.)?[A-Za-z_]+(?:Error|Exception)\b\s*[:\-]?\s*")
+
+
+def _is_opaque_gateway_failure(upstream: str, exc: BaseException | None) -> bool:
+    """True for an upstream 502/504 whose text is nothing but exception wrappers."""
+    status = getattr(exc, "status_code", None)
+    if not isinstance(status, int) or status not in _GATEWAY_FAILURE_STATUSES:
+        return False
+    remainder = _EXCEPTION_WRAPPER_RE.sub("", upstream or "").strip(" -:.")
+    return not remainder
 
 
 #: Longest upstream explanation we will echo. Provider bodies can embed a whole
@@ -462,6 +557,8 @@ def _upstream_client_message(
         return f"{_UPSTREAM_CREDENTIAL_MESSAGE} ({label})"
     upstream = _provider_error_text(detail, exc)
     upstream = _sanitise_upstream_detail(upstream) if upstream else ""
+    if _is_opaque_gateway_failure(upstream, exc):
+        return f"{_UPSTREAM_GATEWAY_MESSAGE} ({label})"
     if not upstream or is_generic_upstream_error(upstream):
         return f"{_UPSTREAM_FAILURE_MESSAGE} ({label})"
     # lgtm[py/stack-trace-exposure] — provider error text only; traceback frames,
@@ -1219,6 +1316,7 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
         body.get("model"), kind="embedding", config=cfg
     )
     runtime_kwargs = _provider_runtime_kwargs(provider, cfg)
+    limiter = _embedding_limiter(provider, cfg)
     embedding_input = _embedding_input(body.get("input"))
     should_batch = (
         provider == "watsonx_onprem"
@@ -1230,12 +1328,13 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
         import litellm
 
         if not should_batch:
-            result = await litellm.aembedding(
-                model=litellm_model,
-                input=embedding_input,
-                **credentials,
-                **runtime_kwargs,
-            )
+            async with _embedding_slot(limiter, provider, litellm_model):
+                result = await litellm.aembedding(
+                    model=litellm_model,
+                    input=embedding_input,
+                    **credentials,
+                    **runtime_kwargs,
+                )
             response = _to_openai_dict(result)
         else:
             response = {}
@@ -1247,12 +1346,13 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
                 _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE,
             ):
                 batch = embedding_input[offset : offset + _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE]
-                result = await litellm.aembedding(
-                    model=litellm_model,
-                    input=batch,
-                    **credentials,
-                    **runtime_kwargs,
-                )
+                async with _embedding_slot(limiter, provider, litellm_model):
+                    result = await litellm.aembedding(
+                        model=litellm_model,
+                        input=batch,
+                        **credentials,
+                        **runtime_kwargs,
+                    )
                 payload = _to_openai_dict(result)
                 if not response:
                     response = {

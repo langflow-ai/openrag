@@ -371,6 +371,7 @@ help_local: ## Show local development commands
 	@echo "    $(CYAN)RHOAI_EMBEDDINGS_ENDPOINT$(NC)  - embedding InferenceService URL (vLLM serves one model each)"
 	@echo "    $(CYAN)RHOAI_API_KEY$(NC)              - ServiceAccount bearer token for both endpoints"
 	@echo "    $(CYAN)RHOAI_TLS_VERIFY$(NC)           - CA bundle path, or 'false' for a port-forward (dev only)"
+	@echo "    $(CYAN)RHOAI_EMBEDDING_MAX_CONCURRENCY$(NC) - max in-flight embedding calls (default 4, 0 = no limit)"
 	@echo "  In-cluster, use the predictor Service DNS and the projected service CA:"
 	@echo "    $(CYAN)/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt$(NC)"
 	@echo "  From a laptop, port-forward each InferenceService and set RHOAI_TLS_VERIFY=false:"

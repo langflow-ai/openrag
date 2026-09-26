@@ -518,7 +518,10 @@ class FlowsService:
         """Unlock a flow before making changes."""
         try:
             response = await clients.langflow_request(
-                "PATCH", f"/api/v1/flows/{flow_id}", json={"locked": False}
+                "PATCH",
+                f"/api/v1/flows/{flow_id}",
+                json={"locked": False},
+                idempotent=True,
             )
             if response.status_code not in (200, 404):
                 logger.warning(
@@ -531,7 +534,10 @@ class FlowsService:
         """Lock a flow after making changes."""
         try:
             response = await clients.langflow_request(
-                "PATCH", f"/api/v1/flows/{flow_id}", json={"locked": True}
+                "PATCH",
+                f"/api/v1/flows/{flow_id}",
+                json={"locked": True},
+                idempotent=True,
             )
             if response.status_code not in (200, 404):
                 logger.warning(
@@ -566,7 +572,10 @@ class FlowsService:
         # Make PATCH request to Langflow API to update the flow using shared client
         try:
             response = await clients.langflow_request(
-                "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
+                "PATCH",
+                f"/api/v1/flows/{flow_id}",
+                json=flow_data,
+                idempotent=True,
             )
 
             if response.status_code == 200:
@@ -729,7 +738,10 @@ class FlowsService:
 
         # Update the flow via PATCH request
         patch_response = await clients.langflow_request(
-            "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
+            "PATCH",
+            f"/api/v1/flows/{flow_id}",
+            json=flow_data,
+            idempotent=True,
         )
 
         if patch_response.status_code != 200:
@@ -1319,7 +1331,10 @@ class FlowsService:
 
         # PATCH the updated flow
         response = await clients.langflow_request(
-            "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
+            "PATCH",
+            f"/api/v1/flows/{flow_id}",
+            json=flow_data,
+            idempotent=True,
         )
 
         if response.status_code != 200:

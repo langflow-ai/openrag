@@ -890,7 +890,14 @@ class ConfigManager:
         rhoai_embeddings_endpoint = os.getenv("RHOAI_EMBEDDINGS_ENDPOINT")
         rhoai_api_key = os.getenv("RHOAI_API_KEY")
         rhoai_tls_verify = os.getenv("RHOAI_TLS_VERIFY")
-        if rhoai_endpoint or rhoai_embeddings_endpoint or rhoai_api_key or rhoai_tls_verify:
+        rhoai_embedding_max_concurrency = os.getenv("RHOAI_EMBEDDING_MAX_CONCURRENCY")
+        if (
+            rhoai_endpoint
+            or rhoai_embeddings_endpoint
+            or rhoai_api_key
+            or rhoai_tls_verify
+            or rhoai_embedding_max_concurrency
+        ):
             self._seed_custom_provider_credentials(
                 config_data,
                 "rhoai",
@@ -899,6 +906,7 @@ class ConfigManager:
                     "embedding_api_base": rhoai_embeddings_endpoint,
                     "api_key": rhoai_api_key,
                     "ssl_verify": rhoai_tls_verify,
+                    "embedding_max_concurrency": rhoai_embedding_max_concurrency,
                 },
                 required=("api_base", "api_key"),
             )
