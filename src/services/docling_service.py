@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
 from config.settings import (
     DOCLING_ERROR_DETAIL_MAX_LENGTH,
@@ -24,11 +24,25 @@ logger = get_logger(__name__)
 
 
 class DoclingConfig(BaseModel):
+    """Only used to shape the legacy /settings/docling-preset response.
+
+    The actual Docling Serve request payload is built from a plain dict
+    (see get_docling_preset_configs), so this model doesn't need to match
+    Docling Serve's field names.
+    """
+
     do_ocr: bool
-    ocr_engine: str
+    ocr_preset: str
+    ocr_lang: list[str] | None = None
     do_table_structure: bool
     do_picture_classification: bool
     do_picture_description: bool
+
+    @computed_field
+    @property
+    def ocr_engine(self) -> str:
+        """Deprecated alias for ocr_preset, kept for legacy API callers."""
+        return self.ocr_preset
 
 
 class DoclingServeError(Exception):
@@ -58,19 +72,81 @@ class DoclingStatusSnapshot:
     raw: dict | None = None
 
 
+# OCR language codes are engine-specific: ocrmac (Apple Vision) takes BCP-47
+# tags, easyocr takes its own short codes. OpenRAG stores neutral codes in
+# KnowledgeConfig so one config survives moving between a macOS host and a
+# Linux container, and they are translated per engine at request time.
+OCR_LANGUAGE_CODES: dict[str, dict[str, str]] = {
+    "ocrmac": {
+        "en": "en-US",
+        "ja": "ja-JP",
+        "ko": "ko-KR",
+        "zh-Hans": "zh-Hans",
+        "zh-Hant": "zh-Hant",
+        "fr": "fr-FR",
+        "de": "de-DE",
+        "es": "es-ES",
+        "it": "it-IT",
+        "pt": "pt-BR",
+        "ru": "ru-RU",
+        "uk": "uk-UA",
+        "th": "th-TH",
+        "vi": "vi-VN",
+        "ar": "ar-SA",
+    },
+    "easyocr": {
+        "en": "en",
+        "ja": "ja",
+        "ko": "ko",
+        "zh-Hans": "ch_sim",
+        "zh-Hant": "ch_tra",
+        "fr": "fr",
+        "de": "de",
+        "es": "es",
+        "it": "it",
+        "pt": "pt",
+        "ru": "ru",
+        "uk": "uk",
+        "th": "th",
+        "vi": "vi",
+        "ar": "ar",
+    },
+}
+
+
+def resolve_ocr_languages(engine: str, languages: list[str]) -> list[str]:
+    """Translate OpenRAG's neutral OCR language codes into engine-specific ones.
+
+    Unrecognized codes pass through untouched so an operator can name an engine
+    code OpenRAG does not know about rather than have it silently dropped.
+    """
+    mapping = OCR_LANGUAGE_CODES.get(engine, {})
+    # Apple Vision treats earlier languages as higher priority. Keep English as
+    # the fallback so adding another language does not suppress its script.
+    prioritized = [language for language in languages if language != "en"]
+    if "en" in languages:
+        prioritized.append("en")
+    return [mapping.get(language, language) for language in prioritized]
+
+
 def get_docling_preset_configs(
-    table_structure=False, ocr=False, picture_descriptions=False
+    table_structure=False, ocr=False, picture_descriptions=False, ocr_languages=None
 ) -> dict[str, Any]:
     """Get docling preset configurations based on toggle settings"""
     is_macos = platform.system() == "Darwin"
+    engine = "ocrmac" if is_macos else "easyocr"
 
     config = {
         "do_ocr": ocr,
-        "ocr_engine": "ocrmac" if is_macos else "easyocr",
+        # ocr_preset is the supported replacement for deprecated ocr_engine.
+        "ocr_preset": engine,
         "do_table_structure": table_structure,
         "do_picture_classification": picture_descriptions,
         "do_picture_description": picture_descriptions,
     }
+
+    if ocr_languages:
+        config["ocr_lang"] = resolve_ocr_languages(engine, ocr_languages)
 
     return config
 
@@ -218,6 +294,7 @@ class DoclingService:
             table_structure=knowledge_config.table_structure,
             ocr=is_ocr_enabled,
             picture_descriptions=is_pic_desc_enabled,
+            ocr_languages=knowledge_config.ocr_languages,
         )
 
         image_export_mode = "embedded" if preview_mode else "placeholder"
