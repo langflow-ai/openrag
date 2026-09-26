@@ -145,6 +145,7 @@ def _clear_rhoai_env(monkeypatch):
         "RHOAI_EMBEDDINGS_ENDPOINT",
         "RHOAI_API_KEY",
         "RHOAI_TLS_VERIFY",
+        "RHOAI_EMBEDDING_MAX_CONCURRENCY",
         "OPENAI_API_KEY",
         "LLM_PROVIDER",
         "EMBEDDING_PROVIDER",
@@ -228,6 +229,21 @@ def test_rhoai_tls_env_alone_reaches_a_stored_config(monkeypatch, tmp_path):
         "api_key": "sha256~token",
         "ssl_verify": "/var/run/secrets/service-ca.crt",
     }
+
+
+def test_rhoai_embedding_concurrency_env_is_seeded(monkeypatch, tmp_path):
+    """The bulkhead limit ships with the rest of the provider's first-boot seed."""
+    from config.config_manager import ConfigManager
+
+    _clear_rhoai_env(monkeypatch)
+    monkeypatch.setenv("RHOAI_ENDPOINT", "https://chat.svc:8443/v1")
+    monkeypatch.setenv("RHOAI_API_KEY", "sha256~token")
+    monkeypatch.setenv("RHOAI_EMBEDDING_MAX_CONCURRENCY", "8")
+
+    config = ConfigManager(config_file=tmp_path / "config.yaml").load_config()
+
+    assert config.providers.custom["rhoai"].configured is True
+    assert config.providers.stored_credentials("rhoai")["embedding_max_concurrency"] == "8"
 
 
 def _clear_watsonx_onprem_env(monkeypatch):
