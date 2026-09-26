@@ -8,6 +8,7 @@ candidate (retry_failed_files takes FAILED only), so nothing recovers it.
 """
 
 import asyncio
+import os
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -214,3 +215,90 @@ async def test_a_loser_in_another_task_is_recovered_too():
     assert loser_task.failed_files == 1
     # The loser's task finished before the reversal; its accounting stays whole.
     assert loser_task.processed_files == loser_task.total_files
+
+
+@pytest.mark.asyncio
+async def test_a_cross_task_loser_keeps_its_staged_file(tmp_path):
+    """The loser's task finishes — and cleans up — while the winner is still in
+    flight. The staged source has to survive that, or the FAILED state the
+    reversal produces is one retry cannot act on: retry_failed_files rejects a
+    file whose source is gone as "source_file_missing".
+    """
+    service = TaskService(document_service=Mock(), ingestion_timeout=5)
+    service._processing_semaphore = asyncio.Semaphore(4)
+
+    claimed = asyncio.Event()
+    may_finish = asyncio.Event()
+
+    winner_path = tmp_path / "winner-report.pdf"
+    winner_path.write_bytes(b"%PDF-winner")
+    loser_path = tmp_path / "loser-report.pdf"
+    loser_path.write_bytes(b"%PDF-loser")
+
+    await service.create_custom_task(
+        "user-1",
+        [str(winner_path)],
+        _HeldClaimProcessor(claimed=claimed, may_finish=may_finish),
+        original_filenames={str(winner_path): "report.pdf"},
+        temp_file_paths=[str(winner_path)],
+    )
+    await asyncio.wait_for(claimed.wait(), timeout=5)
+
+    loser_task_id = await service.create_custom_task(
+        "user-1",
+        [str(loser_path)],
+        _LosingProcessor(),
+        original_filenames={str(loser_path): "report.pdf"},
+        temp_file_paths=[str(loser_path)],
+    )
+    loser_task = service.task_store["user-1"][loser_task_id]
+    while loser_task.status != TaskStatus.COMPLETED:
+        await asyncio.sleep(0)
+
+    # Its task has finished and run cleanup, with the outcome still unsettled.
+    assert loser_path.exists(), "staged source deleted before the winner resolved"
+
+    may_finish.set()
+    await asyncio.gather(*list(service.background_tasks), return_exceptions=True)
+
+    loser_file = loser_task.file_tasks[str(loser_path)]
+    assert loser_file.status is TaskStatus.FAILED
+    assert loser_path.exists(), "retry has nothing to read"
+    # What retry checks before re-queueing.
+    assert os.path.exists(loser_file.file_path)
+
+
+@pytest.mark.asyncio
+async def test_an_ordinary_duplicate_skip_still_cleans_up(tmp_path):
+    """Retention is only for the unsettled case — a file skipped against a
+    document that is already indexed keeps today's cleanup."""
+    service = TaskService(document_service=Mock(), ingestion_timeout=5)
+
+    staged = tmp_path / "report.pdf"
+    staged.write_bytes(b"%PDF-")
+
+    class _AlreadyIndexedProcessor(TaskProcessor):
+        async def check_filename_exists(self, filename, opensearch_client, **kwargs):
+            return True
+
+        async def process_item(self, upload_task, item, file_task):
+            action = await self.resolve_duplicate_filename(
+                file_task.filename,
+                AsyncMock(),
+                replace=False,
+                owner_user_id="user-1",
+                claim_holder=self._claim_holder(upload_task, file_task),
+            )
+            assert action in DUPLICATE_SKIP_ACTIONS
+            self.mark_duplicate_skipped(upload_task, file_task)
+
+    await service.create_custom_task(
+        "user-1",
+        [str(staged)],
+        _AlreadyIndexedProcessor(),
+        original_filenames={str(staged): "report.pdf"},
+        temp_file_paths=[str(staged)],
+    )
+    await asyncio.gather(*list(service.background_tasks), return_exceptions=True)
+
+    assert not staged.exists()

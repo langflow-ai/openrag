@@ -1954,9 +1954,38 @@ class TaskService:
         metadata = self._infer_failure_metadata(file_task)
         return bool(metadata and metadata.get("actionable_by") == "RETRYABLE")
 
+    def _is_unsettled_claim_loser_temp(self, upload_task: UploadTask, temp_path: str) -> bool:
+        """True when a staged temp belongs to a file skipped for a name another
+        in-flight file still holds.
+
+        Such a skip is provisional: if the file holding the name fails, nothing
+        was indexed under it and _fail_files_stranded_by turns this file into a
+        retryable failure. That correction can land after this task has already
+        finished — the holder may belong to another task entirely — and a retry
+        then needs the staged source that cleanup would otherwise have deleted.
+
+        Retention is bounded the same way a retryable failure's is: whichever
+        way the holder ends, the temp is reclaimed when the task ages out of the
+        store (cleanup_old_tasks force-cleans what it evicts).
+        """
+        if not os.path.isabs(temp_path):
+            return False
+        file_task = self._file_task_for_temp_path(upload_task, temp_path)
+        if file_task is None or file_task.status != TaskStatus.SKIPPED:
+            return False
+        if (file_task.result or {}).get("reason") != "duplicate_filename":
+            return False
+        # Local uploads key file_tasks by the staged path, which is what the
+        # claim holder was built from.
+        return filename_claims.is_awaiting_outcome(
+            claim_holder(upload_task.task_id, file_task.file_path)
+        )
+
     def _should_retain_upload_temp(self, upload_task: UploadTask, temp_path: str) -> bool:
         """Return True when an upload temp should be kept after processing."""
         if self._is_retryable_local_upload_temp(upload_task, temp_path):
+            return True
+        if self._is_unsettled_claim_loser_temp(upload_task, temp_path):
             return True
         if (
             os.path.isabs(temp_path)

@@ -116,6 +116,16 @@ class FilenameClaimRegistry:
                 del self._holders[key]
         return self._refused.pop(holder, set())
 
+    def is_awaiting_outcome(self, holder: str) -> bool:
+        """True while a name this holder was refused is still held by someone.
+
+        The refusal decided that file's outcome on the assumption the holder
+        would index the name. Until the holder reaches a terminal state that
+        assumption is unsettled, so anything staged for the refused file has to
+        stay put — it may yet be handed back for a retry.
+        """
+        return any(holder in refused for refused in self._refused.values())
+
     def holds(self, scope: str, filename: str) -> str | None:
         """The holder of this name, for tests and diagnostics."""
         for alias in get_filename_aliases(filename):
