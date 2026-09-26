@@ -11,10 +11,12 @@ import functools
 import inspect
 from collections.abc import Mapping
 from types import ModuleType
-from typing import Any
+from typing import Any, Literal
 
 from enhancements.providers.redhat import openshift_ai
 from enhancements.providers.watsonx import onprem
+
+CallKind = Literal["chat", "embedding"]
 
 _ENHANCEMENTS: dict[str, ModuleType] = {
     onprem.PROVIDER_KEY: onprem,
@@ -50,6 +52,31 @@ def enhancements() -> tuple[ModuleType, ...]:
     return tuple(_ENHANCEMENTS.values())
 
 
+def live_models_for(provider: str, kind: CallKind) -> tuple[str, ...] | None:
+    """What `provider` last said it serves for `kind`, if it can say at all.
+
+    None means *unknown*, never "serves nothing": the provider has no
+    enhancement, the enhancement cannot list its own models, or nothing fresh
+    is cached for that endpoint. Callers must treat None as no information —
+    telling an operator their model is missing on the strength of a listing
+    that never arrived would be worse than staying quiet.
+
+    The lists come from the enhancement's own TTL cache, so this is a dict
+    lookup; refreshing them is `model_catalog.refresh_live_models()`.
+    """
+    enhancement = get(provider)
+    if enhancement is None or not hasattr(enhancement, "cached_models"):
+        return None
+    try:
+        models = enhancement.cached_models()
+    except Exception:  # a diagnostic must never take down its caller
+        return None
+    if models is None:
+        return None
+    listed = getattr(models, kind, None)
+    return tuple(listed) if listed else None
+
+
 def credentials_for(
     enhancement: ModuleType,
     stored: Mapping[str, Any],
@@ -82,6 +109,43 @@ def runtime_kwargs_for(
     """Build optional non-serializable kwargs only at a LiteLLM call boundary."""
     build = getattr(enhancement, "litellm_runtime_kwargs", None)
     return dict(build(stored)) if callable(build) else {}
+
+
+def embedding_concurrency_for(
+    provider: str,
+    stored: Mapping[str, Any] | None,
+) -> int | None:
+    """How many embedding calls the gateway may have in flight to `provider`.
+
+    The optional `embedding_max_concurrency(stored)` member of the enhancement
+    contract. None means unlimited: the provider has no enhancement, the
+    enhancement sets no limit, or the hook failed. A broken hook must not fail
+    the request it would only have throttled, so errors are logged and ignored.
+    """
+    enhancement = get(provider)
+    hook = getattr(enhancement, "embedding_max_concurrency", None)
+    if not callable(hook):
+        return None
+    try:
+        limit = hook(stored or {})
+    except Exception as exc:
+        _log_hook_failure(provider, "embedding_max_concurrency", exc)
+        return None
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+        return None
+    return limit
+
+
+def _log_hook_failure(provider: str, hook: str, exc: Exception) -> None:
+    from utils.logging_config import get_logger
+
+    get_logger(__name__).warning(
+        "A provider enhancement hook failed; continuing without it",
+        provider=provider,
+        hook=hook,
+        error_type=type(exc).__name__,
+        error=str(exc),
+    )
 
 
 @functools.cache

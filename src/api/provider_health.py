@@ -1,12 +1,17 @@
 """Provider health check endpoint."""
 
 import asyncio
+from typing import Any
 
 import httpx
 from fastapi import Depends
 from fastapi.responses import JSONResponse
 
-from api.provider_validation import sanitize_provider_error_content, validate_provider_setup
+from api.provider_validation import (
+    ProbeResult,
+    sanitize_provider_error_content,
+    validate_provider_setup,
+)
 from config.settings import get_openrag_config
 from dependencies import require_permission
 from services import provider_error_log
@@ -16,6 +21,190 @@ from utils import provider_health_cache
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+#: `warnings[].code` for indexed vectors whose model the provider no longer serves.
+STALE_EMBEDDING_SPACE = "stale_embedding_space"
+
+
+#: Ceiling on re-listing a provider's models from inside a health check. The
+#: listing is only an input to a diagnostic, so a slow cluster costs this at
+#: most; the probes report an unreachable one in their own words.
+_MODEL_REFRESH_TIMEOUT_SECONDS = 5.0
+
+
+async def _refresh_live_models(provider: str) -> None:
+    """Re-list what `provider` serves, if it can say, best effort.
+
+    Only the provider being checked: the listing of any other would not be
+    read, and waiting on its cluster would only slow this one's verdict. A
+    provider with no enhancement, or one that cannot list its own models, has
+    nothing to refresh, and is skipped without a call.
+
+    TTL-guarded inside each enhancement, so this is a network call once every
+    few minutes rather than once per poll — while the cluster answers. A failed
+    listing is not cached, so an unreachable cluster is asked again on every
+    poll; hence the timeout. A failure or timeout leaves the previous answer in
+    place and must never fail the health check.
+    """
+    try:
+        from enhancements.providers.registry import get as get_enhancement
+        from services.model_catalog import refresh_live_models
+
+        enhancement = get_enhancement(provider)
+        if enhancement is None or not hasattr(enhancement, "fetch_models"):
+            return
+        await asyncio.wait_for(
+            refresh_live_models(provider), timeout=_MODEL_REFRESH_TIMEOUT_SECONDS
+        )
+    except TimeoutError:
+        logger.debug(
+            "Timed out refreshing live model listing",
+            provider=provider,
+            timeout_seconds=_MODEL_REFRESH_TIMEOUT_SECONDS,
+        )
+    except Exception:
+        logger.debug("Could not refresh live model listings", provider=provider, exc_info=True)
+
+
+#: Spaces per aggregation page — the same page size retrieval discovers them
+#: with. A corpus has a handful: one per embedding model it was indexed with.
+_EMBEDDING_SPACE_PAGE_SIZE = 100
+
+#: Pages read before giving up. Far past any real corpus; it bounds what one
+#: health poll can cost if the index is somehow full of distinct spaces.
+_EMBEDDING_SPACE_MAX_PAGES = 10
+
+
+async def _indexed_spaces(provider: str) -> tuple[str, ...] | None:
+    """Embedding models this corpus holds vectors for, under `provider`.
+
+    None means unknown — OpenSearch unreachable, nothing indexed, or an answer
+    that may be incomplete. A partial list is never returned as if it were the
+    whole: a space missing from it is a stale space that goes unreported. So
+    every page of the composite aggregation is read, shard failures raise
+    rather than quietly dropping buckets, and running out of pages before the
+    cursor does is treated as not knowing.
+
+    Read with the admin client, not a user-scoped one, because this is a
+    property of the corpus rather than of whoever is looking; DLS would
+    silently shrink it.
+    """
+    try:
+        from config.settings import clients, get_index_name
+        from utils.embedding_fields import (
+            build_embedding_space_aggregation,
+            embedding_space_after_keys,
+            embedding_spaces_from_aggregation,
+            split_embedding_space_id,
+        )
+
+        client = clients.opensearch
+        if client is None:
+            return None
+        space_ids: list[str] = []
+        after: dict[str, Any] | None = None
+        for _ in range(_EMBEDDING_SPACE_MAX_PAGES):
+            result = await client.search(
+                index=get_index_name(),
+                body={
+                    "size": 0,
+                    # Qualified spaces only. A legacy space records no provider,
+                    # so it cannot be attributed to this one, and it is governed
+                    # by OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP rather than by what
+                    # the cluster serves today.
+                    "aggs": build_embedding_space_aggregation(
+                        size=_EMBEDDING_SPACE_PAGE_SIZE,
+                        qualified_after=after,
+                        include_legacy=False,
+                    ),
+                },
+                # A failed shard must fail the read, not shrink its buckets.
+                params={"allow_partial_search_results": "false"},
+            )
+            if result.get("timed_out"):
+                logger.debug("Reading indexed embedding spaces timed out")
+                return None
+            space_ids.extend(space.space_id for space in embedding_spaces_from_aggregation(result))
+            # Raw buckets, not parsed spaces: the parser skips blank ids, and a
+            # page it thinned out is not a short one.
+            buckets = (
+                result.get("aggregations", {}).get("embedding_spaces", {}).get("buckets") or []
+            )
+            next_after, _ = embedding_space_after_keys(result)
+            # A short page is the last one; a composite aggregation still hands
+            # back an `after_key` for it, and following it costs an empty read.
+            if len(buckets) < _EMBEDDING_SPACE_PAGE_SIZE or not next_after or next_after == after:
+                break
+            after = next_after
+        else:
+            logger.debug(
+                "Indexed embedding spaces exceed the read limit",
+                pages=_EMBEDDING_SPACE_MAX_PAGES,
+                page_size=_EMBEDDING_SPACE_PAGE_SIZE,
+            )
+            return None
+    except Exception:
+        logger.debug("Could not read indexed embedding spaces", exc_info=True)
+        return None
+
+    key = (provider or "").strip().lower()
+    models = []
+    for space_id in space_ids:
+        space_provider, model = split_embedding_space_id(space_id)
+        if space_provider == key and model:
+            models.append(model)
+    return tuple(dict.fromkeys(models)) or None
+
+
+async def _stale_embedding_spaces(provider: str) -> dict[str, Any] | None:
+    """Indexed vector spaces whose model the provider has stopped serving.
+
+    Nothing re-checks a corpus once it is indexed. A chunk records the space it
+    was embedded in (`provider:model`), retrieval embeds the query once per
+    space it finds there, and an `InferenceService` redeployed under a new
+    `--served-model-name` leaves every earlier chunk pointing at a model that
+    is gone. No save can be rejected over it and no probe reaches it — the
+    *configured* model is fine. Retrieval skips a space it cannot embed for and
+    carries on, so nothing fails outright: those documents quietly stop being
+    found by meaning, and the only trace is a 502 quoting a model name that
+    appears nowhere in Settings.
+
+    A warning, never an error: the provider is serving and nothing in its setup
+    is wrong. The remedy is in the corpus — re-ingest or delete — so reporting
+    it as a provider failure would send the operator to the one screen that
+    cannot fix it.
+
+    Silent unless both halves are known: what the provider serves, and what the
+    corpus holds. Neither absence is evidence of the other.
+    """
+    try:
+        from enhancements.providers.registry import live_models_for
+
+        served = live_models_for(provider, "embedding")
+    except Exception:
+        logger.debug("Could not read live models for %s", provider, exc_info=True)
+        return None
+    if not served:
+        return None
+
+    indexed = await _indexed_spaces(provider)
+    if not indexed:
+        return None
+    stale = [model for model in indexed if model not in served]
+    if not stale:
+        return None
+    return {
+        "code": STALE_EMBEDDING_SPACE,
+        "provider": provider,
+        "models": stale,
+        "served": list(served),
+        "message": (
+            f"Documents are indexed with {', '.join(repr(model) for model in stale)}, which "
+            f"this endpoint no longer serves (it serves: {', '.join(served)}). Search skips "
+            "those vectors, so the documents are found by keyword only until they are "
+            "re-ingested or deleted."
+        ),
+    }
 
 
 async def check_provider_health(
@@ -255,7 +444,7 @@ async def check_provider_health(
 
             # Validate LLM provider
             try:
-                await validate_provider_setup(
+                llm_probe: ProbeResult = await validate_provider_setup(
                     provider=provider,
                     api_key=api_key,
                     llm_model=llm_model,
@@ -276,6 +465,23 @@ async def check_provider_health(
             except Exception as e:
                 llm_error = sanitize_provider_error_content(e)
                 logger.error(f"LLM provider ({provider}) validation failed: {llm_error}")
+            else:
+                # Without this the banner can only be cleared by chat traffic:
+                # one failed turn latches it, the frontend then polls every 5s
+                # with `test_completion` while it stays latched, and a provider
+                # that has recovered keeps being reported broken until the entry
+                # goes stale 15 minutes later.
+                #
+                # But a probe cannot reproduce the request that failed (see
+                # `provider_error_log`), so only one that sent the same shape
+                # of request may speak for it. A passing validation can mean a
+                # deployment listing (Azure), no call at all (no model set), or
+                # a tool-less completion (the LiteLLM probe) — none of which
+                # reaches the tool-calling failures agent traffic actually hits.
+                # Clearing on those would drop the banner while chat is still
+                # broken, only for the next turn to raise it again.
+                if test_completion and llm_probe.model_probed and llm_probe.tools_exercised:
+                    provider_error_log.record_success(provider, "chat")
 
             # Validate embedding provider
             # For WatsonX with test_completion=True, wait 2 seconds between completion and embedding tests
@@ -291,7 +497,7 @@ async def check_provider_health(
                 await asyncio.sleep(2)
 
             try:
-                await validate_provider_setup(
+                embedding_probe: ProbeResult = await validate_provider_setup(
                     provider=embedding_provider,
                     api_key=embedding_api_key,
                     embedding_model=embedding_model,
@@ -316,6 +522,12 @@ async def check_provider_health(
                 logger.error(
                     f"Embedding provider ({embedding_provider}) validation failed: {embedding_error}"
                 )
+            else:
+                # An embedding request has no shape beyond model and input, so a
+                # real call to the configured model is the same request traffic
+                # makes. Anything short of one proves nothing about it.
+                if test_completion and embedding_probe.model_probed:
+                    provider_error_log.record_success(embedding_provider, "embedding")
 
             # A real call beats a probe. The probe sends its own request, so it
             # hits its own failure: OpenAI checks request shape before billing,
@@ -329,6 +541,14 @@ async def check_provider_health(
                 provider_error_log.latest_failure(embedding_provider, "embedding")
                 or embedding_error
             )
+
+            # Nothing above looks at the corpus, and a vector space outlives
+            # the model that made it. Reported beside the verdict, never in it:
+            # a stale space degrades search but says nothing about whether the
+            # provider is serving, so it must not turn the status code.
+            await _refresh_live_models(embedding_provider)
+            stale_spaces = await _stale_embedding_spaces(embedding_provider)
+            warnings = [stale_spaces] if stale_spaces else []
 
             # Return combined status
             if llm_error or embedding_error:
@@ -349,6 +569,7 @@ async def check_provider_health(
                         "embedding_provider": embedding_provider,
                         "llm_error": llm_error,
                         "embedding_error": embedding_error,
+                        "warnings": warnings,
                     },
                     status_code=503,
                 )
@@ -362,6 +583,7 @@ async def check_provider_health(
                     "llm_model": llm_model,
                     "embedding_model": embedding_model,
                 },
+                "warnings": warnings,
             }
             provider_health_cache.set_and_release(health_cache_key, healthy_payload)
             _health_leader_key = None

@@ -67,4 +67,60 @@ describe("ProviderHealthBanner", () => {
       screen.getByText(/OpenAI error - Invalid API Key/i),
     ).toBeInTheDocument();
   });
+
+  const staleSpace = {
+    code: "stale_embedding_space",
+    provider: "rhoai",
+    message:
+      "Documents are indexed with 'old-model', which this endpoint no longer serves",
+  };
+
+  function mockHealth(data: object) {
+    vi.mocked(useProviderHealthQuery).mockReturnValue({
+      data,
+      isLoading: false,
+      isFetching: false,
+      error: null,
+      isError: false,
+    } as unknown as ReturnType<typeof useProviderHealthQuery>);
+  }
+
+  it("renders a healthy provider with warnings as a warning that points at Knowledge", async () => {
+    const user = userEvent.setup();
+    mockPush.mockClear();
+    mockHealth({ status: "healthy", message: "ok", warnings: [staleSpace] });
+
+    render(<ProviderHealthBanner />);
+
+    expect(
+      screen.getByText(/warning - Documents are indexed with 'old-model'/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Fix Setup" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Open Knowledge" }));
+    expect(mockPush).toHaveBeenCalledWith("/knowledge");
+  });
+
+  it("lets an unhealthy verdict outrank a warning", () => {
+    mockHealth({
+      status: "unhealthy",
+      provider: "openai",
+      llm_error: "Invalid API Key",
+      warnings: [staleSpace],
+    });
+
+    render(<ProviderHealthBanner />);
+
+    expect(
+      screen.getByText(/OpenAI error - Invalid API Key/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open Knowledge" })).toBeNull();
+  });
+
+  it("renders nothing for a healthy provider without warnings", () => {
+    mockHealth({ status: "healthy", message: "ok", warnings: [] });
+
+    const { container } = render(<ProviderHealthBanner />);
+
+    expect(container).toBeEmptyDOMElement();
+  });
 });
