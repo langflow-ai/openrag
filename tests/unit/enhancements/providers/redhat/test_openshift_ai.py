@@ -98,11 +98,19 @@ def test_the_form_asks_for_two_endpoints_a_token_and_a_ca() -> None:
     """vLLM serves one model per InferenceService, so one endpoint is not enough."""
     fields = {field["key"]: field for field in model_catalog.credential_fields(PROVIDER)}
 
-    assert set(fields) == {"api_base", "embedding_api_base", "api_key", "ssl_verify"}
+    assert set(fields) == {
+        "api_base",
+        "embedding_api_base",
+        "api_key",
+        "ssl_verify",
+        "embedding_max_concurrency",
+    }
     assert fields["api_base"]["field_type"] == "text"
     assert fields["embedding_api_base"]["field_type"] == "text"
     assert fields["api_key"]["field_type"] == "password"
     assert fields["ssl_verify"]["field_type"] == "text"
+    assert fields["embedding_max_concurrency"]["field_type"] == "text"
+    assert fields["embedding_max_concurrency"]["required"] is False
 
 
 def test_only_the_token_is_encrypted_at_rest() -> None:
@@ -145,6 +153,67 @@ def test_one_endpoint_serves_both_when_no_embedding_url_is_given() -> None:
 def test_the_embedding_url_never_reaches_litellm(kind) -> None:
     """LiteLLM forwards kwargs it does not recognise, so a stray field lands in the body."""
     assert "embedding_api_base" not in rhoai.litellm_credentials(_stored(), kind=kind)
+
+
+@pytest.mark.parametrize("kind", ["chat", "embedding"])
+def test_the_concurrency_limit_never_reaches_litellm(kind) -> None:
+    """The gateway enforces the limit; forwarded, it would land in the request body."""
+    stored = _stored(embedding_max_concurrency="2")
+    assert "embedding_max_concurrency" not in rhoai.litellm_credentials(stored, kind=kind)
+
+
+# ---------------------------------------------------------------------------
+# Embedding concurrency limit
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, rhoai.DEFAULT_EMBEDDING_MAX_CONCURRENCY),
+        ("", rhoai.DEFAULT_EMBEDDING_MAX_CONCURRENCY),
+        ("   ", rhoai.DEFAULT_EMBEDDING_MAX_CONCURRENCY),
+        ("1", 1),
+        (" 16 ", 16),
+        (8, 8),
+        ("0", None),
+    ],
+)
+def test_the_embedding_concurrency_limit_is_parsed(value, expected) -> None:
+    stored = _stored(embedding_max_concurrency=value)
+    assert rhoai.embedding_max_concurrency(stored) == expected
+
+
+@pytest.mark.parametrize("value", ["four", "-1", "2.5"])
+def test_an_invalid_limit_falls_back_to_the_default_not_to_unlimited(value, monkeypatch) -> None:
+    """Failing open would reintroduce the overload the limit exists to prevent."""
+    warnings: list[str] = []
+    monkeypatch.setattr(rhoai.logger, "warning", lambda message, **_: warnings.append(message))
+
+    stored = _stored(embedding_max_concurrency=value)
+    assert rhoai.embedding_max_concurrency(stored) == rhoai.DEFAULT_EMBEDDING_MAX_CONCURRENCY
+    assert rhoai.embedding_max_concurrency(stored) == rhoai.DEFAULT_EMBEDDING_MAX_CONCURRENCY
+    assert len(warnings) == 1
+
+
+def test_the_registry_exposes_the_limit() -> None:
+    assert registry.embedding_concurrency_for(PROVIDER, _stored(embedding_max_concurrency="3")) == 3
+    assert (
+        registry.embedding_concurrency_for(PROVIDER, _stored(embedding_max_concurrency="0")) is None
+    )
+
+
+def test_the_registry_reports_no_limit_for_providers_without_the_hook() -> None:
+    assert registry.embedding_concurrency_for("openai", {}) is None
+    assert registry.embedding_concurrency_for("watsonx_onprem", {}) is None
+
+
+def test_a_failing_hook_never_breaks_the_request(monkeypatch) -> None:
+    def broken(stored):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(rhoai, "embedding_max_concurrency", broken)
+    assert registry.embedding_concurrency_for(PROVIDER, _stored()) is None
 
 
 def test_no_endpoint_means_no_credentials_at_all() -> None:

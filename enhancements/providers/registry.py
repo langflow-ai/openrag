@@ -111,6 +111,43 @@ def runtime_kwargs_for(
     return dict(build(stored)) if callable(build) else {}
 
 
+def embedding_concurrency_for(
+    provider: str,
+    stored: Mapping[str, Any] | None,
+) -> int | None:
+    """How many embedding calls the gateway may have in flight to `provider`.
+
+    The optional `embedding_max_concurrency(stored)` member of the enhancement
+    contract. None means unlimited: the provider has no enhancement, the
+    enhancement sets no limit, or the hook failed. A broken hook must not fail
+    the request it would only have throttled, so errors are logged and ignored.
+    """
+    enhancement = get(provider)
+    hook = getattr(enhancement, "embedding_max_concurrency", None)
+    if not callable(hook):
+        return None
+    try:
+        limit = hook(stored or {})
+    except Exception as exc:
+        _log_hook_failure(provider, "embedding_max_concurrency", exc)
+        return None
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+        return None
+    return limit
+
+
+def _log_hook_failure(provider: str, hook: str, exc: Exception) -> None:
+    from utils.logging_config import get_logger
+
+    get_logger(__name__).warning(
+        "A provider enhancement hook failed; continuing without it",
+        provider=provider,
+        hook=hook,
+        error_type=type(exc).__name__,
+        error=str(exc),
+    )
+
+
 @functools.cache
 def _accepts_kind(enhancement: ModuleType) -> bool:
     """Whether the module's `litellm_credentials` takes a `kind` keyword.

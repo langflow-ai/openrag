@@ -326,6 +326,7 @@ async def test_enable_mcp_none_for_project():
             "PATCH",
             "/api/v1/mcp/project/proj-456",
             json={"settings": [], "auth_settings": {"auth_type": "none"}},
+            idempotent=True,
         )
 
 
@@ -346,6 +347,7 @@ async def test_enable_mcp_none_for_project_failure():
             "PATCH",
             "/api/v1/mcp/project/proj-456",
             json={"settings": [], "auth_settings": {"auth_type": "none"}},
+            idempotent=True,
         )
 
 

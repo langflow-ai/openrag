@@ -145,13 +145,36 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "options": None,
         "default_value": None,
     },
+    {
+        "key": "embedding_max_concurrency",
+        "label": "Max concurrent embedding requests",
+        "placeholder": "4",
+        "tooltip": "How many embedding requests OpenRAG sends to the embedding endpoint at "
+        "once; the rest wait in OpenRAG. A CPU-served model answers slowly, and the "
+        "endpoint's kube-rbac-proxy returns 502 once a queued request waits past its "
+        "upstream timeout (30s by default), which fails ingestion of several files at "
+        "once. Leave blank for the default of 4; raise it for a GPU deployment; 0 means "
+        "no limit.",
+        "required": False,
+        "field_type": "text",
+        "options": None,
+        "default_value": None,
+    },
 ]
 
 #: Fields an operator fills in that are not LiteLLM kwargs. The embedding
 #: endpoint is selected *into* `api_base` per call; forwarding it as well would
 #: land it in the request body, since LiteLLM passes kwargs it does not
-#: recognise straight through.
-_LOCAL_ONLY_FIELDS = frozenset({"embedding_api_base"})
+#: recognise straight through. The concurrency limit is enforced by the
+#: gateway (`embedding_max_concurrency`), never sent to the endpoint.
+_LOCAL_ONLY_FIELDS = frozenset({"embedding_api_base", "embedding_max_concurrency"})
+
+#: Concurrent embedding calls allowed when the operator sets no limit. vLLM on
+#: CPU embeds roughly two ~500-character chunks per second; four in flight keeps
+#: each call well inside the 30s `kube-rbac-proxy` upstream timeout, while a
+#: folder upload (several ingest runs x 8 embedding threads each) would
+#: otherwise queue dozens of calls at the endpoint and time most of them out.
+DEFAULT_EMBEDDING_MAX_CONCURRENCY = 4
 
 #: LiteLLM kwargs that must not become request-body fields. `ssl_verify` is
 #: read for TLS *and* — on the `hosted_vllm` chat path, verified against litellm
@@ -359,6 +382,35 @@ def litellm_credentials(stored: Mapping[str, Any], *, kind: CallKind = "chat") -
     credentials["ssl_verify"] = resolve_ssl_verify(values.get("ssl_verify"))
     credentials["additional_drop_params"] = list(_BODY_DROP_PARAMS)
     return credentials
+
+
+def embedding_max_concurrency(stored: Mapping[str, Any] | None) -> int | None:
+    """How many embedding calls the gateway may have in flight to this endpoint.
+
+    Optional member of the enhancement contract, read through
+    `registry.embedding_concurrency_for`. Returns `None` for "no limit".
+
+    Blank means the default. `0` switches the limit off. A value that is not a
+    non-negative integer falls back to the default with a one-time warning
+    rather than disabling the limit: failing open here is exactly the overload
+    this setting exists to prevent.
+    """
+    raw = _values(stored).get("embedding_max_concurrency", "")
+    if not raw:
+        return DEFAULT_EMBEDDING_MAX_CONCURRENCY
+    try:
+        limit = int(raw)
+    except ValueError:
+        limit = -1
+    if limit < 0:
+        _warn_once(
+            f"concurrency:{raw}",
+            "Ignoring an invalid OpenShift AI embedding concurrency limit; using the default.",
+            value=raw,
+            default=DEFAULT_EMBEDDING_MAX_CONCURRENCY,
+        )
+        return DEFAULT_EMBEDDING_MAX_CONCURRENCY
+    return limit or None
 
 
 # --------------------------------------------------------------------------
