@@ -17,6 +17,11 @@ from models.tasks import (
     UploadTask,
 )
 from session_manager import AnonymousUser
+from utils.filename_claims import (
+    INFLIGHT_CLAIM_WINNER_FAILED_ERROR,
+    claim_holder,
+    filename_claims,
+)
 from utils.gpu_detection import get_worker_count
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
@@ -606,6 +611,76 @@ class TaskService:
 
         return f"{hours}h {mins}m {secs}s"
 
+    def _find_upload_task(self, task_id: str) -> UploadTask | None:
+        """The task with this id, whichever user's store holds it.
+
+        A claim conflict is not confined to one task: the registry keys names by
+        ownership scope, not by task, so a file in one task can lose a name to a
+        file in another — two uploads in flight at once, or an upload racing a
+        connector sync.
+        """
+        for tasks in self.task_store.values():
+            found = tasks.get(task_id)
+            if found is not None:
+                return found
+        return None
+
+    async def _fail_files_stranded_by(self, refused_holders: set[str]) -> None:
+        """Fail the files that were skipped for a name this one never indexed.
+
+        The duplicate gate decides a losing file's outcome the moment it loses
+        the claim, before the winner has ingested anything. When the winner then
+        fails, nothing landed under that name, so the loser's "skipped, a file
+        with this name already exists" describes something that never happened —
+        and it is counted as a successful file, which is a document the user
+        never got. SKIPPED is also not a retry candidate (retry_failed_files
+        takes FAILED only), so nothing would ever recover it.
+
+        Failing it instead says what happened and puts it back within reach of a
+        retry, which re-runs the gate and resolves correctly either way: it
+        ingests if the name is genuinely free, and skips again as a duplicate if
+        something else holds it by then.
+
+        Each loser is corrected inside its own task, which may not be this one
+        and may already have finished. That stays consistent: processed_files is
+        untouched, one successful file becomes a failed one under that task's
+        lock, and a COMPLETED task carrying failures is the ordinary shape retry
+        operates on — it refuses only while a task is still RUNNING. The
+        completion event for such a task was emitted with the earlier counts,
+        which leaves a stale statistic behind rather than inconsistent state.
+        """
+        for holder in refused_holders:
+            loser_task_id, _, file_key = holder.partition(":")
+            if not file_key:
+                continue
+            owning_task = self._find_upload_task(loser_task_id)
+            if owning_task is None:
+                # Task already evicted from the store; nothing left to correct.
+                continue
+            stranded = owning_task.file_tasks.get(file_key)
+            if stranded is None or stranded.status != TaskStatus.SKIPPED:
+                continue
+            # Only the in-flight skip is ours to reverse; a file skipped against
+            # something already indexed is unaffected by this failure.
+            if (stranded.result or {}).get("reason") != "duplicate_filename":
+                continue
+
+            stranded.status = TaskStatus.FAILED
+            stranded.error = INFLIGHT_CLAIM_WINNER_FAILED_ERROR
+            stranded.result = None
+            stranded.updated_at = time.time()
+            async with self._get_task_lock(loser_task_id):
+                if owning_task.successful_files > 0:
+                    owning_task.successful_files -= 1
+                owning_task.failed_files += 1
+                owning_task.updated_at = time.time()
+            logger.info(
+                "Reversed an in-flight duplicate skip after the ingesting file failed",
+                task_id=loser_task_id,
+                file_path=stranded.file_path,
+                filename=stranded.filename,
+            )
+
     async def background_custom_processor(
         self, user_id: str, task_id: str, items: list, processor=None
     ) -> None:
@@ -754,6 +829,13 @@ class TaskService:
                         )
 
                     finally:
+                        # Hand back the filename this file held while in flight
+                        # (utils.filename_claims), so the next task — or a retry
+                        # of this one — can take it. Every file passes through
+                        # here, including the ones that never claimed anything.
+                        refused = filename_claims.release(claim_holder(task_id, item_key))
+                        if refused and file_task.status == TaskStatus.FAILED:
+                            await self._fail_files_stranded_by(refused)
                         file_task.updated_at = time.time()
                         # Only increment processed_files if the file reached a terminal state
                         # This prevents counter inconsistency on cancellation.
@@ -1139,6 +1221,19 @@ class TaskService:
                 "failure_phase": "cancelled",
                 "user_facing_message": "Ingestion was cancelled.",
                 "actionable_by": "USER_ACTIONABLE",
+            }
+
+        # Before the substring heuristics below, which would otherwise read this
+        # as a plain duplicate: the file was never ingested, and retrying is
+        # exactly the right move.
+        if error == INFLIGHT_CLAIM_WINNER_FAILED_ERROR:
+            return {
+                "component": "openrag",
+                "failure_phase": "unknown",
+                "user_facing_message": (
+                    f"{INFLIGHT_CLAIM_WINNER_FAILED_ERROR} Retry to ingest it."
+                ),
+                "actionable_by": "RETRYABLE",
             }
 
         # Before any substring heuristic: an OpenSearch transport failure carries a
@@ -1859,9 +1954,38 @@ class TaskService:
         metadata = self._infer_failure_metadata(file_task)
         return bool(metadata and metadata.get("actionable_by") == "RETRYABLE")
 
+    def _is_unsettled_claim_loser_temp(self, upload_task: UploadTask, temp_path: str) -> bool:
+        """True when a staged temp belongs to a file skipped for a name another
+        in-flight file still holds.
+
+        Such a skip is provisional: if the file holding the name fails, nothing
+        was indexed under it and _fail_files_stranded_by turns this file into a
+        retryable failure. That correction can land after this task has already
+        finished — the holder may belong to another task entirely — and a retry
+        then needs the staged source that cleanup would otherwise have deleted.
+
+        Retention is bounded the same way a retryable failure's is: whichever
+        way the holder ends, the temp is reclaimed when the task ages out of the
+        store (cleanup_old_tasks force-cleans what it evicts).
+        """
+        if not os.path.isabs(temp_path):
+            return False
+        file_task = self._file_task_for_temp_path(upload_task, temp_path)
+        if file_task is None or file_task.status != TaskStatus.SKIPPED:
+            return False
+        if (file_task.result or {}).get("reason") != "duplicate_filename":
+            return False
+        # Local uploads key file_tasks by the staged path, which is what the
+        # claim holder was built from.
+        return filename_claims.is_awaiting_outcome(
+            claim_holder(upload_task.task_id, file_task.file_path)
+        )
+
     def _should_retain_upload_temp(self, upload_task: UploadTask, temp_path: str) -> bool:
         """Return True when an upload temp should be kept after processing."""
         if self._is_retryable_local_upload_temp(upload_task, temp_path):
+            return True
+        if self._is_unsettled_claim_loser_temp(upload_task, temp_path):
             return True
         if (
             os.path.isabs(temp_path)

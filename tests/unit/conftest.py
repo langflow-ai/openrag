@@ -108,3 +108,23 @@ def pytest_collection_modifyitems(config, items):
                 "(renamed, deleted, or mistyped). Remove or fix these lines:\n  "
                 + "\n  ".join(stale)
             )
+
+
+@pytest.fixture(autouse=True)
+def _reset_filename_claims():
+    """Per-test, drop in-flight filename claims.
+
+    In production TaskService releases a file's claim when it reaches a
+    terminal state, but tests drive `processor.process_item` directly and never
+    pass through that release — a leaked claim would make a later test's ingest
+    of the same filename resolve as a duplicate.
+    """
+    try:
+        from utils.filename_claims import filename_claims
+    except ImportError:
+        yield
+        return
+
+    filename_claims.clear()
+    yield
+    filename_claims.clear()
