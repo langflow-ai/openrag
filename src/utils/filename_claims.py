@@ -22,9 +22,13 @@ Claims cover every alias a name can be indexed under (``get_filename_aliases``),
 so ``notes.txt`` and ``notes.md`` in one batch contest the same claim, matching
 what the duplicate check and the delete path already treat as one name.
 
-Scoped by ownership, mirroring ``DocumentIndexWriter._scoped_chunk_id`` and the
-DLS rules the duplicate check runs under: another user's private document with
-the same name is not a duplicate and is invisible to the check anyway.
+Two writes contend when they could land on the same indexed document, which is
+the boundary ``build_replace_filename_query`` already draws for the delete a
+replace performs: a write collides with anything ownerless, and with anything
+owned by the same user. So a shared write contends with every other write for
+that name, while two users' private writes do not — neither can see the other's
+document, and their chunks are written under different ownership scopes
+(``DocumentIndexWriter._scoped_chunk_id``).
 
 In-process only. That is the same single-worker assumption the RBAC and
 identity caches already make (see AGENTS.md); with several workers, two files
@@ -32,6 +36,7 @@ landing in different processes fall back to the pre-existing behaviour.
 """
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 from utils.file_utils import get_filename_aliases
 from utils.logging_config import get_logger
@@ -48,13 +53,31 @@ INFLIGHT_CLAIM_WINNER_FAILED_ERROR = (
 )
 
 
-def claim_scope(owner_user_id: str | None, shared: bool) -> str:
-    """The visibility scope a claim belongs to.
+@dataclass(frozen=True)
+class _Claim:
+    """A name held by one in-flight file, and the layout it will be written in."""
 
-    Shared (ownerless) writes all land in one scope; private writes are scoped
-    to their owner.
+    holder: str
+    owner_user_id: str | None
+    shared: bool
+
+
+def _contends(claim: _Claim, owner_user_id: str | None, shared: bool) -> bool:
+    """Whether a write by this owner, in this layout, could land on `claim`'s
+    document.
+
+    An ownerless document is visible to the whole instance and is what every
+    user's duplicate check sees, so a shared write on either side makes the two
+    contend. Otherwise they contend only when the same user owns both: another
+    user's private document is invisible to the check and is written under a
+    different ownership scope, so it cannot be collided with.
+
+    A write with no owner at all is treated as shared, which is how it is
+    indexed.
     """
-    return "shared" if shared or not owner_user_id else f"owner:{owner_user_id}"
+    if shared or not owner_user_id or claim.shared or not claim.owner_user_id:
+        return True
+    return claim.owner_user_id == owner_user_id
 
 
 class FilenameClaimRegistry:
@@ -66,39 +89,46 @@ class FilenameClaimRegistry:
     """
 
     def __init__(self) -> None:
-        self._holders: dict[tuple[str, str], str] = {}
-        self._claimed_by: dict[str, set[tuple[str, str]]] = {}
+        # alias -> holder -> claim. Several holders can sit under one alias when
+        # they do not contend (two users' private writes of the same name).
+        self._claims: dict[str, dict[str, _Claim]] = {}
+        self._claimed_by: dict[str, set[str]] = {}
         # Who was turned away while a holder had the name. The holder's outcome
         # decides what their skip meant, so release() hands them back.
         self._refused: dict[str, set[str]] = {}
 
-    def claim(self, holder: str, scope: str, filename: str) -> bool:
+    def claim(self, holder: str, filename: str, *, owner_user_id: str | None, shared: bool) -> bool:
         """Take `filename` and its aliases for `holder`, or report the name as
-        already in flight.
+        already in flight for a write this one would collide with.
 
         Re-claiming what this holder already holds succeeds, so a retry of the
         same file is never blocked by its own claim.
         """
-        keys = [(scope, alias) for alias in get_filename_aliases(filename)]
-        if not keys:
+        aliases = get_filename_aliases(filename)
+        if not aliases:
             return True
 
-        for key in keys:
-            current = self._holders.get(key)
-            if current is not None and current != holder:
+        for alias in aliases:
+            for existing in self._claims.get(alias, {}).values():
+                if existing.holder == holder:
+                    continue
+                if not _contends(existing, owner_user_id, shared):
+                    continue
                 logger.info(
                     "Filename already claimed by an in-flight ingestion",
                     filename=filename,
-                    scope=scope,
+                    owner_user_id=owner_user_id,
+                    shared=shared,
                     holder=holder,
-                    held_by=current,
+                    held_by=existing.holder,
                 )
-                self._refused.setdefault(current, set()).add(holder)
+                self._refused.setdefault(existing.holder, set()).add(holder)
                 return False
 
-        for key in keys:
-            self._holders[key] = holder
-        self._claimed_by.setdefault(holder, set()).update(keys)
+        claim = _Claim(holder=holder, owner_user_id=owner_user_id, shared=shared)
+        for alias in aliases:
+            self._claims.setdefault(alias, {})[holder] = claim
+        self._claimed_by.setdefault(holder, set()).update(aliases)
         return True
 
     def release(self, holder: str) -> set[str]:
@@ -111,9 +141,13 @@ class FilenameClaimRegistry:
         assumption that this one would index the name: if it did not, their skip
         described something that never happened, and the caller has to say so.
         """
-        for key in self._claimed_by.pop(holder, ()):
-            if self._holders.get(key) == holder:
-                del self._holders[key]
+        for alias in self._claimed_by.pop(holder, ()):
+            holders = self._claims.get(alias)
+            if holders is None:
+                continue
+            holders.pop(holder, None)
+            if not holders:
+                del self._claims[alias]
         return self._refused.pop(holder, set())
 
     def is_awaiting_outcome(self, holder: str) -> bool:
@@ -126,16 +160,16 @@ class FilenameClaimRegistry:
         """
         return any(holder in refused for refused in self._refused.values())
 
-    def holds(self, scope: str, filename: str) -> str | None:
-        """The holder of this name, for tests and diagnostics."""
+    def holder_for(self, filename: str, *, owner_user_id: str | None, shared: bool) -> str | None:
+        """The in-flight holder a write like this would contend with, if any."""
         for alias in get_filename_aliases(filename):
-            holder = self._holders.get((scope, alias))
-            if holder is not None:
-                return holder
+            for existing in self._claims.get(alias, {}).values():
+                if _contends(existing, owner_user_id, shared):
+                    return existing.holder
         return None
 
     def clear(self) -> None:
-        self._holders.clear()
+        self._claims.clear()
         self._claimed_by.clear()
         self._refused.clear()
 

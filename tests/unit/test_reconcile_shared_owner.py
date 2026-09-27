@@ -14,7 +14,7 @@ import pytest
 import config.settings as settings_module
 from models.processors import ConnectorFileProcessor
 from models.tasks import FileTask, TaskStatus, UploadTask
-from utils.filename_claims import claim_scope, filename_claims
+from utils.filename_claims import filename_claims
 
 
 def _make_processor(*, shared: bool, user_id: str = "user-1"):
@@ -198,7 +198,7 @@ async def test_losing_an_in_flight_claim_does_not_reconcile():
     file_task = FileTask(file_path="cos::b/report.pdf", filename="report.pdf")
 
     # Another file in this batch already holds the name.
-    filename_claims.claim("task-1:winner", claim_scope("user-1", False), "report.pdf")
+    filename_claims.claim("task-1:winner", "report.pdf", owner_user_id="user-1", shared=False)
 
     await processor.process_item(upload_task, "cos::b/report.pdf", file_task)
 

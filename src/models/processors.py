@@ -19,7 +19,7 @@ from utils.file_utils import (
     get_filename_aliases,
     langflow_safe_filename_and_mimetype,
 )
-from utils.filename_claims import claim_holder, claim_scope, filename_claims
+from utils.filename_claims import claim_holder, filename_claims
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
 from utils.opensearch_queries import build_owned_filename_query, build_replace_filename_query
@@ -295,7 +295,7 @@ class TaskProcessor:
         policy alone — every processor passes one.
         """
         if claim_holder is not None and not filename_claims.claim(
-            claim_holder, claim_scope(owner_user_id, shared), filename
+            claim_holder, filename, owner_user_id=owner_user_id, shared=shared
         ):
             # Another file in flight is already heading for this name; whichever
             # of them lands first is the one this name belongs to.
