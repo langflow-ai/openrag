@@ -11,6 +11,7 @@ so test fixtures cannot accidentally pollute the dev `data/openrag.db` file.
 # guarantees that even if a test imports something that triggers
 # `init_engine()` at import time, the engine binds to an in-memory DB.
 import os as _os
+
 _os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
 # Defensive default: pin OPENRAG_RBAC_ENFORCE=true for unit tests so a
@@ -39,8 +40,71 @@ def _reset_db_engine_module_state(monkeypatch):
     """
     try:
         import db.engine as _engine_mod
+
         monkeypatch.setattr(_engine_mod, "_engine", None, raising=False)
         monkeypatch.setattr(_engine_mod, "SessionLocal", None, raising=False)
     except ImportError:
         pass
     yield
+
+
+# ---------------------------------------------------------------------------
+# Known failures (see known_failures.txt)
+#
+# CI runs the full unit suite. Tests that already fail on main are listed in
+# known_failures.txt and marked strict xfail here, so a NEW failure turns CI
+# red while the existing ones don't — and a listed test that starts passing
+# also turns CI red, forcing its line to be deleted. The list can only shrink.
+# ---------------------------------------------------------------------------
+
+_KNOWN_FAILURES_FILE = _os.path.join(_os.path.dirname(__file__), "known_failures.txt")
+
+
+def _read_known_failures() -> tuple[set[str], list[str]]:
+    node_ids: set[str] = set()
+    ignored: list[str] = []
+    try:
+        with open(_KNOWN_FAILURES_FILE) as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("ignore:"):
+                    ignored.append(line[len("ignore:") :].strip())
+                else:
+                    node_ids.add(line)
+    except FileNotFoundError:
+        pass
+    return node_ids, ignored
+
+
+_KNOWN_FAILING_NODE_IDS, _KNOWN_UNIMPORTABLE = _read_known_failures()
+
+# Modules that fail at import cannot be xfailed; skip collecting them.
+collect_ignore = list(_KNOWN_UNIMPORTABLE)
+
+
+def pytest_collection_modifyitems(config, items):
+    collected = set()
+    for item in items:
+        node_id = item.nodeid
+        if node_id in _KNOWN_FAILING_NODE_IDS:
+            collected.add(node_id)
+            item.add_marker(
+                pytest.mark.xfail(
+                    strict=True,
+                    reason="Known failure on main (tests/unit/known_failures.txt). "
+                    "If this now passes, delete its line from that file.",
+                )
+            )
+
+    # In CI the whole suite is collected, so every listed id must exist. A stale
+    # or mistyped entry would otherwise silently stop protecting anything.
+    if _os.environ.get("OPENRAG_ENFORCE_KNOWN_FAILURES") == "1":
+        stale = sorted(_KNOWN_FAILING_NODE_IDS - collected)
+        if stale:
+            raise pytest.UsageError(
+                "tests/unit/known_failures.txt lists tests that were not collected "
+                "(renamed, deleted, or mistyped). Remove or fix these lines:\n  "
+                + "\n  ".join(stale)
+            )

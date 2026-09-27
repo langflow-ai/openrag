@@ -137,6 +137,177 @@ async def test_get_ibm_models_returns_project_configuration_error():
 
 
 @pytest.mark.asyncio
+async def test_watsonx_space_listing_merges_pending_fields_with_saved_secret(monkeypatch):
+    from config.config_manager import (
+        AnthropicConfig,
+        GenericProviderConfig,
+        OllamaConfig,
+        OpenAIConfig,
+        ProvidersConfig,
+        WatsonXConfig,
+    )
+    from enhancements.providers.watsonx import onprem
+
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        custom={
+            onprem.PROVIDER_KEY: GenericProviderConfig(
+                credentials={
+                    "api_base": "https://cpd.example.com",
+                    "username": "saved-user",
+                    "api_key": "saved-secret",
+                    "ssl_verify": "true",
+                },
+                auth_method="username_api_key",
+                configured=True,
+            )
+        },
+    )
+    monkeypatch.setattr(
+        models_api,
+        "get_openrag_config",
+        lambda: SimpleNamespace(providers=providers),
+    )
+    seen = {}
+
+    async def _list_spaces(credentials):
+        seen.update(credentials)
+        return [{"id": "space-1", "name": "Production"}]
+
+    monkeypatch.setattr(onprem, "list_spaces", _list_spaces)
+
+    response = await models_api.get_watsonx_onprem_spaces(
+        body=models_api.WatsonxOnPremSpacesBody(
+            credentials={"username": "pending-user", "api_key": ""},
+            auth_method="username_api_key",
+        ),
+        user=SimpleNamespace(),
+    )
+
+    assert response.status_code == 200
+    assert json.loads(response.body) == {"spaces": [{"id": "space-1", "name": "Production"}]}
+    assert seen == {
+        "api_base": "https://cpd.example.com",
+        "username": "pending-user",
+        "api_key": "saved-secret",
+        "ssl_verify": "true",
+    }
+
+
+@pytest.mark.asyncio
+async def test_watsonx_space_listing_never_reuses_secrets_for_a_new_target(monkeypatch):
+    from config.config_manager import (
+        AnthropicConfig,
+        GenericProviderConfig,
+        OllamaConfig,
+        OpenAIConfig,
+        ProvidersConfig,
+        WatsonXConfig,
+    )
+    from enhancements.providers.watsonx import onprem
+
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        custom={
+            onprem.PROVIDER_KEY: GenericProviderConfig(
+                credentials={
+                    "api_base": "https://saved.example.com",
+                    "username": "saved-user",
+                    "api_key": "saved-secret",
+                    "ssl_verify": "true",
+                },
+                auth_method="username_api_key",
+                configured=True,
+            )
+        },
+    )
+    monkeypatch.setattr(
+        models_api,
+        "get_openrag_config",
+        lambda: SimpleNamespace(providers=providers),
+    )
+    seen = {}
+
+    async def _list_spaces(credentials):
+        seen.update(credentials)
+        return []
+
+    monkeypatch.setattr(onprem, "list_spaces", _list_spaces)
+
+    response = await models_api.get_watsonx_onprem_spaces(
+        body=models_api.WatsonxOnPremSpacesBody(
+            credentials={"api_base": "https://new.example.com"},
+            auth_method="username_api_key",
+        ),
+        user=SimpleNamespace(),
+    )
+
+    assert response.status_code == 200
+    assert seen == {"api_base": "https://new.example.com"}
+
+
+@pytest.mark.asyncio
+async def test_watsonx_space_listing_hides_upstream_error_details(monkeypatch):
+    from config.config_manager import (
+        AnthropicConfig,
+        GenericProviderConfig,
+        OllamaConfig,
+        OpenAIConfig,
+        ProvidersConfig,
+        WatsonXConfig,
+    )
+    from enhancements.providers.watsonx import onprem
+
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        custom={
+            onprem.PROVIDER_KEY: GenericProviderConfig(
+                credentials={
+                    "api_base": "https://cpd.example.com",
+                    "username": "saved-user",
+                    "api_key": "saved-secret",
+                },
+                auth_method="username_api_key",
+                configured=True,
+            )
+        },
+    )
+    monkeypatch.setattr(
+        models_api,
+        "get_openrag_config",
+        lambda: SimpleNamespace(providers=providers),
+    )
+
+    async def _list_spaces(credentials):
+        raise onprem.SpaceDiscoveryError(
+            401,
+            "Traceback: Authorization Bearer exposed-secret",
+        )
+
+    monkeypatch.setattr(onprem, "list_spaces", _list_spaces)
+
+    response = await models_api.get_watsonx_onprem_spaces(
+        body=models_api.WatsonxOnPremSpacesBody(),
+        user=SimpleNamespace(),
+    )
+
+    assert response.status_code == 401
+    assert json.loads(response.body) == {
+        "error": "The cluster rejected the configured credentials."
+    }
+    assert b"exposed-secret" not in response.body
+
+
+@pytest.mark.asyncio
 async def test_get_model_catalog_returns_only_supported_providers():
     """The catalogue publishes exactly what this run mode's config exposes.
 

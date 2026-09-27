@@ -43,10 +43,12 @@ test.describe("Diverse Format Ingestion. @33219208 , @34581152 , @34581153 , @34
       }
     }
 
-    // Step 2: After all uploads complete, verify each file's status becomes Active
+    // Step 2: After all uploads complete, verify each file was processed without
+    // error. Active = newly indexed; Duplicate = correctly identified as already
+    // present. Both are successful outcomes on this path.
     for (const uploadedFileName of uploadedFiles) {
       try {
-        await knowledge.verifyDocumentActive(uploadedFileName);
+        await knowledge.verifyDocumentProcessed(uploadedFileName);
       } catch (error) {
         throw new Error(`Failed to verify ${uploadedFileName}: ${error}`);
       }

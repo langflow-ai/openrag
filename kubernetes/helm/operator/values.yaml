@@ -54,9 +54,11 @@ resources:
   limits:
     cpu: 500m
     memory: 512Mi
+    ephemeral-storage: 1Gi
   requests:
     cpu: 100m
     memory: 128Mi
+    ephemeral-storage: 256Mi
 
 # Leader election configuration
 leaderElection:
@@ -77,4 +79,3 @@ affinity: {}
 
 # Termination grace period in seconds
 terminationGracePeriodSeconds: 10
-

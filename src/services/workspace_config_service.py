@@ -29,7 +29,11 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from config.config_manager import ConfigManager, OpenRAGConfig
+from config.config_manager import (
+    ConfigManager,
+    OpenRAGConfig,
+    apply_index_name_env_override,
+)
 from config.storage_mode import (
     db_writes_enabled,
     file_writes_enabled,
@@ -102,7 +106,7 @@ class WorkspaceConfigService:
         except Exception as exc:  # noqa: BLE001
             if mode == "db":
                 logger.error("DB read failed in db mode — returning defaults", error=str(exc))
-                return OpenRAGConfig.from_dict({})
+                return self._config_from_db_dict({})
             logger.warning(
                 "DB read failed, falling back to yaml (hybrid)",
                 error=str(exc),
@@ -114,7 +118,7 @@ class WorkspaceConfigService:
                 # Pre-migration boot in pure-db mode — return defaults.
                 # The boot-time migration (config_yaml_to_db_v1) will
                 # populate the DB on the next request.
-                return OpenRAGConfig.from_dict({})
+                return self._config_from_db_dict({})
             return self._cm.load_config()  # hybrid fallback
 
         merged: dict[str, Any] = {
@@ -124,9 +128,23 @@ class WorkspaceConfigService:
             "onboarding": rows.get("onboarding", {}),
             "edited": (rows.get("meta") or {}).get("edited", False),
         }
-        config = OpenRAGConfig.from_dict(merged)
+        config = self._config_from_db_dict(merged)
         self._cm._config = config
         return config
+
+    @staticmethod
+    def _config_from_db_dict(data: dict[str, Any]) -> OpenRAGConfig:
+        """Build an OpenRAGConfig from DB-derived sections.
+
+        The DB-backed loader never runs ``ConfigManager._load_env_overrides``,
+        so the ``OPENSEARCH_INDEX_NAME`` infra override — which the yaml loader
+        applies unconditionally — has to be re-applied here or the index name
+        silently reverts to the dataclass default in db/hybrid mode (issue
+        81583).
+        """
+        data.setdefault("knowledge", {})
+        apply_index_name_env_override(data["knowledge"])
+        return OpenRAGConfig.from_dict(data)
 
     async def get_config(self) -> OpenRAGConfig:
         if self._cm._config is not None:
@@ -409,16 +427,24 @@ class WorkspaceConfigService:
                     if credentials.get(key):
                         credentials[key] = encrypt_secret(credentials[key])
 
-        sections = {
-            "providers": providers,
-            "knowledge": config_dict.get("knowledge", {}),
-            "agent": config_dict.get("agent", {}),
-            "onboarding": config_dict.get("onboarding", {}),
-            "meta": {"edited": bool(config_dict.get("edited", False))},
-        }
-
         async with self._session_factory() as session:
             repo = WorkspaceConfigRepo(session)
-            for section, value in sections.items():
+
+            # Upsert all non-meta sections wholesale.
+            for section, value in (
+                ("providers", providers),
+                ("knowledge", config_dict.get("knowledge", {})),
+                ("agent", config_dict.get("agent", {})),
+                ("onboarding", config_dict.get("onboarding", {})),
+            ):
                 await repo.upsert(section, value, actor_user_id=actor_user_id)
+
+            # For "meta", only touch the "edited" flag — preserve every other
+            # key atomically via a locked merge.
+            await repo.merge_section_keys(
+                "meta",
+                updates={"edited": bool(config_dict.get("edited", False))},
+                actor_user_id=actor_user_id,
+            )
+
             await session.commit()

@@ -754,6 +754,19 @@ export class Knowledge {
         await searchInp.clear();
         return;
       }
+      // Terminal statuses will never transition to Active — fail immediately
+      // instead of burning the full 5-minute deadline before throwing.
+      const normalised = statusText.trim().toLowerCase();
+      if (
+        normalised === "failed" ||
+        normalised === "cancelled" ||
+        normalised === "duplicate"
+      ) {
+        await searchInp.clear();
+        throw new Error(
+          `Document "${docName}" reached terminal status "${statusText.trim()}" and will never become Active`,
+        );
+      }
       logger.info(
         `  ⏳ Document "${docName}" status: "${statusText.trim()}", waiting...`,
       );
@@ -762,6 +775,81 @@ export class Knowledge {
     await searchInp.clear();
     throw new Error(
       `Document "${docName}" did not reach Active status within the timeout`,
+    );
+  }
+
+  /**
+   * Verify that a document has been fully processed — either indexed as Active
+   * or recognised as a content duplicate (Duplicate). Both outcomes mean the
+   * system handled the file without error; use this instead of
+   * verifyDocumentActive when duplicate detection is expected to fire.
+   */
+  async verifyDocumentProcessed(docName: string) {
+    await this.open();
+    const searchInp = this.searchInput();
+    const searchReady = await searchInp
+      .waitFor({ state: "visible", timeout: 15000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!searchReady) {
+      throw new Error(
+        `Knowledge grid search input not visible — page may not have loaded correctly`,
+      );
+    }
+
+    const deadline = Date.now() + 300000;
+    while (Date.now() < deadline) {
+      await searchInp.clear();
+      await searchInp.fill(docName);
+      await this.page.waitForTimeout(800);
+      let row = this.getRowById(docName).first();
+      if (!(await row.isVisible().catch(() => false))) {
+        const partial = this.getSourceCellByPartialText(docName);
+        if (await partial.isVisible().catch(() => false)) {
+          row = partial.locator('xpath=ancestor::*[@role="row"][1]');
+        }
+      }
+      if (!(await row.isVisible().catch(() => false))) {
+        logger.info(`  ⏳ Document "${docName}" not yet visible, retrying...`);
+        await searchInp.clear();
+        continue;
+      }
+      await this.grid().evaluate((el) => {
+        el.scrollLeft = el.scrollWidth;
+      });
+      await this.page.waitForTimeout(300);
+      const status = this.getStatusCell(row);
+      let statusText = (await status.innerText().catch(() => "")) || "";
+      if (!statusText) {
+        statusText = (await status.textContent().catch(() => "")) || "";
+      }
+      if (statusText.includes("Animated Processing Icon")) {
+        statusText = "Processing";
+      }
+      const normalised = statusText.trim().toLowerCase();
+      // Both Active and Duplicate are successful terminal outcomes.
+      if (normalised.includes("active") || normalised === "duplicate") {
+        await searchInp.clear();
+        logger.info(
+          `  ✅ Document "${docName}" processed with status "${statusText.trim()}"`,
+        );
+        return;
+      }
+      // Hard-failure terminals — throw immediately.
+      if (normalised === "failed" || normalised === "cancelled") {
+        await searchInp.clear();
+        throw new Error(
+          `Document "${docName}" reached terminal status "${statusText.trim()}"`,
+        );
+      }
+      logger.info(
+        `  ⏳ Document "${docName}" status: "${statusText.trim()}", waiting...`,
+      );
+      await this.page.waitForTimeout(5000);
+    }
+    await searchInp.clear();
+    throw new Error(
+      `Document "${docName}" did not reach a processed status within the timeout`,
     );
   }
 

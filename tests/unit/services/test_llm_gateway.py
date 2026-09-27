@@ -197,6 +197,37 @@ def test_indexed_space_routes_through_its_configured_generic_provider():
     assert credentials == {"api_key": "gemini-secret"}
 
 
+def test_onprem_resolved_credentials_remain_json_serializable():
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        custom={
+            "watsonx_onprem": GenericProviderConfig(
+                credentials={
+                    "api_base": "https://cpd.example.com",
+                    "username": "cpduser",
+                    "api_key": "secret",
+                    "ssl_verify": "false",
+                },
+                configured=True,
+            )
+        },
+    )
+    cfg = SimpleNamespace(providers=providers)
+
+    _, provider, credentials = resolve_call(
+        "watsonx_onprem:test-model",
+        kind="chat",
+        config=cfg,
+    )
+
+    assert provider == "watsonx_onprem"
+    assert "client" not in credentials
+    json.dumps(credentials)
+
+
 @pytest.mark.asyncio
 async def test_chat_completions_calls_litellm_with_config_key(monkeypatch):
     captured = {}
@@ -367,6 +398,60 @@ async def test_embeddings_calls_litellm(monkeypatch):
     assert result["data"][0]["embedding"] == [0.1]
     assert captured["api_key"] == "sk-openai"
     assert captured["input"] == ["hello"]
+
+
+@pytest.mark.asyncio
+async def test_onprem_embeddings_batch_large_document_inputs(monkeypatch):
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        custom={
+            "watsonx_onprem": GenericProviderConfig(
+                credentials={
+                    "api_base": "https://cpd.example.com",
+                    "username": "cpduser",
+                    "api_key": "secret",
+                },
+                configured=True,
+            )
+        },
+    )
+    calls: list[list[str]] = []
+
+    async def fake_aembedding(**kwargs):
+        batch = kwargs["input"]
+        calls.append(batch)
+        return {
+            "object": "list",
+            "data": [
+                {"object": "embedding", "embedding": [float(index)], "index": index}
+                for index in range(len(batch))
+            ],
+            "usage": {
+                "prompt_tokens": len(batch),
+                "total_tokens": len(batch),
+            },
+        }
+
+    monkeypatch.setattr("litellm.aembedding", fake_aembedding)
+    monkeypatch.setattr(
+        "services.llm_gateway._provider_runtime_kwargs",
+        lambda provider, config: {},
+    )
+
+    result = await embeddings(
+        {
+            "model": "watsonx_onprem:ibm/slate-30m-english-rtrvr",
+            "input": [f"chunk-{index}" for index in range(70)],
+        },
+        config=SimpleNamespace(providers=providers),
+    )
+
+    assert [len(batch) for batch in calls] == [32, 32, 6]
+    assert [item["index"] for item in result["data"]] == list(range(70))
+    assert result["usage"] == {"prompt_tokens": 70, "total_tokens": 70}
 
 
 class _RecordingLogger:

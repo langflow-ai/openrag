@@ -24,8 +24,12 @@ afterEach(() => {
   // BrandProvider persists the active brand, and auth-context writes several
   // `auth_*` keys during login. jsdom keeps localStorage for the whole file,
   // so without this a brand set in one test leaks into the next.
-  localStorage.clear();
-  sessionStorage.clear();
+  if (typeof localStorage !== "undefined") {
+    localStorage.clear();
+  }
+  if (typeof sessionStorage !== "undefined") {
+    sessionStorage.clear();
+  }
   // BrandProvider stamps `data-theme="ibm"` on <html> and only removes it on
   // re-render, so a cloud-brand test would otherwise leave the attribute set.
   document.documentElement.removeAttribute("data-theme");

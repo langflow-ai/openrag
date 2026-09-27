@@ -35,7 +35,7 @@ services:
     restart: unless-stopped
 
   dashboards:
-    image: docker.io/opensearchproject/opensearch-dashboards:3.6.0
+    image: docker.io/opensearchproject/opensearch-dashboards:3.8.0
     container_name: ${COMPOSE_PROJECT_NAME:-openrag}-dashboards
     depends_on:
       - opensearch

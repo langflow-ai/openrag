@@ -1,6 +1,8 @@
 import { useFormContext } from "react-hook-form";
 import { LabelWrapper } from "@/components/label-wrapper";
 import type { CatalogCredentialField } from "@/components/models/catalog-models";
+import { WatsonxSpaceSelect } from "@/components/models/watsonx-space-select";
+import { WatsonxTlsSettings } from "@/components/models/watsonx-tls-settings";
 import {
   Accordion,
   AccordionContent,
@@ -66,12 +68,46 @@ export function ProviderSettingsForm({
 }) {
   const {
     register,
+    setValue,
+    watch,
     formState: { errors },
   } = useFormContext<ProviderSettingsFormData>();
 
   const saved = new Set(savedSecretFields);
+  const credentials = watch("credentials");
 
   const renderField = (field: CatalogCredentialField) => {
+    if (provider === "watsonx_onprem" && field.key === "space_id") {
+      return (
+        <WatsonxSpaceSelect
+          key={field.key}
+          idPrefix="provider-watsonx-onprem"
+          credentials={credentials}
+          authMethod={onPremAuthMethod}
+          hasSavedApiKey={saved.has("api_key")}
+          hasSavedZenApiKey={saved.has("zen_api_key")}
+          value={credentials.space_id}
+          onValueChange={(value) =>
+            setValue("credentials.space_id", value, { shouldDirty: true })
+          }
+          helperText={field.tooltip ?? undefined}
+        />
+      );
+    }
+
+    if (provider === "watsonx_onprem" && field.key === "ssl_verify") {
+      return (
+        <WatsonxTlsSettings
+          key={field.key}
+          idPrefix="provider-watsonx-onprem"
+          value={watch("credentials.ssl_verify")}
+          onValueChange={(value) =>
+            setValue("credentials.ssl_verify", value, { shouldDirty: true })
+          }
+        />
+      );
+    }
+
     const error = errors.credentials?.[field.key]?.message;
     const isSecret =
       field.field_type === "password" || field.field_type === "textarea";
@@ -144,7 +180,7 @@ export function ProviderSettingsForm({
     (field) => field.key === "api_base",
   );
   const onPremAdvancedFields = fields.filter((field) =>
-    ["space_id", "project_id"].includes(field.key),
+    ["space_id", "project_id", "ssl_verify"].includes(field.key),
   );
 
   return (

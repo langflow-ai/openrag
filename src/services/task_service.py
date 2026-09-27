@@ -8,7 +8,14 @@ import uuid
 from collections.abc import Coroutine
 from typing import Any, TypeVar
 
-from models.tasks import DoclingPhaseStatus, FileTask, IngestionPhase, TaskStatus, UploadTask
+from models.tasks import (
+    DoclingPhaseStatus,
+    FileTask,
+    IngestionPhase,
+    TaskDeleteResult,
+    TaskStatus,
+    UploadTask,
+)
 from session_manager import AnonymousUser
 from utils.gpu_detection import get_worker_count
 from utils.logging_config import get_logger
@@ -1458,6 +1465,8 @@ class TaskService:
         """
         tasks_by_id = {}
 
+        is_shared = False
+
         def add_tasks_from_store(store_user_id):
             if store_user_id not in self.task_store:
                 return
@@ -1500,9 +1509,11 @@ class TaskService:
                     "updated_at": upload_task.updated_at,
                     "duration_seconds": upload_task.duration_seconds,
                     "files": file_statuses,
+                    "is_shared": is_shared,
                 }
 
         add_tasks_from_store(user_id)
+        is_shared = True
         add_tasks_from_store(AnonymousUser().user_id)
 
         tasks = list(tasks_by_id.values())
@@ -1517,6 +1528,8 @@ class TaskService:
         if a task_id overlaps.
         """
         tasks_by_id = {}
+
+        is_shared = False
 
         def add_tasks_from_store(store_user_id):
             if store_user_id not in self.task_store:
@@ -1564,10 +1577,12 @@ class TaskService:
                     "updated_at": upload_task.updated_at,
                     "duration_seconds": upload_task.duration_seconds,
                     "files": file_statuses,
+                    "is_shared": is_shared,
                 }
 
         # First, add user-owned tasks; then shared anonymous;
         add_tasks_from_store(user_id)
+        is_shared = True
         add_tasks_from_store(AnonymousUser().user_id)
 
         tasks = list(tasks_by_id.values())
@@ -1761,6 +1776,62 @@ class TaskService:
                 )
 
         return True
+
+    def delete_task(self, user_id: str, task_id: str) -> TaskDeleteResult:
+        """Remove a terminal (completed/failed/cancelled) task from memory.
+
+        Deletes tasks owned by the calling user or shared anonymous tasks that
+        are visible to the user (same set exposed by get_all_tasks).
+
+        Returns:
+            TaskDeleteResult.DELETED      – task found and removed.
+            TaskDeleteResult.NOT_FOUND    – task ID does not exist for this user.
+            TaskDeleteResult.IN_PROGRESS  – task exists but is not yet terminal.
+        """
+        resolved = self._resolve_upload_task_store(user_id, task_id)
+        if resolved is None:
+            return TaskDeleteResult.NOT_FOUND
+        store_user_id, upload_task = resolved
+        if upload_task.status not in [
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+        ]:
+            return TaskDeleteResult.IN_PROGRESS
+        self._cleanup_upload_temp_files(upload_task, force=True)
+        del self.task_store[store_user_id][task_id]
+        self._task_locks.pop(task_id, None)
+        if not self.task_store[store_user_id]:
+            del self.task_store[store_user_id]
+        return TaskDeleteResult.DELETED
+
+    def delete_all_terminal_tasks(self, user_id: str) -> list[str]:
+        """Remove all completed/failed/cancelled tasks owned by a user.
+
+        Only touches the calling user's own store. Shared tasks stored under
+        the anonymous key are intentionally excluded: they are visible to all
+        authenticated users, so a bulk clear by one user must not remove them
+        for everyone else. Those tasks are aged out by cleanup_old_tasks.
+
+        Returns the list of deleted task IDs.
+        """
+        if user_id not in self.task_store:
+            return []
+
+        to_delete = [
+            tid
+            for tid, t in self.task_store[user_id].items()
+            if t.status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]
+        ]
+        for tid in to_delete:
+            task = self.task_store[user_id][tid]
+            self._cleanup_upload_temp_files(task, force=True)
+            del self.task_store[user_id][tid]
+            self._task_locks.pop(tid, None)
+        if not self.task_store.get(user_id):
+            self.task_store.pop(user_id, None)
+
+        return to_delete
 
     def _file_task_for_temp_path(self, upload_task: UploadTask, temp_path: str) -> FileTask | None:
         """Resolve the FileTask for a staged upload temp path."""

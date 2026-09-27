@@ -6,14 +6,18 @@ import { Button } from "@/components/ui/button";
 
 interface TaskPanelHeaderProps {
   activeCount?: number;
+  terminalCount?: number;
   isFetching?: boolean;
   onClose: () => void;
+  onClearAll?: () => void;
 }
 
 export function TaskPanelHeader({
   activeCount = 0,
+  terminalCount = 0,
   isFetching = false,
   onClose,
+  onClearAll,
 }: TaskPanelHeaderProps) {
   return (
     <div className="p-4 border-t border-muted" data-testid="tasks-panel-header">
@@ -32,15 +36,28 @@ export function TaskPanelHeader({
             </Badge>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 w-8 p-0"
-          onClick={onClose}
-          aria-label="Close task panel"
-        >
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {onClearAll && terminalCount > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+              onClick={onClearAll}
+              aria-label="Clear all past tasks"
+            >
+              Clear all
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={onClose}
+            aria-label="Close task panel"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );

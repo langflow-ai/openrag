@@ -45,7 +45,11 @@ import { AnthropicOnboarding } from "./anthropic-onboarding";
 import { GenericOnboarding } from "./generic-onboarding";
 import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
-import { canCompleteOnboarding } from "./onboarding-completion";
+import {
+  canCompleteOnboarding,
+  fetchEditedForRollbackCheck,
+  shouldRollbackFailedOnboarding,
+} from "./onboarding-completion";
 import { OpenAIOnboarding } from "./openai-onboarding";
 import { TabTrigger } from "./tab-trigger";
 
@@ -336,7 +340,7 @@ const OnboardingCard = ({
         setCurrentStep(0);
       }
     },
-    onError: (error) => {
+    onError: async (error) => {
       const message = formatProviderErrorMessage(error.message);
       trackProcessFailure({
         processType: "Onboarding",
@@ -345,8 +349,17 @@ const OnboardingCard = ({
         category: "Setup",
       });
       setError(message);
-      setCurrentStep(totalSteps);
-      rollbackMutation.mutate({ embedding_only: isEmbedding });
+
+      const freshEdited = await fetchEditedForRollbackCheck(
+        queryClient,
+        currentSettings?.edited,
+      );
+      if (shouldRollbackFailedOnboarding(freshEdited)) {
+        setCurrentStep(totalSteps);
+        rollbackMutation.mutate({ embedding_only: isEmbedding });
+      } else {
+        setCurrentStep(null);
+      }
     },
   });
 
@@ -547,6 +560,13 @@ const OnboardingCard = ({
     const generic = settings.provider_credentials?.[currentProvider];
     if (generic && Object.keys(generic).length > 0) {
       onboardingData.provider_credentials = { [currentProvider]: generic };
+    }
+    const credentialRemovals =
+      settings.provider_credential_removals?.[currentProvider];
+    if (credentialRemovals && credentialRemovals.length > 0) {
+      onboardingData.provider_credential_removals = {
+        [currentProvider]: credentialRemovals,
+      };
     }
     const authMethod = settings.provider_auth_methods?.[currentProvider];
     if (authMethod) {

@@ -149,6 +149,36 @@ class TestInferFailureMetadata:
         assert "docling-parse" not in msg.lower()
         assert "cbfc231c" not in msg
 
+    def test_password_protected_pdf_non_langflow_path_maps_to_clean_message(self, task_service):
+        """The non-Langflow path stores DoclingService's error verbatim.
+
+        Unlike the Langflow path above there is no "did not complete" /
+        "result unavailable" wrapper — the string is exactly what
+        DoclingService._poll_result raises once the result body's errors are
+        surfaced. It must map to the same user-facing password message.
+        """
+        ft = _make_file_task(
+            phase=IngestionPhase.DOCLING,
+            docling_status=DoclingPhaseStatus.PENDING,
+            error=(
+                "Docling processing failed: docling-parse could not load document "
+                "cbfc231c73e85df69b34cfa56b4bb0696dc0f10d0536bcca821f92c324041bac: "
+                "Failed to load document (PDFium: Incorrect password error)."
+            ),
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert meta["component"] == "docling"
+        assert meta["failure_phase"] == "parsing"
+        msg = meta["user_facing_message"]
+        assert "password-protected" in msg.lower()
+        assert "remove the password" in msg.lower()
+        # no internals leaked
+        assert "pdfium" not in msg.lower()
+        assert "docling-parse" not in msg.lower()
+        assert "cbfc231c" not in msg
+
     def test_langflow_empty_content_not_retryable(self, task_service):
         ft = _make_file_task(
             phase=IngestionPhase.LANGFLOW,

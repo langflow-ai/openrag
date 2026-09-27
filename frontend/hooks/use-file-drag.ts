@@ -1,11 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
- * Hook to detect when files are being dragged into the browser window
- * @returns isDragging - true when files are being dragged over the window
+ * Hook to detect when files are being dragged into the browser window.
+ * Optionally handles the actual drop and calls `onFileDrop` with the first
+ * dropped file.
+ *
+ * @param onFileDrop - Optional callback invoked with the dropped File
+ * @returns isDragging - true while files are being dragged over the window
  */
-export function useFileDrag() {
+export function useFileDrag(onFileDrop?: (file: File) => void) {
   const [isDragging, setIsDragging] = useState(false);
+  const onFileDropRef = useRef(onFileDrop);
+  onFileDropRef.current = onFileDrop;
 
   useEffect(() => {
     let dragCounter = 0;
@@ -21,7 +27,7 @@ export function useFileDrag() {
     };
 
     const handleDragLeave = () => {
-      dragCounter--;
+      dragCounter = Math.max(0, dragCounter - 1);
       if (dragCounter === 0) {
         setIsDragging(false);
       }
@@ -31,9 +37,17 @@ export function useFileDrag() {
       e.preventDefault();
     };
 
-    const handleDrop = () => {
+    const handleDrop = (e: DragEvent) => {
       dragCounter = 0;
       setIsDragging(false);
+
+      if (onFileDropRef.current && e.dataTransfer?.files.length) {
+        e.preventDefault();
+        const file = e.dataTransfer.files[0];
+        if (file) {
+          onFileDropRef.current(file);
+        }
+      }
     };
 
     window.addEventListener("dragenter", handleDragEnter);

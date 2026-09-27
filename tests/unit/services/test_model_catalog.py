@@ -9,6 +9,8 @@ the same payload.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from config import model_providers
@@ -491,3 +493,34 @@ def test_the_shipped_config_excludes_on_azure_as_well_as_openai(monkeypatch) -> 
     ids = {row["id"] for row in model_catalog.openai_models_list()["data"]}
 
     assert not [model_id for model_id in ids if "gpt-3.5" in model_id or "luna" in model_id]
+
+
+@pytest.mark.asyncio
+async def test_live_model_failure_does_not_block_other_provider_refreshes(monkeypatch):
+    calls: list[str] = []
+
+    async def fail(_credentials):
+        calls.append("broken")
+        raise ValueError("missing CA bundle")
+
+    async def succeed(_credentials):
+        calls.append("healthy")
+
+    broken = SimpleNamespace(PROVIDER_KEY="broken", fetch_models=fail)
+    healthy = SimpleNamespace(PROVIDER_KEY="healthy", fetch_models=succeed)
+    providers = SimpleNamespace(stored_credentials=lambda _provider: {"api_key": "secret"})
+
+    monkeypatch.setattr(model_catalog, "provider_enhancements", lambda: (broken, healthy))
+    monkeypatch.setattr(
+        model_catalog,
+        "supported_provider_keys",
+        lambda: frozenset({"broken", "healthy"}),
+    )
+    monkeypatch.setattr(
+        "config.settings.get_openrag_config",
+        lambda: SimpleNamespace(providers=providers),
+    )
+
+    await model_catalog.refresh_live_models()
+
+    assert calls == ["broken", "healthy"]
