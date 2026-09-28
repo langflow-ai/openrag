@@ -14,6 +14,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
 from db.engine import SessionLocal, init_engine
@@ -51,11 +52,19 @@ class WebsiteSourceProcessor(TaskProcessor):
         self.owner_email = owner_email
         self.page_id = page_id
 
-    async def _ensure_source_active(self, session) -> WebsiteSource:
-        """Reload durable lifecycle state before writing an index or projection."""
-        if hasattr(session, "expire_all"):
-            session.expire_all()
-        source = await session.get(WebsiteSource, self.source_id)
+    async def _ensure_source_active(self, session, source: WebsiteSource) -> WebsiteSource:
+        """Lock and refresh only the source row without expiring pending pages."""
+        if isinstance(session, AsyncSession):
+            source = (
+                await session.execute(
+                    select(WebsiteSource)
+                    .where(col(WebsiteSource.id) == self.source_id)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+            ).scalar_one_or_none()
+        elif hasattr(session, "refresh"):
+            await session.refresh(source, attribute_names=["deleting"])
         if source is None or source.deleting:
             raise ValueError("Website source was deleted while processing")
         return source
@@ -179,7 +188,13 @@ class WebsiteSourceProcessor(TaskProcessor):
                     handle.write(document.markdown)
                     handle.close()
                     try:
-                        source = await self._ensure_source_active(session)
+                        source = await self._ensure_source_active(session, source)
+
+                        async def ensure_active_before_index(
+                            active_source: WebsiteSource = source,
+                        ) -> None:
+                            await self._ensure_source_active(session, active_source)
+
                         processed = await self.process_document_standard(
                             file_path=handle.name,
                             file_hash=page.document_id,
@@ -198,7 +213,7 @@ class WebsiteSourceProcessor(TaskProcessor):
                             web_page_depth=outcome.depth,
                             root_source_url=source.starting_url,
                             canonical_url=outcome.canonical_url,
-                            before_index_write=lambda: self._ensure_source_active(session),
+                            before_index_write=ensure_active_before_index,
                         )
                     except Exception as exc:
                         page.status, page.last_error = (
@@ -257,7 +272,7 @@ class WebsiteSourceProcessor(TaskProcessor):
                 and target_page.status == "processing"
             ):
                 target_page.status, target_page.last_error = "failed", failure_reason
-            source = await self._ensure_source_active(session)
+            source = await self._ensure_source_active(session, source)
             succeeded = successful_pages > 0
             source.status = "active" if succeeded else "failed"
             source.last_error = result.reason if succeeded else failure_reason

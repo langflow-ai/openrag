@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlmodel import SQLModel
 
 import db.engine as engine
 from connectors.url.crawler import CrawledPage, CrawlResult
@@ -49,6 +51,9 @@ class _Session:
             if self.existing_page is not None and object_id == self.existing_page.id:
                 return self.existing_page
             return None
+        return None
+
+    async def refresh(self, *_args, **_kwargs):
         return None
 
     def add(self, value):
@@ -582,3 +587,100 @@ async def test_page_resync_uses_the_selected_page_as_a_depth_zero_seed(monkeypat
     spec = crawl.await_args.args[0]
     assert spec.seed_url == page.canonical_url
     assert (spec.scope, spec.max_pages, spec.max_depth) == ("page", 1, 0)
+
+
+@pytest.mark.asyncio
+async def test_complete_resync_keeps_pending_last_seen_updates_for_all_visited_pages(monkeypatch):
+    """A source refresh must not expire page writes before missing-page reconciliation."""
+    from connectors.url import processor as processor_module
+
+    database = create_async_engine("sqlite+aiosqlite:///:memory:")
+    session_factory = async_sessionmaker(database, expire_on_commit=False)
+    async with database.begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+
+    previous_seen_at = datetime(2020, 1, 1, tzinfo=UTC)
+    source = WebsiteSource(
+        id="source-database",
+        owner_id="owner-1",
+        name="Documentation",
+        starting_url="https://docs.example.com/",
+        crawl_settings={"seed_url": "https://docs.example.com/"},
+        removed_page_behavior="delete",
+        last_successful_sync_at=datetime.now(UTC),
+    )
+    pages = [
+        WebsitePage(
+            id=f"page-database-{index}",
+            web_source_id=source.id,
+            canonical_url=f"https://docs.example.com/page-{index}",
+            title=f"Page {index}",
+            document_id=f"document-database-{index}",
+            content_hash=f"content-{index}",
+            chunk_count=2,
+            status="active",
+            last_seen_at=previous_seen_at,
+        )
+        for index in (1, 2)
+    ]
+    async with session_factory() as session:
+        session.add(source)
+        session.add_all(pages)
+        await session.commit()
+
+    monkeypatch.setattr(processor_module, "SessionLocal", session_factory)
+    monkeypatch.setattr(engine, "SessionLocal", session_factory)
+    monkeypatch.setattr(
+        processor_module,
+        "crawl",
+        AsyncMock(
+            return_value=CrawlResult(
+                tuple(
+                    CrawledPage(
+                        canonical_url=page.canonical_url,
+                        final_url=page.canonical_url,
+                        depth=1,
+                        document=WebDocument(
+                            title=page.title,
+                            markdown=f"# {page.title}",
+                            content_hash=page.content_hash or "",
+                            byte_size=8,
+                        ),
+                    )
+                    for page in pages
+                ),
+                complete=True,
+                capped=False,
+            )
+        ),
+    )
+    delete_page_chunks = AsyncMock()
+    monkeypatch.setattr(processor_module, "delete_page_chunks", delete_page_chunks)
+    monkeypatch.setattr(processor_module, "upsert_source_projection", AsyncMock())
+    monkeypatch.setattr(processor_module, "delete_source_projection", AsyncMock())
+
+    try:
+        processor = WebsiteSourceProcessor(
+            source_id=source.id,
+            owner_id=source.owner_id,
+            jwt_token=None,
+            owner_name=None,
+            owner_email=None,
+            document_service=None,
+            models_service=None,
+        )
+        await processor.process_item(
+            UploadTask(task_id="task-database", total_files=1),
+            "website:source-database",
+            FileTask(file_path="website:source-database"),
+        )
+
+        async with session_factory() as session:
+            refreshed_pages = [await session.get(WebsitePage, page.id) for page in pages]
+
+        assert all(page is not None and page.last_seen_at > previous_seen_at for page in refreshed_pages)
+        assert [page.status for page in refreshed_pages] == ["active", "active"]
+        assert [page.chunk_count for page in refreshed_pages] == [2, 2]
+        delete_page_chunks.assert_not_awaited()
+    finally:
+        await database.dispose()

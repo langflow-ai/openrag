@@ -48,7 +48,10 @@ class _Session:
         self.deleted.append(value)
 
     async def execute(self, _):
-        return type("Result", (), {"scalar_one": lambda self: 1})()
+        statement = str(_)
+        if "count(" in statement:
+            return type("Result", (), {"scalar_one": lambda self: 1})()
+        return type("Result", (), {"scalar_one_or_none": lambda _result: self.source})()
 
 
 @pytest.mark.asyncio

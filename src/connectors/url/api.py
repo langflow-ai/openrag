@@ -100,9 +100,22 @@ async def _owned(session: AsyncSession, source_id: str, user: User) -> WebsiteSo
     return source
 
 
-async def _enqueue(
-    source: WebsiteSource, user: User, task_service, *, page_id: str | None = None
-) -> str:
+async def _owned_for_update(session: AsyncSession, source_id: str, user: User) -> WebsiteSource:
+    """Read a source under the same database lock used by the crawler writer."""
+    source = (
+        await session.execute(
+            select(WebsiteSource)
+            .where(col(WebsiteSource.id) == source_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if source is None or source.owner_id != user.user_id:
+        raise HTTPException(404, "Website source not found")
+    return source
+
+
+async def _enqueue(source: WebsiteSource, user: User, task_service, *, page_id: str | None = None) -> str:
     processor = WebsiteSourceProcessor(
         source_id=source.id,
         owner_id=user.user_id,
@@ -190,7 +203,7 @@ async def sync_source(
     user: User = Depends(require_permission("connectors:create")),
 ):
     async with _source_locks[source_id]:
-        source = await _owned(session, source_id, user)
+        source = await _owned_for_update(session, source_id, user)
         if source.deleting:
             raise HTTPException(409, "Website source is being deleted")
         if source.status == "processing":
@@ -208,14 +221,14 @@ async def delete_source(
     user: User = Depends(require_permission("connectors:delete:own")),
 ):
     async with _source_locks[source_id]:
-        source = await _owned(session, source_id, user)
+        source = await _owned_for_update(session, source_id, user)
         source.deleting, source.status, source.updated_at = True, "deleting", datetime.now(UTC)
         task_id = source.last_task_id
         await session.commit()
     if task_id:
         await task_service.cancel_task(source.owner_id, task_id)
     async with _source_locks[source_id]:
-        source = await _owned(session, source_id, user)
+        source = await _owned_for_update(session, source_id, user)
         count = (
             await session.execute(
                 select(func.count())
@@ -259,7 +272,7 @@ async def sync_page(
     user: User = Depends(require_permission("connectors:create")),
 ):
     async with _source_locks[source_id]:
-        source = await _owned(session, source_id, user)
+        source = await _owned_for_update(session, source_id, user)
         if source.deleting:
             raise HTTPException(409, "Website source is being deleted")
         if source.status == "processing":
