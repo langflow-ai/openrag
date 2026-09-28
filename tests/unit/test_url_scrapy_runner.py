@@ -98,7 +98,9 @@ def test_aggregate_limit_counts_error_and_redirect_response_bodies(tmp_path):
     )
     spider.crawler = MagicMock()
     error_response = Response("https://docs.example.com/error", status=503, body=b"x" * 600_000)
-    redirect_response = Response("https://docs.example.com/redirect", status=302, body=b"x" * 500_000)
+    redirect_response = Response(
+        "https://docs.example.com/redirect", status=302, body=b"x" * 500_000
+    )
 
     assert spider.count_downloaded_response(error_response) is True
     assert spider.count_downloaded_response(redirect_response) is False

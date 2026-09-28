@@ -251,7 +251,11 @@ class WebsiteSourceProcessor(TaskProcessor):
                 or next(iter(page_errors), None)
                 or "No indexable website pages were found."
             )
-            if target_page is not None and successful_pages == 0 and target_page.status == "processing":
+            if (
+                target_page is not None
+                and successful_pages == 0
+                and target_page.status == "processing"
+            ):
                 target_page.status, target_page.last_error = "failed", failure_reason
             source = await self._ensure_source_active(session)
             succeeded = successful_pages > 0

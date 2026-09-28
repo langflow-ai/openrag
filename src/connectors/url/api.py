@@ -100,7 +100,9 @@ async def _owned(session: AsyncSession, source_id: str, user: User) -> WebsiteSo
     return source
 
 
-async def _enqueue(source: WebsiteSource, user: User, task_service, *, page_id: str | None = None) -> str:
+async def _enqueue(
+    source: WebsiteSource, user: User, task_service, *, page_id: str | None = None
+) -> str:
     processor = WebsiteSourceProcessor(
         source_id=source.id,
         owner_id=user.user_id,
@@ -265,7 +267,11 @@ async def sync_page(
         page = await session.get(WebsitePage, page_id)
         if page is None or page.web_source_id != source_id:
             raise HTTPException(404, "Website page not found")
-        page.suppressed_by_user, page.status, page.updated_at = False, "processing", datetime.now(UTC)
+        page.suppressed_by_user, page.status, page.updated_at = (
+            False,
+            "processing",
+            datetime.now(UTC),
+        )
         source.status = "processing"
         source.last_task_id = await _enqueue(source, user, task_service, page_id=page.id)
         await session.commit()
