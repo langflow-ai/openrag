@@ -66,6 +66,7 @@ import {
   formatFilesToDelete,
 } from "../../components/delete-confirmation-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
+import { useDeleteWebsiteSourcePageMutation } from "../api/mutations/useWebsiteSourceMutation";
 
 function sameFileSelection(a: File[], b: File[]): boolean {
   if (a.length !== b.length) {
@@ -272,6 +273,7 @@ function SearchPage() {
   const seenFailedFileKeysRef = useRef<Set<string>>(new Set());
 
   const deleteDocumentMutation = useDeleteDocument();
+  const deleteWebsiteSourceMutation = useDeleteWebsiteSourcePageMutation();
   const [currentPage, setCurrentPage] = useState(1);
   const [currentPageSize, setCurrentPageSize] = useState(25);
 
@@ -932,9 +934,13 @@ function SearchPage() {
     try {
       const deleteResults = await Promise.allSettled(
         rowsToDelete.map((row) =>
-          deleteDocumentMutation.mutateAsync({
-            filename: resolveDeleteFilename(row),
-          }),
+          row.web_source_id
+            ? deleteWebsiteSourceMutation.mutateAsync({
+                sourceId: row.web_source_id,
+              })
+            : deleteDocumentMutation.mutateAsync({
+                filename: resolveDeleteFilename(row),
+              }),
         ),
       );
 
@@ -947,18 +953,7 @@ function SearchPage() {
       ]);
 
       const deleted = deleteResults.filter(
-        (
-          result,
-        ): result is PromiseFulfilledResult<
-          Awaited<ReturnType<typeof deleteDocumentMutation.mutateAsync>>
-        > =>
-          result.status === "fulfilled" &&
-          (result.value.deleted_chunks || 0) > 0,
-      );
-      const noChunks = deleteResults.filter(
-        (result) =>
-          result.status === "fulfilled" &&
-          (result.value.deleted_chunks || 0) === 0,
+        (result) => result.status === "fulfilled",
       );
       const failed = deleteResults.filter(
         (result): result is PromiseRejectedResult =>
@@ -968,16 +963,6 @@ function SearchPage() {
       if (deleted.length > 0) {
         toast.success(
           `Deleted ${deleted.length} document${deleted.length > 1 ? "s" : ""}`,
-        );
-      } else if (failed.length === 0) {
-        toast.warning(
-          "No document chunks were deleted. Files may be missing or not deletable in your current context.",
-        );
-      }
-
-      if (noChunks.length > 0 && deleted.length > 0) {
-        toast.warning(
-          `${noChunks.length} selected file${noChunks.length > 1 ? "s had" : " had"} no matching chunks.`,
         );
       }
 

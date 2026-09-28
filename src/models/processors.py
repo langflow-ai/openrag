@@ -2,6 +2,7 @@ import asyncio
 import mimetypes
 import os
 import time
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Literal
 
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
@@ -486,6 +487,7 @@ class TaskProcessor:
         web_page_depth: int | None = None,
         root_source_url: str | None = None,
         canonical_url: str | None = None,
+        before_index_write: Callable[[], Awaitable[object]] | None = None,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -655,6 +657,8 @@ class TaskProcessor:
         # DLS-safe: enumerate visible chunk ids with the scoped user client,
         # then delete concrete ids with the trusted backend client.
         try:
+            if before_index_write is not None:
+                await before_index_write()
             from utils.opensearch_delete import (
                 collect_visible_document_ids,
                 delete_document_ids,
@@ -748,6 +752,8 @@ class TaskProcessor:
             )
             for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings, strict=True))
         ]
+        if before_index_write is not None:
+            await before_index_write()
         await document_index_writer.index_chunks(index_context, index_chunks, final=True)
         return {"status": "indexed", "id": stable_document_id, "chunk_count": len(index_chunks)}
 

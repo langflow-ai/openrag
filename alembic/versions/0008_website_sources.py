@@ -32,6 +32,7 @@ def upgrade() -> None:
         ),
         sa.Column("resync_behavior", sa.String(32), nullable=False),
         sa.Column("removed_page_behavior", sa.String(32), nullable=False),
+        sa.Column("deleting", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("status", sa.String(32), nullable=False),
         sa.Column("last_error", sa.String(2048)),
         sa.Column("last_task_id", sa.String(64)),
@@ -41,6 +42,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_website_sources_owner_id", "website_sources", ["owner_id"])
     op.create_index("ix_website_sources_status", "website_sources", ["status"])
+    op.create_index("ix_website_sources_deleting", "website_sources", ["deleting"])
     op.create_index("ix_website_sources_last_task_id", "website_sources", ["last_task_id"])
     op.create_table(
         "website_pages",

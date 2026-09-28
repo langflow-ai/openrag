@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
+from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -30,6 +32,9 @@ def require_url_connector_enabled() -> None:
     """Reject URL source calls while the managed connector is disabled."""
     if not is_url_connector_enabled():
         raise HTTPException(status_code=404, detail="Website connector is not enabled")
+
+
+_source_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
 class CreateSourceBody(BaseModel):
@@ -79,6 +84,7 @@ def _view(source: WebsiteSource, count: int | None = None) -> dict:
         "starting_url": source.starting_url,
         "change_detection": source.change_detection,
         "status": source.status,
+        "deleting": source.deleting,
         "last_error": source.last_error,
         "last_task_id": source.last_task_id,
         "last_successful_sync_at": source.last_successful_sync_at,
@@ -94,7 +100,7 @@ async def _owned(session: AsyncSession, source_id: str, user: User) -> WebsiteSo
     return source
 
 
-async def _enqueue(source: WebsiteSource, user: User, task_service) -> str:
+async def _enqueue(source: WebsiteSource, user: User, task_service, *, page_id: str | None = None) -> str:
     processor = WebsiteSourceProcessor(
         source_id=source.id,
         owner_id=user.user_id,
@@ -103,6 +109,7 @@ async def _enqueue(source: WebsiteSource, user: User, task_service) -> str:
         owner_email=getattr(user, "email", None),
         document_service=task_service.document_service,
         models_service=task_service.models_service,
+        page_id=page_id,
     )
     return await task_service.create_custom_task(
         user.user_id, [source.id], processor, original_filenames={source.id: source.name}
@@ -180,33 +187,45 @@ async def sync_source(
     task_service=Depends(get_task_service),
     user: User = Depends(require_permission("connectors:create")),
 ):
-    source = await _owned(session, source_id, user)
-    if source.status == "processing":
-        raise HTTPException(409, "A crawl is already running")
-    source.status = "processing"
-    source.last_task_id = await _enqueue(source, user, task_service)
-    await session.commit()
-    return _view(source)
+    async with _source_locks[source_id]:
+        source = await _owned(session, source_id, user)
+        if source.deleting:
+            raise HTTPException(409, "Website source is being deleted")
+        if source.status == "processing":
+            raise HTTPException(409, "A crawl is already running")
+        source.status = "processing"
+        source.last_task_id = await _enqueue(source, user, task_service)
+        await session.commit()
+        return _view(source)
 
 
 async def delete_source(
     source_id: str,
     session: AsyncSession = Depends(get_db_session),
+    task_service=Depends(get_task_service),
     user: User = Depends(require_permission("connectors:delete:own")),
 ):
-    source = await _owned(session, source_id, user)
-    count = (
-        await session.execute(
-            select(func.count())
-            .select_from(WebsitePage)
-            .where(col(WebsitePage.web_source_id) == source.id)
-        )
-    ).scalar_one()
-    await delete_source_chunks(source.id)
-    await delete_source_projection(source.id)
-    await session.delete(source)
-    await session.commit()
-    return {"deleted": True, "child_count": count}
+    async with _source_locks[source_id]:
+        source = await _owned(session, source_id, user)
+        source.deleting, source.status, source.updated_at = True, "deleting", datetime.now(UTC)
+        task_id = source.last_task_id
+        await session.commit()
+    if task_id:
+        await task_service.cancel_task(source.owner_id, task_id)
+    async with _source_locks[source_id]:
+        source = await _owned(session, source_id, user)
+        count = (
+            await session.execute(
+                select(func.count())
+                .select_from(WebsitePage)
+                .where(col(WebsitePage.web_source_id) == source.id)
+            )
+        ).scalar_one()
+        await delete_source_chunks(source.id)
+        await delete_source_projection(source.id)
+        await session.delete(source)
+        await session.commit()
+        return {"deleted": True, "child_count": count}
 
 
 async def delete_page(
@@ -237,14 +256,17 @@ async def sync_page(
     task_service=Depends(get_task_service),
     user: User = Depends(require_permission("connectors:create")),
 ):
-    source = await _owned(session, source_id, user)
-    if source.status == "processing":
-        raise HTTPException(409, "A crawl is already running")
-    page = await session.get(WebsitePage, page_id)
-    if page is None or page.web_source_id != source_id:
-        raise HTTPException(404, "Website page not found")
-    page.suppressed_by_user, page.status, page.updated_at = False, "processing", datetime.now(UTC)
-    source.status = "processing"
-    source.last_task_id = await _enqueue(source, user, task_service)
-    await session.commit()
-    return {"id": page.id, "status": page.status, "task_id": source.last_task_id}
+    async with _source_locks[source_id]:
+        source = await _owned(session, source_id, user)
+        if source.deleting:
+            raise HTTPException(409, "Website source is being deleted")
+        if source.status == "processing":
+            raise HTTPException(409, "A crawl is already running")
+        page = await session.get(WebsitePage, page_id)
+        if page is None or page.web_source_id != source_id:
+            raise HTTPException(404, "Website page not found")
+        page.suppressed_by_user, page.status, page.updated_at = False, "processing", datetime.now(UTC)
+        source.status = "processing"
+        source.last_task_id = await _enqueue(source, user, task_service, page_id=page.id)
+        await session.commit()
+        return {"id": page.id, "status": page.status, "task_id": source.last_task_id}

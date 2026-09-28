@@ -19,6 +19,9 @@ from scrapy import Request
 from scrapy.crawler import CrawlerProcess
 from scrapy.exceptions import IgnoreRequest
 from scrapy.linkextractors import LinkExtractor
+from scrapy.resolver import CachingThreadedResolver
+from twisted.internet import defer
+from twisted.internet.error import DNSLookupError
 
 from .policy import (
     CrawlPolicyError,
@@ -29,6 +32,20 @@ from .policy import (
 )
 
 USER_AGENT = "OpenRAG URL connector (+https://openrag.ai)"
+
+# One runner process owns one crawl. Bind each hostname to the public addresses
+# approved by the downloader middleware so Scrapy cannot re-resolve it later.
+_validated_public_addresses: dict[str, tuple[str, ...]] = {}
+
+
+class ValidatedAddressResolver(CachingThreadedResolver):
+    """Resolve a host only to addresses approved by the policy middleware."""
+
+    def getHostByName(self, name: str, timeout=()):  # noqa: N802 - Twisted API
+        addresses = _validated_public_addresses.get(normalize_host(name))
+        if not addresses:
+            return defer.fail(DNSLookupError(f"no validated public address for {name}"))
+        return defer.succeed(addresses[0])
 
 
 class CrawlPolicyDownloaderMiddleware:
@@ -42,11 +59,19 @@ class CrawlPolicyDownloaderMiddleware:
             ):
                 raise CrawlPolicyError("URL is not within the allowed crawl scope")
             parsed = urlsplit(url)
-            resolve_public_addresses(
+            addresses = resolve_public_addresses(
                 parsed.hostname or "", parsed.port or (443 if parsed.scheme == "https" else 80)
             )
+            _validated_public_addresses[normalize_host(parsed.hostname or "")] = addresses
         except CrawlPolicyError as exc:
             raise IgnoreRequest(str(exc)) from exc
+
+    def process_response(
+        self, request: Request, response: scrapy.http.Response, spider: ManagedWebsiteSpider
+    ) -> scrapy.http.Response:
+        if not spider.count_downloaded_response(response):
+            raise IgnoreRequest("aggregate download limit reached")
+        return response
 
     def process_exception(
         self,
@@ -60,9 +85,10 @@ class CrawlPolicyDownloaderMiddleware:
         Those failures bypass a request errback, so record the source request here
         to preserve the actual failure reason for the task and source projection.
         """
-        if request.meta.get("dont_obey_robotstxt", False):
-            return
         if isinstance(exception, IgnoreRequest):
+            if request.meta.get("dont_obey_robotstxt", False):
+                spider.mark_incomplete(str(exception))
+                return
             spider.request_rejected(request, str(exception))
 
 
@@ -78,6 +104,7 @@ class ManagedWebsiteSpider(scrapy.Spider):
         self._scheduled: set[str] = set()
         self.downloaded_bytes = 0
         self.capped = False
+        self.incomplete = False
         self.reason: str | None = None
         self._links = LinkExtractor(tags=("a",), attrs=("href",), canonicalize=False)
 
@@ -98,6 +125,17 @@ class ManagedWebsiteSpider(scrapy.Spider):
         self.capped = True
         self.reason = "safety limit reached"
         self.crawler.engine.close_spider(self, reason)
+
+    def mark_incomplete(self, reason: str) -> None:
+        self.incomplete = True
+        self.reason = self.reason or reason
+
+    def count_downloaded_response(self, response: scrapy.http.Response) -> bool:
+        self.downloaded_bytes += len(response.body)
+        if self.downloaded_bytes > self.spec.max_downloaded_mb * 1024 * 1024:
+            self._stop_for_limit("openrag_download_limit")
+            return False
+        return True
 
     def _record(
         self,
@@ -128,6 +166,7 @@ class ManagedWebsiteSpider(scrapy.Spider):
         self.pages.append(record)
 
     def request_rejected(self, request: Request, error: str) -> None:
+        self.mark_incomplete(error)
         canonical_url = str(request.meta.get("canonical_url", request.url))
         depth = int(request.meta.get("crawl_depth", 0))
         self._record(canonical_url, canonical_url, depth, error=error)
@@ -161,9 +200,11 @@ class ManagedWebsiteSpider(scrapy.Spider):
         try:
             final_url = canonicalize_url(response.url)
         except CrawlPolicyError as exc:
+            self.mark_incomplete(str(exc))
             self._record(canonical_url, canonical_url, depth, error=str(exc))
             return
         if not self.spec.allows(final_url):
+            self.mark_incomplete("redirect left the approved crawl scope")
             self._record(
                 canonical_url, final_url, depth, error="redirect left the approved crawl scope"
             )
@@ -174,19 +215,13 @@ class ManagedWebsiteSpider(scrapy.Spider):
 
         content_type = response.headers.get(b"Content-Type", b"").decode("latin1").lower()
         if not 200 <= response.status < 300:
+            self.mark_incomplete(f"HTTP {response.status}")
             self._record(canonical_url, final_url, depth, error=f"HTTP {response.status}")
             return
         if not content_type.startswith(("text/html", "application/xhtml+xml")):
+            self.mark_incomplete("Unsupported content type")
             self._record(canonical_url, final_url, depth, error="Unsupported content type")
             return
-        if self.downloaded_bytes + len(response.body) > self.spec.max_downloaded_mb * 1024 * 1024:
-            self._record(
-                canonical_url, final_url, depth, error="response exceeds the download limit"
-            )
-            self._stop_for_limit("openrag_download_limit")
-            return
-
-        self.downloaded_bytes += len(response.body)
         if not isinstance(response, scrapy.http.TextResponse):
             self._record(canonical_url, final_url, depth, content=response.body)
             return
@@ -222,6 +257,7 @@ class ManagedWebsiteSpider(scrapy.Spider):
     def request_failed(self, failure: Any) -> None:
         request = failure.request
         if request.meta.get("dont_obey_robotstxt", False):
+            self.mark_incomplete(failure.getErrorMessage())
             return
         self.request_rejected(request, failure.getErrorMessage())
 
@@ -231,7 +267,7 @@ class ManagedWebsiteSpider(scrapy.Spider):
             self.reason = "safety limit reached"
         manifest = {
             "pages": self.pages,
-            "complete": not self.capped,
+            "complete": not self.capped and not self.incomplete,
             "capped": self.capped,
             "reason": self.reason,
         }
@@ -245,6 +281,7 @@ def main() -> None:
     parser.add_argument("--output-dir", required=True)
     args = parser.parse_args()
     spec = CrawlSpec(**json.loads(sys.stdin.read())).as_dict()
+    _validated_public_addresses.clear()
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     max_bytes = int(spec["max_downloaded_mb"]) * 1024 * 1024
@@ -257,6 +294,7 @@ def main() -> None:
         "DEPTH_LIMIT": int(spec["max_depth"]),
         "DOWNLOAD_MAXSIZE": max_bytes,
         "DOWNLOAD_TIMEOUT": 20,
+        "DNS_RESOLVER": "connectors.url.scrapy_runner.ValidatedAddressResolver",
         "HTTPERROR_ALLOW_ALL": True,
         "HTTPPROXY_ENABLED": False,
         "LOG_ENABLED": False,
@@ -266,7 +304,9 @@ def main() -> None:
         "TELNETCONSOLE_ENABLED": False,
         "USER_AGENT": USER_AGENT,
         "DOWNLOADER_MIDDLEWARES": {
-            "connectors.url.scrapy_runner.CrawlPolicyDownloaderMiddleware": 50,
+            # Run before RedirectMiddleware on the response path so redirects
+            # count towards the aggregate download limit too.
+            "connectors.url.scrapy_runner.CrawlPolicyDownloaderMiddleware": 700,
         },
     }
     process = CrawlerProcess(settings=settings)

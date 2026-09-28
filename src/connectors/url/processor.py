@@ -41,6 +41,7 @@ class WebsiteSourceProcessor(TaskProcessor):
         owner_email: str | None,
         document_service,
         models_service,
+        page_id: str | None = None,
     ):
         super().__init__(document_service=document_service, models_service=models_service)
         self.source_id = source_id
@@ -48,6 +49,16 @@ class WebsiteSourceProcessor(TaskProcessor):
         self.jwt_token = jwt_token
         self.owner_name = owner_name
         self.owner_email = owner_email
+        self.page_id = page_id
+
+    async def _ensure_source_active(self, session) -> WebsiteSource:
+        """Reload durable lifecycle state before writing an index or projection."""
+        if hasattr(session, "expire_all"):
+            session.expire_all()
+        source = await session.get(WebsiteSource, self.source_id)
+        if source is None or source.deleting:
+            raise ValueError("Website source was deleted while processing")
+        return source
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         if SessionLocal is None:
@@ -57,8 +68,13 @@ class WebsiteSourceProcessor(TaskProcessor):
         assert sessions is not None
         async with sessions() as session:
             source = await session.get(WebsiteSource, self.source_id)
-            if source is None:
+            if source is None or source.deleting:
                 raise ValueError("Website source no longer exists")
+            target_page = None
+            if self.page_id is not None:
+                target_page = await session.get(WebsitePage, self.page_id)
+                if target_page is None or target_page.web_source_id != source.id:
+                    raise ValueError("Website page no longer exists")
             source_is_established = source.last_successful_sync_at is not None
             if not source_is_established:
                 source_is_established = (
@@ -79,7 +95,14 @@ class WebsiteSourceProcessor(TaskProcessor):
             session.add(run)
             await session.commit()
             spec_values = dict(source.crawl_settings)
-            if source.resync_behavior == "root":
+            if target_page is not None:
+                spec_values.update(
+                    seed_url=target_page.canonical_url,
+                    scope="page",
+                    max_pages=1,
+                    max_depth=0,
+                )
+            elif source.resync_behavior == "root":
                 spec_values.update(scope="page", max_pages=1, max_depth=0)
             try:
                 if source_is_established:
@@ -125,6 +148,9 @@ class WebsiteSourceProcessor(TaskProcessor):
                     page_errors.append(outcome.error)
                     continue
                 if outcome.document is None or outcome.noindex:
+                    if outcome.noindex:
+                        await delete_page_chunks(page.document_id)
+                        page.chunk_count = 0
                     page.status = "unavailable"
                     continue
                 document = outcome.document
@@ -153,6 +179,7 @@ class WebsiteSourceProcessor(TaskProcessor):
                     handle.write(document.markdown)
                     handle.close()
                     try:
+                        source = await self._ensure_source_active(session)
                         processed = await self.process_document_standard(
                             file_path=handle.name,
                             file_hash=page.document_id,
@@ -171,6 +198,7 @@ class WebsiteSourceProcessor(TaskProcessor):
                             web_page_depth=outcome.depth,
                             root_source_url=source.starting_url,
                             canonical_url=outcome.canonical_url,
+                            before_index_write=lambda: self._ensure_source_active(session),
                         )
                     except Exception as exc:
                         page.status, page.last_error = (
@@ -199,7 +227,7 @@ class WebsiteSourceProcessor(TaskProcessor):
                         os.unlink(handle.name)
                     except FileNotFoundError:
                         pass
-            if source.resync_behavior == "full" and result.complete:
+            if target_page is None and source.resync_behavior == "full" and result.complete:
                 missing = (
                     (
                         await session.execute(
@@ -223,6 +251,9 @@ class WebsiteSourceProcessor(TaskProcessor):
                 or next(iter(page_errors), None)
                 or "No indexable website pages were found."
             )
+            if target_page is not None and successful_pages == 0 and target_page.status == "processing":
+                target_page.status, target_page.last_error = "failed", failure_reason
+            source = await self._ensure_source_active(session)
             succeeded = successful_pages > 0
             source.status = "active" if succeeded else "failed"
             source.last_error = result.reason if succeeded else failure_reason

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ipaddress
 import posixpath
+import re
 import socket
 from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
@@ -16,6 +17,22 @@ from urllib.parse import urlsplit, urlunsplit
 
 class CrawlPolicyError(ValueError):
     pass
+
+
+_AMBIGUOUS_ENCODED_PATH = re.compile(r"%(?:2e|2f|5c|25)", re.IGNORECASE)
+
+
+def normalize_path(value: str) -> str:
+    """Normalize an unambiguous URL path before applying crawl scope rules."""
+    if "\\" in value or _AMBIGUOUS_ENCODED_PATH.search(value):
+        raise CrawlPolicyError("URL path contains encoded traversal or separators")
+    path = value or "/"
+    normalized_path = posixpath.normpath(path)
+    if path.endswith("/") and not normalized_path.endswith("/"):
+        normalized_path += "/"
+    if not normalized_path.startswith("/"):
+        normalized_path = "/" + normalized_path
+    return normalized_path
 
 
 def normalize_host(value: str) -> str:
@@ -51,12 +68,7 @@ def canonicalize_url(value: str) -> str:
         raise CrawlPolicyError("Only ports 80 and 443 are accepted")
     if (parsed.scheme.lower(), port) in {("http", 80), ("https", 443)}:
         port = None
-    path = parsed.path or "/"
-    normalized_path = posixpath.normpath(path)
-    if path.endswith("/") and not normalized_path.endswith("/"):
-        normalized_path += "/"
-    if not normalized_path.startswith("/"):
-        normalized_path = "/" + normalized_path
+    normalized_path = normalize_path(parsed.path)
     netloc = host if port is None else f"{host}:{port}"
     return urlunsplit((parsed.scheme.lower(), netloc, normalized_path, parsed.query, ""))
 
@@ -81,7 +93,7 @@ def _path(value: str) -> str:
     value = value.strip()
     if not value.startswith("/") or "?" in value or "#" in value:
         raise CrawlPolicyError("paths must begin with / and cannot contain a query or fragment")
-    return value
+    return normalize_path(value)
 
 
 def _matches_path(path: str, prefix: str) -> bool:

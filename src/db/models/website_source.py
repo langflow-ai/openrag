@@ -16,6 +16,7 @@ class WebsiteSource(SQLModel, table=True):
     change_detection: str = Field(default="normalized_content_hash", max_length=32)
     resync_behavior: str = Field(default="full", max_length=32)
     removed_page_behavior: str = Field(default="retain", max_length=32)
+    deleting: bool = Field(default=False, index=True)
     status: str = Field(default="processing", max_length=32, index=True)
     last_error: str | None = Field(default=None, max_length=2048)
     last_task_id: str | None = Field(default=None, max_length=64, index=True)
