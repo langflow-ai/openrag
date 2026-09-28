@@ -115,7 +115,9 @@ class WebsiteSourceProcessor(TaskProcessor):
                 spec_values.update(scope="page", max_pages=1, max_depth=0)
             try:
                 if source_is_established:
+                    source = await self._ensure_source_active(session, source)
                     await upsert_source_projection(source)
+                    await session.commit()
                 result = await crawl(CrawlSpec(**spec_values))
             except Exception as exc:
                 result = CrawlResult(
@@ -301,6 +303,7 @@ class WebsiteSourceProcessor(TaskProcessor):
                 await session.delete(source)
                 await session.commit()
             else:
+                source = await self._ensure_source_active(session, source)
                 child_count = (
                     (
                         await session.execute(
@@ -311,6 +314,7 @@ class WebsiteSourceProcessor(TaskProcessor):
                     .all()
                 )
                 await upsert_source_projection(source, child_count=len(child_count))
+                await session.commit()
         if not succeeded:
             file_task.status, file_task.error, file_task.result, file_task.updated_at = (
                 TaskStatus.FAILED,

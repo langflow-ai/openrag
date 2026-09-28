@@ -1,5 +1,6 @@
 """Task-state coverage for the managed URL source processor."""
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -8,11 +9,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
 import db.engine as engine
+from connectors.url import api as url_api
 from connectors.url.crawler import CrawledPage, CrawlResult
 from connectors.url.document import WebDocument
 from connectors.url.processor import WebsiteSourceProcessor
 from db.models.website_source import WebsiteCrawlRun, WebsitePage, WebsiteSource
 from models.tasks import FileTask, TaskStatus, UploadTask
+from session_manager import User
 
 
 class _ScalarResult:
@@ -685,4 +688,128 @@ async def test_complete_resync_keeps_pending_last_seen_updates_for_all_visited_p
         assert [page.chunk_count for page in refreshed_pages] == [2, 2]
         delete_page_chunks.assert_not_awaited()
     finally:
+        await database.dispose()
+
+
+@pytest.mark.asyncio
+async def test_deleting_after_final_commit_cannot_recreate_the_source_projection(monkeypatch):
+    """A late source projection must not outlive a concurrent source deletion."""
+    from connectors.url import processor as processor_module
+
+    database = create_async_engine("sqlite+aiosqlite:///:memory:")
+    session_factory = async_sessionmaker(database, expire_on_commit=False)
+    async with database.begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+
+    source = WebsiteSource(
+        id="source-projection-race",
+        owner_id="owner-1",
+        name="Documentation",
+        starting_url="https://docs.example.com/",
+        crawl_settings={"seed_url": "https://docs.example.com/"},
+        last_successful_sync_at=datetime.now(UTC),
+    )
+    page = WebsitePage(
+        id="page-projection-race",
+        web_source_id=source.id,
+        canonical_url="https://docs.example.com/guide",
+        title="Guide",
+        document_id="document-projection-race",
+        content_hash="same-content",
+        chunk_count=1,
+        status="active",
+    )
+    async with session_factory() as session:
+        session.add(source)
+        session.add(page)
+        await session.commit()
+
+    projected_sources: set[str] = set()
+
+    async def upsert_projection(current_source, *, child_count=0):
+        projected_sources.add(current_source.id)
+
+    async def delete_projection(source_id: str):
+        projected_sources.discard(source_id)
+
+    monkeypatch.setattr(processor_module, "SessionLocal", session_factory)
+    monkeypatch.setattr(engine, "SessionLocal", session_factory)
+    monkeypatch.setattr(
+        processor_module,
+        "crawl",
+        AsyncMock(
+            return_value=CrawlResult(
+                (
+                    CrawledPage(
+                        canonical_url=page.canonical_url,
+                        final_url=page.canonical_url,
+                        depth=1,
+                        document=WebDocument(
+                            title=page.title,
+                            markdown="# Guide",
+                            content_hash=page.content_hash or "",
+                            byte_size=7,
+                        ),
+                    ),
+                ),
+                complete=True,
+                capped=False,
+            )
+        ),
+    )
+    monkeypatch.setattr(processor_module, "upsert_source_projection", upsert_projection)
+    monkeypatch.setattr(processor_module, "delete_source_projection", delete_projection)
+    monkeypatch.setattr(url_api, "delete_source_chunks", AsyncMock())
+    monkeypatch.setattr(url_api, "delete_source_projection", delete_projection)
+
+    processor = WebsiteSourceProcessor(
+        source_id=source.id,
+        owner_id=source.owner_id,
+        jwt_token=None,
+        owner_name=None,
+        owner_email=None,
+        document_service=None,
+        models_service=None,
+    )
+    original_ensure = processor._ensure_source_active
+    paused_after_final_commit = asyncio.Event()
+    resume_projection = asyncio.Event()
+    ensure_calls = 0
+
+    async def pause_before_final_projection(session, current_source):
+        nonlocal ensure_calls
+        ensure_calls += 1
+        if ensure_calls == 3:
+            paused_after_final_commit.set()
+            await resume_projection.wait()
+        return await original_ensure(session, current_source)
+
+    processor._ensure_source_active = pause_before_final_projection
+    processing = asyncio.create_task(
+        processor.process_item(
+            UploadTask(task_id="task-projection-race", total_files=1),
+            "website:source-projection-race",
+            FileTask(file_path="website:source-projection-race"),
+        )
+    )
+    try:
+        await asyncio.wait_for(paused_after_final_commit.wait(), timeout=1)
+        async with session_factory() as deletion_session:
+            await url_api.delete_source(
+                source.id,
+                session=deletion_session,
+                task_service=object(),
+                user=User(user_id=source.owner_id, email="owner@example.com", name="Owner"),
+            )
+        resume_projection.set()
+        with pytest.raises(ValueError, match="deleted while processing"):
+            await processing
+
+        assert projected_sources == set()
+    finally:
+        resume_projection.set()
+        if not processing.done():
+            processing.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await processing
         await database.dispose()
