@@ -38,7 +38,7 @@ class DoclingConfig(BaseModel):
     do_picture_classification: bool
     do_picture_description: bool
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def ocr_engine(self) -> str:
         """Deprecated alias for ocr_preset, kept for legacy API callers."""
