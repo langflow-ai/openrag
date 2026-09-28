@@ -825,13 +825,13 @@ class ConfigManager:
 
         # IBM watsonx.ai on-prem (Cloud Pak for Data / Software Hub).
         onprem_credentials = {
-            "api_base": os.getenv("WATSONX_ONPREM_ENDPOINT"),
-            "username": os.getenv("WATSONX_ONPREM_USERNAME"),
-            "api_key": os.getenv("WATSONX_ONPREM_API_KEY"),
-            "zen_api_key": os.getenv("WATSONX_ONPREM_ZEN_API_KEY"),
-            "space_id": os.getenv("WATSONX_ONPREM_SPACE_ID"),
-            "project_id": os.getenv("WATSONX_ONPREM_PROJECT_ID"),
-            "ssl_verify": os.getenv("WATSONX_ONPREM_TLS_VERIFY"),
+            "api_base": os.getenv("WATSONX_ENDPOINT_ONPREM"),
+            "username": os.getenv("WATSONX_USERNAME_ONPREM"),
+            "api_key": os.getenv("WATSONX_API_KEY_ONPREM"),
+            "zen_api_key": os.getenv("WATSONX_ZEN_API_KEY_ONPREM"),
+            "space_id": os.getenv("WATSONX_SPACE_ID_ONPREM"),
+            "project_id": os.getenv("WATSONX_PROJECT_ID_ONPREM"),
+            "ssl_verify": os.getenv("WATSONX_TLS_VERIFY_ONPREM"),
         }
         if any(onprem_credentials.values()):
             self._seed_custom_provider_credentials(

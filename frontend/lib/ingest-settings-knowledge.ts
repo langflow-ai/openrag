@@ -1,11 +1,14 @@
 import type { KnowledgeSettings } from "@/app/api/queries/useGetSettingsQuery";
 import type { IngestSettings } from "@/components/cloud-picker/types";
+import { requiresExplicitModelSelection } from "@/components/models/model-helpers";
 import { DEFAULT_KNOWLEDGE_SETTINGS } from "@/lib/constants";
 
 /** Map saved Knowledge settings to ingest panel fields (subset of Knowledge UI). */
 export function knowledgeToIngestSettings(
   knowledge: KnowledgeSettings | null | undefined,
 ): IngestSettings {
+  const savedEmbeddingModel = knowledge?.embedding_model?.trim();
+
   return {
     chunkSize: knowledge?.chunk_size ?? DEFAULT_KNOWLEDGE_SETTINGS.chunk_size,
     chunkOverlap:
@@ -15,6 +18,9 @@ export function knowledgeToIngestSettings(
       knowledge?.picture_descriptions ??
       DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions,
     embeddingModel:
-      knowledge?.embedding_model?.trim() || "text-embedding-3-small",
+      savedEmbeddingModel ||
+      (requiresExplicitModelSelection(knowledge?.embedding_provider)
+        ? ""
+        : "text-embedding-3-small"),
   };
 }

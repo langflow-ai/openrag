@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronsUpDown, LoaderCircle, Plus, X } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, RefreshCw, X } from "lucide-react";
 import { useEffect, useId, useReducer, useState } from "react";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { WATSONX_TLS_DISABLED_VALUES } from "./watsonx-tls-settings";
 
 interface WatsonxSpace {
   id: string;
@@ -88,6 +89,7 @@ export function WatsonxSpaceSelect({
   const id = `${idPrefix}-space-${generatedId.replaceAll(":", "")}`;
   const [state, dispatch] = useReducer(reduceSpaceSelect, initialState);
   const [search, setSearch] = useState("");
+  const [refreshAttempt, setRefreshAttempt] = useState(0);
   const { open, spaces, status, error } = state;
 
   const apiBase = credentials.api_base?.trim() ?? "";
@@ -95,12 +97,15 @@ export function WatsonxSpaceSelect({
   const apiKey = credentials.api_key ?? "";
   const zenApiKey = credentials.zen_api_key ?? "";
   const sslVerify = credentials.ssl_verify ?? "";
+  const tlsVerificationEnabled =
+    WATSONX_TLS_DISABLED_VALUES[sslVerify.trim().toLowerCase()] !== true;
   const ready =
     Boolean(apiBase) &&
     (authMethod === "zen_api_key"
       ? Boolean(zenApiKey.trim() || hasSavedZenApiKey)
       : Boolean(username && (apiKey.trim() || hasSavedApiKey)));
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshAttempt explicitly retriggers discovery.
   useEffect(() => {
     if (!ready) {
       dispatch({ type: "reset" });
@@ -154,7 +159,16 @@ export function WatsonxSpaceSelect({
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [apiBase, username, apiKey, zenApiKey, sslVerify, authMethod, ready]);
+  }, [
+    apiBase,
+    username,
+    apiKey,
+    zenApiKey,
+    sslVerify,
+    authMethod,
+    ready,
+    refreshAttempt,
+  ]);
 
   const selected = spaces.find((space) => space.id === value);
   const selectedLabel = selected?.name ?? value;
@@ -197,11 +211,7 @@ export function WatsonxSpaceSelect({
                     ? "Loading deployment spaces…"
                     : selectedLabel || "Select a deployment space"}
                 </span>
-                {status === "loading" ? (
-                  <LoaderCircle className="animate-spin opacity-60" />
-                ) : (
-                  <ChevronsUpDown className="opacity-50" />
-                )}
+                <ChevronsUpDown className="opacity-50" />
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
@@ -255,6 +265,18 @@ export function WatsonxSpaceSelect({
               </Command>
             </PopoverContent>
           </Popover>
+          <Button
+            type="button"
+            variant="outline"
+            aria-label="Refresh deployment spaces"
+            disabled={!ready || status === "loading"}
+            onClick={() => setRefreshAttempt((attempt) => attempt + 1)}
+            className="shrink-0 px-3"
+            ignoreTitleCase
+          >
+            <RefreshCw className={cn(status === "loading" && "animate-spin")} />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
           {value && (
             <Button
               type="button"
@@ -274,9 +296,15 @@ export function WatsonxSpaceSelect({
         </p>
       )}
       {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+        <div role="alert" className="space-y-1 text-sm text-destructive">
+          <p>{error}</p>
+          <p>
+            Check the cluster URL, credentials, and that watsonx.ai is
+            available.
+            {tlsVerificationEnabled &&
+              " For an internal or self-signed certificate, provide its CA bundle—or temporarily turn off Verify TLS certificates on a trusted network to diagnose—then refresh."}
+          </p>
+        </div>
       )}
     </div>
   );

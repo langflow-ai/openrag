@@ -45,6 +45,7 @@ import {
   getSkippedFileCount,
   getSuccessfulFileCount,
   hasFailedFileEntries,
+  isDeletedAtSourceFile,
   isTaskInProgressStatus,
   isTerminalFailedTask,
 } from "@/lib/task-utils";
@@ -381,6 +382,27 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               // Use the filename from backend if available, otherwise extract from path
               const fileName =
                 fileInfoEntry.filename || filePath.split("/").pop() || filePath;
+
+              // Source-deleted cleanup is completed, not an ingest. Drop any
+              // processing overlay so the knowledge table does not show a ghost row.
+              if (isDeletedAtSourceFile(fileInfoEntry)) {
+                setFiles((prevFiles) => {
+                  const existingFileIndex = findTaskFileOverlayIndex(
+                    prevFiles,
+                    currentTask.task_id,
+                    filePath,
+                    fileName,
+                  );
+                  if (existingFileIndex < 0) {
+                    return prevFiles;
+                  }
+                  return prevFiles.filter(
+                    (_, index) => index !== existingFileIndex,
+                  );
+                });
+                return;
+              }
+
               const fileStatus = fileInfoEntry.status ?? "processing";
 
               // Map backend file status to our TaskFile status.

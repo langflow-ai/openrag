@@ -110,7 +110,7 @@ export interface Settings {
   langflow_port?: string | number | null;
 }
 
-async function getSettings(): Promise<Settings> {
+export async function getSettings(): Promise<Settings> {
   const response = await fetch("/api/settings");
   if (response.ok) {
     return await response.json();
