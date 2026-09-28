@@ -705,8 +705,13 @@ LANGFLOW_REQUEST_RETRIES = get_env_int("LANGFLOW_REQUEST_RETRIES", 2)
 #: RFC 9110 §9.2.2 idempotent methods: repeating one leaves the server in the
 #: same state, so a failure after the request was sent can be replayed safely.
 _IDEMPOTENT_HTTP_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
-#: Statuses that mean the server did not act on the request, so any method may
-#: be retried: 429 is rejected before processing, 503 is "not accepting work".
+#: Statuses retried for any method, because they arrive before the request is
+#: processed: 429 is a rate-limit rejection, and a 503 from Langflow itself is
+#: emitted before processing. RFC 9110 does not guarantee this for 503 in
+#: general: a proxy in front of Langflow (for example Envoy's "reset before
+#: headers") can send one after forwarding the request. This relies on the
+#: backend reaching Langflow directly, as it does in compose and over a
+#: Kubernetes Service with no service mesh.
 _LANGFLOW_ALWAYS_RETRYABLE_STATUSES = frozenset({429, 503})
 #: Statuses that can arrive *after* the server acted. Langflow answers 500 when
 #: a flow run's graph fails, so replaying `POST /api/v1/run` re-executes the
