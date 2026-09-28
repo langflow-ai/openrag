@@ -102,4 +102,4 @@ jobs:
         if: |
           contains(steps.changed.outputs.files, 'scripts/ci/')
         run: |
-          python3 scripts/ci/test_update_upstream_version.py -v
+          uv run python3 scripts/ci/test_update_upstream_version.py -v
