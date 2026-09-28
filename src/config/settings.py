@@ -198,6 +198,31 @@ def _langflow_tls_kwargs() -> dict[str, Any]:
     return {"verify": ctx}
 
 
+def _backend_tls_kwargs() -> dict[str, Any]:
+    """httpx TLS kwargs for the router calling the co-located backend over loopback/internal URL.
+
+    When the backend has TLS enabled (OPENRAG_TLS_CERT_PATH or https scheme),
+    the router uses an SSLContext that trusts LANGFLOW_CA_CERTS (or system CA)
+    and disables hostname checking since loopback (127.0.0.1) won't match the
+    service certificate's SAN/CN.
+    """
+    if not (OPENRAG_TLS_CERT_PATH or OPENRAG_BACKEND_INTERNAL_URL.startswith("https://")):
+        return {}
+
+    if not LANGFLOW_VERIFY_CERTS:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    elif LANGFLOW_CA_CERTS:
+        ctx = ssl.create_default_context(cafile=LANGFLOW_CA_CERTS)
+        ctx.check_hostname = False
+    else:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+
+    return {"verify": ctx}
+
+
 # Optional: public URL for browser links (e.g., http://localhost:7860)
 LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
 LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
@@ -305,15 +330,13 @@ OPENRAG_BACKEND_ROUTER_URL = (
 # host-run backend). Loopback is correct in every mode: host dev, single
 # container, and same k8s pod.
 #
-# Always uses http:// regardless of the parent URL's scheme: the router connects
-# to the backend over loopback (127.0.0.1), which bypasses the TLS termination
-# layer. The backend's TLS cert is issued for its service DNS name, not 127.0.0.1,
-# so an https:// loopback connection would fail certificate verification even with
-# the correct CA bundle.
+# When the backend is TLS-enabled (OPENRAG_TLS_CERT_PATH is set or OPENRAG_BACKEND_INTERNAL_URL is https),
+# uvicorn on port 8000 speaks HTTPS. The router must connect via https://.
 def _derive_router_upstream_url() -> str:
     parts = urlsplit(OPENRAG_BACKEND_INTERNAL_URL)
     port = parts.port or 8000
-    return urlunsplit(("http", f"127.0.0.1:{port}", "", "", ""))
+    scheme = "https" if (OPENRAG_TLS_CERT_PATH or parts.scheme == "https") else "http"
+    return urlunsplit((scheme, f"127.0.0.1:{port}", "", "", ""))
 
 
 OPENRAG_BACKEND_ROUTER_UPSTREAM_URL = (
