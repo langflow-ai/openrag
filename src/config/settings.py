@@ -304,10 +304,16 @@ OPENRAG_BACKEND_ROUTER_URL = (
 # service name) because that name need not resolve where the router runs (e.g. a
 # host-run backend). Loopback is correct in every mode: host dev, single
 # container, and same k8s pod.
+#
+# Always uses http:// regardless of the parent URL's scheme: the router connects
+# to the backend over loopback (127.0.0.1), which bypasses the TLS termination
+# layer. The backend's TLS cert is issued for its service DNS name, not 127.0.0.1,
+# so an https:// loopback connection would fail certificate verification even with
+# the correct CA bundle.
 def _derive_router_upstream_url() -> str:
     parts = urlsplit(OPENRAG_BACKEND_INTERNAL_URL)
     port = parts.port or 8000
-    return urlunsplit((parts.scheme or "http", f"127.0.0.1:{port}", "", "", ""))
+    return urlunsplit(("http", f"127.0.0.1:{port}", "", "", ""))
 
 
 OPENRAG_BACKEND_ROUTER_UPSTREAM_URL = (

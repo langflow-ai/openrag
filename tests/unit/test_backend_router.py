@@ -75,6 +75,12 @@ def test_router_url_always_http_even_when_backend_internal_url_is_https(monkeypa
     assert settings._derive_router_url() == "http://openrag-be:8100"
 
 
+def test_router_upstream_url_always_http_loopback(monkeypatch):
+    """Upstream is loopback inside the pod — must always be http://, never https://."""
+    monkeypatch.setattr(settings, "OPENRAG_BACKEND_INTERNAL_URL", "https://openrag-be:8000")
+    assert settings._derive_router_upstream_url() == "http://127.0.0.1:8000"
+
+
 # --- proxy behaviour --------------------------------------------------------
 
 
