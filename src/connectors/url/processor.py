@@ -302,7 +302,9 @@ class WebsiteSourceProcessor(TaskProcessor):
                         delete(WebsitePage).where(col(WebsitePage.web_source_id) == source.id)
                     )
                     await session.execute(
-                        delete(WebsiteCrawlRun).where(col(WebsiteCrawlRun.web_source_id) == source.id)
+                        delete(WebsiteCrawlRun).where(
+                            col(WebsiteCrawlRun.web_source_id) == source.id
+                        )
                     )
                     await session.delete(source)
                     await session.commit()
@@ -311,7 +313,9 @@ class WebsiteSourceProcessor(TaskProcessor):
                     child_count = (
                         (
                             await session.execute(
-                                select(WebsitePage).where(col(WebsitePage.web_source_id) == source.id)
+                                select(WebsitePage).where(
+                                    col(WebsitePage.web_source_id) == source.id
+                                )
                             )
                         )
                         .scalars()
