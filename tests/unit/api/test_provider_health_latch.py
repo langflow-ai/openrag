@@ -79,6 +79,17 @@ def _healthy_probe(monkeypatch):
 
     monkeypatch.setattr(provider_health.provider_health_cache, "acquire", acquire)
 
+    # Keep the corpus diagnostics out of it: unstubbed, they read the real
+    # config, can list models on a real cluster, and query OpenSearch.
+    async def _no_refresh(_provider):
+        return None
+
+    async def _no_stale(_provider):
+        return None
+
+    monkeypatch.setattr(provider_health, "_refresh_live_models", _no_refresh)
+    monkeypatch.setattr(provider_health, "_stale_embedding_spaces", _no_stale)
+
 
 @pytest.mark.asyncio
 async def test_a_passing_tool_calling_probe_clears_a_latched_chat_failure(_healthy_probe):
