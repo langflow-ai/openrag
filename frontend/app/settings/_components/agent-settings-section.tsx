@@ -232,7 +232,7 @@ export function AgentSettingsSection() {
 
   return (
     <section id="agent-card" className="space-y-8">
-      <header className="flex items-start justify-between gap-6">
+      <header className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
         <div className="max-w-[685px] space-y-3">
           <h3
             className={cn(

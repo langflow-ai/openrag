@@ -81,7 +81,10 @@ export function IngestionTab() {
                   )}
                 />
               </CollapsibleTrigger>
-              <CollapsibleContent className="pt-4">
+              <CollapsibleContent
+                forceMount
+                className="pt-4 data-[state=closed]:hidden"
+              >
                 <IngestPreviewSettingsSection />
               </CollapsibleContent>
             </section>

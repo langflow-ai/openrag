@@ -525,7 +525,7 @@ export function ChatRenderer({
               : { width: "min(850px, 100vw)", height: "800px" }
           }
           className={cn(
-            "flex h-full w-full max-w-full max-h-full items-center justify-center overflow-y-auto overflow-x-hidden",
+            "flex h-full w-full max-w-full max-h-full items-center justify-center overflow-auto",
             !showLayout &&
               "max-h-[calc(100vh-190px)] shadow-[0px_2px_4px_-2px_#0000001A,0px_4px_6px_-1px_#0000001A]",
             showLayout && !isOnChatPage && "bg-background",

@@ -524,7 +524,7 @@ export function IngestSettingsSection() {
   };
 
   useRegisterSave("ingest-settings", {
-    isDirty: knowledgeIngestDirty,
+    isDirty: userEdited && knowledgeIngestDirty,
     blocked: vlmModelPending,
     save: handleKnowledgeIngestSave,
   });
@@ -661,8 +661,7 @@ export function IngestSettingsSection() {
             </h3>
             <p className="text-sm text-muted-foreground">
               Configure how files are chunked and parsed during ingest. These
-              options use Save ingest settings. Edit in Langflow for full
-              control.
+              options use Save changes. Edit in Langflow for full control.
             </p>
           </div>
           <RequirePermission perm="flows:edit">
