@@ -127,6 +127,13 @@ export function getIngestChunkSettingsError(
   if (!settings.embeddingModel.trim()) {
     return "Select an embedding model in Settings before ingesting files";
   }
+  return getChunkSettingsError(settings);
+}
+
+/** Inline error message if chunk settings are invalid; otherwise null. */
+export function getChunkSettingsError(
+  settings: Pick<IngestSettings, "chunkSize" | "chunkOverlap">,
+): string | null {
   if (settings.chunkSize < 1) {
     return "Chunk size must be at least 1";
   }
