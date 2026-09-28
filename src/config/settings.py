@@ -278,11 +278,16 @@ def _derive_router_url() -> str:
     backend's host and differs only by port. Deriving from
     OPENRAG_BACKEND_INTERNAL_URL means this resolves correctly in every
     environment that var already works in (Helm, operator) with no new Service.
+
+    Always uses http:// regardless of the parent URL's scheme: the router is a
+    plain uvicorn process with no TLS configured, so pointing Langflow at
+    https://host:8100 would cause an SSL WRONG_VERSION_NUMBER error when
+    OPENRAG_BACKEND_INTERNAL_URL is set to https://.
     """
     parts = urlsplit(OPENRAG_BACKEND_INTERNAL_URL)
     host = parts.hostname or "openrag-backend"
     netloc = f"{host}:{OPENRAG_BACKEND_ROUTER_PORT}"
-    return urlunsplit((parts.scheme or "http", netloc, "", "", ""))
+    return urlunsplit(("http", netloc, "", "", ""))
 
 
 # Externally reachable base URL Langflow calls back to. Defaults to the backend
