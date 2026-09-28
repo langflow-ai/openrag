@@ -789,7 +789,7 @@ function SearchPage() {
     cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
       const label = typeof value === "number" ? value.toFixed(2) : "-";
       const tooltipText =
-        "Relevance score based on how closely this document matched your search query. Higher is a stronger match.";
+        "Average relevance score across the matched chunks of this file. Higher means a stronger match — sort by this column to rank results by relevance.";
       return (
         <Tooltip>
           <TooltipTrigger asChild>
