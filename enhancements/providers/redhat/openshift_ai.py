@@ -153,8 +153,9 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "once; the rest wait in OpenRAG. A CPU-served model answers slowly, and the "
         "endpoint's kube-rbac-proxy returns 502 once a queued request waits past its "
         "upstream timeout (30s by default), which fails ingestion of several files at "
-        "once. Leave blank for the default of 4; raise it for a GPU deployment; 0 means "
-        "no limit.",
+        "once. One slot is kept for search and chat queries so they never wait behind "
+        "ingestion. Leave blank for the default of 4; raise it for a GPU deployment; 0 "
+        "means no limit.",
         "required": False,
         "field_type": "text",
         "options": None,
