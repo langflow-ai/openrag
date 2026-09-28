@@ -219,9 +219,11 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404(
 
     await processor.process_item(upload_task, "file-id-1", file_task)
 
-    assert file_task.status == TaskStatus.SKIPPED
+    assert file_task.status == TaskStatus.COMPLETED
     assert (file_task.result or {}).get("reason") == "deleted_at_source"
     assert (file_task.result or {}).get("deleted_chunks") == 1
+    assert "warning" not in (file_task.result or {})
+    assert "removed from index" in ((file_task.result or {}).get("message") or "")
     assert upload_task.successful_files == 1
     # Concrete chunk deletes go through the backend write client.
     backend_write_client.delete.assert_awaited_once()
@@ -239,6 +241,42 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404(
     # different connector's id can't take its chunks down with it.
     terms = [f["term"] for f in query["bool"]["filter"] if "term" in f]
     assert {"connector_type": "sharepoint"} in terms
+
+
+@pytest.mark.asyncio
+async def test_connector_processor_fails_when_source_deleted_chunk_cleanup_errors(
+    monkeypatch,
+):
+    """If the file is gone at source but index cleanup raises, the file task
+    must fail so the UI does not report a successful removal."""
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_connector_processor(replace_duplicates=False)
+
+    connector = MagicMock()
+    connector.get_file_content = AsyncMock(side_effect=FileNotFoundError("404 Not Found"))
+    processor.connector_service.get_connector = AsyncMock(return_value=connector)
+    connection = MagicMock()
+    connection.connector_type = "sharepoint"
+    processor.connector_service.connection_manager = MagicMock()
+    processor.connector_service.connection_manager.get_connection = AsyncMock(
+        return_value=connection
+    )
+
+    file_task = _make_file_task()
+    upload_task = _make_upload_task()
+
+    with patch(
+        "connectors.chunk_cleanup.delete_connector_file_chunks",
+        new=AsyncMock(side_effect=RuntimeError("opensearch unavailable")),
+    ):
+        await processor.process_item(upload_task, "file-id-1", file_task)
+
+    assert file_task.status == TaskStatus.FAILED
+    assert file_task.error == (
+        "File no longer exists at source, but removing it from the index failed."
+    )
+    assert upload_task.failed_files == 1
+    assert upload_task.successful_files == 0
 
 
 @pytest.mark.asyncio
@@ -473,9 +511,11 @@ async def test_langflow_connector_processor_deletes_chunks_when_source_returns_4
 
     await processor.process_item(upload_task, "file-id-1", file_task)
 
-    assert file_task.status == TaskStatus.SKIPPED
+    assert file_task.status == TaskStatus.COMPLETED
     assert (file_task.result or {}).get("reason") == "deleted_at_source"
     assert (file_task.result or {}).get("deleted_chunks") == 1
+    assert "warning" not in (file_task.result or {})
+    assert "removed from index" in ((file_task.result or {}).get("message") or "")
     assert file_task.error is None
     assert upload_task.successful_files == 1
     assert upload_task.failed_files == 0
