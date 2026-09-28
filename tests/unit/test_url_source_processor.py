@@ -678,7 +678,9 @@ async def test_complete_resync_keeps_pending_last_seen_updates_for_all_visited_p
         async with session_factory() as session:
             refreshed_pages = [await session.get(WebsitePage, page.id) for page in pages]
 
-        assert all(page is not None and page.last_seen_at > previous_seen_at for page in refreshed_pages)
+        assert all(
+            page is not None and page.last_seen_at > previous_seen_at for page in refreshed_pages
+        )
         assert [page.status for page in refreshed_pages] == ["active", "active"]
         assert [page.chunk_count for page in refreshed_pages] == [2, 2]
         delete_page_chunks.assert_not_awaited()

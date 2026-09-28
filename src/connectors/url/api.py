@@ -115,7 +115,9 @@ async def _owned_for_update(session: AsyncSession, source_id: str, user: User) -
     return source
 
 
-async def _enqueue(source: WebsiteSource, user: User, task_service, *, page_id: str | None = None) -> str:
+async def _enqueue(
+    source: WebsiteSource, user: User, task_service, *, page_id: str | None = None
+) -> str:
     processor = WebsiteSourceProcessor(
         source_id=source.id,
         owner_id=user.user_id,
