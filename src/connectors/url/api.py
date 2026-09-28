@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
-from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -19,6 +17,7 @@ from db.models.website_source import WebsitePage, WebsiteSource
 from dependencies import get_current_user, get_db_session, get_task_service, require_permission
 from session_manager import User
 
+from .locks import source_operation_lock
 from .policy import CrawlPolicyError, CrawlSpec
 from .processor import WebsiteSourceProcessor
 from .projection import (
@@ -32,9 +31,6 @@ def require_url_connector_enabled() -> None:
     """Reject URL source calls while the managed connector is disabled."""
     if not is_url_connector_enabled():
         raise HTTPException(status_code=404, detail="Website connector is not enabled")
-
-
-_source_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
 class CreateSourceBody(BaseModel):
@@ -204,7 +200,7 @@ async def sync_source(
     task_service=Depends(get_task_service),
     user: User = Depends(require_permission("connectors:create")),
 ):
-    async with _source_locks[source_id]:
+    async with source_operation_lock(source_id):
         source = await _owned_for_update(session, source_id, user)
         if source.deleting:
             raise HTTPException(409, "Website source is being deleted")
@@ -222,14 +218,14 @@ async def delete_source(
     task_service=Depends(get_task_service),
     user: User = Depends(require_permission("connectors:delete:own")),
 ):
-    async with _source_locks[source_id]:
+    async with source_operation_lock(source_id):
         source = await _owned_for_update(session, source_id, user)
         source.deleting, source.status, source.updated_at = True, "deleting", datetime.now(UTC)
         task_id = source.last_task_id
         await session.commit()
     if task_id:
         await task_service.cancel_task(source.owner_id, task_id)
-    async with _source_locks[source_id]:
+    async with source_operation_lock(source_id):
         source = await _owned_for_update(session, source_id, user)
         count = (
             await session.execute(
@@ -273,7 +269,7 @@ async def sync_page(
     task_service=Depends(get_task_service),
     user: User = Depends(require_permission("connectors:create")),
 ):
-    async with _source_locks[source_id]:
+    async with source_operation_lock(source_id):
         source = await _owned_for_update(session, source_id, user)
         if source.deleting:
             raise HTTPException(409, "Website source is being deleted")

@@ -23,6 +23,7 @@ from models.processors import TaskProcessor
 from models.tasks import FileTask, TaskStatus, UploadTask
 
 from .crawler import CrawlResult, crawl
+from .locks import source_operation_lock
 from .policy import CrawlSpec
 from .projection import delete_page_chunks, delete_source_projection, upsert_source_projection
 
@@ -115,9 +116,10 @@ class WebsiteSourceProcessor(TaskProcessor):
                 spec_values.update(scope="page", max_pages=1, max_depth=0)
             try:
                 if source_is_established:
-                    source = await self._ensure_source_active(session, source)
-                    await upsert_source_projection(source)
-                    await session.commit()
+                    async with source_operation_lock(source.id):
+                        source = await self._ensure_source_active(session, source)
+                        await upsert_source_projection(source)
+                        await session.commit()
                 result = await crawl(CrawlSpec(**spec_values))
             except Exception as exc:
                 result = CrawlResult(
@@ -190,33 +192,34 @@ class WebsiteSourceProcessor(TaskProcessor):
                     handle.write(document.markdown)
                     handle.close()
                     try:
-                        source = await self._ensure_source_active(session, source)
+                        async with source_operation_lock(source.id):
+                            source = await self._ensure_source_active(session, source)
 
-                        async def ensure_active_before_index(
-                            active_source: WebsiteSource = source,
-                        ) -> None:
-                            await self._ensure_source_active(session, active_source)
+                            async def ensure_active_before_index(
+                                active_source: WebsiteSource = source,
+                            ) -> None:
+                                await self._ensure_source_active(session, active_source)
 
-                        processed = await self.process_document_standard(
-                            file_path=handle.name,
-                            file_hash=page.document_id,
-                            document_id=page.document_id,
-                            replace_existing=True,
-                            owner_user_id=self.owner_id,
-                            jwt_token=self.jwt_token,
-                            owner_name=self.owner_name,
-                            owner_email=self.owner_email,
-                            file_size=document.byte_size,
-                            original_filename=document.title,
-                            connector_type="url",
-                            source_url=outcome.final_url,
-                            web_source_id=source.id,
-                            web_page_id=page.id,
-                            web_page_depth=outcome.depth,
-                            root_source_url=source.starting_url,
-                            canonical_url=outcome.canonical_url,
-                            before_index_write=ensure_active_before_index,
-                        )
+                            processed = await self.process_document_standard(
+                                file_path=handle.name,
+                                file_hash=page.document_id,
+                                document_id=page.document_id,
+                                replace_existing=True,
+                                owner_user_id=self.owner_id,
+                                jwt_token=self.jwt_token,
+                                owner_name=self.owner_name,
+                                owner_email=self.owner_email,
+                                file_size=document.byte_size,
+                                original_filename=document.title,
+                                connector_type="url",
+                                source_url=outcome.final_url,
+                                web_source_id=source.id,
+                                web_page_id=page.id,
+                                web_page_depth=outcome.depth,
+                                root_source_url=source.starting_url,
+                                canonical_url=outcome.canonical_url,
+                                before_index_write=ensure_active_before_index,
+                            )
                     except Exception as exc:
                         page.status, page.last_error = (
                             "failed",
@@ -274,47 +277,48 @@ class WebsiteSourceProcessor(TaskProcessor):
                 and target_page.status == "processing"
             ):
                 target_page.status, target_page.last_error = "failed", failure_reason
-            source = await self._ensure_source_active(session, source)
-            succeeded = successful_pages > 0
-            source.status = "active" if succeeded else "failed"
-            source.last_error = result.reason if succeeded else failure_reason
-            if succeeded:
-                source.last_successful_sync_at = datetime.now(UTC)
-            source.updated_at = datetime.now(UTC)
-            run.completed, run.capped, run.error, run.finished_at = (
-                result.complete and succeeded,
-                result.capped,
-                source.last_error,
-                datetime.now(UTC),
-            )
-            await session.commit()
-            discard_failed_new_source = not succeeded and not source_is_established
-            if discard_failed_new_source:
-                # Failed regular uploads never become Knowledge records. Do the
-                # same for a URL source that has never successfully indexed a
-                # page, so a task-expired failure cannot become an orphaned row.
-                await delete_source_projection(source.id)
-                await session.execute(
-                    delete(WebsitePage).where(col(WebsitePage.web_source_id) == source.id)
-                )
-                await session.execute(
-                    delete(WebsiteCrawlRun).where(col(WebsiteCrawlRun.web_source_id) == source.id)
-                )
-                await session.delete(source)
-                await session.commit()
-            else:
+            async with source_operation_lock(source.id):
                 source = await self._ensure_source_active(session, source)
-                child_count = (
-                    (
-                        await session.execute(
-                            select(WebsitePage).where(col(WebsitePage.web_source_id) == source.id)
-                        )
-                    )
-                    .scalars()
-                    .all()
+                succeeded = successful_pages > 0
+                source.status = "active" if succeeded else "failed"
+                source.last_error = result.reason if succeeded else failure_reason
+                if succeeded:
+                    source.last_successful_sync_at = datetime.now(UTC)
+                source.updated_at = datetime.now(UTC)
+                run.completed, run.capped, run.error, run.finished_at = (
+                    result.complete and succeeded,
+                    result.capped,
+                    source.last_error,
+                    datetime.now(UTC),
                 )
-                await upsert_source_projection(source, child_count=len(child_count))
                 await session.commit()
+                discard_failed_new_source = not succeeded and not source_is_established
+                if discard_failed_new_source:
+                    # Failed regular uploads never become Knowledge records. Do the
+                    # same for a URL source that has never successfully indexed a
+                    # page, so a task-expired failure cannot become an orphaned row.
+                    await delete_source_projection(source.id)
+                    await session.execute(
+                        delete(WebsitePage).where(col(WebsitePage.web_source_id) == source.id)
+                    )
+                    await session.execute(
+                        delete(WebsiteCrawlRun).where(col(WebsiteCrawlRun.web_source_id) == source.id)
+                    )
+                    await session.delete(source)
+                    await session.commit()
+                else:
+                    source = await self._ensure_source_active(session, source)
+                    child_count = (
+                        (
+                            await session.execute(
+                                select(WebsitePage).where(col(WebsitePage.web_source_id) == source.id)
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    )
+                    await upsert_source_projection(source, child_count=len(child_count))
+                    await session.commit()
         if not succeeded:
             file_task.status, file_task.error, file_task.result, file_task.updated_at = (
                 TaskStatus.FAILED,

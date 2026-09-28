@@ -725,8 +725,16 @@ async def test_deleting_after_final_commit_cannot_recreate_the_source_projection
         await session.commit()
 
     projected_sources: set[str] = set()
+    projection_started = asyncio.Event()
+    resume_projection = asyncio.Event()
+    projection_calls = 0
 
     async def upsert_projection(current_source, *, child_count=0):
+        nonlocal projection_calls
+        projection_calls += 1
+        if projection_calls == 2:
+            projection_started.set()
+            await resume_projection.wait()
         projected_sources.add(current_source.id)
 
     async def delete_projection(source_id: str):
@@ -771,20 +779,6 @@ async def test_deleting_after_final_commit_cannot_recreate_the_source_projection
         document_service=None,
         models_service=None,
     )
-    original_ensure = processor._ensure_source_active
-    paused_after_final_commit = asyncio.Event()
-    resume_projection = asyncio.Event()
-    ensure_calls = 0
-
-    async def pause_before_final_projection(session, current_source):
-        nonlocal ensure_calls
-        ensure_calls += 1
-        if ensure_calls == 3:
-            paused_after_final_commit.set()
-            await resume_projection.wait()
-        return await original_ensure(session, current_source)
-
-    processor._ensure_source_active = pause_before_final_projection
     processing = asyncio.create_task(
         processor.process_item(
             UploadTask(task_id="task-projection-race", total_files=1),
@@ -793,17 +787,21 @@ async def test_deleting_after_final_commit_cannot_recreate_the_source_projection
         )
     )
     try:
-        await asyncio.wait_for(paused_after_final_commit.wait(), timeout=1)
+        await asyncio.wait_for(projection_started.wait(), timeout=1)
         async with session_factory() as deletion_session:
-            await url_api.delete_source(
-                source.id,
-                session=deletion_session,
-                task_service=object(),
-                user=User(user_id=source.owner_id, email="owner@example.com", name="Owner"),
+            deletion = asyncio.create_task(
+                url_api.delete_source(
+                    source.id,
+                    session=deletion_session,
+                    task_service=object(),
+                    user=User(user_id=source.owner_id, email="owner@example.com", name="Owner"),
+                )
             )
-        resume_projection.set()
-        with pytest.raises(ValueError, match="deleted while processing"):
+            await asyncio.sleep(0)
+            assert not deletion.done()
+            resume_projection.set()
             await processing
+            await deletion
 
         assert projected_sources == set()
     finally:
