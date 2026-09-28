@@ -278,14 +278,26 @@ class TestEnsureEmbeddingFieldExistsDimension:
         client = SimpleNamespace(indices=indices)
 
         with pytest.raises(RuntimeError) as excinfo:
-            await ensure_embedding_field_exists(
-                client, "text-embedding-3-large", "documents", 1024
-            )
+            await ensure_embedding_field_exists(client, "text-embedding-3-large", "documents", 1024)
 
         message = str(excinfo.value)
         assert self.FIELD in message
         assert "3072" in message
         assert "1024" in message
+        assert indices.put_calls == []
+
+    @pytest.mark.asyncio
+    async def test_existing_field_without_dimension_is_reused(self) -> None:
+        from utils.embedding_fields import ensure_embedding_field_exists
+
+        indices = _FakeIndices({self.FIELD: {"type": "knn_vector"}})
+        client = SimpleNamespace(indices=indices)
+
+        field = await ensure_embedding_field_exists(
+            client, "text-embedding-3-large", "documents", 1024
+        )
+
+        assert field == self.FIELD
         assert indices.put_calls == []
 
     @pytest.mark.asyncio
@@ -302,9 +314,7 @@ class TestEnsureEmbeddingFieldExistsDimension:
         client = SimpleNamespace(indices=indices)
 
         with pytest.raises(RuntimeError, match="dimension 3072, but 1024"):
-            await ensure_embedding_field_exists(
-                client, "text-embedding-3-large", "documents", 1024
-            )
+            await ensure_embedding_field_exists(client, "text-embedding-3-large", "documents", 1024)
 
     @pytest.mark.asyncio
     async def test_missing_field_is_created_with_requested_dimension(self) -> None:
