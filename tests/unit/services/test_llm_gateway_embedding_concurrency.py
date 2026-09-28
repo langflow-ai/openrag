@@ -5,6 +5,10 @@ chunk per request on eight threads. Against a slow (CPU-served) RHOAI model
 the calls queued at the endpoint until its kube-rbac-proxy timed them out with
 a body-less 502. The gateway now bounds concurrent embedding calls per
 provider (limit supplied by the provider enhancement) and explains such a 502.
+
+One slot of that limit is reserved for query embeddings (`interactive=True`:
+search and chat retrieval) so a bulk ingest cannot queue them; the two lanes
+split the limit rather than add to it.
 """
 
 import asyncio
@@ -79,10 +83,17 @@ def _reset_limiters():
     llm_gateway._embedding_limiters.clear()
 
 
-async def _embed_concurrently(cfg, model: str, count: int) -> None:
+async def _embed_concurrently(cfg, model: str, count: int, *, interactive=False) -> None:
     await asyncio.gather(
-        *(embeddings({"model": model, "input": f"chunk {i}"}, config=cfg) for i in range(count))
+        *(
+            embeddings({"model": model, "input": f"chunk {i}"}, config=cfg, interactive=interactive)
+            for i in range(count)
+        )
     )
+
+
+BULK = ("rhoai", "bulk")
+INTERACTIVE = ("rhoai", "interactive")
 
 
 @pytest.mark.asyncio
@@ -90,9 +101,10 @@ async def test_rhoai_embeddings_are_bounded_by_the_configured_limit(monkeypatch)
     tracker = _InFlightTracker()
     monkeypatch.setattr("litellm.aembedding", tracker)
 
-    await _embed_concurrently(_rhoai_config("2"), RHOAI_MODEL, 10)
+    await _embed_concurrently(_rhoai_config("3"), RHOAI_MODEL, 10)
 
     assert len(tracker.calls) == 10
+    # One of the three slots is held back for queries.
     assert tracker.peak == 2
 
 
@@ -105,7 +117,7 @@ async def test_rhoai_embeddings_use_the_default_limit_when_unset(monkeypatch):
 
     await _embed_concurrently(_rhoai_config(), RHOAI_MODEL, 12)
 
-    assert tracker.peak == DEFAULT_EMBEDDING_MAX_CONCURRENCY
+    assert tracker.peak == DEFAULT_EMBEDDING_MAX_CONCURRENCY - 1
 
 
 @pytest.mark.asyncio
@@ -116,7 +128,7 @@ async def test_limit_zero_disables_the_bulkhead(monkeypatch):
     await _embed_concurrently(_rhoai_config("0"), RHOAI_MODEL, 10)
 
     assert tracker.peak == 10
-    assert "rhoai" not in llm_gateway._embedding_limiters
+    assert BULK not in llm_gateway._embedding_limiters
 
 
 @pytest.mark.asyncio
@@ -138,7 +150,7 @@ async def test_providers_without_an_enhancement_are_unbounded(monkeypatch):
     await _embed_concurrently(_rhoai_config("1"), "openai:text-embedding-3-small", 6)
 
     assert tracker.peak == 6
-    assert "openai" not in llm_gateway._embedding_limiters
+    assert not any(key[0] == "openai" for key in llm_gateway._embedding_limiters)
 
 
 @pytest.mark.asyncio
@@ -149,7 +161,7 @@ async def test_a_changed_limit_rebuilds_the_limiter():
 
     assert first is same
     assert changed is not first
-    assert llm_gateway._embedding_limiters["rhoai"][0] == 5
+    assert llm_gateway._embedding_limiters[BULK][0] == 4
 
 
 @pytest.mark.asyncio
@@ -191,6 +203,117 @@ async def test_a_failing_call_releases_its_slot(monkeypatch):
             await asyncio.wait_for(
                 embeddings({"model": RHOAI_MODEL, "input": "x"}, config=cfg), timeout=1
             )
+
+
+# --------------------------------------------------------------------------
+# Interactive lane
+# --------------------------------------------------------------------------
+
+
+class _Gate:
+    """A fake `litellm.aembedding` whose calls block until released."""
+
+    def __init__(self):
+        self.release = asyncio.Event()
+        self.in_flight = 0
+        self.peak = 0
+        self.started: list[str] = []
+
+    async def __call__(self, **kwargs):
+        self.started.append(kwargs["input"][0] if isinstance(kwargs["input"], list) else "")
+        self.in_flight += 1
+        self.peak = max(self.peak, self.in_flight)
+        try:
+            await self.release.wait()
+        finally:
+            self.in_flight -= 1
+        return {"object": "list", "data": [{"embedding": [0.1], "index": 0}]}
+
+
+def _embed(cfg, text: str, *, interactive: bool = False) -> asyncio.Task:
+    return asyncio.create_task(
+        embeddings({"model": RHOAI_MODEL, "input": text}, config=cfg, interactive=interactive)
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_query_is_not_queued_behind_bulk_ingestion(monkeypatch):
+    gate = _Gate()
+    monkeypatch.setattr("litellm.aembedding", gate)
+    cfg = _rhoai_config("4")
+
+    bulk = [_embed(cfg, f"chunk {i}") for i in range(20)]
+    await asyncio.sleep(0.01)
+    assert gate.in_flight == 3  # the bulk lane is full, 17 chunks waiting
+
+    query = _embed(cfg, "query", interactive=True)
+    await asyncio.sleep(0.01)
+    assert "query" in gate.started  # started ahead of every waiting chunk
+    assert gate.in_flight == 4
+
+    gate.release.set()
+    await asyncio.gather(query, *bulk)
+    assert gate.peak == 4  # never more than the operator's limit in total
+
+
+@pytest.mark.asyncio
+async def test_queries_are_bounded_by_their_own_lane(monkeypatch):
+    tracker = _InFlightTracker()
+    monkeypatch.setattr("litellm.aembedding", tracker)
+
+    await _embed_concurrently(_rhoai_config("4"), RHOAI_MODEL, 6, interactive=True)
+
+    assert len(tracker.calls) == 6
+    assert tracker.peak == 1
+    assert llm_gateway._embedding_limiters[INTERACTIVE][0] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_limit_of_one_is_shared_by_queries_and_ingestion(monkeypatch):
+    gate = _Gate()
+    monkeypatch.setattr("litellm.aembedding", gate)
+    cfg = _rhoai_config("1")
+
+    chunk = _embed(cfg, "chunk")
+    await asyncio.sleep(0.01)
+    query = _embed(cfg, "query", interactive=True)
+    await asyncio.sleep(0.01)
+
+    # Splitting a single slot would exceed the limit, so the query waits.
+    assert gate.started == ["chunk"]
+    gate.release.set()
+    await asyncio.gather(chunk, query)
+    assert gate.peak == 1
+    assert INTERACTIVE not in llm_gateway._embedding_limiters
+
+
+@pytest.mark.asyncio
+async def test_no_limit_throttles_neither_lane(monkeypatch):
+    tracker = _InFlightTracker()
+    monkeypatch.setattr("litellm.aembedding", tracker)
+
+    await asyncio.gather(
+        _embed_concurrently(_rhoai_config("0"), RHOAI_MODEL, 5),
+        _embed_concurrently(_rhoai_config("0"), RHOAI_MODEL, 5, interactive=True),
+    )
+
+    assert tracker.peak == 10
+    assert not llm_gateway._embedding_limiters
+
+
+@pytest.mark.parametrize(
+    ("limit", "interactive", "expected"),
+    [
+        (4, False, ("bulk", 3)),
+        (4, True, ("interactive", 1)),
+        (2, False, ("bulk", 1)),
+        (2, True, ("interactive", 1)),
+        (1, False, ("bulk", 1)),
+        (1, True, ("bulk", 1)),
+    ],
+)
+def test_lane_limits_split_the_configured_total(limit, interactive, expected):
+    assert llm_gateway._lane_limit(limit, interactive) == expected
 
 
 # --------------------------------------------------------------------------

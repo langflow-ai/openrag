@@ -222,23 +222,50 @@ def _provider_runtime_kwargs(provider: str, config=None) -> dict[str, Any]:
     return runtime_kwargs_for(enhancement, stored)
 
 
-#: Per-provider embedding bulkheads: provider key -> (limit, loop, semaphore).
-#: The backend runs a single worker (enforced in `app/lifespan.py`), so a
-#: process-local semaphore bounds the provider's traffic globally. Keyed on the
-#: loop too, because an asyncio primitive must not be shared across loops.
-_embedding_limiters: dict[str, tuple[int, asyncio.AbstractEventLoop, asyncio.Semaphore]] = {}
+#: Per-provider embedding bulkheads: (provider key, lane) -> (limit, loop,
+#: semaphore). The backend runs a single worker (enforced in `app/lifespan.py`),
+#: so a process-local semaphore bounds the provider's traffic globally. Keyed on
+#: the loop too, because an asyncio primitive must not be shared across loops.
+_embedding_limiters: dict[
+    tuple[str, str], tuple[int, asyncio.AbstractEventLoop, asyncio.Semaphore]
+] = {}
+
+#: Lanes of a provider's embedding limit. `interactive` is query embedding —
+#: search and chat retrieval, where a person is waiting; `bulk` is everything
+#: else, chiefly ingestion. One slot of the limit is reserved for queries, so a
+#: folder upload cannot queue them behind hundreds of chunks.
+_BULK_LANE = "bulk"
+_INTERACTIVE_LANE = "interactive"
 
 
-def _embedding_limiter(provider: str, config=None) -> asyncio.Semaphore | None:
-    """The semaphore bounding concurrent embedding calls to `provider`, if any.
+def _lane_limit(limit: int, interactive: bool) -> tuple[str, int]:
+    """The lane a call waits in and that lane's size, out of `limit` in total.
+
+    The lanes split the operator's limit rather than add to it, so the endpoint
+    never sees more than `limit` calls at once: `limit - 1` for bulk traffic
+    and one for queries. A limit of 1 cannot be split without exceeding it, so
+    both kinds of call then share the single slot.
+    """
+    if limit < 2:
+        return _BULK_LANE, limit
+    if interactive:
+        return _INTERACTIVE_LANE, 1
+    return _BULK_LANE, limit - 1
+
+
+def _embedding_limiter(
+    provider: str, config=None, *, interactive: bool = False
+) -> asyncio.Semaphore | None:
+    """The semaphore bounding this kind of embedding call to `provider`, if any.
 
     The limit comes from the provider enhancement (`embedding_max_concurrency`),
     so providers without one — and every provider whose enhancement sets no
     limit — are unaffected. Excess callers wait here instead of queueing at the
     upstream, where a slow model server lets a fronting proxy time them out
-    (RHOAI's kube-rbac-proxy answers 502 after 30s). A limit changed in
-    Settings takes effect on the next call; calls already holding a slot of
-    the old semaphore finish normally.
+    (RHOAI's kube-rbac-proxy answers 502 after 30s). `interactive` calls wait in
+    their own lane (`_lane_limit`). A limit changed in Settings takes effect on
+    the next call; calls already holding a slot of the old semaphore finish
+    normally.
     """
     cfg = config or _get_config()
     prov = getattr(cfg, "providers", None)
@@ -257,27 +284,31 @@ def _embedding_limiter(provider: str, config=None) -> asyncio.Semaphore | None:
     )
     limit = embedding_concurrency_for(key, stored)
     if limit is None:
-        _embedding_limiters.pop(key, None)
+        _embedding_limiters.pop((key, _BULK_LANE), None)
+        _embedding_limiters.pop((key, _INTERACTIVE_LANE), None)
         return None
 
+    lane, lane_limit = _lane_limit(limit, interactive)
     loop = asyncio.get_running_loop()
-    cached = _embedding_limiters.get(key)
-    if cached is not None and cached[0] == limit and cached[1] is loop:
+    cached = _embedding_limiters.get((key, lane))
+    if cached is not None and cached[0] == lane_limit and cached[1] is loop:
         return cached[2]
-    semaphore = asyncio.Semaphore(limit)
-    _embedding_limiters[key] = (limit, loop, semaphore)
+    semaphore = asyncio.Semaphore(lane_limit)
+    _embedding_limiters[(key, lane)] = (lane_limit, loop, semaphore)
     logger.info(
         "Bounding concurrent embedding calls for provider",
         provider=key,
+        lane=lane,
         max_concurrency=limit,
-        previous_max_concurrency=cached[0] if cached is not None else None,
+        lane_max_concurrency=lane_limit,
+        previous_lane_max_concurrency=cached[0] if cached is not None else None,
     )
     return semaphore
 
 
 @contextlib.asynccontextmanager
 async def _embedding_slot(
-    limiter: asyncio.Semaphore | None, provider: str, model: str
+    limiter: asyncio.Semaphore | None, provider: str, model: str, lane: str = _BULK_LANE
 ) -> AsyncIterator[None]:
     """Hold one of the provider's embedding slots for the duration of a call."""
     if limiter is None:
@@ -288,6 +319,7 @@ async def _embedding_slot(
             "Embedding call waiting for a free provider slot",
             provider=provider,
             model=model,
+            lane=lane,
         )
     async with limiter:
         yield
@@ -1309,14 +1341,22 @@ def _embedding_input(value: Any) -> Any:
     return [value] if isinstance(value, str) else value
 
 
-async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
-    """OpenAI `POST /v1/embeddings`."""
+async def embeddings(
+    body: Mapping[str, Any], *, config=None, interactive: bool = False
+) -> dict[str, Any]:
+    """OpenAI `POST /v1/embeddings`.
+
+    `interactive` marks a query embedding someone is waiting on (search, chat
+    retrieval). At a provider with a concurrency limit it waits in its own
+    lane instead of behind bulk ingestion; see `_embedding_limiter`.
+    """
     cfg = config or _get_config()
     litellm_model, provider, credentials = resolve_call(
         body.get("model"), kind="embedding", config=cfg
     )
     runtime_kwargs = _provider_runtime_kwargs(provider, cfg)
-    limiter = _embedding_limiter(provider, cfg)
+    limiter = _embedding_limiter(provider, cfg, interactive=interactive)
+    lane = _INTERACTIVE_LANE if interactive else _BULK_LANE
     embedding_input = _embedding_input(body.get("input"))
     should_batch = (
         provider == "watsonx_onprem"
@@ -1328,7 +1368,7 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
         import litellm
 
         if not should_batch:
-            async with _embedding_slot(limiter, provider, litellm_model):
+            async with _embedding_slot(limiter, provider, litellm_model, lane):
                 result = await litellm.aembedding(
                     model=litellm_model,
                     input=embedding_input,
@@ -1346,7 +1386,7 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
                 _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE,
             ):
                 batch = embedding_input[offset : offset + _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE]
-                async with _embedding_slot(limiter, provider, litellm_model):
+                async with _embedding_slot(limiter, provider, litellm_model, lane):
                     result = await litellm.aembedding(
                         model=litellm_model,
                         input=batch,
