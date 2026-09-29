@@ -745,6 +745,10 @@ async def test_bucket_filter_ingests_only_new_and_changed(monkeypatch):
     assert new_call.kwargs.get("replace_duplicates", False) is False
     assert changed_call.args[2] == ["c::ingested_changed"]
     assert changed_call.kwargs["replace_duplicates"] is True
+    # Each batch carries its own slice of the listing, so task rows can show
+    # filenames instead of raw "<bucket>::<key>" ids.
+    assert [f["id"] for f in new_call.kwargs["file_infos"]] == ["c::new"]
+    assert [f["id"] for f in changed_call.kwargs["file_infos"]] == ["c::ingested_changed"]
 
 
 @pytest.mark.asyncio

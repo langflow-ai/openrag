@@ -9,6 +9,7 @@ import {
   useGetOllamaModelsQuery,
 } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { getChunkSettingsError } from "@/components/cloud-picker/types";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { LabelWrapper } from "@/components/label-wrapper";
 import {
@@ -19,7 +20,10 @@ import {
   mergeLiveCatalogOptions,
 } from "@/components/models/catalog-models";
 import { ModelFeatures } from "@/components/models/model-features";
-import { getModelLogo } from "@/components/models/model-helpers";
+import {
+  getModelLogo,
+  requiresExplicitModelSelection,
+} from "@/components/models/model-helpers";
 import {
   type GroupedModelOption,
   ModelSelector,
@@ -82,9 +86,10 @@ export function IngestSettingsSection() {
 
   const [chunkSize, setChunkSize] = useState<number>(1024);
   const [chunkOverlap, setChunkOverlap] = useState<number>(50);
-  const [chunkValidationError, setChunkValidationError] = useState<
-    string | null
-  >(null);
+  const chunkValidationError = getChunkSettingsError({
+    chunkSize,
+    chunkOverlap,
+  });
   const [tableStructure, setTableStructure] = useState<boolean>(true);
   const [ocr, setOcr] = useState<boolean>(false);
   const [ocrLanguages, setOcrLanguages] = useState<string[]>([
@@ -281,6 +286,9 @@ export function IngestSettingsSection() {
   );
   const selectedEmbedding = selectedEmbeddingMatch?.option;
   const selectedEmbeddingGroup = selectedEmbeddingMatch?.group;
+  const needsExplicitEmbeddingModel =
+    requiresExplicitModelSelection(settings.knowledge?.embedding_provider) &&
+    !settings.knowledge?.embedding_model;
 
   const handleEmbeddingModelChange = useCallback(
     (newModel: string, provider?: string) => {
@@ -297,7 +305,14 @@ export function IngestSettingsSection() {
   );
 
   const autoSelectedEmbedding = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: provider changes reset the one-shot fallback guard.
   useEffect(() => {
+    autoSelectedEmbedding.current = false;
+  }, [settings.knowledge?.embedding_provider]);
+
+  useEffect(() => {
+    if (requiresExplicitModelSelection(settings.knowledge?.embedding_provider))
+      return;
     if (settings.knowledge?.embedding_model) {
       autoSelectedEmbedding.current = false;
       return;
@@ -311,11 +326,24 @@ export function IngestSettingsSection() {
     }
   }, [
     settings.knowledge?.embedding_model,
+    settings.knowledge?.embedding_provider,
     allEmbeddingOptions,
     handleEmbeddingModelChange,
   ]);
 
+  const userEditedRef = useRef(userEdited);
+  userEditedRef.current = userEdited;
+
   useEffect(() => {
+    // Skip resync while the user has an unsaved edit in progress — otherwise
+    // a background refetch of settings.knowledge silently overwrites what
+    // they're typing before they've had a chance to save it. Read via a ref
+    // (rather than depending on userEdited directly) so this effect doesn't
+    // re-fire against stale, pre-refetch data the instant a save flips
+    // userEdited back to false. userEdited is cleared as soon as the form
+    // matches the server again (see the effect below useRegisterDirty), so a
+    // value the user edited and then reverted no longer blocks this resync.
+    if (userEditedRef.current) return;
     const k = settings.knowledge;
     if (!k) return;
     if (k.chunk_size !== undefined) setChunkSize(k.chunk_size);
@@ -446,6 +474,18 @@ export function IngestSettingsSection() {
 
   useRegisterDirty("ingest-settings", userEdited && knowledgeIngestDirty);
 
+  // Keep `userEdited` honest. It is set on every edit but, left alone, would
+  // stay sticky until the next successful save. If the user edits a value and
+  // then reverts it back to what the server has, the form is clean again — but
+  // a sticky flag would (a) permanently skip the resync effect above, so a
+  // genuine later server change is never picked up (stale form), and (b) let
+  // the Save button re-enable and submit that stale value. Clearing the flag
+  // the moment the form matches the server gates the resync on an *actual*
+  // unsaved difference rather than a one-way "has ever edited" flag.
+  useEffect(() => {
+    if (userEdited && !knowledgeIngestDirty) setUserEdited(false);
+  }, [userEdited, knowledgeIngestDirty]);
+
   // Resolve through the same map that builds the groups: the catalogue now
   // contributes custom LiteLLM providers, so a hard-coded chain would report
   // OpenAI's state for any provider outside the four legacy keys.
@@ -463,13 +503,11 @@ export function IngestSettingsSection() {
   const handleChunkSizeChange = (value: string) => {
     setUserEdited(true);
     setChunkSize(Math.max(0, Number.parseInt(value, 10) || 0));
-    setChunkValidationError(null);
   };
 
   const handleChunkOverlapChange = (value: string) => {
     setUserEdited(true);
     setChunkOverlap(Math.max(0, Number.parseInt(value, 10) || 0));
-    setChunkValidationError(null);
   };
 
   const handleKnowledgeIngestSave = () => {
@@ -506,16 +544,10 @@ export function IngestSettingsSection() {
       },
     });
 
-    if (chunkSize < 1) {
-      const msg = "Chunk size must be at least 1";
-      setChunkValidationError(msg);
-      toast.error("Could not save ingest settings", { description: msg });
-      return;
-    }
-    if (chunkOverlap >= chunkSize) {
-      const msg = "Chunk overlap must be less than chunk size";
-      setChunkValidationError(msg);
-      toast.error("Could not save ingest settings", { description: msg });
+    if (chunkValidationError) {
+      toast.error("Could not save ingest settings", {
+        description: chunkValidationError,
+      });
       return;
     }
 
@@ -548,7 +580,6 @@ export function IngestSettingsSection() {
       },
       {
         onSuccess: () => {
-          setChunkValidationError(null);
           setValidationError(null);
           setUserEdited(false);
         },
@@ -604,7 +635,6 @@ export function IngestSettingsSection() {
         setOcrLanguages([...DEFAULT_KNOWLEDGE_SETTINGS.ocr_languages]);
         setPictureDescriptions(DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions);
         setDisableIngestWithLangflow(false);
-        setChunkValidationError(null);
         setUserEdited(false);
         toast.success("Default ingest flow settings restored successfully");
         closeDialog();
@@ -687,7 +717,16 @@ export function IngestSettingsSection() {
         <div className="space-y-6">
           <div className="space-y-2">
             <LabelWrapper
-              helperText="Saves immediately when you select a model"
+              helperText={
+                needsExplicitEmbeddingModel
+                  ? undefined
+                  : "Saves immediately when you select a model"
+              }
+              description={
+                needsExplicitEmbeddingModel
+                  ? "Select or enter an Azure deployment name before ingesting files"
+                  : undefined
+              }
               id="embedding-model-select"
               label="Embedding model"
               required={true}
@@ -705,6 +744,14 @@ export function IngestSettingsSection() {
                 value={settings.knowledge?.embedding_model || ""}
                 selectedProvider={settings.knowledge?.embedding_provider}
                 onValueChange={handleEmbeddingModelChange}
+                searchPlaceholder={
+                  requiresExplicitModelSelection(
+                    settings.knowledge?.embedding_provider,
+                  )
+                    ? "Search models or type Azure deployment name"
+                    : undefined
+                }
+                hasError={needsExplicitEmbeddingModel}
               />
             </LabelWrapper>
             {settings.knowledge?.embedding_model && selectedEmbeddingGroup && (
@@ -1146,7 +1193,8 @@ export function IngestSettingsSection() {
               disabled={
                 updateSettingsMutation.isPending ||
                 !knowledgeIngestDirty ||
-                vlmModelPending
+                vlmModelPending ||
+                !!chunkValidationError
               }
               className="min-w-[120px]"
               size="sm"

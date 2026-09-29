@@ -38,6 +38,7 @@ When you start OpenRAG, a local `docling serve` process starts, and then OpenRAG
 
 * **Docling processor ingestion**: Instead of using a separate Docling Serve service and the Docling Serve API, you can use the Docling processor directly.
 To do this, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [OpenRAG `.env` file](/reference/configuration#document-processing-settings), and then [restart the OpenRAG services](/manage-services).
+This mode uses the embedding provider selected in **Settings**, including IBM watsonx.ai on-prem.
 For the underlying functionality for this option, see [`processors.py`](https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58) in the OpenRAG repository.
 
 ## Set the embedding model and dimensions {#set-the-embedding-model-and-dimensions}

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
-const FALSE_VALUES: Record<string, true> = {
+export const WATSONX_TLS_DISABLED_VALUES: Record<string, true> = {
   false: true,
   "0": true,
   no: true,
@@ -30,11 +30,11 @@ export function WatsonxTlsSettings({
   idPrefix: string;
 }) {
   const normalized = (value ?? "").trim().toLowerCase();
-  const enabled = FALSE_VALUES[normalized] !== true;
+  const enabled = WATSONX_TLS_DISABLED_VALUES[normalized] !== true;
   const caPath =
     !normalized ||
     TRUE_VALUES[normalized] === true ||
-    FALSE_VALUES[normalized] === true
+    WATSONX_TLS_DISABLED_VALUES[normalized] === true
       ? ""
       : (value ?? "");
   const lastCaPath = useRef(caPath);

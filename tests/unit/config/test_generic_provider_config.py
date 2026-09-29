@@ -232,13 +232,13 @@ def test_rhoai_tls_env_alone_reaches_a_stored_config(monkeypatch, tmp_path):
 
 def _clear_watsonx_onprem_env(monkeypatch):
     for name in (
-        "WATSONX_ONPREM_ENDPOINT",
-        "WATSONX_ONPREM_USERNAME",
-        "WATSONX_ONPREM_API_KEY",
-        "WATSONX_ONPREM_ZEN_API_KEY",
-        "WATSONX_ONPREM_SPACE_ID",
-        "WATSONX_ONPREM_PROJECT_ID",
-        "WATSONX_ONPREM_TLS_VERIFY",
+        "WATSONX_ENDPOINT_ONPREM",
+        "WATSONX_USERNAME_ONPREM",
+        "WATSONX_API_KEY_ONPREM",
+        "WATSONX_ZEN_API_KEY_ONPREM",
+        "WATSONX_SPACE_ID_ONPREM",
+        "WATSONX_PROJECT_ID_ONPREM",
+        "WATSONX_TLS_VERIFY_ONPREM",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -248,11 +248,12 @@ def test_watsonx_onprem_env_seeds_credentials_and_tls(monkeypatch, tmp_path):
 
     _clear_rhoai_env(monkeypatch)
     _clear_watsonx_onprem_env(monkeypatch)
-    monkeypatch.setenv("WATSONX_ONPREM_ENDPOINT", "https://cpd.example.com")
-    monkeypatch.setenv("WATSONX_ONPREM_USERNAME", "cpduser")
-    monkeypatch.setenv("WATSONX_ONPREM_API_KEY", "secret")
-    monkeypatch.setenv("WATSONX_ONPREM_SPACE_ID", "space-1")
-    monkeypatch.setenv("WATSONX_ONPREM_TLS_VERIFY", "/etc/openrag/cpd-ca.pem")
+    monkeypatch.setenv("WATSONX_ENDPOINT_ONPREM", "https://cpd.example.com")
+    monkeypatch.setenv("WATSONX_USERNAME_ONPREM", "cpduser")
+    monkeypatch.setenv("WATSONX_API_KEY_ONPREM", "secret")
+    monkeypatch.setenv("WATSONX_SPACE_ID_ONPREM", "space-1")
+    monkeypatch.setenv("WATSONX_PROJECT_ID_ONPREM", "project-1")
+    monkeypatch.setenv("WATSONX_TLS_VERIFY_ONPREM", "/etc/openrag/cpd-ca.pem")
 
     config = ConfigManager(config_file=tmp_path / "config.yaml").load_config()
     provider = config.providers.custom["watsonx_onprem"]
@@ -264,6 +265,7 @@ def test_watsonx_onprem_env_seeds_credentials_and_tls(monkeypatch, tmp_path):
         "username": "cpduser",
         "api_key": "secret",
         "space_id": "space-1",
+        "project_id": "project-1",
         "ssl_verify": "/etc/openrag/cpd-ca.pem",
     }
 
@@ -273,8 +275,8 @@ def test_watsonx_onprem_env_without_complete_auth_stays_unconfigured(monkeypatch
 
     _clear_rhoai_env(monkeypatch)
     _clear_watsonx_onprem_env(monkeypatch)
-    monkeypatch.setenv("WATSONX_ONPREM_ENDPOINT", "https://cpd.example.com")
-    monkeypatch.setenv("WATSONX_ONPREM_TLS_VERIFY", "false")
+    monkeypatch.setenv("WATSONX_ENDPOINT_ONPREM", "https://cpd.example.com")
+    monkeypatch.setenv("WATSONX_TLS_VERIFY_ONPREM", "false")
 
     config = ConfigManager(config_file=tmp_path / "config.yaml").load_config()
 

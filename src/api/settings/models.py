@@ -323,6 +323,7 @@ class OnboardingResponse(BaseModel):
     sample_data_ingested: bool
     openrag_docs_filter_id: str | None = None
     task_id: str | None = None
+    chunk_size_adjusted_to: int | None = None
 
 
 class RefreshOpenRAGDocsResponse(BaseModel):
