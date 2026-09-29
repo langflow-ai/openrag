@@ -19,6 +19,7 @@ export interface KnowledgeSettings {
   chunk_overlap?: number;
   table_structure?: boolean;
   ocr?: boolean;
+  ocr_languages?: string[];
   picture_descriptions?: boolean;
   disable_ingest_with_langflow?: boolean;
   vlm_enabled?: boolean;

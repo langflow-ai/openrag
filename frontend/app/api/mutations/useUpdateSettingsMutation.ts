@@ -18,6 +18,7 @@ export interface UpdateSettingsRequest {
   chunk_overlap?: number;
   table_structure?: boolean;
   ocr?: boolean;
+  ocr_languages?: string[];
   picture_descriptions?: boolean;
   disable_ingest_with_langflow?: boolean;
   embedding_model?: string;
