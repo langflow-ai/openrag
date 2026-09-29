@@ -9,6 +9,7 @@ import {
   useGetOllamaModelsQuery,
 } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { getChunkSettingsError } from "@/components/cloud-picker/types";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { LabelWrapper } from "@/components/label-wrapper";
 import {
@@ -44,6 +45,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/inputs/number-input";
 import { Label } from "@/components/ui/label";
+import { MultiSelect } from "@/components/ui/multi-select";
 import {
   Select,
   SelectContent,
@@ -57,7 +59,11 @@ import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useRegisterDirty } from "@/contexts/unsaved-changes-context";
 import { trackButton } from "@/lib/analytics";
-import { DEFAULT_KNOWLEDGE_SETTINGS } from "@/lib/constants";
+import {
+  DEFAULT_KNOWLEDGE_SETTINGS,
+  OCR_LANGUAGE_OPTIONS,
+} from "@/lib/constants";
+import { allowedLanguages, englishLast } from "@/lib/ocr-languages";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
@@ -80,11 +86,15 @@ export function IngestSettingsSection() {
 
   const [chunkSize, setChunkSize] = useState<number>(1024);
   const [chunkOverlap, setChunkOverlap] = useState<number>(50);
-  const [chunkValidationError, setChunkValidationError] = useState<
-    string | null
-  >(null);
+  const chunkValidationError = getChunkSettingsError({
+    chunkSize,
+    chunkOverlap,
+  });
   const [tableStructure, setTableStructure] = useState<boolean>(true);
   const [ocr, setOcr] = useState<boolean>(false);
+  const [ocrLanguages, setOcrLanguages] = useState<string[]>([
+    ...DEFAULT_KNOWLEDGE_SETTINGS.ocr_languages,
+  ]);
   const [pictureDescriptions, setPictureDescriptions] =
     useState<boolean>(false);
   const [disableIngestWithLangflow, setDisableIngestWithLangflow] =
@@ -321,13 +331,27 @@ export function IngestSettingsSection() {
     handleEmbeddingModelChange,
   ]);
 
+  const userEditedRef = useRef(userEdited);
+  userEditedRef.current = userEdited;
+
   useEffect(() => {
+    // Skip resync while the user has an unsaved edit in progress — otherwise
+    // a background refetch of settings.knowledge silently overwrites what
+    // they're typing before they've had a chance to save it. Read via a ref
+    // (rather than depending on userEdited directly) so this effect doesn't
+    // re-fire against stale, pre-refetch data the instant a save flips
+    // userEdited back to false. userEdited is cleared as soon as the form
+    // matches the server again (see the effect below useRegisterDirty), so a
+    // value the user edited and then reverted no longer blocks this resync.
+    if (userEditedRef.current) return;
     const k = settings.knowledge;
     if (!k) return;
     if (k.chunk_size !== undefined) setChunkSize(k.chunk_size);
     if (k.chunk_overlap !== undefined) setChunkOverlap(k.chunk_overlap);
     if (k.table_structure !== undefined) setTableStructure(k.table_structure);
     if (k.ocr !== undefined) setOcr(k.ocr);
+    if (k.ocr_languages !== undefined && k.ocr_languages.length > 0)
+      setOcrLanguages(englishLast(k.ocr_languages));
     if (k.picture_descriptions !== undefined)
       setPictureDescriptions(k.picture_descriptions);
     if (k.disable_ingest_with_langflow !== undefined)
@@ -350,6 +374,7 @@ export function IngestSettingsSection() {
   }, [settings.knowledge]);
 
   const [vlmOpen, setVlmOpen] = useState(false);
+  const [ocrOpen, setOcrOpen] = useState(false);
 
   const autoSelectedVlm = useRef(false);
   useEffect(() => {
@@ -422,17 +447,44 @@ export function IngestSettingsSection() {
       vlmWatsonxApiVersion !==
         (k?.vlm_watsonx_api_version ?? vlmWatsonxApiVersion));
 
+  // easyocr loads one recognition model per job, so a selection that mixes
+  // scripts fails at ingest time on Linux even though it works on a macOS host.
+  // Disable the incompatible rows rather than hide them, so the reason is visible.
+  const ocrLanguageOptions = useMemo(() => {
+    const allowed = new Set(allowedLanguages(ocrLanguages));
+    return OCR_LANGUAGE_OPTIONS.map((option) => ({
+      value: option.value,
+      label: option.label,
+      disabled: !allowed.has(option.value),
+      hint: allowed.has(option.value) ? undefined : "not combinable",
+    }));
+  }, [ocrLanguages]);
+
   const knowledgeIngestDirty =
     chunkSize !== (k?.chunk_size ?? chunkSize) ||
     chunkOverlap !== (k?.chunk_overlap ?? chunkOverlap) ||
     tableStructure !== (k?.table_structure ?? tableStructure) ||
     ocr !== (k?.ocr ?? ocr) ||
+    ocrLanguages.join(",") !==
+      englishLast(k?.ocr_languages ?? ocrLanguages).join(",") ||
     pictureDescriptions !== (k?.picture_descriptions ?? pictureDescriptions) ||
     disableIngestWithLangflow !==
       (k?.disable_ingest_with_langflow ?? disableIngestWithLangflow) ||
     vlmDirty;
 
   useRegisterDirty("ingest-settings", userEdited && knowledgeIngestDirty);
+
+  // Keep `userEdited` honest. It is set on every edit but, left alone, would
+  // stay sticky until the next successful save. If the user edits a value and
+  // then reverts it back to what the server has, the form is clean again — but
+  // a sticky flag would (a) permanently skip the resync effect above, so a
+  // genuine later server change is never picked up (stale form), and (b) let
+  // the Save button re-enable and submit that stale value. Clearing the flag
+  // the moment the form matches the server gates the resync on an *actual*
+  // unsaved difference rather than a one-way "has ever edited" flag.
+  useEffect(() => {
+    if (userEdited && !knowledgeIngestDirty) setUserEdited(false);
+  }, [userEdited, knowledgeIngestDirty]);
 
   // Resolve through the same map that builds the groups: the catalogue now
   // contributes custom LiteLLM providers, so a hard-coded chain would report
@@ -451,13 +503,11 @@ export function IngestSettingsSection() {
   const handleChunkSizeChange = (value: string) => {
     setUserEdited(true);
     setChunkSize(Math.max(0, Number.parseInt(value, 10) || 0));
-    setChunkValidationError(null);
   };
 
   const handleChunkOverlapChange = (value: string) => {
     setUserEdited(true);
     setChunkOverlap(Math.max(0, Number.parseInt(value, 10) || 0));
-    setChunkValidationError(null);
   };
 
   const handleKnowledgeIngestSave = () => {
@@ -487,22 +537,17 @@ export function IngestSettingsSection() {
         chunk_overlap: chunkOverlap,
         table_structure: tableStructure,
         ocr,
+        ocr_languages: ocrLanguages,
         picture_descriptions: pictureDescriptions,
         disable_ingest_with_langflow: disableIngestWithLangflow,
         ...vlmPayload,
       },
     });
 
-    if (chunkSize < 1) {
-      const msg = "Chunk size must be at least 1";
-      setChunkValidationError(msg);
-      toast.error("Could not save ingest settings", { description: msg });
-      return;
-    }
-    if (chunkOverlap >= chunkSize) {
-      const msg = "Chunk overlap must be less than chunk size";
-      setChunkValidationError(msg);
-      toast.error("Could not save ingest settings", { description: msg });
+    if (chunkValidationError) {
+      toast.error("Could not save ingest settings", {
+        description: chunkValidationError,
+      });
       return;
     }
 
@@ -528,13 +573,13 @@ export function IngestSettingsSection() {
         chunk_overlap: chunkOverlap,
         table_structure: tableStructure,
         ocr,
+        ocr_languages: ocrLanguages,
         picture_descriptions: pictureDescriptions,
         disable_ingest_with_langflow: disableIngestWithLangflow,
         ...vlmPayload,
       },
       {
         onSuccess: () => {
-          setChunkValidationError(null);
           setValidationError(null);
           setUserEdited(false);
         },
@@ -587,9 +632,9 @@ export function IngestSettingsSection() {
         setChunkOverlap(DEFAULT_KNOWLEDGE_SETTINGS.chunk_overlap);
         setTableStructure(DEFAULT_KNOWLEDGE_SETTINGS.table_structure);
         setOcr(DEFAULT_KNOWLEDGE_SETTINGS.ocr);
+        setOcrLanguages([...DEFAULT_KNOWLEDGE_SETTINGS.ocr_languages]);
         setPictureDescriptions(DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions);
         setDisableIngestWithLangflow(false);
-        setChunkValidationError(null);
         setUserEdited(false);
         toast.success("Default ingest flow settings restored successfully");
         closeDialog();
@@ -868,26 +913,81 @@ export function IngestSettingsSection() {
                 }}
               />
             </div>
-            <div className="flex items-center justify-between py-3 border-b border-border">
-              <div className="flex-1">
-                <Label
-                  htmlFor="ocr"
-                  className="text-base font-medium cursor-pointer pb-3"
-                >
-                  OCR
-                </Label>
-                <div className="text-sm text-muted-foreground">
-                  Extracts text from images/PDFs. Ingest is slower when enabled.
+            <div className="border-b border-border">
+              <div className="flex items-center justify-between py-3">
+                <div className="flex-1">
+                  <Label
+                    htmlFor="ocr"
+                    className="text-base font-medium cursor-pointer pb-3"
+                  >
+                    OCR
+                  </Label>
+                  <div className="text-sm text-muted-foreground">
+                    Extracts text from images/PDFs. Ingest is slower when
+                    enabled.
+                  </div>
                 </div>
+                <Switch
+                  id="ocr"
+                  checked={ocr}
+                  onCheckedChange={(v) => {
+                    setUserEdited(true);
+                    setOcr(v);
+                  }}
+                />
               </div>
-              <Switch
-                id="ocr"
-                checked={ocr}
-                onCheckedChange={(v) => {
-                  setUserEdited(true);
-                  setOcr(v);
-                }}
-              />
+              <Collapsible
+                open={ocrOpen}
+                onOpenChange={setOcrOpen}
+                className={cn(
+                  "pl-4 pb-3 transition-all duration-200",
+                  !ocr && "opacity-50",
+                )}
+              >
+                <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-sm font-medium text-foreground hover:text-foreground/80">
+                  Advanced OCR Settings
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 mr-4 text-muted-foreground transition-transform duration-200",
+                      ocrOpen && "rotate-180",
+                    )}
+                  />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-4 space-y-6">
+                  <div className="space-y-2">
+                    <LabelWrapper
+                      id="ocr-languages"
+                      label="OCR languages"
+                      helperText="Languages are prioritized in this order; English stays last when combined with others"
+                      disabled={!ocr}
+                      flex
+                    >
+                      <MultiSelect
+                        options={ocrLanguageOptions}
+                        value={ocrLanguages}
+                        onValueChange={(v) => {
+                          setUserEdited(true);
+                          // An empty selection would make docling fall back to its
+                          // English-only default without saying so; keep English.
+                          setOcrLanguages(
+                            englishLast(v.length > 0 ? v : ["en"]),
+                          );
+                        }}
+                        showAllOption={false}
+                        placeholder="Select languages..."
+                        searchPlaceholder="Search languages..."
+                        className="w-64"
+                        inlineLabelLimit={2}
+                        disabled={!ocr}
+                      />
+                    </LabelWrapper>
+                    <p className="text-sm text-muted-foreground">
+                      Most languages can only be combined with English, so
+                      incompatible options are disabled once you choose one.
+                    </p>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
             </div>
             <div className="flex items-center justify-between py-3">
               <div className="flex-1">
@@ -917,7 +1017,7 @@ export function IngestSettingsSection() {
                   open={vlmOpen}
                   onOpenChange={setVlmOpen}
                   className={cn(
-                    "mt-4 px-4 transition-all duration-200",
+                    "mt-4 pl-4 transition-all duration-200",
                     !pictureDescriptions && "opacity-50",
                   )}
                 >
@@ -925,7 +1025,7 @@ export function IngestSettingsSection() {
                     Advanced Vision Model (VLM) Settings
                     <ChevronDown
                       className={cn(
-                        "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                        "h-4 w-4 mr-4 text-muted-foreground transition-transform duration-200",
                         vlmOpen && "rotate-180",
                       )}
                     />
@@ -1093,7 +1193,8 @@ export function IngestSettingsSection() {
               disabled={
                 updateSettingsMutation.isPending ||
                 !knowledgeIngestDirty ||
-                vlmModelPending
+                vlmModelPending ||
+                !!chunkValidationError
               }
               className="min-w-[120px]"
               size="sm"

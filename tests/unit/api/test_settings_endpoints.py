@@ -408,6 +408,52 @@ def test_settings_update_body_rejects_malformed_vlm_provider(provider):
         SettingsUpdateBody(vlm_provider=provider)
 
 
+def test_settings_body_accepts_ocr_languages():
+    """OCR languages are settable through the settings API."""
+    body = SettingsUpdateBody(ocr_languages=["en", "ja"])
+
+    assert body.ocr_languages == ["ja", "en"]
+
+
+def test_settings_body_rejects_blank_ocr_language():
+    """A blank code would be forwarded to docling and silently break OCR."""
+    with pytest.raises(ValidationError):
+        SettingsUpdateBody(ocr_languages=["en", "  "])
+
+
+def test_settings_body_accepts_empty_ocr_language_list():
+    """An empty list clears the override so docling uses the engine default."""
+    assert SettingsUpdateBody(ocr_languages=[]).ocr_languages == []
+
+
+def test_settings_body_accepts_one_family_plus_english():
+    """A selection drawn from a single recognition-model family is valid."""
+    assert SettingsUpdateBody(ocr_languages=["en", "ja"]).ocr_languages == ["ja", "en"]
+    assert SettingsUpdateBody(ocr_languages=["ru", "uk"]).ocr_languages == ["ru", "uk"]
+    assert SettingsUpdateBody(ocr_languages=["fr", "de", "pt"]).ocr_languages == [
+        "fr",
+        "de",
+        "pt",
+    ]
+
+
+def test_settings_body_rejects_two_restricted_ocr_languages():
+    """easyocr cannot serve Japanese and Korean from one recognition model."""
+    with pytest.raises(ValidationError):
+        SettingsUpdateBody(ocr_languages=["ja", "ko"])
+
+
+def test_settings_body_rejects_mixed_scripts():
+    """Cyrillic and Latin need different easyocr models."""
+    with pytest.raises(ValidationError):
+        SettingsUpdateBody(ocr_languages=["ru", "fr"])
+
+
+def test_settings_body_allows_unknown_passthrough_codes():
+    """Raw engine codes are the operator's escape hatch; do not second-guess them."""
+    assert SettingsUpdateBody(ocr_languages=["hi", "mr"]).ocr_languages == ["hi", "mr"]
+
+
 @pytest.mark.asyncio
 async def test_update_settings_persists_case_insensitive_removal_only_request():
     from api.settings.endpoints import update_settings
