@@ -105,6 +105,21 @@ def test_file_service_v2_data_sources_mixed_wildcard_strips_sentinel():
     assert {"term": {"filename": "report.pdf"}} in query["bool"]["filter"]
 
 
+def test_file_service_v2_hides_failed_url_source_projections():
+    from src.services.file_service_v2 import FileServiceV2
+
+    query = FileServiceV2()._build_filter_query(user_id="user-123")
+
+    assert {
+        "bool": {
+            "filter": [
+                FileServiceV2._exact_metadata_filter("record_kind", "web_source"),
+                FileServiceV2._exact_metadata_filter("status", "failed"),
+            ]
+        }
+    } in query["bool"]["must_not"]
+
+
 def test_service_query_paths_do_not_apply_document_visibility_filters():
     repo_root = Path(__file__).resolve().parents[2]
     helper_name = "build" + "_acl_filter"

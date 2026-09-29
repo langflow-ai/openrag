@@ -25,6 +25,7 @@ export interface Connector {
   status?: string;
   connectionId?: string;
   requiresOAuth?: boolean;
+  alwaysConnected?: boolean;
 }
 
 interface ConnectorCardProps {
@@ -56,7 +57,8 @@ export default function ConnectorCard({
   ]);
   const canUpload = can("knowledge:upload");
   const isConnected =
-    connector.status === "connected" && connector.connectionId;
+    connector.status === "connected" &&
+    (connector.connectionId || connector.alwaysConnected);
   const isConfigured = connector.status === "configured";
 
   return (
@@ -139,7 +141,7 @@ export default function ConnectorCard({
                   <Plus className="h-4 w-4" />
                   <span className="text-mmd truncate">Add Knowledge</span>
                 </Button>
-                {canCreate && (
+                {canCreate && !connector.alwaysConnected && (
                   <Button
                     variant="outline"
                     onClick={() =>
@@ -162,7 +164,7 @@ export default function ConnectorCard({
                     )}
                   </Button>
                 )}
-                {canDisconnect && (
+                {canDisconnect && !connector.alwaysConnected && (
                   <Button
                     variant="outline"
                     onClick={() => {

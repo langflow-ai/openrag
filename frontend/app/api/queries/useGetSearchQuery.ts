@@ -5,18 +5,17 @@ import {
 } from "@tanstack/react-query";
 import type { ParsedQueryData } from "@/contexts/knowledge-filter-context";
 import { SEARCH_CONSTANTS } from "@/lib/constants";
-import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
+import {
+  buildSearchPayloadFilters,
+  type FilterInput,
+} from "@/lib/filter-normalization";
 
 export interface SearchPayload {
   query: string;
   limit: number;
   scoreThreshold: number;
-  filters?: {
-    data_sources?: string[];
-    document_types?: string[];
-    owners?: string[];
-    connector_types?: string[];
-  };
+  filters?: FilterInput;
+  resultMode?: "chunks" | "website_pages";
 }
 
 export interface ChunkResult {
@@ -45,6 +44,14 @@ export interface ChunkResult {
   index?: number;
   allowed_users?: string[];
   allowed_groups?: string[];
+  document_id?: string;
+  web_source_id?: string;
+  web_page_id?: string;
+  web_page_depth?: number;
+  canonical_url?: string;
+  status?: File["status"];
+  error?: string;
+  chunk_count?: number;
 }
 
 export interface File {
@@ -68,7 +75,8 @@ export interface File {
     | "cancelled"
     | "skipped"
     | "hidden"
-    | "sync";
+    | "sync"
+    | "disabled";
   error?: string;
   /**
    * Skip reason forwarded from result.reason (e.g. "duplicate_content",
@@ -81,6 +89,11 @@ export interface File {
   chunks?: ChunkResult[];
   allowed_users?: string[];
   allowed_groups?: string[];
+  document_id?: string;
+  web_source_id?: string;
+  web_page_id?: string;
+  web_page_depth?: number;
+  web_child_count?: number;
 }
 
 // Non-fatal signal from the backend — e.g. an embedding provider was removed
@@ -98,11 +111,22 @@ export interface SearchResult {
   warnings: SearchWarning[];
 }
 
+export interface SearchResultDisplayOptions {
+  groupBy?: "filename" | "document_id";
+  resultMode?: "chunks" | "website_pages";
+}
+
 const EMPTY_SEARCH_RESULT: SearchResult = { files: [], warnings: [] };
 
 export { EMPTY_SEARCH_RESULT };
 
-const getFileIdentity = (chunk: ChunkResult): string => {
+const getFileIdentity = (
+  chunk: ChunkResult,
+  groupBy: SearchResultDisplayOptions["groupBy"],
+): string => {
+  if (groupBy === "document_id" && chunk.document_id) {
+    return chunk.document_id;
+  }
   const normalizedFilename = chunk.filename?.trim();
   if (normalizedFilename) {
     return normalizedFilename;
@@ -123,6 +147,7 @@ export const useGetSearchQuery = (
     UseQueryOptions<SearchResult, Error, SearchResult, unknown[]>,
     "queryKey" | "queryFn"
   >,
+  displayOptions: SearchResultDisplayOptions = {},
 ) => {
   const queryClient = useQueryClient();
 
@@ -155,6 +180,7 @@ export const useGetSearchQuery = (
         query: effectiveQuery,
         limit: searchLimit,
         scoreThreshold: dynamicScoreThreshold,
+        resultMode: displayOptions.resultMode,
       };
       if (queryData?.filters) {
         searchPayload.filters =
@@ -197,11 +223,19 @@ export const useGetSearchQuery = (
           embedding_dimensions?: number;
           allowed_users?: string[];
           allowed_groups?: string[];
+          document_id?: string;
+          web_source_id?: string;
+          web_page_id?: string;
+          web_page_depth?: number;
+          canonical_url?: string;
+          status?: File["status"];
+          error?: string;
+          chunk_count?: number;
         }
       >();
 
       (data.results || []).forEach((chunk: ChunkResult) => {
-        const fileIdentity = getFileIdentity(chunk);
+        const fileIdentity = getFileIdentity(chunk, displayOptions.groupBy);
         // Preserve highlights on the chunk object itself — they are per-chunk,
         // not per-file, so we carry them through rather than aggregating.
         const chunkWithHighlights: ChunkResult = {
@@ -221,9 +255,15 @@ export const useGetSearchQuery = (
           ) {
             existing.embedding_dimensions = chunk.embedding_dimensions;
           }
+          if (typeof chunk.chunk_count === "number") {
+            existing.chunk_count = chunk.chunk_count;
+          }
         } else {
           fileMap.set(fileIdentity, {
-            filename: fileIdentity,
+            filename:
+              displayOptions.groupBy === "document_id"
+                ? chunk.filename || fileIdentity
+                : fileIdentity,
             mimetype: chunk.mimetype,
             chunks: [chunkWithHighlights],
             totalScore: chunk.score,
@@ -237,6 +277,14 @@ export const useGetSearchQuery = (
             embedding_dimensions: chunk.embedding_dimensions,
             allowed_users: chunk.allowed_users || [],
             allowed_groups: chunk.allowed_groups || [],
+            document_id: chunk.document_id,
+            web_source_id: chunk.web_source_id,
+            web_page_id: chunk.web_page_id,
+            web_page_depth: chunk.web_page_depth,
+            canonical_url: chunk.canonical_url,
+            status: chunk.status,
+            error: chunk.error,
+            chunk_count: chunk.chunk_count,
           });
         }
       });
@@ -244,7 +292,7 @@ export const useGetSearchQuery = (
       const files: File[] = Array.from(fileMap.values()).map((file) => ({
         filename: file.filename,
         mimetype: file.mimetype,
-        chunkCount: file.chunks.length,
+        chunkCount: file.chunk_count ?? file.chunks.length,
         avgScore: file.totalScore / file.chunks.length,
         source_url: file.source_url || "",
         owner: file.owner || "",
@@ -257,6 +305,12 @@ export const useGetSearchQuery = (
         chunks: file.chunks,
         allowed_users: file.allowed_users || [],
         allowed_groups: file.allowed_groups || [],
+        document_id: file.document_id,
+        web_source_id: file.web_source_id,
+        web_page_id: file.web_page_id,
+        web_page_depth: file.web_page_depth,
+        status: file.status,
+        error: file.error,
       }));
 
       const warnings: SearchWarning[] = Array.isArray(data.warnings)
@@ -273,7 +327,7 @@ export const useGetSearchQuery = (
 
   return useQuery(
     {
-      queryKey: ["search", queryData, query],
+      queryKey: ["search", queryData, query, displayOptions],
       placeholderData: (prev) => prev,
       staleTime: 0,
       queryFn: getFiles,

@@ -98,7 +98,7 @@ async def test_image_only_placeholder_succeeds_but_empty_document_fails(
         assert indexed == {}
         return
 
-    assert result == {"status": "indexed", "id": "image-hash"}
+    assert result == {"status": "indexed", "id": "image-hash", "chunk_count": 1}
     embedding_create.assert_awaited_once_with(
         model="text-embedding-3-small", input=["<!-- image -->"]
     )

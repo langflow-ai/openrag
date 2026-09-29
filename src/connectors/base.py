@@ -91,7 +91,10 @@ class BaseConnector(ABC):
     CONNECTOR_TYPE: str = None
     # "oauth" connectors authenticate per-user via OAuth env-var credentials.
     # "bucket" connectors authenticate via per-connection config dict (HMAC, API key, etc).
+    # "managed" connectors own their persistent resources and do not create a
+    # ConnectionManager entry (the URL connector is the first example).
     CONNECTOR_KIND: str = "oauth"
+    ALWAYS_CONNECTED: bool = False
     # When a sync re-processes files that are already indexed, pass
     # replace_duplicates so the indexed copy is replaced and content changes
     # propagate, instead of being skipped by the duplicate-filename gate.

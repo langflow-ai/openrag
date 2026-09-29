@@ -6,7 +6,10 @@ import {
   type SearchResult,
   useGetSearchQuery,
 } from "@/app/api/queries/useGetSearchQuery";
-import { fileScopedSearchQueryData } from "@/lib/file-chunks";
+import {
+  documentScopedSearchQueryData,
+  fileScopedSearchQueryData,
+} from "@/lib/file-chunks";
 
 /**
  * Loads every chunk for one filename (shared by chunks page + FileChunksPanel).
@@ -77,5 +80,55 @@ export function useFileScopedChunksQuery(
     return { ...allFile, chunks: mergedChunks };
   }, [allData, hlData, filename, isRealQuery]);
 
+  return { file, isFetching: isFetchingAll || isFetchingHl };
+}
+
+export function useDocumentScopedChunksQuery(
+  documentId: string | null | undefined,
+  searchQuery?: string,
+) {
+  const queryData = documentId
+    ? documentScopedSearchQueryData(documentId)
+    : null;
+  const isRealQuery =
+    Boolean(searchQuery) &&
+    searchQuery!.trim() !== "*" &&
+    searchQuery!.trim() !== "";
+  const { data: allData = EMPTY_SEARCH_RESULT, isFetching: isFetchingAll } =
+    useGetSearchQuery(
+      "*",
+      queryData,
+      { enabled: Boolean(documentId) },
+      { groupBy: "document_id" },
+    );
+  const { data: hlData = EMPTY_SEARCH_RESULT, isFetching: isFetchingHl } =
+    useGetSearchQuery(
+      isRealQuery ? searchQuery! : "*",
+      queryData,
+      {
+        enabled: Boolean(documentId) && isRealQuery,
+        placeholderData: undefined,
+      },
+      { groupBy: "document_id" },
+    );
+  const file = useMemo(() => {
+    const allFile = (allData as SearchResult).files[0];
+    if (!allFile || !isRealQuery) return allFile;
+    const highlightsByChunk = new Map<string, string[]>();
+    for (const chunk of (hlData as SearchResult).files[0]?.chunks ?? []) {
+      const key = chunk.chunk_id ?? chunk.id;
+      if (key && chunk.highlights?.length) {
+        highlightsByChunk.set(key, chunk.highlights);
+      }
+    }
+    return {
+      ...allFile,
+      chunks: (allFile.chunks ?? []).map((chunk) => {
+        const key = chunk.chunk_id ?? chunk.id;
+        const highlights = key ? (highlightsByChunk.get(key) ?? []) : [];
+        return highlights.length ? { ...chunk, highlights } : chunk;
+      }),
+    };
+  }, [allData, hlData, isRealQuery]);
   return { file, isFetching: isFetchingAll || isFetchingHl };
 }

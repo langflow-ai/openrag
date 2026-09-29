@@ -80,7 +80,14 @@ export const useListFiles = (
         embedding_dimensions: f.embedding_dimensions as number | undefined,
         allowed_users: (f.allowed_users as string[]) || [],
         allowed_groups: (f.allowed_groups as string[]) || [],
-        status: "active" as const,
+        status: (f.status as File["status"]) || "active",
+        error: f.error as string | undefined,
+        document_id: f.document_id as string | undefined,
+        web_source_id: f.web_source_id as string | undefined,
+        web_page_id: f.web_page_id as string | undefined,
+        web_page_depth:
+          typeof f.web_page_depth === "number" ? f.web_page_depth : 0,
+        web_child_count: f.web_child_count as number | undefined,
       }),
     );
 
