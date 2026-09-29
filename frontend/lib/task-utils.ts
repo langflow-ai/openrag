@@ -24,8 +24,33 @@ export type TaskFileFilterOptions = {
   task?: Task;
 };
 
+function getFileResultReason(fileInfo: TaskFileEntry): string | undefined {
+  const result = fileInfo.result;
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return undefined;
+  }
+  const reason = (result as { reason?: unknown }).reason;
+  return typeof reason === "string" ? reason : undefined;
+}
+
+export function isDeletedAtSourceFile(fileInfo: TaskFileEntry): boolean {
+  return getFileResultReason(fileInfo) === "deleted_at_source";
+}
+
+export function getDeletedAtSourceMessage(
+  fileInfo: TaskFileEntry,
+): string | undefined {
+  if (!isDeletedAtSourceFile(fileInfo)) {
+    return undefined;
+  }
+  const message = (fileInfo.result as { message?: unknown }).message;
+  return typeof message === "string" && message.trim()
+    ? message.trim()
+    : undefined;
+}
+
 function isTaskFileCompleted(fileInfo: TaskFileEntry): boolean {
-  return fileInfo.status === "completed";
+  return fileInfo.status === "completed" || isDeletedAtSourceFile(fileInfo);
 }
 
 export function isTaskFileFailed(fileInfo: TaskFileEntry): boolean {
@@ -33,7 +58,8 @@ export function isTaskFileFailed(fileInfo: TaskFileEntry): boolean {
 }
 
 export function isTaskFileWarning(fileInfo: TaskFileEntry): boolean {
-  return fileInfo.status === "skipped";
+  // Source-deleted files are successful cleanup, not a skip warning.
+  return fileInfo.status === "skipped" && !isDeletedAtSourceFile(fileInfo);
 }
 
 export function getTaskFileDialogStatusLabel(
@@ -53,6 +79,9 @@ export function getTaskFileDialogStatusLabel(
       return "Failed";
     }
     return buildRowStatusLabel("unknown");
+  }
+  if (isDeletedAtSourceFile(fileInfo)) {
+    return "Removed";
   }
   if (isTaskFileWarning(fileInfo)) {
     return "Warning";
@@ -153,7 +182,7 @@ function getTaskFileStatusCategory(
     return "indexing";
   }
 
-  if (status === "completed") {
+  if (isTaskFileCompleted(fileInfo)) {
     return "completed";
   }
 
@@ -279,11 +308,33 @@ function isCompletedWithFailures(task: Task): boolean {
 
 export function getSuccessfulFileCount(task: Task): number {
   if (typeof task.successful_files === "number") {
-    return task.successful_files;
+    // The backend counts skipped (duplicate) files as successful_files too.
+    // Subtract them so the toast only reports truly-indexed files as uploaded.
+    const skipped = getSkippedFileCount(task);
+    return Math.max(0, task.successful_files - skipped);
   }
-  return Object.values(task.files || {}).filter(
-    (fileInfo) => fileInfo?.status === "completed",
+  return Object.values(task.files || {}).filter((fileInfo) =>
+    fileInfo ? isTaskFileCompleted(fileInfo) : false,
   ).length;
+}
+
+export function getSkippedFileCount(task: Task): number {
+  return Object.values(task.files || {}).filter(
+    (fileInfo) => fileInfo?.status === "skipped",
+  ).length;
+}
+
+/**
+ * Count only files skipped because of duplicate content (reason = "duplicate_content").
+ * Excludes other skip reasons such as "deleted_at_source" (connector cleanup).
+ */
+export function getDuplicateContentFileCount(task: Task): number {
+  return Object.values(task.files || {}).filter((fileInfo) => {
+    if (fileInfo?.status !== "skipped") return false;
+    const reason = (fileInfo.result as Record<string, unknown> | undefined)
+      ?.reason;
+    return reason === "duplicate_content";
+  }).length;
 }
 
 export function getFailedFileCount(task: Task): number {
@@ -384,7 +435,7 @@ export function getEnhancedListDisappearedFilePaths(
 interface ProcessingFileOverlay {
   task_id: string;
   source_url: string;
-  status: "active" | "failed" | "processing" | "cancelled";
+  status: "active" | "failed" | "processing" | "cancelled" | "skipped";
   error?: string;
 }
 
@@ -392,6 +443,9 @@ interface ProcessingFileOverlay {
  * Promote local processing overlays when the enhanced list omits completed files.
  * Pass `disappearedPaths` while the task is in progress; omit it when the task completes
  * to finalize every remaining processing file for that task.
+ *
+ * Source-deleted cleanups are completed-but-visible: drop their overlay instead
+ * of promoting it to `active`, or the knowledge table would show a ghost ingest.
  */
 export function finalizeProcessingOverlaysForEnhancedTask<
   T extends ProcessingFileOverlay,
@@ -400,19 +454,27 @@ export function finalizeProcessingOverlaysForEnhancedTask<
     disappearedPaths === undefined ? null : new Set(disappearedPaths);
   let changed = false;
 
-  const updated = prevFiles.map((file) => {
+  const updated: T[] = [];
+  for (const file of prevFiles) {
     if (file.task_id !== currentTask.task_id) {
-      return file;
+      updated.push(file);
+      continue;
     }
     if (pathsFilter !== null && !pathsFilter.has(file.source_url)) {
-      return file;
+      updated.push(file);
+      continue;
     }
     // Overlays can still be "failed" until the list poll sees a retry as running.
     if (file.status !== "processing" && file.status !== "failed") {
-      return file;
+      updated.push(file);
+      continue;
     }
 
     const entry = currentTask.files?.[file.source_url];
+    if (entry && isDeletedAtSourceFile(entry)) {
+      changed = true;
+      continue;
+    }
     if (entry && isTaskFileFailed(entry)) {
       if (file.status === "failed") {
         const error =
@@ -420,7 +482,8 @@ export function finalizeProcessingOverlaysForEnhancedTask<
             ? entry.error.trim()
             : file.error;
         if (error === file.error) {
-          return file;
+          updated.push(file);
+          continue;
         }
       }
       changed = true;
@@ -428,13 +491,14 @@ export function finalizeProcessingOverlaysForEnhancedTask<
         typeof entry.error === "string" && entry.error.trim().length > 0
           ? entry.error.trim()
           : file.error;
-      return { ...file, status: "failed" as const, error };
+      updated.push({ ...file, status: "failed" as const, error });
+      continue;
     }
 
     // Left the enhanced list (completed files are omitted) or task finished.
     changed = true;
-    return { ...file, status: "active" as const, error: undefined };
-  });
+    updated.push({ ...file, status: "active" as const, error: undefined });
+  }
 
-  return changed ? (updated as T[]) : prevFiles;
+  return changed ? updated : prevFiles;
 }

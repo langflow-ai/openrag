@@ -38,10 +38,12 @@ class InMemoryOpenSearch:
         self.indices = InMemoryIndices()
 
     async def bulk(self, *, body: list[dict[str, Any]], refresh: bool | str) -> dict[str, Any]:
+        items = []
         for offset in range(0, len(body), 2):
             document_id = body[offset]["index"]["_id"]
             self.documents[document_id] = body[offset + 1]
-        return {"errors": False}
+            items.append({"index": {"_id": document_id, "status": 200}})
+        return {"errors": False, "items": items}
 
     def visible_documents(self, owner: str) -> list[dict[str, Any]]:
         return [document for document in self.documents.values() if document.get("owner") == owner]

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from posixpath import basename
 from typing import Any
 
-from config.settings import IBM_AUTH_ENABLED
+from config.settings import IBM_AUTH_ENABLED, is_dev_aws_s3_enabled
 from connectors.base import (
     CONTENT_ETAG_METADATA_KEY,
     BaseConnector,
@@ -64,8 +64,10 @@ class S3Connector(BaseConnector):
 
     @classmethod
     def is_available(cls, manager, user_id=None) -> bool:
-        # Gated by feature flag in OSS; SaaS / enterprise can flip it on.
-        return IBM_AUTH_ENABLED
+        # Enterprise/SaaS gate is IBM_AUTH_ENABLED, like the other bucket
+        # connectors (ibm_cos, azure_blob). OPENRAG_DEV_AWS_S3=true bypasses it
+        # for local dev (e.g. against MinIO; never in production).
+        return IBM_AUTH_ENABLED or is_dev_aws_s3_enabled()
 
     @classmethod
     def register_routes(cls, app) -> None:

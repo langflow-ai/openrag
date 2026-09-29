@@ -3,6 +3,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { useUpdateOnboardingStateMutation } from "./useUpdateOnboardingStateMutation";
 
@@ -23,6 +24,7 @@ export interface OnboardingVariables {
   watsonx_project_id?: string;
   ollama_endpoint?: string;
   provider_credentials?: Record<string, Record<string, string>>;
+  provider_credential_removals?: Record<string, string[]>;
   provider_auth_methods?: Record<string, string>;
 }
 
@@ -31,6 +33,7 @@ interface OnboardingResponse {
   edited: boolean;
   openrag_docs_filter_id?: string;
   task_id?: string;
+  chunk_size_adjusted_to?: number | null;
 }
 
 async function submitOnboarding(
@@ -67,20 +70,33 @@ export const useOnboardingMutation = (
   const updateOnboardingMutation = useUpdateOnboardingStateMutation();
 
   return useMutation({
+    ...options,
     mutationFn: submitOnboarding,
-    onSuccess: (data) => {
+    onSuccess: async (data, variables, onMutateResult, context) => {
       // Save OpenRAG docs filter ID if sample data was ingested
       if (data.openrag_docs_filter_id) {
-        // Save to backend
-        updateOnboardingMutation.mutateAsync({
+        await updateOnboardingMutation.mutateAsync({
           openrag_docs_filter_id: data.openrag_docs_filter_id,
         });
       }
+      if (typeof data.chunk_size_adjusted_to === "number") {
+        toast.info(`Chunk size reduced to ${data.chunk_size_adjusted_to}`, {
+          description:
+            "OpenRAG adjusted ingestion chunks to stay within watsonx.ai on-prem embedding limits.",
+        });
+      }
+      await options?.onSuccess?.(data, variables, onMutateResult, context);
     },
-    onSettled: () => {
-      // Invalidate settings query to refetch updated data
-      queryClient.invalidateQueries({ queryKey: ["settings"] });
+    onSettled: async (data, error, variables, onMutateResult, context) => {
+      // Invalidate settings query to refetch updated onboarding state
+      await queryClient.invalidateQueries({ queryKey: ["settings"] });
+      await options?.onSettled?.(
+        data,
+        error,
+        variables,
+        onMutateResult,
+        context,
+      );
     },
-    ...options,
   });
 };

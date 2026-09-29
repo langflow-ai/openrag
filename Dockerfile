@@ -1,7 +1,7 @@
 ########################################
 # Stage 1: Upstream OpenSearch with plugins
 ########################################
-FROM opensearchproject/opensearch:3.6.0 AS upstream_opensearch
+FROM opensearchproject/opensearch:3.8.0 AS upstream_opensearch
 
 # Remove plugins
 RUN opensearch-plugin remove opensearch-neural-search || true && \
@@ -9,21 +9,21 @@ RUN opensearch-plugin remove opensearch-neural-search || true && \
 
 # Prepare jvector plugin artifacts
 RUN mkdir -p /tmp/opensearch-jvector-plugin && \
-    curl -L -s https://github.com/opensearch-project/opensearch-jvector/releases/download/3.6.0.0/artifacts.tar.gz \
+    curl -L -s https://github.com/opensearch-project/opensearch-jvector/releases/download/3.8.0.0/artifacts.tar.gz \
       | tar zxvf - -C /tmp/opensearch-jvector-plugin
 
 # Prepare neural-search plugin
 RUN mkdir -p /tmp/opensearch-neural-search && \
-    curl -L -s https://github.com/IBM/neural-search-jvector/releases/download/3.6.0.0/opensearch-neural-search-3.6.0.0.zip \
+    curl -L -s https://github.com/IBM/neural-search-jvector/releases/download/3.8.0.0/opensearch-neural-search-jvector-3.8.0.0.zip \
       > /tmp/opensearch-neural-search/plugin.zip
 
 # Install additional plugins
-RUN opensearch-plugin install --batch file:///tmp/opensearch-jvector-plugin/repository/org/opensearch/plugin/opensearch-jvector-plugin/3.6.0.0/opensearch-jvector-plugin-3.6.0.0.zip && \
+RUN opensearch-plugin install --batch file:///tmp/opensearch-jvector-plugin/repository/org/opensearch/plugin/opensearch-jvector-plugin/3.8.0.0/opensearch-jvector-plugin-3.8.0.0.zip && \
     opensearch-plugin install --batch file:///tmp/opensearch-neural-search/plugin.zip && \
     opensearch-plugin install --batch repository-gcs && \
     opensearch-plugin install --batch repository-azure && \
     # opensearch-plugin install --batch repository-s3 && \
-    opensearch-plugin install --batch https://github.com/opensearch-project/opensearch-prometheus-exporter/releases/download/3.6.0.0/prometheus-exporter-3.6.0.0.zip
+    opensearch-plugin install --batch https://github.com/opensearch-project/opensearch-prometheus-exporter/releases/download/3.8.0.0/prometheus-exporter-3.8.0.0.zip
 
 # Apply Netty patch
 COPY patch-netty.sh /tmp/

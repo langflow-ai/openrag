@@ -2,9 +2,7 @@ import Fuse from "fuse.js";
 import { ArrowRight, Check, Funnel, Loader2, Plus } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useImperativeHandle, useMemo, useRef, useState } from "react";
-import { useDropzone } from "react-dropzone";
 import TextareaAutosize from "react-textarea-autosize";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -70,7 +68,7 @@ export function ChatInput({
   const isMultiline = input.includes("\n") || isWrapped;
   const isDragging = useFileDrag();
   const isCloudBrand = useIsCloudBrand();
-  const { supportedFileTypes, supportedExtensions } = useSupportedFileTypes();
+  const { supportedExtensions } = useSupportedFileTypes();
 
   // Internal state for filter dropdown
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
@@ -102,20 +100,6 @@ export function ChatInput({
     const results = fuse.search(filterSearchTerm);
     return results.map((result) => result.item).slice(0, 20);
   }, [allFilters, filterSearchTerm]);
-
-  const { getRootProps, getInputProps } = useDropzone({
-    accept: supportedFileTypes,
-    maxFiles: 1,
-    disabled: !isDragging,
-    onDrop: (acceptedFiles, fileRejections) => {
-      if (fileRejections.length > 0) {
-        const message = fileRejections.at(0)?.errors.at(0)?.message;
-        toast.error(message || "Failed to upload file");
-        return;
-      }
-      onFileSelected(acceptedFiles[0]);
-    },
-  });
 
   useImperativeHandle(ref, () => ({
     focusInput: () => {
@@ -338,7 +322,6 @@ export function ChatInput({
       <form onSubmit={onSubmit} className="relative">
         {/* Outer container - flex-col to stack file preview above input */}
         <div
-          {...getRootProps()}
           className={cn(
             "flex flex-col w-full p-2 rounded-xl border transition-all",
             isCloudBrand
@@ -352,7 +335,6 @@ export function ChatInput({
             isDragging && "border-dashed",
           )}
         >
-          <input {...getInputProps()} />
           {/* File Preview Section - Always above */}
           <AnimatePresence>
             {uploadedFile && (

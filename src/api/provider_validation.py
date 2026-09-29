@@ -727,9 +727,18 @@ async def validate_provider_setup(
             )
         )
         if probes_the_model:
+            runtime_kwargs: dict[str, Any] = {}
+            if enhancement is not None:
+                from enhancements.providers.registry import runtime_kwargs_for
+
+                runtime_kwargs = runtime_kwargs_for(
+                    enhancement,
+                    stored_credentials if stored_credentials is not None else supplied,
+                )
             await _test_litellm_provider(
                 provider=provider_lower,
                 credentials=supplied,
+                runtime_kwargs=runtime_kwargs,
                 embedding_model=embedding_model,
                 llm_model=llm_model,
             )
@@ -788,7 +797,8 @@ async def validate_provider_setup(
 async def _test_litellm_provider(
     *,
     provider: str,
-    credentials: dict[str, str],
+    credentials: Mapping[str, Any],
+    runtime_kwargs: Mapping[str, Any],
     embedding_model: str | None,
     llm_model: str | None,
 ) -> None:
@@ -814,6 +824,7 @@ async def _test_litellm_provider(
             # wrongly-chosen one impossible to change.
             input=["OpenRAG provider validation"],
             **credentials,
+            **(runtime_kwargs or {}),
         )
         return
     await litellm.acompletion(
@@ -821,6 +832,7 @@ async def _test_litellm_provider(
         messages=[{"role": "user", "content": "Reply with OK."}],
         max_tokens=4,
         **credentials,
+        **(runtime_kwargs or {}),
     )
 
 

@@ -32,6 +32,11 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from connectors.microsoft_oauth_utils import (  # noqa: E402
+    enforce_ms_tenant_allowlist,
+    trusted_tenant_id_from_account,
+    trusted_tenant_id_from_token_result,
+)
 from utils.jwt_verification import (  # noqa: E402
     ExpiredTokenError,
     InvalidAudienceError,
@@ -224,48 +229,29 @@ class TestVerifyMsAccessToken:
         self.private_key, self.public_key, self.jwk = _generate_rsa_key_pair()
         self.jwks = _jwks(self.jwk, issuer=MS_V2_ISS)
 
-    # ── pass-through path (aud != our client_id) ─────────────────────────────
+    # ── wrong-resource tokens (aud != our client_id) ─────────────────────────
 
-    def test_graph_audience_token_is_passed_through(self):
-        """Tokens for MS Graph (aud=00000003-…) are returned without sig verification."""
+    def test_graph_audience_token_is_rejected(self):
+        """Tokens for MS Graph are not returned as unverified claims."""
         MS_GRAPH_AUD = "00000003-0000-0000-c000-000000000000"
         token = _make_ms_token(self.private_key, aud=MS_GRAPH_AUD)
 
-        # _fetch_jwks must NOT be called for pass-through tokens
-        with patch("utils.jwt_verification._fetch_jwks") as mock_fetch:
-            claims = verify_microsoft_access_token(token, CLIENT_ID)
+        with patch("utils.jwt_verification._fetch_jwks", return_value=self.jwks):
+            with pytest.raises(InvalidAudienceError):
+                verify_microsoft_access_token(token, CLIENT_ID)
 
-        mock_fetch.assert_not_called()
-        assert claims["aud"] == MS_GRAPH_AUD
-        assert claims["tid"] == TENANT_ID
-
-    def test_graph_token_tenant_allow_list_enforced(self):
-        """Even for pass-through tokens, the tenant allow-list is checked."""
+    def test_graph_token_tenant_allow_list_does_not_decode_unverified_claims(self):
+        """Wrong-resource tokens fail audience validation before tenant policy."""
         MS_GRAPH_AUD = "00000003-0000-0000-c000-000000000000"
         token = _make_ms_token(self.private_key, aud=MS_GRAPH_AUD)
 
-        with patch("utils.jwt_verification._fetch_jwks"):
-            with pytest.raises(
-                InvalidIssuerError, match="not in the configured allowed tenant list"
-            ):
+        with patch("utils.jwt_verification._fetch_jwks", return_value=self.jwks):
+            with pytest.raises(InvalidAudienceError):
                 verify_microsoft_access_token(
                     token,
                     CLIENT_ID,
                     allowed_tenant_ids={"ffffffff-ffff-ffff-ffff-ffffffffffff"},
                 )
-
-    def test_graph_token_allowed_tenant_passes(self):
-        """Pass-through token from a tenant in the allow-list succeeds."""
-        MS_GRAPH_AUD = "00000003-0000-0000-c000-000000000000"
-        token = _make_ms_token(self.private_key, aud=MS_GRAPH_AUD)
-
-        with patch("utils.jwt_verification._fetch_jwks"):
-            claims = verify_microsoft_access_token(
-                token,
-                CLIENT_ID,
-                allowed_tenant_ids={TENANT_ID},
-            )
-        assert claims["tid"] == TENANT_ID
 
     # ── full verification path (aud == our client_id) ────────────────────────
 
@@ -281,7 +267,8 @@ class TestVerifyMsAccessToken:
         assert claims["iss"] == MS_V2_ISS
 
     def test_valid_v1_token_uses_v1_jwks_url(self):
-        """v1 tokens must be fetched from the /discovery/keys endpoint (no /v2.0/)."""
+        """v1 tokens fall back to the v1 JWKS when v2 shares the same key id."""
+        v2_jwks = _jwks(self.jwk, issuer="https://login.microsoftonline.com/{tenantid}/v2.0")
         v1_jwks = _jwks(self.jwk, issuer=MS_V1_ISS)
         token = _make_ms_token(
             self.private_key,
@@ -289,16 +276,19 @@ class TestVerifyMsAccessToken:
             ver="1.0",
         )
 
-        captured_url = {}
+        captured_urls = []
 
         def fake_fetch(url):
-            captured_url["url"] = url
+            captured_urls.append(url)
+            if "/v2.0/" in url:
+                return v2_jwks
             return v1_jwks
 
         with patch("utils.jwt_verification._fetch_jwks", side_effect=fake_fetch):
             claims = verify_microsoft_access_token(token, CLIENT_ID)
 
-        assert "/v2.0/" not in captured_url["url"], "v1 token must NOT use v2 JWKS endpoint"
+        assert any("/v2.0/" in url for url in captured_urls)
+        assert any("/v2.0/" not in url for url in captured_urls)
         assert claims["ver"] == "1.0"
 
     def test_invalid_signature_raises(self):
@@ -318,28 +308,30 @@ class TestVerifyMsAccessToken:
             with pytest.raises(ExpiredTokenError):
                 verify_microsoft_access_token(token, CLIENT_ID)
 
-    def test_wrong_audience_raises(self):
-        """Token issued for our app (aud=CLIENT_ID) but the signature verifies
-        against the wrong audience value raises InvalidAudienceError.
-        We achieve this by making a token with aud=CLIENT_ID and passing a
-        different client_id that also equals aud (so full-verify path runs)
-        by simply using a client_id that doesn't match the token aud at all
-        but keeps aud == client_id so we enter the full-verify branch.
+    def test_missing_exp_raises(self):
+        """A signed Microsoft token without exp is not fully valid."""
+        now = int(time.time())
+        payload = {
+            "aud": CLIENT_ID,
+            "iss": MS_V2_ISS,
+            "sub": "no-exp",
+            "tid": TENANT_ID,
+            "iat": now,
+            "ver": "2.0",
+        }
+        token = jwt.encode(payload, self.private_key, algorithm="RS256", headers={"kid": KID})
 
-        Simplest approach: issue token with aud=WRONG, call with client_id=WRONG
-        so we enter full-verify, but the JWKS key issuer won't match → raises.
-        """
-        # When client_id != token aud, the function skips verification and returns
-        # unverified claims (pass-through). This is the correct MS docs behaviour:
-        # only validate tokens whose aud matches our application.
+        with patch("utils.jwt_verification._fetch_jwks", return_value=self.jwks):
+            with pytest.raises(JWTVerificationError, match="exp"):
+                verify_microsoft_access_token(token, CLIENT_ID)
+
+    def test_wrong_audience_raises(self):
+        """Token with an unexpected audience raises InvalidAudienceError."""
         token = _make_ms_token(self.private_key, aud=CLIENT_ID)
 
-        # When client_id != token aud, the function skips verification and returns
-        # unverified claims (pass-through). This is correct MS docs behaviour.
         with patch("utils.jwt_verification._fetch_jwks", return_value=self.jwks):
-            claims = verify_microsoft_access_token(token, "different-client-id")
-        # Pass-through: returns claims without error
-        assert claims["aud"] == CLIENT_ID
+            with pytest.raises(InvalidAudienceError):
+                verify_microsoft_access_token(token, "different-client-id")
 
     def test_issuer_mismatch_raises(self):
         """Signing key issuer in JWKS doesn't match the token iss."""
@@ -401,8 +393,9 @@ class TestVerifyMsAccessToken:
         }
         token = jwt.encode(payload, self.private_key, algorithm="RS256", headers={"kid": KID})
 
-        with pytest.raises(JWTVerificationError, match="missing the 'tid' claim"):
-            verify_microsoft_access_token(token, CLIENT_ID)
+        with patch("utils.jwt_verification._fetch_jwks", return_value=self.jwks):
+            with pytest.raises(JWTVerificationError, match="missing the 'tid' claim"):
+                verify_microsoft_access_token(token, CLIENT_ID)
 
     def test_missing_client_id_raises(self):
         """Empty client_id is rejected immediately."""
@@ -456,6 +449,40 @@ class TestVerifyMsAccessToken:
             claims = verify_microsoft_access_token(token, CLIENT_ID)
 
         assert claims["tid"] == TENANT_ID
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Microsoft OAuth tenant metadata helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestMicrosoftOAuthTenantPolicy:
+    """Tests for Microsoft tenant policy helpers that avoid access-token decoding."""
+
+    def test_trusted_tenant_from_account_realm(self):
+        assert trusted_tenant_id_from_account({"realm": TENANT_ID}) == TENANT_ID
+
+    def test_trusted_tenant_from_account_home_account_id(self):
+        account = {"home_account_id": f"user-id.{TENANT_ID}"}
+        assert trusted_tenant_id_from_account(account) == TENANT_ID
+
+    def test_trusted_tenant_from_token_result_claims(self):
+        result = {"id_token_claims": {"tid": TENANT_ID}}
+        assert trusted_tenant_id_from_token_result(result) == TENANT_ID
+
+    def test_tenant_allowlist_accepts_allowed_tenant(self, monkeypatch):
+        monkeypatch.setattr("config.settings.MICROSOFT_ALLOWED_TENANT_IDS", {TENANT_ID})
+        enforce_ms_tenant_allowlist(TENANT_ID)
+
+    def test_tenant_allowlist_rejects_unlisted_tenant(self, monkeypatch):
+        monkeypatch.setattr("config.settings.MICROSOFT_ALLOWED_TENANT_IDS", {TENANT_ID})
+        with pytest.raises(InvalidIssuerError, match="not in the configured allowed tenant list"):
+            enforce_ms_tenant_allowlist("ffffffff-ffff-ffff-ffff-ffffffffffff")
+
+    def test_tenant_allowlist_requires_trusted_tenant_metadata(self, monkeypatch):
+        monkeypatch.setattr("config.settings.MICROSOFT_ALLOWED_TENANT_IDS", {TENANT_ID})
+        with pytest.raises(InvalidIssuerError, match="tenant id is required"):
+            enforce_ms_tenant_allowlist(None)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

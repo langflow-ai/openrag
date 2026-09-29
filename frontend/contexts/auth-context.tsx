@@ -104,6 +104,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } else if (data.no_auth_mode) {
         setIsNoAuthMode(true);
         setIsIbmAuthMode(false);
+        // No-auth mode is always anonymous — no user identity.
         setUser(null);
       } else if (data.authenticated && data.user) {
         setIsNoAuthMode(false);

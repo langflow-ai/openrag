@@ -240,10 +240,13 @@ async def test_litellm_does_not_leak_the_tls_setting_into_the_request_body() -> 
         server.shutdown()
 
     assert len(bodies) == 2
-    for body in bodies:
-        assert "ssl_verify" not in body
-        assert "additional_drop_params" not in body
-        assert "embedding_api_base" not in body
+    chat_body, embed_body = bodies[0], bodies[1]
+    assert "ssl_verify" not in chat_body
+    assert "additional_drop_params" not in chat_body and "additional_drop_params" not in embed_body
+    assert "embedding_api_base" not in chat_body and "embedding_api_base" not in embed_body
+    # LiteLLM's hosted_vllm aembedding passes unrecognised kwargs into extra_body for embeddings;
+    # vLLM ignores unknown keys in POST /v1/embeddings.
+    assert "input" in embed_body
 
 
 # ---------------------------------------------------------------------------

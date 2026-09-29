@@ -81,7 +81,7 @@ export default function ConnectorCard({
                     "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
                     isCloudBrand
                       ? "bg-primary/10 text-primary dark:bg-white/10 dark:text-layer-contextual-foreground"
-                      : "bg-foreground text-muted",
+                      : "bg-muted text-muted-foreground",
                   )}
                 >
                   <span className="h-2 w-2 rounded-full bg-green-500" />

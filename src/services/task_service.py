@@ -8,8 +8,20 @@ import uuid
 from collections.abc import Coroutine
 from typing import Any, TypeVar
 
-from models.tasks import DoclingPhaseStatus, FileTask, IngestionPhase, TaskStatus, UploadTask
+from models.tasks import (
+    DoclingPhaseStatus,
+    FileTask,
+    IngestionPhase,
+    TaskDeleteResult,
+    TaskStatus,
+    UploadTask,
+)
 from session_manager import AnonymousUser
+from utils.filename_claims import (
+    INFLIGHT_CLAIM_WINNER_FAILED_ERROR,
+    claim_holder,
+    filename_claims,
+)
 from utils.gpu_detection import get_worker_count
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
@@ -599,6 +611,76 @@ class TaskService:
 
         return f"{hours}h {mins}m {secs}s"
 
+    def _find_upload_task(self, task_id: str) -> UploadTask | None:
+        """The task with this id, whichever user's store holds it.
+
+        A claim conflict is not confined to one task: the registry keys names by
+        ownership scope, not by task, so a file in one task can lose a name to a
+        file in another — two uploads in flight at once, or an upload racing a
+        connector sync.
+        """
+        for tasks in self.task_store.values():
+            found = tasks.get(task_id)
+            if found is not None:
+                return found
+        return None
+
+    async def _fail_files_stranded_by(self, refused_holders: set[str]) -> None:
+        """Fail the files that were skipped for a name this one never indexed.
+
+        The duplicate gate decides a losing file's outcome the moment it loses
+        the claim, before the winner has ingested anything. When the winner then
+        fails, nothing landed under that name, so the loser's "skipped, a file
+        with this name already exists" describes something that never happened —
+        and it is counted as a successful file, which is a document the user
+        never got. SKIPPED is also not a retry candidate (retry_failed_files
+        takes FAILED only), so nothing would ever recover it.
+
+        Failing it instead says what happened and puts it back within reach of a
+        retry, which re-runs the gate and resolves correctly either way: it
+        ingests if the name is genuinely free, and skips again as a duplicate if
+        something else holds it by then.
+
+        Each loser is corrected inside its own task, which may not be this one
+        and may already have finished. That stays consistent: processed_files is
+        untouched, one successful file becomes a failed one under that task's
+        lock, and a COMPLETED task carrying failures is the ordinary shape retry
+        operates on — it refuses only while a task is still RUNNING. The
+        completion event for such a task was emitted with the earlier counts,
+        which leaves a stale statistic behind rather than inconsistent state.
+        """
+        for holder in refused_holders:
+            loser_task_id, _, file_key = holder.partition(":")
+            if not file_key:
+                continue
+            owning_task = self._find_upload_task(loser_task_id)
+            if owning_task is None:
+                # Task already evicted from the store; nothing left to correct.
+                continue
+            stranded = owning_task.file_tasks.get(file_key)
+            if stranded is None or stranded.status != TaskStatus.SKIPPED:
+                continue
+            # Only the in-flight skip is ours to reverse; a file skipped against
+            # something already indexed is unaffected by this failure.
+            if (stranded.result or {}).get("reason") != "duplicate_filename":
+                continue
+
+            stranded.status = TaskStatus.FAILED
+            stranded.error = INFLIGHT_CLAIM_WINNER_FAILED_ERROR
+            stranded.result = None
+            stranded.updated_at = time.time()
+            async with self._get_task_lock(loser_task_id):
+                if owning_task.successful_files > 0:
+                    owning_task.successful_files -= 1
+                owning_task.failed_files += 1
+                owning_task.updated_at = time.time()
+            logger.info(
+                "Reversed an in-flight duplicate skip after the ingesting file failed",
+                task_id=loser_task_id,
+                file_path=stranded.file_path,
+                filename=stranded.filename,
+            )
+
     async def background_custom_processor(
         self, user_id: str, task_id: str, items: list, processor=None
     ) -> None:
@@ -747,6 +829,13 @@ class TaskService:
                         )
 
                     finally:
+                        # Hand back the filename this file held while in flight
+                        # (utils.filename_claims), so the next task — or a retry
+                        # of this one — can take it. Every file passes through
+                        # here, including the ones that never claimed anything.
+                        refused = filename_claims.release(claim_holder(task_id, item_key))
+                        if refused and file_task.status == TaskStatus.FAILED:
+                            await self._fail_files_stranded_by(refused)
                         file_task.updated_at = time.time()
                         # Only increment processed_files if the file reached a terminal state
                         # This prevents counter inconsistency on cancellation.
@@ -1097,6 +1186,17 @@ class TaskService:
             "status": "accepted",
         }
 
+    @staticmethod
+    def _keep_completed_file_in_list(file_task: FileTask) -> bool:
+        """Source-deleted cleanups stay visible so the UI can show Removed.
+
+        Normal completed ingests are omitted from the task file list to keep it
+        tidy. A file that was removed from the index because it disappeared at
+        the source is also completed, but dropping it would hide the cleanup.
+        """
+        result = file_task.result or {}
+        return result.get("reason") == "deleted_at_source"
+
     def _serialize_file_task(self, file_task: FileTask) -> dict:
         """Serialize a FileTask to the standard dict shape."""
         return {
@@ -1132,6 +1232,19 @@ class TaskService:
                 "failure_phase": "cancelled",
                 "user_facing_message": "Ingestion was cancelled.",
                 "actionable_by": "USER_ACTIONABLE",
+            }
+
+        # Before the substring heuristics below, which would otherwise read this
+        # as a plain duplicate: the file was never ingested, and retrying is
+        # exactly the right move.
+        if error == INFLIGHT_CLAIM_WINNER_FAILED_ERROR:
+            return {
+                "component": "openrag",
+                "failure_phase": "unknown",
+                "user_facing_message": (
+                    f"{INFLIGHT_CLAIM_WINNER_FAILED_ERROR} Retry to ingest it."
+                ),
+                "actionable_by": "RETRYABLE",
             }
 
         # Before any substring heuristic: an OpenSearch transport failure carries a
@@ -1458,6 +1571,8 @@ class TaskService:
         """
         tasks_by_id = {}
 
+        is_shared = False
+
         def add_tasks_from_store(store_user_id):
             if store_user_id not in self.task_store:
                 return
@@ -1474,7 +1589,13 @@ class TaskService:
                     # the list tidy. Preview-mode tasks instead need every file
                     # (including completed ones) so the live preview carousel can
                     # still enumerate them and render their cached Docling layout.
-                    if file_task.status != TaskStatus.COMPLETED or upload_task.preview_mode:
+                    # Source-deleted cleanups are completed but must stay visible
+                    # as successful removals, not vanish like a normal ingest.
+                    if (
+                        file_task.status != TaskStatus.COMPLETED
+                        or upload_task.preview_mode
+                        or self._keep_completed_file_in_list(file_task)
+                    ):
                         entry = self._serialize_file_task(file_task)
                         if file_task.status == TaskStatus.FAILED:
                             metadata = self._infer_failure_metadata(file_task)
@@ -1500,9 +1621,11 @@ class TaskService:
                     "updated_at": upload_task.updated_at,
                     "duration_seconds": upload_task.duration_seconds,
                     "files": file_statuses,
+                    "is_shared": is_shared,
                 }
 
         add_tasks_from_store(user_id)
+        is_shared = True
         add_tasks_from_store(AnonymousUser().user_id)
 
         tasks = list(tasks_by_id.values())
@@ -1518,6 +1641,8 @@ class TaskService:
         """
         tasks_by_id = {}
 
+        is_shared = False
+
         def add_tasks_from_store(store_user_id):
             if store_user_id not in self.task_store:
                 return
@@ -1531,7 +1656,9 @@ class TaskService:
                 file_statuses = {}
 
                 for file_path, file_task in upload_task.file_tasks.items():
-                    if file_task.status.value != "completed":
+                    if file_task.status.value != "completed" or self._keep_completed_file_in_list(
+                        file_task
+                    ):
                         file_statuses[file_path] = {
                             "status": file_task.status.value,
                             "result": file_task.result,
@@ -1564,10 +1691,12 @@ class TaskService:
                     "updated_at": upload_task.updated_at,
                     "duration_seconds": upload_task.duration_seconds,
                     "files": file_statuses,
+                    "is_shared": is_shared,
                 }
 
         # First, add user-owned tasks; then shared anonymous;
         add_tasks_from_store(user_id)
+        is_shared = True
         add_tasks_from_store(AnonymousUser().user_id)
 
         tasks = list(tasks_by_id.values())
@@ -1762,6 +1891,62 @@ class TaskService:
 
         return True
 
+    def delete_task(self, user_id: str, task_id: str) -> TaskDeleteResult:
+        """Remove a terminal (completed/failed/cancelled) task from memory.
+
+        Deletes tasks owned by the calling user or shared anonymous tasks that
+        are visible to the user (same set exposed by get_all_tasks).
+
+        Returns:
+            TaskDeleteResult.DELETED      – task found and removed.
+            TaskDeleteResult.NOT_FOUND    – task ID does not exist for this user.
+            TaskDeleteResult.IN_PROGRESS  – task exists but is not yet terminal.
+        """
+        resolved = self._resolve_upload_task_store(user_id, task_id)
+        if resolved is None:
+            return TaskDeleteResult.NOT_FOUND
+        store_user_id, upload_task = resolved
+        if upload_task.status not in [
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+        ]:
+            return TaskDeleteResult.IN_PROGRESS
+        self._cleanup_upload_temp_files(upload_task, force=True)
+        del self.task_store[store_user_id][task_id]
+        self._task_locks.pop(task_id, None)
+        if not self.task_store[store_user_id]:
+            del self.task_store[store_user_id]
+        return TaskDeleteResult.DELETED
+
+    def delete_all_terminal_tasks(self, user_id: str) -> list[str]:
+        """Remove all completed/failed/cancelled tasks owned by a user.
+
+        Only touches the calling user's own store. Shared tasks stored under
+        the anonymous key are intentionally excluded: they are visible to all
+        authenticated users, so a bulk clear by one user must not remove them
+        for everyone else. Those tasks are aged out by cleanup_old_tasks.
+
+        Returns the list of deleted task IDs.
+        """
+        if user_id not in self.task_store:
+            return []
+
+        to_delete = [
+            tid
+            for tid, t in self.task_store[user_id].items()
+            if t.status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]
+        ]
+        for tid in to_delete:
+            task = self.task_store[user_id][tid]
+            self._cleanup_upload_temp_files(task, force=True)
+            del self.task_store[user_id][tid]
+            self._task_locks.pop(tid, None)
+        if not self.task_store.get(user_id):
+            self.task_store.pop(user_id, None)
+
+        return to_delete
+
     def _file_task_for_temp_path(self, upload_task: UploadTask, temp_path: str) -> FileTask | None:
         """Resolve the FileTask for a staged upload temp path."""
         file_task = upload_task.file_tasks.get(temp_path)
@@ -1788,9 +1973,38 @@ class TaskService:
         metadata = self._infer_failure_metadata(file_task)
         return bool(metadata and metadata.get("actionable_by") == "RETRYABLE")
 
+    def _is_unsettled_claim_loser_temp(self, upload_task: UploadTask, temp_path: str) -> bool:
+        """True when a staged temp belongs to a file skipped for a name another
+        in-flight file still holds.
+
+        Such a skip is provisional: if the file holding the name fails, nothing
+        was indexed under it and _fail_files_stranded_by turns this file into a
+        retryable failure. That correction can land after this task has already
+        finished — the holder may belong to another task entirely — and a retry
+        then needs the staged source that cleanup would otherwise have deleted.
+
+        Retention is bounded the same way a retryable failure's is: whichever
+        way the holder ends, the temp is reclaimed when the task ages out of the
+        store (cleanup_old_tasks force-cleans what it evicts).
+        """
+        if not os.path.isabs(temp_path):
+            return False
+        file_task = self._file_task_for_temp_path(upload_task, temp_path)
+        if file_task is None or file_task.status != TaskStatus.SKIPPED:
+            return False
+        if (file_task.result or {}).get("reason") != "duplicate_filename":
+            return False
+        # Local uploads key file_tasks by the staged path, which is what the
+        # claim holder was built from.
+        return filename_claims.is_awaiting_outcome(
+            claim_holder(upload_task.task_id, file_task.file_path)
+        )
+
     def _should_retain_upload_temp(self, upload_task: UploadTask, temp_path: str) -> bool:
         """Return True when an upload temp should be kept after processing."""
         if self._is_retryable_local_upload_temp(upload_task, temp_path):
+            return True
+        if self._is_unsettled_claim_loser_temp(upload_task, temp_path):
             return True
         if (
             os.path.isabs(temp_path)
