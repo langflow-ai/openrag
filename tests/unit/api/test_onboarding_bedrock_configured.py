@@ -52,6 +52,9 @@ def _make_config_with_env_bedrock(region: str) -> OpenRAGConfig:
     )
 
 
+saved: list = []
+
+
 @pytest.fixture(autouse=True)
 def _stub_onboarding_side_effects(monkeypatch):
     """Neutralize everything past the config-mutation section this test
@@ -70,7 +73,14 @@ def _stub_onboarding_side_effects(monkeypatch):
         settings_endpoints, "_update_langflow_model_values", _async_noop, raising=True
     )
     monkeypatch.setattr(settings_endpoints.TelemetryClient, "send_event", _async_noop, raising=True)
-    monkeypatch.setattr(settings_endpoints.config_manager, "save_config_file", lambda cfg: True)
+    # onboarding() mutates a deep copy of the config, so the assertions below
+    # read the copy handed to save_config_file rather than the original.
+    saved.clear()
+    monkeypatch.setattr(
+        settings_endpoints.config_manager,
+        "save_config_file",
+        lambda cfg: saved.append(cfg) or True,
+    )
     # Provider validation (test_completion=True) is Bug 4's concern, covered
     # in tests/unit/api/test_provider_validation_bedrock.py - stub it out
     # here so this test stays focused on the "Mark providers as configured"
@@ -114,7 +124,7 @@ async def test_onboarding_marks_iam_role_bedrock_configured(monkeypatch):
     )
 
     assert not hasattr(response, "status_code") or response.status_code not in (400, 500, 503)
-    assert config.providers.bedrock.configured is True
+    assert saved[-1].providers.bedrock.configured is True
 
 
 @pytest.mark.asyncio
@@ -138,4 +148,4 @@ async def test_onboarding_does_not_mark_bedrock_configured_without_region(monkey
         user=None,
     )
 
-    assert config.providers.bedrock.configured is False
+    assert not saved or saved[-1].providers.bedrock.configured is False
