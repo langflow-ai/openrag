@@ -19,6 +19,7 @@
 import { render, screen } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
+import type { File } from "@/app/api/queries/useGetSearchQuery";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { authPresets } from "@/test-utils/fixtures/auth";
 import { renderWithProviders, userEvent, waitFor } from "@/test-utils/render";
@@ -152,8 +153,7 @@ describe("buildChunksUrl", () => {
 
 describe("getOwnerLabel", () => {
   // Minimal File-shaped stubs — only the fields getOwnerLabel reads.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const f = (partial: Record<string, unknown>) => partial as any;
+  const f = (partial: Partial<File>) => partial as File;
 
   it("prefers owner_name when present", () => {
     expect(
@@ -294,8 +294,7 @@ describe("resolveActionsVariant", () => {
 });
 
 describe("StatusCellContent", () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const f = (partial: Record<string, unknown>) => partial as any;
+  const f = (partial: Partial<File>) => partial as File;
   const noop = () => {};
 
   const baseProps = {
