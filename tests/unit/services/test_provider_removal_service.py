@@ -17,6 +17,42 @@ def _config(legacy_map: dict[str, str] | None = None):
     )
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("force_remove", [False, True])
+async def test_bulk_removal_requires_a_remaining_embedding_provider(force_remove):
+    """The availability rule applies to the whole request, even when forced."""
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.providers.openai.configured = True
+    config.providers.ollama.configured = True
+    opensearch = SimpleNamespace(search=AsyncMock())
+
+    decision = await ProviderRemovalService(opensearch).evaluate(
+        ("ollama", "openai"), config, force_remove=force_remove
+    )
+
+    assert decision.provider == "ollama"
+    assert decision.status is ProviderRemovalStatus.NO_PROVIDER
+    opensearch.search.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_anthropic_does_not_count_as_embedding_provider():
+    """A language-only provider cannot keep embedding-backed search available."""
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.providers.openai.configured = True
+    config.providers.anthropic.configured = True
+    opensearch = SimpleNamespace(search=AsyncMock())
+
+    decision = await ProviderRemovalService(opensearch).evaluate(("openai",), config)
+
+    assert decision.status is ProviderRemovalStatus.NO_PROVIDER
+    opensearch.search.assert_not_awaited()
+
+
 def _aggregation(
     *,
     qualified: list[tuple[str, int]] | None = None,
@@ -38,6 +74,38 @@ def _aggregation(
             **({"after_key": legacy_after} if legacy_after else {}),
         }
     return {"aggregations": aggregations}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("force_remove", [False, True])
+async def test_evaluate_removal_checks_index_unless_forced(monkeypatch, force_remove):
+    """An available provider can be removed only when no indexed embeddings depend on it."""
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.providers.openai.configured = True
+    config.providers.ollama.configured = True
+    opensearch = SimpleNamespace(
+        search=AsyncMock(
+            side_effect=[
+                _aggregation(qualified=[("ollama:nomic-embed-text", 3)]),
+                _aggregation(legacy=[]),
+            ]
+        )
+    )
+    monkeypatch.setattr("services.provider_removal_service.get_index_name", lambda: "documents")
+
+    decision = await ProviderRemovalService(opensearch).evaluate(
+        ("ollama",), config, force_remove=force_remove
+    )
+
+    if force_remove:
+        assert decision is None
+        opensearch.search.assert_not_awaited()
+    else:
+        assert decision.provider == "ollama"
+        assert decision.status is ProviderRemovalStatus.IN_USE
+        assert decision.affected_models == ({"model": "nomic-embed-text", "doc_count": 3},)
 
 
 @pytest.mark.asyncio

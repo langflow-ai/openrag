@@ -27,7 +27,6 @@ from api.settings.helpers import (
     _first_configured_embedding_provider,
     _first_configured_llm_provider,
     _get_flows_service,
-    _has_other_configured_provider,
 )
 from api.settings.langflow_sync import (
     _background_tasks,
@@ -493,50 +492,52 @@ async def update_settings(
         # Provider removal must be fully validated before this endpoint mutates
         # config or updates Langflow. A failed or ambiguous provenance lookup is
         # a fail-closed response unless the caller explicitly forces removal.
-        for provider in _requested_removal_providers(body, current_config):
-            if not _has_other_configured_provider(current_config, provider):
-                if provider == "ollama":
-                    error = (
-                        "Cannot remove Ollama configuration: "
-                        "configure another model provider first."
-                    )
-                elif provider == "openai":
-                    error = (
-                        "Cannot remove OpenAI configuration: "
-                        "configure another model provider first."
-                    )
-                elif provider == "anthropic":
-                    error = (
-                        "Cannot remove Anthropic configuration: "
-                        "configure another model provider first."
-                    )
-                elif provider == "watsonx":
-                    error = (
-                        "Cannot remove IBM watsonx.ai configuration: "
-                        "configure another model provider first."
-                    )
-                else:
-                    error = (
-                        "Cannot remove provider configuration: "
-                        "configure another model provider first."
-                    )
-                return JSONResponse({"error": error}, status_code=400)
+        requested_removals = _requested_removal_providers(body, current_config)
+        decision = (
+            await provider_removal_service.evaluate(
+                requested_removals, current_config, force_remove=body.force_remove
+            )
+            if requested_removals
+            else None
+        )
+        if decision is not None and decision.status == ProviderRemovalStatus.NO_PROVIDER:
+            provider = decision.provider
+            if provider == "ollama":
+                error = (
+                    "Cannot remove Ollama configuration: configure another model provider first."
+                )
+            elif provider == "openai":
+                error = (
+                    "Cannot remove OpenAI configuration: configure another model provider first."
+                )
+            elif provider == "anthropic":
+                error = (
+                    "Cannot remove Anthropic configuration: configure another model provider first."
+                )
+            elif provider == "watsonx":
+                error = (
+                    "Cannot remove IBM watsonx.ai configuration: "
+                    "configure another model provider first."
+                )
+            else:
+                error = (
+                    "Cannot remove provider configuration: configure another model provider first."
+                )
+            return JSONResponse({"error": error}, status_code=400)
 
-            if body.force_remove or provider == "anthropic":
-                continue
-            outcome = await provider_removal_service.assess(provider, current_config)
-            label = provider_display_name(provider)
-            if outcome.status == ProviderRemovalStatus.UNKNOWN:
+        if decision is not None:
+            label = provider_display_name(decision.provider)
+            if decision.status == ProviderRemovalStatus.UNKNOWN:
                 return _embedding_usage_unknown_response(
                     label,
-                    provider,
-                    outcome.unresolved_legacy_models,
+                    decision.provider,
+                    decision.unresolved_legacy_models,
                 )
-            if outcome.status == ProviderRemovalStatus.IN_USE:
+            if decision.status == ProviderRemovalStatus.IN_USE:
                 return _embedding_conflict_response(
                     label,
-                    provider,
-                    list(outcome.affected_models),
+                    decision.provider,
+                    list(decision.affected_models),
                 )
         if should_validate:
             try:

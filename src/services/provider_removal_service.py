@@ -21,8 +21,9 @@ EMBEDDING_SPACE_PAGE_SIZE = 50
 
 
 class ProviderRemovalStatus(StrEnum):
-    """Result of checking indexed embedding provenance."""
+    """Result of checking whether provider removal is safe."""
 
+    NO_PROVIDER = "no_provider"
     CLEAR = "clear"
     IN_USE = "in_use"
     UNKNOWN = "unknown"
@@ -37,8 +38,30 @@ class ProviderRemovalOutcome:
     unresolved_legacy_models: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class ProviderRemovalDecision:
+    """First reason a requested removal cannot proceed."""
+
+    provider: str
+    status: ProviderRemovalStatus
+    affected_models: tuple[dict[str, Any], ...] = ()
+    unresolved_legacy_models: tuple[str, ...] = ()
+
+
+def _has_remaining_embedding_provider(config, removals: tuple[str, ...]) -> bool:
+    """Check configured embedding providers after all requested removals."""
+    providers = config.providers
+    for key, value in providers.custom.items():
+        if key not in removals and key != "anthropic" and getattr(value, "configured", False):
+            return True
+    return any(
+        name not in removals and getattr(providers, name).configured
+        for name in ("openai", "watsonx", "ollama")
+    )
+
+
 class ProviderRemovalService:
-    """Find every indexed embedding space that depends on one provider.
+    """Validate removal availability and indexed embedding dependencies.
 
     Provider-qualified ``embedding_space_id`` values are authoritative. Legacy
     documents contain only ``embedding_model``; those are accepted only when an
@@ -48,6 +71,29 @@ class ProviderRemovalService:
     def __init__(self, opensearch_client):
         """Use the deployment-wide OpenSearch client for corpus inspection."""
         self._opensearch = opensearch_client
+
+    async def evaluate(
+        self, removals: tuple[str, ...], config, *, force_remove: bool = False
+    ) -> ProviderRemovalDecision | None:
+        """Reject an unavailable or indexed provider before settings are changed."""
+        if not removals:
+            return None
+        if not _has_remaining_embedding_provider(config, removals):
+            return ProviderRemovalDecision(removals[0], ProviderRemovalStatus.NO_PROVIDER)
+        if force_remove:
+            return None
+        for provider in removals:
+            if provider == "anthropic":
+                continue
+            outcome = await self.assess(provider, config)
+            if outcome.status != ProviderRemovalStatus.CLEAR:
+                return ProviderRemovalDecision(
+                    provider,
+                    outcome.status,
+                    outcome.affected_models,
+                    outcome.unresolved_legacy_models,
+                )
+        return None
 
     async def assess(self, provider: str, config) -> ProviderRemovalOutcome:
         """Return confirmed usage, confirmed absence, or an unknown result."""
