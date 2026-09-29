@@ -146,7 +146,9 @@ export function getChunkSettingsError(
 }
 
 export function validateIngestSettingsOrToast(
-  settings: Pick<IngestSettings, "chunkSize" | "chunkOverlap"> | undefined,
+  settings:
+    | Pick<IngestSettings, "embeddingModel" | "chunkSize" | "chunkOverlap">
+    | undefined,
 ): boolean {
   if (!settings) return true;
   const chunkErr = getIngestChunkSettingsError(settings);
