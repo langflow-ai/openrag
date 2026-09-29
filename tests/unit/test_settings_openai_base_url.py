@@ -150,6 +150,8 @@ async def test_remove_openai_config_clears_base_url(monkeypatch):
 @pytest.mark.asyncio
 async def test_onboarding_persists_openai_base_url(monkeypatch):
     config = _make_config(edited=False)
+    # onboarding() mutates a deep copy, so assert on what it hands to save_config_file.
+    saved = []
 
     async def _noop_refresh():
         return None
@@ -158,7 +160,7 @@ async def test_onboarding_persists_openai_base_url(monkeypatch):
     monkeypatch.setattr(
         settings_api.config_manager,
         "save_config_file",
-        lambda updated_config: True,
+        lambda updated_config: saved.append(updated_config) or True,
         raising=True,
     )
     monkeypatch.setattr(settings_api.clients, "refresh_patched_client", _noop_refresh, raising=True)
@@ -182,8 +184,8 @@ async def test_onboarding_persists_openai_base_url(monkeypatch):
     )
 
     assert isinstance(response, settings_api.OnboardingResponse)
-    assert config.providers.openai.base_url == "https://gateway.example.com/v1"
-    assert config.providers.openai.configured is False
+    assert saved[-1].providers.openai.base_url == "https://gateway.example.com/v1"
+    assert saved[-1].providers.openai.configured is False
 
 
 class TestWhitespaceOnlyBaseUrlRejected:
