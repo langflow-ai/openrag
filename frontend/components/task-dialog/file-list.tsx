@@ -7,6 +7,7 @@ import { useIsCloudBrand } from "@/contexts/brand-context";
 import type { Task } from "@/contexts/task-context";
 import { analyzeTaskFileIngestionFailure } from "@/lib/task-error-display";
 import {
+  getDeletedAtSourceMessage,
   getTaskFileDialogStatusLabel,
   getTaskFileName,
   isTaskFileFailed,
@@ -231,10 +232,12 @@ export function TaskDialogFileList({
                   ? "text-muted-foreground"
                   : failed
                     ? "text-destructive"
-                    : rowStatusLabel === "Complete"
+                    : rowStatusLabel === "Complete" ||
+                        rowStatusLabel === "Removed"
                       ? "text-emerald-600 dark:text-emerald-400"
                       : "text-muted-foreground",
               )}
+              title={getDeletedAtSourceMessage(fileInfo)}
             >
               {statusLabel}
             </span>

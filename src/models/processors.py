@@ -19,9 +19,10 @@ from utils.file_utils import (
     get_filename_aliases,
     langflow_safe_filename_and_mimetype,
 )
+from utils.filename_claims import claim_holder, filename_claims
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
-from utils.opensearch_queries import build_replace_filename_query
+from utils.opensearch_queries import build_owned_filename_query, build_replace_filename_query
 
 from .tasks import FileTask, TaskStatus, UploadTask
 
@@ -31,6 +32,12 @@ DOCLING_PARSER_LABEL = "Docling Serve 1.20.0"
 TEXT_PARSER_LABEL = "Text Parser"
 
 DUPLICATE_FILENAME_WARNING = "A file with this name already exists."
+
+# Both outcomes finish the file the same way — SKIPPED, counted successful,
+# duplicate warning — but only "skip" means a document with this name is
+# actually indexed. "skip_in_flight" means another file in this batch is still
+# writing it, which is a different fact about the index.
+DUPLICATE_SKIP_ACTIONS = ("skip", "skip_in_flight")
 DUPLICATE_CONTENT_WARNING = (
     "Identical content already exists in the knowledge base under a different filename."
 )
@@ -259,19 +266,41 @@ class TaskProcessor:
         replace: bool,
         owner_user_id: str | None,
         shared: bool = False,
-    ) -> Literal["proceed", "skip", "replaced"]:
+        claim_holder: str | None = None,
+        allow_anonymous_delete: bool = True,
+    ) -> Literal["proceed", "skip", "skip_in_flight", "replaced"]:
         """Single duplicate-filename policy shared by every processor.
 
         Checks whether a document with this filename (or one of its aliases)
         is already indexed and applies the caller's replace decision:
 
           * ``"proceed"``  — no duplicate; continue ingestion.
-          * ``"skip"``     — duplicate and ``replace`` is False; the caller
-                             should finish via ``mark_duplicate_skipped``.
+          * ``"skip"``     — a document with this name is indexed and
+                             ``replace`` is False; the caller should finish via
+                             ``mark_duplicate_skipped``.
+          * ``"skip_in_flight"`` — another file in this batch holds the name and
+                             has not finished writing it. Finishes the same way,
+                             but nothing is indexed under the name *yet*, so a
+                             caller must not treat it as a statement about what
+                             is in the index (see ``_reconcile_shared_owner``).
           * ``"replaced"`` — duplicate and ``replace`` is True; the existing
                              chunks were deleted and the index refreshed, so
                              ingestion can continue.
+
+        ``claim_holder`` identifies this file's run (see ``utils.filename_claims``)
+        and holds the name for its duration, so a second file heading for the
+        same name inside the same batch resolves as a duplicate instead of
+        racing the index check. TaskService releases the claim when the file
+        reaches a terminal state. Callers that pass None get the OpenSearch
+        policy alone — every processor passes one.
         """
+        if claim_holder is not None and not filename_claims.claim(
+            claim_holder, filename, owner_user_id=owner_user_id, shared=shared
+        ):
+            # Another file in flight is already heading for this name; whichever
+            # of them lands first is the one this name belongs to.
+            return "skip_in_flight"
+
         if not await self.check_filename_exists(filename, opensearch_client):
             return "proceed"
         if not replace:
@@ -283,6 +312,7 @@ class TaskProcessor:
             opensearch_client,
             owner_user_id=owner_user_id,
             shared=shared,
+            allow_anonymous_delete=allow_anonymous_delete,
         )
         if deleted == 0:
             logger.warning(
@@ -301,6 +331,11 @@ class TaskProcessor:
                 error=str(refresh_error),
             )
         return "replaced"
+
+    @staticmethod
+    def _claim_holder(upload_task: UploadTask, file_task: FileTask) -> str:
+        """Identity of this file's run, for the in-flight filename claim."""
+        return claim_holder(upload_task.task_id, file_task.file_path)
 
     def mark_duplicate_skipped(self, upload_task: UploadTask, file_task: FileTask) -> None:
         """Uniform terminal state for a duplicate that was not replaced:
@@ -322,22 +357,36 @@ class TaskProcessor:
         opensearch_client,
         owner_user_id: str | None = None,
         shared: bool = False,
+        allow_anonymous_delete: bool = True,
     ) -> int:
         """Delete all chunks of a document with the given filename from
         OpenSearch.  Returns the number of chunks deleted.
 
         ``shared`` describes how the replacement is about to be *written*, not
         what is already indexed, so it must not narrow what we delete: with an
-        owner in hand the scope is always "owned by this user OR ownerless".
+        owner in hand the scope is "owned by this user OR ownerless".
         Choosing an owner-only scope for a shared document matched none of its
         chunks, and the caller read that zero as "nothing to replace" and
         skipped the file — leaving the stale copy in the index even though the
         duplicate check (which is owner-agnostic) had just found it and the user
-        had confirmed the overwrite."""
+        had confirmed the overwrite.
+
+        ``allow_anonymous_delete`` is the caller's resolved
+        ``knowledge:delete:anonymous``. Ownerless chunks are visible to everyone
+        in the instance, so replacing a document that turns out to be one is a
+        deletion of shared content: without that permission the scope stays
+        owner-only and someone else's shared document is left alone (the file
+        then resolves as a duplicate the user may not replace). It defaults to
+        True because callers that have not resolved the permission — uploads,
+        the Langflow path, sample docs — keep their existing behaviour; see the
+        note in the PR about closing that across every entry point.
+        Deliberately ignored when ``shared`` is True: a shared write already
+        required the permission upstream."""
         from config.settings import clients, get_index_name
         from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
         from utils.opensearch_queries import (
             build_anonymous_filename_query,
+            build_owned_filename_query,
             build_replace_filename_query,
         )
 
@@ -358,8 +407,10 @@ class TaskProcessor:
                     )
                     return 0
 
-            else:
+            elif shared or allow_anonymous_delete:
                 build_query = build_replace_filename_query
+            else:
+                build_query = build_owned_filename_query
 
             candidate_filenames = get_filename_aliases(filename)
             if not candidate_filenames:
@@ -398,13 +449,18 @@ class TaskProcessor:
         keep_filenames: list[str] | None = None,
         shared: bool = False,
         connector_type: str | None = None,
+        *,
+        ignore_errors: bool = True,
     ) -> int:
         """Delete indexed chunks for a connector file by its STABLE id.
 
         Deletion semantics (dual-field id match, connector/owner/shared scoping,
-        rename ``keep_filenames``) live in ``connectors.chunk_cleanup``. This
-        wrapper is best-effort: logs and returns 0 on failure so a cleanup miss
-        never fails the task.
+        rename ``keep_filenames``) live in ``connectors.chunk_cleanup``.
+
+        Rename cleanup is best-effort (``ignore_errors=True``): logs and returns
+        0 so a miss never fails an ingest that can still re-index the new name.
+        Source-deleted cleanup passes ``ignore_errors=False`` so a real index
+        failure fails the file task instead of reporting success.
 
         ``connector_type`` scopes the match to one connector type — the same
         value the chunks were indexed under — so an id that collides with a
@@ -438,7 +494,9 @@ class TaskProcessor:
                 file_id=file_id,
                 error=str(e),
             )
-            return 0
+            if ignore_errors:
+                return 0
+            raise
 
     async def process_document_standard(
         self,
@@ -793,8 +851,9 @@ class DocumentFileProcessor(TaskProcessor):
                 opensearch_client,
                 replace=self.replace_duplicates,
                 owner_user_id=self.owner_user_id,
+                claim_holder=self._claim_holder(upload_task, file_task),
             )
-            if duplicate_action == "skip":
+            if duplicate_action in DUPLICATE_SKIP_ACTIONS:
                 self.mark_duplicate_skipped(upload_task, file_task)
                 return
 
@@ -900,6 +959,7 @@ class ConnectorFileProcessor(TaskProcessor):
         connector_type: str | None = None,
         preview_mode: bool = False,
         shared: bool | None = False,
+        allow_anonymous_delete: bool = True,
     ):
         super().__init__(
             document_service=document_service,
@@ -918,6 +978,10 @@ class ConnectorFileProcessor(TaskProcessor):
         self.connector_type = connector_type
         self.preview_mode = preview_mode
         self.shared = shared
+        # The syncing user's resolved knowledge:delete:anonymous, threaded down
+        # to the replace path so an overwrite cannot delete a shared document
+        # the user is not allowed to delete.
+        self.allow_anonymous_delete = allow_anonymous_delete
 
     async def _indexed_shared_state(
         self,
@@ -989,15 +1053,32 @@ class ConnectorFileProcessor(TaskProcessor):
         """Update owner fields on already-indexed chunks for `filename` to match
         the `shared` setting resolved for this file.
 
-        Called on the duplicate/unchanged skip paths below, where a file's
-        content and name haven't changed since a prior sync but the connector's
-        "Make documents available to all users" setting may have been toggled
-        since then. Without this, those chunks would keep whatever owner they
+        Called where the document indexed under this name is THIS file's own —
+        the unchanged-content path, and a skip against a real duplicate. Never
+        for a "skip_in_flight": there the name belongs to another file that is
+        still writing it, and this query matches by filename, so reconciling
+        would stamp this file's sharing answer onto that one's chunks.
+
+        On those paths the file's content and name haven't changed since a prior
+        sync, but the connector's "Make documents available to all users"
+        setting may have been toggled since. Without this, those chunks would
+        keep whatever owner they
         got on their original ingest forever, since a byte-identical re-sync
         never reaches resolve_shared_owner_fields(). Scoped to chunks owned by
-        this user or already ownerless (matching the same boundary
-        delete_document_by_filename uses), so it can't touch another user's
-        private document that happens to share this filename.
+        this user — and to ownerless ones only under the same
+        ``knowledge:delete:anonymous`` boundary delete_document_by_filename
+        uses — so it can't touch another user's document that happens to share
+        this filename.
+
+        That boundary matters here even more than it does for a delete. An
+        ownerless document is visible to the whole instance, and this script
+        writes an owner onto what it matches: without the permission check, a
+        private sync of a file whose name collides with a shared document would
+        quietly claim that document for the syncing user, taking it out of
+        everyone else's view. ``_indexed_shared_state`` cannot prevent it — it
+        keys on the connector file id, and a collision by definition comes from
+        a document this connector never ingested, so the lookup returns None and
+        ``shared`` falls back to the sync's own (private) intent.
 
         `shared` comes from _resolve_shared, never straight from self.shared: on
         a re-sync it reflects the file's current indexed state, so this is a
@@ -1009,12 +1090,19 @@ class ConnectorFileProcessor(TaskProcessor):
         owner, owner_name, owner_email = resolve_shared_owner_fields(
             self.user_id, self.owner_name, self.owner_email, shared
         )
+        # A shared write already cleared the permission upstream (connector_sync
+        # rejects shared syncs without it), so it keeps the wider scope.
+        build_query = (
+            build_replace_filename_query
+            if shared or self.allow_anonymous_delete
+            else build_owned_filename_query
+        )
         for candidate in get_filename_aliases(filename):
             try:
                 await write_client.update_by_query(
                     index=get_index_name(),
                     body={
-                        "query": build_replace_filename_query(candidate, self.user_id),
+                        "query": build_query(candidate, self.user_id),
                         "script": {
                             "source": """
                                 if (params.shared) {
@@ -1118,32 +1206,46 @@ class ConnectorFileProcessor(TaskProcessor):
                             self.user_id, self.jwt_token
                         )
                     )
-                    deleted_chunks = await self._delete_connector_chunks(
-                        file_id,
-                        opensearch_client,
-                        self.user_id,
-                        shared=await self._resolve_shared(
-                            file_id, opensearch_client, connector_type
-                        ),
-                        connector_type=connector_type,
-                    )
+                    try:
+                        deleted_chunks = await self._delete_connector_chunks(
+                            file_id,
+                            opensearch_client,
+                            self.user_id,
+                            shared=await self._resolve_shared(
+                                file_id, opensearch_client, connector_type
+                            ),
+                            connector_type=connector_type,
+                            ignore_errors=False,
+                        )
+                    except Exception:
+                        file_task.status = TaskStatus.FAILED
+                        file_task.error = (
+                            "File no longer exists at source, but removing it "
+                            "from the index failed."
+                        )
+                        file_task.updated_at = time.time()
+                        upload_task.failed_files += 1
+                        return
 
-                    logger.warning(
+                    logger.info(
                         "File no longer exists at source — removed from index",
                         file_id=file_id,
                         connection_id=self.connection_id,
                         deleted_chunks=deleted_chunks,
-                        error=str(e),
+                        source_error=str(e),
                     )
-                    file_task.status = TaskStatus.SKIPPED
+                    # Successful cleanup: the file is gone at the source and its
+                    # chunks were removed. Mark completed (not skipped) so the
+                    # tasks view does not treat this as a warning. Enhanced
+                    # listing still surfaces this reason so the dialog can show
+                    # it as Removed instead of omitting it like a normal ingest.
+                    file_task.status = TaskStatus.COMPLETED
+                    file_task.error = None
                     file_task.result = {
-                        "status": "skipped",
+                        "status": "completed",
                         "reason": "deleted_at_source",
                         "deleted_chunks": deleted_chunks,
-                        # Human-readable message so the tasks view shows this
-                        # successful cleanup instead of falling back to
-                        # "Unknown error" for a skip with no message.
-                        "warning": (
+                        "message": (
                             f"File no longer exists at source; removed from index "
                             f"({deleted_chunks} chunk(s) deleted)."
                         ),
@@ -1185,9 +1287,18 @@ class ConnectorFileProcessor(TaskProcessor):
                 replace=self.replace_duplicates,
                 owner_user_id=self.user_id,
                 shared=shared,
+                claim_holder=self._claim_holder(upload_task, file_task),
+                allow_anonymous_delete=self.allow_anonymous_delete,
             )
-            if duplicate_action == "skip":
-                await self._reconcile_shared_owner(file_task.filename, shared)
+            if duplicate_action in DUPLICATE_SKIP_ACTIONS:
+                # Only for a real duplicate. The reconcile rewrites owner fields
+                # on every chunk with this filename, and "skip_in_flight" means
+                # the chunks under that name are being written right now by a
+                # DIFFERENT document, whose sharing state was resolved from its
+                # own file id and can differ from this one's. Reconciling then
+                # would stamp this file's answer onto another file's chunks.
+                if duplicate_action == "skip":
+                    await self._reconcile_shared_owner(file_task.filename, shared)
                 self.mark_duplicate_skipped(upload_task, file_task)
                 return
 
@@ -1511,8 +1622,9 @@ class S3FileProcessor(TaskProcessor):
                 opensearch_client,
                 replace=self.replace_duplicates,
                 owner_user_id=self.owner_user_id,
+                claim_holder=self._claim_holder(upload_task, file_task),
             )
-            if duplicate_action == "skip":
+            if duplicate_action in DUPLICATE_SKIP_ACTIONS:
                 self.mark_duplicate_skipped(upload_task, file_task)
                 return
 
@@ -1618,8 +1730,9 @@ class LangflowFileProcessor(TaskProcessor):
                 opensearch_client,
                 replace=self.replace_duplicates,
                 owner_user_id=self.owner_user_id,
+                claim_holder=self._claim_holder(upload_task, file_task),
             )
-            if duplicate_action == "skip":
+            if duplicate_action in DUPLICATE_SKIP_ACTIONS:
                 self.mark_duplicate_skipped(upload_task, file_task)
                 return
 
