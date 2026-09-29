@@ -51,7 +51,8 @@ async def test_standard_processor_passes_cohere_input_type_and_oci_credentials(
 
     async def bulk(**kwargs):
         admin_client.bulk_calls.append(kwargs)
-        return {"errors": False, "items": []}
+        # one result per action/document pair, as OpenSearch returns (upstream now checks the count)
+        return {"errors": False, "items": [{"index": {"status": 200}} for _ in kwargs["body"][::2]]}
 
     admin_client.indices = Indices()
     admin_client.bulk = bulk
