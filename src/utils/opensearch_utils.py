@@ -2,10 +2,12 @@ import asyncio
 import copy
 import os
 import random
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import yaml
 from opensearchpy import AsyncOpenSearch
+from opensearchpy.exceptions import ConflictError
 
 from utils.logging_config import get_logger
 
@@ -15,6 +17,13 @@ OPENRAG_USER_ROLE = "openrag_user_role"
 OPENRAG_USER_ACL_ROLE = "openrag_user_acl_role"
 ALL_ACCESS_ROLE = "all_access"
 ROLE_MAPPING_PRINCIPAL_FIELDS = {"users", "hosts", "backend_roles", "and_backend_roles"}
+
+# The security plugin stores all roles (and all role mappings) in one config
+# document, so any concurrent security API write -- e.g. startup and onboarding
+# both running setup_opensearch_security -- makes a PUT fail with a 409 version
+# conflict. Such writes are re-read and retried a bounded number of times.
+SECURITY_API_CONFLICT_MAX_ATTEMPTS = 5
+SECURITY_API_CONFLICT_BASE_DELAY = 0.2
 
 DISK_SPACE_ERROR_MESSAGE = (
     "OpenSearch has run out of available disk space. "
@@ -79,6 +88,46 @@ def _is_not_found_error(error: Exception) -> bool:
     """True when OpenSearch reports a missing security object."""
     error_str = str(error).lower()
     return "404" in error_str or "not_found" in error_str
+
+
+def _is_version_conflict_error(error: Exception) -> bool:
+    """True when OpenSearch rejected a write because the document changed underneath it."""
+    if isinstance(error, ConflictError) or getattr(error, "status_code", None) == 409:
+        return True
+    return "version conflict" in str(error).lower()
+
+
+async def _retry_on_version_conflict(
+    operation: Callable[[], Awaitable[Any]],
+    *,
+    description: str,
+    refresh: Callable[[], Awaitable[None]] | None = None,
+) -> Any:
+    """Run a security API write, retrying on 409 version conflicts.
+
+    ``refresh`` re-reads the current state before each retry so ``operation``
+    rebuilds its body from what is on the cluster now, rather than overwriting
+    a concurrent writer's changes with a stale read.
+    """
+    for attempt in range(1, SECURITY_API_CONFLICT_MAX_ATTEMPTS + 1):
+        try:
+            return await operation()
+        except Exception as e:
+            if not _is_version_conflict_error(e) or attempt == SECURITY_API_CONFLICT_MAX_ATTEMPTS:
+                raise
+            delay = SECURITY_API_CONFLICT_BASE_DELAY * 2 ** (attempt - 1)
+            delay = random.uniform(delay / 2, delay)
+            logger.warning(
+                "[OPENSEARCH] Security API version conflict, re-reading and retrying",
+                operation=description,
+                attempt=attempt,
+                max_attempts=SECURITY_API_CONFLICT_MAX_ATTEMPTS,
+                retry_in=round(delay, 2),
+                error=str(e),
+            )
+            await asyncio.sleep(delay)
+            if refresh is not None:
+                await refresh()
 
 
 def _dedupe_preserving_order(values: list[Any]) -> list[Any]:
@@ -482,11 +531,14 @@ async def setup_opensearch_security(
                 else [],
             )
 
-            resp = await opensearch_client.transport.perform_request(
-                "PUT",
-                f"/_plugins/_security/api/roles/{role_name}",
-                body=role_body,
-                headers={"Content-Type": "application/json"},
+            resp = await _retry_on_version_conflict(
+                lambda: opensearch_client.transport.perform_request(
+                    "PUT",
+                    f"/_plugins/_security/api/roles/{role_name}",
+                    body=role_body,
+                    headers={"Content-Type": "application/json"},
+                ),
+                description=f"put role {role_name}",
             )
             logger.info(f"[OPENSEARCH] Role '{role_name}' creation response", response=resp)
 
@@ -496,19 +548,35 @@ async def setup_opensearch_security(
             )
             logger.info("[OPENSEARCH] Role verification", role_name=role_name, role=role_verify)
 
-        async def put_mapping(mapping_name: str) -> None:
-            mapping_body = merged_mapping_body(mapping_name)
-            logger.info(
-                f"[OPENSEARCH] Creating/updating '{mapping_name}' mapping",
-                backend_roles=mapping_body.get("backend_roles", []),
-                users=mapping_body.get("users", []),
-                hosts=mapping_body.get("hosts", []),
+        async def refresh_rolesmapping() -> None:
+            # Re-read every mapping: the ACL mapping merges in the legacy one.
+            current = await opensearch_client.transport.perform_request(
+                "GET", "/_plugins/_security/api/rolesmapping"
             )
-            resp = await opensearch_client.transport.perform_request(
-                "PUT",
-                f"/_plugins/_security/api/rolesmapping/{mapping_name}",
-                body=mapping_body,
-                headers={"Content-Type": "application/json"},
+            rolesmapping_response.clear()
+            rolesmapping_response.update(current or {})
+
+        async def put_mapping(mapping_name: str) -> None:
+            async def put_merged_mapping() -> Any:
+                # Rebuilt on every attempt so a retry merges the fresh principals.
+                mapping_body = merged_mapping_body(mapping_name)
+                logger.info(
+                    f"[OPENSEARCH] Creating/updating '{mapping_name}' mapping",
+                    backend_roles=mapping_body.get("backend_roles", []),
+                    users=mapping_body.get("users", []),
+                    hosts=mapping_body.get("hosts", []),
+                )
+                return await opensearch_client.transport.perform_request(
+                    "PUT",
+                    f"/_plugins/_security/api/rolesmapping/{mapping_name}",
+                    body=mapping_body,
+                    headers={"Content-Type": "application/json"},
+                )
+
+            resp = await _retry_on_version_conflict(
+                put_merged_mapping,
+                description=f"put rolesmapping {mapping_name}",
+                refresh=refresh_rolesmapping,
             )
             logger.info(
                 f"[OPENSEARCH] Role mapping '{mapping_name}' update response", response=resp
@@ -550,87 +618,97 @@ async def setup_opensearch_security(
         # "all_access" (which would give IBM API key users the super-admin
         # role and bypass DLS).
         if ALL_ACCESS_ROLE in mapping_config:
-            all_access_body = copy.deepcopy(mapping_config[ALL_ACCESS_ROLE])
 
-            if "backend_roles" not in all_access_body:
-                all_access_body["backend_roles"] = ["admin"]
-            if "description" not in all_access_body:
-                all_access_body["description"] = "Maps admin to all_access"
+            async def put_all_access() -> Any:
+                # Re-reads the existing mapping on every attempt, so a retry after a
+                # version conflict merges whatever a concurrent writer just stored.
+                all_access_body = copy.deepcopy(mapping_config[ALL_ACCESS_ROLE])
 
-            # Always fetch existing mapping first so we never lose previous admins
-            # in multi-tenant deployments where each tenant onboards independently.
-            existing_users: list = []
-            existing_hosts: list = []
-            existing_backend_roles: list = []
-            try:
-                existing = await opensearch_client.transport.perform_request(
-                    "GET", "/_plugins/_security/api/rolesmapping/all_access"
+                if "backend_roles" not in all_access_body:
+                    all_access_body["backend_roles"] = ["admin"]
+                if "description" not in all_access_body:
+                    all_access_body["description"] = "Maps admin to all_access"
+
+                # Always fetch existing mapping first so we never lose previous admins
+                # in multi-tenant deployments where each tenant onboards independently.
+                existing_users: list = []
+                existing_hosts: list = []
+                existing_backend_roles: list = []
+                try:
+                    existing = await opensearch_client.transport.perform_request(
+                        "GET", "/_plugins/_security/api/rolesmapping/all_access"
+                    )
+                    existing_mapping = existing.get(ALL_ACCESS_ROLE, {})
+                    existing_users = existing_mapping.get("users", []) or []
+                    existing_hosts = existing_mapping.get("hosts", []) or []
+                    existing_backend_roles = existing_mapping.get("backend_roles", []) or []
+                except Exception as e:
+                    if not _is_not_found_error(e):
+                        raise
+                    logger.debug(
+                        "[OPENSEARCH] No existing all_access mapping found, creating fresh"
+                    )
+
+                # Build merged users: source file + cluster + new admin (bare + ibmlhapikey_ variant).
+                # Adding both variants ensures the user can authenticate via JWT *and* via IBM
+                # Basic-Auth (ibmlhapikey_<username>), which are treated as separate principals
+                # by OpenSearch's security plugin.
+                new_admin_users: list = []
+                if IBM_AUTH_ENABLED and admin_username:
+                    new_admin_users = [admin_username, f"ibmlhapikey_{admin_username}"]
+                    logger.info(
+                        "[OPENSEARCH] Pinning onboarding user as admin (both variants)",
+                        users=new_admin_users,
+                    )
+
+                merged_users = _dedupe_preserving_order(
+                    all_access_body.get("users", []) + existing_users + new_admin_users
                 )
-                existing_mapping = existing.get(ALL_ACCESS_ROLE, {})
-                existing_users = existing_mapping.get("users", []) or []
-                existing_hosts = existing_mapping.get("hosts", []) or []
-                existing_backend_roles = existing_mapping.get("backend_roles", []) or []
-            except Exception as e:
-                if not _is_not_found_error(e):
-                    raise
-                logger.debug("[OPENSEARCH] No existing all_access mapping found, creating fresh")
+                all_access_body["users"] = merged_users
+                logger.debug("[OPENSEARCH] Merged all_access users", users=merged_users)
 
-            # Build merged users: source file + cluster + new admin (bare + ibmlhapikey_ variant).
-            # Adding both variants ensures the user can authenticate via JWT *and* via IBM
-            # Basic-Auth (ibmlhapikey_<username>), which are treated as separate principals
-            # by OpenSearch's security plugin.
-            new_admin_users: list = []
-            if IBM_AUTH_ENABLED and admin_username:
-                new_admin_users = [admin_username, f"ibmlhapikey_{admin_username}"]
-                logger.info(
-                    "[OPENSEARCH] Pinning onboarding user as admin (both variants)",
-                    users=new_admin_users,
+                if existing_hosts:
+                    merged_hosts = _dedupe_preserving_order(
+                        all_access_body.get("hosts", []) + existing_hosts
+                    )
+                    all_access_body["hosts"] = merged_hosts
+                    logger.debug(
+                        "[OPENSEARCH] Preserved existing all_access hosts",
+                        hosts=merged_hosts,
+                    )
+
+                if existing_backend_roles:
+                    safe_existing_backend_roles = [
+                        r for r in existing_backend_roles if r != "all_access"
+                    ]
+                    merged_backend_roles = _dedupe_preserving_order(
+                        all_access_body.get("backend_roles", []) + safe_existing_backend_roles
+                    )
+                    all_access_body["backend_roles"] = merged_backend_roles
+                    logger.debug(
+                        "[OPENSEARCH] Preserved existing all_access backend_roles",
+                        backend_roles=merged_backend_roles,
+                    )
+
+                if "all_access" in all_access_body.get("backend_roles", []):
+                    all_access_body["backend_roles"] = [
+                        r for r in all_access_body["backend_roles"] if r != "all_access"
+                    ]
+                    logger.info(
+                        "[OPENSEARCH] Removed 'all_access' from all_access backend_roles to preserve DLS",
+                        final_backend_roles=all_access_body["backend_roles"],
+                    )
+
+                logger.info("[OPENSEARCH] Updating 'all_access' mapping...", body=all_access_body)
+                return await opensearch_client.transport.perform_request(
+                    "PUT",
+                    "/_plugins/_security/api/rolesmapping/all_access",
+                    body=all_access_body,
+                    headers={"Content-Type": "application/json"},
                 )
 
-            merged_users = _dedupe_preserving_order(
-                all_access_body.get("users", []) + existing_users + new_admin_users
-            )
-            all_access_body["users"] = merged_users
-            logger.debug("[OPENSEARCH] Merged all_access users", users=merged_users)
-
-            if existing_hosts:
-                merged_hosts = _dedupe_preserving_order(
-                    all_access_body.get("hosts", []) + existing_hosts
-                )
-                all_access_body["hosts"] = merged_hosts
-                logger.debug(
-                    "[OPENSEARCH] Preserved existing all_access hosts",
-                    hosts=merged_hosts,
-                )
-
-            if existing_backend_roles:
-                safe_existing_backend_roles = [
-                    r for r in existing_backend_roles if r != "all_access"
-                ]
-                merged_backend_roles = _dedupe_preserving_order(
-                    all_access_body.get("backend_roles", []) + safe_existing_backend_roles
-                )
-                all_access_body["backend_roles"] = merged_backend_roles
-                logger.debug(
-                    "[OPENSEARCH] Preserved existing all_access backend_roles",
-                    backend_roles=merged_backend_roles,
-                )
-
-            if "all_access" in all_access_body.get("backend_roles", []):
-                all_access_body["backend_roles"] = [
-                    r for r in all_access_body["backend_roles"] if r != "all_access"
-                ]
-                logger.info(
-                    "[OPENSEARCH] Removed 'all_access' from all_access backend_roles to preserve DLS",
-                    final_backend_roles=all_access_body["backend_roles"],
-                )
-
-            logger.info("[OPENSEARCH] Updating 'all_access' mapping...", body=all_access_body)
-            resp = await opensearch_client.transport.perform_request(
-                "PUT",
-                "/_plugins/_security/api/rolesmapping/all_access",
-                body=all_access_body,
-                headers={"Content-Type": "application/json"},
+            resp = await _retry_on_version_conflict(
+                put_all_access, description="put rolesmapping all_access"
             )
             logger.info("[OPENSEARCH] All access mapping update response", response=resp)
 
