@@ -33,7 +33,7 @@ export function KnowledgeSearchInput({
   value,
   onSearch,
   onClear,
-  placeholder = "Search your documents...",
+  placeholder,
   hideFilterChip = false,
   hideSubmit = false,
   className,
@@ -125,7 +125,7 @@ export function KnowledgeSearchInput({
           name="search-query"
           id="search-query"
           type="text"
-          placeholder={placeholder}
+          placeholder={placeholder ?? "Search your documents..."}
           value={inputValue}
           onChange={(e: ChangeEvent<HTMLInputElement>) => {
             const next = e.target.value;
