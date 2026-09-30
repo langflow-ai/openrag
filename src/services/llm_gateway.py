@@ -526,7 +526,13 @@ def resolve_call(
     # depends on how it was configured: Azure AI Foundry routes as `azure_ai`
     # on its legacy `/models` endpoint and as an OpenAI-compatible transport on
     # `/openai/v1`, which LiteLLM's `azure_ai` handler cannot address.
-    route = litellm_provider_key(provider, _stored_credentials(provider, cfg))
+    try:
+        route = litellm_provider_key(provider, _stored_credentials(provider, cfg))
+    except ValueError as exc:
+        # The provider knows its own endpoint shapes and this is not one of
+        # them. Surfaced here rather than routed on a guess, which would reach
+        # the wrong handler and fail as an opaque upstream error.
+        raise LlmGatewayError(str(exc), 400) from exc
     litellm_model = f"{route}/{name}" if route != "openai" else name
     _warn_on_unexpected_route(provider, litellm_model, route)
     return litellm_model, provider, credentials
@@ -1113,14 +1119,35 @@ def _log_completion_shape(payload: dict[str, Any], provider: str, model: str) ->
 _TOOLS_NEED_REASONING_OFF: set[str] = set()
 
 
-def _model_info(model: str) -> dict[str, Any]:
-    """LiteLLM's row for `model`, by its full id or its bare name."""
+def _model_info(model: str, provider: str | None = None) -> dict[str, Any]:
+    """LiteLLM's row for `model`: transport id, then logical id, then bare name.
+
+    A provider routed under a transport alias has two identities, and only one
+    of them is in LiteLLM's table. Azure AI Foundry on its v1 surface is called
+    as `hosted_vllm/<deployment>` — a transport that owns no model rows — while
+    its metadata lives under `azure_ai/<deployment>`, which is LiteLLM's own
+    key for the provider and the key OpenRAG stores it under.
+
+    So `provider` is tried before the bare name. For a Foundry-exclusive model
+    (`Phi-4`) the bare name matches nothing and only the logical id resolves;
+    for one that a public vendor also serves (`gpt-6-luna`) the logical id is
+    the more accurate of the two rows, since it carries Azure's pricing rather
+    than OpenAI's.
+    """
     try:
         import litellm
 
         table = litellm.model_cost
-        info = table.get(model) or table.get(model.rsplit("/", 1)[-1])
-        return info if isinstance(info, dict) else {}
+        bare = model.rsplit("/", 1)[-1]
+        candidates = [model]
+        if provider:
+            candidates.append(f"{provider}/{bare}")
+        candidates.append(bare)
+        for candidate in candidates:
+            info = table.get(candidate)
+            if isinstance(info, dict):
+                return info
+        return {}
     except Exception:
         return {}
 
@@ -1137,7 +1164,7 @@ def _is_reasoning_tool_conflict(detail: str) -> bool:
     return "reasoning_effort" in lowered and "tool" in lowered
 
 
-def _reasoning_off_retry(model: str, kwargs: dict[str, Any]) -> bool:
+def _reasoning_off_retry(model: str, kwargs: dict[str, Any], provider: str | None = None) -> bool:
     """Set `reasoning_effort="none"` for a retry, if that can help here.
 
     False when the caller chose an effort itself — overriding a deliberate
@@ -1146,7 +1173,7 @@ def _reasoning_off_retry(model: str, kwargs: dict[str, Any]) -> bool:
     """
     if not kwargs.get("tools") or "reasoning_effort" in kwargs:
         return False
-    if not _model_info(model).get("supports_none_reasoning_effort"):
+    if not _model_info(model, provider).get("supports_none_reasoning_effort"):
         return False
     kwargs["reasoning_effort"] = "none"
     return True
@@ -1193,7 +1220,7 @@ async def chat_completions(
     stream = bool(body.get("stream"))
     if litellm_model in _TOOLS_NEED_REASONING_OFF:
         # Already learned about this model; do not spend a round-trip relearning.
-        _reasoning_off_retry(litellm_model, kwargs)
+        _reasoning_off_retry(litellm_model, kwargs, provider)
     messages, repairs = _sanitise_messages(body.get("messages"))
     if repairs:
         logger.warning(
@@ -1235,7 +1262,7 @@ async def chat_completions(
             # parameter, just not one this model accepts beside tools. Retry
             # once with the value the provider's own error asks for.
             if not _is_reasoning_tool_conflict(f"{exc}") or not _reasoning_off_retry(
-                litellm_model, kwargs
+                litellm_model, kwargs, provider
             ):
                 raise
             logger.info(

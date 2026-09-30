@@ -68,7 +68,25 @@ exercised elsewhere in this codebase.
 treat Foundry as `hosted_vllm`: the catalogue, credentials, embedding spaces,
 health checks and the settings UI all key on `azure_ai`. The reroute guard in
 `llm_gateway` compares the route litellm resolved against what `litellm_route`
-asked for, precisely so this intentional difference does not read as a fault.
+asked for, precisely so this intentional difference does not read as a fault,
+and `llm_gateway._model_info` looks metadata up under the logical key rather
+than the transport.
+
+Unrecognised endpoints
+----------------------
+There is no catch-all route. An endpoint outside the supported shapes raises
+`UnsupportedEndpointError` from `litellm_route`, which the gateway turns into a
+400. Falling back would mean guessing, and both guesses are bad: the native
+handler builds a wrong URL for v1, and the OpenAI-compatible one builds a
+plausible-looking URL for literally any input, so either turns a fixable
+configuration error into an opaque upstream failure.
+
+One shape is kept for compatibility by name rather than by fallback —
+`legacy_deployment_uri`, a per-deployment Target URI on an `openai.azure.com`
+host, which is what LiteLLM's own placeholder told operators to paste. It
+worked there, so it still routes; it is refused at save time, because it pins
+every selected model to the one deployment in the URL. The same shape on a
+`services.ai.azure.com` host never worked and is simply unsupported.
 
 What the transport costs
 ------------------------
@@ -78,14 +96,15 @@ table. Measured:
 - ``azure_ai/gpt-6-luna`` -> cost and capability metadata resolve;
 - ``hosted_vllm/gpt-6-luna`` -> ``This model isn't mapped yet``.
 
-Two things keep this from mattering much today. OpenRAG does not compute cost
-at all, and its one metadata consumer — ``llm_gateway._model_info``, which
-reads ``supports_none_reasoning_effort`` to decide a tools-plus-reasoning retry
-— falls back to the bare model name, so an id that also exists under a public
-vendor (``gpt-6-luna``) still resolves. A Foundry-exclusive one (``Phi-4``)
-does not, and that retry will not fire for it on the v1 route.
+Capability metadata is unaffected, because `llm_gateway._model_info` is given
+the logical provider key and tries `azure_ai/<model>` before the bare name. So
+``Phi-4`` — Foundry-exclusive, with no bare row — resolves, and ``gpt-6-luna``
+resolves to *Azure's* row rather than OpenAI's. Only a deployment named
+something no table knows (``prod-llm-01``) resolves under neither, which is
+true on the native route too.
 
-When cost reporting lands, `completion_cost(..., base_model="azure_ai/<model>")`
+Cost is the part still given up, and it costs nothing today: OpenRAG does not
+compute it. When it does, `completion_cost(..., base_model="azure_ai/<model>")`
 restores attribution exactly — verified to the cent against the native route.
 That is why a deployment's base model is worth capturing then; it is not
 collected here because nothing would read it yet.
@@ -117,9 +136,12 @@ logger = get_logger(__name__)
 #: `provider:model` embedding-space id persisted with every indexed chunk.
 PROVIDER_KEY = "azure_ai"
 
-#: The route used when the endpoint is the legacy `/models` surface, and the
-#: fallback whenever `litellm_route` cannot classify what is stored. LiteLLM's
-#: own `azure_ai` handler is correct there and keeps its Foundry price table.
+#: The route for the legacy `/models` surface and the resource root, where
+#: LiteLLM's own `azure_ai` handler is correct and keeps its Foundry price
+#: table. Also the *static* alias, which is what callers that have no stored
+#: credentials to classify — `litellm_provider_key(provider)` with no second
+#: argument — resolve to. It is deliberately not a fallback for an endpoint
+#: that `litellm_route` cannot classify; that is an error, not a default.
 LITELLM_PROVIDER = "azure_ai"
 
 #: The transport for the OpenAI-compatible surface. See the module docstring.
@@ -130,9 +152,57 @@ OPENAI_COMPATIBLE_ROUTE = "hosted_vllm"
 #: enhancement contract.
 CallKind = Literal["chat", "embedding"]
 
-#: Endpoint shapes this module recognises. `unknown` is anything else, which is
-#: routed on the safe default rather than guessed at.
-Profile = Literal["resource_openai_v1", "project_openai_v1", "legacy_models", "unknown"]
+#: Endpoint shapes this module recognises.
+#:
+#: `legacy_deployment_uri` is the one shape kept purely for compatibility: a
+#: per-deployment Target URI on an `openai.azure.com` host, which is what
+#: LiteLLM's own `api_base` placeholder told operators to paste. It worked —
+#: `_add_path_to_api_base` collapses the `/chat/completions` overlap on that
+#: host, so the call reached the deployment named in the URL. It is still
+#: routed, and still refused at save time, because it serves exactly one
+#: deployment: every model the operator picks resolves to the one baked into
+#: the path. The same shape on a `services.ai.azure.com` host never worked at
+#: all (the rewrite appends `/models/chat/completions` after it), so it is
+#: `unknown` rather than compatible.
+#:
+#: `unknown` is everything else, and is an error rather than a guess.
+Profile = Literal[
+    "resource_openai_v1",
+    "project_openai_v1",
+    "legacy_models",
+    "legacy_deployment_uri",
+    "unknown",
+]
+
+
+#: One message for both the save-time rejection and the routing failure, so an
+#: operator who hits it at either point is told the same thing.
+UNSUPPORTED_ENDPOINT_MESSAGE = (
+    "The Azure AI Foundry endpoint should be the resource endpoint ending in "
+    "/openai/v1 (recommended), its project form "
+    ".../api/projects/<project>/openai/v1, or the older /models endpoint. Copy "
+    "it from the resource's Overview page rather than from a single "
+    "deployment's Target URI."
+)
+
+#: Refused at save time even though it still routes: it serves exactly one
+#: deployment, so every model the operator picks resolves to the one in the URL.
+DEPLOYMENT_URI_MESSAGE = (
+    "This is a single deployment's Target URI, so every model selected would be "
+    "sent to that one deployment. Use the resource endpoint ending in /openai/v1 "
+    "and enter deployment names separately."
+)
+
+
+class UnsupportedEndpointError(ValueError):
+    """The endpoint is not a Foundry surface this provider can address.
+
+    Raised rather than falling back to a route, because every fallback here is
+    a guess that fails later and less legibly: the native handler builds a
+    wrong URL for the v1 surface, and the OpenAI-compatible one builds a
+    plausible URL for anything at all.
+    """
+
 
 #: Path suffix of the OpenAI-compatible surface, resource and project forms.
 _V1_SUFFIX = "/openai/v1"
@@ -140,6 +210,12 @@ _V1_SUFFIX = "/openai/v1"
 _LEGACY_SUFFIX = "/models"
 #: Marks the project form, which hangs off `/api/projects/<project>`.
 _PROJECT_MARKER = "/api/projects/"
+
+#: Marks a per-deployment Target URI. Only compatible on the host below.
+_DEPLOYMENT_MARKER = "/openai/deployments/"
+
+#: Azure OpenAI Service hosts, where the legacy Target URI shape still routes.
+_AZURE_OPENAI_HOST_SUFFIX = ".openai.azure.com"
 
 #: Endpoint paths an operator pastes from a curl example or the portal's
 #: "Target URI" box. They name one call, not the base, and LiteLLM appends its
@@ -197,20 +273,23 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
     {
         "key": "deployment_names",
         "label": "Deployment names",
-        "placeholder": "prod-chat-gpt4o\nprod-embed-3-large",
+        "placeholder": "prod-chat-gpt4o, prod-embed-3-large",
         "tooltip": (
-            "One deployment name per line. Foundry names are chosen by whoever "
+            "Comma-separated deployment names. Foundry names are chosen by whoever "
             "created the deployment, so the model catalogue cannot know yours. "
             "Listing them here is what puts them in the model pickers."
         ),
         "required": False,
-        # `textarea` is the right control for a list, and it also lands this
-        # field in `model_catalog.secret_field_keys` — which keys off the field
-        # type, not the field's meaning — so deployment names are encrypted at
-        # rest alongside the key. Harmless, and not worth a single-line `text`
-        # control to avoid; noted because reading config.yaml will show
-        # ciphertext where plain names might be expected.
-        "field_type": "textarea",
+        # `text`, not `textarea`, although a list wants more than one line.
+        # `model_catalog.secret_field_keys` classifies by field *type* rather
+        # than meaning and treats every `textarea` as a secret, so a textarea
+        # here would AES-encrypt deployment names at rest and leave ciphertext
+        # in config.yaml where plain configuration belongs. The form system has
+        # no non-secret multiline type — only `text` and `select` are
+        # non-secret — so the single-line control is the honest choice until
+        # one exists. `deployment_names()` accepts commas, newlines and
+        # whitespace regardless, so a pasted multi-line list still works.
+        "field_type": "text",
         "options": None,
         "default_value": None,
     },
@@ -269,7 +348,8 @@ def endpoint_profile(api_base: Any) -> Profile:
     base = normalized_api_base(api_base)
     if not base:
         return "unknown"
-    path = urlsplit(base).path.rstrip("/").lower()
+    parts = urlsplit(base)
+    path = parts.path.rstrip("/").lower()
     if path.endswith(_V1_SUFFIX):
         return "project_openai_v1" if _PROJECT_MARKER in path else "resource_openai_v1"
     if path.endswith(_LEGACY_SUFFIX) or not path:
@@ -277,6 +357,10 @@ def endpoint_profile(api_base: Any) -> Profile:
         # `azure_ai` handler appends `/models/...` to it and reaches the right
         # place.
         return "legacy_models"
+    if _DEPLOYMENT_MARKER in path and (parts.hostname or "").lower().endswith(
+        _AZURE_OPENAI_HOST_SUFFIX
+    ):
+        return "legacy_deployment_uri"
     return "unknown"
 
 
@@ -287,15 +371,20 @@ def litellm_route(stored: Mapping[str, Any] | None) -> str:
     — the catalogue, the settings form, credentials, embedding spaces — keeps
     calling this provider `azure_ai`.
 
-    An unrecognised endpoint falls back to `azure_ai` rather than guessing at
-    the OpenAI-compatible transport: the legacy handler produces a *wrong* URL
-    for the v1 surface, but the OpenAI-compatible one produces a *plausible*
-    URL for anything, which fails later and less legibly.
+    Raises `UnsupportedEndpointError` for a shape this module does not
+    recognise, rather than picking a route for it. There is no safe default:
+    the native handler builds the wrong URL for the v1 surface, and the
+    OpenAI-compatible one builds a plausible-looking URL for literally any
+    input, so either choice turns a fixable configuration error into an opaque
+    upstream failure.
     """
-    profile = endpoint_profile((stored or {}).get("api_base"))
+    api_base = (stored or {}).get("api_base")
+    profile = endpoint_profile(api_base)
     if profile in ("resource_openai_v1", "project_openai_v1"):
         return OPENAI_COMPATIBLE_ROUTE
-    return LITELLM_PROVIDER
+    if profile in ("legacy_models", "legacy_deployment_uri"):
+        return LITELLM_PROVIDER
+    raise UnsupportedEndpointError(UNSUPPORTED_ENDPOINT_MESSAGE)
 
 
 def _require_https(api_base: str) -> None:
@@ -425,12 +514,13 @@ async def lightweight_health_check(credentials: Mapping[str, Any]) -> None:
     if not api_base:
         raise ValueError("The Azure AI Foundry endpoint is required")
     _require_https(api_base)
-    if endpoint_profile(api_base) == "unknown":
-        raise ValueError(
-            "The Azure AI Foundry endpoint should end in /openai/v1 (recommended) "
-            "or /models. Copy it from the resource's Overview page rather than "
-            "from a single deployment's Target URI."
-        )
+    profile = endpoint_profile(api_base)
+    if profile == "unknown":
+        raise UnsupportedEndpointError(UNSUPPORTED_ENDPOINT_MESSAGE)
+    if profile == "legacy_deployment_uri":
+        # Still routable, so an install already configured this way keeps
+        # working — but it must not be saved again in that shape.
+        raise UnsupportedEndpointError(DEPLOYMENT_URI_MESSAGE)
     headers = health_headers(credentials)
     if not headers:
         raise ValueError("An Azure AI Foundry API key is required")
