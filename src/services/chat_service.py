@@ -3,7 +3,13 @@ from typing import Any
 
 from agent import async_chat, async_chat_stream, async_langflow
 from auth_context import set_auth_context
-from config.settings import LANGFLOW_CHAT_FLOW_ID, LANGFLOW_URL, NUDGES_FLOW_ID, clients
+from config.settings import (
+    LANGFLOW_CHAT_FLOW_ID,
+    LANGFLOW_URL,
+    NUDGES_FLOW_ID,
+    clients,
+    is_chat_with_langflow_disabled,
+)
 from utils.langflow_utils import fence_untrusted_text
 from utils.logging_config import get_logger
 
@@ -72,6 +78,18 @@ class ChatService:
         if not prompt:
             raise ValueError("Prompt is required")
         conversation_user_id = storage_user_id or user_id
+
+        if is_chat_with_langflow_disabled():
+            logger.info("[CHAT] DISABLE_CHAT_WITH_LANGFLOW enabled; using OpenRAG chat")
+            return await self.chat(
+                prompt,
+                user_id,
+                jwt_token,
+                previous_response_id=previous_response_id,
+                stream=stream,
+                filter_id=filter_id,
+                storage_user_id=storage_user_id,
+            )
 
         if not LANGFLOW_URL or not LANGFLOW_CHAT_FLOW_ID:
             raise ValueError(
@@ -518,7 +536,7 @@ class ChatService:
         )
         conversation_user_id = storage_user_id or user_id
 
-        if endpoint == "langflow":
+        if endpoint == "langflow" and not is_chat_with_langflow_disabled():
             # Prepare extra headers for JWT authentication and embedding model.
             # NOTE: extra_headers accumulates raw secrets (JWT, provider API keys).
             # Never log this dict or pass it to a logger call
@@ -753,6 +771,9 @@ class ChatService:
 
     async def get_langflow_history(self, user_id: str):
         """Get langflow conversation history for a user - now fetches from both OpenRAG memory and Langflow database"""
+        if is_chat_with_langflow_disabled():
+            return await self.get_chat_history(user_id)
+
         from agent import active_conversations, get_user_conversations
         from services.langflow_history_service import langflow_history_service
 

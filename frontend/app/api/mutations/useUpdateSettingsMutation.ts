@@ -11,6 +11,7 @@ export interface UpdateSettingsRequest {
   // Agent settings
   llm_model?: string;
   llm_provider?: string;
+  disable_chat_with_langflow?: boolean;
   system_prompt?: string;
 
   // Knowledge settings

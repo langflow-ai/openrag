@@ -17,6 +17,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
@@ -179,6 +181,10 @@ export function AgentSettingsSection() {
     );
   };
 
+  const handleDisableChatWithLangflowChange = (checked: boolean) => {
+    updateSettingsMutation.mutate({ disable_chat_with_langflow: checked });
+  };
+
   const handleEditInLangflow = (closeDialog: () => void) => {
     trackButton({
       CTA: "Edit in Langflow - Agent",
@@ -335,6 +341,26 @@ export function AgentSettingsSection() {
                 />
               </div>
             )}
+          </div>
+          <div className="flex items-center justify-between py-3 border-b border-border">
+            <div className="flex-1">
+              <Label
+                htmlFor="disable-chat-with-langflow"
+                className="text-base font-medium cursor-pointer pb-3"
+              >
+                Disable Langflow Chat
+              </Label>
+              <div className="text-sm text-muted-foreground">
+                Run chat in OpenRAG against the language model above instead of
+                sending it to the Langflow flow.
+              </div>
+            </div>
+            <Switch
+              id="disable-chat-with-langflow"
+              checked={settings.agent?.disable_chat_with_langflow ?? false}
+              onCheckedChange={handleDisableChatWithLangflowChange}
+              disabled={updateSettingsMutation.isPending}
+            />
           </div>
           <div className="space-y-2">
             <LabelWrapper label="Agent Instructions" id="system-prompt">

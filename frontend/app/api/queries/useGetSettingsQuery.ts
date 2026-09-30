@@ -8,6 +8,7 @@ import type { FunctionCall } from "@/app/chat/_types/types";
 export interface AgentSettings {
   llm_model?: string;
   llm_provider?: string;
+  disable_chat_with_langflow?: boolean;
   system_prompt?: string;
   default_system_prompt?: string;
 }
