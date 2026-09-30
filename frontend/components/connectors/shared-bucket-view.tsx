@@ -272,9 +272,17 @@ export function SharedBucketView({
       setDuplicateDialogOpen(true);
     } catch (err) {
       console.error("[Bucket Sync] Duplicate check failed:", err);
-      // Fallback: proceed with the normal full sync (backend still handles
-      // new/changed reconciliation on its own).
-      runBucketSync();
+      // Don't fall through to the sync. Proceeding would silently take the
+      // "skip duplicates" path — the ingest runs, every colliding file is
+      // skipped with "a file with this name already exists", and the user never
+      // got the choice the check exists to offer. That outcome is
+      // indistinguishable from "there were no duplicates", which is how it gets
+      // reported as the duplicate dialog not appearing.
+      toast.error("Could not check for existing files", {
+        description:
+          "Nothing was ingested. Try again — if it keeps failing, the selected " +
+          `${resourceLabelPlural} may be too large to check.`,
+      });
     } finally {
       setIsCheckingDuplicates(false);
     }
