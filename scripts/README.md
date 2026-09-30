@@ -296,6 +296,18 @@ unexercised blocker leaves the matrix incomplete, which is not a pass.
 | 12 | Legacy `/models` `api-key` vs `Bearer` | advisory |
 | 13 | Cost attribution | advisory |
 
+**The 403 question.** `foundry.lightweight_health_check` raises
+`PermissionError` for a 403 on the deployment listing, on the reasoning that
+listing can need a permission inference does not. The product does not act on
+that distinction: `api/settings/endpoints.py` catches `Exception` around
+provider validation and returns HTTP 400, so the provider cannot be saved
+either way. A 403 on a valid credential is therefore reported as
+**inconclusive and blocking**, not as a pass. Set
+`AZURE_AI_LISTING_DENIED_API_KEY` to capture what such a credential actually
+returns; the decision — require listing permission, or make a specific denial
+non-blocking — needs that response alongside the invalid-key response, and is
+only safe if the two are reliably distinguishable.
+
 Checks 3–7 run once per configured endpoint.
 
 Cost is advisory by design: OpenRAG does not consume cost data today, and the
@@ -304,8 +316,17 @@ documented in `enhancements/providers/azure/foundry.py`. Check 12 is advisory
 because the shipped health check sends both header styles; its answer only
 decides whether that can later be simplified.
 
-The API key is never printed, and check 11 scans everything the run produced —
-every captured error and every log line — for it.
+The API key is never printed. The run captures root logging, stdout, stderr
+and every recorded exception, and check 11 scans all of it. When a leak is
+found the captured material is **not** reproduced — only the fact and the
+number of matching fragments — and every printed line is redacted regardless,
+since several checks quote an upstream response body.
+
+Checks that pass by observing a rejection assert the *category* of failure:
+the invalid-key check passes only on a credential rejection, and the
+unknown-deployment check only on a not-found through the gateway's own error
+contract. Neither accepts a DNS, TLS, timeout or 5xx failure, which would
+otherwise let an unreachable endpoint look like a successful rejection.
 
 **Two things the script cannot cover**, both needed before the flip:
 
