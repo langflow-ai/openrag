@@ -317,8 +317,8 @@ export function RelevanceCellContent({ data }: { data?: File }) {
       <TooltipContent side="top" className="max-w-64 text-left space-y-1">
         <p className="font-medium">Relevance breakdown</p>
         <p className="text-muted-foreground text-xs">
-          % = best match for this query in your corpus. A file showing 100% is
-          the strongest result returned — not necessarily a perfect match.
+          % = best match for this query. A file showing 100% is the strongest
+          result returned. (not a perfect match)
         </p>
         <p className="text-xs mt-1">Total matched chunks: {total}</p>
         <p className="text-xs flex gap-3">

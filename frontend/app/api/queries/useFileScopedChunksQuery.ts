@@ -78,22 +78,30 @@ export function useFileScopedChunksQuery(
     );
     if (!hlFile) return allFile;
 
-    const hlMap = new Map<string, string[]>();
+    const hlMap = new Map<string, { highlights: string[]; score: number }>();
     for (const chunk of hlFile.chunks ?? []) {
       const key = chunk.chunk_id ?? chunk.id;
-      if (key && chunk.highlights && chunk.highlights.length > 0) {
-        hlMap.set(key, chunk.highlights);
+      if (key) {
+        hlMap.set(key, {
+          highlights: chunk.highlights ?? [],
+          score: chunk.score,
+        });
       }
     }
 
     const mergedChunks: ChunkResult[] = (allFile.chunks ?? []).map((chunk) => {
       const key = chunk.chunk_id ?? chunk.id;
-      const highlights = key ? (hlMap.get(key) ?? []) : [];
-      return highlights.length > 0 ? { ...chunk, highlights } : chunk;
+      const hl = key ? hlMap.get(key) : undefined;
+      if (!hl) return chunk;
+      return {
+        ...chunk,
+        ...(hl.highlights.length > 0 ? { highlights: hl.highlights } : {}),
+        score: hl.score,
+      };
     });
 
     return { ...allFile, chunks: mergedChunks };
   }, [allData, hlData, filename, isRealQuery]);
 
-  return { file, isFetching: isFetchingAll || isFetchingHl };
+  return { file, isFetching: isFetchingAll, isSearchFetching: isFetchingHl };
 }

@@ -125,6 +125,55 @@ describe("useFileScopedChunksQuery", () => {
     expect(result.current.file?.chunks?.[0]?.highlights).toBeDefined();
   });
 
+  it("merges the search score onto the chunk (not the wildcard 1.0)", async () => {
+    // The wildcard request returns a chunk with raw score 1.0 (OpenSearch match-all).
+    // The keyword request returns the same chunk (matched by chunk_id) with a real score.
+    // After merging, the displayed score should be the keyword score.
+    const CHUNK_ID = "chunk-abc";
+    server.use(
+      http.post("/api/search", async ({ request }) => {
+        const body = (await request.json()) as { query: string };
+        if (body.query === "*") {
+          return HttpResponse.json({
+            results: [
+              chunk({
+                filename: "test.pdf",
+                text: "hello world",
+                chunk_id: CHUNK_ID,
+                score: 1.0,
+              }),
+            ],
+            warnings: [],
+          });
+        }
+        // keyword search — real backend score
+        return HttpResponse.json({
+          results: [
+            chunk({
+              filename: "test.pdf",
+              text: "hello world",
+              chunk_id: CHUNK_ID,
+              score: 0.42,
+              highlights: ["<mark>hello</mark> world"],
+            }),
+          ],
+          warnings: [],
+        });
+      }),
+    );
+
+    const { result } = renderHook(
+      () => useFileScopedChunksQuery("test.pdf", "hello"),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    expect(result.current.file?.chunks?.[0]?.score).toBeCloseTo(0.42);
+    expect(result.current.file?.chunks?.[0]?.highlights).toEqual([
+      "<mark>hello</mark> world",
+    ]);
+  });
+
   it("finds the matching file from multiple files in response", async () => {
     serveSearch([
       chunk({ filename: "other.pdf", text: "other chunk" }),
