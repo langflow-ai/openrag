@@ -287,9 +287,76 @@ def resolve_call(
     # An OpenRAG provider that LiteLLM does not know by that name is routed
     # under the key it aliases (`watsonx_onprem` -> `watsonx`). The OpenRAG key
     # is still what the caller sees and what credentials are stored under.
-    route = litellm_provider_key(provider)
+    #
+    # The stored (untranslated) form is passed because one provider's transport
+    # depends on how it was configured: Azure AI Foundry routes as `azure_ai`
+    # on its legacy `/models` endpoint and as an OpenAI-compatible transport on
+    # `/openai/v1`, which LiteLLM's `azure_ai` handler cannot address.
+    route = litellm_provider_key(provider, _stored_credentials(provider, cfg))
     litellm_model = f"{route}/{name}" if route != "openai" else name
+    _warn_on_unexpected_route(provider, litellm_model, route)
     return litellm_model, provider, credentials
+
+
+def _stored_credentials(provider: str, config) -> dict[str, Any]:
+    """A provider's credentials as the operator entered them, or `{}`.
+
+    Only routing reads this here; the call itself uses the translated form.
+    """
+    try:
+        providers = config.providers
+        if hasattr(providers, "stored_credentials"):
+            return dict(providers.stored_credentials(provider))
+    except Exception:
+        logger.debug("Could not read stored credentials for routing", provider=provider)
+    return {}
+
+
+#: Routes already reported by `_warn_on_unexpected_route`, so a mismatch is
+#: logged once rather than on every request.
+_REPORTED_ROUTE_MISMATCHES: set[str] = set()
+
+
+def _warn_on_unexpected_route(provider: str, litellm_model: str, intended_route: str) -> None:
+    """Warn when LiteLLM resolves a model to a different provider than intended.
+
+    Not a check that the route differs from the OpenRAG provider key — for
+    Foundry on `/openai/v1` it deliberately does, and comparing against
+    `azure_ai` would fire on every healthy request. The comparison is against
+    the route this gateway *asked* for, so what it catches is LiteLLM
+    re-deciding underneath us.
+
+    That is not hypothetical: litellm 1.84.0 silently rerouted
+    `azure_ai/gpt-4o` and other OpenAI-family names to the `azure` provider, so
+    a Foundry hostname was called with the Azure OpenAI handler and failed as
+    an opaque 404. The floor this repo pins no longer does it; this makes a
+    return visible instead of mysterious.
+    """
+    try:
+        from litellm import get_llm_provider
+
+        _model, resolved, _key, _base = get_llm_provider(model=litellm_model)
+    except Exception:
+        return
+    if resolved == intended_route:
+        return
+    signature = f"{provider}:{litellm_model}:{resolved}"
+    if signature in _REPORTED_ROUTE_MISMATCHES:
+        return
+    _REPORTED_ROUTE_MISMATCHES.add(signature)
+    logger.warning(
+        "LiteLLM resolved this model to a different provider than the gateway "
+        "selected; the request will be built by that provider's handler",
+        provider=provider,
+        model=litellm_model,
+        intended_route=intended_route,
+        resolved_route=resolved,
+    )
+
+
+def forget_route_mismatches() -> None:
+    """Clear the once-per-route warning memo. For tests."""
+    _REPORTED_ROUTE_MISMATCHES.clear()
 
 
 _UPSTREAM_FAILURE_MESSAGE = "The model provider could not be reached. Please try again."
