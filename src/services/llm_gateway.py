@@ -391,6 +391,14 @@ _UPSTREAM_GATEWAY_MESSAGE = (
     "be overloaded: check its capacity and any proxy timeout in front of it, or lower the "
     "provider's max concurrent requests."
 )
+#: The connection closed before the response finished. A proxy or load balancer
+#: in front of the model server timing out a long response, not the model
+#: rejecting anything — see `is_provider_truncated_response_error`.
+_UPSTREAM_TRUNCATED_MESSAGE = (
+    "The connection to the model server closed before the response finished. A proxy or "
+    "load balancer in front of it likely timed out a long response: raise that timeout, "
+    "or point the provider at an endpoint that bypasses it."
+)
 _GATEWAY_FAILURE_STATUSES = frozenset({502, 504})
 #: LiteLLM exception class names that wrap an upstream error, e.g.
 #: "litellm.BadGatewayError: BadGatewayError: Hosted_vllmException -".
@@ -577,6 +585,7 @@ def _upstream_client_message(
         is_generic_upstream_error,
         is_provider_credential_error,
         is_provider_tls_error,
+        is_provider_truncated_response_error,
     )
 
     label = _call_label(provider, model)
@@ -585,6 +594,11 @@ def _upstream_client_message(
     # someone to rotate a working API key wastes the trip.
     if is_provider_tls_error(detail):
         return f"{_UPSTREAM_TLS_MESSAGE} ({label})"
+    # Also ahead of the credential branch: aiohttp reports the cut-off with a
+    # "400" of its own, and LiteLLM's wrapper chain around it says nothing an
+    # operator can act on.
+    if is_provider_truncated_response_error(detail):
+        return f"{_UPSTREAM_TRUNCATED_MESSAGE} ({label})"
     if is_provider_credential_error(detail):
         return f"{_UPSTREAM_CREDENTIAL_MESSAGE} ({label})"
     upstream = _provider_error_text(detail, exc)

@@ -1530,6 +1530,60 @@ async def test_chat_completions_masks_an_upstream_4xx_as_a_gateway_failure(monke
     assert exc.value.status_code == 502
 
 
+class _FakeMidStreamFallbackError(Exception):
+    llm_provider = "hosted_vllm"
+
+
+_PROXY_CUTOFF = (
+    "litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: "
+    "Hosted_vllmException - Response payload is not completed: <TransferEncodingError: 400, "
+    "message='Not enough data to satisfy transfer length header.'>"
+)
+
+
+def test_a_truncated_response_names_the_proxy_not_the_wrapper_chain():
+    """aiohttp's own "400" must not read as the model rejecting the request."""
+    from services.llm_gateway import _upstream_client_message
+
+    message = _upstream_client_message(
+        f"MidStreamFallbackError: {_PROXY_CUTOFF}",
+        "rhoai",
+        "hosted_vllm/qwen2.5-0.5b-instruct",
+        _FakeMidStreamFallbackError(_PROXY_CUTOFF),
+    )
+
+    assert "closed before the response finished" in message
+    assert "timed out" in message
+    assert "rhoai/qwen2.5-0.5b-instruct" in message
+    for noise in ("MidStreamFallbackError", "TransferEncodingError", "400"):
+        assert noise not in message
+
+
+@pytest.mark.asyncio
+async def test_a_mid_stream_cutoff_is_reported_and_still_latches_the_banner():
+    """Unlike a context overflow, this fails every long request on that endpoint."""
+    from services import llm_gateway, provider_error_log
+
+    provider_error_log.clear()
+
+    async def gen():
+        raise _FakeMidStreamFallbackError(_PROXY_CUTOFF)
+        yield  # pragma: no cover - makes this an async generator
+
+    try:
+        lines = [
+            line
+            async for line in llm_gateway._stream_sse(
+                gen(), "rhoai", "hosted_vllm/qwen2.5-0.5b-instruct"
+            )
+        ]
+        error = json.loads(lines[-2][len("data: ") :])["error"]
+        assert "closed before the response finished" in error["message"]
+        assert provider_error_log.latest_failure("rhoai", "chat") == error["message"]
+    finally:
+        provider_error_log.clear()
+
+
 def test_sanitise_upstream_detail_drops_interpreter_state():
     from services.llm_gateway import _sanitise_upstream_detail
 
