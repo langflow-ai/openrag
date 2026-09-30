@@ -446,7 +446,7 @@ export function ChatRenderer({
 
       <main
         className={cn(
-          "overflow-hidden flex-1 min-w-0 flex items-center justify-center relative",
+          "overflow-auto flex-1 min-w-0 flex items-center justify-center relative",
           isSelectingChats && "relative",
         )}
       >
