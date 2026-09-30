@@ -8,7 +8,10 @@ import {
   type RemoteFile,
   useBrowseConnectionFiles,
 } from "@/app/api/queries/useBrowseConnectionFiles";
-import type { IngestSettings } from "@/components/cloud-picker/types";
+import {
+  type IngestSettings,
+  validateIngestSettingsOrToast,
+} from "@/components/cloud-picker/types";
 import { formatFileSize } from "@/lib/file-format";
 import { DuplicateHandlingDialog } from "./duplicate-handling-dialog";
 import { Badge } from "./ui/badge";
@@ -187,6 +190,7 @@ export function FileBrowserDialog({
 
   const handleIngest = useCallback(async () => {
     if (selectedFiles.length === 0) return;
+    if (!validateIngestSettingsOrToast(ingestSettings)) return;
 
     const filesPayload: SyncFilePayload[] = selectedFiles.map((f) => ({
       id: f.id,
@@ -248,7 +252,7 @@ export function FileBrowserDialog({
     } finally {
       setIsCheckingDuplicates(false);
     }
-  }, [selectedFiles, connectorType, connectionId, submitSync]);
+  }, [selectedFiles, connectorType, connectionId, submitSync, ingestSettings]);
 
   const handleOverwriteDuplicates = () => {
     if (!pendingSync) return;
