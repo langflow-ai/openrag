@@ -61,20 +61,11 @@ def litellm_route_for(provider: str, stored: Mapping[str, Any] | None) -> str | 
     resolve = getattr(enhancement, "litellm_route", None)
     if resolve is None:
         return getattr(enhancement, "LITELLM_PROVIDER", None)
-    try:
-        return resolve(stored or {}) or None
-    except Exception:
-        # A malformed stored credential must not take down routing for every
-        # other provider; the static alias is the safe answer.
-        from utils.logging_config import get_logger
-
-        get_logger(__name__).warning(
-            "A provider enhancement could not resolve its LiteLLM route; "
-            "falling back to its static alias",
-            provider=provider,
-            exc_info=True,
-        )
-        return getattr(enhancement, "LITELLM_PROVIDER", None)
+    # Deliberately not guarded. A hook that raises is reporting a configuration
+    # it cannot route, and quietly substituting the static alias would turn
+    # that into a wrong request rather than a clear error — the caller decides
+    # how to surface it.
+    return resolve(stored or {}) or None
 
 
 def credential_field_overrides() -> dict[str, list[dict[str, object]]]:

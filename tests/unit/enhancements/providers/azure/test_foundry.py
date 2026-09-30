@@ -45,10 +45,10 @@ class TestEndpointProfile:
     @pytest.mark.parametrize(
         "api_base",
         [
-            # LiteLLM's own placeholder: a per-deployment Target URI. Accepting
-            # it silently pins every model to that one deployment.
-            "https://contoso.openai.azure.com/openai/deployments/gpt-4o/chat/completions",
+            # A deployment Target URI on a *Foundry* host never worked: the
+            # native rewrite appends `/models/chat/completions` after it.
             f"{RESOURCE}/openai/deployments/gpt-4o",
+            f"{RESOURCE}/openai/deployments/gpt-4o/chat/completions",
             f"{RESOURCE}/anthropic/v1",
             "not-a-url",
             "",
@@ -57,6 +57,23 @@ class TestEndpointProfile:
     )
     def test_anything_else_is_unknown_rather_than_guessed_at(self, api_base) -> None:
         assert foundry.endpoint_profile(api_base) == "unknown"
+
+    @pytest.mark.parametrize(
+        "api_base",
+        [
+            "https://contoso.openai.azure.com/openai/deployments/gpt-4o/chat/completions",
+            "https://contoso.openai.azure.com/openai/deployments/gpt-4o",
+        ],
+    )
+    def test_the_one_compatibility_shape_is_named_not_lumped_into_unknown(self, api_base) -> None:
+        """LiteLLM's own placeholder told operators to paste this.
+
+        On an `openai.azure.com` host it genuinely worked — the native
+        rewrite collapses the `/chat/completions` overlap — so an install
+        configured this way keeps routing. It is still refused at save time,
+        because it serves exactly one deployment.
+        """
+        assert foundry.endpoint_profile(api_base) == "legacy_deployment_uri"
 
 
 class TestNormalization:
@@ -114,15 +131,36 @@ class TestTransportSelection:
     def test_the_endpoint_picks_the_transport(self, api_base, expected_route) -> None:
         assert foundry.litellm_route({"api_base": api_base}) == expected_route
 
-    @pytest.mark.parametrize("stored", [{}, None, {"api_base": ""}, {"api_base": "not-a-url"}])
-    def test_an_unclassifiable_endpoint_falls_back_to_the_native_route(self, stored) -> None:
-        """Not to the OpenAI-compatible one.
+    @pytest.mark.parametrize(
+        "stored",
+        [
+            {},
+            None,
+            {"api_base": ""},
+            {"api_base": "not-a-url"},
+            {"api_base": f"{RESOURCE}/anthropic/v1"},
+            {"api_base": f"{RESOURCE}/openai/deployments/gpt-4o"},
+        ],
+    )
+    def test_an_unclassifiable_endpoint_is_refused_not_routed(self, stored) -> None:
+        """There is no safe default, so there is no fallback.
 
-        The native handler produces a *wrong* URL for the v1 surface, but the
-        OpenAI-compatible handler produces a *plausible* URL for anything,
-        which fails later and less legibly.
+        The native handler builds a wrong URL for the v1 surface, and the
+        OpenAI-compatible one builds a plausible-looking URL for literally any
+        input — either guess turns a fixable configuration error into an
+        opaque upstream failure.
         """
-        assert foundry.litellm_route(stored) == foundry.LITELLM_PROVIDER == "azure_ai"
+        with pytest.raises(foundry.UnsupportedEndpointError, match="/openai/v1"):
+            foundry.litellm_route(stored)
+
+    def test_the_compatibility_shape_still_routes_natively(self) -> None:
+        """An install already configured this way must not break."""
+        assert (
+            foundry.litellm_route(
+                {"api_base": "https://c.openai.azure.com/openai/deployments/gpt-4o"}
+            )
+            == "azure_ai"
+        )
 
     def test_the_static_alias_is_the_native_route(self) -> None:
         """So every caller without stored credentials stays on the safe default."""
@@ -142,6 +180,11 @@ class TestTransportSelection:
 
     def test_an_unknown_provider_has_no_route_of_its_own(self) -> None:
         assert litellm_route_for("openai", {}) is None
+
+    def test_the_registry_propagates_the_refusal_rather_than_masking_it(self) -> None:
+        """Substituting the static alias would turn a clear error into a wrong request."""
+        with pytest.raises(foundry.UnsupportedEndpointError):
+            litellm_route_for("azure_ai", {"api_base": "not-a-url"})
 
     def test_foundry_is_registered_under_its_openrag_key(self) -> None:
         assert get_enhancement("azure_ai") is foundry
@@ -212,6 +255,19 @@ class TestCredentialForm:
         from services.model_catalog import secret_field_keys
 
         assert "api_key" in secret_field_keys("azure_ai")
+
+    def test_deployment_names_are_configuration_not_a_credential(self) -> None:
+        """`secret_field_keys` classifies by field type, not meaning.
+
+        A `textarea` would be encrypted at rest, leaving ciphertext in
+        config.yaml where plain configuration belongs. The form system has no
+        non-secret multiline type, so this is `text` until it does.
+        """
+        from services.model_catalog import credential_fields, secret_field_keys
+
+        assert "deployment_names" not in secret_field_keys("azure_ai")
+        field = next(f for f in credential_fields("azure_ai") if f["key"] == "deployment_names")
+        assert field["field_type"] == "text"
 
     def test_the_form_replaces_litellms_deployment_pinning_placeholder(self) -> None:
         """LiteLLM's own `api_base` placeholder is a per-deployment Target URI.
@@ -431,24 +487,38 @@ class TestTransportMetadataCost:
         assert native > 0
         assert via_transport == native
 
-    def test_capability_metadata_survives_for_a_publicly_named_model(self) -> None:
-        """`_model_info` falls back to the bare name, so a shared id resolves."""
-        from services.llm_gateway import _model_info
+    def test_transport_identity_and_metadata_identity_stay_separate(self) -> None:
+        """`hosted_vllm/<model>` is how it is called; `azure_ai/<model>` is what it is.
 
-        assert _model_info("hosted_vllm/gpt-6-luna")
-
-    def test_capability_metadata_is_lost_for_a_foundry_exclusive_model(self) -> None:
-        """Phi has no bare row, so the fallback misses it.
-
-        The only consumer today is `supports_none_reasoning_effort`, which
-        drives the tools-plus-reasoning retry — so that retry will not fire for
-        a Foundry-exclusive model on the v1 route. Pinned so the trade-off is
-        visible rather than folklore.
+        LiteLLM has no rows under the transport, so metadata is looked up under
+        the logical provider key — which is also LiteLLM's own key for Foundry.
         """
         from services.llm_gateway import _model_info
 
-        assert _model_info("azure_ai/Phi-4")
+        # Foundry-exclusive: the bare name matches nothing, so only the
+        # logical identity resolves it.
         assert not _model_info("hosted_vllm/Phi-4")
+        assert _model_info("hosted_vllm/Phi-4", "azure_ai")
+        assert _model_info("hosted_vllm/Phi-4", "azure_ai") == _model_info("azure_ai/Phi-4")
+
+    def test_the_logical_identity_is_preferred_over_a_public_vendors_row(self) -> None:
+        """A shared name resolves either way, but not to the same numbers.
+
+        `gpt-6-luna` exists bare (OpenAI's row) and under `azure_ai` (Azure's).
+        Trying the logical id first is what keeps Azure's pricing from being
+        reported as OpenAI's.
+        """
+        from services.llm_gateway import _model_info
+
+        assert _model_info("hosted_vllm/gpt-6-luna", "azure_ai") == _model_info(
+            "azure_ai/gpt-6-luna"
+        )
+
+    def test_an_operator_named_deployment_resolves_under_neither(self) -> None:
+        """No table can know a name its owner invented. The remaining limitation."""
+        from services.llm_gateway import _model_info
+
+        assert not _model_info("hosted_vllm/prod-llm-01", "azure_ai")
 
 
 def _config(api_base: str, **extra):
