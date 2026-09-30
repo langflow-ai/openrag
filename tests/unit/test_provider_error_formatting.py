@@ -11,6 +11,7 @@ from api.provider_validation import (
     is_context_window_error,
     is_generic_upstream_error,
     is_provider_credential_error,
+    is_provider_truncated_response_error,
     looks_like_provider_error_content,
     resolve_chat_stream_error_message,
     sanitize_provider_error_content,
@@ -537,3 +538,30 @@ def test_is_context_window_error(text):
 )
 def test_is_context_window_error_rejects_other_failures(text):
     assert not is_context_window_error(text)
+
+
+_KUBE_RBAC_PROXY_CUTOFF = (
+    "MidStreamFallbackError: litellm.MidStreamFallbackError: litellm.APIConnectionError: "
+    "APIConnectionError: Hosted_vllmException - Response payload is not completed: "
+    "<TransferEncodingError: 400, message='Not enough data to satisfy transfer length header.'>"
+)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        _KUBE_RBAC_PROXY_CUTOFF,
+        "ClientPayloadError: Response payload is not completed",
+        "httpx.RemoteProtocolError: peer closed connection (incomplete chunked read)",
+    ],
+)
+def test_is_provider_truncated_response_error(text):
+    assert is_provider_truncated_response_error(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [None, "", "Incorrect API key provided", "Connection refused", "maximum context length"],
+)
+def test_is_provider_truncated_response_error_rejects_other_failures(text):
+    assert not is_provider_truncated_response_error(text)

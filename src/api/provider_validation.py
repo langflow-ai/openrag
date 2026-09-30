@@ -156,6 +156,28 @@ def is_provider_tls_error(text: str | BaseException | None) -> bool:
     return any(marker in lowered for marker in _PROVIDER_TLS_ERROR_MARKERS)
 
 
+#: Markers for a response the connection dropped before it finished: the server
+#: promised more body than arrived. Nearly always something between OpenRAG and
+#: the model server closing a long response — an authenticating proxy with a
+#: fixed request timeout (RHOAI's kube-rbac-proxy cuts at 30s), a load balancer
+#: idle timeout. aiohttp names it with a "400" of its own, which reads like the
+#: model rejecting the request.
+_PROVIDER_TRUNCATED_RESPONSE_MARKERS = (
+    "transferencodingerror",
+    "response payload is not completed",
+    "not enough data to satisfy transfer length",
+    "incomplete chunked read",
+)
+
+
+def is_provider_truncated_response_error(text: str | BaseException | None) -> bool:
+    """True when the provider's response was cut off mid-transfer."""
+    if text is None:
+        return False
+    lowered = (str(text) if not isinstance(text, str) else text).lower()
+    return any(marker in lowered for marker in _PROVIDER_TRUNCATED_RESPONSE_MARKERS)
+
+
 #: Markers for a prompt that does not fit the model's context window. That is a
 #: property of one request — a long conversation, a lot of retrieved text — and
 #: says nothing about whether the provider is serving.
