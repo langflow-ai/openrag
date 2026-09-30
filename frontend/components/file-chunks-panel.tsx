@@ -42,10 +42,12 @@ export interface FileChunksPanelProps {
 }
 
 function chunkMatches(chunk: ChunkResult, needle: string): boolean {
-  return (
-    chunk.text.toLowerCase().includes(needle) ||
-    (chunk.index != null && String(chunk.index).includes(needle))
-  );
+  const text = chunk.text.toLowerCase();
+  const indexStr = chunk.index != null ? String(chunk.index) : "";
+  // Full phrase first; fall back to any token for multi-word queries.
+  if (text.includes(needle) || indexStr.includes(needle)) return true;
+  const tokens = needle.split(/\s+/).filter((t) => t.length > 0);
+  return tokens.length > 1 && tokens.some((t) => text.includes(t));
 }
 
 function FileChunkCard({

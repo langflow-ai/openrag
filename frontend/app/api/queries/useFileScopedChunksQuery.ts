@@ -9,15 +9,16 @@ import {
 import { fileScopedSearchQueryData } from "@/lib/file-chunks";
 
 /**
- * Loads every chunk for one filename (shared by chunks page + FileChunksPanel).
+ * Loads all chunks for one file. Shared by the chunks page and FileChunksPanel.
  *
- * When `searchQuery` is a non-wildcard string, a second search request is fired
- * in parallel to fetch highlight fragments for that query. The full wildcard
- * result (all chunks) is always returned as the source of truth for chunk count
- * and the local "Search chunks" filter. Highlights are merged in by chunk_id so
- * non-matching chunks stay visible with an empty highlights list, while matching
- * chunks get their <mark> fragments attached.
+ * A wildcard request fetches the full chunk list (source of truth for count and
+ * local filtering). When `searchQuery` is set, a second parallel request fetches
+ * highlight fragments, merged onto the full list by chunk_id.
  */
+
+// Polling stops after 10 × 2 s = 20 s to handle files not yet queryable after indexing.
+const CHUNK_POLL_MAX_ATTEMPTS = 10;
+
 export function useFileScopedChunksQuery(
   filename: string | null | undefined,
   searchQuery?: string,
@@ -29,22 +30,30 @@ export function useFileScopedChunksQuery(
 
   const queryData = filename ? fileScopedSearchQueryData(filename) : null;
 
-  // Always fetch the complete chunk list via wildcard — this is the source of
-  // truth for chunk count and the local "Search chunks" filter.
+  // Wildcard fetch for the full chunk list. Polls every 2 s until chunks appear
+  // (handles files not yet queryable right after indexing), up to CHUNK_POLL_MAX_ATTEMPTS.
   const { data: allData = EMPTY_SEARCH_RESULT, isFetching: isFetchingAll } =
-    useGetSearchQuery("*", queryData, { enabled: Boolean(filename) });
+    useGetSearchQuery("*", queryData, {
+      enabled: Boolean(filename),
+      disableLiteralGate: true,
+      refetchInterval: (query) => {
+        const files = (query.state.data as SearchResult | undefined)?.files;
+        const hasChunks = files?.some(
+          (f) => f.filename === filename && (f.chunkCount ?? 0) > 0,
+        );
+        if (hasChunks) return false;
+        const attempts = query.state.dataUpdateCount;
+        return attempts < CHUNK_POLL_MAX_ATTEMPTS ? 2000 : false;
+      },
+    });
 
-  // When there is a real search query, fire a second request (scoped to the
-  // same file) purely to collect highlight fragments. This result is never used
-  // for the chunk list itself — only for merging highlights below.
-  //
-  // placeholderData is explicitly cleared (overrides the hook default of
-  // `prev => prev`) so stale highlights from a previous query are never merged
-  // onto chunks belonging to a different search term.
+  // Second request for highlight fragments only. placeholderData cleared so
+  // stale highlights from a prior query are never merged onto new results.
   const { data: hlData = EMPTY_SEARCH_RESULT, isFetching: isFetchingHl } =
     useGetSearchQuery(isRealQuery ? searchQuery! : "*", queryData, {
       enabled: Boolean(filename) && isRealQuery,
       placeholderData: undefined,
+      disableLiteralGate: true,
     });
 
   const file = useMemo(() => {
@@ -53,7 +62,6 @@ export function useFileScopedChunksQuery(
     );
     if (!allFile || !isRealQuery) return allFile;
 
-    // Build chunk_id → highlights lookup from the search result.
     const hlFile = (hlData as SearchResult).files.find(
       (entry: File) => entry.filename === filename,
     );
@@ -67,7 +75,6 @@ export function useFileScopedChunksQuery(
       }
     }
 
-    // Merge highlights onto the full chunk list without dropping any chunks.
     const mergedChunks: ChunkResult[] = (allFile.chunks ?? []).map((chunk) => {
       const key = chunk.chunk_id ?? chunk.id;
       const highlights = key ? (hlMap.get(key) ?? []) : [];
