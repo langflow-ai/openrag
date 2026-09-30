@@ -119,6 +119,34 @@ def split_model_id(model: str) -> tuple[str | None, str]:
     return None, raw
 
 
+def qualified_model_id(provider: str | None, model: str) -> str:
+    """`provider:model` for an internal caller that already knows the provider.
+
+    The inverse of `model_catalog.public_model_id`, which *strips* the tag for
+    OpenAI because that is what an OpenAI-compatible client expects to see on
+    `/v1/models`. An internal caller needs the opposite guarantee: an untagged
+    id is resolved against whichever provider happens to be configured as the
+    default (`resolve_call` -> `default_provider`), so ingesting with a model
+    whose provider is *not* the default would silently call the wrong one.
+
+    An explicit `provider` always wins, including over a slash-shaped prefix in
+    `model` itself: watsonx serves `openai/gpt-oss-120b`, and leaving that
+    untagged resolves it to OpenAI — with OpenAI's credentials, for a model
+    OpenAI does not serve. `watsonx:openai/gpt-oss-120b` says which is meant.
+
+    With no `provider`, the id is returned unchanged so the gateway falls back
+    to the configured default, which is what an untagged call has always done.
+    """
+    name = (model or "").strip()
+    key = (provider or "").strip().lower()
+    if not name or not key:
+        return name
+    prefix = f"{key}{PROVIDER_SEPARATOR}"
+    if name.lower().startswith(prefix):
+        return name
+    return f"{prefix}{name}"
+
+
 def default_provider(kind: Literal["chat", "embedding"], config=None) -> str:
     cfg = config or _get_config()
     if kind == "embedding":
