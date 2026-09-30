@@ -101,6 +101,7 @@ from dependencies import (
     get_task_service,
     require_permission,
 )
+from services import provider_error_log
 from services.docling_service import DoclingConfig, get_docling_preset_configs
 from services.model_catalog import secret_field_keys
 from services.rbac_service import is_rbac_enforced
@@ -1111,6 +1112,10 @@ async def update_settings(
             return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
 
         provider_health_cache.invalidate()
+        if should_validate or provider_updated:
+            # A recorded failure describes the provider setup that just changed.
+            # Real traffic re-raises it if the new setup fails the same way.
+            provider_error_log.clear()
 
         # Refresh patched client immediately so subsequent requests pick up latest config.
         await clients.refresh_patched_client()
@@ -1609,6 +1614,7 @@ async def onboarding(
 
         if config_manager.save_config_file(current_config):
             provider_health_cache.invalidate()
+            provider_error_log.clear()
             set_fields = [k for k, v in body.model_dump(exclude_unset=True).items()]
             logger.info(
                 "Onboarding configuration updated successfully",

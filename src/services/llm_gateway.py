@@ -598,6 +598,24 @@ def _upstream_client_message(
     return f"{label}: {upstream}"
 
 
+def _is_request_scoped_failure(detail: str, exc: BaseException | None) -> bool:
+    """True when the failure belongs to this request, not to the provider.
+
+    A prompt that overflows the context window fails because of what this one
+    call carried; the next, shorter one succeeds. Recording it in
+    `provider_error_log` would latch the health banner against a provider that
+    is serving fine — and on a provider whose probe cannot clear it, until the
+    entry goes stale. The caller still gets the error.
+    """
+    from api.provider_validation import is_context_window_error
+
+    if exc is not None and any(
+        cls.__name__ == "ContextWindowExceededError" for cls in type(exc).__mro__
+    ):
+        return True
+    return is_context_window_error(detail)
+
+
 def _redact(message: str, credentials: Mapping[str, Any]) -> str:
     redacted = message
     for value in credentials.values():
@@ -958,7 +976,8 @@ async def chat_completions(
         # The health banner otherwise reports whatever its own probe hit, which
         # is a different request and so often a different error. Hand it the
         # text this caller is being shown.
-        provider_error_log.record_failure(provider, "chat", message)
+        if not _is_request_scoped_failure(detail, exc):
+            provider_error_log.record_failure(provider, "chat", message)
         raise LlmGatewayError(
             message,
             _upstream_status_code(exc),
@@ -1292,7 +1311,8 @@ async def _stream_sse(
         tally.error = detail
         logger.error("LLM chat stream failed", provider=provider, model=model, error=detail)
         message = _upstream_client_message(detail, provider, model, exc)
-        provider_error_log.record_failure(provider, "chat", message)
+        if not _is_request_scoped_failure(detail, exc):
+            provider_error_log.record_failure(provider, "chat", message)
         yield _error_frame(message, provider, model)
     finally:
         close = getattr(stream, "aclose", None) or getattr(stream, "close", None)
