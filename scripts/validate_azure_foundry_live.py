@@ -82,8 +82,10 @@ import argparse
 import asyncio
 import base64
 import contextlib
+import json
 import logging
 import os
+import re
 import struct
 import sys
 import traceback
@@ -140,6 +142,33 @@ def _describe_exception(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
+#: Every real credential this run was given. Populated once from the
+#: environment and used to redact anything on its way to a terminal — the
+#: in-memory capture keeps the raw text so check 11 can still detect a leak.
+_REAL_SECRETS: tuple[str, ...] = ()
+
+
+def _set_real_secrets(*secrets: str) -> None:
+    global _REAL_SECRETS
+    # Short values are not redacted: a two-character "secret" would blank out
+    # unrelated text and make the output useless.
+    _REAL_SECRETS = tuple(dict.fromkeys(s for s in secrets if s and len(s) >= 8))
+
+
+def _redact(text: str) -> str:
+    """Remove every known real credential from text about to be displayed.
+
+    Check 11 *detects* a leak after the fact, which is too late on its own:
+    by then a library has already written the secret to stdout or stderr and,
+    in CI, into a build log that outlives the run. So nothing reaches a real
+    stream without passing through here first.
+    """
+    cleaned = text
+    for secret in _REAL_SECRETS:
+        cleaned = cleaned.replace(secret, "<redacted>")
+    return cleaned
+
+
 #: A failure that says nothing about credentials or deployments — the request
 #: did not get a considered answer. Any check that "passes on an error" has to
 #: exclude these, or an unplugged network reads as a successful rejection.
@@ -173,7 +202,16 @@ _NOT_FOUND_MARKERS = (
     "unknown model",
     "no deployment",
     "resourcenotfound",
-    "404",
+    "404 not found",
+)
+
+#: A bare "404" is not a marker: those three digits appear in request ids,
+#: timestamps and token counts, and matching them anywhere would let an
+#: unrelated response pass the unknown-deployment check. Recognised only where
+#: the surrounding text makes it a status.
+_HTTP_404_PATTERN = re.compile(
+    r"(?:http[/ ]?[\d.]*\s*|status(?:_?code)?\s*[:=]\s*|code\s*[:=]\s*)404\b",
+    re.IGNORECASE,
 )
 
 
@@ -184,7 +222,9 @@ def _looks_like_connectivity_failure(text: str) -> bool:
 
 def _looks_like_not_found(text: str) -> bool:
     lowered = (text or "").lower()
-    return any(marker in lowered for marker in _NOT_FOUND_MARKERS)
+    if any(marker in lowered for marker in _NOT_FOUND_MARKERS):
+        return True
+    return bool(_HTTP_404_PATTERN.search(lowered))
 
 
 def _looks_like_credential_failure(text: str) -> bool:
@@ -303,41 +343,88 @@ async def _run_endpoint_matrix(
     except Exception as exc:
         matrix.record(3, f"[{label}] chat", BLOCKER, "fail", _describe_exception(exc))
 
-    # 4. Streaming.
+    # 4. Streaming. The contract is `data: {...}` frames terminated by
+    # `data: [DONE]`, so what is asserted is a well-formed stream that
+    # completes — not a frame count. A short completion may legitimately
+    # arrive in a single content chunk, and counting frames would also have
+    # passed a *failed* stream, because the gateway reports failure as an
+    # error frame followed by [DONE].
     try:
         stream = await chat_completions(
             {
                 "model": f"azure_ai:{chat_model}",
-                "messages": [{"role": "user", "content": "Count: one two three."}],
-                "max_tokens": 32,
+                "messages": [{"role": "user", "content": "Count from one to five."}],
+                "max_tokens": 64,
                 "stream": True,
             },
             config=config,
         )
         frames = 0
-        async for _frame in stream:
+        content_chunks = 0
+        saw_done = False
+        error_frame = ""
+        async for frame in stream:
             frames += 1
-        status = "pass" if frames > 1 else "fail"
-        matrix.record(
-            4,
-            f"[{label}] streaming",
-            BLOCKER,
-            status,
-            f"{frames} SSE frames" + ("" if frames > 1 else " — expected more than one"),
-        )
+            payload = (
+                frame[len("data: ") :].strip() if frame.startswith("data: ") else frame.strip()
+            )
+            if payload == "[DONE]":
+                saw_done = True
+                continue
+            try:
+                parsed = json.loads(payload)
+            except (ValueError, TypeError):
+                continue
+            if isinstance(parsed, dict) and parsed.get("error"):
+                error_frame = str(parsed["error"])[:160]
+                continue
+            for choice in (parsed or {}).get("choices") or []:
+                delta = choice.get("delta") or {}
+                if delta.get("content") or delta.get("tool_calls"):
+                    content_chunks += 1
+
+        if error_frame:
+            matrix.record(4, f"[{label}] streaming", BLOCKER, "fail", f"error frame: {error_frame}")
+        elif not content_chunks:
+            matrix.record(
+                4,
+                f"[{label}] streaming",
+                BLOCKER,
+                "fail",
+                f"{frames} frames but none carried content or tool calls",
+            )
+        elif not saw_done:
+            matrix.record(
+                4,
+                f"[{label}] streaming",
+                BLOCKER,
+                "fail",
+                f"{content_chunks} content chunk(s) but the stream never terminated with [DONE]",
+            )
+        else:
+            matrix.record(
+                4,
+                f"[{label}] streaming",
+                BLOCKER,
+                "pass",
+                f"{content_chunks} content chunk(s) of {frames} frames, terminated cleanly",
+            )
     except Exception as exc:
         matrix.record(4, f"[{label}] streaming", BLOCKER, "fail", _describe_exception(exc))
 
-    # 5. Tool calling.
+    # 5. Tool calling. Forced with `tool_choice`, because the question here
+    # is whether tool calls survive the transport — not whether this
+    # particular model independently decides a tool is warranted. Leaving
+    # that to the model makes the gate flaky and provider-dependent.
     tools = [
         {
             "type": "function",
             "function": {
                 "name": "get_weather",
-                "description": "Look up the weather for a city.",
+                "description": "Look up the current weather for a city.",
                 "parameters": {
                     "type": "object",
-                    "properties": {"city": {"type": "string"}},
+                    "properties": {"city": {"type": "string", "description": "City name"}},
                     "required": ["city"],
                 },
             },
@@ -349,30 +436,53 @@ async def _run_endpoint_matrix(
                 "model": f"azure_ai:{chat_model}",
                 "messages": [{"role": "user", "content": "What is the weather in Lisbon?"}],
                 "tools": tools,
+                "tool_choice": {"type": "function", "function": {"name": "get_weather"}},
                 "max_tokens": 128,
             },
             config=config,
         )
-        message = response["choices"][0]["message"]
-        calls = message.get("tool_calls") or []
-        if calls:
-            matrix.record(
-                5,
-                f"[{label}] tool calling",
-                BLOCKER,
-                "pass",
-                f"called {calls[0]['function']['name']}",
-            )
-        else:
-            # The deployment answering in prose is a model behaviour, not a
-            # routing fault — but tools are a product claim, so it blocks.
+        calls = response["choices"][0]["message"].get("tool_calls") or []
+        named = [c for c in calls if (c.get("function") or {}).get("name") == "get_weather"]
+        if not named:
             matrix.record(
                 5,
                 f"[{label}] tool calling",
                 BLOCKER,
                 "fail",
-                "no tool_calls returned; the deployment may not support tools",
+                "tool_choice forced get_weather but it was not returned; "
+                f"tool_calls={[(c.get('function') or {}).get('name') for c in calls]}",
             )
+        else:
+            raw_arguments = (named[0].get("function") or {}).get("arguments")
+            try:
+                arguments = json.loads(raw_arguments or "")
+            except (ValueError, TypeError):
+                matrix.record(
+                    5,
+                    f"[{label}] tool calling",
+                    BLOCKER,
+                    "fail",
+                    "get_weather was called but its arguments are not valid JSON; "
+                    f"type={type(raw_arguments).__name__}",
+                )
+            else:
+                city = (arguments or {}).get("city") if isinstance(arguments, dict) else None
+                if isinstance(city, str) and city.strip():
+                    matrix.record(
+                        5,
+                        f"[{label}] tool calling",
+                        BLOCKER,
+                        "pass",
+                        f"get_weather(city={city.strip()[:40]!r}) with valid JSON arguments",
+                    )
+                else:
+                    matrix.record(
+                        5,
+                        f"[{label}] tool calling",
+                        BLOCKER,
+                        "fail",
+                        f"get_weather returned JSON without a usable city: {arguments!r}",
+                    )
     except Exception as exc:
         matrix.record(5, f"[{label}] tool calling", BLOCKER, "fail", _describe_exception(exc))
 
@@ -787,7 +897,7 @@ async def _check_legacy_header_behaviour(
     matrix.record(12, "legacy /models header behaviour", ADVISORY, "pass", ", ".join(results))
 
 
-def _check_secret_leak(matrix: Matrix, api_key: str) -> None:
+def _check_secret_leak(matrix: Matrix, secrets: tuple[str, ...]) -> None:
     """Nothing this run produced may contain the key.
 
     Scans captured root logging, stdout, stderr, OpenRAG's structlog output
@@ -796,31 +906,39 @@ def _check_secret_leak(matrix: Matrix, api_key: str) -> None:
     kind — because printing it is the leak all over again, into a terminal and
     very likely into CI output.
     """
-    if not api_key:
+    if not secrets:
         matrix.record(
-            11, "no credential in errors or logs", BLOCKER, "fail", "no API key to scan for"
+            11, "no credential in errors or logs", BLOCKER, "fail", "no credential to scan for"
         )
         return
 
-    hits = sum(1 for fragment in matrix.captured_text if fragment and api_key in fragment)
     scanned = sum(len(fragment) for fragment in matrix.captured_text if fragment)
-    if hits:
-        matrix.record(
-            11,
-            "no credential in errors or logs",
-            BLOCKER,
-            "fail",
-            f"the API key appeared in {hits} captured fragment(s). The material is "
-            "not reproduced here; re-run with a scratch credential and inspect "
-            "locally to find the source.",
-        )
+    leaked = 0
+    for index, secret in enumerate(secrets):
+        hits = sum(1 for fragment in matrix.captured_text if fragment and secret in fragment)
+        if hits:
+            leaked += 1
+            matrix.record(
+                11,
+                "no credential in errors or logs",
+                BLOCKER,
+                "fail",
+                # Neither the secret nor the surrounding material is named:
+                # printing either is the leak again. The index identifies
+                # which credential without disclosing it.
+                f"credential #{index + 1} of {len(secrets)} appeared in {hits} captured "
+                "fragment(s). Nothing is reproduced here — re-run with scratch "
+                "credentials and inspect locally to find the source.",
+            )
+    if leaked:
         return
     matrix.record(
         11,
         "no credential in errors or logs",
         BLOCKER,
         "pass",
-        f"scanned {scanned} characters of captured logging, stdout, stderr and errors",
+        f"scanned {scanned} characters of captured logging, stdout, stderr and errors "
+        f"for {len(secrets)} credential(s)",
     )
 
 
@@ -884,7 +1002,8 @@ class _Tee:
 
     Progress stays visible while everything printed — including anything a
     library writes directly rather than through logging — is available to the
-    secret scan.
+    secret scan. What reaches the real stream is redacted; what reaches the
+    sink is not, because detection needs the original.
     """
 
     def __init__(self, stream, sink: list[str]) -> None:
@@ -892,8 +1011,12 @@ class _Tee:
         self._sink = sink
 
     def write(self, text: str) -> int:
+        # Raw into the capture so check 11 can still see a leak...
         self._sink.append(text)
-        return self._stream.write(text)
+        # ...redacted on the way to the terminal. Forwarding the raw text and
+        # relying on the final report to redact would be too late: the secret
+        # is already on screen, and in CI already in a retained build log.
+        return self._stream.write(_redact(text))
 
     def flush(self) -> None:
         self._stream.flush()
@@ -988,6 +1111,9 @@ def _settings() -> dict[str, str]:
 
 async def _main() -> int:
     settings = _settings()
+    # Before anything can print: every real credential the run was given,
+    # so `_redact` can keep all of them off the terminal.
+    _set_real_secrets(settings["api_key"], settings.get("listing_denied_api_key", ""))
     matrix = Matrix()
 
     endpoints: list[tuple[str, str, int]] = [("resource v1", settings["api_base"], 8)]
@@ -999,7 +1125,7 @@ async def _main() -> int:
     with _capturing(matrix.captured_text):
         await _run_all_checks(matrix, settings, endpoints)
 
-    _print_report(matrix, settings["api_key"], settings.get("listing_denied_api_key", ""))
+    _print_report(matrix)
     return _exit_code(matrix)
 
 
@@ -1049,24 +1175,10 @@ async def _run_all_checks(matrix: Matrix, settings: dict[str, str], endpoints) -
     )
     _check_cost_attribution(matrix, settings["api_base"], settings["chat_deployment"])
     # Last: it scans everything the run produced.
-    _check_secret_leak(matrix, settings["api_key"])
+    _check_secret_leak(matrix, _REAL_SECRETS)
 
 
-def _redact(text: str, *secrets: str) -> str:
-    """Remove any known secret from text about to be printed.
-
-    Belt and braces over check 11. That check *detects* a leak; this makes
-    sure detecting one does not itself print it, since several checks quote
-    an upstream response body and a provider could echo the credential back.
-    """
-    cleaned = text
-    for secret in secrets:
-        if secret and len(secret) >= 8:
-            cleaned = cleaned.replace(secret, "<redacted>")
-    return cleaned
-
-
-def _print_report(matrix: Matrix, *secrets: str) -> None:
+def _print_report(matrix: Matrix) -> None:
     print("\n" + "=" * 78)
     print("Azure AI Foundry live validation")
     print("=" * 78)
@@ -1075,7 +1187,7 @@ def _print_report(matrix: Matrix, *secrets: str) -> None:
         tag = "blocker " if check.severity == BLOCKER else "advisory"
         print(f"  [{symbols[check.status]}] ({tag}) {check.number:>2}. {check.name}")
         if check.detail:
-            print(f"         {_redact(check.detail, *secrets)}")
+            print(f"         {_redact(check.detail)}")
     print("-" * 78)
 
 
