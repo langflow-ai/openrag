@@ -113,6 +113,56 @@ class TestNormalization:
         once = foundry.normalized_api_base(f"{RESOURCE}/openai/v1/chat/completions?x=1")
         assert foundry.normalized_api_base(once) == once
 
+    def test_a_query_string_secret_never_reaches_the_logs(self, monkeypatch) -> None:
+        """The pasted value is not logged, only what it normalizes to.
+
+        An operator's endpoint can carry credentials in its query string — a
+        Target URI copied from the portal already carries `?api-version=`, and
+        nothing stops a key being in there too. Logging the raw value would
+        put it in plaintext in the application log.
+        """
+        records: list[tuple[str, dict]] = []
+
+        class _Recorder:
+            def debug(self, message, **fields):
+                records.append((message, fields))
+
+            def __getattr__(self, _name):
+                return lambda *args, **kwargs: None
+
+        monkeypatch.setattr(foundry, "logger", _Recorder())
+
+        secret = "super-secret-key-value"
+        foundry.normalized_api_base(
+            f"{RESOURCE}/openai/v1/chat/completions?api-version=2024-05-01&api-key={secret}"
+        )
+
+        assert records, "normalization should have been logged"
+        rendered = repr(records)
+        assert secret not in rendered
+        assert "api-key" not in rendered
+        assert "api-version" not in rendered
+        _message, fields = records[0]
+        assert fields == {
+            "normalized": f"{RESOURCE}/openai/v1",
+            "dropped_query": True,
+        }
+
+    def test_no_query_is_reported_as_none_dropped(self, monkeypatch) -> None:
+        records: list[dict] = []
+
+        class _Recorder:
+            def debug(self, _message, **fields):
+                records.append(fields)
+
+            def __getattr__(self, _name):
+                return lambda *args, **kwargs: None
+
+        monkeypatch.setattr(foundry, "logger", _Recorder())
+        foundry.normalized_api_base(f"{RESOURCE}/openai/v1/")
+
+        assert records == [{"normalized": f"{RESOURCE}/openai/v1", "dropped_query": False}]
+
 
 class TestTransportSelection:
     """`hosted_vllm` is a transport. `azure_ai` stays the provider identity."""

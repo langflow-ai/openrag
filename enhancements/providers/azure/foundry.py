@@ -329,10 +329,16 @@ def normalized_api_base(value: Any) -> str:
     # a v1 endpoint has no use for it at all.
     normalized = urlunsplit((parts.scheme, parts.netloc, path.rstrip("/"), "", ""))
     if normalized != raw:
+        # Deliberately not logging `raw`. The value an operator pastes can
+        # carry credentials in its query string — a Target URI copied from the
+        # portal already carries `?api-version=`, and nothing stops a key or
+        # SAS token being in there too. `normalized` has the query stripped by
+        # construction, so it is the safe half to record; whether anything was
+        # dropped is the only other fact worth having when diagnosing.
         logger.debug(
             "Normalized the Azure AI Foundry endpoint",
-            original=raw,
             normalized=normalized,
+            dropped_query=bool(parts.query),
         )
     return normalized
 
