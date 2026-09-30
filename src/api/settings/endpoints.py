@@ -869,13 +869,15 @@ async def update_settings(
                     effective_vlm_provider
                 )
                 credentials = current_config.providers.credential_values(effective_vlm_provider)
-                api_key = getattr(vlm_provider_config, "api_key", "") or credentials.get(
-                    "api_key", ""
-                )
-                vlm_provider_missing = not api_key or not vlm_provider_config.configured
+
+                # Whether the provider is usable at all is the provider's own
+                # question, and `configured` already answers it against that
+                # provider's required fields.
+                vlm_provider_missing = not vlm_provider_config.configured
                 if effective_vlm_provider in ("azure", "azure_ai"):
-                    endpoint = credentials.get("api_base", "")
-                    vlm_provider_missing = vlm_provider_missing or not endpoint
+                    vlm_provider_missing = vlm_provider_missing or not credentials.get(
+                        "api_base", ""
+                    )
                 if effective_vlm_provider == "watsonx":
                     vlm_provider_missing = (
                         vlm_provider_missing
@@ -888,6 +890,37 @@ async def update_settings(
                             "error": (
                                 f"Cannot enable Docling VLM: provider '{effective_vlm_provider}' "
                                 "is not configured. Configure it in Settings > Providers first."
+                            )
+                        },
+                        status_code=400,
+                    )
+
+                # Separately: docling-serve calls the model endpoint itself,
+                # with headers OpenRAG builds for it, and every remote branch
+                # in `docling_service` builds an API-key header. So VLM needs a
+                # key even where the provider itself can authenticate other
+                # ways — Azure OpenAI already accepts a Microsoft Entra token
+                # or a service principal for inference.
+                #
+                # This is a limit of the VLM integration, not of the provider,
+                # and it is reported as one. Rolling it into "provider is not
+                # configured" above sent operators to re-enter credentials that
+                # were already valid, and wrote "an API key is the only way to
+                # authenticate" into a gate that has no business saying so.
+                # Entra for VLM needs token acquisition, refresh and
+                # propagation to docling-serve, and is a separate change.
+                api_key = getattr(vlm_provider_config, "api_key", "") or credentials.get(
+                    "api_key", ""
+                )
+                if not api_key:
+                    return JSONResponse(
+                        {
+                            "error": (
+                                f"Cannot enable Docling VLM: provider "
+                                f"'{effective_vlm_provider}' is configured, but image "
+                                "descriptions are sent to the document converter, which "
+                                "authenticates with an API key. Add one in "
+                                "Settings > Providers, or turn off image descriptions."
                             )
                         },
                         status_code=400,
