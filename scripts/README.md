@@ -250,3 +250,68 @@ After running, **restart the backend** and reload the app.
 This script does **not** delete ingested documents, knowledge filters, Langflow
 flows, or conversations. For a full teardown, use the authenticated API endpoint
 `POST /settings/rollback-onboarding` instead.
+
+## Azure AI Foundry live validation (`validate_azure_foundry_live.py`)
+
+The matrix that must pass against a **real** Azure AI Foundry resource before
+`azure_ai` is made visible in any run mode. The provider stays hidden while it
+runs: credentials come from the environment and the config object is built in
+memory, so nothing reads `model_providers.yaml` or the saved configuration.
+
+Every check goes through OpenRAG's own code — the provider enhancement, the
+LLM gateway, the Docling option builder — rather than reimplementing the
+requests. A script that built its own URLs would prove Azure works, not that
+OpenRAG calls it correctly, which is the question the flip depends on.
+
+```bash
+export AZURE_AI_API_BASE="https://<resource>.services.ai.azure.com/openai/v1"
+export AZURE_AI_API_KEY="<key>"
+export AZURE_AI_CHAT_DEPLOYMENT="<chat deployment>"
+export AZURE_AI_EMBEDDING_DEPLOYMENT="<embedding deployment>"
+
+# Optional; each unlocks more of the matrix.
+export AZURE_AI_PROJECT_API_BASE="https://<r>.services.ai.azure.com/api/projects/<p>/openai/v1"
+export AZURE_AI_LEGACY_API_BASE="https://<resource>.services.ai.azure.com/models"
+export AZURE_AI_VLM_DEPLOYMENT="<vision-capable deployment>"
+
+uv run python scripts/validate_azure_foundry_live.py
+```
+
+Exit status is non-zero if any **blocker** fails *or is skipped* — an
+unexercised blocker leaves the matrix incomplete, which is not a pass.
+
+| # | Check | |
+|---|---|---|
+| 1 | Save-time validation, valid credentials | blocker |
+| 2 | Invalid API key is rejected | blocker |
+| 3 | Chat | blocker |
+| 4 | Streaming | blocker |
+| 5 | Tool calling | blocker |
+| 6 | Embeddings | blocker |
+| 7 | Unknown deployment fails cleanly | blocker |
+| 8 | `/openai/v1` routing | blocker |
+| 9 | `/api/projects/<project>/openai/v1` routing | blocker when configured |
+| 10 | Docling VLM picture description | blocker |
+| 11 | No credential in errors or logs | blocker |
+| 12 | Legacy `/models` `api-key` vs `Bearer` | advisory |
+| 13 | Cost attribution | advisory |
+
+Checks 3–7 run once per configured endpoint.
+
+Cost is advisory by design: OpenRAG does not consume cost data today, and the
+OpenAI-compatible transport's loss of LiteLLM's `azure_ai/*` price rows is
+documented in `enhancements/providers/azure/foundry.py`. Check 12 is advisory
+because the shipped health check sends both header styles; its answer only
+decides whether that can later be simplified.
+
+The API key is never printed, and check 11 scans everything the run produced —
+every captured error and every log line — for it.
+
+**Two things the script cannot cover**, both needed before the flip:
+
+- Check 10 issues the exact URL, headers and params OpenRAG hands
+  docling-serve, but does not run docling-serve. Do one real ingest of an
+  image-bearing document through the running stack with picture descriptions
+  enabled.
+- Nothing here exercises the settings UI. Save the provider once through
+  **Settings > Providers** to confirm the form and its validation behave.
