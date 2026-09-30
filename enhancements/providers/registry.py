@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from types import ModuleType
 from typing import Any, Literal
 
+from enhancements.providers.azure import foundry
 from enhancements.providers.redhat import openshift_ai
 from enhancements.providers.watsonx import onprem
 
@@ -21,6 +22,7 @@ CallKind = Literal["chat", "embedding"]
 _ENHANCEMENTS: dict[str, ModuleType] = {
     onprem.PROVIDER_KEY: onprem,
     openshift_ai.PROVIDER_KEY: openshift_ai,
+    foundry.PROVIDER_KEY: foundry,
 }
 
 
@@ -30,12 +32,51 @@ def get(provider: str) -> ModuleType | None:
 
 
 def route_aliases() -> dict[str, str]:
-    """OpenRAG provider keys that LiteLLM must route under another key."""
+    """OpenRAG provider keys that LiteLLM must route under another key.
+
+    The *static* half of routing: one alias per provider, fixed at import. A
+    provider whose route depends on how it was configured declares
+    `litellm_route` as well — see `litellm_route_for`. This mapping is still
+    what that provider falls back to, so it must stay the safe default.
+    """
     return {
         key: enhancement.LITELLM_PROVIDER
         for key, enhancement in _ENHANCEMENTS.items()
         if hasattr(enhancement, "LITELLM_PROVIDER")
     }
+
+
+def litellm_route_for(provider: str, stored: Mapping[str, Any] | None) -> str | None:
+    """The LiteLLM key `provider` routes as *for this configuration*.
+
+    Most providers reach one API one way, and `LITELLM_PROVIDER` says which.
+    Azure AI Foundry does not: the endpoint an operator pastes decides which
+    LiteLLM transport can even produce a correct URL for it, so the route has
+    to be recomputed per configuration rather than fixed at import.
+
+    Returns `None` when `provider` has no enhancement or the enhancement has
+    nothing to say, leaving the caller on the static alias.
+    """
+    enhancement = get(provider)
+    if enhancement is None:
+        return None
+    resolve = getattr(enhancement, "litellm_route", None)
+    if resolve is None:
+        return getattr(enhancement, "LITELLM_PROVIDER", None)
+    try:
+        return resolve(stored or {}) or None
+    except Exception:
+        # A malformed stored credential must not take down routing for every
+        # other provider; the static alias is the safe answer.
+        from utils.logging_config import get_logger
+
+        get_logger(__name__).warning(
+            "A provider enhancement could not resolve its LiteLLM route; "
+            "falling back to its static alias",
+            provider=provider,
+            exc_info=True,
+        )
+        return getattr(enhancement, "LITELLM_PROVIDER", None)
 
 
 def credential_field_overrides() -> dict[str, list[dict[str, object]]]:
