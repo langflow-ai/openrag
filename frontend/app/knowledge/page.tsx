@@ -790,7 +790,7 @@ function SearchPage() {
   const fileResults = buildKnowledgeTableRows(
     effectiveData,
     taskFiles,
-    Boolean(selectedFilter),
+    Boolean(selectedFilter) || !isWildcardQuery,
   );
 
   const serverTotal = isWildcardQuery

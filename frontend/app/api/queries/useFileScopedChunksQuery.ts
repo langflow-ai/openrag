@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { ChunkResult } from "@/app/api/queries/useGetSearchQuery";
 import {
   EMPTY_SEARCH_RESULT,
@@ -30,6 +30,13 @@ export function useFileScopedChunksQuery(
 
   const queryData = filename ? fileScopedSearchQueryData(filename) : null;
 
+  const pollBaselineRef = useRef<number | null>(null);
+
+  // Reset baseline whenever filename changes (new file or reindex start).
+  useEffect(() => {
+    pollBaselineRef.current = null;
+  }, [filename]);
+
   // Wildcard fetch for the full chunk list. Polls every 2 s until chunks appear
   // (handles files not yet queryable right after indexing), up to CHUNK_POLL_MAX_ATTEMPTS.
   const { data: allData = EMPTY_SEARCH_RESULT, isFetching: isFetchingAll } =
@@ -42,8 +49,12 @@ export function useFileScopedChunksQuery(
           (f) => f.filename === filename && (f.chunkCount ?? 0) > 0,
         );
         if (hasChunks) return false;
-        const attempts = query.state.dataUpdateCount;
-        return attempts < CHUNK_POLL_MAX_ATTEMPTS ? 2000 : false;
+        const total = query.state.dataUpdateCount;
+        if (pollBaselineRef.current === null) {
+          pollBaselineRef.current = total;
+        }
+        const sessionAttempts = total - pollBaselineRef.current;
+        return sessionAttempts < CHUNK_POLL_MAX_ATTEMPTS ? 2000 : false;
       },
     });
 
