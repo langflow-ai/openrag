@@ -8,6 +8,7 @@ import pytest
 
 from api.provider_validation import (
     format_provider_error_message,
+    is_context_window_error,
     is_generic_upstream_error,
     is_provider_credential_error,
     looks_like_provider_error_content,
@@ -514,3 +515,25 @@ async def test_probe_checks_non_selected_providers_with_keys(monkeypatch):
     from api.provider_validation import probe_provider_credential_error
 
     assert await probe_provider_credential_error() == "Provided API key is Invalid."
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "This model's maximum context length is 32768 tokens. However, you requested 0 "
+        "output tokens and your prompt contains at least 32769 input tokens",
+        '{"error": {"code": "context_length_exceeded"}}',
+        "ContextWindowExceededError: litellm.ContextWindowExceededError: ...",
+        "prompt is too long: 210000 tokens > 200000 maximum",
+    ],
+)
+def test_is_context_window_error(text):
+    assert is_context_window_error(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [None, "", "Incorrect API key provided", "The model `x` does not exist", "rate limit"],
+)
+def test_is_context_window_error_rejects_other_failures(text):
+    assert not is_context_window_error(text)

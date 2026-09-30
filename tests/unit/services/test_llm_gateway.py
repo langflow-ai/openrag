@@ -1708,6 +1708,99 @@ class TestRealFailuresReachTheBanner:
         assert provider_error_log.latest_failure("openai", "chat") is None
 
 
+class TestRequestScopedFailuresStayOutOfTheBanner:
+    """A prompt that overflows the context window is this request's problem.
+
+    The provider is serving; the next, shorter prompt succeeds. Recording it
+    latched the health banner against a healthy provider, and on one whose
+    probe cannot clear it (every provider enhancement), it stayed latched.
+    """
+
+    _OVERFLOW = (
+        "This model's maximum context length is 32768 tokens. However, you requested 0 "
+        "output tokens and your prompt contains at least 32769 input tokens"
+    )
+
+    @pytest.fixture(autouse=True)
+    def _clean(self, monkeypatch):
+        from services import llm_gateway, provider_error_log
+
+        provider_error_log.clear()
+        monkeypatch.setattr(
+            llm_gateway,
+            "resolve_call",
+            lambda *a, **k: ("hosted_vllm/qwen2.5-0.5b-instruct", "rhoai", {}),
+        )
+        yield
+        provider_error_log.clear()
+
+    def _raise(self, monkeypatch, exc: BaseException):
+        async def _boom(**_kwargs):
+            raise exc
+
+        monkeypatch.setattr("litellm.acompletion", _boom)
+
+    @pytest.mark.asyncio
+    async def test_a_context_window_overflow_is_not_recorded(self, monkeypatch):
+        from services import llm_gateway, provider_error_log
+
+        class ContextWindowExceededError(Exception):
+            llm_provider = "hosted_vllm"
+
+        self._raise(monkeypatch, ContextWindowExceededError(self._OVERFLOW))
+
+        with pytest.raises(llm_gateway.LlmGatewayError) as raised:
+            await llm_gateway.chat_completions({"model": "rhoai:qwen", "messages": []})
+
+        assert "maximum context length" in str(raised.value)
+        assert provider_error_log.latest_failure("rhoai", "chat") is None
+
+    @pytest.mark.asyncio
+    async def test_an_overflow_does_not_erase_a_real_failure(self, monkeypatch):
+        from services import llm_gateway, provider_error_log
+
+        provider_error_log.record_failure("rhoai", "chat", "earlier real failure")
+        self._raise(monkeypatch, RuntimeError(self._OVERFLOW))
+
+        with pytest.raises(llm_gateway.LlmGatewayError):
+            await llm_gateway.chat_completions({"model": "rhoai:qwen", "messages": []})
+
+        assert provider_error_log.latest_failure("rhoai", "chat") == "earlier real failure"
+
+    @pytest.mark.asyncio
+    async def test_other_upstream_failures_are_still_recorded(self, monkeypatch):
+        from services import llm_gateway, provider_error_log
+
+        self._raise(
+            monkeypatch,
+            RuntimeError('{"error": {"message": "The model `qwen` does not exist."}}'),
+        )
+
+        with pytest.raises(llm_gateway.LlmGatewayError):
+            await llm_gateway.chat_completions({"model": "rhoai:qwen", "messages": []})
+
+        assert "does not exist" in provider_error_log.latest_failure("rhoai", "chat")
+
+    @pytest.mark.asyncio
+    async def test_a_mid_stream_overflow_is_reported_but_not_recorded(self):
+        from services import llm_gateway, provider_error_log
+
+        overflow = self._OVERFLOW
+
+        class BadRequestError(Exception):
+            llm_provider = "hosted_vllm"
+
+        async def gen():
+            raise BadRequestError(overflow)
+            yield  # pragma: no cover - makes this an async generator
+
+        lines = [line async for line in llm_gateway._stream_sse(gen(), "rhoai", "qwen")]
+
+        error = json.loads(lines[-2][len("data: ") :])["error"]
+        assert "maximum context length" in error["message"]
+        assert provider_error_log.latest_failure("rhoai", "chat") is None
+
+
 class TestToolsBesideReasoningEffort:
     """gpt-5.x refuses function tools next to its own default reasoning effort.
 

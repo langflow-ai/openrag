@@ -742,3 +742,75 @@ async def test_onboarding_caps_chunk_size_for_watsonx_onprem_embeddings():
     saved_config = save_config.call_args.args[0]
     assert saved_config.knowledge.chunk_size == 500
     assert response.chunk_size_adjusted_to == 500
+
+
+async def _save_settings(body: SettingsUpdateBody) -> None:
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.validate_provider_setup", new_callable=AsyncMock),
+        patch("api.settings.endpoints.config_manager.save_config_file", return_value=True),
+        patch("api.settings.endpoints.clients.refresh_patched_client", new_callable=AsyncMock),
+        patch(
+            "api.settings.endpoints._run_async_post_save_langflow_updates",
+            new_callable=AsyncMock,
+        ),
+    ):
+        response = await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+    assert getattr(response, "status_code", 200) == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body",
+    [
+        SettingsUpdateBody(llm_model="qwen2.5-1.5b-instruct"),
+        SettingsUpdateBody(
+            provider_credentials={
+                "openai_like": {"api_base": "https://llm.example", "api_key": "k"}
+            }
+        ),
+    ],
+    ids=["model", "credentials"],
+)
+async def test_provider_settings_save_clears_recorded_failures(body):
+    """A recorded failure describes the setup the save just replaced.
+
+    Without this, a provider whose probe cannot clear the banner kept showing
+    the old failure after the operator fixed the model, until it went stale.
+    """
+    from services import provider_error_log
+
+    provider_error_log.clear()
+    provider_error_log.record_failure("rhoai", "chat", "old failure")
+    try:
+        await _save_settings(body)
+        assert provider_error_log.latest_failure("rhoai", "chat") is None
+    finally:
+        provider_error_log.clear()
+
+
+@pytest.mark.asyncio
+async def test_non_provider_settings_save_keeps_recorded_failures():
+    from services import provider_error_log
+
+    provider_error_log.clear()
+    provider_error_log.record_failure("rhoai", "chat", "still failing")
+    try:
+        await _save_settings(SettingsUpdateBody(system_prompt="Be brief."))
+        assert provider_error_log.latest_failure("rhoai", "chat") == "still failing"
+    finally:
+        provider_error_log.clear()

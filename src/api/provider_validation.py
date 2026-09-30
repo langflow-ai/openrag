@@ -156,6 +156,25 @@ def is_provider_tls_error(text: str | BaseException | None) -> bool:
     return any(marker in lowered for marker in _PROVIDER_TLS_ERROR_MARKERS)
 
 
+#: Markers for a prompt that does not fit the model's context window. That is a
+#: property of one request — a long conversation, a lot of retrieved text — and
+#: says nothing about whether the provider is serving.
+_CONTEXT_WINDOW_ERROR_MARKERS = (
+    "maximum context length",
+    "context_length_exceeded",
+    "contextwindowexceeded",
+    "prompt is too long",
+)
+
+
+def is_context_window_error(text: str | BaseException | None) -> bool:
+    """True when the call failed because the prompt exceeds the model's context window."""
+    if text is None:
+        return False
+    lowered = (str(text) if not isinstance(text, str) else text).lower()
+    return any(marker in lowered for marker in _CONTEXT_WINDOW_ERROR_MARKERS)
+
+
 _GENERIC_UPSTREAM_ERROR_MARKERS = (
     "an unknown error occurred",
     "an error occurred while generating a response",
