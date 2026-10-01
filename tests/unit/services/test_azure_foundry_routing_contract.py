@@ -195,12 +195,21 @@ def test_a_foundry_model_id_stays_on_the_foundry_provider(deployment) -> None:
 def test_foundry_embeddings_do_no_path_rewriting_of_their_own() -> None:
     """Chat and embeddings take different handlers, so they need separate tests.
 
-    Embeddings inherit the plain OpenAI implementation and post to
-    `{api_base}/embeddings` — no `/models` insertion. That asymmetry means a
-    single `api_base` behaves differently per call kind on the v1 form
-    (embeddings work, chat does not), and a contract test that exercises only
-    one of the two reaches the opposite conclusion of one that exercises the
-    other.
+    What this asserts — that the embedding handler inherits the plain OpenAI
+    implementation and defines no `get_complete_url` of its own — is true and
+    worth pinning.
+
+    It does **not** follow that embeddings therefore reach
+    `{api_base}/embeddings` untouched, which is what an earlier revision of
+    this docstring concluded. That was measured on litellm 1.84.0. On the
+    pinned floor, 1.102.0 emits `/openai/v1/models/embeddings` for a v1 base:
+    the rewrite happens somewhere other than this class. Live validation caught
+    it when ingestion failed with `Azure_aiException - Error code: 404` against
+    a resource where chat over the OpenAI-compatible transport worked.
+
+    So both call kinds need that transport. The URL itself is pinned by the
+    wire-level matrix above, not by reading the class hierarchy — which is the
+    lesson: a structural fact is not a behavioural one.
     """
     assert issubclass(AzureAIEmbedding, OpenAIChatCompletion)
     assert "get_complete_url" not in vars(AzureAIEmbedding), (
