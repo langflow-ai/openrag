@@ -206,3 +206,69 @@ async def test_the_dimension_probe_goes_through_the_gateway(monkeypatch) -> None
 
     assert await service._detect_embedding_dimensions("my-deployment", "azure_ai") == 1024
     assert calls == [{"model": "azure_ai:my-deployment", "input": ["dimension probe"]}]
+
+
+@pytest.mark.asyncio
+async def test_a_foundry_ingest_reaches_the_transport_not_the_native_route(monkeypatch) -> None:
+    """The failure the first live ingest produced, pinned.
+
+    Ingestion gated the gateway on `litellm_provider_key(p) != p`, resolved
+    without stored credentials — so for Azure AI Foundry it compared the static
+    alias against itself, took the direct-client path, and called
+    `azure_ai/<deployment>`. LiteLLM rewrote that to
+    `/openai/v1/models/embeddings` and Azure answered 404
+    (`Azure_aiException - Error code: 404`).
+
+    Asserted at the LiteLLM boundary rather than at the gateway's door, because
+    the bug was in which transport the call reached, not whether a gateway
+    function ran.
+    """
+    from types import SimpleNamespace
+
+    from config.config_manager import (
+        AnthropicConfig,
+        GenericProviderConfig,
+        OllamaConfig,
+        OpenAIConfig,
+        ProvidersConfig,
+        WatsonXConfig,
+    )
+
+    captured: dict = {}
+
+    async def _capture(model, **kwargs):
+        captured["model"] = model
+        raise AssertionError("stop at the transport boundary")
+
+    monkeypatch.setattr("litellm.aembedding", _capture)
+
+    credentials = {
+        "api_base": "https://contoso.services.ai.azure.com/openai/v1",
+        "api_key": "k",
+    }
+    config = SimpleNamespace(
+        providers=ProvidersConfig(
+            openai=OpenAIConfig(),
+            anthropic=AnthropicConfig(),
+            watsonx=WatsonXConfig(),
+            ollama=OllamaConfig(),
+            custom={"azure_ai": GenericProviderConfig(credentials=credentials, configured=True)},
+        ),
+        agent=SimpleNamespace(llm_model="", llm_provider="azure_ai"),
+        knowledge=SimpleNamespace(embedding_model="prod-embed", embedding_provider="azure_ai"),
+    )
+
+    from services.llm_gateway import LlmGatewayError, qualified_model_id
+    from services.llm_gateway import embeddings as gateway_embeddings
+
+    # The id ingestion builds, then the call it makes with it. The gateway
+    # wraps the stub's failure, which is irrelevant here: the assertion is on
+    # the transport the call reached.
+    with pytest.raises(LlmGatewayError):
+        await gateway_embeddings(
+            {"model": qualified_model_id("azure_ai", "prod-embed"), "input": ["chunk"]},
+            config=config,
+        )
+
+    assert captured["model"] == "hosted_vllm/prod-embed"
+    assert not captured["model"].startswith("azure_ai/")
