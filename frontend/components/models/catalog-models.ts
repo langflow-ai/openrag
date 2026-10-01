@@ -283,6 +283,66 @@ export function providerCatalogOptions(
 }
 
 /**
+ * The deployment names an operator has typed but not yet saved.
+ *
+ * A provider whose models are its own deployments publishes them from *saved*
+ * configuration, so during onboarding — where nothing is saved yet — the
+ * catalogue has nothing to offer and the picker would be empty while the
+ * operator is looking at the very names it should contain.
+ *
+ * The form already holds them, so they are read from there. Returns null when
+ * the provider has no such field, which leaves the catalogue in charge.
+ */
+export function pendingDeploymentOptions(
+  credentials: Record<string, string> | undefined,
+  provider: string,
+  kind: CatalogModelKind,
+): CatalogSelectOption[] | null {
+  const listed =
+    credentials?.chat_deployments ?? credentials?.embedding_deployments;
+  if (listed === undefined && credentials?.vlm_deployments === undefined) {
+    return null;
+  }
+  const vision = new Set(splitDeployments(credentials?.vlm_deployments));
+  const names =
+    kind === "embedding"
+      ? splitDeployments(credentials?.embedding_deployments)
+      : splitDeployments(credentials?.chat_deployments);
+  const wanted =
+    kind === "vision" ? names.filter((name) => vision.has(name)) : names;
+  const mode = kind === "embedding" ? "embedding" : "chat";
+  return wanted.map((name) => ({
+    value: name,
+    label: name,
+    provider,
+    model: {
+      model: name,
+      mode,
+      // Only what the operator stated. A deployment name is an alias and says
+      // nothing about the model behind it.
+      ...(vision.has(name) && mode === "chat"
+        ? { capabilities: ["vision"] }
+        : {}),
+    },
+  }));
+}
+
+/** Deployment names as typed: comma, newline or whitespace separated. */
+function splitDeployments(raw: string | undefined): string[] {
+  if (!raw) {
+    return [];
+  }
+  const seen = new Set<string>();
+  for (const part of raw.split(/[,\n]/)) {
+    const name = part.trim();
+    if (name) {
+      seen.add(name);
+    }
+  }
+  return [...seen];
+}
+
+/**
  * Onboarding lists every OpenRAG-credentialed provider, even before the
  * operator has saved a key — they are here to configure one.
  */

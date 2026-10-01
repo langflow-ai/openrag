@@ -10,7 +10,10 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { groupedCatalogOptions } from "./catalog-models";
+import {
+  groupedCatalogOptions,
+  pendingDeploymentOptions,
+} from "./catalog-models";
 import { emptyGroupMessage } from "./model-selector";
 
 /** Exactly what the backend publishes for a configured Foundry provider. */
@@ -100,5 +103,92 @@ describe("an authoritative provider with nothing configured", () => {
   it("leaves the generic message for every other provider", () => {
     assert.match(emptyGroupMessage("openai"), /custom model/i);
     assert.match(emptyGroupMessage(undefined), /custom model/i);
+  });
+});
+
+describe("onboarding, before anything is saved", () => {
+  /**
+   * The catalogue publishes a deployment-based provider's models from *saved*
+   * configuration, so during onboarding it has nothing to offer. Without
+   * reading the form, the picker is empty while the operator is looking at
+   * the very names it should contain — and they end up typing each name
+   * twice, once as a deployment and once as a custom model.
+   */
+  const TYPED = {
+    chat_deployments: "gpt-4.1-nano, prod-chat-east",
+    embedding_deployments: "text-embedding-3-small",
+    vlm_deployments: "gpt-4.1-nano",
+  };
+
+  it("offers the chat deployments the operator just typed", () => {
+    const options = pendingDeploymentOptions(TYPED, "azure_ai", "language");
+    assert.deepEqual(
+      options?.map((option) => option.value),
+      ["gpt-4.1-nano", "prod-chat-east"],
+    );
+    assert.equal(options?.[0].provider, "azure_ai");
+  });
+
+  it("keeps embedding deployments in the embedding step", () => {
+    assert.deepEqual(
+      pendingDeploymentOptions(TYPED, "azure_ai", "embedding")?.map(
+        (o) => o.value,
+      ),
+      ["text-embedding-3-small"],
+    );
+  });
+
+  it("carries vision through so the capability is not lost before saving", () => {
+    const options = pendingDeploymentOptions(TYPED, "azure_ai", "language");
+    const vision = options?.find((option) => option.value === "gpt-4.1-nano");
+    const plain = options?.find((option) => option.value === "prod-chat-east");
+    assert.deepEqual(vision?.model?.capabilities, ["vision"]);
+    assert.equal(plain?.model?.capabilities, undefined);
+  });
+
+  it("attaches nothing a deployment name does not prove", () => {
+    const options = pendingDeploymentOptions(
+      { chat_deployments: "gpt-4.1-nano" },
+      "azure_ai",
+      "language",
+    );
+    assert.deepEqual(options?.[0].model, {
+      model: "gpt-4.1-nano",
+      mode: "chat",
+    });
+  });
+
+  it("accepts commas, newlines and stray whitespace", () => {
+    assert.deepEqual(
+      pendingDeploymentOptions(
+        { chat_deployments: " a , b \n c " },
+        "azure_ai",
+        "language",
+      )?.map((o) => o.value),
+      ["a", "b", "c"],
+    );
+  });
+
+  it("leaves the catalogue in charge for a provider without deployment fields", () => {
+    // null, not [] — an empty array would mean "this provider has none".
+    assert.equal(
+      pendingDeploymentOptions({ api_key: "k" }, "openai", "language"),
+      null,
+    );
+    assert.equal(
+      pendingDeploymentOptions(undefined, "openai", "language"),
+      null,
+    );
+  });
+
+  it("returns an empty list, not null, once the fields exist but are blank", () => {
+    assert.deepEqual(
+      pendingDeploymentOptions(
+        { chat_deployments: "" },
+        "azure_ai",
+        "language",
+      ),
+      [],
+    );
   });
 });
