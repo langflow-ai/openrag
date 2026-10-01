@@ -8,6 +8,9 @@
  * first, so the confirming Enter arrives with isComposing already false
  * (https://bugs.webkit.org/show_bug.cgi?id=165004). That leftover keydown
  * is a few milliseconds after compositionend; a deliberate send is not.
+ *
+ * A text field tracks the session with `useImeComposition` and calls
+ * `blockImeEnter` before treating Enter as submit.
  */
 
 /** IME processing key. Never produced by a physical key. */
@@ -27,7 +30,14 @@ export type ImeCompositionState = {
   now?: number;
 };
 
-const IDLE_STATE: ImeCompositionState = {
+export type ImeEnterEvent = {
+  key: string;
+  shiftKey: boolean;
+  preventDefault: () => void;
+  nativeEvent: ImeKeyEvent;
+};
+
+export const EMPTY_IME_STATE: ImeCompositionState = {
   composing: false,
   compositionEndedAt: 0,
 };
@@ -41,7 +51,7 @@ function isWithinSafariImeWindow(state: ImeCompositionState): boolean {
 
 export function isImeCompositionEvent(
   event: ImeKeyEvent,
-  state: ImeCompositionState = IDLE_STATE,
+  state: ImeCompositionState = EMPTY_IME_STATE,
 ): boolean {
   if (
     event.isComposing ||
@@ -64,4 +74,39 @@ export function shouldCancelImeEnter(
 ): boolean {
   if (event.isComposing || state.composing) return false;
   return isWithinSafariImeWindow(state);
+}
+
+/**
+ * Returns true when this Enter confirms an IME candidate and must not submit.
+ * Cancels the leftover Safari Enter so it does not insert a newline.
+ */
+export function blockImeEnter(
+  event: ImeEnterEvent,
+  state: ImeCompositionState = EMPTY_IME_STATE,
+): boolean {
+  if (
+    event.key !== "Enter" ||
+    !isImeCompositionEvent(event.nativeEvent, state)
+  ) {
+    return false;
+  }
+  if (!event.shiftKey && shouldCancelImeEnter(event.nativeEvent, state)) {
+    event.preventDefault();
+  }
+  return true;
+}
+
+/**
+ * Enter submits. Shift+Enter inserts a newline. An IME confirmation Enter
+ * does neither. Call this from any text field that sends on Enter.
+ */
+export function handleInputKeyDown(
+  event: ImeEnterEvent,
+  state: ImeCompositionState = EMPTY_IME_STATE,
+  onSubmit?: () => void,
+): void {
+  if (event.key !== "Enter" || event.shiftKey) return;
+  if (blockImeEnter(event, state)) return;
+  event.preventDefault();
+  onSubmit?.();
 }

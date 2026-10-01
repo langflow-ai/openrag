@@ -11,17 +11,14 @@ import {
 } from "@/components/ui/popover";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useFileDrag } from "@/hooks/use-file-drag";
+import { useImeComposition } from "@/hooks/use-ime-composition";
 import { useSupportedFileTypes } from "@/hooks/use-supported-file-types";
 import type { FilterColor } from "@/lib/filter-constants";
+import { blockImeEnter, type ImeCompositionState } from "@/lib/ime-composition";
 import { cn } from "@/lib/utils";
 import { useGetAllFiltersQuery } from "../../api/queries/useGetAllFiltersQuery";
 import type { KnowledgeFilterData } from "../_types/types";
 import { FilePreview } from "./file-preview";
-import {
-  type ImeCompositionState,
-  isImeCompositionEvent,
-  shouldCancelImeEnter,
-} from "./ime-composition";
 import { SelectedKnowledgeFilter } from "./selected-knowledge-filter";
 
 export interface ChatInputHandle {
@@ -74,8 +71,7 @@ export function ChatInput({
 }: ChatInputProps & { ref?: React.Ref<ChatInputHandle> }) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const isComposingRef = useRef(false);
-  const compositionEndedAtRef = useRef(0);
+  const ime = useImeComposition();
   const [isWrapped, setIsWrapped] = useState(false);
   const isMultiline = input.includes("\n") || isWrapped;
   const isDragging = useFileDrag();
@@ -113,15 +109,6 @@ export function ChatInput({
     return results.map((result) => result.item).slice(0, 20);
   }, [allFilters, filterSearchTerm]);
 
-  const readImeState = (): ImeCompositionState => {
-    const compositionEndedAt = compositionEndedAtRef.current;
-    return {
-      composing: isComposingRef.current,
-      compositionEndedAt,
-      now: compositionEndedAt > 0 ? performance.now() : 0,
-    };
-  };
-
   useImperativeHandle(ref, () => ({
     focusInput: () => {
       inputRef.current?.focus();
@@ -129,7 +116,7 @@ export function ChatInput({
     clickFileInput: () => {
       fileInputRef.current?.click();
     },
-    getImeState: () => readImeState(),
+    getImeState: () => ime.readState(),
   }));
 
   const handleFilePickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -279,29 +266,12 @@ export function ChatInput({
     }
   };
 
-  const handleCompositionStart = () => {
-    isComposingRef.current = true;
-  };
-
-  const handleCompositionEnd = () => {
-    isComposingRef.current = false;
-    compositionEndedAtRef.current = performance.now();
-  };
-
-  const handleCompositionBlur = () => {
-    isComposingRef.current = false;
-    compositionEndedAtRef.current = 0;
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // One snapshot for this keydown, shared with the parent submit handler.
     // Confirming a Kanji (or other IME) candidate fires Enter and must not
     // select a filter or submit the message.
-    const imeState = readImeState();
-    if (e.key === "Enter" && isImeCompositionEvent(e.nativeEvent, imeState)) {
-      if (!e.shiftKey && shouldCancelImeEnter(e.nativeEvent, imeState)) {
-        e.preventDefault();
-      }
+    const imeState = ime.readState();
+    if (blockImeEnter(e, imeState)) {
       return;
     }
 
@@ -346,14 +316,8 @@ export function ChatInput({
       }
 
       if (e.key === " ") {
-        // Space cycles IME candidates. Ignore the Safari Enter window here:
-        // a space after compositionend is a real space.
-        if (
-          isImeCompositionEvent(e.nativeEvent, {
-            composing: isComposingRef.current,
-            compositionEndedAt: 0,
-          })
-        ) {
+        // Space cycles IME candidates. A space after compositionend is a real space.
+        if (ime.isImeCandidateKey(e.nativeEvent)) {
           return;
         }
         // Select filter on space if we're typing an @ mention
@@ -475,9 +439,7 @@ export function ChatInput({
                   ref={inputRef}
                   value={input}
                   onChange={handleChange}
-                  onCompositionStart={handleCompositionStart}
-                  onCompositionEnd={handleCompositionEnd}
-                  onBlur={handleCompositionBlur}
+                  {...ime.inputProps}
                   onKeyDown={handleKeyDown}
                   maxRows={7}
                   autoComplete="off"

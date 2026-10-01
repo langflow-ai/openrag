@@ -22,6 +22,11 @@ import {
 } from "@/lib/chat-stream-errors";
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
+import {
+  EMPTY_IME_STATE,
+  handleInputKeyDown,
+  type ImeCompositionState,
+} from "@/lib/ime-composition";
 import { uploadFileForContext } from "@/lib/upload-utils";
 import { resolveDisplayName } from "@/lib/user";
 import { cn } from "@/lib/utils";
@@ -31,11 +36,6 @@ import { useGetSettingsQuery } from "../api/queries/useGetSettingsQuery";
 import { AssistantMessage } from "./_components/assistant-message";
 import { ChatInput, type ChatInputHandle } from "./_components/chat-input";
 import { ErrorMessage } from "./_components/error-message";
-import {
-  type ImeCompositionState,
-  isImeCompositionEvent,
-  shouldCancelImeEnter,
-} from "./_components/ime-composition";
 import Nudges from "./_components/nudges";
 import { UserMessage } from "./_components/user-message";
 import type {
@@ -966,6 +966,38 @@ function ChatPage() {
     handleSendMessage(suggestion);
   };
 
+  const handleChatInputKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+    imeState?: ImeCompositionState,
+  ) => {
+    // Handle backspace for filter clearing
+    if (e.key === "Backspace" && selectedFilter && input.trim() === "") {
+      e.preventDefault();
+      if (isFilterHighlighted) {
+        // Second backspace - remove the filter
+        setConversationFilter(null);
+        setIsFilterHighlighted(false);
+      } else {
+        // First backspace - highlight the filter
+        setIsFilterHighlighted(true);
+      }
+      return;
+    }
+
+    handleInputKeyDown(
+      e,
+      imeState ?? chatInputRef.current?.getImeState() ?? EMPTY_IME_STATE,
+      () => {
+        if (input.trim() && !loading) {
+          const form = e.currentTarget.closest("form");
+          if (form) {
+            form.requestSubmit();
+          }
+        }
+      },
+    );
+  };
+
   return (
     <>
       {/* Full-screen drag & drop overlay */}
@@ -1185,50 +1217,7 @@ function ChatPage() {
           uploadedFile={uploadedFile}
           onSubmit={handleSubmit}
           onChange={setInput}
-          onKeyDown={(e, imeState) => {
-            // Handle backspace for filter clearing
-            if (
-              e.key === "Backspace" &&
-              selectedFilter &&
-              input.trim() === ""
-            ) {
-              e.preventDefault();
-              if (isFilterHighlighted) {
-                // Second backspace - remove the filter
-                setConversationFilter(null);
-                setIsFilterHighlighted(false);
-              } else {
-                // First backspace - highlight the filter
-                setIsFilterHighlighted(true);
-              }
-              return;
-            }
-
-            // Enter that confirms an IME candidate is not a send. Safari's
-            // confirming Enter arrives after compositionend, so this needs the
-            // composition snapshot, not only isComposing on the event.
-            if (e.key === "Enter" && !e.shiftKey) {
-              const state: ImeCompositionState = imeState ??
-                chatInputRef.current?.getImeState() ?? {
-                  composing: false,
-                  compositionEndedAt: 0,
-                };
-              if (isImeCompositionEvent(e.nativeEvent, state)) {
-                if (shouldCancelImeEnter(e.nativeEvent, state)) {
-                  e.preventDefault();
-                }
-                return;
-              }
-              e.preventDefault();
-              if (input.trim() && !loading) {
-                // Trigger form submission by finding the form and calling submit
-                const form = e.currentTarget.closest("form");
-                if (form) {
-                  form.requestSubmit();
-                }
-              }
-            }
-          }}
+          onKeyDown={handleChatInputKeyDown}
           ingestViaChat={settings?.ingest_via_chat ?? false}
           onFilterSelect={handleFilterSelect}
           onFilePickerClick={handleFilePickerClick}
