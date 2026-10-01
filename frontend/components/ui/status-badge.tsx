@@ -8,6 +8,7 @@ export type Status =
   | "sync"
   | "failed"
   | "cancelled"
+  | "skipped"
   | "ready"
   | "fallback"
   | "not-configured";
@@ -17,7 +18,7 @@ interface StatusBadgeProps {
   className?: string;
 }
 
-const statusConfig = {
+const statusConfig: Record<Status, { label: string; className: string }> = {
   processing: {
     label: "Processing",
     className: "text-muted-foreground ",
@@ -36,6 +37,10 @@ const statusConfig = {
   },
   cancelled: {
     label: "Cancelled",
+    className: "text-muted-foreground ",
+  },
+  skipped: {
+    label: "Skipped",
     className: "text-muted-foreground ",
   },
   hidden: {
@@ -61,7 +66,12 @@ const statusConfig = {
 };
 
 export const StatusBadge = ({ status, className }: StatusBadgeProps) => {
-  const config = statusConfig[status];
+  // Rows can carry statuses the badge doesn't know yet; show them as-is
+  // rather than taking down the whole table.
+  const config = statusConfig[status] ?? {
+    label: status,
+    className: "text-muted-foreground ",
+  };
 
   return (
     <div
