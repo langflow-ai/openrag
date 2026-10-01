@@ -151,6 +151,38 @@ async def test_an_unknown_listing_is_not_evidence_of_a_stale_corpus(monkeypatch,
 
 
 @pytest.mark.asyncio
+async def test_a_provider_serving_no_embedding_model_makes_every_space_stale(
+    monkeypatch, _healthy_probe
+):
+    """An empty listing is an answer, not an unknown: the provider listed
+    itself and serves nothing to embed a query with, so every indexed space
+    has stopped being searchable by meaning."""
+    _served(monkeypatch, ())
+    _indexed(monkeypatch, (SERVED, STALE))
+
+    response = await provider_health.check_provider_health(test_completion=True, user=None)
+
+    assert response.status_code == 200
+    [warning] = _body(response)["warnings"]
+    assert warning["code"] == provider_health.STALE_EMBEDDING_SPACE
+    assert warning["models"] == [SERVED, STALE]
+    assert warning["served"] == []
+    assert "lists no embedding models" in warning["message"]
+    assert "it serves: )" not in warning["message"]
+
+
+@pytest.mark.asyncio
+async def test_an_empty_listing_with_an_empty_corpus_says_nothing(monkeypatch, _healthy_probe):
+    _served(monkeypatch, ())
+    _indexed(monkeypatch, None)
+
+    response = await provider_health.check_provider_health(test_completion=True, user=None)
+
+    assert response.status_code == 200
+    assert _body(response)["warnings"] == []
+
+
+@pytest.mark.asyncio
 async def test_an_empty_corpus_is_not_evidence_of_drift(monkeypatch, _healthy_probe):
     _served(monkeypatch, (SERVED,))
     _indexed(monkeypatch, None)
