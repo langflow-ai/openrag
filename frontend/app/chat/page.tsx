@@ -31,6 +31,11 @@ import { useGetSettingsQuery } from "../api/queries/useGetSettingsQuery";
 import { AssistantMessage } from "./_components/assistant-message";
 import { ChatInput, type ChatInputHandle } from "./_components/chat-input";
 import { ErrorMessage } from "./_components/error-message";
+import {
+  type ImeCompositionState,
+  isImeCompositionEvent,
+  shouldCancelImeEnter,
+} from "./_components/ime-composition";
 import Nudges from "./_components/nudges";
 import { UserMessage } from "./_components/user-message";
 import type {
@@ -1180,7 +1185,7 @@ function ChatPage() {
           uploadedFile={uploadedFile}
           onSubmit={handleSubmit}
           onChange={setInput}
-          onKeyDown={(e) => {
+          onKeyDown={(e, imeState) => {
             // Handle backspace for filter clearing
             if (
               e.key === "Backspace" &&
@@ -1199,8 +1204,21 @@ function ChatPage() {
               return;
             }
 
-            // Handle Enter key for form submission
+            // Enter that confirms an IME candidate is not a send. Safari's
+            // confirming Enter arrives after compositionend, so this needs the
+            // composition snapshot, not only isComposing on the event.
             if (e.key === "Enter" && !e.shiftKey) {
+              const state: ImeCompositionState = imeState ??
+                chatInputRef.current?.getImeState() ?? {
+                  composing: false,
+                  compositionEndedAt: 0,
+                };
+              if (isImeCompositionEvent(e.nativeEvent, state)) {
+                if (shouldCancelImeEnter(e.nativeEvent, state)) {
+                  e.preventDefault();
+                }
+                return;
+              }
               e.preventDefault();
               if (input.trim() && !loading) {
                 // Trigger form submission by finding the form and calling submit

@@ -17,11 +17,18 @@ import { cn } from "@/lib/utils";
 import { useGetAllFiltersQuery } from "../../api/queries/useGetAllFiltersQuery";
 import type { KnowledgeFilterData } from "../_types/types";
 import { FilePreview } from "./file-preview";
+import {
+  type ImeCompositionState,
+  isImeCompositionEvent,
+  shouldCancelImeEnter,
+} from "./ime-composition";
 import { SelectedKnowledgeFilter } from "./selected-knowledge-filter";
 
 export interface ChatInputHandle {
   focusInput: () => void;
   clickFileInput: () => void;
+  /** Snapshot of the open or just-finished IME session, including `now`. */
+  getImeState: () => ImeCompositionState;
 }
 
 interface ChatInputProps {
@@ -34,7 +41,10 @@ interface ChatInputProps {
   uploadedFile: File | null;
   onSubmit: (e: React.FormEvent) => void;
   onChange: (value: string) => void;
-  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onKeyDown: (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+    imeState: ImeCompositionState,
+  ) => void;
   onFilterSelect: (filter: KnowledgeFilterData | null) => void;
   onFilePickerClick: () => void;
   setSelectedFilter: (filter: KnowledgeFilterData | null) => void;
@@ -64,6 +74,8 @@ export function ChatInput({
 }: ChatInputProps & { ref?: React.Ref<ChatInputHandle> }) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isComposingRef = useRef(false);
+  const compositionEndedAtRef = useRef(0);
   const [isWrapped, setIsWrapped] = useState(false);
   const isMultiline = input.includes("\n") || isWrapped;
   const isDragging = useFileDrag();
@@ -101,6 +113,15 @@ export function ChatInput({
     return results.map((result) => result.item).slice(0, 20);
   }, [allFilters, filterSearchTerm]);
 
+  const readImeState = (): ImeCompositionState => {
+    const compositionEndedAt = compositionEndedAtRef.current;
+    return {
+      composing: isComposingRef.current,
+      compositionEndedAt,
+      now: compositionEndedAt > 0 ? performance.now() : 0,
+    };
+  };
+
   useImperativeHandle(ref, () => ({
     focusInput: () => {
       inputRef.current?.focus();
@@ -108,6 +129,7 @@ export function ChatInput({
     clickFileInput: () => {
       fileInputRef.current?.click();
     },
+    getImeState: () => readImeState(),
   }));
 
   const handleFilePickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -257,7 +279,32 @@ export function ChatInput({
     }
   };
 
+  const handleCompositionStart = () => {
+    isComposingRef.current = true;
+  };
+
+  const handleCompositionEnd = () => {
+    isComposingRef.current = false;
+    compositionEndedAtRef.current = performance.now();
+  };
+
+  const handleCompositionBlur = () => {
+    isComposingRef.current = false;
+    compositionEndedAtRef.current = 0;
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // One snapshot for this keydown, shared with the parent submit handler.
+    // Confirming a Kanji (or other IME) candidate fires Enter and must not
+    // select a filter or submit the message.
+    const imeState = readImeState();
+    if (e.key === "Enter" && isImeCompositionEvent(e.nativeEvent, imeState)) {
+      if (!e.shiftKey && shouldCancelImeEnter(e.nativeEvent, imeState)) {
+        e.preventDefault();
+      }
+      return;
+    }
+
     if (isFilterDropdownOpen) {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -299,6 +346,16 @@ export function ChatInput({
       }
 
       if (e.key === " ") {
+        // Space cycles IME candidates. Ignore the Safari Enter window here:
+        // a space after compositionend is a real space.
+        if (
+          isImeCompositionEvent(e.nativeEvent, {
+            composing: isComposingRef.current,
+            compositionEndedAt: 0,
+          })
+        ) {
+          return;
+        }
         // Select filter on space if we're typing an @ mention
         const cursorPos = e.currentTarget.selectionStart || 0;
         const textBeforeCursor = input.slice(0, cursorPos);
@@ -314,7 +371,7 @@ export function ChatInput({
     }
 
     // Pass through to parent onKeyDown for other key handling
-    onKeyDown(e);
+    onKeyDown(e, imeState);
   };
 
   return (
@@ -418,6 +475,9 @@ export function ChatInput({
                   ref={inputRef}
                   value={input}
                   onChange={handleChange}
+                  onCompositionStart={handleCompositionStart}
+                  onCompositionEnd={handleCompositionEnd}
+                  onBlur={handleCompositionBlur}
                   onKeyDown={handleKeyDown}
                   maxRows={7}
                   autoComplete="off"
