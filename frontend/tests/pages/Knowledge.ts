@@ -1074,8 +1074,15 @@ export class Knowledge {
     await searchInp.clear();
     await searchInp.fill(searchToken);
     await this.page.keyboard.press("Enter");
-    // Wait for search to complete and chunks to re-rank
-    await this.page.waitForTimeout(2000);
+    // The panel uses client-side filtering with useDeferredValue, so the
+    // filtered chunk list may not render for several hundred milliseconds
+    // after the input changes. Wait for the blockquotes to reflect the
+    // search instead of relying on a fixed timeout that can expire before
+    // React commits the deferred update.
+    const chunks = this.chunkElements();
+    await expect(chunks.first()).toBeVisible({ timeout: 10000 });
+    // Small settling delay for the deferred value to stabilise on slow CI
+    await this.page.waitForTimeout(500);
     // Get all chunks after search
     const allChunks = await this.getAllChunks();
     // Return only the top 2 chunks
