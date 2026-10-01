@@ -1179,10 +1179,8 @@ class _ToolCallBuffer:
                 return self._calls[key]
         return None
 
-    def _target(
-        self, choice_index: int, index: int, raw: Mapping[str, Any]
-    ) -> dict[str, Any] | None:
-        """The call `raw` belongs to: one already open, a new one, or none.
+    def _target(self, choice_index: int, index: int, raw: Mapping[str, Any]) -> dict[str, Any]:
+        """The call `raw` belongs to: one already open, or a new one.
 
         A delta that names no call — no `id`, no `function.name` — cannot be the
         start of one, so it continues the call already open on this choice
@@ -1195,6 +1193,13 @@ class _ToolCallBuffer:
         assistant message it replays on the next turn, and the provider then
         rejects every later request in that conversation rather than the one
         message that is malformed.
+
+        With nothing open to continue, the fragment instead opens a provisional
+        call at its own index. Some providers send an `arguments` fragment ahead
+        of the delta that carries the call's `id` and `name`; dropping it would
+        truncate the arguments once that delta arrives at the same index and
+        finds the call. A provisional call that is never named is discarded by
+        `drain`, which logs it.
         """
         key = (choice_index, index)
         call = self._calls.get(key)
@@ -1205,7 +1210,14 @@ class _ToolCallBuffer:
             isinstance(function, dict) and function.get("name")
         )
         if not names_a_call:
-            return self._open_call(choice_index)
+            open_call = self._open_call(choice_index)
+            if open_call is not None:
+                return open_call
+            logger.debug(
+                "Holding an unnamed tool-call fragment until its call is named",
+                choice_index=choice_index,
+                index=index,
+            )
         call = {"index": index, "type": "function", "function": {"name": "", "arguments": ""}}
         self._calls[key] = call
         self._order.append(key)
@@ -1219,10 +1231,6 @@ class _ToolCallBuffer:
             if not isinstance(index, int):
                 index = position
             call = self._target(choice_index, index, raw)
-            if call is None:
-                # Nothing open to continue and nothing named: there is no call
-                # here to reassemble.
-                continue
             if raw.get("id"):
                 call["id"] = raw["id"]
             if raw.get("type"):
