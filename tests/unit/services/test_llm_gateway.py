@@ -1124,6 +1124,86 @@ async def test_stream_sse_drops_a_buffered_call_that_names_no_tool(monkeypatch):
     assert any(call[0] == "warning" and "named no tool" in call[1] for call in recorder.calls)
 
 
+def _tool_call_chunk(*tool_calls, finish_reason=None):
+    choice = {"index": 0, "delta": {"tool_calls": list(tool_calls)}}
+    if finish_reason:
+        choice["finish_reason"] = finish_reason
+    return {"choices": [choice]}
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_keeps_an_arguments_fragment_that_arrives_before_the_call_is_named():
+    """Nothing is open yet, so the fragment must wait for its call, not vanish."""
+    from services import llm_gateway
+
+    async def gen():
+        yield _tool_call_chunk({"index": 0, "function": {"arguments": '{"query": '}})
+        yield _tool_call_chunk(
+            {
+                "id": "call_1",
+                "type": "function",
+                "index": 0,
+                "function": {"name": "search_documents", "arguments": '"x"}'},
+            }
+        )
+        yield {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "rhoai", "hosted_vllm/gpt-oss")]
+
+    calls = _streamed_tool_calls(lines)
+    assert len(calls) == 1
+    assert calls[0]["id"] == "call_1"
+    assert calls[0]["function"]["name"] == "search_documents"
+    assert json.loads(calls[0]["function"]["arguments"]) == {"query": "x"}
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_rejoins_both_a_leading_and_a_misfiled_trailing_fragment():
+    """The provisional call must not undo the next-index rejoin, and vice versa."""
+    from services import llm_gateway
+
+    async def gen():
+        yield _tool_call_chunk({"index": 0, "function": {"arguments": "{"}})
+        yield _tool_call_chunk(
+            {
+                "id": "call_1",
+                "type": "function",
+                "index": 0,
+                "function": {"name": "search_documents", "arguments": '"query": "x"'},
+            }
+        )
+        yield _tool_call_chunk({"index": 1, "function": {"arguments": "}"}})
+        yield {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "rhoai", "hosted_vllm/gpt-oss")]
+
+    calls = _streamed_tool_calls(lines)
+    assert len(calls) == 1, "neither stray fragment may become a call of its own"
+    assert calls[0]["id"] == "call_1"
+    assert json.loads(calls[0]["function"]["arguments"]) == {"query": "x"}
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_drops_an_unnamed_fragment_no_call_ever_claims(monkeypatch):
+    """A provisional call that never gets a name is still discarded at drain."""
+    from services import llm_gateway
+
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(llm_gateway, "logger", recorder)
+
+    async def gen():
+        yield _tool_call_chunk({"index": 0, "function": {"arguments": "{}"}})
+        yield {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "rhoai", "hosted_vllm/gpt-oss")]
+
+    assert _streamed_tool_calls(lines) == []
+    assert any(call[0] == "warning" and "named no tool" in call[1] for call in recorder.calls)
+    # Nothing reached the client, so it is told why rather than left hanging.
+    assert any('"code": "upstream_error"' in line for line in lines)
+    assert lines[-1] == "data: [DONE]\n\n"
+
+
 @pytest.mark.asyncio
 async def test_stream_sse_mints_an_id_for_a_named_call_that_has_none():
     """A named call is real work; only its correlation handle is missing."""
