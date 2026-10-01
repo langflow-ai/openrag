@@ -381,7 +381,12 @@ def test_ingest_normalizes_kangxi_radicals_before_embedding_and_indexing(
     component._prepare_ingest_data = lambda: [_Doc()]
     component._openrag_ingest_callback_config = lambda: ("url", "token", "task")
     indexed = []
-    component._bulk_ingest_embeddings = lambda **kwargs: indexed.extend(kwargs["texts"]) or ["id"]
+
+    def _bulk_ingest(**kwargs):
+        indexed.extend(kwargs["texts"])
+        return ["id"]
+
+    component._bulk_ingest_embeddings = _bulk_ingest
 
     component._add_documents_to_vector_store(object())
 
