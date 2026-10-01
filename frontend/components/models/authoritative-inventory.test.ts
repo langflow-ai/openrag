@@ -11,6 +11,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
+  embeddingStepProviders,
   groupedCatalogOptions,
   pendingDeploymentOptions,
 } from "./catalog-models";
@@ -189,6 +190,79 @@ describe("onboarding, before anything is saved", () => {
         "language",
       ),
       [],
+    );
+  });
+});
+
+describe("which providers the embedding step offers", () => {
+  /**
+   * An empty embedding list means opposite things depending on its source:
+   * from the catalogue it means the provider serves none, from configuration
+   * it means none have been named yet. Hiding the second makes it
+   * unreachable — the operator cannot name deployments at a step that is not
+   * offered.
+   */
+  const LIVE = new Set(["ollama", "watsonx"]);
+
+  const catalog = {
+    providers: [
+      {
+        key: "openai",
+        name: "OpenAI",
+        models: [],
+        embedding_models: [
+          { model: "text-embedding-3-small", mode: "embedding" },
+        ],
+        inventory_source: "catalog",
+        credential_fields: [],
+      },
+      {
+        key: "anthropic",
+        name: "Anthropic",
+        models: [{ model: "claude", mode: "chat" }],
+        embedding_models: [],
+        inventory_source: "catalog",
+        credential_fields: [],
+      },
+      {
+        key: "azure_ai",
+        name: "Azure AI Foundry",
+        models: [],
+        embedding_models: [],
+        inventory_source: "configured",
+        credential_fields: [],
+      },
+    ],
+  } as never;
+
+  it("keeps a configured-inventory provider even with nothing named yet", () => {
+    assert.equal(
+      embeddingStepProviders(["azure_ai"], catalog, LIVE).includes("azure_ai"),
+      true,
+    );
+  });
+
+  it("still drops a catalogue provider that serves no embedding models", () => {
+    assert.deepEqual(embeddingStepProviders(["anthropic"], catalog, LIVE), []);
+  });
+
+  it("keeps a catalogue provider that does serve them", () => {
+    assert.deepEqual(embeddingStepProviders(["openai"], catalog, LIVE), [
+      "openai",
+    ]);
+  });
+
+  it("keeps providers whose inventory comes from a running service", () => {
+    assert.deepEqual(
+      embeddingStepProviders(["ollama", "watsonx"], catalog, LIVE),
+      ["ollama", "watsonx"],
+    );
+  });
+
+  it("hides nothing while the catalogue is still loading", () => {
+    assert.deepEqual(
+      embeddingStepProviders(["anthropic", "azure_ai"], undefined, LIVE),
+      ["anthropic", "azure_ai"],
     );
   });
 });
