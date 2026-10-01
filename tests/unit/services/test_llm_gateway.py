@@ -1234,6 +1234,41 @@ async def test_stream_sse_mints_an_id_for_a_named_call_that_has_none():
     assert isinstance(calls[0]["id"], str) and calls[0]["id"]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fragments", [[], ["  "]], ids=["no-fragment", "whitespace-fragment"])
+async def test_stream_sse_defaults_a_zero_argument_call_to_an_empty_object(fragments):
+    """`""` is not a JSON object; clients that parse arguments must get `{}`."""
+    from services import llm_gateway
+
+    async def gen():
+        for chunk in _tool_call_deltas(fragments, name="list_sources"):
+            yield chunk
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "rhoai", "hosted_vllm/gpt-oss")]
+
+    calls = _streamed_tool_calls(lines)
+    assert len(calls) == 1
+    assert calls[0]["id"] == "call_1"
+    assert calls[0]["function"]["name"] == "list_sources"
+    assert json.loads(calls[0]["function"]["arguments"]) == {}
+
+
+def test_finalise_tool_call_leaves_real_arguments_alone():
+    from services.llm_gateway import _finalise_tool_call
+
+    call = {"id": "call_1", "function": {"name": "search", "arguments": _WELL_FORMED_ARGUMENTS}}
+    assert _finalise_tool_call(call) is True
+    assert call["function"]["arguments"] == _WELL_FORMED_ARGUMENTS
+
+
+def test_finalise_tool_call_does_not_default_arguments_on_a_nameless_call():
+    from services.llm_gateway import _finalise_tool_call
+
+    call = {"id": "call_1", "function": {"name": "", "arguments": ""}}
+    assert _finalise_tool_call(call) is False
+    assert call["function"]["arguments"] == ""
+
+
 # --------------------------------------------------------------------------
 # A poisoned conversation must not wedge every later turn
 # --------------------------------------------------------------------------

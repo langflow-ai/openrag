@@ -849,13 +849,21 @@ def _finalise_tool_call(call: dict[str, Any]) -> bool:
     client will replay on its next turn. A missing `id` is recoverable — the id
     is only the handle a tool result is correlated by, so any stable string
     serves — and minting one keeps a real call alive that clients would
-    otherwise reject for carrying `id: null`.
+    otherwise reject for carrying `id: null`. Blank `arguments` are recoverable
+    too: a named call streamed with no arguments fragment is a zero-argument
+    call, and the contract is a JSON *object* — `""` does not parse as one.
     """
     function = call.get("function")
     if not isinstance(function, dict) or not function.get("name"):
         return False
     if not isinstance(call.get("id"), str) or not call["id"]:
         call["id"] = f"call_{uuid4().hex}"
+    arguments = function.get("arguments")
+    if arguments is None or (isinstance(arguments, str) and not arguments.strip()):
+        function["arguments"] = "{}"
+        logger.debug(
+            "Defaulted blank tool call arguments to an empty object", tool=function["name"]
+        )
     return True
 
 
