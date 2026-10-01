@@ -386,6 +386,12 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
                 "model_placeholder": (specs.get(key) or {}).get("default_model_placeholder"),
                 "models": sorted(chat, key=lambda entry: entry["model"]),
                 "embedding_models": sorted(embed, key=lambda entry: entry["model"]),
+                # Where this provider's lists came from, so a caller can tell
+                # "serves none" from "none configured yet". They look the same
+                # in the payload and mean opposite things: an empty LiteLLM
+                # list says the provider has no such models, while an empty
+                # configured list says the operator has not named any.
+                "inventory_source": "configured" if inventory is not None else "catalog",
             }
         )
     return {"providers": entries}

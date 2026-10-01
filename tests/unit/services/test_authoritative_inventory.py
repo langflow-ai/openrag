@@ -129,6 +129,32 @@ class TestTheInventoryReplacesRatherThanAugments:
         assert [e["model"] for e in catalog["azure_ai"]["models"]] == ["prod-chat"]
 
 
+class TestTheSourceOfTheListIsPublished:
+    """An empty list means opposite things depending on where it came from.
+
+    LiteLLM-derived and empty means the provider serves none of that kind.
+    Configuration-derived and empty means the operator has named none yet —
+    which is exactly the state they are in while configuring it. A caller that
+    cannot tell them apart hides the provider at the step where it would be
+    set up.
+    """
+
+    def test_an_authoritative_provider_says_its_list_is_configured(self, _foundry_visible) -> None:
+        catalog = _catalog_with({"chat_deployments": "prod-chat"})
+        assert catalog["azure_ai"]["inventory_source"] == "configured"
+
+    def test_it_says_so_even_when_nothing_is_configured(self, _foundry_visible) -> None:
+        """The case that matters: empty, and not because it serves none."""
+        catalog = _catalog_with({})
+        assert catalog["azure_ai"]["inventory_source"] == "configured"
+        assert catalog["azure_ai"]["embedding_models"] == []
+
+    def test_every_other_provider_reports_the_catalogue(self, _foundry_visible) -> None:
+        catalog = _catalog_with({})
+        assert catalog["openai"]["inventory_source"] == "catalog"
+        assert catalog["azure"]["inventory_source"] == "catalog"
+
+
 class TestVisionSurvivesToThePicker:
     def test_a_vision_deployment_carries_the_capability(self, _foundry_visible) -> None:
         """The whole point of the structured inventory.
