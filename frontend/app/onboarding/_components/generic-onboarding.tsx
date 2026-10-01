@@ -10,6 +10,7 @@ import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { LabelInput } from "@/components/label-input";
 import {
   onboardingCredentialFields,
+  pendingDeploymentOptions,
   providerCatalogOptions,
   type SavedProvidersSnapshot,
   savedCredentialValuesForProvider,
@@ -155,15 +156,19 @@ export function GenericOnboarding({
     });
   };
 
-  const models = useMemo(
-    () =>
-      providerCatalogOptions(
-        catalog,
-        provider,
-        isEmbedding ? "embedding" : "language",
-      ),
-    [catalog, provider, isEmbedding],
-  );
+  const models = useMemo(() => {
+    const kind = isEmbedding ? "embedding" : "language";
+    // A provider whose models are its own deployments publishes them from
+    // saved configuration, and during onboarding nothing is saved yet — so
+    // the names in the form are the only ones that exist. Without this the
+    // picker is empty while the operator is looking at the list it should
+    // contain, and they are pushed into entering the same name twice.
+    const pending = pendingDeploymentOptions(credentials, provider, kind);
+    if (pending !== null) {
+      return pending;
+    }
+    return providerCatalogOptions(catalog, provider, kind);
+  }, [catalog, provider, isEmbedding, credentials]);
 
   // Azure's catalogue lists model families, not this customer's deployments,
   // so require an explicit choice. Other providers still default to the
@@ -307,12 +312,25 @@ export function GenericOnboarding({
           onOnPremAuthMethodChange={handleOnPremAuthMethodChange}
           renderField={renderField}
         />
-        {models.length === 0 && (
-          <p className="text-mmd text-muted-foreground">
-            {chrome.name} publishes no {isEmbedding ? "embedding" : "language"}{" "}
-            models in the catalogue. Pick a different provider for this step.
-          </p>
-        )}
+        {models.length === 0 &&
+          (pendingDeploymentOptions(
+            credentials,
+            provider,
+            isEmbedding ? "embedding" : "language",
+          ) !== null ? (
+            <p className="text-mmd text-muted-foreground">
+              List your {isEmbedding ? "embedding" : "chat"} deployment names
+              above to choose one here. {chrome.name} deployment names are
+              chosen when the deployment is created, so only you can say what
+              they are.
+            </p>
+          ) : (
+            <p className="text-mmd text-muted-foreground">
+              {chrome.name} publishes no{" "}
+              {isEmbedding ? "embedding" : "language"} models in the catalogue.
+              Pick a different provider for this step.
+            </p>
+          ))}
       </div>
       <AdvancedOnboarding
         icon={<Logo className="w-4 h-4" />}
