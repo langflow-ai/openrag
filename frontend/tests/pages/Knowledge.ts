@@ -1074,15 +1074,25 @@ export class Knowledge {
     await searchInp.clear();
     await searchInp.fill(searchToken);
     await this.page.keyboard.press("Enter");
-    // The panel uses client-side filtering with useDeferredValue, so the
-    // filtered chunk list may not render for several hundred milliseconds
-    // after the input changes. Wait for the blockquotes to reflect the
-    // search instead of relying on a fixed timeout that can expire before
-    // React commits the deferred update.
-    const chunks = this.chunkElements();
-    await expect(chunks.first()).toBeVisible({ timeout: 10000 });
-    // Small settling delay for the deferred value to stabilise on slow CI
-    await this.page.waitForTimeout(500);
+    // The panel filters via React's useDeferredValue, so the DOM update is
+    // asynchronous. Poll until at least one rendered blockquote contains the
+    // search token — this is the only reliable signal that the deferred filter
+    // update has fully committed, rather than treating a visible-but-stale
+    // first chunk or a fixed delay as evidence of completion.
+    await expect
+      .poll(
+        async () => {
+          const chunks = this.chunkElements();
+          const count = await chunks.count();
+          for (let i = 0; i < count; i++) {
+            const text = await chunks.nth(i).textContent();
+            if (text?.includes(searchToken)) return true;
+          }
+          return false;
+        },
+        { timeout: 10000 },
+      )
+      .toBe(true);
     // Get all chunks after search
     const allChunks = await this.getAllChunks();
     // Return only the top 2 chunks
