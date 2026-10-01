@@ -347,19 +347,15 @@ export const useGetSearchQuery = (
         }
       });
 
-      // Literal-match gate: if no meaningful query token appears verbatim in
-      // any chunk, suppress results so the no-results overlay fires instead of
-      // showing a misleading "High (100%)" badge from pure KNN drift.
+      // Literal-match gate: prune files where no meaningful query token appears
+      // verbatim in any of their chunks, so irrelevant files from KNN drift do
+      // not pollute search results or distort min-max score normalization.
       // Warnings are always preserved. Not applied for wildcard queries.
       const pendingWarnings: SearchWarning[] = Array.isArray(data.warnings)
         ? data.warnings
         : [];
 
       if (!isWildcardQuery && !options?.disableLiteralGate) {
-        const allChunksForGate = Array.from(fileMap.values()).flatMap(
-          (f) => f.chunks,
-        );
-
         const allTokens = normalizedQuery
           .toLowerCase()
           .split(/\s+/)
@@ -373,14 +369,20 @@ export const useGetSearchQuery = (
         const gateTokens =
           meaningfulTokens.length > 0 ? meaningfulTokens : allTokens;
 
-        const hasTextMatch =
-          gateTokens.length > 0 &&
-          allChunksForGate.some((c) => {
-            const text = (c.text ?? "").toLowerCase();
-            return gateTokens.some((token) => text.includes(token));
-          });
+        if (gateTokens.length > 0) {
+          for (const [fileKey, fileEntry] of fileMap.entries()) {
+            const fileHasMatch = fileEntry.chunks.some((c) => {
+              const text = (c.text ?? "").toLowerCase();
+              return gateTokens.some((token) => text.includes(token));
+            });
 
-        if (!hasTextMatch) {
+            if (!fileHasMatch) {
+              fileMap.delete(fileKey);
+            }
+          }
+        }
+
+        if (fileMap.size === 0) {
           return { files: [], warnings: pendingWarnings };
         }
       }

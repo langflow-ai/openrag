@@ -451,6 +451,34 @@ describe("useGetSearchQuery", () => {
 
       expect(result.current.data?.files).toHaveLength(1);
     });
+
+    it("filters out files without keyword matches while keeping matching files", async () => {
+      // docling.pdf contains "docling", google_drive_doc.pdf does not.
+      // The irrelevant file should be pruned so it doesn't appear or distort scoring.
+      serveSearch({
+        results: [
+          chunk({
+            filename: "docling.pdf",
+            text: "docling parsing architecture and features",
+            highlights: ["<mark>docling</mark> parsing architecture"],
+            score: 3.5,
+          }),
+          chunk({
+            filename: "google_drive_doc.pdf",
+            text: "CS4750 Final Report Database Design",
+            highlights: [],
+            score: 2.0,
+          }),
+        ],
+      });
+
+      const { result } = await runSearch("docling");
+
+      const files = result.current.data?.files ?? [];
+      expect(files).toHaveLength(1);
+      expect(files[0].filename).toBe("docling.pdf");
+      expect(files[0].maxScore).toBe(1.0);
+    });
   });
 
   describe("grouping chunks (continued)", () => {
