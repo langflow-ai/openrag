@@ -668,6 +668,83 @@ class TestGatewayRouting:
         assert litellm_model == "hosted_vllm/my-deployment"
 
 
+class TestSaveTimeModelProbe:
+    """The validator's model probe must use the same transport the gateway will.
+
+    These two have separate route-building code. Resolving the route without
+    the stored credentials picks the static alias, so the probe called
+    `azure_ai/<model>` against a `/openai/v1` endpoint — which LiteLLM rewrites
+    to `/openai/v1/models/chat/completions`. A correctly configured provider
+    then failed to save with "Resource not found", for every model, which read
+    as a credential or endpoint problem rather than a routing one.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "api_base, expected_route",
+        [
+            (f"{RESOURCE}/openai/v1", "hosted_vllm"),
+            (f"{RESOURCE}/api/projects/p/openai/v1", "hosted_vllm"),
+            (f"{RESOURCE}/models", "azure_ai"),
+        ],
+    )
+    async def test_the_probe_routes_like_the_gateway(
+        self, monkeypatch, api_base, expected_route
+    ) -> None:
+        from api import provider_validation
+
+        captured: dict = {}
+
+        async def _capture(model, **kwargs):
+            captured["model"] = model
+            raise AssertionError("stop before the network call")
+
+        monkeypatch.setattr("litellm.acompletion", _capture)
+        credentials = {"api_base": api_base, "api_key": "k"}
+
+        with pytest.raises(AssertionError):
+            await provider_validation._test_litellm_provider(
+                provider="azure_ai",
+                credentials=credentials,
+                runtime_kwargs={},
+                embedding_model=None,
+                llm_model="my-deployment",
+            )
+
+        assert captured["model"] == f"{expected_route}/my-deployment"
+
+    @pytest.mark.asyncio
+    async def test_the_embedding_probe_routes_the_same_way(self, monkeypatch) -> None:
+        from api import provider_validation
+
+        captured: dict = {}
+
+        async def _capture(model, **kwargs):
+            captured["model"] = model
+            raise AssertionError("stop before the network call")
+
+        monkeypatch.setattr("litellm.aembedding", _capture)
+
+        with pytest.raises(AssertionError):
+            await provider_validation._test_litellm_provider(
+                provider="azure_ai",
+                credentials={"api_base": f"{RESOURCE}/openai/v1", "api_key": "k"},
+                runtime_kwargs={},
+                embedding_model="my-embed-deployment",
+                llm_model=None,
+            )
+
+        assert captured["model"] == "hosted_vllm/my-embed-deployment"
+
+    def test_a_provider_without_a_dynamic_route_is_unaffected(self) -> None:
+        """The static alias stays the answer for everything else."""
+        from services.model_catalog import litellm_provider_key
+
+        stored = {"api_base": "https://cpd.example.com", "username": "u", "api_key": "k"}
+        assert litellm_provider_key("watsonx_onprem", stored) == "watsonx"
+        assert litellm_provider_key("openai", {"api_key": "k"}) == "openai"
+
+
 class TestRerouteGuard:
     """The guard compares against the route the gateway chose, not the key.
 
