@@ -39,6 +39,14 @@ operator's path. Captured on the wire against a Foundry-shaped hostname:
 ``…/models``                 ``/models/chat/completions``            (correct)
 ===========================  =============================================
 
+The embedding path does the same. An earlier revision of this module claimed
+embeddings were unaffected, on the strength of `AzureAIEmbedding` inheriting
+the plain OpenAI implementation and defining no `get_complete_url` of its own.
+That was measured on litellm 1.84.0 and is wrong on the pinned floor: 1.102.0
+emits ``/openai/v1/models/embeddings`` for a v1 base, captured on the wire and
+confirmed live against a real resource. So **both** call kinds need the
+transport, not just chat.
+
 There is no flag, kwarg or `api_version` that opts out — the branch is
 unconditional. Verified identical in litellm 1.102.0 (the pinned floor) and
 1.103.1 (the newest release inside `>=1.96.2,<2.0.0`), so this is not something
