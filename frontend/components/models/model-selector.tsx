@@ -19,6 +19,8 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { CapabilityStrip } from "./capability-strip";
+import type { ModelProvider } from "./model-helpers";
+import { requiresExplicitModelSelection } from "./model-helpers";
 import { MODELS_PER_PROVIDER } from "./model-info";
 import type {
   GroupedModelOption,
@@ -80,6 +82,21 @@ function isSelectedRow(
   }
   const provider = optionProvider(option, group);
   return !provider || provider === selectedProvider;
+}
+
+/**
+ * What to say when a provider contributes no models.
+ *
+ * A provider whose models are its own deployments can be fully configured and
+ * still list nothing, because the deployment names have not been entered —
+ * "no models available" alone reads as a fault. Azure AI Foundry is one: its
+ * catalogue lists models available to deploy rather than models deployed, so
+ * the configured names are the only record of what can be called.
+ */
+export function emptyGroupMessage(provider?: string): string {
+  return requiresExplicitModelSelection(provider as ModelProvider | undefined)
+    ? "No deployments listed. Add your deployment names in this provider's settings, or search to enter one."
+    : "No models available. Search to enter a custom model.";
 }
 
 export function ModelSelector({
@@ -388,7 +405,7 @@ export function ModelSelector({
                           disabled
                           className="text-muted-foreground ml-6"
                         >
-                          No models available. Search to enter a custom model.
+                          {emptyGroupMessage(groupProvider)}
                         </CommandItem>
                       ) : (
                         group.options.map((option) => {
