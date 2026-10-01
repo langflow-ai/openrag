@@ -32,6 +32,7 @@ from functools import lru_cache
 from typing import Any
 
 from config.model_providers import ProviderEntry, visible_provider_entries
+from enhancements.providers.contracts import CatalogEntry
 from enhancements.providers.registry import (
     credential_field_overrides,
     litellm_route_for,
@@ -260,6 +261,20 @@ def _excluded(name: str, patterns: tuple[str, ...]) -> bool:
     return any(fnmatch(lowered, pattern) or fnmatch(bare, pattern) for pattern in patterns)
 
 
+def _inventory_entry(item: CatalogEntry) -> dict[str, Any]:
+    """A provider-declared model as the catalogue payload shape.
+
+    Carries only what configuration stated. No context window, pricing or
+    capability is looked up by name: an operator-chosen deployment alias is not
+    evidence about the model behind it, so anything added here would be a guess
+    rendered as fact in the model-details panel.
+    """
+    entry: dict[str, Any] = {"model": item.model, "mode": item.mode}
+    if item.capabilities:
+        entry["capabilities"] = list(item.capabilities)
+    return entry
+
+
 def _declared_entries(names: tuple[str, ...], mode: str) -> list[dict[str, Any]]:
     """Config-declared model ids as catalogue entries.
 
@@ -319,7 +334,14 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
         bucket.setdefault(provider, []).append(_model_entry(name, info))
 
     entries = []
-    for key, display_name, declared_chat, declared_embed, excluded in providers:
+    for (
+        key,
+        display_name,
+        declared_chat,
+        declared_embed,
+        excluded,
+        inventory,
+    ) in providers:
         if not is_known_provider(key):
             # The catalogue would still render, but `split_model_id` cannot
             # recognise the prefix, so every id would be billed to the default
@@ -328,16 +350,27 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
                 "Model provider is not routable by LiteLLM; its models will not resolve",
                 provider=key,
             )
-        chat = chat_by_provider.get(key, [])
-        embed = embed_by_provider.get(key, [])
-        known_chat = {entry["model"] for entry in chat}
-        known_embed = {entry["model"] for entry in embed}
-        chat = chat + _declared_entries(
-            tuple(name for name in declared_chat if name not in known_chat), "chat"
-        )
-        embed = embed + _declared_entries(
-            tuple(name for name in declared_embed if name not in known_embed), EMBEDDING_MODE
-        )
+        if inventory is not None:
+            # The provider owns its list. LiteLLM's rows for this key are not
+            # offered at all — not merged, not used as a fallback — because
+            # they describe models that exist, not models this deployment can
+            # call. An empty inventory therefore means empty pickers, which is
+            # the correct answer and not a reason to fall back.
+            chat = [
+                _inventory_entry(item) for item in inventory if item.mode in TEXT_GENERATION_MODES
+            ]
+            embed = [_inventory_entry(item) for item in inventory if item.mode == EMBEDDING_MODE]
+        else:
+            chat = chat_by_provider.get(key, [])
+            embed = embed_by_provider.get(key, [])
+            known_chat = {entry["model"] for entry in chat}
+            known_embed = {entry["model"] for entry in embed}
+            chat = chat + _declared_entries(
+                tuple(name for name in declared_chat if name not in known_chat), "chat"
+            )
+            embed = embed + _declared_entries(
+                tuple(name for name in declared_embed if name not in known_embed), EMBEDDING_MODE
+            )
         # Applied last, so `exclude_models` also wins over a `models:` row —
         # a deployment that suppresses an id means it, wherever the id came
         # from, and the alternative is two lines that quietly contradict.
@@ -353,6 +386,12 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
                 "model_placeholder": (specs.get(key) or {}).get("default_model_placeholder"),
                 "models": sorted(chat, key=lambda entry: entry["model"]),
                 "embedding_models": sorted(embed, key=lambda entry: entry["model"]),
+                # Where this provider's lists came from, so a caller can tell
+                # "serves none" from "none configured yet". They look the same
+                # in the payload and mean opposite things: an empty LiteLLM
+                # list says the provider has no such models, while an empty
+                # configured list says the operator has not named any.
+                "inventory_source": "configured" if inventory is not None else "catalog",
             }
         )
     return {"providers": entries}
@@ -434,20 +473,68 @@ def _catalog_entries() -> tuple[ProviderEntry, ...]:
     payload rather than serving a stale one.
     """
     entries = visible_provider_entries()
+    inventories = _authoritative_inventories()
     live_models = {
         enhancement.PROVIDER_KEY: enhancement.cached_models()
         for enhancement in provider_enhancements()
         if hasattr(enhancement, "cached_models")
     }
-    return tuple(
-        entry._replace(
-            models=entry.models if live.chat is None else live.chat,
-            embedding_models=entry.embedding_models if live.embedding is None else live.embedding,
-        )
-        if (live := live_models.get(entry.name)) is not None
-        else entry
-        for entry in entries
+    resolved = []
+    for entry in entries:
+        if entry.name in inventories:
+            # An authoritative provider's list is complete, so it is carried on
+            # the entry itself: the entries are the catalogue's cache key, and
+            # a configuration change has to rebuild the payload rather than
+            # serve a stale picker.
+            resolved.append(entry._replace(inventory=inventories[entry.name]))
+            continue
+        live = live_models.get(entry.name)
+        if live is not None:
+            entry = entry._replace(
+                models=entry.models if live.chat is None else live.chat,
+                embedding_models=(
+                    entry.embedding_models if live.embedding is None else live.embedding
+                ),
+            )
+        resolved.append(entry)
+    return tuple(resolved)
+
+
+def _authoritative_inventories() -> dict[str, tuple[CatalogEntry, ...]]:
+    """Configured inventories for providers that own their model list.
+
+    Read straight from configuration: this is parsing, not discovery, so it
+    needs none of the fetch-and-cache machinery a provider that has to ask a
+    cluster does. A provider that cannot be read is omitted rather than
+    defaulted, so a broken configuration shows an empty picker instead of
+    silently reinstating LiteLLM's rows.
+    """
+    from enhancements.providers.registry import (
+        authoritative_inventory_keys,
+        configured_inventory,
     )
+
+    keys = authoritative_inventory_keys()
+    if not keys:
+        return {}
+
+    from config.settings import get_openrag_config
+
+    inventories: dict[str, tuple[CatalogEntry, ...]] = {}
+    for key in keys:
+        try:
+            providers = get_openrag_config().providers
+            stored = (
+                providers.stored_credentials(key)
+                if hasattr(providers, "stored_credentials")
+                else {}
+            )
+            inventory = configured_inventory(key, stored)
+        except Exception:
+            logger.debug("Could not read the configured inventory", provider=key, exc_info=True)
+            inventory = ()
+        inventories[key] = inventory if inventory is not None else ()
+    return inventories
 
 
 async def refresh_live_models() -> None:
