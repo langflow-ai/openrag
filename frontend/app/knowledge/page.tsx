@@ -49,7 +49,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
-import { formatFileSize } from "@/lib/file-format";
+import { formatFileSize, getFileTypeLabel } from "@/lib/file-format";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import {
   buildKnowledgeTableRows,
@@ -967,6 +967,8 @@ function SearchPage() {
     ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
     cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
     sortable: true,
+    valueFormatter: (params: ValueFormatterParams<File>) =>
+      getFileTypeLabel(params.value),
   };
 
   const colOwner: ColDef<File> = {
