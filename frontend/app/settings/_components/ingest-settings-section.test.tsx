@@ -373,6 +373,89 @@ describe("IngestSettingsSection", () => {
       });
     });
   });
+  // ── Group 5: chunk steppers and toggle switches ───────────────────────────
+
+  describe("chunk steppers", () => {
+    it("increments and decrements chunk size via the stepper buttons", async () => {
+      renderSection();
+
+      const input = await screen.findByRole("spinbutton", {
+        name: /chunk size/i,
+      });
+      expect(input).toHaveValue(1024);
+
+      const [increaseSize] = screen.getAllByRole("button", {
+        name: /increase value/i,
+      });
+      fireEvent.click(increaseSize);
+      expect(input).toHaveValue(1025);
+
+      const [decreaseSize] = screen.getAllByRole("button", {
+        name: /decrease value/i,
+      });
+      fireEvent.click(decreaseSize);
+      expect(input).toHaveValue(1024);
+    });
+
+    it("increments and decrements chunk overlap via the stepper buttons", async () => {
+      renderSection();
+
+      const overlapInput = await screen.findByRole("spinbutton", {
+        name: /chunk overlap/i,
+      });
+      expect(overlapInput).toHaveValue(50);
+
+      const [, increaseOverlap] = screen.getAllByRole("button", {
+        name: /increase value/i,
+      });
+      fireEvent.click(increaseOverlap);
+      expect(overlapInput).toHaveValue(51);
+
+      const [, decreaseOverlap] = screen.getAllByRole("button", {
+        name: /decrease value/i,
+      });
+      fireEvent.click(decreaseOverlap);
+      expect(overlapInput).toHaveValue(50);
+    });
+  });
+
+  describe("toggle switches", () => {
+    it("toggles Disable Langflow Ingestion, Table Structure, OCR, and Picture Descriptions", async () => {
+      renderSection();
+
+      await screen.findByRole("spinbutton", { name: /chunk size/i });
+
+      const langflowSwitch = screen.getByRole("switch", {
+        name: /disable langflow ingestion/i,
+      });
+      const tableStructureSwitch = screen.getByRole("switch", {
+        name: /table structure/i,
+      });
+      const ocrSwitch = screen.getByRole("switch", { name: /^ocr$/i });
+      const pictureDescriptionsSwitch = screen.getByRole("switch", {
+        name: /picture descriptions/i,
+      });
+
+      expect(langflowSwitch).toHaveAttribute("aria-checked", "false");
+      fireEvent.click(langflowSwitch);
+      expect(langflowSwitch).toHaveAttribute("aria-checked", "true");
+
+      expect(tableStructureSwitch).toHaveAttribute("aria-checked", "true");
+      fireEvent.click(tableStructureSwitch);
+      expect(tableStructureSwitch).toHaveAttribute("aria-checked", "false");
+
+      expect(ocrSwitch).toHaveAttribute("aria-checked", "false");
+      fireEvent.click(ocrSwitch);
+      expect(ocrSwitch).toHaveAttribute("aria-checked", "true");
+
+      expect(pictureDescriptionsSwitch).toHaveAttribute(
+        "aria-checked",
+        "false",
+      );
+      fireEvent.click(pictureDescriptionsSwitch);
+      expect(pictureDescriptionsSwitch).toHaveAttribute("aria-checked", "true");
+    });
+  });
 });
 
 describe("IngestSettingsSection OCR languages", () => {
