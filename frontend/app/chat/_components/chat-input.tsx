@@ -14,7 +14,7 @@ import { useFileDrag } from "@/hooks/use-file-drag";
 import { useImeComposition } from "@/hooks/use-ime-composition";
 import { useSupportedFileTypes } from "@/hooks/use-supported-file-types";
 import type { FilterColor } from "@/lib/filter-constants";
-import { blockImeEnter, type ImeCompositionState } from "@/lib/ime-composition";
+import type { ImeCompositionState } from "@/lib/ime-composition";
 import { cn } from "@/lib/utils";
 import { useGetAllFiltersQuery } from "../../api/queries/useGetAllFiltersQuery";
 import type { KnowledgeFilterData } from "../_types/types";
@@ -271,7 +271,7 @@ export function ChatInput({
     // Confirming a Kanji (or other IME) candidate fires Enter and must not
     // select a filter or submit the message.
     const imeState = ime.readState();
-    if (blockImeEnter(e, imeState)) {
+    if (ime.blockEnter(e, imeState)) {
       return;
     }
 

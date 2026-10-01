@@ -104,6 +104,22 @@ describe("ChatInput", () => {
     expect(cancelled).toBe(false);
   });
 
+  it("forwards a second Enter that lands inside the IME confirmation window", () => {
+    let now = 1_000;
+    const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => now);
+    const onKeyDown = vi.fn();
+    renderWithProviders(<ChatInput {...defaultProps} onKeyDown={onKeyDown} />);
+    const box = chatBox();
+
+    fireEvent.compositionEnd(box);
+    now = 1_010;
+    fireEvent.keyDown(box, { key: "Enter" });
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    expect(onKeyDown).toHaveBeenCalledOnce();
+    nowSpy.mockRestore();
+  });
+
   it("forwards Enter again once the IME confirmation window has passed", () => {
     let now = 1_000;
     const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => now);

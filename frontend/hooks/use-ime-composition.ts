@@ -6,6 +6,7 @@ import {
   type ImeEnterEvent,
   type ImeKeyEvent,
   isImeCompositionEvent,
+  shouldCancelImeEnter,
 } from "@/lib/ime-composition";
 
 /**
@@ -50,9 +51,28 @@ export function useImeComposition(onSubmit?: () => void) {
     compositionEndedAtRef.current = 0;
   }, []);
 
+  // Safari's confirming Enter is identified by time since compositionend.
+  // Consume that window on the first Enter so a second press can send.
+  const releaseSafariEnter = useCallback(
+    (event: ImeEnterEvent, state: ImeCompositionState) => {
+      if (
+        event.key === "Enter" &&
+        shouldCancelImeEnter(event.nativeEvent, state)
+      ) {
+        compositionEndedAtRef.current = 0;
+      }
+    },
+    [],
+  );
+
   const blockEnter = useCallback(
-    (event: ImeEnterEvent) => blockImeEnter(event, readState()),
-    [readState],
+    (event: ImeEnterEvent, state?: ImeCompositionState) => {
+      const snapshot = state ?? readState();
+      const blocked = blockImeEnter(event, snapshot);
+      if (blocked) releaseSafariEnter(event, snapshot);
+      return blocked;
+    },
+    [readState, releaseSafariEnter],
   );
 
   const isImeCandidateKey = useCallback((event: ImeKeyEvent) => {
@@ -64,9 +84,11 @@ export function useImeComposition(onSubmit?: () => void) {
 
   const handleKeyDown = useCallback(
     (event: ImeEnterEvent) => {
-      handleInputKeyDown(event, readState(), () => onSubmitRef.current?.());
+      const state = readState();
+      handleInputKeyDown(event, state, () => onSubmitRef.current?.());
+      releaseSafariEnter(event, state);
     },
-    [readState],
+    [readState, releaseSafariEnter],
   );
 
   return {

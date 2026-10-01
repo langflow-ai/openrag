@@ -37,6 +37,27 @@ describe("useImeComposition", () => {
     nowSpy.mockRestore();
   });
 
+  it("lets a second Enter send inside the Safari confirmation window", () => {
+    let now = 1_000;
+    const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => now);
+    const onSubmit = vi.fn();
+    const { result } = renderHook(() => useImeComposition(onSubmit));
+
+    result.current.inputProps.onCompositionEnd();
+    now = 1_010;
+    const confirm = enterEvent();
+    result.current.handleKeyDown(confirm);
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(confirm.preventDefault).toHaveBeenCalledOnce();
+
+    const send = enterEvent();
+    result.current.handleKeyDown(send);
+    expect(send.preventDefault).toHaveBeenCalledOnce();
+    expect(onSubmit).toHaveBeenCalledOnce();
+
+    nowSpy.mockRestore();
+  });
+
   it("clears a finished composition on blur so the next Enter sends", () => {
     const { result } = renderHook(() => useImeComposition());
 
