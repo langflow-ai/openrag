@@ -404,7 +404,7 @@ _PRIVATE_HOST_PATTERN = re.compile(
 _ANSI_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
 
 
-def _call_label(provider: str, model: str) -> str:
+def _call_label(provider: str, model: str, route: str = "") -> str:
     """`provider/model` for humans, without repeating a prefix LiteLLM already added.
 
     The model here is the routed id, so for an aliased provider it carries the
@@ -412,7 +412,10 @@ def _call_label(provider: str, model: str) -> str:
     "watsonx_onprem/watsonx/openai/gpt-oss-120b", which names two providers and
     reads like a bug in the error it appears in.
     """
-    route = litellm_provider_key(provider) if provider else ""
+    # `route` is passed by callers that already resolved it from the stored
+    # configuration; the static alias is only a fallback for those that did
+    # not, and is wrong for a provider whose transport varies by endpoint.
+    route = route or (litellm_provider_key(provider) if provider else "")
     if route and route != provider and model.startswith(f"{route}/"):
         model = model[len(route) + 1 :]
     if model and provider and not model.startswith(f"{provider}/"):
