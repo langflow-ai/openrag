@@ -175,7 +175,9 @@ async def _stale_embedding_spaces(provider: str) -> dict[str, Any] | None:
     cannot fix it.
 
     Silent unless both halves are known: what the provider serves, and what the
-    corpus holds. Neither absence is evidence of the other.
+    corpus holds. Neither absence is evidence of the other. "Known" is
+    `served is not None`: an empty listing is a provider that answered and
+    serves no embedding model, which makes every indexed space stale.
     """
     try:
         from enhancements.providers.registry import live_models_for
@@ -184,7 +186,7 @@ async def _stale_embedding_spaces(provider: str) -> dict[str, Any] | None:
     except Exception:
         logger.debug("Could not read live models for %s", provider, exc_info=True)
         return None
-    if not served:
+    if served is None:
         return None
 
     indexed = await _indexed_spaces(provider)
@@ -193,6 +195,16 @@ async def _stale_embedding_spaces(provider: str) -> dict[str, Any] | None:
     stale = [model for model in indexed if model not in served]
     if not stale:
         return None
+    serving = f"it serves: {', '.join(served)}" if served else "it lists no embedding models at all"
+    # Debug, not warning: the banner polls this every 30s per open tab, and the
+    # condition lasts until someone re-ingests. The response carries it to the
+    # user; the log is for tracing why.
+    logger.debug(
+        "Indexed embedding spaces are no longer served by the provider",
+        provider=provider,
+        stale=stale,
+        served=list(served),
+    )
     return {
         "code": STALE_EMBEDDING_SPACE,
         "provider": provider,
@@ -200,7 +212,7 @@ async def _stale_embedding_spaces(provider: str) -> dict[str, Any] | None:
         "served": list(served),
         "message": (
             f"Documents are indexed with {', '.join(repr(model) for model in stale)}, which "
-            f"this endpoint no longer serves (it serves: {', '.join(served)}). Search skips "
+            f"this endpoint no longer serves ({serving}). Search skips "
             "those vectors, so the documents are found by keyword only until they are "
             "re-ingested or deleted."
         ),

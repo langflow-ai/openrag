@@ -61,6 +61,12 @@ def live_models_for(provider: str, kind: CallKind) -> tuple[str, ...] | None:
     telling an operator their model is missing on the strength of a listing
     that never arrived would be worse than staying quiet.
 
+    An empty tuple is the opposite: a real answer. The provider was listed and
+    that endpoint serves nothing of this kind — watsonx on-prem caches exactly
+    that for a cluster with chat models and no embedding model — so it must
+    reach the caller as `()`, not be folded into unknown. An enhancement that
+    cannot tell "empty" from "unreadable" keeps that half None itself.
+
     The lists come from the enhancement's own TTL cache, so this is a dict
     lookup; refreshing them is `model_catalog.refresh_live_models()`.
     """
@@ -69,12 +75,25 @@ def live_models_for(provider: str, kind: CallKind) -> tuple[str, ...] | None:
         return None
     try:
         models = enhancement.cached_models()
-    except Exception:  # a diagnostic must never take down its caller
+    except Exception as exc:  # a diagnostic must never take down its caller
+        _log_hook_failure(provider, "cached_models", exc)
         return None
     if models is None:
         return None
     listed = getattr(models, kind, None)
-    return tuple(listed) if listed else None
+    if listed is None:
+        return None
+    # A bare string would split into characters, and a scalar cannot be
+    # iterated at all; either is a malformed cache, so unknown rather than a
+    # list of nonsense model ids.
+    if isinstance(listed, str | bytes):
+        _log_unreadable_listing(provider, kind, listed)
+        return None
+    try:
+        return tuple(str(model) for model in listed)
+    except TypeError:
+        _log_unreadable_listing(provider, kind, listed)
+        return None
 
 
 def credentials_for(
@@ -145,6 +164,17 @@ def _log_hook_failure(provider: str, hook: str, exc: Exception) -> None:
         hook=hook,
         error_type=type(exc).__name__,
         error=str(exc),
+    )
+
+
+def _log_unreadable_listing(provider: str, kind: str, listed: object) -> None:
+    from utils.logging_config import get_logger
+
+    get_logger(__name__).warning(
+        "A provider enhancement cached a model listing that is not a list; treating it as unknown",
+        provider=provider,
+        kind=kind,
+        listing_type=type(listed).__name__,
     )
 
 
