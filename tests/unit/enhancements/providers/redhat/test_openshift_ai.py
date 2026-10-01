@@ -593,10 +593,17 @@ def test_a_kindless_enhancement_is_still_callable() -> None:
 
 
 class _Response:
-    def __init__(self, status_code: int, payload: Any = None, text: str = "") -> None:
+    def __init__(
+        self,
+        status_code: int,
+        payload: Any = None,
+        text: str = "",
+        headers: dict[str, str] | None = None,
+    ) -> None:
         self.status_code = status_code
         self._payload = payload
         self.text = text
+        self.headers = headers or {}
 
     def json(self) -> Any:
         if self._payload is None:
@@ -1054,6 +1061,181 @@ async def test_a_rejected_token_names_the_rolebinding(monkeypatch, status) -> No
 
     with pytest.raises(Exception, match="inferenceservices"):
         await rhoai.lightweight_health_check(_stored())
+
+
+LOGIN_PAGE = (
+    "<!DOCTYPE html>\n<html><head><title>Log in</title></head>"
+    "<body><form action='/oauth/start'>Log in with OpenShift</form></body></html>"
+)
+LOGIN_REDIRECT = (
+    "https://oauth-openshift.apps.cluster.example/oauth/authorize"
+    "?client_id=system%3Aserviceaccount&state=abc123&redirect_uri=https%3A%2F%2Fx"
+)
+
+
+def _serve(monkeypatch, responses: dict[str, Any]) -> None:
+    monkeypatch.setattr("httpx.AsyncClient", _client_returning(responses))
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _no_retry)
+
+
+@pytest.mark.asyncio
+async def test_a_login_page_answered_with_200_is_not_healthy(monkeypatch) -> None:
+    """An OAuth proxy or SSO gateway in front of the route answers 200 with its
+    login page; reading that as healthy defers the failure to the first chat."""
+    _serve(
+        monkeypatch,
+        {
+            f"{CHAT_BASE}/models": _Response(
+                200, text=LOGIN_PAGE, headers={"content-type": "text/html; charset=utf-8"}
+            )
+        },
+    )
+
+    with pytest.raises(Exception, match="chat endpoint .* returned a web page") as error:
+        await rhoai.lightweight_health_check(_stored(embedding_api_base=""))
+
+    assert "text/html" in str(error.value)
+    assert "<html" not in str(error.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_a_login_page_without_a_content_type_is_still_recognised(monkeypatch) -> None:
+    _serve(monkeypatch, {f"{CHAT_BASE}/models": _Response(200, text=f"  \n{LOGIN_PAGE}")})
+
+    with pytest.raises(Exception, match="returned a web page"):
+        await rhoai.lightweight_health_check(_stored(embedding_api_base=""))
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"status": "ok"}, [], {"data": "not-a-list"}, "ok"],
+    ids=["status-object", "bare-list", "data-not-list", "bare-string"],
+)
+@pytest.mark.asyncio
+async def test_a_200_that_is_not_a_model_listing_is_not_healthy(monkeypatch, body) -> None:
+    _serve(
+        monkeypatch,
+        {f"{CHAT_BASE}/models": _Response(200, body, headers={"content-type": "application/json"})},
+    )
+
+    with pytest.raises(Exception, match="OpenAI-compatible model list"):
+        await rhoai.lightweight_health_check(_stored(embedding_api_base=""))
+
+
+@pytest.mark.asyncio
+async def test_an_empty_model_listing_still_passes(monkeypatch) -> None:
+    """Only the shape is checked: a vLLM pod still loading its weights is a
+    real endpoint, and the check does not depend on a model being chosen."""
+    _serve(monkeypatch, {f"{CHAT_BASE}/models": _Response(200, _models_body())})
+
+    await rhoai.lightweight_health_check(_stored(embedding_api_base=""))
+
+
+@pytest.mark.asyncio
+async def test_a_login_page_on_the_embedding_endpoint_names_that_endpoint(monkeypatch) -> None:
+    _serve(
+        monkeypatch,
+        {
+            f"{CHAT_BASE}/models": _Response(200, _models_body(CHAT_MODEL)),
+            f"{EMBED_BASE}/models": _Response(
+                200, text=LOGIN_PAGE, headers={"content-type": "text/html"}
+            ),
+        },
+    )
+
+    with pytest.raises(Exception, match="embeddings endpoint .* returned a web page"):
+        await rhoai.lightweight_health_check(_stored())
+
+
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+@pytest.mark.asyncio
+async def test_a_redirect_to_a_login_page_says_so(monkeypatch, status) -> None:
+    """httpx does not follow redirects, so an OAuth proxy's 302 arrives as-is;
+    the message names where it pointed, without the OAuth query noise."""
+    _serve(
+        monkeypatch,
+        {
+            f"{CHAT_BASE}/models": _Response(
+                status,
+                text=LOGIN_PAGE,
+                headers={"content-type": "text/html", "location": LOGIN_REDIRECT},
+            )
+        },
+    )
+
+    with pytest.raises(Exception, match="redirected to") as error:
+        await rhoai.lightweight_health_check(_stored(embedding_api_base=""))
+
+    message = str(error.value)
+    assert "https://oauth-openshift.apps.cluster.example/oauth/authorize" in message
+    assert "state=" not in message
+    assert "<html" not in message.lower()
+
+
+@pytest.mark.asyncio
+async def test_a_redirect_without_a_location_is_still_reported(monkeypatch) -> None:
+    _serve(monkeypatch, {f"{CHAT_BASE}/models": _Response(302)})
+
+    with pytest.raises(Exception, match="redirected to another page"):
+        await rhoai.lightweight_health_check(_stored(embedding_api_base=""))
+
+
+@pytest.mark.asyncio
+async def test_an_html_error_page_is_described_not_quoted(monkeypatch) -> None:
+    """The router's own 403 page is HTML; quoting it would put markup in the
+    Settings error. The status-specific advice still applies."""
+    _serve(
+        monkeypatch,
+        {
+            f"{CHAT_BASE}/models": _Response(
+                403, text=LOGIN_PAGE, headers={"content-type": "text/html"}
+            )
+        },
+    )
+
+    with pytest.raises(Exception, match="inferenceservices") as error:
+        await rhoai.lightweight_health_check(_stored(embedding_api_base=""))
+
+    assert "HTML page" in str(error.value)
+    assert "<html" not in str(error.value).lower()
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        _Response(200, text=LOGIN_PAGE, headers={"content-type": "text/html"}),
+        _Response(200, {"status": "ok"}),
+        _Response(302, headers={"location": LOGIN_REDIRECT}),
+    ],
+    ids=["login-page", "wrong-shape", "redirect"],
+)
+@pytest.mark.asyncio
+async def test_a_proxy_answer_is_not_mistaken_for_a_bad_token(monkeypatch, response) -> None:
+    """The fix is the URL, not the token; a credential classification would
+    tell the operator to rotate a token that works."""
+    from api.provider_validation import is_provider_credential_error
+
+    _serve(monkeypatch, {f"{CHAT_BASE}/models": response})
+
+    with pytest.raises(Exception) as error:
+        await rhoai.lightweight_health_check(_stored(embedding_api_base=""))
+
+    assert not is_provider_credential_error(error.value)
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ({"object": "list", "data": []}, True),
+        (_models_body(CHAT_MODEL), True),
+        ({"data": None}, False),
+        ({"object": "list"}, False),
+        ([], False),
+        (None, False),
+    ],
+)
+def test_a_model_listing_is_recognised_by_its_shape(body, expected) -> None:
+    assert rhoai.is_model_listing(body) is expected
 
 
 @pytest.mark.asyncio
