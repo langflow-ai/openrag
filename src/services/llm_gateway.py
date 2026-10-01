@@ -11,6 +11,7 @@ import asyncio
 import contextlib
 import json
 import re
+from collections import deque
 from collections.abc import AsyncIterator, Mapping
 from typing import Any, Literal
 from uuid import uuid4
@@ -222,14 +223,6 @@ def _provider_runtime_kwargs(provider: str, config=None) -> dict[str, Any]:
     return runtime_kwargs_for(enhancement, stored)
 
 
-#: Per-provider embedding bulkheads: (provider key, lane) -> (limit, loop,
-#: semaphore). The backend runs a single worker (enforced in `app/lifespan.py`),
-#: so a process-local semaphore bounds the provider's traffic globally. Keyed on
-#: the loop too, because an asyncio primitive must not be shared across loops.
-_embedding_limiters: dict[
-    tuple[str, str], tuple[int, asyncio.AbstractEventLoop, asyncio.Semaphore]
-] = {}
-
 #: Lanes of a provider's embedding limit. `interactive` is query embedding —
 #: search and chat retrieval, where a person is waiting; `bulk` is everything
 #: else, chiefly ingestion. One slot of the limit is reserved for queries, so a
@@ -253,19 +246,147 @@ def _lane_limit(limit: int, interactive: bool) -> tuple[str, int]:
     return _BULK_LANE, limit - 1
 
 
-def _embedding_limiter(
-    provider: str, config=None, *, interactive: bool = False
-) -> asyncio.Semaphore | None:
-    """The semaphore bounding this kind of embedding call to `provider`, if any.
+class _EmbeddingLimiter:
+    """Bounds one provider's in-flight embedding calls under a limit that can change.
+
+    A pair of per-lane semaphores cannot be resized: replacing them when the
+    operator changes the limit forgets the calls still holding the old ones, so
+    the endpoint briefly sees more than the new limit. This keeps one count per
+    lane for the provider's lifetime and admits a call only while the total is
+    under the current limit *and* its lane is under its share (`_lane_limit`).
+
+    A freed slot is handed straight to the next waiter (as `asyncio.Semaphore`
+    does), queries first, so neither a new arrival nor a bulk chunk can take a
+    slot a waiting query is entitled to. `limit is None` means unbounded: calls
+    are still counted, so turning a limit back on measures it against them.
+
+    Not thread-safe; it lives on one event loop (see `_embedding_limiters`).
+    """
+
+    def __init__(self, provider: str, limit: int | None, loop: asyncio.AbstractEventLoop):
+        self.provider = provider
+        self.limit = limit
+        self.loop = loop
+        self._active = {_BULK_LANE: 0, _INTERACTIVE_LANE: 0}
+        self._waiters: dict[str, deque[asyncio.Future[None]]] = {
+            _BULK_LANE: deque(),
+            _INTERACTIVE_LANE: deque(),
+        }
+
+    @property
+    def in_flight(self) -> int:
+        return sum(self._active.values())
+
+    def _admits(self, lane: str) -> bool:
+        if self.limit is None:
+            return True
+        if self.in_flight >= self.limit:
+            return False
+        _, lane_limit = _lane_limit(self.limit, lane == _INTERACTIVE_LANE)
+        return self._active[lane] < lane_limit
+
+    def _wake(self) -> None:
+        """Grant free slots to waiters, queries before bulk, FIFO within a lane."""
+        for lane in (_INTERACTIVE_LANE, _BULK_LANE):
+            waiters = self._waiters[lane]
+            while waiters and self._admits(lane):
+                waiter = waiters.popleft()
+                if waiter.done():  # cancelled while queued
+                    continue
+                self._active[lane] += 1
+                waiter.set_result(None)
+
+    async def acquire(self, lane: str, model: str = "") -> None:
+        if not self._waiters[lane] and self._admits(lane):
+            self._active[lane] += 1
+            return
+        waiter: asyncio.Future[None] = self.loop.create_future()
+        self._waiters[lane].append(waiter)
+        logger.debug(
+            "Embedding call waiting for a free provider slot",
+            provider=self.provider,
+            model=model,
+            lane=lane,
+            max_concurrency=self.limit,
+            in_flight=self.in_flight,
+        )
+        try:
+            await waiter
+        except asyncio.CancelledError:
+            if waiter.done() and not waiter.cancelled():
+                # Granted a slot in the same tick the caller was cancelled:
+                # hand it on, or it is lost for the provider's lifetime.
+                self.release(lane)
+            else:
+                with contextlib.suppress(ValueError):
+                    self._waiters[lane].remove(waiter)
+            raise
+
+    def release(self, lane: str) -> None:
+        if self._active[lane] <= 0:
+            logger.error(
+                "Embedding slot released more often than acquired; ignoring",
+                provider=self.provider,
+                lane=lane,
+            )
+            self._active[lane] = 0
+        else:
+            self._active[lane] -= 1
+        self._wake()
+
+    def resize(self, limit: int | None) -> None:
+        """Apply a limit changed in Settings, counting every call still in flight."""
+        if limit == self.limit:
+            return
+        previous = self.limit
+        self.limit = limit
+        logger.info(
+            "Resizing embedding concurrency limit for provider",
+            provider=self.provider,
+            previous_max_concurrency=previous,
+            max_concurrency=limit,
+            bulk_in_flight=self._active[_BULK_LANE],
+            interactive_in_flight=self._active[_INTERACTIVE_LANE],
+        )
+        if limit is not None and self.in_flight > limit:
+            logger.info(
+                "More embedding calls in flight than the new limit allows; "
+                "new calls wait until they finish",
+                provider=self.provider,
+                max_concurrency=limit,
+                in_flight=self.in_flight,
+            )
+        self._wake()
+
+    @contextlib.asynccontextmanager
+    async def slot(self, lane: str, model: str = "") -> AsyncIterator[None]:
+        """Hold one of the provider's embedding slots for the duration of a call."""
+        await self.acquire(lane, model)
+        try:
+            yield
+        finally:
+            self.release(lane)
+
+
+#: Per-provider embedding bulkheads, keyed by provider key. The backend runs a
+#: single worker (enforced in `app/lifespan.py`), so a process-local limiter
+#: bounds the provider's traffic globally. Each limiter records its loop, and a
+#: different running loop gets a new one, because asyncio futures must not be
+#: shared across loops.
+_embedding_limiters: dict[str, _EmbeddingLimiter] = {}
+
+
+def _embedding_limiter(provider: str, config=None) -> _EmbeddingLimiter | None:
+    """The limiter bounding embedding calls to `provider`, if any.
 
     The limit comes from the provider enhancement (`embedding_max_concurrency`),
     so providers without one — and every provider whose enhancement sets no
     limit — are unaffected. Excess callers wait here instead of queueing at the
     upstream, where a slow model server lets a fronting proxy time them out
-    (RHOAI's kube-rbac-proxy answers 502 after 30s). `interactive` calls wait in
+    (RHOAI's kube-rbac-proxy answers 502 after 30s). Interactive calls wait in
     their own lane (`_lane_limit`). A limit changed in Settings takes effect on
-    the next call; calls already holding a slot of the old semaphore finish
-    normally.
+    the next call and is measured against every call still in flight, so a
+    lowered limit admits nothing new until enough of them finish.
     """
     cfg = config or _get_config()
     prov = getattr(cfg, "providers", None)
@@ -283,45 +404,38 @@ def _embedding_limiter(
         else prov.credential_values(key)
     )
     limit = embedding_concurrency_for(key, stored)
+    loop = asyncio.get_running_loop()
+    cached = _embedding_limiters.get(key)
+    if cached is not None and cached.loop is loop:
+        # Resized in place (also to "no limit"), so the calls it is already
+        # counting stay counted against whatever limit applies next.
+        cached.resize(limit)
+        return cached
     if limit is None:
-        _embedding_limiters.pop((key, _BULK_LANE), None)
-        _embedding_limiters.pop((key, _INTERACTIVE_LANE), None)
+        _embedding_limiters.pop(key, None)
         return None
 
-    lane, lane_limit = _lane_limit(limit, interactive)
-    loop = asyncio.get_running_loop()
-    cached = _embedding_limiters.get((key, lane))
-    if cached is not None and cached[0] == lane_limit and cached[1] is loop:
-        return cached[2]
-    semaphore = asyncio.Semaphore(lane_limit)
-    _embedding_limiters[(key, lane)] = (lane_limit, loop, semaphore)
+    limiter = _EmbeddingLimiter(key, limit, loop)
+    _embedding_limiters[key] = limiter
     logger.info(
         "Bounding concurrent embedding calls for provider",
         provider=key,
-        lane=lane,
         max_concurrency=limit,
-        lane_max_concurrency=lane_limit,
-        previous_lane_max_concurrency=cached[0] if cached is not None else None,
+        bulk_max_concurrency=_lane_limit(limit, False)[1],
+        interactive_max_concurrency=_lane_limit(limit, True)[1],
     )
-    return semaphore
+    return limiter
 
 
 @contextlib.asynccontextmanager
 async def _embedding_slot(
-    limiter: asyncio.Semaphore | None, provider: str, model: str, lane: str = _BULK_LANE
+    limiter: _EmbeddingLimiter | None, provider: str, model: str, lane: str = _BULK_LANE
 ) -> AsyncIterator[None]:
     """Hold one of the provider's embedding slots for the duration of a call."""
     if limiter is None:
         yield
         return
-    if limiter.locked():
-        logger.debug(
-            "Embedding call waiting for a free provider slot",
-            provider=provider,
-            model=model,
-            lane=lane,
-        )
-    async with limiter:
+    async with limiter.slot(lane, model):
         yield
 
 
@@ -1389,7 +1503,7 @@ async def embeddings(
         body.get("model"), kind="embedding", config=cfg
     )
     runtime_kwargs = _provider_runtime_kwargs(provider, cfg)
-    limiter = _embedding_limiter(provider, cfg, interactive=interactive)
+    limiter = _embedding_limiter(provider, cfg)
     lane = _INTERACTIVE_LANE if interactive else _BULK_LANE
     embedding_input = _embedding_input(body.get("input"))
     should_batch = (

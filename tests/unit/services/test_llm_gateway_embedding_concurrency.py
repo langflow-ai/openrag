@@ -92,8 +92,7 @@ async def _embed_concurrently(cfg, model: str, count: int, *, interactive=False)
     )
 
 
-BULK = ("rhoai", "bulk")
-INTERACTIVE = ("rhoai", "interactive")
+RHOAI = "rhoai"
 
 
 @pytest.mark.asyncio
@@ -128,7 +127,7 @@ async def test_limit_zero_disables_the_bulkhead(monkeypatch):
     await _embed_concurrently(_rhoai_config("0"), RHOAI_MODEL, 10)
 
     assert tracker.peak == 10
-    assert BULK not in llm_gateway._embedding_limiters
+    assert RHOAI not in llm_gateway._embedding_limiters
 
 
 @pytest.mark.asyncio
@@ -150,18 +149,18 @@ async def test_providers_without_an_enhancement_are_unbounded(monkeypatch):
     await _embed_concurrently(_rhoai_config("1"), "openai:text-embedding-3-small", 6)
 
     assert tracker.peak == 6
-    assert not any(key[0] == "openai" for key in llm_gateway._embedding_limiters)
+    assert "openai" not in llm_gateway._embedding_limiters
 
 
 @pytest.mark.asyncio
-async def test_a_changed_limit_rebuilds_the_limiter():
+async def test_a_changed_limit_resizes_the_limiter_in_place():
     first = llm_gateway._embedding_limiter("rhoai", _rhoai_config("2"))
     same = llm_gateway._embedding_limiter("rhoai", _rhoai_config("2"))
     changed = llm_gateway._embedding_limiter("rhoai", _rhoai_config("5"))
 
-    assert first is same
-    assert changed is not first
-    assert llm_gateway._embedding_limiters[BULK][0] == 4
+    # One limiter for the provider's lifetime, so its in-flight count survives.
+    assert first is same is changed
+    assert llm_gateway._embedding_limiters[RHOAI].limit == 5
 
 
 @pytest.mark.asyncio
@@ -265,7 +264,7 @@ async def test_queries_are_bounded_by_their_own_lane(monkeypatch):
 
     assert len(tracker.calls) == 6
     assert tracker.peak == 1
-    assert llm_gateway._embedding_limiters[INTERACTIVE][0] == 1
+    assert llm_gateway._embedding_limiters[RHOAI].limit == 4
 
 
 @pytest.mark.asyncio
@@ -284,7 +283,6 @@ async def test_a_limit_of_one_is_shared_by_queries_and_ingestion(monkeypatch):
     gate.release.set()
     await asyncio.gather(chunk, query)
     assert gate.peak == 1
-    assert INTERACTIVE not in llm_gateway._embedding_limiters
 
 
 @pytest.mark.asyncio
@@ -314,6 +312,178 @@ async def test_no_limit_throttles_neither_lane(monkeypatch):
 )
 def test_lane_limits_split_the_configured_total(limit, interactive, expected):
     assert llm_gateway._lane_limit(limit, interactive) == expected
+
+
+# --------------------------------------------------------------------------
+# Limit changes while calls are in flight
+# --------------------------------------------------------------------------
+
+
+class _PerCallGate:
+    """A fake `litellm.aembedding` whose calls are released one at a time."""
+
+    def __init__(self):
+        self.events: dict[str, asyncio.Event] = {}
+        self.started: list[str] = []
+        self.in_flight = 0
+
+    def release(self, text: str) -> None:
+        self.events.setdefault(text, asyncio.Event()).set()
+
+    async def __call__(self, **kwargs):
+        text = kwargs["input"][0]
+        self.started.append(text)
+        self.in_flight += 1
+        try:
+            await self.events.setdefault(text, asyncio.Event()).wait()
+        finally:
+            self.in_flight -= 1
+        return {"object": "list", "data": [{"embedding": [0.1], "index": 0}]}
+
+
+async def _settle() -> None:
+    await asyncio.sleep(0.01)
+
+
+@pytest.mark.asyncio
+async def test_a_lowered_limit_counts_calls_still_in_flight(monkeypatch):
+    gate = _PerCallGate()
+    monkeypatch.setattr("litellm.aembedding", gate)
+
+    old = [_embed(_rhoai_config("3"), "old 1"), _embed(_rhoai_config("3"), "old 2")]
+    await _settle()
+    assert gate.in_flight == 2
+
+    # Lowered to 2 (one bulk slot): the two old calls already exceed it.
+    new = _embed(_rhoai_config("2"), "new")
+    await _settle()
+    assert "new" not in gate.started
+
+    gate.release("old 1")
+    await _settle()
+    assert "new" not in gate.started  # one old call still holds the bulk share
+
+    gate.release("old 2")
+    await _settle()
+    assert "new" in gate.started
+    gate.release("new")
+    await asyncio.gather(*old, new)
+
+
+@pytest.mark.asyncio
+async def test_a_raised_limit_admits_queued_calls_at_once(monkeypatch):
+    gate = _PerCallGate()
+    monkeypatch.setattr("litellm.aembedding", gate)
+
+    calls = [_embed(_rhoai_config("2"), f"chunk {i}") for i in range(3)]
+    await _settle()
+    assert gate.in_flight == 1  # bulk share of a limit of 2
+
+    llm_gateway._embedding_limiter("rhoai", _rhoai_config("4"))
+    await _settle()
+    assert gate.in_flight == 3  # no call had to finish first
+
+    for i in range(3):
+        gate.release(f"chunk {i}")
+    await asyncio.gather(*calls)
+
+
+@pytest.mark.asyncio
+async def test_lowering_to_one_counts_a_query_from_the_interactive_lane(monkeypatch):
+    gate = _PerCallGate()
+    monkeypatch.setattr("litellm.aembedding", gate)
+
+    query = _embed(_rhoai_config("3"), "query", interactive=True)
+    await _settle()
+
+    chunk = _embed(_rhoai_config("1"), "chunk")
+    await _settle()
+    assert gate.started == ["query"]
+
+    gate.release("query")
+    await _settle()
+    assert gate.started == ["query", "chunk"]
+    gate.release("chunk")
+    await asyncio.gather(query, chunk)
+
+
+@pytest.mark.asyncio
+async def test_turning_the_limit_off_and_on_keeps_counting(monkeypatch):
+    gate = _PerCallGate()
+    monkeypatch.setattr("litellm.aembedding", gate)
+
+    first = _embed(_rhoai_config("2"), "first")
+    await _settle()
+    unbounded = [_embed(_rhoai_config("0"), f"free {i}") for i in range(2)]
+    await _settle()
+    assert gate.in_flight == 3  # "0" switches the limit off
+
+    late = _embed(_rhoai_config("2"), "late")
+    await _settle()
+    assert "late" not in gate.started  # the unbounded calls still count
+
+    gate.release("first")
+    gate.release("free 0")
+    await _settle()
+    assert "late" not in gate.started  # total is 1 but the bulk share (1) is used
+    gate.release("free 1")
+    await _settle()
+    assert "late" in gate.started
+    gate.release("late")
+    await asyncio.gather(first, *unbounded, late)
+
+
+@pytest.mark.asyncio
+async def test_a_limit_of_one_hands_the_slot_to_a_waiting_query_first(monkeypatch):
+    gate = _PerCallGate()
+    monkeypatch.setattr("litellm.aembedding", gate)
+    cfg = _rhoai_config("1")
+
+    calls = [_embed(cfg, "chunk 0")]
+    await _settle()
+    calls += [_embed(cfg, "chunk 1"), _embed(cfg, "chunk 2")]
+    await _settle()
+    calls.append(_embed(cfg, "query", interactive=True))
+    await _settle()
+
+    gate.release("chunk 0")
+    await _settle()
+    assert gate.started == ["chunk 0", "query"]
+
+    for text in ("query", "chunk 1", "chunk 2"):
+        gate.release(text)
+    await asyncio.gather(*calls)
+    assert gate.started == ["chunk 0", "query", "chunk 1", "chunk 2"]
+
+
+@pytest.mark.asyncio
+async def test_a_slot_granted_to_a_cancelled_waiter_is_handed_on():
+    limiter = llm_gateway._EmbeddingLimiter("rhoai", 1, asyncio.get_running_loop())
+    await limiter.acquire(llm_gateway._BULK_LANE)
+
+    waiter = asyncio.create_task(limiter.acquire(llm_gateway._BULK_LANE))
+    await _settle()
+    limiter.release(llm_gateway._BULK_LANE)  # grants the waiter's future...
+    waiter.cancel()  # ...but it is cancelled before it resumes
+    with pytest.raises(asyncio.CancelledError):
+        await waiter
+
+    assert limiter.in_flight == 0
+    await asyncio.wait_for(limiter.acquire(llm_gateway._BULK_LANE), timeout=1)
+
+
+@pytest.mark.asyncio
+async def test_an_extra_release_does_not_free_a_phantom_slot():
+    limiter = llm_gateway._EmbeddingLimiter("rhoai", 1, asyncio.get_running_loop())
+    limiter.release(llm_gateway._BULK_LANE)
+
+    await limiter.acquire(llm_gateway._BULK_LANE)
+    waiter = asyncio.create_task(limiter.acquire(llm_gateway._BULK_LANE))
+    await _settle()
+    assert not waiter.done()  # the stray release did not leave a spare slot
+    waiter.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiter
 
 
 # --------------------------------------------------------------------------
