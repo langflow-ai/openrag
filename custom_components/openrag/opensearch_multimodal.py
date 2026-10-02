@@ -790,7 +790,11 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                         "type": "knn_vector",
                         "dimension": dim,
                         "method": {
-                            "name": "disk_ann",
+                            # disk_ann only exists on the jvector engine; every other
+                            # engine this dropdown offers (nmslib, faiss, lucene) only
+                            # speaks hnsw. Hardcoding disk_ann here made those three
+                            # choices fail index creation regardless of the selection.
+                            "name": "disk_ann" if engine == "jvector" else "hnsw",
                             "space_type": space_type,
                             "engine": engine,
                             "parameters": {"ef_construction": ef_construction, "m": m},
@@ -860,7 +864,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                         "type": "knn_vector",
                         "dimension": dim,
                         "method": {
-                            "name": "disk_ann",
+                            "name": "disk_ann" if engine == "jvector" else "hnsw",
                             "space_type": space_type,
                             "engine": engine,
                             "parameters": {"ef_construction": ef_construction, "m": m},

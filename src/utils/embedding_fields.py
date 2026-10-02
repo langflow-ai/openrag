@@ -131,12 +131,16 @@ def embedding_spaces_from_aggregation(result: dict[str, Any]) -> list[EmbeddingS
 
 
 def build_knn_vector_field(dimension: int) -> dict[str, Any]:
-    """Build a knn_vector field mapping for OpenSearch using OpenRAG's JVector settings.
+    """Build a knn_vector field mapping for OpenSearch using OpenRAG's k-NN settings.
 
-    All knn_vector fields in the documents index share the same JVector/DiskANN
-    method configuration, differing only in their vector dimension. This helper
-    is the single source of truth for that configuration so tuning changes
-    apply uniformly wherever an embedding field is declared.
+    All knn_vector fields in the documents index share the same method
+    configuration, differing only in their vector dimension. This helper is
+    the single source of truth for that configuration so tuning changes
+    apply uniformly wherever an embedding field is declared. The engine
+    (``config.settings.KNN_ENGINE``, default ``"jvector"``) and its paired
+    method name (``KNN_METHOD_NAME``) are read together — see the comment on
+    ``OPENRAG_OPENSEARCH_KNN_ENGINE`` in ``config.settings`` for why they
+    can't be chosen independently.
 
     Args:
         dimension: Vector dimension for the embedding model that will populate
@@ -148,14 +152,14 @@ def build_knn_vector_field(dimension: int) -> dict[str, Any]:
         may safely extend it in place (for example, to add ``advanced.*``
         parameters for a specific field) without affecting other call sites.
     """
-    from config.settings import KNN_EF_CONSTRUCTION, KNN_M
+    from config.settings import KNN_EF_CONSTRUCTION, KNN_ENGINE, KNN_M, KNN_METHOD_NAME
 
     return {
         "type": "knn_vector",
         "dimension": dimension,
         "method": {
-            "name": "disk_ann",
-            "engine": "jvector",
+            "name": KNN_METHOD_NAME,
+            "engine": KNN_ENGINE,
             "space_type": "l2",
             "parameters": {
                 "ef_construction": KNN_EF_CONSTRUCTION,

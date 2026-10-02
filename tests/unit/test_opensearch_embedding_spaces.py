@@ -350,3 +350,74 @@ def test_direct_ingest_persists_provider_qualified_space(
     assert captured[0]["embedding_model"] == "text-embedding-3-small"
     assert captured[0]["embedding_provider"] == "azure"
     assert captured[0]["embedding_space_id"] == "azure:text-embedding-3-small"
+
+
+class _MappingIndices:
+    """Index API stub that records the mapping bodies the component sends."""
+
+    def __init__(self) -> None:
+        self.properties: dict = {}
+        self.put_mapping_bodies: list[dict] = []
+
+    def get_mapping(self, *, index):
+        return {index: {"mappings": {"properties": self.properties}}}
+
+    def put_mapping(self, *, index, body):
+        self.put_mapping_bodies.append(body)
+        # Reflect the new field so the component's post-write verification passes.
+        self.properties.update(body["properties"])
+
+
+class _MappingClient:
+    def __init__(self) -> None:
+        self.indices = _MappingIndices()
+
+
+# disk_ann only exists on the jvector engine; every other engine this component
+# offers speaks hnsw, so both mapping paths must derive the method from the
+# selected engine instead of hardcoding one.
+_ENGINE_METHOD_PAIRS = [("jvector", "disk_ann"), ("faiss", "hnsw"), ("nmslib", "hnsw")]
+
+
+@pytest.mark.parametrize(("engine", "method_name"), _ENGINE_METHOD_PAIRS)
+def test_index_creation_mapping_pairs_the_engine_with_its_method(
+    monkeypatch: pytest.MonkeyPatch, engine: str, method_name: str
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    component = module.OpenSearchVectorStoreComponentMultimodalMultiEmbedding()
+
+    # This is the body handed verbatim to client.indices.create().
+    mapping = component._default_text_mapping(dim=2, engine=engine, vector_field="chunk_embedding")
+
+    method = mapping["mappings"]["properties"]["chunk_embedding"]["method"]
+    assert method["engine"] == engine
+    assert method["name"] == method_name
+
+
+@pytest.mark.parametrize(("engine", "method_name"), _ENGINE_METHOD_PAIRS)
+def test_dynamic_embedding_field_mapping_pairs_the_engine_with_its_method(
+    monkeypatch: pytest.MonkeyPatch, engine: str, method_name: str
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    client = _MappingClient()
+    component = module.OpenSearchVectorStoreComponentMultimodalMultiEmbedding()
+    component.index_name = "documents"
+    component.log = lambda message: None
+
+    component._ensure_embedding_field_mapping(
+        client=client,
+        index_name="documents",
+        field_name="chunk_embedding_azure_text_embedding_3_small",
+        dim=2,
+        engine=engine,
+        space_type="l2",
+        ef_construction=100,
+        m=16,
+    )
+
+    assert len(client.indices.put_mapping_bodies) == 1
+    field = client.indices.put_mapping_bodies[0]["properties"][
+        "chunk_embedding_azure_text_embedding_3_small"
+    ]
+    assert field["method"]["engine"] == engine
+    assert field["method"]["name"] == method_name

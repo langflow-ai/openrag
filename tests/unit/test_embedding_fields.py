@@ -5,8 +5,8 @@ Focuses on ``build_knn_vector_field``, the single source of truth for
 OpenRAG's ``knn_vector`` field mapping. Callers across ``config.settings``,
 ``utils.embeddings``, ``utils.embedding_fields``, and
 ``scripts.migrate_embedding_model_field`` rely on it producing a consistent
-JVector/DiskANN method configuration with only the dimension varying per
-embedding model.
+method configuration (JVector/DiskANN by default, or a configured
+faiss/nmslib + hnsw pair) with only the dimension varying per embedding model.
 """
 
 from types import SimpleNamespace
@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from config.settings import _resolve_knn_engine
 from utils.embedding_fields import (
     build_embedding_space_aggregation,
     build_knn_vector_field,
@@ -143,6 +144,67 @@ class TestBuildKnnVectorFieldSettingsResolution:
         params = build_knn_vector_field(1536)["method"]["parameters"]
         assert params["m"] == 32
         assert params["ef_construction"] == 200
+
+
+class TestBuildKnnVectorFieldEngineSelection:
+    """KNN_ENGINE and its paired KNN_METHOD_NAME must move together.
+
+    disk_ann is only valid with the jvector engine; every other engine the
+    bundled opensearch-knn plugin supports (faiss, nmslib) only speaks hnsw.
+    """
+
+    def test_default_is_jvector_disk_ann(self) -> None:
+        method = build_knn_vector_field(1536)["method"]
+        assert method["engine"] == "jvector"
+        assert method["name"] == "disk_ann"
+
+    @pytest.mark.parametrize("engine", ["faiss", "nmslib"])
+    def test_standard_engines_pair_with_hnsw(
+        self, monkeypatch: pytest.MonkeyPatch, engine: str
+    ) -> None:
+        monkeypatch.setattr("config.settings.KNN_ENGINE", engine)
+        monkeypatch.setattr("config.settings.KNN_METHOD_NAME", "hnsw")
+
+        method = build_knn_vector_field(1536)["method"]
+        assert method["engine"] == engine
+        assert method["name"] == "hnsw"
+
+    def test_jvector_still_pairs_with_disk_ann_if_reselected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("config.settings.KNN_ENGINE", "faiss")
+        monkeypatch.setattr("config.settings.KNN_METHOD_NAME", "hnsw")
+        assert build_knn_vector_field(1536)["method"]["name"] == "hnsw"
+
+        monkeypatch.setattr("config.settings.KNN_ENGINE", "jvector")
+        monkeypatch.setattr("config.settings.KNN_METHOD_NAME", "disk_ann")
+        assert build_knn_vector_field(1536)["method"]["name"] == "disk_ann"
+
+
+class TestKnnEngineValidation:
+    """An unknown OPENRAG_OPENSEARCH_KNN_ENGINE must be rejected, not defaulted.
+
+    The variable is only set when the target OpenSearch cannot serve jvector,
+    so silently falling back to it would pick the one engine known to be
+    unavailable there and fail much later, at index creation.
+    """
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [("jvector", "jvector"), ("  FAISS ", "faiss"), ("NmsLib", "nmslib")],
+    )
+    def test_known_engines_are_normalised(self, raw: str, expected: str) -> None:
+        assert _resolve_knn_engine(raw) == expected
+
+    @pytest.mark.parametrize("raw", ["jvecotr", "lucene", ""])
+    def test_unknown_engine_raises_with_the_valid_values(self, raw: str) -> None:
+        with pytest.raises(ValueError, match="OPENRAG_OPENSEARCH_KNN_ENGINE") as excinfo:
+            _resolve_knn_engine(raw)
+
+        message = str(excinfo.value)
+        assert repr(raw.strip().lower()) in message
+        for engine in ("jvector", "faiss", "nmslib"):
+            assert engine in message
 
 
 class TestBuildKnnVectorFieldIsolation:
