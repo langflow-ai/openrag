@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import {
   type AffectedEmbeddingModel,
   isEmbeddingProviderInUseError,
+  isEmbeddingUsageUnknownError,
   useUpdateSettingsMutation,
 } from "@/app/api/mutations/useUpdateSettingsMutation";
 import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
@@ -60,6 +61,7 @@ const ProviderSettingsDialog = ({
   const [affectedModels, setAffectedModels] = useState<
     AffectedEmbeddingModel[] | undefined
   >(undefined);
+  const [embeddingUsageUnknown, setEmbeddingUsageUnknown] = useState(false);
   const [azureAuthMethod, setAzureAuthMethod] = useState("api_key");
   const [onPremAuthMethod, setOnPremAuthMethod] = useState("username_api_key");
   const router = useRouter();
@@ -140,11 +142,17 @@ const ProviderSettingsDialog = ({
       toast.success(`${chrome.name} configuration removed`);
       setShowRemoveConfirm(false);
       setAffectedModels(undefined);
+      setEmbeddingUsageUnknown(false);
       setOpen(false);
     },
     onError: (err) => {
+      setShowRemoveConfirm(true);
       if (isEmbeddingProviderInUseError(err)) {
+        setEmbeddingUsageUnknown(false);
         setAffectedModels(err.affectedModels);
+      } else if (isEmbeddingUsageUnknownError(err)) {
+        setAffectedModels(undefined);
+        setEmbeddingUsageUnknown(true);
       }
     },
   });
@@ -219,6 +227,7 @@ const ProviderSettingsDialog = ({
       onOpenChange={(o) => {
         setShowRemoveConfirm(false);
         setAffectedModels(undefined);
+        setEmbeddingUsageUnknown(false);
         setOpen(o);
       }}
     >
@@ -271,7 +280,8 @@ const ProviderSettingsDialog = ({
                     </m.div>
                   )}
                   {removeMutation.isError &&
-                    !isEmbeddingProviderInUseError(removeMutation.error) && (
+                    !isEmbeddingProviderInUseError(removeMutation.error) &&
+                    !isEmbeddingUsageUnknownError(removeMutation.error) && (
                       <m.div
                         key="remove-error"
                         initial={{ opacity: 0, y: 10 }}
@@ -293,11 +303,12 @@ const ProviderSettingsDialog = ({
                 onCancelRemove={() => {
                   setShowRemoveConfirm(false);
                   setAffectedModels(undefined);
+                  setEmbeddingUsageUnknown(false);
                 }}
                 onConfirmRemove={() =>
                   removeMutation.mutate({
                     remove_provider_config: provider,
-                    force_remove: !!affectedModels,
+                    force_remove: !!affectedModels || embeddingUsageUnknown,
                   })
                 }
                 isRemovePending={removeMutation.isPending}
@@ -310,6 +321,7 @@ const ProviderSettingsDialog = ({
                 isSavePending={settingsMutation.isPending}
                 isValidating={false}
                 affectedModels={affectedModels}
+                embeddingUsageUnknown={embeddingUsageUnknown}
               />
             </div>
           </form>

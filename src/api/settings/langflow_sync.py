@@ -338,9 +338,8 @@ async def _run_async_post_save_langflow_updates(
         current_config = get_openrag_config()
         flows_service = _get_flows_service()
 
-        # Refresh model registry so get_litellm_model_name(strict=True) sees the
-        # updated provider list — force_remove skips _affected_embedding_models which
-        # is the usual registry refresh trigger.
+        # Refresh the model registry after provider-list changes so strict
+        # LiteLLM model resolution sees the saved configuration.
         if models_service is not None:
             await models_service.update_model_registry()
 

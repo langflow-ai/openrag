@@ -99,6 +99,11 @@ export const isEmbeddingProviderInUseError = (
   Array.isArray(err.affectedModels) &&
   err.affectedModels.length > 0;
 
+export const isEmbeddingUsageUnknownError = (
+  err: unknown,
+): err is UpdateSettingsError =>
+  err instanceof UpdateSettingsError && err.code === "embedding_usage_unknown";
+
 export interface UpdateSettingsResponse {
   message: string;
   settings: Settings;

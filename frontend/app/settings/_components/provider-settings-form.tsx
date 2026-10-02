@@ -179,9 +179,9 @@ export function ProviderSettingsForm({
   const onPremConnectionFields = fields.filter(
     (field) => field.key === "api_base",
   );
-  const onPremAdvancedFields = fields.filter((field) =>
-    ["space_id", "project_id", "ssl_verify"].includes(field.key),
-  );
+  const onPremAdvancedFields = ["ssl_verify", "space_id", "project_id"]
+    .map((key) => fields.find((field) => field.key === key))
+    .filter((field): field is CatalogCredentialField => Boolean(field));
 
   return (
     <div className="min-w-0 space-y-4">
