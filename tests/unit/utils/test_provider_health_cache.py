@@ -74,6 +74,17 @@ def test_invalidate_clears_all_entries():
         ),
         ("embedding_project_id", "proj-abc", "proj-xyz"),
         ("embedding_api_key", "key-1", "key-2"),
+        ("embedding_oci_user", "ocid1.user.oc1..aaa", "ocid1.user.oc1..bbb"),
+        ("embedding_oci_fingerprint", "aa:bb:cc", "dd:ee:ff"),
+        ("embedding_oci_tenancy", "ocid1.tenancy.oc1..aaa", "ocid1.tenancy.oc1..bbb"),
+        (
+            "embedding_oci_compartment_id",
+            "ocid1.compartment.oc1..aaa",
+            "ocid1.compartment.oc1..bbb",
+        ),
+        ("embedding_oci_key", "-----BEGIN PRIVATE KEY-----\naaa", "-----BEGIN PRIVATE KEY-----\nbbb"),
+        ("embedding_oci_key_file", "/tmp/a.pem", "/tmp/b.pem"),
+        ("embedding_oci_auth_method", "instance_principal", "workload_identity"),
     ],
 )
 def test_cache_key_differs_when_any_field_changes(field, a, b):
@@ -89,6 +100,11 @@ def test_cache_key_does_not_leak_api_key_in_plaintext():
     # The key is BLAKE2b hex, so the raw api_key must not appear anywhere in it.
     assert "super-secret" not in key
     assert "token-12345" not in key
+
+
+def test_cache_key_does_not_leak_oci_inline_key_in_plaintext():
+    key = _key(embedding_oci_key="-----BEGIN PRIVATE KEY-----\nsuper-secret-pem-body")
+    assert "super-secret-pem-body" not in key
 
 
 def test_cache_entries_expire_after_ttl(monkeypatch):

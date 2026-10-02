@@ -18,7 +18,6 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-
 async def _fetch_models(provider, config, models_service):
     """Fetch models for the given provider using config credentials."""
     if provider == "openai":
@@ -46,6 +45,11 @@ async def _fetch_models(provider, config, models_service):
                 {"error": "Ollama endpoint not configured. Set it in Settings."}, status_code=400
             )
         models = await models_service.get_ollama_models(endpoint=endpoint)
+        return models, None
+
+    if provider == "oci":
+        # Static list - no credentials required to list the available models.
+        models = await models_service.get_oci_models()
         return models, None
 
     if provider == "watsonx":
