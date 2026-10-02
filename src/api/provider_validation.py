@@ -734,6 +734,7 @@ async def validate_provider_setup(
     test_completion: bool = False,
     credentials: dict[str, str] | None = None,
     stored_credentials: Mapping[str, Any] | None = None,
+    verify_model: bool = False,
 ) -> ProbeResult:
     """
     Validate provider setup by testing completion with tool calling and embedding.
@@ -752,6 +753,12 @@ async def validate_provider_setup(
                         Only a provider enhancement's lightweight check reads it: a provider with
                         separate chat and embedding endpoints has ``credentials`` narrowed to one
                         of them, and the check has to see both to probe both.
+        verify_model: Call the given model through LiteLLM even without ``test_completion``.
+                        The settings save passes it: for a provider enhancement that real call
+                        is the only check that rejects a model the cluster does not serve
+                        before it is stored. Without it, and without ``test_completion``, an
+                        enhancement gets its model-free lightweight check like any other
+                        provider.
 
     Returns:
         ProbeResult: what the successful validation exercised.
@@ -773,17 +780,21 @@ async def validate_provider_setup(
             f"Starting validation for provider: {provider_lower} (test_completion={test_completion})"
         )
 
-        # watsonx.ai on-prem has no bespoke model probe of its own: a real call
-        # through LiteLLM *is* its model probe, and it is what makes switching to
-        # a model the cluster does not serve fail instead of saving silently. Its
-        # catalogue check is only for the case there is no model to probe with,
-        # which is the one that used to report "A model is required".
+        # A provider enhancement has no bespoke model probe of its own: a real
+        # call through LiteLLM *is* its model probe, and it is what makes
+        # switching to a model the cluster does not serve fail instead of saving
+        # silently. It runs only when asked for — on save (`verify_model`) or a
+        # full check (`test_completion`). The polled health check asks for
+        # neither and gets the model-free lightweight check, as every other
+        # provider does: polling inference every 30s holds a GPU slot (RHOAI) or
+        # bills (watsonx.ai on-prem), and its pooled connections race the
+        # model server's keep-alive and fail with "Server disconnected".
         enhancement = get_provider_enhancement(provider_lower)
         azure_ai_foundry_endpoint = provider_lower == "azure" and is_azure_ai_foundry_endpoint(
             supplied.get("api_base")
         )
         probes_the_model = (
-            bool(embedding_model or llm_model)
+            bool(embedding_model or llm_model) and (test_completion or verify_model)
             if enhancement is not None
             else (
                 provider_lower not in _NATIVELY_VALIDATED_PROVIDERS

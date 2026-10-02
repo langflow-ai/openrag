@@ -77,6 +77,50 @@ async def test_the_litellm_probe_calls_the_model_without_tools(monkeypatch, call
     assert result == ProbeResult(model_probed=True, tools_exercised=False)
 
 
+@pytest.fixture
+def enhancement(monkeypatch):
+    monkeypatch.setattr(
+        provider_validation, "get_provider_enhancement", lambda _p: SimpleNamespace()
+    )
+    monkeypatch.setattr("enhancements.providers.registry.runtime_kwargs_for", lambda *_a, **_k: {})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", [{"llm_model": "granite"}, {"embedding_model": "granite-emb"}])
+async def test_a_polled_enhancement_check_calls_no_model(calls, enhancement, model):
+    """The 30s health poll must not run inference on RHOAI / watsonx.ai on-prem.
+
+    It held a GPU slot (or billed) on every poll, and its pooled connections
+    raced vLLM's 5s keep-alive into "Server disconnected" banners.
+    """
+    result = await validate_provider_setup(provider="rhoai", credentials={}, **model)
+
+    assert calls == ["test_lightweight_health"]
+    assert result == ProbeResult()
+
+
+@pytest.mark.asyncio
+async def test_a_save_still_probes_the_enhancement_model(calls, enhancement):
+    """`verify_model` keeps the pre-save check that rejects an unserved model."""
+    result = await validate_provider_setup(
+        provider="rhoai", llm_model="granite", credentials={}, verify_model=True
+    )
+
+    assert calls == ["_test_litellm_provider"]
+    assert result == ProbeResult(model_probed=True, tools_exercised=False)
+
+
+@pytest.mark.asyncio
+async def test_verify_model_does_not_change_a_native_provider(calls):
+    """Native providers keep their own lightweight check on save."""
+    result = await validate_provider_setup(
+        provider="openai", api_key="k", llm_model="gpt-4o", verify_model=True
+    )
+
+    assert calls == ["test_lightweight_health"]
+    assert result == ProbeResult()
+
+
 @pytest.mark.asyncio
 async def test_azure_lists_deployments_and_calls_no_model(calls):
     result = await validate_provider_setup(
