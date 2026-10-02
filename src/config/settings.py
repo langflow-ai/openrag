@@ -616,6 +616,12 @@ DOCLING_SERVE_VERIFY_SSL = os.getenv("DOCLING_SERVE_VERIFY_SSL", "true").lower()
     "1",
     "yes",
 )
+# Path to a PEM CA bundle for verifying the Docling Serve TLS certificate.
+# The operator mounts the interpod CA and sets this path when interpod TLS is
+# enabled.  When unset, httpx's default CA bundle (certifi) is used.
+DOCLING_SERVE_CA_CERT = os.getenv("DOCLING_SERVE_CA_CERT")  # e.g. /app/certs/interpod-ca/ca.crt
+if DOCLING_SERVE_CA_CERT and not os.path.isfile(DOCLING_SERVE_CA_CERT):
+    raise RuntimeError(f"DOCLING_SERVE_CA_CERT path does not exist: {DOCLING_SERVE_CA_CERT!r}")
 
 
 # Skip the OpenSearch security context setup (roles, role mappings,
@@ -745,6 +751,22 @@ else:
     DOCLING_HOST_IP = determine_docling_host()
     DOCLING_SERVE_URL = f"http://{DOCLING_HOST_IP}:5001"
     logger.info("Auto-detected Docling host: %s (URL: %s)", DOCLING_HOST_IP, DOCLING_SERVE_URL)
+
+
+def _docling_tls_kwargs() -> dict[str, Any]:
+    """httpx TLS kwargs for outbound backend -> Docling Serve connections.
+
+    One-way TLS only: the backend verifies Docling's server certificate but
+    does NOT present a client certificate (no mTLS on this leg, by design),
+    so unlike _langflow_tls_kwargs() there is no load_cert_chain() here.
+
+    Only when verification is on and DOCLING_SERVE_CA_CERT is set does this
+    build an SSLContext trusting that CA.  Otherwise the bool is passed through
+    unchanged, so httpx keeps its default behaviour (certifi when true).
+    """
+    if DOCLING_SERVE_VERIFY_SSL and DOCLING_SERVE_CA_CERT:
+        return {"verify": ssl.create_default_context(cafile=DOCLING_SERVE_CA_CERT)}
+    return {"verify": DOCLING_SERVE_VERIFY_SSL}
 
 
 def get_langflow_docling_url() -> str:
@@ -1259,7 +1281,7 @@ class AppClients:
     def _create_docling_http_client(self):
         """Create a new AsyncClient for Docling bound to the currently running event loop."""
         self.docling_http_client = httpx.AsyncClient(
-            verify=DOCLING_SERVE_VERIFY_SSL,
+            **_docling_tls_kwargs(),
             timeout=httpx.Timeout(
                 timeout=INGESTION_TIMEOUT,
                 connect=30.0,
