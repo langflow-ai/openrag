@@ -783,7 +783,10 @@ class ConfigManager:
         # user-selected model preference. It must remain overridable after the
         # settings file is marked edited so existing installations can resolve
         # legacy vector spaces without modifying persisted application state.
-        from config.settings import get_legacy_embedding_provider_map_json
+        from config.settings import (
+            get_legacy_embedding_provider_map_json,
+            get_rhoai_env_credentials,
+        )
 
         legacy_provider_map_json = get_legacy_embedding_provider_map_json()
         if legacy_provider_map_json:
@@ -890,29 +893,15 @@ class ConfigManager:
         # lets a Helm (`llmProviders.rhoai.*`) or operator (`spec.rhoai`) install
         # come up configured with no human clicking through Settings, which is
         # the point on an air-gapped cluster.
-        rhoai_endpoint = os.getenv("RHOAI_ENDPOINT")
-        rhoai_embeddings_endpoint = os.getenv("RHOAI_EMBEDDINGS_ENDPOINT")
-        rhoai_api_key = os.getenv("RHOAI_API_KEY")
-        rhoai_tls_verify = os.getenv("RHOAI_TLS_VERIFY")
-        rhoai_embedding_max_concurrency = os.getenv("RHOAI_EMBEDDING_MAX_CONCURRENCY")
-        if (
-            rhoai_endpoint
-            or rhoai_embeddings_endpoint
-            or rhoai_api_key
-            or rhoai_tls_verify
-            or rhoai_embedding_max_concurrency
-        ):
+        rhoai_env = get_rhoai_env_credentials()
+        if any(rhoai_env.values()):
+            # Field names only: `api_key` is a bearer token.
+            logger.debug(
+                "Seeding the rhoai provider from environment variables",
+                fields=sorted(name for name, value in rhoai_env.items() if value),
+            )
             self._seed_custom_provider_credentials(
-                config_data,
-                "rhoai",
-                {
-                    "api_base": rhoai_endpoint,
-                    "embedding_api_base": rhoai_embeddings_endpoint,
-                    "api_key": rhoai_api_key,
-                    "ssl_verify": rhoai_tls_verify,
-                    "embedding_max_concurrency": rhoai_embedding_max_concurrency,
-                },
-                required=("api_base", "api_key"),
+                config_data, "rhoai", rhoai_env, required=("api_base", "api_key")
             )
 
         # Knowledge settings
