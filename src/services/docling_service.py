@@ -13,7 +13,7 @@ from pydantic import BaseModel, computed_field
 from config.settings import (
     DOCLING_ERROR_DETAIL_MAX_LENGTH,
     DOCLING_SERVE_URL,
-    DOCLING_SERVE_VERIFY_SSL,
+    _docling_tls_kwargs,
     get_openrag_config,
 )
 from utils.container_utils import transform_localhost_url
@@ -266,7 +266,7 @@ class DoclingService:
             return self.httpx_client
         if DoclingService._default_client is None or DoclingService._default_client.is_closed:
             DoclingService._default_client = httpx.AsyncClient(
-                timeout=httpx.Timeout(300.0, connect=10.0), verify=DOCLING_SERVE_VERIFY_SSL
+                timeout=httpx.Timeout(300.0, connect=10.0), **_docling_tls_kwargs()
             )
         return DoclingService._default_client
 
