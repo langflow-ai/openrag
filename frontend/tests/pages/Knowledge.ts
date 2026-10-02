@@ -1074,8 +1074,25 @@ export class Knowledge {
     await searchInp.clear();
     await searchInp.fill(searchToken);
     await this.page.keyboard.press("Enter");
-    // Wait for search to complete and chunks to re-rank
-    await this.page.waitForTimeout(2000);
+    // The panel filters via React's useDeferredValue, so the DOM update is
+    // asynchronous. Poll until at least one rendered blockquote contains the
+    // search token — this is the only reliable signal that the deferred filter
+    // update has fully committed, rather than treating a visible-but-stale
+    // first chunk or a fixed delay as evidence of completion.
+    await expect
+      .poll(
+        async () => {
+          const chunks = this.chunkElements();
+          const count = await chunks.count();
+          for (let i = 0; i < count; i++) {
+            const text = await chunks.nth(i).textContent();
+            if (text?.includes(searchToken)) return true;
+          }
+          return false;
+        },
+        { timeout: 10000 },
+      )
+      .toBe(true);
     // Get all chunks after search
     const allChunks = await this.getAllChunks();
     // Return only the top 2 chunks
