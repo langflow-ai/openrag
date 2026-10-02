@@ -22,6 +22,11 @@ import {
 } from "@/lib/chat-stream-errors";
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
+import {
+  EMPTY_IME_STATE,
+  handleInputKeyDown,
+  type ImeCompositionState,
+} from "@/lib/ime-composition";
 import { uploadFileForContext } from "@/lib/upload-utils";
 import { resolveDisplayName } from "@/lib/user";
 import { cn } from "@/lib/utils";
@@ -961,6 +966,38 @@ function ChatPage() {
     handleSendMessage(suggestion);
   };
 
+  const handleChatInputKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+    imeState?: ImeCompositionState,
+  ) => {
+    // Handle backspace for filter clearing
+    if (e.key === "Backspace" && selectedFilter && input.trim() === "") {
+      e.preventDefault();
+      if (isFilterHighlighted) {
+        // Second backspace - remove the filter
+        setConversationFilter(null);
+        setIsFilterHighlighted(false);
+      } else {
+        // First backspace - highlight the filter
+        setIsFilterHighlighted(true);
+      }
+      return;
+    }
+
+    handleInputKeyDown(
+      e,
+      imeState ?? chatInputRef.current?.getImeState() ?? EMPTY_IME_STATE,
+      () => {
+        if (input.trim() && !loading) {
+          const form = e.currentTarget.closest("form");
+          if (form) {
+            form.requestSubmit();
+          }
+        }
+      },
+    );
+  };
+
   return (
     <>
       {/* Full-screen drag & drop overlay */}
@@ -1180,37 +1217,7 @@ function ChatPage() {
           uploadedFile={uploadedFile}
           onSubmit={handleSubmit}
           onChange={setInput}
-          onKeyDown={(e) => {
-            // Handle backspace for filter clearing
-            if (
-              e.key === "Backspace" &&
-              selectedFilter &&
-              input.trim() === ""
-            ) {
-              e.preventDefault();
-              if (isFilterHighlighted) {
-                // Second backspace - remove the filter
-                setConversationFilter(null);
-                setIsFilterHighlighted(false);
-              } else {
-                // First backspace - highlight the filter
-                setIsFilterHighlighted(true);
-              }
-              return;
-            }
-
-            // Handle Enter key for form submission
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              if (input.trim() && !loading) {
-                // Trigger form submission by finding the form and calling submit
-                const form = e.currentTarget.closest("form");
-                if (form) {
-                  form.requestSubmit();
-                }
-              }
-            }
-          }}
+          onKeyDown={handleChatInputKeyDown}
           ingestViaChat={settings?.ingest_via_chat ?? false}
           onFilterSelect={handleFilterSelect}
           onFilePickerClick={handleFilePickerClick}
