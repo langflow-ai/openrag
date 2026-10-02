@@ -583,7 +583,7 @@ export function IngestSettingsSection() {
   };
 
   useRegisterSave("ingest-settings", {
-    isDirty: userEdited && knowledgeIngestDirty,
+    isDirty: knowledgeIngestDirty,
     blocked: vlmModelPending || !!chunkValidationError,
     save: handleKnowledgeIngestSave,
   });

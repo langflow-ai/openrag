@@ -2,7 +2,7 @@ import type { RequestHandler } from "msw";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { IngestionTab } from "@/app/settings/_components/ingestion-tab";
-import { authPresets } from "@/test-utils/fixtures/auth";
+import { authPresets, withAuth } from "@/test-utils/fixtures/auth";
 import { makeSettings } from "@/test-utils/fixtures/settings";
 import { server } from "@/test-utils/msw/server";
 import {
@@ -61,10 +61,11 @@ function baseHandlers(
 function renderSection(
   extraHandlers: RequestHandler[] = [],
   knowledge?: { chunk_size: number; chunk_overlap: number },
+  auth = authPresets.admin,
 ) {
   return renderWithProviders(<IngestionTab />, {
     providers: ["tooltip", "auth", "unsavedChanges"],
-    auth: authPresets.admin,
+    auth,
     handlers: [...baseHandlers(knowledge), ...extraHandlers],
   });
 }
@@ -373,6 +374,64 @@ describe("IngestSettingsSection", () => {
       });
     });
   });
+
+  // ── Group 4b: Restore flow enables Save via knowledgeIngestDirty ──────────
+
+  describe("restore flow", () => {
+    it("enables Save after restoring defaults, without the user editing a field", async () => {
+      // Server state differs from the hard-coded DEFAULT_KNOWLEDGE_SETTINGS the
+      // restore handler writes, so restoring produces a real diff against `k`.
+      // "flows:edit" isn't in the admin preset's permission list, so grant it
+      // directly — otherwise RequirePermission hides the Restore flow button.
+      renderSection(
+        [],
+        { chunk_size: 500, chunk_overlap: 50 },
+        withAuth(authPresets.admin, {
+          usersMe: { permissions: ["flows:edit"] },
+        }),
+      );
+
+      server.use(
+        http.post("/api/reset-flow/ingest", () => HttpResponse.json({})),
+      );
+
+      const input = await screen.findByRole("spinbutton", {
+        name: /chunk size/i,
+      });
+      expect(input).toHaveValue(500);
+
+      // The server-sync effect settles a tick after the value appears, so
+      // wait for it rather than asserting disabled against a transient render.
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: /save changes/i }),
+        ).toBeDisabled();
+      });
+
+      await userEvent.click(
+        await screen.findByRole("button", { name: /restore flow/i }),
+      );
+      await userEvent.click(
+        screen.getByRole("button", { name: /^restore$/i }),
+      );
+
+      // Restore writes DEFAULT_KNOWLEDGE_SETTINGS.chunk_size (1000) locally
+      // without touching the server, and without the user ever typing into a
+      // field (userEdited stays false). Save must still enable off the raw
+      // diff against the server (knowledgeIngestDirty), not userEdited.
+      await waitFor(() => {
+        expect(
+          screen.getByRole("spinbutton", { name: /chunk size/i }),
+        ).toHaveValue(1000);
+      });
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: /save changes/i }),
+        ).toBeEnabled();
+      });
+    });
+  });
+
   // ── Group 5: chunk steppers and toggle switches ───────────────────────────
 
   describe("chunk steppers", () => {
