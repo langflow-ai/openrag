@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { backendFetch, getBackendBaseUrl } from "@/lib/backend-fetch";
 import {
   backendProxyDuration,
   backendProxyErrors,
@@ -46,15 +47,9 @@ export async function PATCH(
 }
 
 async function proxyRequest(request: NextRequest, params: { path: string[] }) {
-  const backendHost = process.env.OPENRAG_BACKEND_HOST || "localhost";
-  const backendSSL = process.env.OPENRAG_BACKEND_SSL === "true";
-  const backendPort = process.env.OPENRAG_BACKEND_PORT || "8000";
   const path = params.path.join("/");
   const searchParams = request.nextUrl.searchParams.toString();
-  let backendUrl = `http://${backendHost}:${backendPort}/${path}${searchParams ? `?${searchParams}` : ""}`;
-  if (backendSSL) {
-    backendUrl = `https://${backendHost}:${backendPort}/${path}${searchParams ? `?${searchParams}` : ""}`;
-  }
+  const backendUrl = `${getBackendBaseUrl()}/${path}${searchParams ? `?${searchParams}` : ""}`;
   const requestId = getRequestId(request);
   const start = performance.now();
 
@@ -122,7 +117,7 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
       method: request.method,
       path: `/${path}`,
     });
-    const response = await fetch(backendUrl, init);
+    const response = await backendFetch(backendUrl, init);
     const durationMs = Math.round(performance.now() - start);
     const durationSeconds = durationMs / 1000;
 
