@@ -627,7 +627,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 query_body = {
                     "query": {
                         "multi_match": {
-                            "query": s,
+                            "query": s.translate(CJK_RADICAL_TABLE),
                             "fields": ["text^2", "filename^1.5"],
                             "type": "best_fields",
                             "fuzziness": "AUTO",
@@ -2101,7 +2101,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         """
         logger.info(self.ingest_data)
         client = self.build_client()
-        q = (query or "").strip()
+        q = (query or "").strip().translate(CJK_RADICAL_TABLE)
 
         # Parse optional filter expression
         filter_obj = self._parse_filter_expression()

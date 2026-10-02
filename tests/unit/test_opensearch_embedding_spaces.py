@@ -1,4 +1,5 @@
 import importlib
+import json
 import sys
 from types import ModuleType, SimpleNamespace
 
@@ -322,6 +323,50 @@ def test_search_remains_keyword_capable_without_embedding_adapter(
             }
         }
     ]
+
+
+def test_search_normalizes_radicals_for_embedding_and_keyword_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    client = _SearchClient(
+        {"aggregations": {}},
+        {"chunk_embedding_model": {"type": "knn_vector", "dimension": 2}},
+    )
+    embedded = []
+
+    class Embedding:
+        model = "model"
+
+        def embed_query(self, query):
+            embedded.append(query)
+            return [0.1, 0.2]
+
+    component = _component(module, client, Embedding())
+    component._detect_available_models = lambda client, filters: [
+        module.EmbeddingSpace("model", "model", "model")
+    ]
+
+    component.search("  ⽉ ⽇  ")
+
+    assert embedded == ["月 日"]
+    assert client.query["query"]["bool"]["should"][1]["multi_match"]["query"] == "月 日"
+
+
+@pytest.mark.parametrize("as_json_string", [False, True])
+def test_raw_search_normalizes_plain_text_but_preserves_json_dsl(
+    monkeypatch: pytest.MonkeyPatch, as_json_string: bool
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    client = _SearchClient({"aggregations": {}}, {})
+    component = _component(module, client, None)
+
+    component.raw_search("  ⽉ ⽇  ")
+    assert client.query["query"]["multi_match"]["query"] == "月 日"
+
+    dsl = {"query": {"match": {"text": "⽉ ⽇"}}}
+    component.raw_search(json.dumps(dsl) if as_json_string else dsl)
+    assert client.query == dsl
 
 
 def test_direct_ingest_persists_provider_qualified_space(
