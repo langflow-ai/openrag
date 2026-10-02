@@ -178,6 +178,46 @@ def is_provider_truncated_response_error(text: str | BaseException | None) -> bo
     return any(marker in lowered for marker in _PROVIDER_TRUNCATED_RESPONSE_MARKERS)
 
 
+#: How deep to follow `__cause__` / `__context__`. LiteLLM wraps the transport
+#: error three times (its exception, the provider's, `httpx.ReadError`).
+_MAX_EXCEPTION_CHAIN_DEPTH = 8
+
+
+def is_provider_stale_connection_error(exc: BaseException | None) -> bool:
+    """True when the connection closed before any response to the request began.
+
+    Nearly always a pooled keep-alive connection the model server had already
+    closed: LiteLLM keeps idle connections for 120s, vLLM (uvicorn) closes them
+    after 5s, and a request sent while the close is still in flight finds a
+    dead socket. The server never saw the request, so sending it again on a
+    fresh connection is safe. Matched on the transport's own exception type,
+    not its text: a response cut off mid-body raises a different error
+    (`is_provider_truncated_response_error`) and must not be replayed.
+    """
+    disconnect_types: tuple[type[BaseException], ...] = ()
+    try:
+        from aiohttp import ServerDisconnectedError
+    except ImportError:  # pragma: no cover - aiohttp ships with LiteLLM
+        pass
+    else:
+        disconnect_types = (ServerDisconnectedError,)
+
+    current = exc
+    for _ in range(_MAX_EXCEPTION_CHAIN_DEPTH):
+        if current is None:
+            return False
+        if isinstance(current, disconnect_types):
+            return True
+        # The same failure on LiteLLM's httpx transport (a provider handed its
+        # own client). Other RemoteProtocolErrors can follow a partial response.
+        if isinstance(current, httpx.RemoteProtocolError) and (
+            "without sending a response" in str(current).lower()
+        ):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
 #: Markers for a prompt that does not fit the model's context window. That is a
 #: property of one request — a long conversation, a lot of retrieved text — and
 #: says nothing about whether the provider is serving.
@@ -892,6 +932,7 @@ async def _test_litellm_provider(
     """Validate arbitrary providers through the same LiteLLM adapter used at runtime."""
     import litellm
 
+    from services.llm_gateway import with_stale_connection_retry
     from services.model_catalog import litellm_provider_key
 
     model = embedding_model or llm_model
@@ -900,26 +941,38 @@ async def _test_litellm_provider(
     # Same aliasing the gateway applies, so the probe hits the route the real
     # call will: `watsonx_onprem/<model>` is not a prefix LiteLLM can resolve.
     litellm_model = f"{litellm_provider_key(provider)}/{model}"
+    # And the same retry: a dead pooled connection is not a provider failure,
+    # and reporting one would block a save or raise the banner for nothing.
     if embedding_model:
-        await litellm.aembedding(
+        await with_stale_connection_retry(
+            lambda: litellm.aembedding(
+                model=litellm_model,
+                # A list, never a bare string. OpenAI accepts either and LiteLLM
+                # forwards whatever it is given, so a string reaches watsonx.ai as
+                # `"inputs": "..."` where it requires `[]string` — the cluster then
+                # answers "Mismatch type []string with value string" and the
+                # pre-save check fails for every embedding model, which leaves a
+                # wrongly-chosen one impossible to change.
+                input=["OpenRAG provider validation"],
+                **credentials,
+                **(runtime_kwargs or {}),
+            ),
+            provider=provider,
             model=litellm_model,
-            # A list, never a bare string. OpenAI accepts either and LiteLLM
-            # forwards whatever it is given, so a string reaches watsonx.ai as
-            # `"inputs": "..."` where it requires `[]string` — the cluster then
-            # answers "Mismatch type []string with value string" and the
-            # pre-save check fails for every embedding model, which leaves a
-            # wrongly-chosen one impossible to change.
-            input=["OpenRAG provider validation"],
-            **credentials,
-            **(runtime_kwargs or {}),
+            kind="embedding",
         )
         return
-    await litellm.acompletion(
+    await with_stale_connection_retry(
+        lambda: litellm.acompletion(
+            model=litellm_model,
+            messages=[{"role": "user", "content": "Reply with OK."}],
+            max_tokens=4,
+            **credentials,
+            **(runtime_kwargs or {}),
+        ),
+        provider=provider,
         model=litellm_model,
-        messages=[{"role": "user", "content": "Reply with OK."}],
-        max_tokens=4,
-        **credentials,
-        **(runtime_kwargs or {}),
+        kind="chat",
     )
 
 
