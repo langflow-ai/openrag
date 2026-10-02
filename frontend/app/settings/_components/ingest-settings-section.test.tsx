@@ -411,9 +411,7 @@ describe("IngestSettingsSection", () => {
       await userEvent.click(
         await screen.findByRole("button", { name: /restore flow/i }),
       );
-      await userEvent.click(
-        screen.getByRole("button", { name: /^restore$/i }),
-      );
+      await userEvent.click(screen.getByRole("button", { name: /^restore$/i }));
 
       // Restore writes DEFAULT_KNOWLEDGE_SETTINGS.chunk_size (1000) locally
       // without touching the server, and without the user ever typing into a
