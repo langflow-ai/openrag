@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import json
 import re
 from collections import deque
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -1043,6 +1044,36 @@ def _reasoning_off_retry(model: str, kwargs: dict[str, Any]) -> bool:
     return True
 
 
+async def with_stale_connection_retry(
+    call: Callable[[], Awaitable[Any]], *, provider: str, model: str, kind: str
+) -> Any:
+    """Run one LiteLLM call, sending it once more if a dead pooled connection ate it.
+
+    LiteLLM keeps idle connections for 120s; vLLM closes them after 5s. A call
+    that picks one up just as the server closes it fails with "Server
+    disconnected" before the server reads a byte (it logs nothing), and the
+    replay goes out on a fresh connection. Only that failure is retried — see
+    `is_provider_stale_connection_error` — so a request the server may have
+    acted on is never sent twice. For a stream only the call that opens it is
+    wrapped, so nothing has reached the caller yet; a mid-stream failure is
+    not retried.
+    """
+    from api.provider_validation import is_provider_stale_connection_error
+
+    try:
+        return await call()
+    except Exception as exc:
+        if not is_provider_stale_connection_error(exc):
+            raise
+        logger.warning(
+            "Model server closed an idle connection before answering; retrying once",
+            provider=provider,
+            model=model,
+            kind=kind,
+        )
+        return await call()
+
+
 async def chat_completions(
     body: Mapping[str, Any], *, config=None
 ) -> dict[str, Any] | AsyncIterator[str]:
@@ -1067,20 +1098,25 @@ async def chat_completions(
     async def _call() -> Any:
         import litellm
 
-        return await litellm.acompletion(
+        return await with_stale_connection_retry(
+            lambda: litellm.acompletion(
+                model=litellm_model,
+                messages=messages,
+                stream=stream,
+                # OpenAI-compatible clients send OpenAI's full parameter set, but
+                # providers accept different subsets — watsonx rejects
+                # `parallel_tool_calls`, `max_completion_tokens` and `logit_bias`,
+                # and LiteLLM raises UnsupportedParamsError rather than ignoring
+                # them. A proxy that fans out to many providers must degrade to
+                # the provider's capabilities instead of failing the request.
+                drop_params=True,
+                **credentials,
+                **runtime_kwargs,
+                **kwargs,
+            ),
+            provider=provider,
             model=litellm_model,
-            messages=messages,
-            stream=stream,
-            # OpenAI-compatible clients send OpenAI's full parameter set, but
-            # providers accept different subsets — watsonx rejects
-            # `parallel_tool_calls`, `max_completion_tokens` and `logit_bias`,
-            # and LiteLLM raises UnsupportedParamsError rather than ignoring
-            # them. A proxy that fans out to many providers must degrade to the
-            # provider's capabilities instead of failing the request.
-            drop_params=True,
-            **credentials,
-            **runtime_kwargs,
-            **kwargs,
+            kind="chat",
         )
 
     try:
@@ -1533,11 +1569,16 @@ async def embeddings(
 
         if not should_batch:
             async with _embedding_slot(limiter, provider, litellm_model, lane):
-                result = await litellm.aembedding(
+                result = await with_stale_connection_retry(
+                    lambda: litellm.aembedding(
+                        model=litellm_model,
+                        input=embedding_input,
+                        **credentials,
+                        **runtime_kwargs,
+                    ),
+                    provider=provider,
                     model=litellm_model,
-                    input=embedding_input,
-                    **credentials,
-                    **runtime_kwargs,
+                    kind="embedding",
                 )
             response = _to_openai_dict(result)
         else:
@@ -1551,11 +1592,17 @@ async def embeddings(
             ):
                 batch = embedding_input[offset : offset + _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE]
                 async with _embedding_slot(limiter, provider, litellm_model, lane):
-                    result = await litellm.aembedding(
+                    result = await with_stale_connection_retry(
+                        functools.partial(
+                            litellm.aembedding,
+                            model=litellm_model,
+                            input=batch,
+                            **credentials,
+                            **runtime_kwargs,
+                        ),
+                        provider=provider,
                         model=litellm_model,
-                        input=batch,
-                        **credentials,
-                        **runtime_kwargs,
+                        kind="embedding",
                     )
                 payload = _to_openai_dict(result)
                 if not response:
