@@ -812,7 +812,7 @@ async def _test_litellm_provider(
         raise ValueError("A model is required to validate the provider")
     # Same aliasing the gateway applies, so the probe hits the route the real
     # call will: `watsonx_onprem/<model>` is not a prefix LiteLLM can resolve.
-    litellm_model = f"{litellm_provider_key(provider)}/{model}"
+    litellm_model = f"{litellm_provider_key(provider, credentials)}/{model}"
     if embedding_model:
         await litellm.aembedding(
             model=litellm_model,
