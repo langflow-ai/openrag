@@ -148,6 +148,16 @@ matching is against the id as the picker shows it — `gpt-3.5-turbo`, not
 name also covers Azure's regional listings (`eu/gpt-5.6-luna`,
 `us/gpt-5.6-luna`); write `eu/*` to reach one region on its own.
 
+A pattern without a wildcard matches that id and nothing else, so it does **not**
+cover the provider's dated snapshots — `gpt-5.6-luna` leaves
+`gpt-5.6-luna-2026-07-09` in the picker. To suppress a model and every snapshot
+of it, end the pattern with `*`.
+
+Excluding an id hides it from the pickers and from the live
+`/models/{provider}` lists. It does not unroute it: an operator who types the
+id by hand still reaches the model. Exclusion is a curation tool, not an access
+control.
+
 Exclusions are per provider row. Azure OpenAI serves the same models as
 OpenAI, so a model you want gone from both needs the pattern on both rows.
 
