@@ -356,6 +356,53 @@ async def test_update_settings_validates_enhancement_credentials_before_saving()
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"llm_provider": "rhoai", "llm_model": "granite-chat"},
+        {"embedding_provider": "rhoai", "embedding_model": "granite-embedding"},
+    ],
+    ids=["llm", "embedding"],
+)
+async def test_update_settings_asks_for_a_real_model_probe(fields):
+    """A model switch is verified for real, not with the polled lightweight check.
+
+    For a provider enhancement only a real call rejects a model the cluster
+    does not serve; without `verify_model` the validator would run the
+    model-free check and the switch would save, failing later in chat.
+    """
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.validate_provider_setup",
+            new_callable=AsyncMock,
+            side_effect=Exception("stop after validation arguments are captured"),
+        ) as validate,
+        patch("api.settings.endpoints.config_manager.save_config_file") as save,
+    ):
+        response = await update_settings(
+            body=SettingsUpdateBody(**fields),
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    assert response.status_code == 400
+    validate.assert_awaited_once()
+    assert validate.await_args.kwargs["verify_model"] is True
+    save.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_update_settings_skips_pre_save_check_for_litellm_only_providers():
     """Providers without an enhancement have no model-free probe to run."""
     from api.settings.endpoints import update_settings

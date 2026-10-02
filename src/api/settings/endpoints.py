@@ -575,6 +575,9 @@ async def update_settings(
                             submitted_credentials.get(llm_provider_key, {}),
                             remove=removals_by_provider.get(llm_provider_key, set()),
                         ),
+                        # A model the cluster does not serve must fail the
+                        # save, not the first chat.
+                        verify_model=True,
                     )
                     logger.info(f"LLM provider validation successful for {llm_provider}")
 
@@ -633,6 +636,7 @@ async def update_settings(
                             submitted_credentials.get(embedding_provider_key, {}),
                             remove=removals_by_provider.get(embedding_provider_key, set()),
                         ),
+                        verify_model=True,
                     )
                     logger.info(
                         f"Embedding provider validation successful for {embedding_provider}"
