@@ -259,8 +259,15 @@ def resolve_call(
     # An OpenRAG provider that LiteLLM does not know by that name is routed
     # under the key it aliases (`watsonx_onprem` -> `watsonx`). The OpenRAG key
     # is still what the caller sees and what credentials are stored under.
+    #
+    # Always qualify with the provider - including "openai". litellm only
+    # infers the provider from a bare model name via its own static catalogue
+    # (e.g. "gpt-4o"), so a custom/self-hosted OpenAI-compatible gateway
+    # serving a model outside that catalogue (e.g. "gpt-oss-120b",
+    # "Qwen3-Embedding-8B") would otherwise have no provider to route on at
+    # all, even though api_base/api_key are already being passed correctly.
     route = litellm_provider_key(provider)
-    litellm_model = f"{route}/{name}" if route != "openai" else name
+    litellm_model = f"{route}/{name}"
     return litellm_model, provider, credentials
 
 
