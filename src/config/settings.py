@@ -33,6 +33,23 @@ def get_legacy_embedding_provider_map_json() -> str | None:
     return os.getenv("OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP")
 
 
+def get_rhoai_env_credentials() -> dict[str, str | None]:
+    """Return the raw ``RHOAI_*`` first-boot seed values, keyed by credential field.
+
+    Seeds the ``rhoai`` provider enhancement (see
+    ``enhancements/providers/redhat/openshift_ai.py``). Values are passed through
+    unvalidated: the enhancement owns parsing, and an invalid
+    ``embedding_max_concurrency`` falls back to its default with a warning.
+    """
+    return {
+        "api_base": os.getenv("RHOAI_ENDPOINT"),
+        "embedding_api_base": os.getenv("RHOAI_EMBEDDINGS_ENDPOINT"),
+        "api_key": os.getenv("RHOAI_API_KEY"),
+        "ssl_verify": os.getenv("RHOAI_TLS_VERIFY"),
+        "embedding_max_concurrency": os.getenv("RHOAI_EMBEDDING_MAX_CONCURRENCY"),
+    }
+
+
 def get_opensearch_index_name_override() -> str | None:
     """Return the raw ``OPENSEARCH_INDEX_NAME`` env override.
 

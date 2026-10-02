@@ -246,6 +246,63 @@ def test_rhoai_embedding_concurrency_env_is_seeded(monkeypatch, tmp_path):
     assert config.providers.stored_credentials("rhoai")["embedding_max_concurrency"] == "8"
 
 
+def test_rhoai_env_credentials_accessor_maps_env_names_to_fields(monkeypatch):
+    """Each RHOAI_* variable lands under the credential field the enhancement reads."""
+    from config.settings import get_rhoai_env_credentials
+
+    _clear_rhoai_env(monkeypatch)
+    monkeypatch.setenv("RHOAI_ENDPOINT", "https://chat.svc:8443/v1")
+    monkeypatch.setenv("RHOAI_EMBEDDINGS_ENDPOINT", "https://embed.svc:8443/v1")
+    monkeypatch.setenv("RHOAI_API_KEY", "sha256~token")
+    monkeypatch.setenv("RHOAI_TLS_VERIFY", "/var/run/secrets/service-ca.crt")
+    monkeypatch.setenv("RHOAI_EMBEDDING_MAX_CONCURRENCY", "6")
+
+    assert get_rhoai_env_credentials() == {
+        "api_base": "https://chat.svc:8443/v1",
+        "embedding_api_base": "https://embed.svc:8443/v1",
+        "api_key": "sha256~token",
+        "ssl_verify": "/var/run/secrets/service-ca.crt",
+        "embedding_max_concurrency": "6",
+    }
+
+
+def test_rhoai_seed_is_read_through_settings_boundary(monkeypatch, tmp_path):
+    """Seeding goes through `config.settings`, and stores values unvalidated: an
+    invalid concurrency limit is the enhancement's to reject (default + warning)."""
+    from config.config_manager import ConfigManager
+
+    _clear_rhoai_env(monkeypatch)
+    monkeypatch.setattr(
+        "config.settings.get_rhoai_env_credentials",
+        lambda: {
+            "api_base": "https://chat.svc:8443/v1",
+            "embedding_api_base": None,
+            "api_key": "sha256~token",
+            "ssl_verify": None,
+            "embedding_max_concurrency": "not-a-number",
+        },
+    )
+
+    config = ConfigManager(config_file=tmp_path / "config.yaml").load_config()
+
+    assert config.providers.custom["rhoai"].configured is True
+    assert config.providers.stored_credentials("rhoai") == {
+        "api_base": "https://chat.svc:8443/v1",
+        "api_key": "sha256~token",
+        "embedding_max_concurrency": "not-a-number",
+    }
+
+
+def test_rhoai_is_not_seeded_when_no_env_is_set(monkeypatch, tmp_path):
+    from config.config_manager import ConfigManager
+
+    _clear_rhoai_env(monkeypatch)
+
+    config = ConfigManager(config_file=tmp_path / "config.yaml").load_config()
+
+    assert "rhoai" not in config.providers.custom
+
+
 def _clear_watsonx_onprem_env(monkeypatch):
     for name in (
         "WATSONX_ENDPOINT_ONPREM",
