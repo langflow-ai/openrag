@@ -18,11 +18,28 @@ from config.settings import (
     get_ingest_callback_url,
 )
 from services.document_index_writer import DocumentIndexContext
+from services.models_service import bedrock_credential_kwargs, is_cohere_embedding_model
 from utils.hash_utils import hash_id
 from utils.langflow_utils import enable_mcp_none_for_project
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Bedrock's Cohere Embed v3 hard-limits input to 512 tokens per text entry
+# (see models/processors.py's `max_tokens = 512` cap, which enforces this
+# exactly via tiktoken on the non-Langflow ingest path). Langflow's own
+# "Split Text" component only accepts a character count for its chunk_size
+# tweak, and the Langflow embedding component does not truncate oversized
+# chunks, so there's no tokenizer available at this layer to enforce the
+# same limit exactly - this is a conservative character-based approximation
+# of it instead. 2 chars/token is a reasonable Latin-script heuristic
+# (English averages ~4 chars/token), but is not a guaranteed ceiling: a
+# script running under ~1 char/token can still exceed 512 tokens at this
+# character count, and Split Text's CharacterTextSplitter can also emit a
+# piece larger than chunk_size when a single separator-delimited segment
+# already exceeds it. Good enough to catch the common case; not a substitute
+# for the token-exact cap in processors.py.
+BEDROCK_MAX_CHUNK_CHARS = 512 * 2
 
 
 class LangflowFileService:
@@ -112,16 +129,41 @@ class LangflowFileService:
                 config.knowledge, "chunk_overlap", DEFAULT_CHUNK_OVERLAP
             )
 
-        if not settings:
-            return final_tweaks
+        if settings:
+            if (
+                settings.get("chunkSize")
+                or settings.get("chunkOverlap")
+                or settings.get("separator")
+            ):
+                if settings.get("chunkSize"):
+                    final_tweaks["Split Text"]["chunk_size"] = settings["chunkSize"]
+                if settings.get("chunkOverlap"):
+                    final_tweaks["Split Text"]["chunk_overlap"] = settings["chunkOverlap"]
+                if settings.get("separator"):
+                    final_tweaks["Split Text"]["separator"] = settings["separator"]
 
-        if settings.get("chunkSize") or settings.get("chunkOverlap") or settings.get("separator"):
-            if settings.get("chunkSize"):
-                final_tweaks["Split Text"]["chunk_size"] = settings["chunkSize"]
-            if settings.get("chunkOverlap"):
-                final_tweaks["Split Text"]["chunk_overlap"] = settings["chunkOverlap"]
-            if settings.get("separator"):
-                final_tweaks["Split Text"]["separator"] = settings["separator"]
+        # Bedrock/Cohere Embed models cap input at 512 tokens per chunk (see
+        # BEDROCK_MAX_CHUNK_CHARS above) - clamp regardless of whether
+        # chunk_size came from config defaults or UI settings above. The
+        # model-name check uses the effective model for this run: API/
+        # connector callers can override it per-request via
+        # settings["embeddingModel"] (see selected_embedding_model in
+        # run_ingestion_flow), which takes precedence over the account-wide
+        # config default - a Cohere override on an otherwise-non-Bedrock
+        # account must still be clamped. The provider check stays
+        # unconditional on the account-wide config: every model Bedrock
+        # currently serves in this codebase is a Cohere model, so there is
+        # no override scenario where embedding_provider == "bedrock" and the
+        # clamp should NOT apply.
+        effective_embedding_model = (
+            settings.get("embeddingModel") if settings else None
+        ) or config.knowledge.embedding_model
+        if config.knowledge.embedding_provider == "bedrock" or is_cohere_embedding_model(
+            effective_embedding_model
+        ):
+            final_tweaks["Split Text"]["chunk_size"] = min(
+                final_tweaks["Split Text"]["chunk_size"], BEDROCK_MAX_CHUNK_CHARS
+            )
 
         return final_tweaks
 
@@ -142,9 +184,22 @@ class LangflowFileService:
             embedding_model,
             provider=embedding_provider,
         )
+        # Same call-time kwargs the search and non-Langflow ingest paths pass
+        # (see services.search_service and models.processors): Cohere-family
+        # models require input_type on every call (no default), and Bedrock's
+        # AWS credentials travel per-call rather than via env vars. Without
+        # these the probe raises inside litellm, and
+        # _ensure_langflow_ingest_index's broad except swallows it --
+        # silently skipping index pre-creation for Bedrock.
+        embed_kwargs: dict[str, str] = {}
+        if is_cohere_embedding_model(embedding_model):
+            embed_kwargs["input_type"] = "search_document"
+        embed_kwargs.update(bedrock_credential_kwargs(litellm_model_name))
+
         response = await clients.patched_embedding_client.embeddings.create(
             model=litellm_model_name,
             input=["dimension probe"],
+            **embed_kwargs,
         )
         if not response.data:
             raise RuntimeError("Embedding provider returned no data for dimension probe")
