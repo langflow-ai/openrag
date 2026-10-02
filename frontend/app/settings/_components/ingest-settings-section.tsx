@@ -628,6 +628,21 @@ export function IngestSettingsSection() {
           }
         }),
       )
+      .then(() =>
+        // The flow reset above only replaces the Langflow graph. The knowledge
+        // settings (chunk size, OCR, etc.) live in a separate store, so restore
+        // must persist the defaults there too, or the form shows defaults that
+        // vanish on refresh while leaving Save stuck enabled against them.
+        updateSettingsMutation.mutateAsync({
+          chunk_size: DEFAULT_KNOWLEDGE_SETTINGS.chunk_size,
+          chunk_overlap: DEFAULT_KNOWLEDGE_SETTINGS.chunk_overlap,
+          table_structure: DEFAULT_KNOWLEDGE_SETTINGS.table_structure,
+          ocr: DEFAULT_KNOWLEDGE_SETTINGS.ocr,
+          ocr_languages: [...DEFAULT_KNOWLEDGE_SETTINGS.ocr_languages],
+          picture_descriptions: DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions,
+          disable_ingest_with_langflow: false,
+        }),
+      )
       .then(() => {
         setChunkSize(DEFAULT_KNOWLEDGE_SETTINGS.chunk_size);
         setChunkOverlap(DEFAULT_KNOWLEDGE_SETTINGS.chunk_overlap);

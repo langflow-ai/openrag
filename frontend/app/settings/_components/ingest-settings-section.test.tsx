@@ -375,12 +375,12 @@ describe("IngestSettingsSection", () => {
     });
   });
 
-  // ── Group 4b: Restore flow enables Save via knowledgeIngestDirty ──────────
+  // ── Group 4b: Restore flow persists defaults immediately ──────────────────
 
   describe("restore flow", () => {
-    it("enables Save after restoring defaults, without the user editing a field", async () => {
-      // Server state differs from the hard-coded DEFAULT_KNOWLEDGE_SETTINGS the
-      // restore handler writes, so restoring produces a real diff against `k`.
+    it("persists the restored defaults to the server, leaving Save disabled", async () => {
+      // Server state differs from DEFAULT_KNOWLEDGE_SETTINGS so restoring
+      // produces a real diff to persist.
       // "flows:edit" isn't in the admin preset's permission list, so grant it
       // directly — otherwise RequirePermission hides the Restore flow button.
       renderSection(
@@ -393,6 +393,23 @@ describe("IngestSettingsSection", () => {
 
       server.use(
         http.post("/api/reset-flow/ingest", () => HttpResponse.json({})),
+        http.post("/api/settings", () =>
+          HttpResponse.json({
+            message: "ok",
+            settings: makeSettings({
+              knowledge: { chunk_size: 1000, chunk_overlap: 200 },
+              show_vlm_settings: false,
+            }),
+          }),
+        ),
+        http.get("/api/settings", () =>
+          HttpResponse.json(
+            makeSettings({
+              knowledge: { chunk_size: 1000, chunk_overlap: 200 },
+              show_vlm_settings: false,
+            }),
+          ),
+        ),
       );
 
       const input = await screen.findByRole("spinbutton", {
@@ -414,9 +431,9 @@ describe("IngestSettingsSection", () => {
       await userEvent.click(screen.getByRole("button", { name: /^restore$/i }));
 
       // Restore writes DEFAULT_KNOWLEDGE_SETTINGS.chunk_size (1000) locally
-      // without touching the server, and without the user ever typing into a
-      // field (userEdited stays false). Save must still enable off the raw
-      // diff against the server (knowledgeIngestDirty), not userEdited.
+      // AND persists it to the server — a refresh right after restoring must
+      // not lose it, so Save settles back to disabled without the user
+      // clicking it.
       await waitFor(() => {
         expect(
           screen.getByRole("spinbutton", { name: /chunk size/i }),
@@ -425,7 +442,7 @@ describe("IngestSettingsSection", () => {
       await waitFor(() => {
         expect(
           screen.getByRole("button", { name: /save changes/i }),
-        ).toBeEnabled();
+        ).toBeDisabled();
       });
     });
   });
