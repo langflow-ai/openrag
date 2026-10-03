@@ -4,13 +4,14 @@ API Key management endpoints.
 These endpoints use JWT cookie authentication (for the UI) and allow users
 to create, list, and revoke their API keys for use with the public API.
 """
+
 from fastapi import Depends
-from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
-from utils.logging_config import get_logger
+from pydantic import BaseModel, Field
 
 from dependencies import get_api_key_service, get_current_user, require_permission
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -28,7 +29,7 @@ async def list_keys_endpoint(
 
     GET /keys
     """
-    result = await api_key_service.list_keys(user.user_id, user.jwt_token)
+    result = await api_key_service.list_keys(user.db_user_id, user.user_id, user.jwt_token)
     return JSONResponse(result)
 
 
@@ -52,10 +53,8 @@ async def create_key_endpoint(
             )
 
         result = await api_key_service.create_key(
-            user_id=user.user_id,
-            user_email=user.email,
+            user_id=user.db_user_id,
             name=name,
-            jwt_token=user.jwt_token,
         )
 
         if result.get("success"):
@@ -64,7 +63,7 @@ async def create_key_endpoint(
             return JSONResponse(result, status_code=500)
 
     except Exception as e:
-        logger.error("Failed to create API key", error=str(e), user_id=user.user_id)
+        logger.error("Failed to create API key", error=str(e), user_id=user.db_user_id)
         return JSONResponse(
             {"success": False, "error": str(e)},
             status_code=500,
@@ -82,9 +81,8 @@ async def revoke_key_endpoint(
     DELETE /keys/{key_id}
     """
     result = await api_key_service.revoke_key(
-        user_id=user.user_id,
+        user_id=user.db_user_id,
         key_id=key_id,
-        jwt_token=user.jwt_token,
     )
 
     if result.get("success"):
@@ -108,9 +106,8 @@ async def delete_key_endpoint(
     DELETE /keys/{key_id}/permanent
     """
     result = await api_key_service.delete_key(
-        user_id=user.user_id,
+        user_id=user.db_user_id,
         key_id=key_id,
-        jwt_token=user.jwt_token,
     )
 
     if result.get("success"):
