@@ -145,13 +145,37 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "options": None,
         "default_value": None,
     },
+    {
+        "key": "embedding_max_concurrency",
+        "label": "Max concurrent embedding requests",
+        "placeholder": "4",
+        "tooltip": "How many embedding requests OpenRAG sends to the embedding endpoint at "
+        "once; the rest wait in OpenRAG. A CPU-served model answers slowly, and the "
+        "endpoint's kube-rbac-proxy returns 502 once a queued request waits past its "
+        "upstream timeout (30s by default), which fails ingestion of several files at "
+        "once. One slot is kept for search and chat queries so they never wait behind "
+        "ingestion. Leave blank for the default of 4; raise it for a GPU deployment; 0 "
+        "means no limit.",
+        "required": False,
+        "field_type": "text",
+        "options": None,
+        "default_value": None,
+    },
 ]
 
 #: Fields an operator fills in that are not LiteLLM kwargs. The embedding
 #: endpoint is selected *into* `api_base` per call; forwarding it as well would
 #: land it in the request body, since LiteLLM passes kwargs it does not
-#: recognise straight through.
-_LOCAL_ONLY_FIELDS = frozenset({"embedding_api_base"})
+#: recognise straight through. The concurrency limit is enforced by the
+#: gateway (`embedding_max_concurrency`), never sent to the endpoint.
+_LOCAL_ONLY_FIELDS = frozenset({"embedding_api_base", "embedding_max_concurrency"})
+
+#: Concurrent embedding calls allowed when the operator sets no limit. vLLM on
+#: CPU embeds roughly two ~500-character chunks per second; four in flight keeps
+#: each call well inside the 30s `kube-rbac-proxy` upstream timeout, while a
+#: folder upload (several ingest runs x 8 embedding threads each) would
+#: otherwise queue dozens of calls at the endpoint and time most of them out.
+DEFAULT_EMBEDDING_MAX_CONCURRENCY = 4
 
 #: LiteLLM kwargs that must not become request-body fields. `ssl_verify` is
 #: read for TLS *and* — on the `hosted_vllm` chat path, verified against litellm
@@ -361,6 +385,35 @@ def litellm_credentials(stored: Mapping[str, Any], *, kind: CallKind = "chat") -
     return credentials
 
 
+def embedding_max_concurrency(stored: Mapping[str, Any] | None) -> int | None:
+    """How many embedding calls the gateway may have in flight to this endpoint.
+
+    Optional member of the enhancement contract, read through
+    `registry.embedding_concurrency_for`. Returns `None` for "no limit".
+
+    Blank means the default. `0` switches the limit off. A value that is not a
+    non-negative integer falls back to the default with a one-time warning
+    rather than disabling the limit: failing open here is exactly the overload
+    this setting exists to prevent.
+    """
+    raw = _values(stored).get("embedding_max_concurrency", "")
+    if not raw:
+        return DEFAULT_EMBEDDING_MAX_CONCURRENCY
+    try:
+        limit = int(raw)
+    except ValueError:
+        limit = -1
+    if limit < 0:
+        _warn_once(
+            f"concurrency:{raw}",
+            "Ignoring an invalid OpenShift AI embedding concurrency limit; using the default.",
+            value=raw,
+            default=DEFAULT_EMBEDDING_MAX_CONCURRENCY,
+        )
+        return DEFAULT_EMBEDDING_MAX_CONCURRENCY
+    return limit or None
+
+
 # --------------------------------------------------------------------------
 # Model discovery
 # --------------------------------------------------------------------------
@@ -456,8 +509,40 @@ def _auth_headers(api_key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
 
 
+def _content_type(response: Any) -> str:
+    """The response's media type, lower-cased and without parameters, or ''."""
+    try:
+        headers = getattr(response, "headers", None) or {}
+        value = headers.get("content-type", "") or ""
+        return str(value).split(";", 1)[0].strip().lower()
+    except Exception:
+        return ""
+
+
+def _looks_like_html(response: Any) -> bool:
+    """Whether a response is a web page rather than an API answer.
+
+    An OAuth proxy, SSO gateway or captive portal in front of the route answers
+    with its login page. The content type usually says so; when it is missing,
+    the start of the body does.
+    """
+    if "html" in _content_type(response):
+        return True
+    try:
+        head = str(getattr(response, "text", "") or "").lstrip()[:64].lower()
+    except Exception:
+        return False
+    return head.startswith(("<!doctype html", "<html"))
+
+
 def _error_details(response: Any) -> str:
-    """The concise error an OpenAI-compatible endpoint returned."""
+    """The concise error an OpenAI-compatible endpoint returned.
+
+    A web page is described rather than quoted: half a kilobyte of login-page
+    markup helps nobody in a Settings error or a log line.
+    """
+    if _looks_like_html(response):
+        return f"The response was an HTML page ({_content_type(response) or 'text/html'})."
     try:
         body = response.json()
     except (ValueError, TypeError):
@@ -523,6 +608,18 @@ def model_ids(body: Any) -> tuple[str, ...]:
         if model_id and model_id not in ids:
             ids.append(model_id)
     return tuple(ids)
+
+
+def is_model_listing(body: Any) -> bool:
+    """Whether `body` has the shape of an OpenAI `GET /v1/models` answer.
+
+    Only the shape is checked — an object whose `data` is a list. An empty list
+    still counts: a `vLLM` pod that is still loading its weights is a real
+    endpoint, and the health check deliberately does not depend on a model
+    having been chosen. `model_ids` cannot answer this, because it returns
+    nothing both for a wrong shape and for an empty listing.
+    """
+    return isinstance(body, Mapping) and isinstance(body.get("data"), list)
 
 
 async def _list_models(client: Any, api_base: str, api_key: str) -> tuple[str, ...] | None:
@@ -682,6 +779,10 @@ async def lightweight_health_check(credentials: Mapping[str, Any]) -> None:
     carries `embedding_api_base`; `validate_provider_setup(stored_credentials=...)`
     is how it gets here. Given only the LiteLLM form, the one endpoint it was
     narrowed to is checked.
+
+    A 200 only passes when its body is an OpenAI-shaped model listing: an
+    OAuth proxy or SSO gateway in front of the route can answer 200 with its
+    login page, which would otherwise read as healthy and fail on first use.
     """
     import httpx
 
@@ -721,6 +822,7 @@ async def _check_endpoint(client: Any, label: str, api_base: str, api_key: str) 
     import httpx
 
     url = models_url(api_base)
+    logger.debug("Checking the OpenShift AI endpoint", endpoint=label, url=url)
     try:
         response = await _http_request_with_retry(
             "GET",
@@ -743,8 +845,26 @@ async def _check_endpoint(client: Any, label: str, api_base: str, api_key: str) 
             f"Could not reach the OpenShift AI {label} endpoint at {api_base}: {error}"
         ) from error
 
+    if 300 <= response.status_code < 400:
+        # httpx does not follow redirects, and should not here: the target is
+        # a login page, and the token must not be carried to it.
+        location = _redirect_location(response)
+        logger.error(
+            "The OpenShift AI endpoint redirected instead of answering",
+            endpoint=label,
+            url=url,
+            status_code=response.status_code,
+            location=location,
+        )
+        raise Exception(
+            f"The OpenShift AI {label} endpoint at {api_base} redirected to "
+            f"{location or 'another page'} instead of answering /v1/models. This is usually "
+            "an OAuth proxy or SSO login page in front of the route; point the URL at the "
+            "model's inference route or predictor Service, which accepts a ServiceAccount token."
+        )
+
     if response.status_code == 200:
-        logger.debug("OpenShift AI endpoint answered", endpoint=label, url=url)
+        _require_model_listing(response, label, api_base, url)
         return
 
     details = _error_details(response)
@@ -768,4 +888,77 @@ async def _check_endpoint(client: Any, label: str, api_base: str, api_key: str) 
         )
     raise Exception(
         f"The OpenShift AI {label} endpoint returned {response.status_code}: {details}".strip()
+    )
+
+
+def _redirect_location(response: Any) -> str:
+    """Where a redirect points, without its query string.
+
+    An OAuth redirect's query carries `state`, `client_id` and a nested
+    `redirect_uri`, which make the message unreadable and say nothing the
+    host and path do not.
+    """
+    try:
+        headers = getattr(response, "headers", None) or {}
+        location = str(headers.get("location", "") or "").strip()
+        if not location:
+            return ""
+        parts = urlsplit(location)
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+    except Exception:
+        return ""
+
+
+def _require_model_listing(response: Any, label: str, api_base: str, url: str) -> None:
+    """Fail a 200 whose body is not a model listing, naming the likely cause."""
+    try:
+        body = response.json()
+    except (ValueError, TypeError):
+        body = None
+
+    if is_model_listing(body):
+        models = model_ids(body)
+        if models:
+            logger.debug(
+                "OpenShift AI endpoint answered with a model list",
+                endpoint=label,
+                url=url,
+                models=len(models),
+            )
+        else:
+            # Still a real endpoint — vLLM may be loading its weights — so
+            # this passes; the warning is for whoever wonders why the picker
+            # shows the configured fallback.
+            logger.warning(
+                "The OpenShift AI endpoint answered with an empty model list",
+                endpoint=label,
+                url=url,
+            )
+        return
+
+    content_type = _content_type(response)
+    if _looks_like_html(response):
+        logger.error(
+            "The OpenShift AI endpoint answered with a web page instead of a model list",
+            endpoint=label,
+            url=url,
+            content_type=content_type,
+        )
+        raise Exception(
+            f"The OpenShift AI {label} endpoint at {api_base} returned a web page "
+            f"({content_type or 'text/html'}) instead of a model list. This is usually an "
+            "OAuth proxy or SSO login page in front of the route; point the URL at the "
+            "model's inference route or predictor Service, which accepts a ServiceAccount token."
+        )
+    logger.error(
+        "The OpenShift AI endpoint answered with something other than a model list",
+        endpoint=label,
+        url=url,
+        content_type=content_type,
+        body_type=type(body).__name__,
+    )
+    raise Exception(
+        f"The OpenShift AI {label} endpoint at {api_base} answered /v1/models with something "
+        "other than an OpenAI-compatible model list. Check the URL points at the model's "
+        "inference route and ends in /v1."
     )
