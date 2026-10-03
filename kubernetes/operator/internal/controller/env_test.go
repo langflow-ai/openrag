@@ -303,6 +303,10 @@ func TestEnvVarManager_NewEnvVarManagerDefaults(t *testing.T) {
 	assert.Equal(t, "/app/flows", manager.DefaultLangflowEnvVars["LANGFLOW_LOAD_FLOWS_PATH"])
 	assert.Equal(t, "4", manager.DefaultLangflowEnvVars["LANGFLOW_WORKERS"])
 
+	langflowEnv, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "https://cloud.langfuse.com", langflowEnv["LANGFUSE_BASE_URL"])
+
 	// Verify Backend defaults
 	assert.NotNil(t, manager.DefaultOpenRagBEEnvVars)
 	assert.Equal(t, "http://openrag-be:8000", manager.DefaultOpenRagBEEnvVars["OPENRAG_BACKEND_INTERNAL_URL"])
@@ -316,6 +320,40 @@ func TestEnvVarManager_NewEnvVarManagerDefaults(t *testing.T) {
 
 	// Verify Frontend defaults (empty for now)
 	assert.NotNil(t, manager.DefaultOpenRagFEEnvVars)
+}
+
+func TestEnvVarManager_LangfuseLegacyHostFallback(t *testing.T) {
+	manager := NewEnvVarManager()
+	crEnvVars := []corev1.EnvVar{
+		{Name: "LANGFUSE_HOST", Value: "https://legacy.example.com"},
+	}
+
+	result, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", crEnvVars)
+	require.NoError(t, err)
+	assert.Equal(t, "https://legacy.example.com", result["LANGFUSE_BASE_URL"])
+}
+
+func TestEnvVarManager_LangfuseBaseURLTakesPrecedence(t *testing.T) {
+	manager := NewEnvVarManager()
+	crEnvVars := []corev1.EnvVar{
+		{Name: "LANGFUSE_HOST", Value: "https://legacy.example.com"},
+		{Name: "LANGFUSE_BASE_URL", Value: "https://base.example.com"},
+	}
+
+	result, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", crEnvVars)
+	require.NoError(t, err)
+	assert.Equal(t, "https://base.example.com", result["LANGFUSE_BASE_URL"])
+}
+
+func TestEnvVarManager_EmptyLangfuseHostOverridesDefault(t *testing.T) {
+	manager := NewEnvVarManager()
+	crEnvVars := []corev1.EnvVar{
+		{Name: "LANGFUSE_HOST", Value: ""},
+	}
+
+	result, err := manager.GetLangflowEnvVars(context.Background(), nil, "test-ns", crEnvVars)
+	require.NoError(t, err)
+	assert.Equal(t, "", result["LANGFUSE_BASE_URL"])
 }
 
 func TestEnvVarManager_EnsureRequiredEnvVars(t *testing.T) {
