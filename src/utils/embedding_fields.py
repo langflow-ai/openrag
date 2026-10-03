@@ -231,11 +231,15 @@ async def ensure_embedding_field_exists(
         opensearch_client: OpenSearch client instance
         model_name: The embedding model name
         index_name: OpenSearch index name (defaults to get_index_name() from settings)
+        dimensions: Vector dimension the field must have. An existing field
+            with a different dimension is rejected rather than reused.
 
     Returns:
         The field name that was ensured to exist
 
     Raises:
+        RuntimeError: If the field already exists with an incompatible type
+            or a different dimension
         Exception: If unable to add the field mapping
     """
     from config.settings import get_index_name
@@ -272,12 +276,21 @@ async def ensure_embedding_field_exists(
                 return properties[field_name]
         return {}
 
+    def _raise_for_dimension_mismatch(definition: dict[str, Any]) -> None:
+        existing_dimension = definition.get("dimension")
+        if existing_dimension is not None and existing_dimension != dimensions:
+            raise RuntimeError(
+                f"Field '{field_name}' already exists with dimension {existing_dimension}, "
+                f"but {dimensions} was requested. A dimension change needs a new field."
+            )
+
     existing_definition = await _get_field_definition()
     if existing_definition:
         if existing_definition.get("type") != "knn_vector":
             raise RuntimeError(
                 f"Field '{field_name}' already exists with incompatible type '{existing_definition.get('type')}'"
             )
+        _raise_for_dimension_mismatch(existing_definition)
         return field_name
 
     # Define the field mapping for both the vector field and the tracking field
@@ -305,6 +318,7 @@ async def ensure_embedding_field_exists(
         # Check if the field was created by a concurrent request
         check_def = await _get_field_definition()
         if check_def.get("type") == "knn_vector":
+            _raise_for_dimension_mismatch(check_def)
             logger.info(
                 "Embedding field already exists as knn_vector (race condition handled)",
                 field_name=field_name,

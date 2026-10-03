@@ -222,3 +222,111 @@ class TestBuildKnnVectorFieldCallSitesMatch:
         assert "chunk_embedding_azure_text_embedding_3_small" in properties
         assert properties["embedding_provider"] == {"type": "keyword"}
         assert properties["embedding_space_id"] == {"type": "keyword"}
+
+
+class _FakeIndices:
+    """Minimal async stand-in for ``opensearch_client.indices``."""
+
+    def __init__(
+        self,
+        properties: dict[str, Any],
+        *,
+        put_error: Exception | None = None,
+        properties_after_put: dict[str, Any] | None = None,
+    ) -> None:
+        self.properties = properties
+        self.put_error = put_error
+        self.properties_after_put = properties_after_put
+        self.put_calls: list[dict[str, Any]] = []
+
+    async def get_mapping(self, index: str) -> dict[str, Any]:
+        return {index: {"mappings": {"properties": self.properties}}}
+
+    async def put_mapping(self, index: str, body: dict[str, Any]) -> None:
+        self.put_calls.append(body)
+        if self.properties_after_put is not None:
+            self.properties = self.properties_after_put
+        if self.put_error is not None:
+            raise self.put_error
+        self.properties = {**self.properties, **body["properties"]}
+
+
+class TestEnsureEmbeddingFieldExistsDimension:
+    """The requested dimension must match an existing field, not just its type."""
+
+    FIELD = get_embedding_field_name("text-embedding-3-large")
+
+    @pytest.mark.asyncio
+    async def test_existing_field_with_matching_dimension_is_reused(self) -> None:
+        from utils.embedding_fields import ensure_embedding_field_exists
+
+        indices = _FakeIndices({self.FIELD: build_knn_vector_field(3072)})
+        client = SimpleNamespace(indices=indices)
+
+        field = await ensure_embedding_field_exists(
+            client, "text-embedding-3-large", "documents", 3072
+        )
+
+        assert field == self.FIELD
+        assert indices.put_calls == []
+
+    @pytest.mark.asyncio
+    async def test_existing_field_with_different_dimension_raises(self) -> None:
+        from utils.embedding_fields import ensure_embedding_field_exists
+
+        indices = _FakeIndices({self.FIELD: build_knn_vector_field(3072)})
+        client = SimpleNamespace(indices=indices)
+
+        with pytest.raises(RuntimeError) as excinfo:
+            await ensure_embedding_field_exists(client, "text-embedding-3-large", "documents", 1024)
+
+        message = str(excinfo.value)
+        assert self.FIELD in message
+        assert "3072" in message
+        assert "1024" in message
+        assert indices.put_calls == []
+
+    @pytest.mark.asyncio
+    async def test_existing_field_without_dimension_is_reused(self) -> None:
+        from utils.embedding_fields import ensure_embedding_field_exists
+
+        indices = _FakeIndices({self.FIELD: {"type": "knn_vector"}})
+        client = SimpleNamespace(indices=indices)
+
+        field = await ensure_embedding_field_exists(
+            client, "text-embedding-3-large", "documents", 1024
+        )
+
+        assert field == self.FIELD
+        assert indices.put_calls == []
+
+    @pytest.mark.asyncio
+    async def test_concurrently_created_field_with_different_dimension_raises(
+        self,
+    ) -> None:
+        from utils.embedding_fields import ensure_embedding_field_exists
+
+        indices = _FakeIndices(
+            {},
+            put_error=RuntimeError("resource_already_exists"),
+            properties_after_put={self.FIELD: build_knn_vector_field(3072)},
+        )
+        client = SimpleNamespace(indices=indices)
+
+        with pytest.raises(RuntimeError, match="dimension 3072, but 1024"):
+            await ensure_embedding_field_exists(client, "text-embedding-3-large", "documents", 1024)
+
+    @pytest.mark.asyncio
+    async def test_missing_field_is_created_with_requested_dimension(self) -> None:
+        from utils.embedding_fields import ensure_embedding_field_exists
+
+        indices = _FakeIndices({})
+        client = SimpleNamespace(indices=indices)
+
+        field = await ensure_embedding_field_exists(
+            client, "text-embedding-3-large", "documents", 1024
+        )
+
+        assert field == self.FIELD
+        assert len(indices.put_calls) == 1
+        assert indices.put_calls[0]["properties"][self.FIELD]["dimension"] == 1024
