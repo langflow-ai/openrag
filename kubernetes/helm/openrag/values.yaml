@@ -289,6 +289,8 @@ backend:
   logFormat: "json"                       # json or text
   logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR
   serviceName: "openrag"
+  noColor: false                          # Set true to disable ANSI color codes in log output
+  accessLog: true                         # Set false to disable HTTP access log events
 
   # Persistence consolidated into two main volumes:
   # 1. /data: internal application state (data, backups, config, keys)
@@ -325,12 +327,6 @@ backend:
           - ibm_anthropic.pdf
           - openrag-documentation.pdf
           - warmup_ocr.pdf
-
-
-  # Logging
-  logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR, CRITICAL
-  noColor: false                          # Set true to disable ANSI color codes in log output
-  accessLog: true                         # Set false to disable HTTP access log events
 
   # Timeouts
   langflowTimeout: 2400                   # seconds; total timeout for Langflow HTTP calls (default: 40 min)
