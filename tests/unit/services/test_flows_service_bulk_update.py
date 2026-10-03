@@ -242,7 +242,7 @@ async def test_ensure_flows_exist_does_not_auto_update_on_startup():
     """Verify that existing flows are skipped on startup and never auto-updated."""
     service = FlowsService()
 
-    mock_get_ok = MagicMock(status_code=200)
+    mock_get_ok = MagicMock(status_code=200, headers={"content-type": "application/json"})
     mock_get_ok.json.return_value = {
         "id": "flow-retrieval-123",
         "name": "Retrieval Flow",
@@ -263,6 +263,34 @@ async def test_ensure_flows_exist_does_not_auto_update_on_startup():
     assert created == set()
     assert backup_mock.call_count == 0
     assert reset_mock.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_ensure_flows_exist_creates_flow_when_get_returns_html_spa_fallback():
+    """Regression test: some Langflow builds answer GET /flows/{missing-id} with
+    200 + their own frontend's index.html instead of a 404 (seen on 1.7.0.dev21).
+    Trusting a bare status_code == 200 there makes every fresh deployment believe
+    all flows already exist and never create them — the content-type must be
+    checked too."""
+    service = FlowsService()
+
+    mock_get_html = MagicMock(
+        status_code=200,
+        headers={"content-type": "text/html; charset=utf-8"},
+        text="<!doctype html><html><head><title>Langflow</title></head></html>",
+    )
+    mock_put_created = MagicMock(status_code=201)
+    mock_put_created.json.return_value = {"id": "flow-retrieval-123", "folder_id": None}
+
+    async def mock_langflow_request(method, url, **kwargs):
+        return mock_put_created if method == "PUT" else mock_get_html
+
+    with patch(
+        "services.flows_service.clients.langflow_request", side_effect=mock_langflow_request
+    ):
+        created = await service.ensure_flows_exist()
+
+    assert created == {"nudges", "retrieval", "ingest", "url_ingest"}
 
 
 @pytest.mark.asyncio
