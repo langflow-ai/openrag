@@ -24,9 +24,7 @@ export interface ChunkResult {
   mimetype: string;
   page: number;
   text: string;
-  /** Keyword-match highlight fragments from OpenSearch. Each fragment is a
-   *  substring of `text` with matched terms wrapped in `<mark>` tags.
-   *  Empty array when no keyword match exists (pure semantic/KNN hit). */
+  /** OpenSearch highlight fragments with matched terms wrapped in `<mark>` tags. Empty when no keyword match. */
   highlights?: string[];
   score: number;
   source_url?: string;
@@ -47,11 +45,23 @@ export interface ChunkResult {
   allowed_groups?: string[];
 }
 
+export type RelevanceTier = "high" | "medium" | "low";
+export interface ChunkTiers {
+  high: number;
+  medium: number;
+  low: number;
+}
+
 export interface File {
   filename: string;
   mimetype: string;
   chunkCount?: number;
-  avgScore?: number;
+  /** Highest min-max normalised chunk score [0, 1] for this file. Undefined for wildcard queries. */
+  maxScore?: number;
+  /** Relevance tier derived from maxScore. */
+  relevanceTier?: RelevanceTier;
+  /** Count of matched chunks per tier, shown in the relevance tooltip. */
+  chunkTiers?: ChunkTiers;
   source_url: string;
   owner?: string;
   owner_name?: string;
@@ -70,22 +80,17 @@ export interface File {
     | "hidden"
     | "sync";
   error?: string;
-  /**
-   * Skip reason forwarded from result.reason (e.g. "duplicate_content",
-   * "deleted_at_source"). Only set when status === "skipped".
-   */
+  /** Skip reason from the backend (e.g. "duplicate_content", "deleted_at_source"). Only set when status === "skipped". */
   skip_reason?: string;
-  /** Warning message for skipped rows (e.g. duplicate_content). */
+  /** Human-readable warning for skipped rows. */
   warning?: string;
-  task_id?: string; // Task ID for file-level cancellation
+  task_id?: string;
   chunks?: ChunkResult[];
   allowed_users?: string[];
   allowed_groups?: string[];
 }
 
-// Non-fatal signal from the backend — e.g. an embedding provider was removed
-// so some models in the corpus can't be queried semantically. Results still
-// come back via keyword matching.
+/** Non-fatal backend signal, e.g. an embedding provider is unavailable. Results still return via keyword matching. */
 export interface SearchWarning {
   code: string;
   models?: string[];
@@ -101,6 +106,113 @@ export interface SearchResult {
 const EMPTY_SEARCH_RESULT: SearchResult = { files: [], warnings: [] };
 
 export { EMPTY_SEARCH_RESULT };
+
+/** Min-max normalised score thresholds for bucketing chunks into High / Medium / Low tiers. */
+export const RELEVANCE_HIGH_THRESHOLD = 0.65;
+export const RELEVANCE_MED_THRESHOLD = 0.35;
+
+/** Stopwords excluded from the literal-match gate to avoid false passes on tokens like "the" or "your". */
+const GATE_STOPWORDS = new Set([
+  "a",
+  "an",
+  "the",
+  "and",
+  "or",
+  "but",
+  "in",
+  "on",
+  "at",
+  "to",
+  "for",
+  "of",
+  "with",
+  "by",
+  "from",
+  "is",
+  "it",
+  "its",
+  "was",
+  "are",
+  "were",
+  "be",
+  "been",
+  "being",
+  "have",
+  "has",
+  "had",
+  "do",
+  "does",
+  "did",
+  "will",
+  "would",
+  "could",
+  "should",
+  "may",
+  "might",
+  "shall",
+  "can",
+  "not",
+  "no",
+  "nor",
+  "so",
+  "yet",
+  "both",
+  "either",
+  "neither",
+  "this",
+  "that",
+  "these",
+  "those",
+  "my",
+  "your",
+  "his",
+  "her",
+  "our",
+  "their",
+  "its",
+  "i",
+  "you",
+  "he",
+  "she",
+  "we",
+  "they",
+  "me",
+  "him",
+  "us",
+  "them",
+  "what",
+  "which",
+  "who",
+  "whom",
+  "how",
+  "when",
+  "where",
+  "why",
+  "all",
+  "each",
+  "every",
+  "any",
+  "some",
+  "such",
+  "than",
+  "then",
+  "as",
+  "if",
+  "up",
+  "out",
+  "about",
+  "into",
+  "through",
+  "during",
+  "before",
+  "after",
+  "above",
+  "below",
+  "between",
+  "own",
+  "same",
+  "other",
+]);
 
 const getFileIdentity = (chunk: ChunkResult): string => {
   const normalizedFilename = chunk.filename?.trim();
@@ -122,18 +234,18 @@ export const useGetSearchQuery = (
   options?: Omit<
     UseQueryOptions<SearchResult, Error, SearchResult, unknown[]>,
     "queryKey" | "queryFn"
-  >,
+  > & {
+    /** Skip the literal-match gate. Set on the single-file chunks view where the user navigated deliberately. */
+    disableLiteralGate?: boolean;
+  },
 ) => {
   const queryClient = useQueryClient();
 
-  // Normalize the query to match what will actually be searched
   const effectiveQuery = query || queryData?.query || "*";
   const normalizedQuery = effectiveQuery.trim();
 
   async function getFiles(): Promise<SearchResult> {
     try {
-      // For wildcard queries, use a high limit to get all files
-      // Otherwise use the limit from queryData or default to 100
       const isWildcardQuery =
         effectiveQuery.trim() === "*" || effectiveQuery.trim() === "";
       const searchLimit = isWildcardQuery
@@ -179,14 +291,12 @@ export const useGetSearchQuery = (
       }
 
       const data = await response.json();
-      // Group chunks by filename to create file results similar to page.tsx
       const fileMap = new Map<
         string,
         {
           filename: string;
           mimetype: string;
           chunks: ChunkResult[];
-          totalScore: number;
           source_url?: string;
           owner?: string;
           owner_name?: string;
@@ -202,8 +312,6 @@ export const useGetSearchQuery = (
 
       (data.results || []).forEach((chunk: ChunkResult) => {
         const fileIdentity = getFileIdentity(chunk);
-        // Preserve highlights on the chunk object itself — they are per-chunk,
-        // not per-file, so we carry them through rather than aggregating.
         const chunkWithHighlights: ChunkResult = {
           ...chunk,
           highlights: Array.isArray(chunk.highlights) ? chunk.highlights : [],
@@ -211,7 +319,6 @@ export const useGetSearchQuery = (
         const existing = fileMap.get(fileIdentity);
         if (existing) {
           existing.chunks.push(chunkWithHighlights);
-          existing.totalScore += chunk.score;
           if (!existing.embedding_model && chunk.embedding_model) {
             existing.embedding_model = chunk.embedding_model;
           }
@@ -226,7 +333,6 @@ export const useGetSearchQuery = (
             filename: fileIdentity,
             mimetype: chunk.mimetype,
             chunks: [chunkWithHighlights],
-            totalScore: chunk.score,
             source_url: chunk.source_url,
             owner: chunk.owner,
             owner_name: chunk.owner_name,
@@ -241,32 +347,94 @@ export const useGetSearchQuery = (
         }
       });
 
-      const files: File[] = Array.from(fileMap.values()).map((file) => ({
-        filename: file.filename,
-        mimetype: file.mimetype,
-        chunkCount: file.chunks.length,
-        avgScore: file.totalScore / file.chunks.length,
-        source_url: file.source_url || "",
-        owner: file.owner || "",
-        owner_name: file.owner_name || "",
-        owner_email: file.owner_email || "",
-        size: file.file_size || 0,
-        connector_type: file.connector_type || "local",
-        embedding_model: file.embedding_model,
-        embedding_dimensions: file.embedding_dimensions,
-        chunks: file.chunks,
-        allowed_users: file.allowed_users || [],
-        allowed_groups: file.allowed_groups || [],
-      }));
-
-      const warnings: SearchWarning[] = Array.isArray(data.warnings)
+      // Literal-match gate: prune files where no meaningful query token appears
+      // verbatim in any of their chunks, so irrelevant files from KNN drift do
+      // not pollute search results or distort min-max score normalization.
+      // Warnings are always preserved. Not applied for wildcard queries.
+      const pendingWarnings: SearchWarning[] = Array.isArray(data.warnings)
         ? data.warnings
         : [];
 
-      return { files, warnings };
+      if (!isWildcardQuery && !options?.disableLiteralGate) {
+        const allTokens = normalizedQuery
+          .toLowerCase()
+          .split(/\s+/)
+          .filter((t) => t.length > 0);
+
+        const meaningfulTokens = allTokens.filter(
+          (t) => !GATE_STOPWORDS.has(t),
+        );
+
+        // Fall back to all tokens when the query is entirely stopwords.
+        const gateTokens =
+          meaningfulTokens.length > 0 ? meaningfulTokens : allTokens;
+
+        if (gateTokens.length > 0) {
+          for (const [fileKey, fileEntry] of fileMap.entries()) {
+            const fileHasMatch = fileEntry.chunks.some((c) => {
+              const text = (c.text ?? "").toLowerCase();
+              return gateTokens.some((token) => text.includes(token));
+            });
+
+            if (!fileHasMatch) {
+              fileMap.delete(fileKey);
+            }
+          }
+        }
+
+        if (fileMap.size === 0) {
+          return { files: [], warnings: pendingWarnings };
+        }
+      }
+
+      // Min-max normalise: best chunk → 1.0, worst → 0.0. Single result → 1.0 (avoids / 0).
+      const allChunks = Array.from(fileMap.values()).flatMap((f) => f.chunks);
+      const rawScores = allChunks.map((c) => c.score ?? 0);
+      const globalMin = Math.min(...rawScores);
+      const globalMax = Math.max(...rawScores);
+      const scoreSpread = globalMax - globalMin;
+
+      const normalise = (raw: number): number =>
+        scoreSpread > 0 ? (raw - globalMin) / scoreSpread : 1;
+
+      const toTier = (norm: number): RelevanceTier =>
+        norm >= RELEVANCE_HIGH_THRESHOLD
+          ? "high"
+          : norm >= RELEVANCE_MED_THRESHOLD
+            ? "medium"
+            : "low";
+
+      const files: File[] = Array.from(fileMap.values()).map((file) => {
+        const normScores = file.chunks.map((c) => normalise(c.score ?? 0));
+        const fileMaxNorm = Math.max(...normScores);
+        const chunkTiers: ChunkTiers = { high: 0, medium: 0, low: 0 };
+        for (const norm of normScores) {
+          chunkTiers[toTier(norm)]++;
+        }
+        return {
+          filename: file.filename,
+          mimetype: file.mimetype,
+          chunkCount: file.chunks.length,
+          maxScore: fileMaxNorm,
+          relevanceTier: toTier(fileMaxNorm),
+          chunkTiers,
+          source_url: file.source_url || "",
+          owner: file.owner || "",
+          owner_name: file.owner_name || "",
+          owner_email: file.owner_email || "",
+          size: file.file_size || 0,
+          connector_type: file.connector_type || "local",
+          embedding_model: file.embedding_model,
+          embedding_dimensions: file.embedding_dimensions,
+          chunks: file.chunks,
+          allowed_users: file.allowed_users || [],
+          allowed_groups: file.allowed_groups || [],
+        };
+      });
+
+      return { files, warnings: pendingWarnings };
     } catch (error) {
       console.error("Error getting files", error);
-      // Re-throw the error so React Query can handle it and trigger onError callbacks
       throw error;
     }
   }
@@ -277,7 +445,7 @@ export const useGetSearchQuery = (
       placeholderData: (prev) => prev,
       staleTime: 0,
       queryFn: getFiles,
-      retry: false, // Don't retry on errors - show them immediately
+      retry: false,
       ...options,
     },
     queryClient,

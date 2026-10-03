@@ -11,13 +11,12 @@ import {
   QuickFilterModule,
   RowApiModule,
   RowSelectionModule,
+  RowStyleModule,
   TextFilterModule,
   ValidationModule,
 } from "ag-grid-community";
 
-// Importing necessary modules from ag-grid-community
 // https://www.ag-grid.com/javascript-data-grid/modules/#selecting-modules
-
 ModuleRegistry.registerModules([
   ColumnAutoSizeModule,
   ColumnApiModule,
@@ -31,6 +30,7 @@ ModuleRegistry.registerModules([
   GridStateModule,
   RowApiModule,
   RowSelectionModule,
-  // The ValidationModule adds helpful console warnings/errors that can help identify bad configuration during development.
+  RowStyleModule,
+  // Adds dev-only console warnings for bad configuration.
   ...(process.env.NODE_ENV !== "production" ? [ValidationModule] : []),
 ]);

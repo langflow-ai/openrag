@@ -26,6 +26,7 @@ import { isFileCancelled } from "@/lib/task-error-display";
 import {
   EMPTY_SEARCH_RESULT,
   type File,
+  type RelevanceTier,
   type SearchResult,
   useGetSearchQuery,
 } from "../api/queries/useGetSearchQuery";
@@ -48,7 +49,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
-import { formatFileSize } from "@/lib/file-format";
+import { formatFileSize, getFileTypeLabel } from "@/lib/file-format";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import {
   buildKnowledgeTableRows,
@@ -213,10 +214,6 @@ export function getOwnerLabel(file?: File): string {
   return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
 }
 
-export function formatAvgScoreLabel(value: unknown): string {
-  return typeof value === "number" ? value.toFixed(2) : "-";
-}
-
 export function formatChunkCountLabel(chunkCount?: number): string {
   return chunkCount?.toString() ?? "-";
 }
@@ -233,7 +230,7 @@ export function formatSizeLabel(value: unknown): string {
   return value ? formatFileSize(value as number) : "-";
 }
 
-/** Always returns 0 — passed to ag-grid columns whose ordering is server-side. */
+/** No-op comparator for columns sorted server-side. */
 export function serverSideComparator(): number {
   return 0;
 }
@@ -245,15 +242,29 @@ export function compareStatusRank(
   return getStatusSortRank(valueA) - getStatusSortRank(valueB);
 }
 
-export function compareAvgScore(
+export function compareRelevance(
   valueA: number | undefined,
   valueB: number | undefined,
 ): number {
-  return (valueA || 0) - (valueB || 0);
+  return (valueA ?? 0) - (valueB ?? 0);
 }
 
 export function getFileStatus(status?: File["status"]): string {
   return status || "active";
+}
+
+export function NoSearchResultsOverlay() {
+  return (
+    <div className="flex flex-col items-center gap-3 pb-[45px] select-none">
+      <div className="text-base font-semibold text-foreground">
+        No results found
+      </div>
+      <div className="text-sm text-muted-foreground text-center max-w-xs">
+        No chunks matched your search. Try different keywords or broaden your
+        query.
+      </div>
+    </div>
+  );
 }
 
 export function buildChunksUrl(
@@ -268,20 +279,57 @@ export function buildChunksUrl(
   return `/knowledge/chunks?${params.toString()}`;
 }
 
-const AVG_SCORE_TOOLTIP =
-  "Average relevance score across the matched chunks of this file. Higher means a stronger match — sort by this column to rank results by relevance.";
+const TIER_STYLES: Record<RelevanceTier, { label: string; className: string }> =
+  {
+    high: {
+      label: "High",
+      className:
+        "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-emerald-500 text-emerald-700 bg-emerald-50 dark:border-emerald-400 dark:text-emerald-300 dark:bg-emerald-950/40",
+    },
+    medium: {
+      label: "Medium",
+      className:
+        "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-amber-500 text-amber-700 bg-amber-50 dark:border-amber-400 dark:text-amber-300 dark:bg-amber-950/40",
+    },
+    low: {
+      label: "Low",
+      className:
+        "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-slate-400 text-slate-600 bg-slate-50 dark:border-slate-500 dark:text-slate-400 dark:bg-slate-900/40",
+    },
+  };
 
-export function AvgScoreCellContent({ value }: { value: unknown }) {
-  const label = formatAvgScoreLabel(value);
+export function RelevanceCellContent({ data }: { data?: File }) {
+  const tier = data?.relevanceTier;
+  if (!tier) return <span className="text-muted-foreground text-xs">—</span>;
+
+  const { label, className } = TIER_STYLES[tier];
+  const chunkTiers = data?.chunkTiers ?? { high: 0, medium: 0, low: 0 };
+  const total = data?.chunkCount ?? 0;
+  const pct =
+    typeof data?.maxScore === "number" ? Math.round(data.maxScore * 100) : null;
+  const badgeLabel = pct !== null ? `${label} (${pct}%)` : label;
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded cursor-default">
-          {label}
-        </span>
+        <span className={className}>{badgeLabel}</span>
       </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-56 text-center">
-        {AVG_SCORE_TOOLTIP}
+      <TooltipContent side="top" className="max-w-64 text-left space-y-1">
+        <p className="font-medium">Relevance breakdown</p>
+        <p className="text-muted-foreground text-xs">
+          % = best match for this query. A file showing 100% is the strongest
+          result returned. (not a perfect match)
+        </p>
+        <p className="text-xs mt-1">Total matched chunks: {total}</p>
+        <p className="text-xs flex gap-3">
+          <span className="text-emerald-600 dark:text-emerald-400">
+            ● High: {chunkTiers.high}
+          </span>
+          <span className="text-amber-600 dark:text-amber-400">
+            ● Med: {chunkTiers.medium}
+          </span>
+          <span className="text-slate-500">● Low: {chunkTiers.low}</span>
+        </p>
       </TooltipContent>
     </Tooltip>
   );
@@ -742,7 +790,7 @@ function SearchPage() {
   const fileResults = buildKnowledgeTableRows(
     effectiveData,
     taskFiles,
-    Boolean(selectedFilter),
+    Boolean(selectedFilter) || !isWildcardQuery,
   );
 
   const serverTotal = isWildcardQuery
@@ -835,32 +883,37 @@ function SearchPage() {
       ...(isCloudBrand
         ? { flex: 2.2, minWidth: 260 }
         : { initialFlex: 2, minWidth: 220 }),
-      cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
-        const status = data?.status || "active";
-        const isActive = status === "active";
+      cellRenderer: (params: CustomCellRendererProps<File>) => {
+        const { data, value } = params;
         const showOpenragSourceAnimation =
           isOpenragDocsRow(data) && hasOpenragRefreshCue;
         return (
           <div className="flex items-center overflow-hidden w-full min-w-0 h-full">
-            <div
-              className={`transition-opacity duration-200 ${
-                isActive ? "w-0" : "w-7"
-              }`}
-            ></div>
             <button
               type="button"
               className={cn(
                 "flex items-center gap-2 text-left flex-1 overflow-hidden transition-colors",
-                isActive
-                  ? isCloudBrand
-                    ? "cursor-pointer hover:text-primary"
-                    : "cursor-pointer hover:text-blue-600"
-                  : "cursor-default",
+                // Spacer: processing rows have no checkbox so we indent via the
+                // ag-row-processing ancestor class (set by rowClassRules). CSS
+                // avoids the stale-cell problem where ag-grid skips re-rendering
+                // when only status changes (field: "filename" is unchanged).
+                "[.ag-row-processing_&]:pl-7",
+                // Cursor: same stale-cell reason — drive from CSS so the pointer
+                // updates when status changes without a cell re-render.
+                // Default is pointer (active rows); processing rows override to default.
+                isCloudBrand
+                  ? "cursor-pointer hover:text-primary [.ag-row-processing_&]:cursor-default [.ag-row-processing_&]:hover:text-foreground"
+                  : "cursor-pointer hover:text-blue-600 [.ag-row-processing_&]:cursor-default [.ag-row-processing_&]:hover:text-foreground",
               )}
               onClick={() => {
-                if (!isActive) return;
+                // Use params.node.data (the live row node) rather than the
+                // destructured `data` snapshot — ag-grid skips cell re-renders
+                // when field:"filename" is unchanged, so `data` may still carry
+                // status:"processing" even after the row became active.
+                const liveData = params.node.data;
+                if ((liveData?.status || "active") !== "active") return;
                 router.push(
-                  buildChunksUrl(data?.filename ?? "", effectiveSearchText),
+                  buildChunksUrl(liveData?.filename ?? "", effectiveSearchText),
                 );
               }}
             >
@@ -914,6 +967,8 @@ function SearchPage() {
     ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
     cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
     sortable: true,
+    valueFormatter: (params: ValueFormatterParams<File>) =>
+      getFileTypeLabel(params.value),
   };
 
   const colOwner: ColDef<File> = {
@@ -942,15 +997,15 @@ function SearchPage() {
       formatChunkCountLabel(params.data?.chunkCount),
   };
 
-  const colAvgScore: ColDef<File> = {
-    field: "avgScore",
-    headerName: "Avg score",
+  const colRelevance: ColDef<File> = {
+    field: "maxScore",
+    headerName: "Relevance",
     hide: isWildcardQuery,
     ...(isCloudBrand ? { flex: 1, minWidth: 120 } : { width: 120 }),
     sortable: true,
-    comparator: compareAvgScore,
-    cellRenderer: ({ value }: CustomCellRendererProps<File>) => (
-      <AvgScoreCellContent value={value} />
+    comparator: compareRelevance,
+    cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
+      <RelevanceCellContent data={data} />
     ),
   };
 
@@ -1020,14 +1075,14 @@ function SearchPage() {
 
   // ── Layout-aware column sets ─────────────────────────────────────────────
   const columnDefs: ColDef<File>[] = isNarrow
-    ? [colSource, colChunks, colAvgScore, colStatus, colActions]
+    ? [colSource, colChunks, colRelevance, colStatus, colActions]
     : [
         colSource,
         colSize,
         colType,
         colOwner,
         colChunks,
-        colAvgScore,
+        colRelevance,
         colStatus,
         colActions,
       ];
@@ -1311,6 +1366,9 @@ function SearchPage() {
               theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
               rowData={gridRows}
               rowSelection="multiple"
+              rowClassRules={{
+                "ag-row-processing": (p) => p.data?.status === "processing",
+              }}
               getRowId={(params: GetRowIdParams<File>) =>
                 getFileIdentity(params.data)
               }
@@ -1322,16 +1380,20 @@ function SearchPage() {
               onSortChanged={onSortChanged}
               headerHeight={64}
               rowHeight={64}
-              noRowsOverlayComponent={() => (
-                <div className="text-center pb-[45px]">
-                  <div className="text-lg text-primary font-semibold">
-                    No knowledge
-                  </div>
-                  <div className="text-sm mt-1 text-muted-foreground">
-                    Add files from local or your preferred cloud.
-                  </div>
-                </div>
-              )}
+              noRowsOverlayComponent={
+                isWildcardQuery
+                  ? () => (
+                      <div className="text-center pb-[45px]">
+                        <div className="text-lg text-primary font-semibold">
+                          No knowledge
+                        </div>
+                        <div className="text-sm mt-1 text-muted-foreground">
+                          Add files from local or your preferred cloud.
+                        </div>
+                      </div>
+                    )
+                  : NoSearchResultsOverlay
+              }
             />
           </div>
         ) : (
@@ -1347,6 +1409,9 @@ function SearchPage() {
               rowSelection="multiple"
               rowMultiSelectWithClick={false}
               suppressRowClickSelection={true}
+              rowClassRules={{
+                "ag-row-processing": (p) => p.data?.status === "processing",
+              }}
               getRowId={(params: GetRowIdParams<File>) =>
                 getFileIdentity(params.data)
               }
@@ -1356,16 +1421,20 @@ function SearchPage() {
               onGridPreDestroyed={handleGridPreDestroyed}
               onSelectionChanged={onSelectionChanged}
               onSortChanged={onSortChanged}
-              noRowsOverlayComponent={() => (
-                <div className="text-center pb-[45px]">
-                  <div className="text-lg text-primary font-semibold">
-                    No knowledge
-                  </div>
-                  <div className="text-sm mt-1 text-muted-foreground">
-                    Add files from local or your preferred cloud.
-                  </div>
-                </div>
-              )}
+              noRowsOverlayComponent={
+                isWildcardQuery
+                  ? () => (
+                      <div className="text-center pb-[45px]">
+                        <div className="text-lg text-primary font-semibold">
+                          No knowledge
+                        </div>
+                        <div className="text-sm mt-1 text-muted-foreground">
+                          Add files from local or your preferred cloud.
+                        </div>
+                      </div>
+                    )
+                  : NoSearchResultsOverlay
+              }
             />
           </div>
         )}

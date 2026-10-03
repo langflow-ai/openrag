@@ -125,6 +125,55 @@ describe("useFileScopedChunksQuery", () => {
     expect(result.current.file?.chunks?.[0]?.highlights).toBeDefined();
   });
 
+  it("merges the search score onto the chunk (not the wildcard 1.0)", async () => {
+    // The wildcard request returns a chunk with raw score 1.0 (OpenSearch match-all).
+    // The keyword request returns the same chunk (matched by chunk_id) with a real score.
+    // After merging, the displayed score should be the keyword score.
+    const CHUNK_ID = "chunk-abc";
+    server.use(
+      http.post("/api/search", async ({ request }) => {
+        const body = (await request.json()) as { query: string };
+        if (body.query === "*") {
+          return HttpResponse.json({
+            results: [
+              chunk({
+                filename: "test.pdf",
+                text: "hello world",
+                chunk_id: CHUNK_ID,
+                score: 1.0,
+              }),
+            ],
+            warnings: [],
+          });
+        }
+        // keyword search — real backend score
+        return HttpResponse.json({
+          results: [
+            chunk({
+              filename: "test.pdf",
+              text: "hello world",
+              chunk_id: CHUNK_ID,
+              score: 0.42,
+              highlights: ["<mark>hello</mark> world"],
+            }),
+          ],
+          warnings: [],
+        });
+      }),
+    );
+
+    const { result } = renderHook(
+      () => useFileScopedChunksQuery("test.pdf", "hello"),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    expect(result.current.file?.chunks?.[0]?.score).toBeCloseTo(0.42);
+    expect(result.current.file?.chunks?.[0]?.highlights).toEqual([
+      "<mark>hello</mark> world",
+    ]);
+  });
+
   it("finds the matching file from multiple files in response", async () => {
     serveSearch([
       chunk({ filename: "other.pdf", text: "other chunk" }),
@@ -169,5 +218,43 @@ describe("useFileScopedChunksQuery", () => {
     await waitFor(() => expect(result.current.isFetching).toBe(false));
     // The query should have been trimmed (line 20-21 logic)
     expect(result.current.file?.filename).toBe("test.pdf");
+  });
+  describe("polling session counter", () => {
+    it("polls for chunks after filename changes (baseline resets per session)", async () => {
+      // First serve no chunks for file-a.pdf, then chunks for file-b.pdf.
+      // After rerender with file-b.pdf the hook must fetch (not stay idle because
+      // a prior session exhausted the budget on file-a.pdf).
+      serveSearch([]);
+
+      const { result, rerender } = renderHook(
+        ({ name }: { name: string }) => useFileScopedChunksQuery(name),
+        { wrapper: createQueryWrapper(), initialProps: { name: "file-a.pdf" } },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+      expect(result.current.file).toBeUndefined();
+
+      // Switch to a different file that does have chunks.
+      serveSearch([chunk({ filename: "file-b.pdf", text: "hello" })]);
+      rerender({ name: "file-b.pdf" });
+
+      await waitFor(() =>
+        expect(result.current.file?.filename).toBe("file-b.pdf"),
+      );
+    });
+
+    it("stops polling once chunks are found for the file", async () => {
+      serveSearch([chunk({ filename: "found.pdf", text: "content" })]);
+
+      const { result } = renderHook(
+        () => useFileScopedChunksQuery("found.pdf"),
+        { wrapper: createQueryWrapper() },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+      // Chunks were found immediately — file should be populated.
+      expect(result.current.file?.filename).toBe("found.pdf");
+      expect((result.current.file?.chunkCount ?? 0) > 0).toBe(true);
+    });
   });
 });

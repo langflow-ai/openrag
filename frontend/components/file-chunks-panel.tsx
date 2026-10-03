@@ -3,7 +3,12 @@
 import { Check, Copy, Loader2 } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useFileScopedChunksQuery } from "@/app/api/queries/useFileScopedChunksQuery";
-import type { ChunkResult } from "@/app/api/queries/useGetSearchQuery";
+import {
+  type ChunkResult,
+  RELEVANCE_HIGH_THRESHOLD,
+  RELEVANCE_MED_THRESHOLD,
+  type RelevanceTier,
+} from "@/app/api/queries/useGetSearchQuery";
 import { HighlightedText } from "@/components/highlighted-text";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 import { Badge } from "@/components/ui/badge";
@@ -42,11 +47,20 @@ export interface FileChunksPanelProps {
 }
 
 function chunkMatches(chunk: ChunkResult, needle: string): boolean {
-  return (
-    chunk.text.toLowerCase().includes(needle) ||
-    (chunk.index != null && String(chunk.index).includes(needle))
-  );
+  const text = chunk.text.toLowerCase();
+  const indexStr = chunk.index != null ? String(chunk.index) : "";
+  // Full phrase first; fall back to any token for multi-word queries.
+  if (text.includes(needle) || indexStr.includes(needle)) return true;
+  const tokens = needle.split(/\s+/).filter((t) => t.length > 0);
+  return tokens.length > 1 && tokens.some((t) => text.includes(t));
 }
+
+const SCORE_TIER_CLASS: Record<RelevanceTier, string> = {
+  high: "border-emerald-500 text-emerald-700 bg-emerald-50 dark:border-emerald-400 dark:text-emerald-300 dark:bg-emerald-950/40",
+  medium:
+    "border-amber-500 text-amber-700 bg-amber-50 dark:border-amber-400 dark:text-amber-300 dark:bg-amber-950/40",
+  low: "border-slate-400 text-slate-600 bg-slate-50 dark:border-slate-500 dark:text-slate-400 dark:bg-slate-900/40",
+};
 
 function FileChunkCard({
   chunk,
@@ -56,6 +70,8 @@ function FileChunkCard({
   selected,
   interactive,
   copied,
+  scoreTier,
+  scoreLabel,
   onCopy,
   onSelect,
 }: {
@@ -66,6 +82,8 @@ function FileChunkCard({
   selected: boolean;
   interactive: boolean;
   copied: boolean;
+  scoreTier?: RelevanceTier;
+  scoreLabel?: string;
   onCopy: (text: string, listIndex: number) => void;
   onSelect?: () => void;
 }) {
@@ -113,12 +131,17 @@ function FileChunkCard({
             </Button>
           )}
         </div>
-        {typeof chunk.score === "number" && chunk.score > 0 && (
+        {scoreLabel && (
           <Badge
             variant="secondary"
-            className="shrink-0 text-xxs bg-background text-foreground border border-border"
+            className={cn(
+              "shrink-0 text-xxs border",
+              scoreTier
+                ? SCORE_TIER_CLASS[scoreTier]
+                : "bg-background text-foreground border-border",
+            )}
           >
-            {chunk.score.toFixed(2)} score
+            {scoreLabel}
           </Badge>
         )}
       </div>
@@ -172,7 +195,10 @@ export function FileChunksPanel({
   fillHeight = false,
   searchQuery,
 }: FileChunksPanelProps) {
-  const { file, isFetching } = useFileScopedChunksQuery(filename, searchQuery);
+  const { file, isFetching, isSearchFetching } = useFileScopedChunksQuery(
+    filename,
+    searchQuery,
+  );
   const allChunks = useMemo(() => {
     const sorted = [...(file?.chunks ?? [])].sort(compareChunksByDocumentOrder);
     return sorted.map((chunk, i) => ({
@@ -180,6 +206,30 @@ export function FileChunksPanel({
       index: i + 1,
     }));
   }, [file?.chunks]);
+
+  // Per-file min-max normalisation: best chunk in this set → 1.0, worst → 0.0.
+  // Used only when there's an active search (scores are meaningful).
+  const chunkScoreInfo = useMemo((): ((
+    chunk: ChunkResult,
+  ) => { tier: RelevanceTier; label: string } | undefined) => {
+    const isSearchActive =
+      Boolean(searchQuery?.trim()) && searchQuery!.trim() !== "*";
+    if (!isSearchActive) return () => undefined;
+    const scores = allChunks.map((c) => c.score ?? 0);
+    const min = Math.min(...scores);
+    const max = Math.max(...scores);
+    const spread = max - min;
+    return (chunk) => {
+      const norm = spread > 0 ? ((chunk.score ?? 0) - min) / spread : 1;
+      const tier: RelevanceTier =
+        norm >= RELEVANCE_HIGH_THRESHOLD
+          ? "high"
+          : norm >= RELEVANCE_MED_THRESHOLD
+            ? "medium"
+            : "low";
+      return { tier, label: `${Math.round(norm * 100)}% relevance` };
+    };
+  }, [allChunks, searchQuery]);
 
   const filterControlled = filterQuery !== undefined;
   const [internalQuery, setInternalQuery] = useState("");
@@ -237,13 +287,18 @@ export function FileChunksPanel({
       data-testid="file-chunks-panel"
     >
       {!hideSearch && (
-        <KnowledgeSearchInput
-          value={localQuery}
-          onSearch={setLocalQuery}
-          onClear={() => setLocalQuery("")}
-          hideFilterChip
-          placeholder="Search chunks…"
-        />
+        <div className="flex items-center gap-2">
+          <KnowledgeSearchInput
+            value={localQuery}
+            onSearch={setLocalQuery}
+            onClear={() => setLocalQuery("")}
+            hideFilterChip
+            placeholder="Search chunks…"
+          />
+          {isSearchFetching && (
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+          )}
+        </div>
       )}
 
       {isFetching ? (
@@ -301,6 +356,8 @@ export function FileChunksPanel({
                 selected={selected}
                 interactive={Boolean(onChunkSelect)}
                 copied={copiedIndex === chunkKey}
+                scoreTier={chunkScoreInfo(chunk)?.tier}
+                scoreLabel={chunkScoreInfo(chunk)?.label}
                 onCopy={handleCopy}
                 onSelect={
                   onChunkSelect ? () => onChunkSelect(chunk) : undefined

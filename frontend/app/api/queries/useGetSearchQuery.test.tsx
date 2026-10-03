@@ -5,6 +5,8 @@ import { server } from "@/test-utils/msw/server";
 import { createQueryWrapper, renderHook, waitFor } from "@/test-utils/render";
 import {
   type ChunkResult,
+  RELEVANCE_HIGH_THRESHOLD,
+  RELEVANCE_MED_THRESHOLD,
   type SearchPayload,
   useGetSearchQuery,
 } from "./useGetSearchQuery";
@@ -24,7 +26,9 @@ function chunk(overrides: Partial<ChunkResult> = {}): ChunkResult {
     filename: "a.pdf",
     mimetype: "application/pdf",
     page: 1,
-    text: "body",
+    // Default text contains "term" so the literal-match gate passes for the
+    // default runSearch("term") calls throughout the test suite.
+    text: "term body",
     score: 1,
     ...overrides,
   };
@@ -191,12 +195,24 @@ describe("useGetSearchQuery", () => {
   });
 
   describe("grouping chunks into files", () => {
-    it("groups chunks by filename and averages their scores", async () => {
+    // Pure min-max: norm(raw) = (raw - globalMin) / (globalMax - globalMin)
+    // Zero-spread (all identical scores) → every chunk maps to 1.0
+    function norm(raw: number, globalMin: number, globalMax: number) {
+      const spread = globalMax - globalMin;
+      return spread > 0 ? (raw - globalMin) / spread : 1;
+    }
+
+    it("groups chunks by filename and computes maxScore / relevanceTier / chunkTiers", async () => {
+      // a.pdf: [4.0, 2.0]   b.pdf: [1.5]
+      // globalMin=1.5, globalMax=4.0, spread=2.5
+      // norm(4.0) = (4.0-1.5)/2.5 = 1.0  → High
+      // norm(2.0) = (2.0-1.5)/2.5 = 0.2  → Low
+      // norm(1.5) = (1.5-1.5)/2.5 = 0.0  → Low
       serveSearch({
         results: [
-          chunk({ filename: "a.pdf", score: 2 }),
-          chunk({ filename: "a.pdf", score: 4 }),
-          chunk({ filename: "b.pdf", score: 1 }),
+          chunk({ filename: "a.pdf", score: 4.0 }),
+          chunk({ filename: "a.pdf", score: 2.0 }),
+          chunk({ filename: "b.pdf", score: 1.5 }),
         ],
       });
 
@@ -204,14 +220,268 @@ describe("useGetSearchQuery", () => {
 
       const files = result.current.data?.files ?? [];
       expect(files).toHaveLength(2);
-      expect(files[0]).toMatchObject({
-        filename: "a.pdf",
-        chunkCount: 2,
-        avgScore: 3,
-      });
-      expect(files[1]).toMatchObject({ filename: "b.pdf", chunkCount: 1 });
+
+      const aPdf = files[0];
+      expect(aPdf.filename).toBe("a.pdf");
+      expect(aPdf.chunkCount).toBe(2);
+      expect(aPdf.maxScore).toBeCloseTo(norm(4.0, 1.5, 4.0));
+      expect(aPdf.relevanceTier).toBe("high");
+      expect(aPdf.chunkTiers).toMatchObject({ high: 1, medium: 0, low: 1 });
+
+      const bPdf = files[1];
+      expect(bPdf.filename).toBe("b.pdf");
+      expect(bPdf.maxScore).toBeCloseTo(norm(1.5, 1.5, 4.0));
+      expect(bPdf.relevanceTier).toBe("low");
+      expect(bPdf.chunkTiers).toMatchObject({ high: 0, medium: 0, low: 1 });
     });
 
+    it("single result — maps to High (100%) via min-max", async () => {
+      // Only one chunk: globalMin = globalMax → zero-spread → 1.0
+      // This is correct: it IS the best (and only) match for this query.
+      serveSearch({
+        results: [chunk({ filename: "a.pdf", score: 1.26 })],
+      });
+
+      const { result } = await runSearch("term");
+
+      const file = result.current.data?.files[0];
+      expect(file?.maxScore).toBe(1.0);
+      expect(file?.relevanceTier).toBe("high");
+    });
+
+    it("zero-spread — all identical scores map to High (100%)", async () => {
+      // All chunks same score → spread = 0 → every chunk normalises to 1.0
+      serveSearch({
+        results: [
+          chunk({ filename: "a.pdf", score: 3.5 }),
+          chunk({ filename: "a.pdf", score: 3.5 }),
+        ],
+      });
+
+      const { result } = await runSearch("term");
+
+      const file = result.current.data?.files[0];
+      expect(file?.maxScore).toBe(1.0);
+      expect(file?.relevanceTier).toBe("high");
+      expect(file?.chunkTiers).toMatchObject({ high: 2, medium: 0, low: 0 });
+    });
+
+    it("best chunk reaches High, worst reaches Low across files", async () => {
+      // a.pdf has the global max, b.pdf has the global min
+      // norm(4.0) = 1.0 → High;  norm(1.5) = 0.0 → Low
+      serveSearch({
+        results: [
+          chunk({ filename: "a.pdf", score: 4.0 }),
+          chunk({ filename: "b.pdf", score: 1.5 }),
+        ],
+      });
+
+      const { result } = await runSearch("term");
+
+      const files = result.current.data?.files ?? [];
+      expect(files.find((f) => f.filename === "a.pdf")?.relevanceTier).toBe(
+        "high",
+      );
+      expect(files.find((f) => f.filename === "b.pdf")?.relevanceTier).toBe(
+        "low",
+      );
+    });
+
+    it("exposes tier threshold constants", () => {
+      expect(RELEVANCE_HIGH_THRESHOLD).toBeGreaterThan(RELEVANCE_MED_THRESHOLD);
+      expect(RELEVANCE_HIGH_THRESHOLD).toBeLessThanOrEqual(1);
+      expect(RELEVANCE_MED_THRESHOLD).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  describe("literal-match gate", () => {
+    it("returns empty when no chunk has highlights and no token appears in text", async () => {
+      // Simulates "xylophone concerto" — pure KNN drift, no keyword match.
+      serveSearch({
+        results: [
+          chunk({
+            filename: "a.pdf",
+            text: "quantum computing qubits",
+            highlights: [],
+          }),
+        ],
+      });
+
+      const { result } = await runSearch("xylophone concerto");
+
+      expect(result.current.data?.files).toHaveLength(0);
+    });
+
+    it("passes through when a token appears in chunk text", async () => {
+      // The gate scans chunk text directly — highlights are not trusted because
+      // OpenSearch fuzziness can produce false-positive highlight fragments.
+      serveSearch({
+        results: [
+          chunk({
+            filename: "a.pdf",
+            text: "quantum computing qubits",
+            highlights: [],
+          }),
+        ],
+      });
+
+      const { result } = await runSearch("quantum");
+
+      expect(result.current.data?.files).toHaveLength(1);
+    });
+
+    it("passes through even when highlights contain a false-positive fuzzy match", async () => {
+      // "concerto" → fuzzy → "convert" highlight is a false positive.
+      // The gate ignores highlights and checks text directly.
+      // "convert" IS in the text but "concerto" is NOT — gate fires.
+      serveSearch({
+        results: [
+          chunk({
+            filename: "a.pdf",
+            text: "Solar cells convert sunlight into electricity",
+            highlights: ["Solar cells <mark>convert</mark> sunlight"],
+          }),
+        ],
+      });
+
+      const { result } = await runSearch("xylophone concerto");
+
+      expect(result.current.data?.files).toHaveLength(0);
+    });
+
+    it("passes through when a token appears in text with empty highlights", async () => {
+      // Pure KNN hit — no keyword highlight — but word is literally in text.
+      serveSearch({
+        results: [
+          chunk({
+            filename: "a.pdf",
+            text: "Apples are a type of fruit",
+            highlights: [],
+          }),
+        ],
+      });
+
+      const { result } = await runSearch("apple");
+
+      expect(result.current.data?.files).toHaveLength(1);
+    });
+
+    it("is case-insensitive in the text scan", async () => {
+      serveSearch({
+        results: [
+          chunk({
+            filename: "a.pdf",
+            text: "QUANTUM COMPUTING",
+            highlights: [],
+          }),
+        ],
+      });
+
+      const { result } = await runSearch("quantum");
+
+      expect(result.current.data?.files).toHaveLength(1);
+    });
+
+    it("does not apply to wildcard queries", async () => {
+      // Wildcard browse-all: no token check, everything passes through.
+      serveSearch({
+        results: [
+          chunk({
+            filename: "a.pdf",
+            text: "something unrelated",
+            highlights: [],
+          }),
+        ],
+      });
+
+      const { result } = await runSearch("*");
+
+      expect(result.current.data?.files).toHaveLength(1);
+    });
+
+    it("stopword-only token 'your' does not pass the gate for 'your mom'", async () => {
+      // "your" is a stopword — filtered out.
+      // "mom" is meaningful but not in the text → gate fires.
+      serveSearch({
+        results: [
+          chunk({
+            filename: "a.pdf",
+            text: "your quantum computing notes",
+            highlights: [],
+          }),
+        ],
+      });
+
+      const { result } = await runSearch("your mom");
+
+      expect(result.current.data?.files).toHaveLength(0);
+    });
+
+    it("meaningful token alongside stopword passes when meaningful token is in text", async () => {
+      // "your" stripped, "quantum" kept → "quantum" IS in text → passes.
+      serveSearch({
+        results: [
+          chunk({
+            filename: "a.pdf",
+            text: "your quantum computing notes",
+            highlights: [],
+          }),
+        ],
+      });
+
+      const { result } = await runSearch("your quantum");
+
+      expect(result.current.data?.files).toHaveLength(1);
+    });
+
+    it("all-stopword query falls back to full token list", async () => {
+      // Every token is a stopword → fall back to checking all tokens.
+      // "the" IS in the text → passes through (backend threshold decides).
+      serveSearch({
+        results: [
+          chunk({
+            filename: "a.pdf",
+            text: "the quick brown fox",
+            highlights: [],
+          }),
+        ],
+      });
+
+      const { result } = await runSearch("the a");
+
+      expect(result.current.data?.files).toHaveLength(1);
+    });
+
+    it("filters out files without keyword matches while keeping matching files", async () => {
+      // docling.pdf contains "docling", google_drive_doc.pdf does not.
+      // The irrelevant file should be pruned so it doesn't appear or distort scoring.
+      serveSearch({
+        results: [
+          chunk({
+            filename: "docling.pdf",
+            text: "docling parsing architecture and features",
+            highlights: ["<mark>docling</mark> parsing architecture"],
+            score: 3.5,
+          }),
+          chunk({
+            filename: "google_drive_doc.pdf",
+            text: "CS4750 Final Report Database Design",
+            highlights: [],
+            score: 2.0,
+          }),
+        ],
+      });
+
+      const { result } = await runSearch("docling");
+
+      const files = result.current.data?.files ?? [];
+      expect(files).toHaveLength(1);
+      expect(files[0].filename).toBe("docling.pdf");
+      expect(files[0].maxScore).toBe(1.0);
+    });
+  });
+
+  describe("grouping chunks (continued)", () => {
     it("falls back to source_url, then to Untitled source (#1609)", async () => {
       serveSearch({
         results: [
