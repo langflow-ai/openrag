@@ -762,12 +762,13 @@ async def test_sync_without_a_requested_connection_takes_the_first_working(monke
 
 
 @pytest.mark.asyncio
-async def test_a_requested_connection_that_cannot_authenticate_falls_back(monkeypatch):
-    """Ordering rather than hard selection: an unusable connection behaves as it
-    did before, rather than failing later inside the connector."""
+async def test_a_requested_connection_that_cannot_authenticate_never_falls_back(monkeypatch):
+    """An explicit ID must not sync a different account when auth expires."""
     remote_files = [{"id": "b::a.pdf", "name": "a.pdf", "modified_time": None}]
     service = _two_connection_service(remote_files, broken_first=True)
 
-    await _sync_with_connection(service, "conn-1", monkeypatch)
+    response = await _sync_with_connection(service, "conn-1", monkeypatch)
 
-    assert service.sync_specific_files.await_args.args[0] == "conn-2"
+    assert response.status_code == 404
+    service.sync_specific_files.assert_not_awaited()
+    service.get_connector.assert_awaited_once_with("conn-1")
