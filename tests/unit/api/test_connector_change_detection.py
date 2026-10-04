@@ -464,6 +464,72 @@ async def test_state_map_returns_empty_on_error(monkeypatch):
     assert result == {}
 
 
+
+@pytest.mark.asyncio
+async def test_plugin_picker_shows_indexed_and_changed_files_beyond_global_aggregation_cap(
+    monkeypatch,
+):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+    opensearch_client = AsyncMock()
+
+    async def search(*, index, body):
+        requested = [
+            clause["terms"]["document_id"]
+            for scope in body["query"]["bool"]["filter"]
+            for clause in scope.get("bool", {}).get("should", [])
+            if "document_id" in clause.get("terms", {})
+        ]
+        assert ["late-file-id", "new-file-id"] in requested
+        return {
+            "aggregations": {
+                "by_connector_file_id": {
+                    "buckets": [{
+                        "key": "late-file-id",
+                        "latest_modified": {"value": 1704067200000.0},
+                        "etag": {"buckets": []},
+                    }]
+                },
+                "by_document_id": {"buckets": []},
+            }
+        }
+
+    opensearch_client.search.side_effect = search
+    sm = MagicMock()
+    sm.get_user_opensearch_client.return_value = opensearch_client
+    nodes = [
+        {"id": "folder-id", "kind": "folder", "name": "Reports"},
+        {
+            "id": "late-file-id", "kind": "file", "name": "newer.pdf",
+            "modified_time": "2024-06-01T00:00:00Z",
+        },
+        {"id": "new-file-id", "kind": "file", "name": "first.pdf"},
+    ]
+    enriched = await connectors_api.enrich_plugin_picker_nodes(
+        "sharepoint_onprem", nodes, sm, "alice", "token"
+    )
+
+    assert enriched[0] == nodes[0]
+    assert enriched[1]["is_ingested"] is True
+    assert enriched[1]["is_stale"] is True
+    assert enriched[2]["is_ingested"] is False
+    assert enriched[2]["is_stale"] is False
+
+
+@pytest.mark.asyncio
+async def test_plugin_picker_refuses_to_misreport_index_state_on_search_failure():
+    from api import connectors as connectors_api
+
+    client = AsyncMock()
+    client.search.side_effect = RuntimeError("OpenSearch unavailable")
+    sm = MagicMock()
+    sm.get_user_opensearch_client.return_value = client
+    with pytest.raises(RuntimeError):
+        await connectors_api.enrich_plugin_picker_nodes(
+            "sharepoint_onprem", [{"id": "file-1", "kind": "file"}], sm, "alice", "token"
+        )
+
 # ---------------------------------------------------------------------------
 # get_synced_id_to_filename_map
 # ---------------------------------------------------------------------------
