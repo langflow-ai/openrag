@@ -1,0 +1,32 @@
+{
+  "name": "openrag",
+  "version": "0.3.0",
+  "description": "npm bootstrap/installer for OpenRAG, a Python-based RAG platform for intelligent document search",
+  "keywords": [
+    "rag",
+    "retrieval-augmented-generation",
+    "ai",
+    "search",
+    "openrag",
+    "llm",
+    "document-search"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/langflow-ai/openrag"
+  },
+  "bin": {
+    "openrag": "bin/openrag.js"
+  },
+  "scripts": {
+    "postinstall": "node lib/install.js"
+  },
+  "files": [
+    "bin/",
+    "lib/"
+  ],
+  "engines": {
+    "node": ">=16"
+  }
+}
