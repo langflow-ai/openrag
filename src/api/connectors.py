@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import get_index_name, is_workspace_oauth_overrides_enabled
 from connectors.base import normalize_etag
+from connectors.registry import is_plugin_connector_type
 from connectors.sharepoint.utils import is_valid_sharepoint_url
 from dependencies import (
     get_connector_service,
@@ -31,6 +32,7 @@ from services.connector_access_service import (
 from session_manager import User
 from utils.ingest_preview_flag import is_ingest_preview_enabled
 from utils.logging_config import get_logger
+from utils.run_mode_utils import is_run_mode_saas
 from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
@@ -48,6 +50,8 @@ async def _connector_access_denied(
     connector_type: str,
 ) -> JSONResponse | None:
     """Return 403 when workspace policy blocks this connector type."""
+    if is_plugin_connector_type(connector_type) and is_run_mode_saas():
+        return JSONResponse({"error": "Connector not available"}, status_code=403)
     if connector_type not in CONNECTOR_TYPES:
         return None
     if not is_connector_access_policy_enforced():
@@ -66,10 +70,13 @@ async def _allowed_connector_types_for_request(
     connector_types: list[str],
 ) -> list[str]:
     """Drop connector types blocked by workspace policy (sync-all style endpoints)."""
+    available = [
+        t for t in connector_types if not (is_plugin_connector_type(t) and is_run_mode_saas())
+    ]
     if not is_connector_access_policy_enforced():
-        return connector_types
+        return available
     access_map = await get_access_map(session)
-    return [t for t in connector_types if access_map.get(t, True)]
+    return [t for t in available if access_map.get(t, True)]
 
 
 def _connector_sync_should_replace(connector_type: str) -> bool:
@@ -321,6 +328,9 @@ async def get_synced_file_state_map(
     user_id: str,
     session_manager,
     jwt_token: str | None = None,
+    *,
+    file_ids: list[str] | None = None,
+    strict: bool = False,
 ) -> dict[str, SyncedFileState]:
     """Map each ingested connector source id → the change-detection state stored for it.
 
@@ -350,16 +360,36 @@ async def get_synced_file_state_map(
             }
 
         def _build_body(id_field: str, etag_field: str) -> dict[str, Any]:
+            query: dict[str, Any] = {"term": {"connector_type": connector_type}}
+            if file_ids is not None:
+                query = {
+                    "bool": {
+                        "filter": [
+                            {"term": {"connector_type": connector_type}},
+                            {
+                                "bool": {
+                                    "should": [
+                                        {"terms": {"document_id": file_ids}},
+                                        {"terms": {"connector_file_id": file_ids}},
+                                        {"terms": {"connector_file_id.keyword": file_ids}},
+                                    ],
+                                    "minimum_should_match": 1,
+                                }
+                            },
+                        ]
+                    }
+                }
+            bucket_size = len(file_ids) if file_ids is not None else 10000
             return {
                 "size": 0,
-                "query": {"term": {"connector_type": connector_type}},
+                "query": query,
                 "aggs": {
                     "by_connector_file_id": {
-                        "terms": {"field": id_field, "size": 10000},
+                        "terms": {"field": id_field, "size": bucket_size},
                         "aggs": _sub_aggs(etag_field),
                     },
                     "by_document_id": {
-                        "terms": {"field": "document_id", "size": 10000},
+                        "terms": {"field": "document_id", "size": bucket_size},
                         "aggs": _sub_aggs(etag_field),
                     },
                 },
@@ -422,10 +452,11 @@ async def get_synced_file_state_map(
                 )
         return mapping
     except Exception as e:
+        if strict and "index_not_found_exception" not in str(e):
+            raise
         logger.error(
             "Failed to build connector file state map",
             connector_type=connector_type,
-            error=str(e),
         )
         return {}
 
@@ -503,6 +534,40 @@ def classify_remote_file_change(
     if remote_is_newer_than_synced(file_id, remote_modified_time, synced_state_map):
         return "changed"
     return "unchanged"
+
+
+async def enrich_plugin_picker_nodes(
+    connector_type: str,
+    nodes: list[dict[str, Any]],
+    session_manager,
+    user_id: str,
+    jwt_token: str | None,
+) -> list[dict[str, Any]]:
+    """Add owner-scoped indexed/changed state for this bounded picker page only."""
+    if len(nodes) > 200:
+        raise ValueError("Picker page exceeds the allowed size")
+    ids = [node["id"] for node in nodes if node.get("kind") == "file"]
+    if not ids:
+        return nodes
+    state = await get_synced_file_state_map(
+        connector_type,
+        user_id,
+        session_manager,
+        jwt_token,
+        file_ids=ids,
+        strict=True,
+    )
+    return [
+        {
+            **node,
+            "is_ingested": node["id"] in state,
+            "is_stale": classify_remote_file_change(
+                node["id"], node.get("modified_time"), node["id"] in state,
+                state, node.get("etag"),
+            ) == "changed",
+        } if node.get("kind") == "file" else node
+        for node in nodes
+    ]
 
 
 def has_comparable_change_signal(
@@ -671,12 +736,19 @@ async def list_remote_files_for_connector_type(
                     if not page_token:
                         break
         except Exception as e:
-            logger.warning(
-                "Skipping remote listing — listing failed",
-                connector_type=connector_type,
-                connection_id=conn.connection_id,
-                error=str(e),
-            )
+            if is_plugin_connector_type(connector_type):
+                logger.warning(
+                    "Skipping remote listing — plugin listing failed",
+                    connector_type=connector_type,
+                    connection_id=conn.connection_id,
+                )
+            else:
+                logger.warning(
+                    "Skipping remote listing — listing failed",
+                    connector_type=connector_type,
+                    connection_id=conn.connection_id,
+                    error=str(e),
+                )
             return None
 
     return remote_files
@@ -716,6 +788,39 @@ async def compute_orphans_for_connector_type(
         return None
 
     orphan_ids = [fid for fid in existing_file_ids if fid not in remote_files]
+    if orphan_ids and connector_type == "sharepoint_onprem":
+        # A configured site can be removed, or a previously visible library
+        # trimmed by SharePoint permissions. Absence from today's inventory
+        # proves neither file deletion nor permission to delete indexed chunks.
+        # Confirm a 404 at the file endpoint for every active owner connection;
+        # if any connection cannot prove it, keep the indexed copy.
+        try:
+            connections = await connector_service.connection_manager.list_connections(
+                user_id=user_id, connector_type=connector_type
+            )
+            active = [conn for conn in connections if conn.is_active]
+            if not active:
+                return []
+            connectors = [await connector_service.get_connector(conn.connection_id) for conn in active]
+            if any(not connector or not connector.is_authenticated
+                   or not callable(getattr(connector, "is_definitively_missing", None))
+                   for connector in connectors):
+                return []
+        except Exception:
+            return []
+        confirmed = []
+        for fid in orphan_ids:
+            try:
+                for connector in connectors:
+                    if not await connector.is_definitively_missing(fid):
+                        break
+                else:
+                    confirmed.append(fid)
+            except Exception:
+                # Invalid scope, lost access, network and malformed server
+                # responses must not turn absence into a deletion signal.
+                continue
+        orphan_ids = confirmed
     if not orphan_ids:
         return []
 
@@ -980,8 +1085,8 @@ class ConnectorSyncBody(BaseModel):
     # The connection this sync targets. The upload UI is rendered per connection
     # and sends it on every request; connector_check_duplicates resolves the same
     # id, so honouring it here keeps the dialog and the sync it confirms pointed
-    # at one connection. Unset (or unknown) falls back to the first that
-    # authenticates, as before.
+    # at one connection. If supplied, the id is mandatory: never fall back
+    # to a different connection after an invalid id or failed authentication.
     connection_id: str | None = None
     max_files: int | None = None
     selected_files: list[Any] | None = None
@@ -1096,7 +1201,12 @@ async def _classify_connector_duplicates(
     for file_info in expanded_files_info:
         cleaned_name = clean_connector_filename(file_info["name"], file_info["mimeType"])
         response_file = _connector_file_response(file_info, cleaned_name=cleaned_name)
-        aliases = get_filename_aliases(cleaned_name)
+        indexed_name = (
+            connector.filename_for_index(file_info["id"], cleaned_name)
+            if getattr(connector, "CONNECTOR_TYPE", None) == "sharepoint_onprem" and file_info.get("id")
+            else cleaned_name
+        )
+        aliases = get_filename_aliases(indexed_name)
         cleaned_files.append((response_file, aliases))
         all_candidates.update(aliases)
 
@@ -1399,6 +1509,14 @@ async def connector_check_duplicates(
     """Check if any of the selected files or folders contain files that already exist in the index"""
     if denied := await _connector_access_denied(request, session, connector_type):
         return denied
+    if is_plugin_connector_type(connector_type) and (
+        not body.connection_id or body.bucket_filter
+        or any(isinstance(f, dict) and f.get("isFolder") for f in body.selected_files or [])
+    ):
+        return JSONResponse(
+            {"error": "Select files from a specific connection"}, status_code=400
+        )
+
 
     selected_files_raw = body.selected_files
     if not selected_files_raw and not body.bucket_filter:
@@ -1412,15 +1530,17 @@ async def connector_check_duplicates(
         )
         active_connections = [conn for conn in connections if conn.is_active]
 
-        # If connection_id is provided, find it, otherwise find the first working connection
+        # An explicit connection must belong to this user and connector type.
+        # The same choice must be used for the subsequent sync request.
         working_connection = None
         if body.connection_id:
-            for conn in active_connections:
-                if conn.connection_id == body.connection_id:
-                    working_connection = conn
-                    break
-
-        if not working_connection:
+            working_connection = next(
+                (conn for conn in active_connections if conn.connection_id == body.connection_id),
+                None,
+            )
+            if working_connection is None:
+                return JSONResponse({"error": "Connection not found"}, status_code=404)
+        else:
             for conn in active_connections:
                 try:
                     connector = await connector_service.get_connector(conn.connection_id)
@@ -1481,6 +1601,12 @@ async def list_connectors(
         connector_types = connector_service.connection_manager.get_available_connector_types(
             user_id=user.user_id
         )
+        if is_run_mode_saas():
+            connector_types = {
+                name: data
+                for name, data in connector_types.items()
+                if not is_plugin_connector_type(name)
+            }
         if is_connector_access_policy_enforced():
             access_map = await get_access_map(session)
             connector_types = filter_connectors_for_user(connector_types, access_map)
@@ -1651,6 +1777,14 @@ async def connector_sync(
     """Sync files from all active connections of a connector type"""
     if denied := await _connector_access_denied(request, session, connector_type):
         return denied
+    if is_plugin_connector_type(connector_type) and (
+        body.sync_all or body.bucket_filter or (body.selected_files and not body.connection_id)
+        or any(isinstance(f, dict) and f.get("isFolder") for f in body.selected_files or [])
+    ):
+        return JSONResponse(
+            {"error": "Select files from a specific connection"}, status_code=400
+        )
+
 
     max_files = body.max_files
     selected_files_raw = body.selected_files
@@ -1713,24 +1847,15 @@ async def connector_sync(
                 status_code=404,
             )
 
-        # Try the requested connection first, then the rest. Ordering rather than
-        # selecting outright keeps today's behaviour when that connection cannot
-        # authenticate: the sync falls through to another, or reports that none
-        # work, instead of failing later inside the connector.
+        # The selected connection is authoritative. Never ingest another
+        # connection's content when an explicit id is missing or expired.
         candidate_connections = active_connections
         if body.connection_id:
-            requested = [c for c in active_connections if c.connection_id == body.connection_id]
-            if requested:
-                candidate_connections = requested + [
-                    c for c in active_connections if c.connection_id != body.connection_id
-                ]
-            else:
-                logger.warning(
-                    "Requested connection is not active for this connector type",
-                    connector_type=connector_type,
-                    connection_id=body.connection_id,
-                )
-
+            candidate_connections = [
+                c for c in active_connections if c.connection_id == body.connection_id
+            ]
+            if not candidate_connections:
+                return JSONResponse({"error": "Connection not found"}, status_code=404)
         # Find the first connection that actually works
         working_connection = None
         for connection in candidate_connections:
@@ -2089,12 +2214,12 @@ async def connector_sync(
             status_code=201,
         )
 
-    except Exception as e:
-        logger.error("Connector sync failed", error=str(e))
+    except Exception:
+        logger.error("Connector sync failed", connector_type=connector_type)
         await TelemetryClient.send_event(
             Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_FAILED
         )
-        return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
+        return JSONResponse({"error": "Sync failed"}, status_code=500)
 
 
 async def connector_status(
@@ -2124,25 +2249,21 @@ async def connector_status(
                 # Actually verify the connection by trying to authenticate
                 is_authenticated = await connector.authenticate()
 
-                # Get base URL if available (for SharePoint/OneDrive connectors)
-                base_url = None
-                if hasattr(connector, "base_url"):
-                    base_url = connector.base_url
-                    logger.debug(
-                        f"connector_status: Got base_url from connector.base_url: {base_url}"
-                    )
-                elif hasattr(connector, "sharepoint_url"):
-                    base_url = connector.sharepoint_url  # Backward compatibility
-                    logger.debug(
-                        f"connector_status: Got base_url from connector.sharepoint_url: {base_url}"
-                    )
+                # Plugin secrets and internal intranet origins are not status
+                # metadata. Existing OAuth clients retain their legacy fields.
+                if is_plugin_connector_type(connector_type):
+                    client_id = None
+                    base_url = None
                 else:
-                    logger.debug(
-                        "connector_status: Connector has no base_url or sharepoint_url attribute"
-                    )
+                    base_url = None
+                    if hasattr(connector, "base_url"):
+                        base_url = connector.base_url
+                    elif hasattr(connector, "sharepoint_url"):
+                        base_url = connector.sharepoint_url
+                    client_id = connector.get_client_id()
 
                 connection_details[connection.connection_id] = {
-                    "client_id": connector.get_client_id(),
+                    "client_id": client_id,
                     "is_authenticated": is_authenticated,
                     "base_url": base_url,
                 }
@@ -2154,11 +2275,10 @@ async def connector_status(
                     "is_authenticated": False,
                     "base_url": None,
                 }
-        except Exception as e:
+        except Exception:
             logger.warning(
                 "Could not verify connector authentication",
                 connection_id=connection.connection_id,
-                error=str(e),
             )
             connection_details[connection.connection_id] = {
                 "client_id": None,
@@ -3027,6 +3147,17 @@ async def browse_connection_files(
     """
     if denied := await _connector_access_denied(request, session, connector_type):
         return denied
+    connection = await connector_service.connection_manager.get_connection(connection_id)
+    if (
+        not connection
+        or connection.user_id != user.user_id
+        or connection.connector_type != connector_type
+        or not connection.is_active
+    ):
+        return JSONResponse({"error": "Connection not found"}, status_code=404)
+    if max_files < 1 or max_files > 500:
+        return JSONResponse({"error": "max_files must be between 1 and 500"}, status_code=400)
+
 
     try:
         connector = await connector_service.get_connector(connection_id)
@@ -3115,14 +3246,10 @@ async def browse_connection_files(
             }
         )
 
-    except Exception as e:
+    except Exception:
         logger.error(
             "Failed to browse connection files",
             connector_type=connector_type,
             connection_id=connection_id,
-            error=str(e),
         )
-        return JSONResponse(
-            {"error": f"Failed to browse files: {str(e)}"},
-            status_code=500,
-        )
+        return JSONResponse({"error": "Failed to browse files"}, status_code=500)

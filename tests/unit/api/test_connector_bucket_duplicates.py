@@ -99,6 +99,36 @@ def _bucket_sync_service(remote_files, task_id="task-x"):
     return service
 
 
+@pytest.mark.asyncio
+async def test_sharepoint_onprem_duplicate_check_uses_index_name_not_picker_basename(monkeypatch):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+    session_manager, client = _session_manager_finding("report--sp-first.pdf")
+    connector = SimpleNamespace(
+        CONNECTOR_TYPE="sharepoint_onprem",
+        filename_for_index=lambda file_id, name: f"report--sp-{file_id}.pdf",
+        cfg=None,
+    )
+    result = await connectors_api._classify_connector_duplicates(
+        connector=connector,
+        selected_files_raw=[
+            {"id": "first", "name": "report.pdf", "mimeType": "application/pdf"},
+            {"id": "second", "name": "report.pdf", "mimeType": "application/pdf"},
+        ],
+        session_manager=session_manager,
+        user_id="alice",
+        jwt_token=None,
+    )
+    assert result["duplicate_count"] == 1
+    assert result["total_files"] == 2
+    assert [file["id"] for file in result["duplicate_files"]] == ["first"]
+    assert [file["id"] for file in result["non_duplicate_files"]] == ["second"]
+    assert result["duplicate_names"] == ["report.pdf"]
+    asked = client.search.await_args.kwargs["body"]["query"]["terms"]["filename"]
+    assert "report.pdf" not in asked
+
+
 # ---------------------------------------------------------------------------
 # _classify_bucket_connector_duplicates — what the confirm dialog is told
 # ---------------------------------------------------------------------------

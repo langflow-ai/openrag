@@ -244,6 +244,35 @@ async def test_connector_processor_deletes_chunks_when_source_returns_404(
 
 
 @pytest.mark.asyncio
+async def test_connector_processor_does_not_delete_on_invalid_scope(
+    monkeypatch, backend_write_client
+):
+    """A bad selected ID is not evidence that an indexed source file was deleted."""
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_connector_processor(replace_duplicates=False)
+    connector = MagicMock()
+    connector.get_file_content = AsyncMock(
+        side_effect=ValueError("404: selected file is outside the configured site")
+    )
+    processor.connector_service.get_connector = AsyncMock(return_value=connector)
+    connection = MagicMock()
+    connection.connector_type = "sharepoint_onprem"
+    processor.connector_service.connection_manager = MagicMock()
+    processor.connector_service.connection_manager.get_connection = AsyncMock(
+        return_value=connection
+    )
+
+    file_task = _make_file_task()
+    upload_task = _make_upload_task()
+    with pytest.raises(ValueError, match="outside the configured site"):
+        await processor.process_item(upload_task, "out-of-scope-id", file_task)
+
+    assert file_task.status == TaskStatus.FAILED
+    assert upload_task.failed_files == 1
+    backend_write_client.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_connector_processor_fails_when_source_deleted_chunk_cleanup_errors(
     monkeypatch,
 ):
@@ -495,7 +524,7 @@ async def test_langflow_connector_processor_deletes_chunks_when_source_returns_4
 
     connector = MagicMock()
     connector.get_file_content = MagicMock()
-    connector.get_file_content.side_effect = ValueError(
+    connector.get_file_content.side_effect = FileNotFoundError(
         "File not found: 01BYMO7NCRKVAJFSPPABBKQXS4PPDHBVUY"
     )
     processor.connector_service.get_connector = AsyncMock(return_value=connector)

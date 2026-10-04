@@ -127,6 +127,9 @@ export function KnowledgeDropdown() {
   const [bucketConnectorAvailable, setBucketConnectorAvailable] = useState<
     Record<string, boolean>
   >({});
+  const [pluginConnectorItems, setPluginConnectorItems] = useState<
+    Array<{ type: string; name: string }>
+  >([]);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [duplicateFilename, setDuplicateFilename] = useState<string>("");
   const [preview, setPreview] = useState<PreviewDialogState>(EMPTY_PREVIEW);
@@ -213,6 +216,62 @@ export function KnowledgeDropdown() {
             );
           }
           setBucketConnectorAvailable(bucketAvailable);
+          const plugins = Object.entries(
+            connectorsResult.connectors ?? {},
+          ).filter(([type, metadata]) => {
+            if (
+              getConnectorDescriptor(type) ||
+              !metadata ||
+              typeof metadata !== "object"
+            )
+              return false;
+            return (
+              "available" in metadata &&
+              metadata.available === true &&
+              "browse_capability" in metadata &&
+              (metadata.browse_capability === "hierarchical" ||
+                metadata.browse_capability === "flat")
+            );
+          });
+          const configuredPlugins = await Promise.all(
+            plugins.map(async ([type, metadata]) => {
+              try {
+                const statusRes = await fetch(
+                  `/api/connectors/${encodeURIComponent(type)}/status`,
+                );
+                if (!statusRes.ok) return null;
+                const status = await statusRes.json();
+                return (status.connections ?? []).some(
+                  (connection: {
+                    is_active: boolean;
+                    is_authenticated: boolean;
+                    connection_id: string;
+                  }) =>
+                    connection.is_active &&
+                    connection.is_authenticated &&
+                    connection.connection_id,
+                )
+                  ? {
+                      type,
+                      name:
+                        metadata &&
+                        typeof metadata === "object" &&
+                        "name" in metadata &&
+                        typeof metadata.name === "string"
+                          ? metadata.name
+                          : type,
+                    }
+                  : null;
+              } catch {
+                return null;
+              }
+            }),
+          );
+          setPluginConnectorItems(
+            configuredPlugins.filter(
+              (item): item is { type: string; name: string } => item !== null,
+            ),
+          );
 
           const cloudConnectorTypes = [
             "google_drive",
@@ -841,6 +900,11 @@ export function KnowledgeDropdown() {
       icon: d.Icon,
       onClick: () => router.push(d.menuItem!.route),
     }));
+  const pluginItems = pluginConnectorItems.map(({ type, name }) => ({
+    label: name,
+    icon: PlugZap,
+    onClick: () => router.push(`/upload/${encodeURIComponent(type)}`),
+  }));
 
   const menuItems = [
     {
@@ -855,6 +919,7 @@ export function KnowledgeDropdown() {
     },
     ...bucketConnectorItems,
     ...cloudConnectorItems,
+    ...pluginItems,
   ];
 
   // Comprehensive loading state
