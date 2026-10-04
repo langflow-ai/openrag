@@ -93,7 +93,7 @@ class UpgradeInstructionsModal(ModalScreen[bool]):
                 "1. Exit TUI (press 'q')\n"
                 "2. Run one of:\n"
                 "   • pip install --upgrade openrag\n"
-                "   • uv pip install --upgrade openrag\n"
+                "   • uv add --upgrade openrag\n"
                 "   • uvx --from openrag openrag\n"
                 "3. Restart: openrag\n\n"
                 "After upgrading, containers will automatically use the new version.",
