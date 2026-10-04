@@ -155,7 +155,7 @@ The MCP server provides tools for RAG-enhanced chat, semantic search, document i
 
 ## 🛠️ Development
 
-For developers who want to [contribute to OpenRAG](https://docs.openr.ag/support/contribute) or set up a development environment, see [CONTRIBUTING.md](CONTRIBUTING.md).
+For developers who want to [contribute to OpenRAG](https://docs.openr.ag/support/contribute) or setup a development environment, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 🛟 Troubleshooting
 
