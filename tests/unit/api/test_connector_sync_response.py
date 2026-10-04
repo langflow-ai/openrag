@@ -188,3 +188,86 @@ async def test_connector_sync_ignores_preview_when_disabled(monkeypatch):
     assert response.status_code == 201
     service.sync_specific_files.assert_awaited_once()
     assert service.sync_specific_files.await_args.kwargs["preview_mode"] is False
+
+
+@pytest.mark.asyncio
+async def test_selected_sync_rejects_a_missing_requested_connection(monkeypatch):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    service = _preview_service_with_working_connection()
+    response = await connectors_api.connector_sync(
+        "google_drive",
+        connectors_api.ConnectorSyncBody(
+            connection_id="another-users-connection", selected_files=["file-a"]
+        ),
+        request=MagicMock(),
+        connector_service=service,
+        session_manager=MagicMock(),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
+        session=MagicMock(),
+        rbac=_permissive_rbac(),
+    )
+
+    assert response.status_code == 404
+    service.get_connector.assert_not_awaited()
+    service.sync_specific_files.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_selected_sync_does_not_fall_back_from_expired_connection(monkeypatch):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api.TelemetryClient, "send_event", AsyncMock())
+    bad = MagicMock()
+    bad.authenticate = AsyncMock(return_value=False)
+    good = MagicMock()
+    good.authenticate = AsyncMock(return_value=True)
+    service = MagicMock()
+    service.connection_manager.list_connections = AsyncMock(
+        return_value=[_make_connection("expired"), _make_connection("other")]
+    )
+    service.get_connector = AsyncMock(side_effect=lambda cid: {"expired": bad, "other": good}[cid])
+    service.sync_specific_files = AsyncMock(return_value="unexpected-task")
+
+    response = await connectors_api.connector_sync(
+        "google_drive",
+        connectors_api.ConnectorSyncBody(
+            connection_id="expired", selected_files=["file-a"]
+        ),
+        request=MagicMock(),
+        connector_service=service,
+        session_manager=MagicMock(),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
+        session=MagicMock(),
+        rbac=_permissive_rbac(),
+    )
+
+    assert response.status_code == 404
+    good.authenticate.assert_not_awaited()
+    service.sync_specific_files.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_plugin_sync_requires_explicit_connection_and_file_selection(monkeypatch):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api, "is_plugin_connector_type", lambda value: value == "acme")
+    service = _preview_service_with_working_connection()
+    common = dict(
+        request=MagicMock(),
+        connector_service=service,
+        session_manager=MagicMock(),
+        user=SimpleNamespace(user_id="alice", jwt_token="token", db_user_id="alice"),
+        session=MagicMock(),
+        rbac=_permissive_rbac(),
+    )
+    for body in (
+        connectors_api.ConnectorSyncBody(selected_files=["f1"]),
+        connectors_api.ConnectorSyncBody(connection_id="c1", sync_all=True),
+        connectors_api.ConnectorSyncBody(connection_id="c1", bucket_filter=["site-a"]),
+    ):
+        response = await connectors_api.connector_sync("acme", body, **common)
+        assert response.status_code == 400
+    service.get_connector.assert_not_awaited()
+    service.sync_specific_files.assert_not_awaited()

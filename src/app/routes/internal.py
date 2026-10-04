@@ -23,6 +23,7 @@ from api import (
     models,
     nudges,
     oidc,
+    plugin_connectors,
     provider_health,
     router,
     search,
@@ -40,7 +41,7 @@ from api.health import (
     sync_console_component,
 )
 from api.schemas.tasks import ErrorResponse, TaskRetryResponse
-from connectors.registry import get_connector_classes
+from connectors.registry import get_route_connector_classes
 from utils.run_mode_utils import is_run_mode_oss
 
 
@@ -296,10 +297,26 @@ def register_internal_routes(app: FastAPI):
         methods=["DELETE"],
         tags=["internal"],
     )
-    # Per-connector routes (defaults, configure, bucket listing, etc.) — registered before
-    # the generic /{connector_type}/... routes to avoid path shadowing.
-    for cls in get_connector_classes():
+    # Built-ins and enhancements can register provider-specific routes. Customer
+    # plugins only use the host's validated generic routes below.
+    for cls in get_route_connector_classes():
         cls.register_routes(app)
+    app.add_api_route(
+        "/connectors/{connector_type}/plugin-defaults",
+        plugin_connectors.plugin_defaults, methods=["GET"], tags=["internal"],
+    )
+    app.add_api_route(
+        "/connectors/{connector_type}/plugin-test",
+        plugin_connectors.plugin_test, methods=["POST"], tags=["internal"],
+    )
+    app.add_api_route(
+        "/connectors/{connector_type}/plugin-configure",
+        plugin_connectors.plugin_configure, methods=["POST"], tags=["internal"],
+    )
+    app.add_api_route(
+        "/connectors/{connector_type}/{connection_id}/picker/children",
+        plugin_connectors.plugin_picker_children, methods=["GET"], tags=["internal"],
+    )
     app.add_api_route(
         "/connectors/{connector_type}/sync",
         connectors.connector_sync,

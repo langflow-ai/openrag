@@ -755,7 +755,7 @@ class SharePointConnector(BaseConnector):
             file_metadata = await self._get_file_metadata_by_id(file_id)
 
             if not file_metadata:
-                raise ValueError(f"File not found: {file_id}")
+                raise FileNotFoundError(f"File not found: {file_id}")
 
             # Download file content
             download_url = file_metadata.get("download_url")
