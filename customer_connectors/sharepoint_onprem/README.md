@@ -2,18 +2,29 @@
 
 `openrag-sharepoint-onprem` is a separately packaged `sharepoint_onprem` adapter. It uses SharePoint Server REST and NTLM with **server-side** credentials; it does not use Microsoft Graph, SharePoint Online OAuth or the existing `sharepoint` browser popup. The generic OpenRAG form/picker displays configured sites, document libraries, nested folders and files, and sends selected file IDs to the backend for ingestion. It never sends the NTLM password to browser code except when the authorized user explicitly submits Test or Save over the OpenRAG HTTPS connection. This connector indexes documents for the **OpenRAG connection owner only**; it does not inherit SharePoint/AD ACLs.
 
-**Release gate:** no real SharePoint farm is supplied with this repository. Tests using simulated REST responses cannot prove NTLM handshake, selected farm's REST capability, custom CA, nested library permissions or >500-item paging on that farm. Keep `OPENRAG_CONNECTOR_PLUGINS` unset until the operator performs the non-production acceptance below. This is a draft integration, not a claim of live-farm certification.
+**Release gate:** no real SharePoint farm is supplied with this repository. Tests using simulated REST responses cannot prove NTLM handshake, selected farm's REST capability, custom CA, nested library permissions or >500-item paging on that farm. Enable this package only in an isolated non-production environment to perform the acceptance below; do not enable it in production until that gate passes. This is a draft integration, not a claim of live-farm certification.
 
 ## Preconditions
 
 - SharePoint Server web-application zone offers **NTLM** and REST, with a least-privilege read-only Windows service identity permitted to the nominated sites and document libraries. Kerberos-only, FBA, SAML, OIDC or Graph-only endpoints are not supported; no Basic fallback. Confirm the challenge from inside the backend network before rollout.
 - Backend egress/DNS is limited to the approved intranet origin. For a private SharePoint CA, mount an operator-managed **PEM CA bundle** in the backend container and set `OPENRAG_SHAREPOINT_CA_BUNDLE` to its absolute, readable regular-file path. The adapter passes that bundle explicitly to Requests TLS verification; if unset, Requests uses its default CA bundle. TLS verification cannot be disabled. Its HTTP session ignores proxy/CA environment variables (`trust_env=False`), so `REQUESTS_CA_BUNDLE` is not a supported configuration route.
 - `OPENRAG_SHAREPOINT_ALLOWED_ORIGINS` is a comma- or newline-separated list of **exact approved HTTPS origins** (scheme, DNS name and optional port, not arbitrary URLs). Every configured `root_url` must match one origin. No redirect is followed and file IDs cannot name arbitrary fetch URLs. Also enforce egress/DNS policy outside Python to mitigate DNS rebinding.
-- A stable `OPENRAG_ENCRYPTION_KEY` is mounted at runtime; the host rejects missing or failed plugin-secret encryption. Preserve it for restart/restore. The package is installed into `/app/.venv` in an immutable derived backend image, and `OPENRAG_CONNECTOR_PLUGINS=sharepoint_onprem` is enabled at deployment **only after** the test farm gate.
+- A stable `OPENRAG_ENCRYPTION_KEY` is mounted at runtime; the host rejects missing or failed plugin-secret encryption. Preserve it for restart/restore. The package is installed into `/app/.venv` in an immutable derived backend image, and `OPENRAG_CONNECTOR_PLUGINS=sharepoint_onprem` is enabled in production **only after** the test farm gate.
 
 ## Build
 
 The package entry point is `openrag.connectors.v1:sharepoint_onprem`, exports `SharePointOnPremConnector` and declares dependencies `requests>=2.31,<3` and `requests-ntlm>=1.3,<2`. Build and install a hash-pinned offline wheelhouse using the parent [customer connector guide](../README.md). The built-in Graph connector remains unchanged; do not modify OpenRAG's `src/connectors/registry.py` for this wheel.
+
+## Local development (explicit opt-in)
+
+`make backend` starts the stock backend: it does not install or enable customer wheels, so `make frontend` alone cannot add this card to Settings → Connectors. After stopping the existing host backend, use the dedicated target from the repository root:
+
+```bash
+make backend-sharepoint-onprem  # in one terminal; syncs the venv, installs this package, enables it
+make frontend                  # in another terminal
+```
+
+The card should appear at `http://localhost:3000/settings/connectors` even before configuring a connection. The **Test connection** and **Save** actions require a reachable, approved SharePoint farm, a valid NTLM account, `OPENRAG_SHAREPOINT_ALLOWED_ORIGINS` and a stable `OPENRAG_ENCRYPTION_KEY` in your private `.env`; set `OPENRAG_SHAREPOINT_CA_BUNDLE` for a private CA. Do not invent a permissive origin or disable TLS just to exercise the form. `make backend` neither installs the customer package nor enables its allowlist: restart with `make backend-sharepoint-onprem` to use this opt-in. The dedicated target installs the package *after* syncing the venv and uses `uv run --no-sync` to keep it available to the backend process. Production deployments use the pinned derived-image procedure in the parent guide, not an editable development install.
 
 The operator configures a connection in OpenRAG Settings after the approved wheel is loaded:
 
