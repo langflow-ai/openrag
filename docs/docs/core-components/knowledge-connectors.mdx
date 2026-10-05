@@ -123,6 +123,12 @@ You can do this during [initial set up](/docker#setup), or you can add the crede
 </TabItem>
 </Tabs>
 
+## Self-managed custom connectors (preview)
+
+Self-managed deployments can install a trusted Python connector wheel in a derived backend image and explicitly enable its `openrag.connectors.v1` entry point with `OPENRAG_CONNECTOR_PLUGINS`. The generic Settings form and Add Knowledge picker use the connector's declared fields and browsing capability; they do not require an OAuth app or a custom frontend bundle. This does not install wheels into a running server or enable untrusted customer code on hosted deployments.
+
+See the [custom connector authoring and deployment guide](https://github.com/langflow-ai/openrag/blob/main/customer_connectors/README.md) for the `BaseConnector` contract, entry-point registration, image build, security boundaries and verification steps. The [SharePoint Server on-premises NTLM example](https://github.com/langflow-ai/openrag/blob/main/customer_connectors/sharepoint_onprem/README.md) is a separately packaged PoC; it must pass the documented acceptance checks against your own non-production farm before production enablement. The existing Microsoft SharePoint cloud connector uses Graph and is not replaced by this example.
+
 ## Ingest documents with cloud connectors
 
 For more information, see [Ingest files from cloud storage](/ingestion#oauth-ingestion).
