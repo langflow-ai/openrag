@@ -241,10 +241,11 @@ export function FileBrowserDialog({
       setDuplicateDialogOpen(true);
     } catch (err) {
       console.error("[File Browser] Duplicate check failed:", err);
-      // Fallback: proceed without overwrite (backend will still skip
-      // exact-duplicate filenames on its own), unless we already know some
-      // selected files are stale re-ingests.
-      await submitSync(filesPayload, hasStale);
+      // Don't fall through to the sync: see shared-bucket-view. Ingesting
+      // without the answer silently skips every duplicate instead of asking.
+      toast.error("Could not check for existing files", {
+        description: "Nothing was ingested. Try again.",
+      });
     } finally {
       setIsCheckingDuplicates(false);
     }
