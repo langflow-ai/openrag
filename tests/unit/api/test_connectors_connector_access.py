@@ -231,9 +231,7 @@ async def test_browse_rejects_cross_type_connection(session, user):
 
 
 @pytest.mark.asyncio
-async def test_plugin_status_never_returns_username_or_internal_origin(
-    session, user, monkeypatch
-):
+async def test_plugin_status_never_returns_username_or_internal_origin(session, user, monkeypatch):
     from api import connectors as connectors_api
 
     monkeypatch.setattr(connectors_api, "is_plugin_connector_type", lambda value: value == "acme")

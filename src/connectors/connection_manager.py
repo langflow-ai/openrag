@@ -130,9 +130,10 @@ class ConnectionManager:
                 plugin_keys = _plugin_secret_keys(plugin_cls)
                 # A disabled plugin has no available schema. Keep its ciphertext
                 # opaque so an unrelated save cannot write decrypted unknown keys.
-                unknown_connector = plugin_cls is None and get_connector_class(
-                    conn_data.get("connector_type")
-                ) is None
+                unknown_connector = (
+                    plugin_cls is None
+                    and get_connector_class(conn_data.get("connector_type")) is None
+                )
                 # Decrypt sensitive fields
                 if "config" in conn_data and isinstance(conn_data["config"], dict):
                     for k, v in conn_data["config"].items():
@@ -209,7 +210,9 @@ class ConnectionManager:
                         tenant_id = conn_data.get("user_id") or "openrag"
                         conn_data["config"][k] = encrypt_secret(v, tenant_id=tenant_id)
                         if (
-                            plugin_cls is not None and k in plugin_keys and v
+                            plugin_cls is not None
+                            and k in plugin_keys
+                            and v
                             and not (
                                 isinstance(conn_data["config"][k], dict)
                                 and conn_data["config"][k].get("algorithm") == "AES-256-GCM"

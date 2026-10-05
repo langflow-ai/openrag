@@ -24,7 +24,11 @@ def run(awaitable):
 def altered_file_id(file_id, *, library, path):
     decoded = json.loads(base64.urlsafe_b64decode(file_id + "=" * (-len(file_id) % 4)))
     decoded[2:] = [library, path]
-    return base64.urlsafe_b64encode(json.dumps(decoded, separators=(",", ":")).encode()).decode().rstrip("=")
+    return (
+        base64.urlsafe_b64encode(json.dumps(decoded, separators=(",", ":")).encode())
+        .decode()
+        .rstrip("=")
+    )
 
 
 class SharePointServer:
@@ -42,8 +46,13 @@ class SharePointServer:
 
     def get(self, session, url, *, params, **options):
         assert isinstance(session.auth, HttpNtlmAuth)
-        assert options == {"headers": {"Accept": "application/json;odata=verbose"}, "timeout": (5, 20),
-                           "stream": True, "verify": self.ca_bundle or True, "allow_redirects": False}
+        assert options == {
+            "headers": {"Accept": "application/json;odata=verbose"},
+            "timeout": (5, 20),
+            "stream": True,
+            "verify": self.ca_bundle or True,
+            "allow_redirects": False,
+        }
         prepared = requests.Request("GET", url, params=params).prepare().url
         self.calls.append(prepared)
         parts = urlsplit(prepared)
@@ -60,11 +69,26 @@ class SharePointServer:
         if endpoint == "":
             return self.response(200, {"d": {"Id": "site"}})
         if endpoint == "lists":
-            items = ([{"Title": "Documents", "Hidden": False, "RootFolder": {"ServerRelativeUrl": LIBRARY}},
-                      {"Title": "Hidden", "Hidden": True, "RootFolder": {"ServerRelativeUrl": SITE + "/Hidden"}}]
-                     if parts.path.startswith(SITE) and self.library_visible else [])
+            items = (
+                [
+                    {
+                        "Title": "Documents",
+                        "Hidden": False,
+                        "RootFolder": {"ServerRelativeUrl": LIBRARY},
+                    },
+                    {
+                        "Title": "Hidden",
+                        "Hidden": True,
+                        "RootFolder": {"ServerRelativeUrl": SITE + "/Hidden"},
+                    },
+                ]
+                if parts.path.startswith(SITE) and self.library_visible
+                else []
+            )
         elif endpoint.startswith("GetFolderByServerRelativeUrl('"):
-            folder, collection = endpoint.removeprefix("GetFolderByServerRelativeUrl('").split("')/", 1)
+            folder, collection = endpoint.removeprefix("GetFolderByServerRelativeUrl('").split(
+                "')/", 1
+            )
             folder = folder.replace("''", "'")
             if folder == LIBRARY and collection == "Folders":
                 items = [{"Name": "team", "ServerRelativeUrl": LIBRARY + "/team"}]
@@ -73,13 +97,33 @@ class SharePointServer:
             elif folder == LIBRARY + "/team" and collection == "Folders":
                 items = [{"Name": "nested", "ServerRelativeUrl": NESTED}]
             elif folder == NESTED and collection == "Files":
-                items = ([{"Name": self.weird_path.rsplit("/", 1)[-1], "ServerRelativeUrl": self.weird_path}]
-                         if self.weird_path else
-                         [{"Name": f"doc-{n}.txt", "ServerRelativeUrl": f"{NESTED}/doc-{n}.txt", "Length": 9,
-                           "TimeLastModified": "2024-03-01T00:00:00Z"} for n in range(self.count)])
+                items = (
+                    [
+                        {
+                            "Name": self.weird_path.rsplit("/", 1)[-1],
+                            "ServerRelativeUrl": self.weird_path,
+                        }
+                    ]
+                    if self.weird_path
+                    else [
+                        {
+                            "Name": f"doc-{n}.txt",
+                            "ServerRelativeUrl": f"{NESTED}/doc-{n}.txt",
+                            "Length": 9,
+                            "TimeLastModified": "2024-03-01T00:00:00Z",
+                        }
+                        for n in range(self.count)
+                    ]
+                )
             elif folder == LIBRARY + "/other" and collection == "Files" and self.duplicate_folder:
-                items = [{"Name": "doc-0.txt", "ServerRelativeUrl": LIBRARY + "/other/doc-0.txt",
-                          "Length": 9, "TimeLastModified": "2024-03-01T00:00:00Z"}]
+                items = [
+                    {
+                        "Name": "doc-0.txt",
+                        "ServerRelativeUrl": LIBRARY + "/other/doc-0.txt",
+                        "Length": 9,
+                        "TimeLastModified": "2024-03-01T00:00:00Z",
+                    }
+                ]
             elif folder in (LIBRARY, LIBRARY + "/team", LIBRARY + "/other", NESTED):
                 items = []
             else:
@@ -99,14 +143,24 @@ class SharePointServer:
                 return self.response(404, {})
             if endpoint.endswith("/$value"):
                 return self.response(200, f"document {index}".encode())
-            return self.response(200, {"d": {"Name": f"doc-{index}.txt", "ServerRelativeUrl": location,
-                                              "Length": 9, "TimeCreated": "2024-02-01T00:00:00Z",
-                                              "TimeLastModified": self.file_modified, "ETag": '"version-1"'}})
+            return self.response(
+                200,
+                {
+                    "d": {
+                        "Name": f"doc-{index}.txt",
+                        "ServerRelativeUrl": location,
+                        "Length": 9,
+                        "TimeCreated": "2024-02-01T00:00:00Z",
+                        "TimeLastModified": self.file_modified,
+                        "ETag": '"version-1"',
+                    }
+                },
+            )
         else:
             return self.response(404, {})
         offset = int(query.get("$skiptoken", ["0"])[0])
         size = min(int(query.get("$top", ["200"])[0]), 73)  # Server pages independently of the UI.
-        page = items[offset:offset + size]
+        page = items[offset : offset + size]
         data = {"results": page}
         if offset + size < len(items):
             q = {key: value[0] for key, value in query.items() if key != "$skiptoken"}
@@ -128,9 +182,19 @@ class SharePointServer:
 def connector(monkeypatch):
     server = SharePointServer()
     monkeypatch.setenv("OPENRAG_SHAREPOINT_ALLOWED_ORIGINS", ORIGIN)
-    monkeypatch.setattr(requests.Session, "get", lambda session, url, **kw: server.get(session, url, **kw))
-    adapter = SharePointOnPremConnector({"root_url": ORIGIN, "username": "casey", "password": "dont-log-me",
-                                        "domain": "CORP", "site_paths": "sites/alpha\nsites/beta", "user_id": "owner-123"})
+    monkeypatch.setattr(
+        requests.Session, "get", lambda session, url, **kw: server.get(session, url, **kw)
+    )
+    adapter = SharePointOnPremConnector(
+        {
+            "root_url": ORIGIN,
+            "username": "casey",
+            "password": "dont-log-me",
+            "domain": "CORP",
+            "site_paths": "sites/alpha\nsites/beta",
+            "user_id": "owner-123",
+        }
+    )
     return adapter, server
 
 
@@ -150,14 +214,19 @@ def test_navigation_inventory_and_owner_scoped_download(connector):
     assert run(adapter.authenticate()) is True
     library, nested = navigate(adapter)
     assert library["name"] == "Documents"
-    assert len(run(adapter.list_children(run(adapter.list_children())["nodes"][0]["id"]))["nodes"]) == 1
+    assert (
+        len(run(adapter.list_children(run(adapter.list_children())["nodes"][0]["id"]))["nodes"])
+        == 1
+    )
     assert nested["parent_id"] is not None
     names = []
     cursor = None
     while True:
         page = run(adapter.list_children(nested["id"], cursor, 67))
         names.extend(node["name"] for node in page["nodes"])
-        assert all(node["kind"] == "file" and node["parent_id"] == nested["id"] for node in page["nodes"])
+        assert all(
+            node["kind"] == "file" and node["parent_id"] == nested["id"] for node in page["nodes"]
+        )
         cursor = page["next_cursor"]
         if not cursor:
             break
@@ -188,9 +257,19 @@ def test_untrusted_ids_and_continuation_cannot_leave_configured_scope(connector)
     page = run(adapter.list_children(nested["id"], None, 1))
     file_id = page["nodes"][0]["id"]
     with pytest.raises(ValueError, match="configured SharePoint"):
-        run(adapter.get_file_content(altered_file_id(file_id, library="/sites/other/Docs", path="/sites/other/Docs/secret.txt")))
+        run(
+            adapter.get_file_content(
+                altered_file_id(
+                    file_id, library="/sites/other/Docs", path="/sites/other/Docs/secret.txt"
+                )
+            )
+        )
     with pytest.raises(ValueError, match="configured SharePoint libraries"):
-        run(adapter.get_file_content(altered_file_id(file_id, library=LIBRARY, path=SITE + "/AnotherLibrary/secret.txt")))
+        run(
+            adapter.get_file_content(
+                altered_file_id(file_id, library=LIBRARY, path=SITE + "/AnotherLibrary/secret.txt")
+            )
+        )
     with pytest.raises(ValueError, match="picker cursor"):
         run(adapter.list_children(None, page["next_cursor"], 1))
     server.next_origin = "https://attacker.example"
@@ -225,24 +304,30 @@ def test_operator_allowlist_and_response_limits(connector, monkeypatch):
     with pytest.raises(ValueError, match="Operator"):
         run(adapter.authenticate())
     monkeypatch.setenv("OPENRAG_SHAREPOINT_ALLOWED_ORIGINS", ORIGIN)
-    adapter = SharePointOnPremConnector({**adapter.config, "root_url": "http://sharepoint.example.test"})
+    adapter = SharePointOnPremConnector(
+        {**adapter.config, "root_url": "http://sharepoint.example.test"}
+    )
     with pytest.raises(ValueError, match="HTTPS"):
         run(adapter.authenticate())
     adapter = SharePointOnPremConnector({**adapter.config, "root_url": ORIGIN})
     _, nested = navigate(adapter)
     file_id = run(adapter.list_children(nested["id"], None, 1))["nodes"][0]["id"]
     original = server.response
+
     def oversized(status, payload):
         result = original(status, payload)
         if isinstance(payload, bytes):
             result.headers["Content-Length"] = str(60 * 1024 * 1024)
         return result
+
     server.response = oversized
     with pytest.raises(ValueError, match="size limit"):
         run(adapter.get_file_content(file_id))
 
 
-def test_explicit_operator_ca_bundle_is_used_without_environment_proxies(connector, monkeypatch, tmp_path):
+def test_explicit_operator_ca_bundle_is_used_without_environment_proxies(
+    connector, monkeypatch, tmp_path
+):
     adapter, server = connector
     ca_bundle = tmp_path / "sharepoint-ca.pem"
     ca_bundle.write_text("operator-provided PEM bundle")
@@ -277,8 +362,9 @@ def test_document_cannot_download_without_trusted_owner(connector):
     adapter, server = connector
     _, nested = navigate(adapter)
     file_id = run(adapter.list_children(nested["id"], None, 1))["nodes"][0]["id"]
-    missing_owner = SharePointOnPremConnector({key: value for key, value in adapter.config.items()
-                                                if key != "user_id"})
+    missing_owner = SharePointOnPremConnector(
+        {key: value for key, value in adapter.config.items() if key != "user_id"}
+    )
     before = len(server.calls)
     with pytest.raises(ValueError, match="owner"):
         run(missing_owner.get_file_content(file_id))
@@ -320,7 +406,9 @@ def test_same_basename_in_distinct_folders_keeps_picker_names_and_indexes_distin
     library = run(adapter.list_children(site["id"]))["nodes"][0]
     folders = run(adapter.list_children(library["id"]))["nodes"]
     other = next(folder for folder in folders if folder["name"] == "other")
-    nested = run(adapter.list_children(next(folder for folder in folders if folder["name"] == "team")["id"]))["nodes"][0]
+    nested = run(
+        adapter.list_children(next(folder for folder in folders if folder["name"] == "team")["id"])
+    )["nodes"][0]
     first = run(adapter.list_children(nested["id"], page_size=1))["nodes"][0]
     second = run(adapter.list_children(other["id"]))["nodes"][0]
     assert first["name"] == second["name"] == "doc-0.txt"
@@ -328,7 +416,9 @@ def test_same_basename_in_distinct_folders_keeps_picker_names_and_indexes_distin
     documents = [run(adapter.get_file_content(node["id"])) for node in (first, second)]
     assert documents[0].id != documents[1].id
     assert documents[0].filename != documents[1].filename
-    assert all(doc.filename.endswith(".txt") and doc.filename.startswith("doc-0") for doc in documents)
+    assert all(
+        doc.filename.endswith(".txt") and doc.filename.startswith("doc-0") for doc in documents
+    )
 
 
 def test_definitive_file_missing_only_with_visible_site_and_library(connector):
