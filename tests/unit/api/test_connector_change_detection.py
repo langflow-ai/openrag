@@ -464,7 +464,6 @@ async def test_state_map_returns_empty_on_error(monkeypatch):
     assert result == {}
 
 
-
 @pytest.mark.asyncio
 async def test_plugin_picker_shows_indexed_and_changed_files_beyond_global_aggregation_cap(
     monkeypatch,
@@ -485,11 +484,13 @@ async def test_plugin_picker_shows_indexed_and_changed_files_beyond_global_aggre
         return {
             "aggregations": {
                 "by_connector_file_id": {
-                    "buckets": [{
-                        "key": "late-file-id",
-                        "latest_modified": {"value": 1704067200000.0},
-                        "etag": {"buckets": []},
-                    }]
+                    "buckets": [
+                        {
+                            "key": "late-file-id",
+                            "latest_modified": {"value": 1704067200000.0},
+                            "etag": {"buckets": []},
+                        }
+                    ]
                 },
                 "by_document_id": {"buckets": []},
             }
@@ -501,7 +502,9 @@ async def test_plugin_picker_shows_indexed_and_changed_files_beyond_global_aggre
     nodes = [
         {"id": "folder-id", "kind": "folder", "name": "Reports"},
         {
-            "id": "late-file-id", "kind": "file", "name": "newer.pdf",
+            "id": "late-file-id",
+            "kind": "file",
+            "name": "newer.pdf",
             "modified_time": "2024-06-01T00:00:00Z",
         },
         {"id": "new-file-id", "kind": "file", "name": "first.pdf"},
@@ -529,6 +532,7 @@ async def test_plugin_picker_refuses_to_misreport_index_state_on_search_failure(
         await connectors_api.enrich_plugin_picker_nodes(
             "sharepoint_onprem", [{"id": "file-1", "kind": "file"}], sm, "alice", "token"
         )
+
 
 # ---------------------------------------------------------------------------
 # get_synced_id_to_filename_map
