@@ -112,6 +112,39 @@ describe("useProviderHealthQuery", () => {
     expect(result.current.data?.llm_error).toBe("Invalid API Key");
   });
 
+  it("keeps the warnings a 503 carries beside its errors", async () => {
+    const warning = {
+      code: "stale_embedding_space",
+      provider: "rhoai",
+      message:
+        "Documents are indexed with 'old', which this endpoint no longer serves",
+    };
+    server.use(
+      http.get("/api/settings", () =>
+        HttpResponse.json(makeSettings({ edited: true })),
+      ),
+      http.get(
+        "/api/provider/health",
+        () =>
+          new HttpResponse(
+            JSON.stringify({
+              message: "Provider validation failed",
+              embedding_error: "endpoint unreachable",
+              warnings: [warning],
+            }),
+            { status: 503 },
+          ),
+      ),
+    );
+
+    const { result } = renderHook(() => useProviderHealthQuery(), {
+      wrapper: wrapper(),
+    });
+
+    await waitFor(() => expect(result.current.data?.status).toBe("unhealthy"));
+    expect(result.current.data?.warnings).toEqual([warning]);
+  });
+
   it("maps any other non-ok status to an error status", async () => {
     server.use(
       http.get("/api/settings", () =>

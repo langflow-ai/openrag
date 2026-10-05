@@ -40,7 +40,7 @@ Environment variables are merged using the following priority (highest to lowest
 │ Priority Level 1 (Lowest): Hardcoded Defaults              │
 │ ┌─────────────────────────────────────────────────────────┐ │
 │ │ env.go DefaultLangflowEnvVars:                        │ │
-│ │   "LANGFLOW_LOG_LEVEL": "DEBUG"                       │ │
+│ │   "LANGFLOW_LOG_LEVEL": "INFO"                        │ │
 │ │   "LANGFLOW_WORKERS": "4"                             │ │
 │ │   "LANGFLOW_AUTO_LOGIN": "true"                       │ │
 │ └─────────────────────────────────────────────────────────┘ │
