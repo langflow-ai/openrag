@@ -140,7 +140,7 @@ providers:
     # These are `--served-model-name` values, not image tags: whatever the
     # InferenceService was started with is the id that has to be sent.
     models:
-      - granite-3.3-2b-instruct
+      - gpt-oss-120b
     embedding_models:
       - granite-embedding-english-r2
 

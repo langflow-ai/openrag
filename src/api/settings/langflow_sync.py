@@ -226,7 +226,10 @@ async def ensure_required_langflow_global_variables(config=None):
                 if sync_value:
                     patch_payload["value"] = target_val
                 patch_resp = await clients.langflow_request(
-                    "PATCH", f"/api/v1/variables/{var_id}", json=patch_payload
+                    "PATCH",
+                    f"/api/v1/variables/{var_id}",
+                    json=patch_payload,
+                    idempotent=True,
                 )
                 if not (200 <= patch_resp.status_code < 300):
                     raise RuntimeError(
