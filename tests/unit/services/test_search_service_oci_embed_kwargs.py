@@ -81,7 +81,7 @@ async def _run_search(
 
     calls = []
 
-    async def fake_gateway_embeddings(body):
+    async def fake_gateway_embeddings(body, interactive=False):
         calls.append(body)
         return {"data": [{"embedding": [0.1, 0.2, 0.3], "index": 0}]}
 
