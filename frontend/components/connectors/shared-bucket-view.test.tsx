@@ -99,6 +99,26 @@ describe("SharedBucketView duplicate-check failures", () => {
     expect(mutate).not.toHaveBeenCalled();
   });
 
+  it("offers an escape hatch that ingests (skipping duplicates) when the check keeps failing", async () => {
+    server.use(http.post(CHECK_DUPLICATES, () => HttpResponse.error()));
+
+    selectBucketAndIngest();
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(mutate).not.toHaveBeenCalled();
+
+    const [, options] = vi.mocked(toast.error).mock.calls[0];
+    const action = options?.action as unknown as { onClick: () => void };
+    action.onClick();
+
+    expect(mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({ replace_duplicates: false }),
+      }),
+      expect.anything(),
+    );
+  });
+
   it("ingests nothing and says so when the check times out upstream", async () => {
     server.use(
       http.post(CHECK_DUPLICATES, () =>

@@ -272,16 +272,26 @@ export function SharedBucketView({
       setDuplicateDialogOpen(true);
     } catch (err) {
       console.error("[Bucket Sync] Duplicate check failed:", err);
-      // Don't fall through to the sync. Proceeding would silently take the
-      // "skip duplicates" path — the ingest runs, every colliding file is
-      // skipped with "a file with this name already exists", and the user never
-      // got the choice the check exists to offer. That outcome is
-      // indistinguishable from "there were no duplicates", which is how it gets
-      // reported as the duplicate dialog not appearing.
+      // Don't fall through to the sync by default. Proceeding would silently
+      // take the "skip duplicates" path — the ingest runs, every colliding
+      // file is skipped with "a file with this name already exists", and the
+      // user never got the choice the check exists to offer. That outcome is
+      // indistinguishable from "there were no duplicates", which is how it
+      // gets reported as the duplicate dialog not appearing.
+      //
+      // A deterministic timeout (the likeliest failure on a large bucket,
+      // since the check lists every blob in the selection) would otherwise
+      // leave no way to ingest that bucket from the UI at all, so the toast
+      // offers the old behavior as an explicit, conscious choice instead of a
+      // silent fallback.
       toast.error("Could not check for existing files", {
         description:
           "Nothing was ingested. Try again — if it keeps failing, the selected " +
           `${resourceLabelPlural} may be too large to check.`,
+        action: {
+          label: "Ingest anyway",
+          onClick: () => runBucketSync(),
+        },
       });
     } finally {
       setIsCheckingDuplicates(false);
