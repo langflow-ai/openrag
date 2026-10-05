@@ -1217,8 +1217,7 @@ class ConnectorFileProcessor(TaskProcessor):
                 except Exception:
                     file_task.status = TaskStatus.FAILED
                     file_task.error = (
-                        "File no longer exists at source, but removing it "
-                        "from the index failed."
+                        "File no longer exists at source, but removing it from the index failed."
                     )
                     file_task.updated_at = time.time()
                     upload_task.failed_files += 1

@@ -24,6 +24,7 @@ class PluginConfigBody(BaseModel):
     connection_id: Any = None
     name: Any = None
 
+
 async def _body(request: Request) -> PluginConfigBody:
     # FastAPI validation errors embed rejected input, including secrets.
     try:
@@ -60,7 +61,9 @@ async def _owned_connection(manager, connector_type: str, connection_id: str, us
     return connection
 
 
-async def _existing_connection(manager, connector_type: str, user_id: str, connection_id: str | None):
+async def _existing_connection(
+    manager, connector_type: str, user_id: str, connection_id: str | None
+):
     if connection_id is not None:
         if not isinstance(connection_id, str) or len(connection_id) > 128:
             raise HTTPException(422, "Invalid connection ID")
@@ -83,7 +86,9 @@ def _validated_config(cls, values: Any, existing=None) -> dict[str, str]:
     pair = getattr(cls, "CREDENTIAL_PAIR", None)
     if pair is not None and sum(bool(values.get(key)) for key in pair) == 1:
         raise HTTPException(422, "Both credential fields must be supplied together")
-    result = {key: value for key, value in (existing.config.items() if existing else ()) if key in names}
+    result = {
+        key: value for key, value in (existing.config.items() if existing else ()) if key in names
+    }
     for key, value in values.items():
         if not isinstance(value, str) or len(value) > 8192:
             raise HTTPException(422, "Invalid connector configuration field")
@@ -96,7 +101,9 @@ def _validated_config(cls, values: Any, existing=None) -> dict[str, str]:
 
 
 def _require_encryption(cls, config: dict[str, str], user_id: str) -> None:
-    secret_keys = {field["name"] for field in plugin_config_fields(cls) if field["type"] == "secret"}
+    secret_keys = {
+        field["name"] for field in plugin_config_fields(cls) if field["type"] == "secret"
+    }
     secret_keys.update(cls.SECRET_CONFIG_KEYS)
     if not any(config.get(key) for key in secret_keys):
         return
@@ -127,10 +134,16 @@ async def plugin_defaults(
         "browse_capability": cls.BROWSE_CAPABILITY,
         "config_fields": fields,
         "connection_id": connection.connection_id if connection else None,
-        "config": {field["name"]: config[field["name"]] for field in fields
-                   if field["type"] != "secret" and isinstance(config.get(field["name"]), str)},
-        "secrets_set": {field["name"]: bool(config.get(field["name"])) for field in fields
-                        if field["type"] == "secret"},
+        "config": {
+            field["name"]: config[field["name"]]
+            for field in fields
+            if field["type"] != "secret" and isinstance(config.get(field["name"]), str)
+        },
+        "secrets_set": {
+            field["name"]: bool(config.get(field["name"]))
+            for field in fields
+            if field["type"] == "secret"
+        },
     }
 
 
@@ -232,14 +245,19 @@ async def plugin_picker_children(
         if cls.BROWSE_CAPABILITY == "flat":
             listing = await connector.list_files(page_token=cursor, max_files=page_size)
         else:
-            page = await connector.list_children(parent_id=parent_id, cursor=cursor, page_size=page_size)
+            page = await connector.list_children(
+                parent_id=parent_id, cursor=cursor, page_size=page_size
+            )
     except ValueError:
         raise HTTPException(400, "Invalid browse scope or cursor") from None
     except Exception:
         raise HTTPException(502, "Connector browse failed") from None
     if cls.BROWSE_CAPABILITY == "flat":
-        if (not isinstance(listing, dict) or not isinstance(listing.get("files"), list)
-                or any(not isinstance(file, dict) for file in listing["files"])):
+        if (
+            not isinstance(listing, dict)
+            or not isinstance(listing.get("files"), list)
+            or any(not isinstance(file, dict) for file in listing["files"])
+        ):
             raise HTTPException(502, "Invalid connector browse response")
         page = {
             "nodes": [
@@ -254,24 +272,34 @@ async def plugin_picker_children(
             ],
             "next_cursor": listing.get("next_page_token"),
         }
-    if not isinstance(page, dict) or not isinstance(page.get("nodes"), list) or len(page["nodes"]) > page_size:
+    if (
+        not isinstance(page, dict)
+        or not isinstance(page.get("nodes"), list)
+        or len(page["nodes"]) > page_size
+    ):
         raise HTTPException(502, "Invalid connector browse response")
     next_cursor = page.get("next_cursor")
     if next_cursor is not None and (not isinstance(next_cursor, str) or len(next_cursor) > 2048):
         raise HTTPException(502, "Invalid connector browse response")
     nodes: list[dict[str, Any]] = []
     for node in page["nodes"]:
-        if (not isinstance(node, dict) or not isinstance(node.get("id"), str)
-                or not isinstance(node.get("name"), str) or node.get("kind") not in ("file", "folder")
-                or (node.get("parent_id") is not None and not isinstance(node.get("parent_id"), str))):
+        if (
+            not isinstance(node, dict)
+            or not isinstance(node.get("id"), str)
+            or not isinstance(node.get("name"), str)
+            or node.get("kind") not in ("file", "folder")
+            or (node.get("parent_id") is not None and not isinstance(node.get("parent_id"), str))
+        ):
             raise HTTPException(502, "Invalid connector browse response")
-        nodes.append({
-            "id": node["id"],
-            "parent_id": node.get("parent_id"),
-            "kind": node["kind"],
-            "name": node["name"],
-            **{key: node[key] for key in ("size", "modified_time") if key in node},
-        })
+        nodes.append(
+            {
+                "id": node["id"],
+                "parent_id": node.get("parent_id"),
+                "kind": node["kind"],
+                "name": node["name"],
+                **{key: node[key] for key in ("size", "modified_time") if key in node},
+            }
+        )
     from api.connectors import enrich_plugin_picker_nodes
 
     try:

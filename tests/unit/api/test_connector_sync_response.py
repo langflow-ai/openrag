@@ -232,9 +232,7 @@ async def test_selected_sync_does_not_fall_back_from_expired_connection(monkeypa
 
     response = await connectors_api.connector_sync(
         "google_drive",
-        connectors_api.ConnectorSyncBody(
-            connection_id="expired", selected_files=["file-a"]
-        ),
+        connectors_api.ConnectorSyncBody(connection_id="expired", selected_files=["file-a"]),
         request=MagicMock(),
         connector_service=service,
         session_manager=MagicMock(),

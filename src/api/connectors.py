@@ -562,10 +562,16 @@ async def enrich_plugin_picker_nodes(
             **node,
             "is_ingested": node["id"] in state,
             "is_stale": classify_remote_file_change(
-                node["id"], node.get("modified_time"), node["id"] in state,
-                state, node.get("etag"),
-            ) == "changed",
-        } if node.get("kind") == "file" else node
+                node["id"],
+                node.get("modified_time"),
+                node["id"] in state,
+                state,
+                node.get("etag"),
+            )
+            == "changed",
+        }
+        if node.get("kind") == "file"
+        else node
         for node in nodes
     ]
 
@@ -801,10 +807,15 @@ async def compute_orphans_for_connector_type(
             active = [conn for conn in connections if conn.is_active]
             if not active:
                 return []
-            connectors = [await connector_service.get_connector(conn.connection_id) for conn in active]
-            if any(not connector or not connector.is_authenticated
-                   or not callable(getattr(connector, "is_definitively_missing", None))
-                   for connector in connectors):
+            connectors = [
+                await connector_service.get_connector(conn.connection_id) for conn in active
+            ]
+            if any(
+                not connector
+                or not connector.is_authenticated
+                or not callable(getattr(connector, "is_definitively_missing", None))
+                for connector in connectors
+            ):
                 return []
         except Exception:
             return []
@@ -1203,7 +1214,8 @@ async def _classify_connector_duplicates(
         response_file = _connector_file_response(file_info, cleaned_name=cleaned_name)
         indexed_name = (
             connector.filename_for_index(file_info["id"], cleaned_name)
-            if getattr(connector, "CONNECTOR_TYPE", None) == "sharepoint_onprem" and file_info.get("id")
+            if getattr(connector, "CONNECTOR_TYPE", None) == "sharepoint_onprem"
+            and file_info.get("id")
             else cleaned_name
         )
         aliases = get_filename_aliases(indexed_name)
@@ -1510,13 +1522,11 @@ async def connector_check_duplicates(
     if denied := await _connector_access_denied(request, session, connector_type):
         return denied
     if is_plugin_connector_type(connector_type) and (
-        not body.connection_id or body.bucket_filter
+        not body.connection_id
+        or body.bucket_filter
         or any(isinstance(f, dict) and f.get("isFolder") for f in body.selected_files or [])
     ):
-        return JSONResponse(
-            {"error": "Select files from a specific connection"}, status_code=400
-        )
-
+        return JSONResponse({"error": "Select files from a specific connection"}, status_code=400)
 
     selected_files_raw = body.selected_files
     if not selected_files_raw and not body.bucket_filter:
@@ -1778,13 +1788,12 @@ async def connector_sync(
     if denied := await _connector_access_denied(request, session, connector_type):
         return denied
     if is_plugin_connector_type(connector_type) and (
-        body.sync_all or body.bucket_filter or (body.selected_files and not body.connection_id)
+        body.sync_all
+        or body.bucket_filter
+        or (body.selected_files and not body.connection_id)
         or any(isinstance(f, dict) and f.get("isFolder") for f in body.selected_files or [])
     ):
-        return JSONResponse(
-            {"error": "Select files from a specific connection"}, status_code=400
-        )
-
+        return JSONResponse({"error": "Select files from a specific connection"}, status_code=400)
 
     max_files = body.max_files
     selected_files_raw = body.selected_files
@@ -3157,7 +3166,6 @@ async def browse_connection_files(
         return JSONResponse({"error": "Connection not found"}, status_code=404)
     if max_files < 1 or max_files > 500:
         return JSONResponse({"error": "max_files must be between 1 and 500"}, status_code=400)
-
 
     try:
         connector = await connector_service.get_connector(connection_id)
