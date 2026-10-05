@@ -25,7 +25,12 @@ const CHECK_DUPLICATES = "/api/connectors/ibm_cos/check-duplicates";
 const mutate = vi.fn();
 
 vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(() => "toast-id"),
+    info: vi.fn(),
+    dismiss: vi.fn(),
+  },
 }));
 
 vi.mock("@/lib/analytics", () => ({
@@ -72,15 +77,17 @@ function renderView() {
 }
 
 function selectBucketAndIngest() {
-  renderView();
+  const view = renderView();
   fireEvent.click(screen.getByRole("checkbox", { name: "docs" }));
   fireEvent.click(screen.getByRole("button", { name: /Ingest 1 Bucket/ }));
+  return view;
 }
 
 describe("SharedBucketView duplicate-check failures", () => {
   beforeEach(() => {
     mutate.mockReset();
     vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.dismiss).mockClear();
   });
 
   it("ingests nothing and says so when the check request rejects", async () => {
@@ -117,6 +124,32 @@ describe("SharedBucketView duplicate-check failures", () => {
       }),
       expect.anything(),
     );
+  });
+
+  it("dismisses the escape-hatch toast once the bucket selection changes", async () => {
+    server.use(http.post(CHECK_DUPLICATES, () => HttpResponse.error()));
+
+    selectBucketAndIngest();
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    const toastId = vi.mocked(toast.error).mock.results[0].value;
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "docs" }));
+
+    expect(toast.dismiss).toHaveBeenCalledWith(toastId);
+  });
+
+  it("dismisses the escape-hatch toast when the view unmounts", async () => {
+    server.use(http.post(CHECK_DUPLICATES, () => HttpResponse.error()));
+
+    const { unmount } = selectBucketAndIngest();
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    const toastId = vi.mocked(toast.error).mock.results[0].value;
+
+    unmount();
+
+    expect(toast.dismiss).toHaveBeenCalledWith(toastId);
   });
 
   it("ingests nothing and says so when the check times out upstream", async () => {

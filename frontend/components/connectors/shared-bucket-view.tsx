@@ -101,6 +101,11 @@ export function SharedBucketView({
     nonDuplicateFiles: BucketDuplicateFile[];
   } | null>(null);
   const isOverwriteConfirmedRef = useRef(false);
+  // Tracks the "ingest anyway" toast shown when the duplicate check fails, so
+  // it can be dismissed instead of left to fire its captured (and
+  // increasingly stale) request after the selection changes or the view
+  // goes away.
+  const checkFailedToastIdRef = useRef<string | number | null>(null);
 
   useEffect(() => {
     if (
@@ -119,6 +124,27 @@ export function SharedBucketView({
       }
     }
   }, [buckets, initialSelectedBuckets, selectedBuckets.size]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A changed selection or ingest setting means the "ingest anyway" toast's
+  // captured request no longer matches what the user is looking at, so drop
+  // it rather than let a later click submit the old choice.
+  useEffect(() => {
+    if (checkFailedToastIdRef.current !== null) {
+      toast.dismiss(checkFailedToastIdRef.current);
+      checkFailedToastIdRef.current = null;
+    }
+  }, [selectedBuckets, ingestSettings, showSharedToggle]);
+
+  // The toast outlives the component by default; dismiss it on unmount so it
+  // can't fire a sync whose onSuccess/onError callbacks (addTask, onDone)
+  // belong to a view that's no longer there.
+  useEffect(() => {
+    return () => {
+      if (checkFailedToastIdRef.current !== null) {
+        toast.dismiss(checkFailedToastIdRef.current);
+      }
+    };
+  }, []);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: invalidateQueryKey });
@@ -284,15 +310,19 @@ export function SharedBucketView({
       // leave no way to ingest that bucket from the UI at all, so the toast
       // offers the old behavior as an explicit, conscious choice instead of a
       // silent fallback.
-      toast.error("Could not check for existing files", {
-        description:
-          "Nothing was ingested. Try again — if it keeps failing, the selected " +
-          `${resourceLabelPlural} may be too large to check.`,
-        action: {
-          label: "Ingest anyway",
-          onClick: () => runBucketSync(),
+      checkFailedToastIdRef.current = toast.error(
+        "Could not check for existing files",
+        {
+          description:
+            "Nothing was ingested. Try again — if it keeps failing, the selected " +
+            `${resourceLabelPlural} may be too large to check. Ingesting anyway ` +
+            "skips files that already exist.",
+          action: {
+            label: "Ingest, skip existing",
+            onClick: () => runBucketSync(),
+          },
         },
-      });
+      );
     } finally {
       setIsCheckingDuplicates(false);
     }
