@@ -474,3 +474,130 @@ async def test_connector_sync_does_not_report_all_duplicates_when_expansion_is_e
     kwargs = connector_service.sync_specific_files.await_args.kwargs
     assert args[2] == ["folder-id"]
     assert kwargs["file_infos"] == [{"id": "folder-id", "name": "Folder", "isFolder": True}]
+
+
+@pytest.mark.asyncio
+async def test_check_duplicates_rejects_a_request_that_names_nothing():
+    """A check with neither selected_files nor bucket_filter used to answer with
+    an empty duplicate list, which reads to the caller as "checked, found
+    nothing" — the UI then ingests without ever offering the overwrite choice,
+    indistinguishable from a check that genuinely found none. Say the request
+    asked about nothing instead.
+    """
+    import json
+
+    from fastapi.responses import JSONResponse
+
+    from api.connectors import ConnectorCheckDuplicatesBody, connector_check_duplicates
+
+    response = await connector_check_duplicates(
+        connector_type="ibm_cos",
+        body=ConnectorCheckDuplicatesBody(connection_id="conn-id"),
+        request=MagicMock(),
+        connector_service=MagicMock(),
+        session_manager=MagicMock(),
+        user=MagicMock(user_id="u1", jwt_token="t"),
+    )
+
+    assert isinstance(response, JSONResponse)
+    assert response.status_code == 400
+    data = json.loads(response.body.decode())
+    assert "duplicate_names" not in data
+    assert "bucket_filter" in data["error"]
+
+
+@pytest.mark.asyncio
+async def test_bucket_duplicate_check_logs_its_outcome(monkeypatch):
+    """The counts behind the answer are logged, so "the dialog never appeared"
+    can be settled from the server rather than from a browser network tab."""
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+    monkeypatch.setattr(
+        connectors_api,
+        "get_synced_file_ids_for_connector",
+        AsyncMock(return_value=(["b::synced.pdf"], [], "connector_file_id")),
+    )
+
+    indexed = {"taken.pdf"}
+
+    async def search(*, index, body):
+        terms = body["query"].get("terms")
+        if terms is not None:
+            asked = terms["filename"]
+            return {
+                "aggregations": {
+                    "filenames": {"buckets": [{"key": n} for n in asked if n in indexed]}
+                }
+            }
+        return {
+            "aggregations": {
+                "connector_file_ids": {"buckets": []},
+                "document_ids": {"buckets": []},
+            }
+        }
+
+    client = AsyncMock()
+    client.search = AsyncMock(side_effect=search)
+    session_manager = MagicMock()
+    session_manager.get_user_opensearch_client = MagicMock(return_value=client)
+
+    connector = MagicMock()
+    connector.bucket_names = None
+    connector.list_files = AsyncMock(
+        return_value={
+            "files": [
+                {"id": "b::synced.pdf", "name": "synced.pdf"},
+                {"id": "b::taken.pdf", "name": "taken.pdf"},
+                {"id": "b::fresh.pdf", "name": "fresh.pdf"},
+            ],
+            "next_page_token": None,
+        }
+    )
+
+    # The project logger writes straight to stderr rather than propagating to the
+    # stdlib root logger, so assert on the call instead of on caplog.
+    logged = []
+    monkeypatch.setattr(connectors_api.logger, "info", lambda msg, **kw: logged.append((msg, kw)))
+
+    await connectors_api._classify_bucket_connector_duplicates(
+        connector=connector,
+        connector_type="ibm_cos",
+        bucket_filter=["b"],
+        session_manager=session_manager,
+        user_id="u1",
+        jwt_token="t",
+    )
+
+    summary = next(kw for msg, kw in logged if msg == "Duplicate check complete")
+    assert summary["listed"] == 3
+    assert summary["already_synced_here"] == 1
+    assert summary["name_taken_elsewhere"] == 1
+    assert summary["duplicates"] == 2
+    assert summary["new_files"] == 1
+
+
+@pytest.mark.asyncio
+async def test_bucket_duplicate_check_logs_an_empty_listing(monkeypatch):
+    """Zero duplicates because the bucket listing came back empty is a different
+    fact from zero duplicates among files that were listed."""
+    from api import connectors as connectors_api
+
+    connector = MagicMock()
+    connector.bucket_names = None
+    connector.list_files = AsyncMock(return_value={"files": [], "next_page_token": None})
+
+    logged = []
+    monkeypatch.setattr(connectors_api.logger, "info", lambda msg, **kw: logged.append((msg, kw)))
+
+    result = await connectors_api._classify_bucket_connector_duplicates(
+        connector=connector,
+        connector_type="ibm_cos",
+        bucket_filter=["b"],
+        session_manager=MagicMock(),
+        user_id="u1",
+        jwt_token="t",
+    )
+
+    assert result["duplicate_count"] == 0
+    assert any(msg == "Duplicate check found nothing to check" for msg, _ in logged)
