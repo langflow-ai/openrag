@@ -83,6 +83,13 @@ providers:
       - ibm/granite-13b-instruct-v2
       - sdaia/allam-1-13b-instruct
       - bigscience/mt0-xxl
+    # Accept images on watsonx.ai (`image_chat` in its foundation_model_specs)
+    # but LiteLLM does not flag them `supports_vision`. Every watsonx id it does
+    # flag is withdrawn and excluded above, so without these the VLM picker
+    # offers no watsonx model at all.
+    vision_models:
+      - meta-llama/llama-4-maverick-17b-128e-instruct-fp8
+      - mistralai/mistral-small-3-1-24b-instruct-2503
 
   # watsonx.ai running on a Cloud Pak for Data / IBM Software Hub cluster. It
   # is a second front door onto the same `/ml/v1` API as the row above, kept

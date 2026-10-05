@@ -467,6 +467,51 @@ def test_the_shipped_config_keeps_broken_watsonx_models_out_of_live_inventory(
     assert not catalogued.intersection(excluded)
 
 
+def test_a_configured_vision_model_is_tagged_vision(monkeypatch, tmp_path) -> None:
+    """`vision_models` adds the capability the VLM picker filters on.
+
+    Applies to LiteLLM's own rows and to declared ones alike, and leaves every
+    other model's capabilities as the table had them.
+    """
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write_providers(
+            tmp_path,
+            "providers:\n  - name: openai\n    modes:\n      oss: true\n"
+            "    models:\n      - house-tuned-gpt\n"
+            "    vision_models:\n      - gpt-3.5-turbo\n      - house-tuned-*\n",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    models = {entry["model"]: entry for entry in model_catalog.catalog()["providers"][0]["models"]}
+    assert "vision" in models["gpt-3.5-turbo"]["capabilities"]
+    assert "function_calling" in models["gpt-3.5-turbo"]["capabilities"]
+    assert models["house-tuned-gpt"]["capabilities"] == ["vision"]
+    assert "vision" not in models["gpt-3.5-turbo-0125"].get("capabilities", [])
+
+
+def test_the_shipped_config_offers_watsonx_vision_models(monkeypatch) -> None:
+    """The VLM picker shows only `vision` models, so watsonx needs some.
+
+    Every watsonx id LiteLLM flags as vision is withdrawn and excluded; the
+    ones watsonx.ai serves with image input are tagged by the config instead.
+    """
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    vision = {
+        entry["model"]
+        for provider in model_catalog.catalog()["providers"]
+        if provider["key"] == "watsonx"
+        for entry in provider["models"]
+        if "vision" in entry.get("capabilities", [])
+    }
+    assert vision == {
+        "meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
+        "mistralai/mistral-small-3-1-24b-instruct-2503",
+    }
+
+
 def test_a_plain_name_also_excludes_its_regional_listings(monkeypatch, tmp_path) -> None:
     """Azure lists the same model per region; suppressing it means all of them."""
     monkeypatch.setenv(
