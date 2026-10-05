@@ -153,6 +153,13 @@ test.describe("Large Chunk Size - Wrong Section Retrieval Test", () => {
     logger.info(`Response: ${response}`);
     logger.info("=".repeat(80) + "\n");
 
-    expect(response.length).toBeGreaterThan(0);
+    expect(
+      response,
+      "The answer should identify the Arizona customer",
+    ).toContain(expectedCustomerId);
+    expect(
+      hasCorrectValue,
+      "The answer should include that customer's lifetime value",
+    ).toBe(true);
   });
 });

@@ -116,6 +116,24 @@ make dev-cpu SERVICES="opensearch langflow openrag-backend openrag-frontend"
 echo "Starting docling..."
 make docling
 
+# The launcher can return while docling-serve is still loading its models.
+# Probe the same URL from the backend container that ingestion will use.
+echo "Waiting for Docling from the backend container..."
+ELAPSED=0
+until ${CONTAINER_RUNTIME} exec "${BACKEND_CONTAINER}" /app/.venv/bin/python -c \
+    'import os, httpx; url = os.environ["DOCLING_SERVE_URL"].rstrip("/") + "/health"; httpx.get(url, timeout=3, trust_env=False).raise_for_status()' \
+    >/dev/null 2>&1; do
+    sleep 5
+    ELAPSED=$((ELAPSED + 5))
+    if [ "$ELAPSED" -ge 300 ]; then
+        echo "ERROR: Backend could not reach a healthy Docling service within 300s"
+        tail -n 100 ~/.openrag/tui/docling-serve.log 2>/dev/null || true
+        exit 1
+    fi
+    echo "Waiting for Docling... (${ELAPSED}s/300s)"
+done
+echo "Docling is ready for ingestion"
+
 # Forward backend port using a proxy container
 # We find the network of the backend container and use a proxy to bridge it to the host.
 echo "Starting backend port forwarder at localhost:${OPENRAG_BACKEND_PORT}..."

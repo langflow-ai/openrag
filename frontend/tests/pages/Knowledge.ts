@@ -77,7 +77,6 @@ export class Knowledge {
     this.page.getByRole("button", { name: /Create Filter/i });
   private readonly deleteFilterButton = () =>
     this.page.getByRole("button", { name: "Delete Filter" });
-  private readonly chunkElements = () => this.page.locator("blockquote");
   private readonly grid = () =>
     this.page.locator(".ag-body-horizontal-scroll-viewport");
 
@@ -668,19 +667,28 @@ export class Knowledge {
     // Find the document row using reliable method
     const row = await this.findRowAcrossPages(fileName);
 
-    // Click on the document link
-    const fileLink = row.locator("span").filter({ hasText: fileName }).first();
-
-    await expect(fileLink).toBeVisible({ timeout: 10000 });
-    await fileLink.click();
+    // Click the actual navigation button and verify that it opened this file.
+    const fileButton = row.getByRole("button", { name: fileName, exact: true });
+    await expect(fileButton).toBeVisible({ timeout: 10000 });
+    await fileButton.click();
+    await expect(this.page).toHaveURL(
+      (url) =>
+        url.pathname === "/knowledge/chunks" &&
+        url.searchParams.get("filename") === fileName,
+      { timeout: 15000 },
+    );
+    await expect(this.page.getByTestId("file-chunks-panel")).toBeVisible({
+      timeout: 15000,
+    });
   }
 
   async getFirstChunkText(): Promise<string> {
-    await expect(this.page.getByText(/Chunk \d+/i).first()).toBeVisible({
+    const panel = this.page.getByTestId("file-chunks-panel");
+    await expect(panel.getByText(/Chunk \d+/i).first()).toBeVisible({
       timeout: 15000,
     });
 
-    const chunk = this.page.locator("blockquote").first();
+    const chunk = panel.locator("blockquote").first();
     return (await chunk.textContent()) || "";
   }
 
@@ -1050,13 +1058,9 @@ export class Knowledge {
    */
   private async getAllChunks(): Promise<string[]> {
     // Get all visible chunk elements (blockquotes contain chunk text)
-    const chunks = this.chunkElements();
-    const noMatchMsg = this.page.getByText("No chunks match your search.");
-
-    await expect(chunks.first().or(noMatchMsg)).toBeVisible({ timeout: 5000 });
-    if (await noMatchMsg.isVisible().catch(() => false)) {
-      return [];
-    }
+    const panel = this.page.getByTestId("file-chunks-panel");
+    const chunks = panel.locator("blockquote");
+    await expect(chunks.first()).toBeVisible({ timeout: 5000 });
     const count = await chunks.count();
     const chunkTexts: string[] = [];
     for (let i = 0; i < count; i++) {
@@ -1074,15 +1078,16 @@ export class Knowledge {
    * @returns Array containing the top 2 chunk texts after search
    */
   async searchChunks(searchToken: string): Promise<string[]> {
-    // Locate the search input in the chunk viewer
-    const searchInp = this.searchInput();
+    const panel = this.page.getByTestId("file-chunks-panel");
+    const searchInp = panel.getByPlaceholder("Search chunks…");
     await expect(searchInp).toBeVisible({ timeout: 5000 });
-    // Clear any existing search and enter the token
-    await searchInp.clear();
+    // The chunk panel filters locally as the input changes.
     await searchInp.fill(searchToken);
-    await this.page.keyboard.press("Enter");
-    // Wait for search to complete and chunks to re-rank
-    await this.page.waitForTimeout(2000);
+    const matchingChunk = panel
+      .locator("blockquote")
+      .filter({ hasText: searchToken })
+      .first();
+    await expect(matchingChunk).toBeVisible({ timeout: 15000 });
     // Get all chunks after search
     const allChunks = await this.getAllChunks();
     // Return only the top 2 chunks
