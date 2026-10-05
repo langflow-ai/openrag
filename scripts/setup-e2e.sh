@@ -119,18 +119,19 @@ make docling
 # The launcher can return while docling-serve is still loading its models.
 # Probe the same URL from the backend container that ingestion will use.
 echo "Waiting for Docling from the backend container..."
-ELAPSED=0
+DOCLING_START=$(date +%s)
+DOCLING_DEADLINE=$((DOCLING_START + 300))
 until ${CONTAINER_RUNTIME} exec "${BACKEND_CONTAINER}" /app/.venv/bin/python -c \
     'import os, httpx; url = os.environ["DOCLING_SERVE_URL"].rstrip("/") + "/health"; httpx.get(url, timeout=3, trust_env=False).raise_for_status()' \
     >/dev/null 2>&1; do
-    sleep 5
-    ELAPSED=$((ELAPSED + 5))
-    if [ "$ELAPSED" -ge 300 ]; then
+    NOW=$(date +%s)
+    if [ "$NOW" -ge "$DOCLING_DEADLINE" ]; then
         echo "ERROR: Backend could not reach a healthy Docling service within 300s"
         tail -n 100 ~/.openrag/tui/docling-serve.log 2>/dev/null || true
         exit 1
     fi
-    echo "Waiting for Docling... (${ELAPSED}s/300s)"
+    echo "Waiting for Docling... ($((NOW - DOCLING_START))s/300s)"
+    sleep 5
 done
 echo "Docling is ready for ingestion"
 

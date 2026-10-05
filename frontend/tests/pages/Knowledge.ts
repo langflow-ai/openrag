@@ -1083,11 +1083,22 @@ export class Knowledge {
     await expect(searchInp).toBeVisible({ timeout: 5000 });
     // The chunk panel filters locally as the input changes.
     await searchInp.fill(searchToken);
+    // The panel defers the query, so wait until the filter it applied matches
+    // ours before reading chunks; otherwise we may read the previous list.
+    await expect(panel).toHaveAttribute(
+      "data-applied-filter",
+      searchToken.trim().toLowerCase(),
+      { timeout: 15000 },
+    );
     const matchingChunk = panel
       .locator("blockquote")
       .filter({ hasText: searchToken })
       .first();
-    await expect(matchingChunk).toBeVisible({ timeout: 15000 });
+    const noMatches = panel.getByText("No chunks match your search.");
+    await expect(matchingChunk.or(noMatches)).toBeVisible({ timeout: 15000 });
+    if (await noMatches.isVisible()) {
+      return [];
+    }
     // Get all chunks after search
     const allChunks = await this.getAllChunks();
     // Return only the top 2 chunks
