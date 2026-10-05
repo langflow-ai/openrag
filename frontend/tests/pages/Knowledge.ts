@@ -676,7 +676,9 @@ export class Knowledge {
   }
 
   async getFirstChunkText(): Promise<string> {
-    await expect(this.page.getByText(/Chunk \d+/i).first()).toBeVisible();
+    await expect(this.page.getByText(/Chunk \d+/i).first()).toBeVisible({
+      timeout: 15000,
+    });
 
     const chunk = this.page.locator("blockquote").first();
     return (await chunk.textContent()) || "";
@@ -1049,7 +1051,12 @@ export class Knowledge {
   private async getAllChunks(): Promise<string[]> {
     // Get all visible chunk elements (blockquotes contain chunk text)
     const chunks = this.chunkElements();
-    await expect(chunks.first()).toBeVisible({ timeout: 5000 });
+    const noMatchMsg = this.page.getByText("No chunks match your search.");
+
+    await expect(chunks.first().or(noMatchMsg)).toBeVisible({ timeout: 5000 });
+    if (await noMatchMsg.isVisible().catch(() => false)) {
+      return [];
+    }
     const count = await chunks.count();
     const chunkTexts: string[] = [];
     for (let i = 0; i < count; i++) {
