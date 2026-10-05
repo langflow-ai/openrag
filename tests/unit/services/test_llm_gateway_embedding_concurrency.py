@@ -114,7 +114,7 @@ async def test_rhoai_embeddings_use_the_default_limit_when_unset(monkeypatch):
     tracker = _InFlightTracker()
     monkeypatch.setattr("litellm.aembedding", tracker)
 
-    await _embed_concurrently(_rhoai_config(), RHOAI_MODEL, 12)
+    await _embed_concurrently(_rhoai_config(), RHOAI_MODEL, 2 * DEFAULT_EMBEDDING_MAX_CONCURRENCY)
 
     assert tracker.peak == DEFAULT_EMBEDDING_MAX_CONCURRENCY - 1
 
