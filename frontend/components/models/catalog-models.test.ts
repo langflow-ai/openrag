@@ -418,3 +418,74 @@ describe("mergeLiveCatalogOptions creates a missing group", () => {
     );
   });
 });
+
+describe("duplicate model ids in the API response", () => {
+  it("providerCatalogOptions deduplicates by model id (guards against duplicate React keys)", () => {
+    const duplicateCatalog = {
+      providers: [
+        {
+          key: "gemini",
+          name: "Google Gemini",
+          models: [
+            // Simulates litellm.model_cost carrying both `gemini/gemini-exp-1206`
+            // and a bare `gemini-exp-1206` entry — both strip to the same name on
+            // the backend, but a cached or older backend may still send duplicates.
+            { model: "gemini-exp-1206", mode: "chat" },
+            { model: "gemini-exp-1206", mode: "chat" },
+            { model: "gemini-2.0-flash", mode: "chat" },
+          ],
+          embedding_models: [],
+        },
+      ],
+    };
+
+    const options = providerCatalogOptions(
+      duplicateCatalog,
+      "gemini",
+      "language",
+    );
+    const values = options.map((o) => o.value);
+
+    assert.equal(values.filter((v) => v === "gemini-exp-1206").length, 1);
+    assert.ok(values.includes("gemini-2.0-flash"));
+  });
+
+  it("groupedCatalogOptions deduplicates by model id across both language and embedding lists", () => {
+    const duplicateCatalog = {
+      providers: [
+        {
+          key: "gemini",
+          name: "Google Gemini",
+          models: [
+            { model: "gemini-exp-1206", mode: "chat" },
+            { model: "gemini-exp-1206", mode: "chat" },
+          ],
+          embedding_models: [
+            { model: "text-embedding-004", mode: "embedding" },
+            { model: "text-embedding-004", mode: "embedding" },
+          ],
+        },
+      ],
+    };
+
+    const langGroups = groupedCatalogOptions(
+      duplicateCatalog,
+      undefined,
+      "language",
+    );
+    const embedGroups = groupedCatalogOptions(
+      duplicateCatalog,
+      undefined,
+      "embedding",
+    );
+
+    const langValues = langGroups[0].options.map((o) => o.value);
+    const embedValues = embedGroups[0].options.map((o) => o.value);
+
+    assert.equal(langValues.filter((v) => v === "gemini-exp-1206").length, 1);
+    assert.equal(
+      embedValues.filter((v) => v === "text-embedding-004").length,
+      1,
+    );
+  });
+});

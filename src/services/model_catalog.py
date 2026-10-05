@@ -278,6 +278,13 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
     keys = {entry.name for entry in providers}
     chat_by_provider: dict[str, list[dict[str, Any]]] = {}
     embed_by_provider: dict[str, list[dict[str, Any]]] = {}
+    # Track seen names per (kind, provider) pair so that a bare entry like
+    # `gemini-exp-1206` and a prefixed one `gemini/gemini-exp-1206` in
+    # litellm.model_cost both strip to the same name and only the first is kept.
+    # Without this, the frontend receives duplicate model ids and React warns
+    # about children with the same key.
+    seen_chat: dict[str, set[str]] = {}
+    seen_embed: dict[str, set[str]] = {}
 
     for model_id, info in litellm.model_cost.items():
         if not isinstance(info, dict):
@@ -288,8 +295,10 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
             continue
         if mode in TEXT_GENERATION_MODES:
             bucket = chat_by_provider
+            seen = seen_chat
         elif mode == EMBEDDING_MODE:
             bucket = embed_by_provider
+            seen = seen_embed
         else:
             continue
         name = model_id[len(provider) + 1 :] if model_id.startswith(f"{provider}/") else model_id
@@ -302,6 +311,9 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
             # template invites picking a model that 404s. Owners of a fine-tune
             # type their full id into the picker instead.
             continue
+        if name in seen.setdefault(provider, set()):
+            continue
+        seen[provider].add(name)
         bucket.setdefault(provider, []).append(_model_entry(name, info))
 
     entries = []

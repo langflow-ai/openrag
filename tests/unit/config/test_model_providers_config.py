@@ -310,3 +310,77 @@ def test_exclusions_default_to_none_and_ignore_a_non_list(monkeypatch, tmp_path)
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
 
     assert model_providers.visible_provider_entries()[0].exclude_models == ()
+
+
+# ── OPENRAG_GEMINI env gate ───────────────────────────────────────────────────
+
+def test_gemini_is_hidden_in_every_mode_by_default(monkeypatch):
+    """Gemini must not appear in normal deployments without the flag."""
+    for mode in ("oss", "on_prem", "saas"):
+        monkeypatch.setenv("OPENRAG_RUN_MODE", mode)
+        monkeypatch.delenv("OPENRAG_GEMINI", raising=False)
+        model_providers.reload()
+        assert "gemini" not in model_providers.visible_provider_keys(), (
+            f"gemini should be hidden in {mode} without OPENRAG_GEMINI"
+        )
+
+
+def test_gemini_appears_in_all_modes_when_env_flag_is_set(monkeypatch):
+    """Setting OPENRAG_GEMINI=true surfaces gemini in every run mode."""
+    monkeypatch.setenv("OPENRAG_GEMINI", "true")
+    for mode in ("oss", "on_prem", "saas"):
+        monkeypatch.setenv("OPENRAG_RUN_MODE", mode)
+        model_providers.reload()
+        assert "gemini" in model_providers.visible_provider_keys(), (
+            f"gemini should be visible in {mode} when OPENRAG_GEMINI=true"
+        )
+
+
+def test_gemini_env_flag_accepts_truthy_variants(monkeypatch):
+    """The gate uses the same _as_bool() logic as run-mode values."""
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    for truthy in ("1", "yes", "on", "True", "TRUE"):
+        monkeypatch.setenv("OPENRAG_GEMINI", truthy)
+        model_providers.reload()
+        assert "gemini" in model_providers.visible_provider_keys(), (
+            f"OPENRAG_GEMINI={truthy!r} should be treated as truthy"
+        )
+
+
+def test_gemini_flag_false_keeps_it_hidden(monkeypatch):
+    monkeypatch.setenv("OPENRAG_GEMINI", "false")
+    for mode in ("oss", "on_prem", "saas"):
+        monkeypatch.setenv("OPENRAG_RUN_MODE", mode)
+        model_providers.reload()
+        assert "gemini" not in model_providers.visible_provider_keys(), (
+            f"OPENRAG_GEMINI=false must keep gemini hidden in {mode}"
+        )
+
+
+def test_gemini_payload_carries_in_development_badge(monkeypatch):
+    """The 'In development' badge is delivered through the providers payload."""
+    monkeypatch.setenv("OPENRAG_GEMINI", "true")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    model_providers.reload()
+
+    payload = model_providers.provider_visibility_payload()
+    gemini_entry = next(
+        (e for e in payload["providers"] if e["name"] == "gemini"), None
+    )
+    assert gemini_entry is not None, "gemini must appear in the payload when enabled"
+    assert gemini_entry["badge"] == "In development"
+
+
+def test_core_providers_are_unaffected_by_gemini_flag(monkeypatch):
+    """Toggling OPENRAG_GEMINI must not change visibility of existing providers."""
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    monkeypatch.delenv("OPENRAG_GEMINI", raising=False)
+    model_providers.reload()
+    without_flag = model_providers.visible_provider_keys() - {"gemini"}
+
+    monkeypatch.setenv("OPENRAG_GEMINI", "true")
+    model_providers.reload()
+    with_flag = model_providers.visible_provider_keys() - {"gemini"}
+
+    assert without_flag == with_flag

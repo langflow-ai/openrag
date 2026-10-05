@@ -3,6 +3,7 @@ import AiFoundryLogo from "@/components/icons/ai-foundry-logo";
 import AnthropicLogo from "@/components/icons/anthropic-logo";
 import AzureOpenAILogo from "@/components/icons/azure-openai-logo";
 import GenericProviderLogo from "@/components/icons/generic-provider-logo";
+import GoogleLogo from "@/components/icons/google-logo";
 import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
@@ -201,6 +202,12 @@ const PROVIDER_CHROME: Record<string, ProviderChrome> = {
     name: "Local",
     logo: GenericProviderLogo,
     logoColor: "text-muted-foreground",
+    logoBgColor: "bg-white",
+  },
+  gemini: {
+    name: "Google Gemini",
+    logo: GoogleLogo,
+    logoColor: "text-black",
     logoBgColor: "bg-white",
   },
 };
