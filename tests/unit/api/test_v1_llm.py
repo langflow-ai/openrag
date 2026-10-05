@@ -2,6 +2,7 @@
 
 import inspect
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -122,6 +123,36 @@ async def test_embeddings_delegates_to_gateway(monkeypatch):
     response = await v1_llm.embeddings_endpoint(request, user=_user())
     data = json.loads(response.body)
     assert data["data"][0]["embedding"] == [0.2]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("purpose", "interactive"),
+    [("chat", True), ("ingest", False), (None, False)],
+)
+async def test_embeddings_lane_follows_the_hop_token_purpose(monkeypatch, purpose, interactive):
+    gateway = AsyncMock(return_value={"object": "list", "data": [{"embedding": [0.2]}]})
+    monkeypatch.setattr(v1_llm, "embeddings", gateway)
+    request = MagicMock()
+    request.json = AsyncMock(return_value={"model": "rhoai:granite", "input": ["x"]})
+    request.state = SimpleNamespace(llm_hop_purpose=purpose)
+
+    await v1_llm.embeddings_endpoint(request, user=_user())
+
+    assert gateway.await_args.kwargs == {"interactive": interactive}
+
+
+@pytest.mark.asyncio
+async def test_embeddings_without_a_hop_token_take_the_bulk_lane(monkeypatch):
+    gateway = AsyncMock(return_value={"object": "list", "data": [{"embedding": [0.2]}]})
+    monkeypatch.setattr(v1_llm, "embeddings", gateway)
+    request = MagicMock()
+    request.json = AsyncMock(return_value={"model": "rhoai:granite", "input": ["x"]})
+    request.state = SimpleNamespace()  # API key / JWT: no hop purpose recorded
+
+    await v1_llm.embeddings_endpoint(request, user=_user())
+
+    assert gateway.await_args.kwargs == {"interactive": False}
 
 
 @pytest.mark.asyncio

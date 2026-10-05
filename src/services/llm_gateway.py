@@ -7,10 +7,15 @@ routes by model prefix / configured provider. Callers never see upstream keys.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import functools
 import json
 import re
-from collections.abc import AsyncIterator, Mapping
+from collections import deque
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from typing import Any, Literal
+from uuid import uuid4
 
 from services import provider_error_log
 from services.model_catalog import is_known_provider, litellm_provider_key
@@ -219,6 +224,222 @@ def _provider_runtime_kwargs(provider: str, config=None) -> dict[str, Any]:
     return runtime_kwargs_for(enhancement, stored)
 
 
+#: Lanes of a provider's embedding limit. `interactive` is query embedding —
+#: search and chat retrieval, where a person is waiting; `bulk` is everything
+#: else, chiefly ingestion. One slot of the limit is reserved for queries, so a
+#: folder upload cannot queue them behind hundreds of chunks.
+_BULK_LANE = "bulk"
+_INTERACTIVE_LANE = "interactive"
+
+
+def _lane_limit(limit: int, interactive: bool) -> tuple[str, int]:
+    """The lane a call waits in and that lane's size, out of `limit` in total.
+
+    The lanes split the operator's limit rather than add to it, so the endpoint
+    never sees more than `limit` calls at once: `limit - 1` for bulk traffic
+    and one for queries. A limit of 1 cannot be split without exceeding it, so
+    both kinds of call then share the single slot.
+    """
+    if limit < 2:
+        return _BULK_LANE, limit
+    if interactive:
+        return _INTERACTIVE_LANE, 1
+    return _BULK_LANE, limit - 1
+
+
+class _EmbeddingLimiter:
+    """Bounds one provider's in-flight embedding calls under a limit that can change.
+
+    A pair of per-lane semaphores cannot be resized: replacing them when the
+    operator changes the limit forgets the calls still holding the old ones, so
+    the endpoint briefly sees more than the new limit. This keeps one count per
+    lane for the provider's lifetime and admits a call only while the total is
+    under the current limit *and* its lane is under its share (`_lane_limit`).
+
+    A freed slot is handed straight to the next waiter (as `asyncio.Semaphore`
+    does), queries first, so neither a new arrival nor a bulk chunk can take a
+    slot a waiting query is entitled to. `limit is None` means unbounded: calls
+    are still counted, so turning a limit back on measures it against them.
+
+    Not thread-safe; it lives on one event loop (see `_embedding_limiters`).
+    """
+
+    def __init__(self, provider: str, limit: int | None, loop: asyncio.AbstractEventLoop):
+        self.provider = provider
+        self.limit = limit
+        self.loop = loop
+        self._active = {_BULK_LANE: 0, _INTERACTIVE_LANE: 0}
+        self._waiters: dict[str, deque[asyncio.Future[None]]] = {
+            _BULK_LANE: deque(),
+            _INTERACTIVE_LANE: deque(),
+        }
+
+    @property
+    def in_flight(self) -> int:
+        return sum(self._active.values())
+
+    def _admits(self, lane: str) -> bool:
+        if self.limit is None:
+            return True
+        if self.in_flight >= self.limit:
+            return False
+        _, lane_limit = _lane_limit(self.limit, lane == _INTERACTIVE_LANE)
+        return self._active[lane] < lane_limit
+
+    def _wake(self) -> None:
+        """Grant free slots to waiters, queries before bulk, FIFO within a lane."""
+        for lane in (_INTERACTIVE_LANE, _BULK_LANE):
+            waiters = self._waiters[lane]
+            while waiters and self._admits(lane):
+                waiter = waiters.popleft()
+                if waiter.done():  # cancelled while queued
+                    continue
+                self._active[lane] += 1
+                waiter.set_result(None)
+
+    async def acquire(self, lane: str, model: str = "") -> None:
+        if not self._waiters[lane] and self._admits(lane):
+            self._active[lane] += 1
+            return
+        waiter: asyncio.Future[None] = self.loop.create_future()
+        self._waiters[lane].append(waiter)
+        logger.debug(
+            "Embedding call waiting for a free provider slot",
+            provider=self.provider,
+            model=model,
+            lane=lane,
+            max_concurrency=self.limit,
+            in_flight=self.in_flight,
+        )
+        try:
+            await waiter
+        except asyncio.CancelledError:
+            if waiter.done() and not waiter.cancelled():
+                # Granted a slot in the same tick the caller was cancelled:
+                # hand it on, or it is lost for the provider's lifetime.
+                self.release(lane)
+            else:
+                with contextlib.suppress(ValueError):
+                    self._waiters[lane].remove(waiter)
+            raise
+
+    def release(self, lane: str) -> None:
+        if self._active[lane] <= 0:
+            logger.error(
+                "Embedding slot released more often than acquired; ignoring",
+                provider=self.provider,
+                lane=lane,
+            )
+            self._active[lane] = 0
+        else:
+            self._active[lane] -= 1
+        self._wake()
+
+    def resize(self, limit: int | None) -> None:
+        """Apply a limit changed in Settings, counting every call still in flight."""
+        if limit == self.limit:
+            return
+        previous = self.limit
+        self.limit = limit
+        logger.info(
+            "Resizing embedding concurrency limit for provider",
+            provider=self.provider,
+            previous_max_concurrency=previous,
+            max_concurrency=limit,
+            bulk_in_flight=self._active[_BULK_LANE],
+            interactive_in_flight=self._active[_INTERACTIVE_LANE],
+        )
+        if limit is not None and self.in_flight > limit:
+            logger.info(
+                "More embedding calls in flight than the new limit allows; "
+                "new calls wait until they finish",
+                provider=self.provider,
+                max_concurrency=limit,
+                in_flight=self.in_flight,
+            )
+        self._wake()
+
+    @contextlib.asynccontextmanager
+    async def slot(self, lane: str, model: str = "") -> AsyncIterator[None]:
+        """Hold one of the provider's embedding slots for the duration of a call."""
+        await self.acquire(lane, model)
+        try:
+            yield
+        finally:
+            self.release(lane)
+
+
+#: Per-provider embedding bulkheads, keyed by provider key. The backend runs a
+#: single worker (enforced in `app/lifespan.py`), so a process-local limiter
+#: bounds the provider's traffic globally. Each limiter records its loop, and a
+#: different running loop gets a new one, because asyncio futures must not be
+#: shared across loops.
+_embedding_limiters: dict[str, _EmbeddingLimiter] = {}
+
+
+def _embedding_limiter(provider: str, config=None) -> _EmbeddingLimiter | None:
+    """The limiter bounding embedding calls to `provider`, if any.
+
+    The limit comes from the provider enhancement (`embedding_max_concurrency`),
+    so providers without one — and every provider whose enhancement sets no
+    limit — are unaffected. Excess callers wait here instead of queueing at the
+    upstream, where a slow model server lets a fronting proxy time them out
+    (RHOAI's kube-rbac-proxy answers 502 after 30s). Interactive calls wait in
+    their own lane (`_lane_limit`). A limit changed in Settings takes effect on
+    the next call and is measured against every call still in flight, so a
+    lowered limit admits nothing new until enough of them finish.
+    """
+    cfg = config or _get_config()
+    prov = getattr(cfg, "providers", None)
+    if prov is None or not hasattr(prov, "credential_values"):
+        return None
+
+    from enhancements.providers.registry import embedding_concurrency_for, get
+
+    key = (provider or "").strip().lower()
+    if get(key) is None:
+        return None
+    stored = (
+        prov.stored_credentials(key)
+        if hasattr(prov, "stored_credentials")
+        else prov.credential_values(key)
+    )
+    limit = embedding_concurrency_for(key, stored)
+    loop = asyncio.get_running_loop()
+    cached = _embedding_limiters.get(key)
+    if cached is not None and cached.loop is loop:
+        # Resized in place (also to "no limit"), so the calls it is already
+        # counting stay counted against whatever limit applies next.
+        cached.resize(limit)
+        return cached
+    if limit is None:
+        _embedding_limiters.pop(key, None)
+        return None
+
+    limiter = _EmbeddingLimiter(key, limit, loop)
+    _embedding_limiters[key] = limiter
+    logger.info(
+        "Bounding concurrent embedding calls for provider",
+        provider=key,
+        max_concurrency=limit,
+        bulk_max_concurrency=_lane_limit(limit, False)[1],
+        interactive_max_concurrency=_lane_limit(limit, True)[1],
+    )
+    return limiter
+
+
+@contextlib.asynccontextmanager
+async def _embedding_slot(
+    limiter: _EmbeddingLimiter | None, provider: str, model: str, lane: str = _BULK_LANE
+) -> AsyncIterator[None]:
+    """Hold one of the provider's embedding slots for the duration of a call."""
+    if limiter is None:
+        yield
+        return
+    async with limiter.slot(lane, model):
+        yield
+
+
 def resolve_call(
     model: str | None,
     *,
@@ -276,6 +497,36 @@ _UPSTREAM_TLS_MESSAGE = (
     "The provider's TLS certificate is not trusted by this deployment. An operator needs to "
     "add the provider's CA certificate to OpenRAG's trust store."
 )
+#: An upstream 502/504 with no body to quote — typically a proxy in front of
+#: the model server (RHOAI's kube-rbac-proxy) giving up while the server is
+#: still busy. LiteLLM then reports only its own wrapper names
+#: ("BadGatewayError: Hosted_vllmException -"), which reads like a bug.
+_UPSTREAM_GATEWAY_MESSAGE = (
+    "The model server did not respond in time or is unavailable (upstream 502/504). It may "
+    "be overloaded: check its capacity and any proxy timeout in front of it, or lower the "
+    "provider's max concurrent requests."
+)
+#: The connection closed before the response finished. A proxy or load balancer
+#: in front of the model server timing out a long response, not the model
+#: rejecting anything — see `is_provider_truncated_response_error`.
+_UPSTREAM_TRUNCATED_MESSAGE = (
+    "The connection to the model server closed before the response finished. A proxy or "
+    "load balancer in front of it likely timed out a long response: raise that timeout, "
+    "or point the provider at an endpoint that bypasses it."
+)
+_GATEWAY_FAILURE_STATUSES = frozenset({502, 504})
+#: LiteLLM exception class names that wrap an upstream error, e.g.
+#: "litellm.BadGatewayError: BadGatewayError: Hosted_vllmException -".
+_EXCEPTION_WRAPPER_RE = re.compile(r"(?:litellm\.)?[A-Za-z_]+(?:Error|Exception)\b\s*[:\-]?\s*")
+
+
+def _is_opaque_gateway_failure(upstream: str, exc: BaseException | None) -> bool:
+    """True for an upstream 502/504 whose text is nothing but exception wrappers."""
+    status = getattr(exc, "status_code", None)
+    if not isinstance(status, int) or status not in _GATEWAY_FAILURE_STATUSES:
+        return False
+    remainder = _EXCEPTION_WRAPPER_RE.sub("", upstream or "").strip(" -:.")
+    return not remainder
 
 
 #: Longest upstream explanation we will echo. Provider bodies can embed a whole
@@ -449,6 +700,7 @@ def _upstream_client_message(
         is_generic_upstream_error,
         is_provider_credential_error,
         is_provider_tls_error,
+        is_provider_truncated_response_error,
     )
 
     label = _call_label(provider, model)
@@ -457,15 +709,40 @@ def _upstream_client_message(
     # someone to rotate a working API key wastes the trip.
     if is_provider_tls_error(detail):
         return f"{_UPSTREAM_TLS_MESSAGE} ({label})"
+    # Also ahead of the credential branch: aiohttp reports the cut-off with a
+    # "400" of its own, and LiteLLM's wrapper chain around it says nothing an
+    # operator can act on.
+    if is_provider_truncated_response_error(detail):
+        return f"{_UPSTREAM_TRUNCATED_MESSAGE} ({label})"
     if is_provider_credential_error(detail):
         return f"{_UPSTREAM_CREDENTIAL_MESSAGE} ({label})"
     upstream = _provider_error_text(detail, exc)
     upstream = _sanitise_upstream_detail(upstream) if upstream else ""
+    if _is_opaque_gateway_failure(upstream, exc):
+        return f"{_UPSTREAM_GATEWAY_MESSAGE} ({label})"
     if not upstream or is_generic_upstream_error(upstream):
         return f"{_UPSTREAM_FAILURE_MESSAGE} ({label})"
     # lgtm[py/stack-trace-exposure] — provider error text only; traceback frames,
     # file paths and private hosts are removed by _sanitise_upstream_detail.
     return f"{label}: {upstream}"
+
+
+def _is_request_scoped_failure(detail: str, exc: BaseException | None) -> bool:
+    """True when the failure belongs to this request, not to the provider.
+
+    A prompt that overflows the context window fails because of what this one
+    call carried; the next, shorter one succeeds. Recording it in
+    `provider_error_log` would latch the health banner against a provider that
+    is serving fine — and on a provider whose probe cannot clear it, until the
+    entry goes stale. The caller still gets the error.
+    """
+    from api.provider_validation import is_context_window_error
+
+    if exc is not None and any(
+        cls.__name__ == "ContextWindowExceededError" for cls in type(exc).__mro__
+    ):
+        return True
+    return is_context_window_error(detail)
 
 
 def _redact(message: str, credentials: Mapping[str, Any]) -> str:
@@ -565,6 +842,118 @@ def _repair_tool_calls(tool_calls: Any, provider: str, model: str) -> int:
     return repaired
 
 
+def _finalise_tool_call(call: dict[str, Any]) -> bool:
+    """Make `call` something a client can execute. False when it cannot be.
+
+    A call with no name names no tool, so nothing can run it and no result can
+    ever come back for it; forwarding it only corrupts the assistant message the
+    client will replay on its next turn. A missing `id` is recoverable — the id
+    is only the handle a tool result is correlated by, so any stable string
+    serves — and minting one keeps a real call alive that clients would
+    otherwise reject for carrying `id: null`. Blank `arguments` are recoverable
+    too: a named call streamed with no arguments fragment is a zero-argument
+    call, and the contract is a JSON *object* — `""` does not parse as one.
+    """
+    function = call.get("function")
+    if not isinstance(function, dict) or not function.get("name"):
+        return False
+    if not isinstance(call.get("id"), str) or not call["id"]:
+        call["id"] = f"call_{uuid4().hex}"
+    arguments = function.get("arguments")
+    if arguments is None or (isinstance(arguments, str) and not arguments.strip()):
+        function["arguments"] = "{}"
+        logger.debug(
+            "Defaulted blank tool call arguments to an empty object", tool=function["name"]
+        )
+    return True
+
+
+def _sanitise_messages(messages: Any) -> tuple[list[Any], int]:
+    """`messages` with unusable tool calls repaired or dropped, and a repair count.
+
+    The gateway forwards a client's conversation verbatim, and one malformed
+    tool call in it is not a one-turn problem. Clients replay their whole
+    history on every turn, so the same bad message goes back up again and again,
+    and providers reject the *request* rather than the message that spoiled it —
+    vLLM answers the lot with "Please ensure `tool_calls` are iterable of tool
+    calls". The conversation is then wedged for good, with nothing in the UI
+    pointing at the turn that broke it. A proxy sitting between many clients and
+    many providers is the right place to stop that.
+
+    Three shapes are handled, all of them things real clients emit: `arguments`
+    sent as an object rather than the JSON *string* OpenAI's contract requires;
+    a tool call carrying no id or no name, which nothing can execute and no
+    result can be matched to; and the tool results left behind by one, which are
+    dropped alongside it so no provider is handed a reply to a call that is no
+    longer there.
+
+    What survives must still be a sequence providers accept: a `tool` message
+    is kept only when it answers a call kept on the assistant message just
+    before it, and an assistant message left with neither tool calls nor
+    content is dropped, since `content` is only optional beside `tool_calls`.
+    """
+    cleaned: list[Any] = []
+    repairs = 0
+    # Ids of the calls kept on the most recent assistant message: the only ones
+    # a `tool` message may answer.
+    live_ids: set[str] = set()
+    for message in messages or []:
+        if not isinstance(message, dict):
+            cleaned.append(message)
+            continue
+        if message.get("role") == "tool":
+            if message.get("tool_call_id") not in live_ids:
+                repairs += 1
+                continue
+            cleaned.append(message)
+            continue
+        live_ids = set()
+        if "tool_calls" not in message:
+            cleaned.append(message)
+            continue
+
+        raw = message.get("tool_calls")
+        kept: list[dict[str, Any]] = []
+        for call in raw if isinstance(raw, list) else []:
+            if not isinstance(call, dict):
+                repairs += 1
+                continue
+            # The client controls this value, and `dict()` raises on a string or
+            # a number. A non-mapping names no tool, so it becomes an empty one
+            # and the call is dropped below like any other nameless call.
+            function = call.get("function")
+            call = {**call, "function": dict(function) if isinstance(function, dict) else {}}
+            arguments, changed = _normalise_tool_arguments(call["function"].get("arguments"))
+            if changed:
+                call["function"]["arguments"] = arguments
+                repairs += 1
+            # Unlike the response path, a missing id is not minted here: the
+            # result for this call is already somewhere in the history under the
+            # id the client used, and inventing a different one would orphan it.
+            if isinstance(call.get("id"), str) and call["id"] and call["function"].get("name"):
+                kept.append(call)
+            else:
+                repairs += 1
+
+        message = dict(message)
+        if kept:
+            message["tool_calls"] = kept
+            live_ids = {call["id"] for call in kept}
+        else:
+            # `tool_calls: null` is itself a shape some providers iterate
+            # without a None check, so the key goes rather than emptying.
+            message.pop("tool_calls")
+            # A list's entries were each counted above; anything else was
+            # never iterable in the first place and is one repair on its own.
+            repairs += bool(raw) and not isinstance(raw, list)
+            if raw and message.get("role") == "assistant" and not message.get("content"):
+                # The dropped calls were the whole message; what is left has
+                # nothing to say, and no provider accepts it saying nothing.
+                continue
+        cleaned.append(message)
+    return cleaned, repairs
+
+
 def _repair_completion_payload(payload: dict[str, Any], provider: str, model: str) -> int:
     repaired = 0
     for choice in payload.get("choices") or []:
@@ -655,6 +1044,36 @@ def _reasoning_off_retry(model: str, kwargs: dict[str, Any]) -> bool:
     return True
 
 
+async def with_stale_connection_retry(
+    call: Callable[[], Awaitable[Any]], *, provider: str, model: str, kind: str
+) -> Any:
+    """Run one LiteLLM call, sending it once more if a dead pooled connection ate it.
+
+    LiteLLM keeps idle connections for 120s; vLLM closes them after 5s. A call
+    that picks one up just as the server closes it fails with "Server
+    disconnected" before the server reads a byte (it logs nothing), and the
+    replay goes out on a fresh connection. Only that failure is retried — see
+    `is_provider_stale_connection_error` — so a request the server may have
+    acted on is never sent twice. For a stream only the call that opens it is
+    wrapped, so nothing has reached the caller yet; a mid-stream failure is
+    not retried.
+    """
+    from api.provider_validation import is_provider_stale_connection_error
+
+    try:
+        return await call()
+    except Exception as exc:
+        if not is_provider_stale_connection_error(exc):
+            raise
+        logger.warning(
+            "Model server closed an idle connection before answering; retrying once",
+            provider=provider,
+            model=model,
+            kind=kind,
+        )
+        return await call()
+
+
 async def chat_completions(
     body: Mapping[str, Any], *, config=None
 ) -> dict[str, Any] | AsyncIterator[str]:
@@ -667,24 +1086,37 @@ async def chat_completions(
     if litellm_model in _TOOLS_NEED_REASONING_OFF:
         # Already learned about this model; do not spend a round-trip relearning.
         _reasoning_off_retry(litellm_model, kwargs)
+    messages, repairs = _sanitise_messages(body.get("messages"))
+    if repairs:
+        logger.warning(
+            "Repaired malformed tool calls in the request's conversation",
+            provider=provider,
+            model=litellm_model,
+            repairs=repairs,
+        )
 
     async def _call() -> Any:
         import litellm
 
-        return await litellm.acompletion(
+        return await with_stale_connection_retry(
+            lambda: litellm.acompletion(
+                model=litellm_model,
+                messages=messages,
+                stream=stream,
+                # OpenAI-compatible clients send OpenAI's full parameter set, but
+                # providers accept different subsets — watsonx rejects
+                # `parallel_tool_calls`, `max_completion_tokens` and `logit_bias`,
+                # and LiteLLM raises UnsupportedParamsError rather than ignoring
+                # them. A proxy that fans out to many providers must degrade to
+                # the provider's capabilities instead of failing the request.
+                drop_params=True,
+                **credentials,
+                **runtime_kwargs,
+                **kwargs,
+            ),
+            provider=provider,
             model=litellm_model,
-            messages=list(body.get("messages") or []),
-            stream=stream,
-            # OpenAI-compatible clients send OpenAI's full parameter set, but
-            # providers accept different subsets — watsonx rejects
-            # `parallel_tool_calls`, `max_completion_tokens` and `logit_bias`,
-            # and LiteLLM raises UnsupportedParamsError rather than ignoring
-            # them. A proxy that fans out to many providers must degrade to the
-            # provider's capabilities instead of failing the request.
-            drop_params=True,
-            **credentials,
-            **runtime_kwargs,
-            **kwargs,
+            kind="chat",
         )
 
     try:
@@ -716,7 +1148,8 @@ async def chat_completions(
         # The health banner otherwise reports whatever its own probe hit, which
         # is a different request and so often a different error. Hand it the
         # text this caller is being shown.
-        provider_error_log.record_failure(provider, "chat", message)
+        if not _is_request_scoped_failure(detail, exc):
+            provider_error_log.record_failure(provider, "chat", message)
         raise LlmGatewayError(
             message,
             _upstream_status_code(exc),
@@ -783,6 +1216,57 @@ class _ToolCallBuffer:
     def __bool__(self) -> bool:
         return bool(self._order)
 
+    def _open_call(self, choice_index: int) -> dict[str, Any] | None:
+        """The call most recently opened on this choice, if there is one."""
+        for key in reversed(self._order):
+            if key[0] == choice_index:
+                return self._calls[key]
+        return None
+
+    def _target(self, choice_index: int, index: int, raw: Mapping[str, Any]) -> dict[str, Any]:
+        """The call `raw` belongs to: one already open, or a new one.
+
+        A delta that names no call — no `id`, no `function.name` — cannot be the
+        start of one, so it continues the call already open on this choice
+        rather than opening another. vLLM's tool parsers can attribute a call's
+        last `arguments` fragment, often the closing brace by itself, to the
+        *next* index; taken at face value that does two kinds of damage at once.
+        The real call loses the fragment and its arguments no longer parse, and
+        a second call appears with no id and no name that nothing can execute.
+        Neither survives the round trip: the client folds both into the
+        assistant message it replays on the next turn, and the provider then
+        rejects every later request in that conversation rather than the one
+        message that is malformed.
+
+        With nothing open to continue, the fragment instead opens a provisional
+        call at its own index. Some providers send an `arguments` fragment ahead
+        of the delta that carries the call's `id` and `name`; dropping it would
+        truncate the arguments once that delta arrives at the same index and
+        finds the call. A provisional call that is never named is discarded by
+        `drain`, which logs it.
+        """
+        key = (choice_index, index)
+        call = self._calls.get(key)
+        if call is not None:
+            return call
+        function = raw.get("function")
+        names_a_call = bool(raw.get("id")) or bool(
+            isinstance(function, dict) and function.get("name")
+        )
+        if not names_a_call:
+            open_call = self._open_call(choice_index)
+            if open_call is not None:
+                return open_call
+            logger.debug(
+                "Holding an unnamed tool-call fragment until its call is named",
+                choice_index=choice_index,
+                index=index,
+            )
+        call = {"index": index, "type": "function", "function": {"name": "", "arguments": ""}}
+        self._calls[key] = call
+        self._order.append(key)
+        return call
+
     def absorb(self, choice_index: int, tool_calls: Any) -> None:
         for position, raw in enumerate(tool_calls or []):
             if not isinstance(raw, dict):
@@ -790,16 +1274,7 @@ class _ToolCallBuffer:
             index = raw.get("index")
             if not isinstance(index, int):
                 index = position
-            key = (choice_index, index)
-            call = self._calls.get(key)
-            if call is None:
-                call = {
-                    "index": index,
-                    "type": "function",
-                    "function": {"name": "", "arguments": ""},
-                }
-                self._calls[key] = call
-                self._order.append(key)
+            call = self._target(choice_index, index, raw)
             if raw.get("id"):
                 call["id"] = raw["id"]
             if raw.get("type"):
@@ -825,9 +1300,18 @@ class _ToolCallBuffer:
             grouped.setdefault(choice_index, [])
         for key in self._order:
             grouped[key[0]].append(self._calls[key])
-        for calls in grouped.values():
+        for choice_index, calls in grouped.items():
             calls.sort(key=lambda call: call.get("index", 0))
-            repaired += _repair_tool_calls(calls, provider, model)
+            usable = [call for call in calls if _finalise_tool_call(call)]
+            if len(usable) != len(calls):
+                logger.warning(
+                    "Dropped tool calls that named no tool",
+                    provider=provider,
+                    model=model,
+                    dropped=len(calls) - len(usable),
+                )
+            grouped[choice_index] = usable
+            repaired += _repair_tool_calls(usable, provider, model)
         self._calls.clear()
         self._order.clear()
         return grouped, repaired
@@ -1007,7 +1491,8 @@ async def _stream_sse(
         tally.error = detail
         logger.error("LLM chat stream failed", provider=provider, model=model, error=detail)
         message = _upstream_client_message(detail, provider, model, exc)
-        provider_error_log.record_failure(provider, "chat", message)
+        if not _is_request_scoped_failure(detail, exc):
+            provider_error_log.record_failure(provider, "chat", message)
         yield _error_frame(message, provider, model)
     finally:
         close = getattr(stream, "aclose", None) or getattr(stream, "close", None)
@@ -1056,13 +1541,22 @@ def _embedding_input(value: Any) -> Any:
     return [value] if isinstance(value, str) else value
 
 
-async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
-    """OpenAI `POST /v1/embeddings`."""
+async def embeddings(
+    body: Mapping[str, Any], *, config=None, interactive: bool = False
+) -> dict[str, Any]:
+    """OpenAI `POST /v1/embeddings`.
+
+    `interactive` marks a query embedding someone is waiting on (search, chat
+    retrieval). At a provider with a concurrency limit it waits in its own
+    lane instead of behind bulk ingestion; see `_embedding_limiter`.
+    """
     cfg = config or _get_config()
     litellm_model, provider, credentials = resolve_call(
         body.get("model"), kind="embedding", config=cfg
     )
     runtime_kwargs = _provider_runtime_kwargs(provider, cfg)
+    limiter = _embedding_limiter(provider, cfg)
+    lane = _INTERACTIVE_LANE if interactive else _BULK_LANE
     embedding_input = _embedding_input(body.get("input"))
     should_batch = (
         provider == "watsonx_onprem"
@@ -1074,12 +1568,18 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
         import litellm
 
         if not should_batch:
-            result = await litellm.aembedding(
-                model=litellm_model,
-                input=embedding_input,
-                **credentials,
-                **runtime_kwargs,
-            )
+            async with _embedding_slot(limiter, provider, litellm_model, lane):
+                result = await with_stale_connection_retry(
+                    lambda: litellm.aembedding(
+                        model=litellm_model,
+                        input=embedding_input,
+                        **credentials,
+                        **runtime_kwargs,
+                    ),
+                    provider=provider,
+                    model=litellm_model,
+                    kind="embedding",
+                )
             response = _to_openai_dict(result)
         else:
             response = {}
@@ -1091,12 +1591,19 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
                 _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE,
             ):
                 batch = embedding_input[offset : offset + _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE]
-                result = await litellm.aembedding(
-                    model=litellm_model,
-                    input=batch,
-                    **credentials,
-                    **runtime_kwargs,
-                )
+                async with _embedding_slot(limiter, provider, litellm_model, lane):
+                    result = await with_stale_connection_retry(
+                        functools.partial(
+                            litellm.aembedding,
+                            model=litellm_model,
+                            input=batch,
+                            **credentials,
+                            **runtime_kwargs,
+                        ),
+                        provider=provider,
+                        model=litellm_model,
+                        kind="embedding",
+                    )
                 payload = _to_openai_dict(result)
                 if not response:
                     response = {
