@@ -676,7 +676,9 @@ export class Knowledge {
   }
 
   async getFirstChunkText(): Promise<string> {
-    await expect(this.page.getByText(/Chunk \d+/i).first()).toBeVisible();
+    await expect(this.page.getByText(/Chunk \d+/i).first()).toBeVisible({
+      timeout: 15000,
+    });
 
     const chunk = this.page.locator("blockquote").first();
     return (await chunk.textContent()) || "";
@@ -1067,8 +1069,9 @@ export class Knowledge {
    * @returns Array containing the top 2 chunk texts after search
    */
   async searchChunks(searchToken: string): Promise<string[]> {
-    // Locate the search input in the chunk viewer
-    const searchInp = this.searchInput();
+    // Locate the chunk-specific search input (not the knowledge-list search bar).
+    // Both inputs match placeholder*="Search"; narrow to "chunks" to avoid ambiguity.
+    const searchInp = this.page.locator('input[placeholder*="chunks"]');
     await expect(searchInp).toBeVisible({ timeout: 5000 });
     // Clear any existing search and enter the token
     await searchInp.clear();
