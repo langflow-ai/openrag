@@ -69,5 +69,9 @@ def latest_failure(provider: str | None, kind: CallKind) -> str | None:
 
 
 def clear() -> None:
-    """Drop every recorded failure. For tests."""
+    """Drop every recorded failure.
+
+    For settings saves that change a provider, model or credentials — the
+    entries describe a setup that no longer exists — and for tests.
+    """
     _failures.clear()
