@@ -62,7 +62,7 @@ def _make_service(opensearch: _OpenSearch, monkeypatch) -> SearchService:
     )
     service.models_service = None
 
-    async def _no_embed(body):
+    async def _no_embed(body, **_kwargs):
         return {"data": [{"embedding": [0.1, 0.2]}]}
 
     monkeypatch.setattr("services.search_service.gateway_embeddings", _no_embed)
