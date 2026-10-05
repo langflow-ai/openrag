@@ -7,6 +7,7 @@
  */
 
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import type { ChunkResult } from "@/app/api/queries/useGetSearchQuery";
@@ -140,5 +141,130 @@ describe("FileChunksPanel — highlight wiring", () => {
     expect(screen.getByText("Unrelated content here")).toBeInTheDocument();
     // Verify the highlight mark is rendered
     expect(container.querySelector("mark")?.textContent).toBe("fox");
+  });
+});
+
+describe("FileChunksPanel — hideIrrelevant", () => {
+  it("hides low-relevance chunks and shows a banner when hideIrrelevant is true", async () => {
+    // c1 has a high score (1.0), c2 has a low score (0.0).
+    // After per-file normalisation: c1 → 1.0 (high tier), c2 → 0.0 (low tier).
+    server.use(
+      http.post("/api/search", async ({ request }) => {
+        const body = (await request.json()) as { query: string };
+        if (body.query === "*") {
+          return HttpResponse.json({
+            results: [
+              chunk({
+                chunk_id: "c1",
+                text: "Highly relevant content",
+                score: 1.0,
+              }),
+              chunk({
+                chunk_id: "c2",
+                text: "Totally irrelevant stuff",
+                score: 0.0,
+              }),
+            ],
+            warnings: [],
+          });
+        }
+        return HttpResponse.json({
+          results: [
+            chunk({
+              chunk_id: "c1",
+              text: "Highly relevant content",
+              score: 1.0,
+            }),
+          ],
+          warnings: [],
+        });
+      }),
+    );
+
+    renderWithProviders(
+      <FileChunksPanel
+        filename="doc.pdf"
+        searchQuery="relevant"
+        hideIrrelevant
+      />,
+      { providers: ["auth", "knowledgeFilter"], auth: authPresets.admin },
+    );
+
+    // The high-relevance chunk must be visible.
+    await waitFor(() =>
+      expect(screen.getByText("Highly relevant content")).toBeInTheDocument(),
+    );
+
+    // The low-relevance chunk must be hidden.
+    expect(
+      screen.queryByText("Totally irrelevant stuff"),
+    ).not.toBeInTheDocument();
+
+    // The banner must announce how many chunks are hidden.
+    expect(
+      screen.getByText(/1 low-relevance chunk hidden/i),
+    ).toBeInTheDocument();
+  });
+
+  it("reveals hidden chunks when the user clicks Show all", async () => {
+    server.use(
+      http.post("/api/search", async ({ request }) => {
+        const body = (await request.json()) as { query: string };
+        if (body.query === "*") {
+          return HttpResponse.json({
+            results: [
+              chunk({
+                chunk_id: "c1",
+                text: "Highly relevant content",
+                score: 1.0,
+              }),
+              chunk({
+                chunk_id: "c2",
+                text: "Totally irrelevant stuff",
+                score: 0.0,
+              }),
+            ],
+            warnings: [],
+          });
+        }
+        return HttpResponse.json({
+          results: [
+            chunk({
+              chunk_id: "c1",
+              text: "Highly relevant content",
+              score: 1.0,
+            }),
+          ],
+          warnings: [],
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+
+    renderWithProviders(
+      <FileChunksPanel
+        filename="doc.pdf"
+        searchQuery="relevant"
+        hideIrrelevant
+      />,
+      { providers: ["auth", "knowledgeFilter"], auth: authPresets.admin },
+    );
+
+    // Wait for the banner to appear, then click "Show all".
+    const showAllButton = await screen.findByRole("button", {
+      name: /show all/i,
+    });
+    await user.click(showAllButton);
+
+    // Now the low-relevance chunk must be visible.
+    await waitFor(() =>
+      expect(screen.getByText("Totally irrelevant stuff")).toBeInTheDocument(),
+    );
+
+    // The banner should now offer "Hide low-relevance".
+    expect(
+      screen.getByText(/showing all chunks including low-relevance/i),
+    ).toBeInTheDocument();
   });
 });

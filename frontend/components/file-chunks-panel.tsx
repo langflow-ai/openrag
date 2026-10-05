@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Copy, Loader2 } from "lucide-react";
+import { Check, Copy, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useFileScopedChunksQuery } from "@/app/api/queries/useFileScopedChunksQuery";
 import {
@@ -44,6 +44,11 @@ export interface FileChunksPanelProps {
   fillHeight?: boolean;
   /** Original search query from the knowledge page — used to fetch highlighted chunks. */
   searchQuery?: string;
+  /**
+   * When true (and a searchQuery is active), low-relevance chunks are hidden by default.
+   * The user can toggle them back on via the "Show all" button.
+   */
+  hideIrrelevant?: boolean;
 }
 
 function chunkMatches(chunk: ChunkResult, needle: string): boolean {
@@ -179,7 +184,7 @@ function FileChunkCard({
 
 /**
  * Searchable per-file chunk list shared by `/knowledge/chunks` and ingest review.
- * Loads this file’s chunks once, then filters locally so paste-from-chunk works.
+ * Loads this file's chunks once, then filters locally so paste-from-chunk works.
  */
 export function FileChunksPanel({
   filename,
@@ -194,6 +199,7 @@ export function FileChunksPanel({
   onFilterQueryChange,
   fillHeight = false,
   searchQuery,
+  hideIrrelevant = false,
 }: FileChunksPanelProps) {
   const { file, isFetching, isSearchFetching } = useFileScopedChunksQuery(
     filename,
@@ -246,9 +252,49 @@ export function FileChunksPanel({
 
   const deferredQuery = useDeferredValue(localQuery);
   const needle = deferredQuery.trim().toLowerCase();
-  const chunks = needle
+
+  // When hideIrrelevant is enabled and a search is active, hide low-tier chunks
+  // unless the user explicitly reveals them.
+  const isSearchActive =
+    Boolean(searchQuery?.trim()) && searchQuery!.trim() !== "*";
+  const [showingAll, setShowingAll] = useState(false);
+
+  // Reset showingAll whenever the search query changes so a new search re-hides low results.
+  const [prevSearchQuery, setPrevSearchQuery] = useState(searchQuery);
+  if (searchQuery !== prevSearchQuery) {
+    setPrevSearchQuery(searchQuery);
+    setShowingAll(false);
+  }
+
+  const textFilteredChunks = needle
     ? allChunks.filter((chunk) => chunkMatches(chunk, needle))
     : allChunks;
+
+  const relevanceFilterActive = hideIrrelevant && isSearchActive && !showingAll;
+
+  // Always compute the count of low-tier chunks so the banner can show the
+  // number both when they are hidden and when the user has revealed them.
+  const totalLowCount = useMemo(() => {
+    if (!hideIrrelevant || !isSearchActive) return 0;
+    return textFilteredChunks.filter((c) => chunkScoreInfo(c)?.tier === "low")
+      .length;
+  }, [hideIrrelevant, isSearchActive, textFilteredChunks, chunkScoreInfo]);
+
+  const chunks = useMemo(() => {
+    const filtered = relevanceFilterActive
+      ? textFilteredChunks.filter((c) => chunkScoreInfo(c)?.tier !== "low")
+      : textFilteredChunks;
+    // Sort by score descending when a search is active so the most relevant
+    // chunks surface at the top. Fall back to document order (already set via
+    // the stable `index` label) when there is no active search.
+    if (!isSearchActive) return filtered;
+    return [...filtered].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  }, [
+    relevanceFilterActive,
+    textFilteredChunks,
+    chunkScoreInfo,
+    isSearchActive,
+  ]);
 
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -298,6 +344,40 @@ export function FileChunksPanel({
           {isSearchFetching && (
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
           )}
+        </div>
+      )}
+
+      {hideIrrelevant && isSearchActive && totalLowCount > 0 && !showingAll && (
+        <div className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+          <EyeOff className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1">
+            {totalLowCount} low-relevance chunk
+            {totalLowCount !== 1 ? "s" : ""} hidden
+          </span>
+          <button
+            type="button"
+            className="flex items-center gap-1 text-xs font-medium text-foreground hover:text-primary"
+            onClick={() => setShowingAll(true)}
+          >
+            <Eye className="h-3 w-3" />
+            Show all
+          </button>
+        </div>
+      )}
+      {hideIrrelevant && isSearchActive && showingAll && totalLowCount > 0 && (
+        <div className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+          <Eye className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1">
+            Showing all chunks including low-relevance
+          </span>
+          <button
+            type="button"
+            className="flex items-center gap-1 text-xs font-medium text-foreground hover:text-primary"
+            onClick={() => setShowingAll(false)}
+          >
+            <EyeOff className="h-3 w-3" />
+            Hide low-relevance
+          </button>
         </div>
       )}
 
