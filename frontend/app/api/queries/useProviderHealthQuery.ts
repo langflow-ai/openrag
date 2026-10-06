@@ -14,6 +14,20 @@ export interface ProviderHealthDetails {
   endpoint?: string | null;
 }
 
+/**
+ * Something degraded that is not a provider failure, reported beside the
+ * verdict rather than in it — e.g. `stale_embedding_space`: documents indexed
+ * with a model the provider no longer serves. The fix is in the corpus, not in
+ * provider settings.
+ */
+export interface ProviderHealthWarning {
+  code: string;
+  provider: string;
+  message: string;
+  models?: string[];
+  served?: string[];
+}
+
 export interface ProviderHealthResponse {
   status: "healthy" | "unhealthy" | "error" | "backend-unavailable";
   message: string;
@@ -23,6 +37,7 @@ export interface ProviderHealthResponse {
   llm_error?: string | null;
   embedding_error?: string | null;
   details?: ProviderHealthDetails;
+  warnings?: ProviderHealthWarning[];
 }
 
 export interface ProviderHealthParams {
@@ -97,6 +112,7 @@ export const useProviderHealthQuery = (
           llm_error: errorData.llm_error,
           embedding_error: errorData.embedding_error,
           details: errorData.details,
+          warnings: errorData.warnings,
         };
       } else {
         const errorData = await response.json().catch(() => ({}));

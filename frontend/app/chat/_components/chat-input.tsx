@@ -11,8 +11,10 @@ import {
 } from "@/components/ui/popover";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useFileDrag } from "@/hooks/use-file-drag";
+import { useImeComposition } from "@/hooks/use-ime-composition";
 import { useSupportedFileTypes } from "@/hooks/use-supported-file-types";
 import type { FilterColor } from "@/lib/filter-constants";
+import type { ImeCompositionState } from "@/lib/ime-composition";
 import { cn } from "@/lib/utils";
 import { useGetAllFiltersQuery } from "../../api/queries/useGetAllFiltersQuery";
 import type { KnowledgeFilterData } from "../_types/types";
@@ -22,6 +24,8 @@ import { SelectedKnowledgeFilter } from "./selected-knowledge-filter";
 export interface ChatInputHandle {
   focusInput: () => void;
   clickFileInput: () => void;
+  /** Snapshot of the open or just-finished IME session, including `now`. */
+  getImeState: () => ImeCompositionState;
 }
 
 interface ChatInputProps {
@@ -34,7 +38,10 @@ interface ChatInputProps {
   uploadedFile: File | null;
   onSubmit: (e: React.FormEvent) => void;
   onChange: (value: string) => void;
-  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onKeyDown: (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+    imeState: ImeCompositionState,
+  ) => void;
   onFilterSelect: (filter: KnowledgeFilterData | null) => void;
   onFilePickerClick: () => void;
   setSelectedFilter: (filter: KnowledgeFilterData | null) => void;
@@ -64,6 +71,7 @@ export function ChatInput({
 }: ChatInputProps & { ref?: React.Ref<ChatInputHandle> }) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const ime = useImeComposition();
   const [isWrapped, setIsWrapped] = useState(false);
   const isMultiline = input.includes("\n") || isWrapped;
   const isDragging = useFileDrag();
@@ -108,6 +116,7 @@ export function ChatInput({
     clickFileInput: () => {
       fileInputRef.current?.click();
     },
+    getImeState: () => ime.readState(),
   }));
 
   const handleFilePickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -258,6 +267,14 @@ export function ChatInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // One snapshot for this keydown, shared with the parent submit handler.
+    // Confirming a Kanji (or other IME) candidate fires Enter and must not
+    // select a filter or submit the message.
+    const imeState = ime.readState();
+    if (ime.blockEnter(e, imeState)) {
+      return;
+    }
+
     if (isFilterDropdownOpen) {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -299,6 +316,10 @@ export function ChatInput({
       }
 
       if (e.key === " ") {
+        // Space cycles IME candidates. A space after compositionend is a real space.
+        if (ime.isImeCandidateKey(e.nativeEvent)) {
+          return;
+        }
         // Select filter on space if we're typing an @ mention
         const cursorPos = e.currentTarget.selectionStart || 0;
         const textBeforeCursor = input.slice(0, cursorPos);
@@ -314,7 +335,7 @@ export function ChatInput({
     }
 
     // Pass through to parent onKeyDown for other key handling
-    onKeyDown(e);
+    onKeyDown(e, imeState);
   };
 
   return (
@@ -418,6 +439,7 @@ export function ChatInput({
                   ref={inputRef}
                   value={input}
                   onChange={handleChange}
+                  {...ime.inputProps}
                   onKeyDown={handleKeyDown}
                   maxRows={7}
                   autoComplete="off"

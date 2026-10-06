@@ -4,6 +4,7 @@ import asyncio
 import json
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
@@ -153,6 +154,87 @@ def is_provider_tls_error(text: str | BaseException | None) -> bool:
         return False
     lowered = (str(text) if not isinstance(text, str) else text).lower()
     return any(marker in lowered for marker in _PROVIDER_TLS_ERROR_MARKERS)
+
+
+#: Markers for a response the connection dropped before it finished: the server
+#: promised more body than arrived. Nearly always something between OpenRAG and
+#: the model server closing a long response — an authenticating proxy with a
+#: fixed request timeout (RHOAI's kube-rbac-proxy cuts at 30s), a load balancer
+#: idle timeout. aiohttp names it with a "400" of its own, which reads like the
+#: model rejecting the request.
+_PROVIDER_TRUNCATED_RESPONSE_MARKERS = (
+    "transferencodingerror",
+    "response payload is not completed",
+    "not enough data to satisfy transfer length",
+    "incomplete chunked read",
+)
+
+
+def is_provider_truncated_response_error(text: str | BaseException | None) -> bool:
+    """True when the provider's response was cut off mid-transfer."""
+    if text is None:
+        return False
+    lowered = (str(text) if not isinstance(text, str) else text).lower()
+    return any(marker in lowered for marker in _PROVIDER_TRUNCATED_RESPONSE_MARKERS)
+
+
+#: How deep to follow `__cause__` / `__context__`. LiteLLM wraps the transport
+#: error three times (its exception, the provider's, `httpx.ReadError`).
+_MAX_EXCEPTION_CHAIN_DEPTH = 8
+
+
+def is_provider_stale_connection_error(exc: BaseException | None) -> bool:
+    """True when the connection closed before any response to the request began.
+
+    Nearly always a pooled keep-alive connection the model server had already
+    closed: LiteLLM keeps idle connections for 120s, vLLM (uvicorn) closes them
+    after 5s, and a request sent while the close is still in flight finds a
+    dead socket. The server never saw the request, so sending it again on a
+    fresh connection is safe. Matched on the transport's own exception type,
+    not its text: a response cut off mid-body raises a different error
+    (`is_provider_truncated_response_error`) and must not be replayed.
+    """
+    disconnect_types: tuple[type[BaseException], ...] = ()
+    try:
+        from aiohttp import ServerDisconnectedError
+    except ImportError:  # pragma: no cover - aiohttp ships with LiteLLM
+        pass
+    else:
+        disconnect_types = (ServerDisconnectedError,)
+
+    current = exc
+    for _ in range(_MAX_EXCEPTION_CHAIN_DEPTH):
+        if current is None:
+            return False
+        if isinstance(current, disconnect_types):
+            return True
+        # The same failure on LiteLLM's httpx transport (a provider handed its
+        # own client). Other RemoteProtocolErrors can follow a partial response.
+        if isinstance(current, httpx.RemoteProtocolError) and (
+            "without sending a response" in str(current).lower()
+        ):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+#: Markers for a prompt that does not fit the model's context window. That is a
+#: property of one request — a long conversation, a lot of retrieved text — and
+#: says nothing about whether the provider is serving.
+_CONTEXT_WINDOW_ERROR_MARKERS = (
+    "maximum context length",
+    "context_length_exceeded",
+    "contextwindowexceeded",
+    "prompt is too long",
+)
+
+
+def is_context_window_error(text: str | BaseException | None) -> bool:
+    """True when the call failed because the prompt exceeds the model's context window."""
+    if text is None:
+        return False
+    lowered = (str(text) if not isinstance(text, str) else text).lower()
+    return any(marker in lowered for marker in _CONTEXT_WINDOW_ERROR_MARKERS)
 
 
 _GENERIC_UPSTREAM_ERROR_MARKERS = (
@@ -662,6 +744,26 @@ def is_azure_ai_foundry_endpoint(api_base: str | None) -> bool:
     return (urlparse(api_base).hostname or "").endswith(".services.ai.azure.com")
 
 
+@dataclass(frozen=True)
+class ProbeResult:
+    """What a successful `validate_provider_setup()` call actually exercised.
+
+    Passing validation is weaker evidence than it looks: depending on the
+    provider and arguments it may have listed deployments, checked a key, or
+    made no call at all. Callers deciding whether a provider is *serving* — as
+    the health check does before erasing a real-traffic failure — need to know
+    which.
+
+    ``model_probed``: a real call was made to the model under test — the
+    embedding model when one was given, otherwise the LLM.
+    ``tools_exercised``: that call was a completion carrying tool definitions,
+    the shape the agent's own traffic has.
+    """
+
+    model_probed: bool = False
+    tools_exercised: bool = False
+
+
 async def validate_provider_setup(
     provider: str,
     api_key: str = None,
@@ -672,7 +774,8 @@ async def validate_provider_setup(
     test_completion: bool = False,
     credentials: dict[str, str] | None = None,
     stored_credentials: Mapping[str, Any] | None = None,
-) -> None:
+    verify_model: bool = False,
+) -> ProbeResult:
     """
     Validate provider setup by testing completion with tool calling and embedding.
 
@@ -690,6 +793,15 @@ async def validate_provider_setup(
                         Only a provider enhancement's lightweight check reads it: a provider with
                         separate chat and embedding endpoints has ``credentials`` narrowed to one
                         of them, and the check has to see both to probe both.
+        verify_model: Call the given model through LiteLLM even without ``test_completion``.
+                        The settings save passes it: for a provider enhancement that real call
+                        is the only check that rejects a model the cluster does not serve
+                        before it is stored. Without it, and without ``test_completion``, an
+                        enhancement gets its model-free lightweight check like any other
+                        provider.
+
+    Returns:
+        ProbeResult: what the successful validation exercised.
 
     Raises:
         Exception: If validation fails, raises the original exception with the actual error message.
@@ -708,17 +820,21 @@ async def validate_provider_setup(
             f"Starting validation for provider: {provider_lower} (test_completion={test_completion})"
         )
 
-        # watsonx.ai on-prem has no bespoke model probe of its own: a real call
-        # through LiteLLM *is* its model probe, and it is what makes switching to
-        # a model the cluster does not serve fail instead of saving silently. Its
-        # catalogue check is only for the case there is no model to probe with,
-        # which is the one that used to report "A model is required".
+        # A provider enhancement has no bespoke model probe of its own: a real
+        # call through LiteLLM *is* its model probe, and it is what makes
+        # switching to a model the cluster does not serve fail instead of saving
+        # silently. It runs only when asked for — on save (`verify_model`) or a
+        # full check (`test_completion`). The polled health check asks for
+        # neither and gets the model-free lightweight check, as every other
+        # provider does: polling inference every 30s holds a GPU slot (RHOAI) or
+        # bills (watsonx.ai on-prem), and its pooled connections race the
+        # model server's keep-alive and fail with "Server disconnected".
         enhancement = get_provider_enhancement(provider_lower)
         azure_ai_foundry_endpoint = provider_lower == "azure" and is_azure_ai_foundry_endpoint(
             supplied.get("api_base")
         )
         probes_the_model = (
-            bool(embedding_model or llm_model)
+            bool(embedding_model or llm_model) and (test_completion or verify_model)
             if enhancement is not None
             else (
                 provider_lower not in _NATIVELY_VALIDATED_PROVIDERS
@@ -742,6 +858,10 @@ async def validate_provider_setup(
                 embedding_model=embedding_model,
                 llm_model=llm_model,
             )
+            # The LiteLLM probe is a plain completion: it proves the model
+            # answers, not that it can take the tool-calling request the agent
+            # sends.
+            result = ProbeResult(model_probed=True)
         elif test_completion:
             if provider_lower == "azure":
                 # Azure deployments are user-defined, so a model completion is
@@ -755,7 +875,7 @@ async def validate_provider_setup(
                     credentials=supplied,
                     stored_credentials=stored_credentials,
                 )
-                return
+                return ProbeResult()
             # Full validation with completion/embedding tests (consumes credits)
             if embedding_model:
                 # Test embedding
@@ -766,6 +886,7 @@ async def validate_provider_setup(
                     endpoint=endpoint,
                     project_id=project_id,
                 )
+                result = ProbeResult(model_probed=True)
             elif llm_model:
                 # Test completion with tool calling
                 await test_completion_with_tools(
@@ -775,6 +896,10 @@ async def validate_provider_setup(
                     endpoint=endpoint,
                     project_id=project_id,
                 )
+                result = ProbeResult(model_probed=True, tools_exercised=True)
+            else:
+                # No model to test with, so nothing was called at all.
+                result = ProbeResult()
         else:
             # Lightweight validation (no credits consumed)
             await test_lightweight_health(
@@ -785,8 +910,10 @@ async def validate_provider_setup(
                 credentials=supplied,
                 stored_credentials=stored_credentials,
             )
+            result = ProbeResult()
 
         logger.info(f"Validation successful for provider: {provider_lower}")
+        return result
 
     except Exception as e:
         logger.error(f"Validation failed for provider {provider_lower}: {str(e)}")
@@ -805,6 +932,7 @@ async def _test_litellm_provider(
     """Validate arbitrary providers through the same LiteLLM adapter used at runtime."""
     import litellm
 
+    from services.llm_gateway import with_stale_connection_retry
     from services.model_catalog import litellm_provider_key
 
     model = embedding_model or llm_model
@@ -813,26 +941,38 @@ async def _test_litellm_provider(
     # Same aliasing the gateway applies, so the probe hits the route the real
     # call will: `watsonx_onprem/<model>` is not a prefix LiteLLM can resolve.
     litellm_model = f"{litellm_provider_key(provider)}/{model}"
+    # And the same retry: a dead pooled connection is not a provider failure,
+    # and reporting one would block a save or raise the banner for nothing.
     if embedding_model:
-        await litellm.aembedding(
+        await with_stale_connection_retry(
+            lambda: litellm.aembedding(
+                model=litellm_model,
+                # A list, never a bare string. OpenAI accepts either and LiteLLM
+                # forwards whatever it is given, so a string reaches watsonx.ai as
+                # `"inputs": "..."` where it requires `[]string` — the cluster then
+                # answers "Mismatch type []string with value string" and the
+                # pre-save check fails for every embedding model, which leaves a
+                # wrongly-chosen one impossible to change.
+                input=["OpenRAG provider validation"],
+                **credentials,
+                **(runtime_kwargs or {}),
+            ),
+            provider=provider,
             model=litellm_model,
-            # A list, never a bare string. OpenAI accepts either and LiteLLM
-            # forwards whatever it is given, so a string reaches watsonx.ai as
-            # `"inputs": "..."` where it requires `[]string` — the cluster then
-            # answers "Mismatch type []string with value string" and the
-            # pre-save check fails for every embedding model, which leaves a
-            # wrongly-chosen one impossible to change.
-            input=["OpenRAG provider validation"],
-            **credentials,
-            **(runtime_kwargs or {}),
+            kind="embedding",
         )
         return
-    await litellm.acompletion(
+    await with_stale_connection_retry(
+        lambda: litellm.acompletion(
+            model=litellm_model,
+            messages=[{"role": "user", "content": "Reply with OK."}],
+            max_tokens=4,
+            **credentials,
+            **(runtime_kwargs or {}),
+        ),
+        provider=provider,
         model=litellm_model,
-        messages=[{"role": "user", "content": "Reply with OK."}],
-        max_tokens=4,
-        **credentials,
-        **(runtime_kwargs or {}),
+        kind="chat",
     )
 
 
