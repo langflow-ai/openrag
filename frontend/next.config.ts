@@ -1,7 +1,31 @@
 import dotenv from "dotenv";
 import type { NextConfig } from "next";
 import path from "path";
-import { normalizeFrontendBasePath } from "./lib/frontend-base-path";
+
+// Keep this config self-contained: next start evaluates next.config.ts from
+// the production image, where application source files under lib/ are not
+// copied. The browser-side client has the same normalization in
+// lib/frontend-base-path.ts.
+function normalizeFrontendBasePath(value?: string): string {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === "/") return "";
+
+  const prefixed = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  const normalized = prefixed.replace(/\/+$/, "");
+
+  if (
+    !normalized ||
+    normalized.includes("?") ||
+    normalized.includes("#") ||
+    normalized.includes("://")
+  ) {
+    throw new Error(
+      "OPENRAG_FRONTEND_BASE_PATH must be a path such as /openrag-fe",
+    );
+  }
+
+  return normalized;
+}
 
 // Load environment variables from the root env file. Honors ENV_FILE (set by
 // the Makefile) so per-instance env files like `.env.instance2` are respected;
