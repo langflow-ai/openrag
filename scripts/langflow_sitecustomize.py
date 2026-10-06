@@ -32,6 +32,7 @@ def is_langflow_server(argv: list[str]) -> bool:
 
 
 def preload_openai_resources() -> None:
+    """Import ``openai.resources`` now; on failure, warn and let Langflow start."""
     try:
         import openai.resources  # noqa: F401
     except Exception as exc:  # never block Langflow from starting
