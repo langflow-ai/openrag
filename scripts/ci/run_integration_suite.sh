@@ -35,7 +35,13 @@ COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openrag}"
 OPENSEARCH_PORT="${OPENSEARCH_PORT:-9200}"
 LANGFLOW_PORT="${LANGFLOW_PORT:-7860}"
 export OPENRAG_FRONTEND_BASE_PATH
-FRONTEND_URL="http://localhost:3000/${OPENRAG_FRONTEND_BASE_PATH#/}"
+frontend_base_path="${OPENRAG_FRONTEND_BASE_PATH#/}"
+frontend_base_path="${frontend_base_path%/}"
+if [[ -n "$frontend_base_path" ]]; then
+  FRONTEND_URL="http://localhost:3000/${frontend_base_path}"
+else
+  FRONTEND_URL="http://localhost:3000"
+fi
 
 compose_cmd+=("-p" "$COMPOSE_PROJECT_NAME")
 
