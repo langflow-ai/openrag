@@ -21,6 +21,10 @@ logger = get_logger(__name__)
 DOCLING_SERVICE_URL = DOCLING_SERVE_URL
 HOST_IP = DOCLING_HOST_IP
 
+# Per-phase httpx budget, matching the console status check. A single-worker
+# docling-serve converting documents can stall its HTTP endpoints for seconds.
+_HEALTH_CHECK_TIMEOUT_S = 5.0
+
 
 async def health(
     request: Request, user: Annotated[User | None, Depends(get_optional_user)] = None
@@ -37,7 +41,9 @@ async def health(
 
     try:
         async with httpx.AsyncClient(**_docling_tls_kwargs()) as client:
-            response = await client.get(health_url, headers=headers, timeout=2.0)
+            response = await client.get(
+                health_url, headers=headers, timeout=_HEALTH_CHECK_TIMEOUT_S
+            )
 
             if response.status_code == 200:
                 return JSONResponse({"status": "healthy", "host": HOST_IP})
@@ -54,11 +60,28 @@ async def health(
                     status_code=503,
                 )
 
-    except httpx.TimeoutException:
-        logger.warning("Docling health check timeout", url=health_url)
+    except httpx.ConnectTimeout:
+        logger.warning("Docling health check connect timeout", url=health_url)
         return JSONResponse(
             {"status": "unhealthy", "message": "Connection timeout", "host": HOST_IP},
             status_code=503,
+        )
+    except httpx.TimeoutException as e:
+        # The connection opened but the reply was slow: docling-serve is busy, not
+        # stopped, and ingest still works. Answer 200 so the UI doesn't announce
+        # that the service is stopped; the body says it is degraded.
+        logger.warning(
+            "Docling health check slow to respond",
+            url=health_url,
+            error_type=type(e).__name__,
+            timeout_s=_HEALTH_CHECK_TIMEOUT_S,
+        )
+        return JSONResponse(
+            {
+                "status": "degraded",
+                "message": "Docling Serve is slow to respond",
+                "host": HOST_IP,
+            }
         )
     except Exception as e:
         logger.error("Docling health check failed", url=health_url, error=str(e))
