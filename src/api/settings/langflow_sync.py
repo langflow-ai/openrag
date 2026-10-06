@@ -226,7 +226,10 @@ async def ensure_required_langflow_global_variables(config=None):
                 if sync_value:
                     patch_payload["value"] = target_val
                 patch_resp = await clients.langflow_request(
-                    "PATCH", f"/api/v1/variables/{var_id}", json=patch_payload
+                    "PATCH",
+                    f"/api/v1/variables/{var_id}",
+                    json=patch_payload,
+                    idempotent=True,
                 )
                 if not (200 <= patch_resp.status_code < 300):
                     raise RuntimeError(
@@ -518,6 +521,7 @@ async def _update_langflow_docling_settings(config, flows_service):
             table_structure=config.knowledge.table_structure,
             ocr=config.knowledge.ocr,
             picture_descriptions=config.knowledge.picture_descriptions,
+            ocr_languages=config.knowledge.ocr_languages,
         )
         await flows_service.update_flow_docling_preset("custom", preset_config)
         logger.info("Successfully updated docling settings in ingest flow")

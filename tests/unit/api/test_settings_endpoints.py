@@ -356,6 +356,53 @@ async def test_update_settings_validates_enhancement_credentials_before_saving()
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"llm_provider": "rhoai", "llm_model": "granite-chat"},
+        {"embedding_provider": "rhoai", "embedding_model": "granite-embedding"},
+    ],
+    ids=["llm", "embedding"],
+)
+async def test_update_settings_asks_for_a_real_model_probe(fields):
+    """A model switch is verified for real, not with the polled lightweight check.
+
+    For a provider enhancement only a real call rejects a model the cluster
+    does not serve; without `verify_model` the validator would run the
+    model-free check and the switch would save, failing later in chat.
+    """
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.validate_provider_setup",
+            new_callable=AsyncMock,
+            side_effect=Exception("stop after validation arguments are captured"),
+        ) as validate,
+        patch("api.settings.endpoints.config_manager.save_config_file") as save,
+    ):
+        response = await update_settings(
+            body=SettingsUpdateBody(**fields),
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    assert response.status_code == 400
+    validate.assert_awaited_once()
+    assert validate.await_args.kwargs["verify_model"] is True
+    save.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_update_settings_skips_pre_save_check_for_litellm_only_providers():
     """Providers without an enhancement have no model-free probe to run."""
     from api.settings.endpoints import update_settings
@@ -406,6 +453,52 @@ def test_settings_update_body_accepts_configurable_vlm_providers(provider):
 def test_settings_update_body_rejects_malformed_vlm_provider(provider):
     with pytest.raises(ValidationError):
         SettingsUpdateBody(vlm_provider=provider)
+
+
+def test_settings_body_accepts_ocr_languages():
+    """OCR languages are settable through the settings API."""
+    body = SettingsUpdateBody(ocr_languages=["en", "ja"])
+
+    assert body.ocr_languages == ["ja", "en"]
+
+
+def test_settings_body_rejects_blank_ocr_language():
+    """A blank code would be forwarded to docling and silently break OCR."""
+    with pytest.raises(ValidationError):
+        SettingsUpdateBody(ocr_languages=["en", "  "])
+
+
+def test_settings_body_accepts_empty_ocr_language_list():
+    """An empty list clears the override so docling uses the engine default."""
+    assert SettingsUpdateBody(ocr_languages=[]).ocr_languages == []
+
+
+def test_settings_body_accepts_one_family_plus_english():
+    """A selection drawn from a single recognition-model family is valid."""
+    assert SettingsUpdateBody(ocr_languages=["en", "ja"]).ocr_languages == ["ja", "en"]
+    assert SettingsUpdateBody(ocr_languages=["ru", "uk"]).ocr_languages == ["ru", "uk"]
+    assert SettingsUpdateBody(ocr_languages=["fr", "de", "pt"]).ocr_languages == [
+        "fr",
+        "de",
+        "pt",
+    ]
+
+
+def test_settings_body_rejects_two_restricted_ocr_languages():
+    """easyocr cannot serve Japanese and Korean from one recognition model."""
+    with pytest.raises(ValidationError):
+        SettingsUpdateBody(ocr_languages=["ja", "ko"])
+
+
+def test_settings_body_rejects_mixed_scripts():
+    """Cyrillic and Latin need different easyocr models."""
+    with pytest.raises(ValidationError):
+        SettingsUpdateBody(ocr_languages=["ru", "fr"])
+
+
+def test_settings_body_allows_unknown_passthrough_codes():
+    """Raw engine codes are the operator's escape hatch; do not second-guess them."""
+    assert SettingsUpdateBody(ocr_languages=["hi", "mr"]).ocr_languages == ["hi", "mr"]
 
 
 @pytest.mark.asyncio
@@ -696,3 +789,75 @@ async def test_onboarding_caps_chunk_size_for_watsonx_onprem_embeddings():
     saved_config = save_config.call_args.args[0]
     assert saved_config.knowledge.chunk_size == 500
     assert response.chunk_size_adjusted_to == 500
+
+
+async def _save_settings(body: SettingsUpdateBody) -> None:
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.validate_provider_setup", new_callable=AsyncMock),
+        patch("api.settings.endpoints.config_manager.save_config_file", return_value=True),
+        patch("api.settings.endpoints.clients.refresh_patched_client", new_callable=AsyncMock),
+        patch(
+            "api.settings.endpoints._run_async_post_save_langflow_updates",
+            new_callable=AsyncMock,
+        ),
+    ):
+        response = await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+    assert getattr(response, "status_code", 200) == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body",
+    [
+        SettingsUpdateBody(llm_model="qwen2.5-1.5b-instruct"),
+        SettingsUpdateBody(
+            provider_credentials={
+                "openai_like": {"api_base": "https://llm.example", "api_key": "k"}
+            }
+        ),
+    ],
+    ids=["model", "credentials"],
+)
+async def test_provider_settings_save_clears_recorded_failures(body):
+    """A recorded failure describes the setup the save just replaced.
+
+    Without this, a provider whose probe cannot clear the banner kept showing
+    the old failure after the operator fixed the model, until it went stale.
+    """
+    from services import provider_error_log
+
+    provider_error_log.clear()
+    provider_error_log.record_failure("rhoai", "chat", "old failure")
+    try:
+        await _save_settings(body)
+        assert provider_error_log.latest_failure("rhoai", "chat") is None
+    finally:
+        provider_error_log.clear()
+
+
+@pytest.mark.asyncio
+async def test_non_provider_settings_save_keeps_recorded_failures():
+    from services import provider_error_log
+
+    provider_error_log.clear()
+    provider_error_log.record_failure("rhoai", "chat", "still failing")
+    try:
+        await _save_settings(SettingsUpdateBody(system_prompt="Be brief."))
+        assert provider_error_log.latest_failure("rhoai", "chat") == "still failing"
+    finally:
+        provider_error_log.clear()
