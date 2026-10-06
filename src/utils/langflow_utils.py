@@ -232,6 +232,7 @@ async def enable_mcp_none_for_project(project_id: str | None, max_attempts: int 
         "PATCH",
         f"/api/v1/mcp/project/{project_id}",
         json={"settings": [], "auth_settings": {"auth_type": "none"}},
+        idempotent=True,
     )
     if patch_resp.status_code in (200, 201):
         logger.info(

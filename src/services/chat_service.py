@@ -88,6 +88,7 @@ class ChatService:
 
         # Pass the selected embedding model as a global variable
         from config.settings import get_openrag_config
+        from services.langflow_llm_token_service import HOP_PURPOSE_CHAT
         from utils.langflow_headers import (
             add_provider_credentials_to_headers,
             build_model_provider_headers,
@@ -154,6 +155,7 @@ class ChatService:
             flows_service=self.flows_service,
             jwt_token=jwt_token,
             user_id=user_id,
+            purpose=HOP_PURPOSE_CHAT,
         )
         # Get context variables for filters, limit, and threshold
         from auth_context import (
@@ -274,6 +276,7 @@ class ChatService:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
         from config.settings import get_openrag_config
+        from services.langflow_llm_token_service import HOP_PURPOSE_CHAT
         from utils.langflow_headers import (
             add_provider_credentials_to_headers,
             build_model_provider_headers,
@@ -289,6 +292,7 @@ class ChatService:
             flows_service=self.flows_service,
             jwt_token=jwt_token,
             user_id=user_id,
+            purpose=HOP_PURPOSE_CHAT,
         )
 
         # Build the complete filter expression like the chat service does
@@ -530,6 +534,7 @@ class ChatService:
                 extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
             from config.settings import get_openrag_config
+            from services.langflow_llm_token_service import HOP_PURPOSE_CHAT
             from utils.langflow_headers import (
                 add_provider_credentials_to_headers,
                 build_model_provider_headers,
@@ -596,6 +601,7 @@ class ChatService:
                 flows_service=self.flows_service,
                 jwt_token=jwt_token,
                 user_id=user_id,
+                purpose=HOP_PURPOSE_CHAT,
             )
 
             # Ensure the Langflow client exists; try lazy init if needed
