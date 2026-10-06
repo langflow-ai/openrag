@@ -64,8 +64,10 @@ def test_empty_string_yields_empty_list():
 def test_unset_defaults_to_localhost():
     env = _python_env({"PYTHONPATH": str(SRC)})
     env.pop("CORS_ALLOWED_ORIGINS", None)
+    # bootstrap.load_env() would otherwise re-read a developer's local .env.
+    no_dotenv = "import dotenv; dotenv.load_dotenv = lambda *a, **k: False; "
     result = subprocess.run(
-        [sys.executable, "-c", PRINT_ORIGINS],
+        [sys.executable, "-c", no_dotenv + PRINT_ORIGINS],
         capture_output=True,
         text=True,
         check=True,

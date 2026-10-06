@@ -436,17 +436,24 @@ def _catalog_entries() -> tuple[ProviderEntry, ...]:
     )
 
 
-async def refresh_live_models() -> None:
+async def refresh_live_models(provider: str | None = None) -> None:
     """Re-list the models on any provider that can only answer for itself.
 
     Called by the catalogue routes before the payload is built. The provider
     caches with a TTL, so this is a network call once every few minutes rather
     than once per request, and a failure leaves the previous answer — or the
     configured fallback — in place.
+
+    `provider` narrows it to that one provider. The catalogue needs every
+    listing; a caller asking about one provider — the health check — should not
+    wait on a slow cluster that belongs to another.
     """
     from config.settings import get_openrag_config
 
+    only = (provider or "").strip().lower() or None
     for enhancement in provider_enhancements():
+        if only is not None and enhancement.PROVIDER_KEY != only:
+            continue
         if enhancement.PROVIDER_KEY not in supported_provider_keys() or not hasattr(
             enhancement, "fetch_models"
         ):

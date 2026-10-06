@@ -1073,6 +1073,7 @@ async def _expand_selected_connector_files(
 
 async def _classify_connector_duplicates(
     connector,
+    connector_type: str,
     selected_files_raw: list[Any],
     session_manager,
     user_id: str,
@@ -1081,6 +1082,14 @@ async def _classify_connector_duplicates(
     """Expand connector selections and split them into duplicate/non-duplicate files."""
     expanded_files_info = await _expand_selected_connector_files(connector, selected_files_raw)
     if not expanded_files_info:
+        # The selection named only folders that expanded to nothing, so there is
+        # nothing to compare. Counted against what the caller asked for, which
+        # separates an empty expansion from an empty request.
+        logger.info(
+            "Duplicate check found nothing to check",
+            connector_type=connector_type,
+            selected=len(selected_files_raw),
+        )
         return {
             "duplicate_names": [],
             "duplicate_files": [],
@@ -1101,6 +1110,13 @@ async def _classify_connector_duplicates(
         all_candidates.update(aliases)
 
     if not all_candidates:
+        # Files expanded but none yielded a comparable name, so the index was
+        # never queried: every file is reported new without having been checked.
+        logger.info(
+            "Duplicate check skipped: no comparable filenames",
+            connector_type=connector_type,
+            listed=len(cleaned_files),
+        )
         return {
             "duplicate_names": [],
             "duplicate_files": [],
@@ -1130,6 +1146,16 @@ async def _classify_connector_duplicates(
             duplicate_names.append(file_info["name"])
         else:
             non_duplicate_files.append(file_info)
+
+    # See the bucket classifier: logged so a "no dialog appeared" report can be
+    # answered from the server side.
+    logger.info(
+        "Duplicate check complete",
+        connector_type=connector_type,
+        selected=len(cleaned_files),
+        duplicates=len(duplicate_files),
+        new_files=len(non_duplicate_files),
+    )
 
     return {
         "duplicate_names": list(dict.fromkeys(duplicate_names)),
@@ -1335,6 +1361,11 @@ async def _classify_bucket_connector_duplicates(
             break
 
     if not all_files:
+        logger.info(
+            "Duplicate check found nothing to check",
+            connector_type=connector_type,
+            buckets=bucket_filter,
+        )
         return {
             "duplicate_names": [],
             "duplicate_files": [],
@@ -1366,17 +1397,37 @@ async def _classify_bucket_connector_duplicates(
     duplicate_names: list[str] = []
     non_duplicate_files: list[dict[str, Any]] = []
     total = 0
+    already_synced = 0
     for f in all_files:
         fid = f.get("id")
         if not fid:
             continue
         total += 1
         response_file = _connector_file_response(f, cleaned_name=_cleaned_blob_filename(f))
-        if fid in existing_set or fid in name_taken_ids:
+        id_match = fid in existing_set
+        if id_match:
+            already_synced += 1
+        if id_match or fid in name_taken_ids:
             duplicate_files.append(response_file)
             duplicate_names.append(response_file["name"])
         else:
             non_duplicate_files.append(response_file)
+
+    # Both halves of the answer, so a "the dialog never appeared" report can be
+    # settled from the logs: whether the listing came back, whether the names
+    # were found in the index, and what the caller was told. Without it the only
+    # way to tell a check that found nothing from one that never ran is the
+    # browser's network tab.
+    logger.info(
+        "Duplicate check complete",
+        connector_type=connector_type,
+        buckets=bucket_filter,
+        listed=total,
+        already_synced_here=already_synced,
+        name_taken_elsewhere=len(set(name_taken_ids) - existing_set),
+        duplicates=len(duplicate_files),
+        new_files=len(non_duplicate_files),
+    )
 
     return {
         "duplicate_names": list(dict.fromkeys(duplicate_names)),
@@ -1402,7 +1453,19 @@ async def connector_check_duplicates(
 
     selected_files_raw = body.selected_files
     if not selected_files_raw and not body.bucket_filter:
-        return JSONResponse({"duplicate_names": []})
+        # Returning an empty duplicate list here reads to the caller as "checked,
+        # found nothing", and the UI goes on to ingest without ever offering the
+        # overwrite choice — the same thing a broken check looks like. The
+        # request asked about nothing, so say that instead of answering it.
+        logger.warning(
+            "Duplicate check asked about nothing",
+            connector_type=connector_type,
+            connection_id=body.connection_id,
+        )
+        return JSONResponse(
+            {"error": "Specify selected_files or bucket_filter to check for duplicates"},
+            status_code=400,
+        )
 
     try:
         jwt_token = user.jwt_token
@@ -1458,6 +1521,7 @@ async def connector_check_duplicates(
         return JSONResponse(
             await _classify_connector_duplicates(
                 connector=connector,
+                connector_type=connector_type,
                 selected_files_raw=selected_files_raw,
                 session_manager=session_manager,
                 user_id=user.user_id,
@@ -1786,6 +1850,7 @@ async def connector_sync(
                     connector=await connector_service.get_connector(
                         working_connection.connection_id
                     ),
+                    connector_type=connector_type,
                     selected_files_raw=file_infos,
                     session_manager=session_manager,
                     user_id=user.user_id,

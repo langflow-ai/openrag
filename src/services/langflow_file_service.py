@@ -490,6 +490,7 @@ class LangflowFileService:
 
         # Get the current embedding model and provider credentials from config
         from config.settings import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE
+        from services.langflow_llm_token_service import HOP_PURPOSE_INGEST
         from utils.langflow_headers import (
             add_provider_credentials_to_headers,
             build_model_provider_headers,
@@ -570,6 +571,7 @@ class LangflowFileService:
             flows_service=self.flows_service,
             jwt_token=jwt_token,
             user_id=owner,
+            purpose=HOP_PURPOSE_INGEST,
         )
         if self.ingest_token_service is None:
             await self._ensure_langflow_ingest_index(embedding_model)
@@ -696,6 +698,7 @@ class LangflowFileService:
             tweaks = {}
 
         from config.settings import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, get_openrag_config
+        from services.langflow_llm_token_service import HOP_PURPOSE_INGEST
         from utils.langflow_headers import (
             add_provider_credentials_to_headers,
             build_model_provider_headers,
@@ -758,6 +761,7 @@ class LangflowFileService:
             flows_service=self.flows_service,
             jwt_token=jwt_token,
             user_id=owner,
+            purpose=HOP_PURPOSE_INGEST,
         )
         if self.ingest_token_service is None:
             await self._ensure_langflow_ingest_index(embedding_model)

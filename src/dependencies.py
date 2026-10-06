@@ -197,11 +197,15 @@ async def get_llm_proxy_user(
     token = raw[7:].strip() if raw.lower().startswith("bearer ") else raw.strip()
     if token and not token.startswith("orag_"):
         try:
-            user = token_service.validate_token(token)
+            claims = token_service.validate_claims(token)
         except ValueError:
-            user = None
+            claims = None
         else:
+            user = token_service.user_from_claims(claims)
             request.state.user = user
+            # Which kind of Langflow run minted it; the gateway gives chat
+            # (query) embeddings their own lane beside bulk ingestion.
+            request.state.llm_hop_purpose = claims.get("purpose")
             return user
     return await resolve_api_key_user(request, api_key_service, session_manager)
 

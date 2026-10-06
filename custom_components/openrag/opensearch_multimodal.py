@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import unicodedata
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -32,6 +33,17 @@ EMBEDDING_SPACE_PAGE_SIZE = 100
 SELECTED_EMBEDDING_PROVIDER_VAR = "SELECTED_EMBEDDING_PROVIDER"
 LEGACY_EMBEDDING_ROUTE_PREFIX = "legacy:"
 INDEXED_EMBEDDING_ROUTE_PREFIX = "space:"
+
+# Some PDF fonts map common kanji (日, 月, 木, 金, 土, ...) to the look-alike
+# Kangxi Radical code points in their /ToUnicode CMap, and Docling copies them
+# through unchanged. Map just those blocks back to CJK Unified Ideographs;
+# full NFKC would also rewrite full-width digits, ㈱, ①, half-width katakana.
+# Mirrors normalize_cjk_radicals in src/utils/document_processing.py.
+CJK_RADICAL_TABLE = {
+    cp: unicodedata.normalize("NFKC", chr(cp))
+    for cp in range(0x2E80, 0x2FE0)  # CJK Radicals Supplement + Kangxi Radicals
+    if unicodedata.normalize("NFKC", chr(cp)) != chr(cp)
+}
 
 
 @dataclass(frozen=True)
@@ -1537,6 +1549,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         for doc_obj in docs:
             data_copy = json.loads(doc_obj.model_dump_json())
             text = data_copy.pop(doc_obj.text_key, doc_obj.default_value)
+            if isinstance(text, str):
+                text = text.translate(CJK_RADICAL_TABLE)
             texts.append(text)
 
             # Merge additional metadata from table input
