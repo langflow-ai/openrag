@@ -27,18 +27,18 @@ export function getUnauthorizedRedirectUrl(redirectUrl: unknown): string {
   const fallback = withFrontendBasePath("/login");
   if (typeof redirectUrl !== "string") return fallback;
 
-  // Redirect only to an application-local path or same-origin absolute URL.
-  if (redirectUrl.startsWith("/") && !redirectUrl.startsWith("//")) {
-    return withFrontendBasePath(redirectUrl);
-  }
-
   try {
     if (typeof window === "undefined") return fallback;
     const url = new URL(redirectUrl, window.location.origin);
-    if (url.origin === window.location.origin) {
-      url.pathname = withFrontendBasePath(url.pathname);
-      return url.toString();
+    if (url.origin !== window.location.origin) return fallback;
+
+    url.pathname = withFrontendBasePath(url.pathname);
+    // Keep relative application paths relative, while preserving absolute
+    // same-origin candidates returned by the backend.
+    if (redirectUrl.startsWith("/") && !redirectUrl.startsWith("//")) {
+      return `${url.pathname}${url.search}${url.hash}`;
     }
+    return url.toString();
   } catch {
     // Malformed redirect URLs fall back to the local login page.
   }

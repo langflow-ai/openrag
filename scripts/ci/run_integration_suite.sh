@@ -20,7 +20,11 @@ if [[ -f "$env_file" ]]; then
   COMPOSE_PROJECT_NAME="$(grep -E '^COMPOSE_PROJECT_NAME=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
   OPENSEARCH_PORT="$(grep -E '^OPENSEARCH_PORT=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
   LANGFLOW_PORT="$(grep -E '^LANGFLOW_PORT=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
-  OPENRAG_FRONTEND_BASE_PATH="$(grep -E '^OPENRAG_FRONTEND_BASE_PATH=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
+  OPENRAG_FRONTEND_BASE_PATH="$(
+    { grep -E '^OPENRAG_FRONTEND_BASE_PATH=' "$env_file" || [[ $? -eq 1 ]]; } |
+      cut -d= -f2- |
+      tr -d '"'\'
+  )"
 fi
 
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openrag}"

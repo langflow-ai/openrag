@@ -66,4 +66,11 @@ describe("apiClient", () => {
       "/openrag-fe/auth/callback",
     );
   });
+
+  it("rejects backslash-based cross-origin redirects without a base path", async () => {
+    vi.stubEnv("NEXT_PUBLIC_OPENRAG_FRONTEND_BASE_PATH", "");
+    const { getUnauthorizedRedirectUrl } = await import("./api-client");
+
+    expect(getUnauthorizedRedirectUrl("/\\evil.example/login")).toBe("/login");
+  });
 });
