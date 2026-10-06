@@ -36,6 +36,9 @@ export function useProviderHealth() {
     health?.status === "unhealthy" || health?.status === "error";
   const isBackendUnavailable =
     health?.status === "backend-unavailable" || isError;
+  // Serving, but something outside provider setup needs attention. An
+  // unhealthy verdict outranks it, so the two banners never compete.
+  const isDegraded = isHealthy && (health?.warnings?.length ?? 0) > 0;
 
   return {
     health,
@@ -45,18 +48,59 @@ export function useProviderHealth() {
     isError,
     isHealthy,
     isUnhealthy,
+    isDegraded,
     isBackendUnavailable,
   };
 }
 
 export function ProviderHealthBanner({ className }: ProviderHealthBannerProps) {
-  const { isLoading, isHealthy, isUnhealthy, health } = useProviderHealth();
+  const { isLoading, isHealthy, isUnhealthy, isDegraded, health } =
+    useProviderHealth();
   const router = useRouter();
   const isNarrow = useNarrowLayout();
 
-  // Only show banner when provider is unhealthy (not when backend is unavailable)
-  if (isLoading || isHealthy) {
+  // Only show banner when provider is unhealthy or degraded (not when the
+  // backend is unavailable)
+  if (isLoading || (isHealthy && !isDegraded)) {
     return null;
+  }
+
+  if (isDegraded) {
+    // A warning, not an error: the provider is serving and its setup is fine.
+    // The remedy (re-ingest or delete) lives on the Knowledge page, so that is
+    // where the action goes rather than to provider settings.
+    const [warning] = health?.warnings ?? [];
+    const providerTitle = getProviderChrome(warning.provider).name;
+
+    return (
+      <Banner
+        className={cn(
+          "bg-amber-50 dark:bg-amber-950 text-foreground border-accent-amber border-b w-full",
+          isNarrow && "flex-wrap gap-y-1 py-2",
+          className,
+        )}
+      >
+        <BannerIcon
+          className="text-accent-amber-foreground shrink-0"
+          icon={AlertTriangle}
+        />
+        <BannerTitle
+          className={cn(
+            "font-medium flex items-center gap-2",
+            isNarrow && "text-xs",
+          )}
+        >
+          {`${providerTitle} warning - ${warning.message}`}
+        </BannerTitle>
+        <Button
+          size="sm"
+          className="shrink-0"
+          onClick={() => router.push("/knowledge")}
+        >
+          Open Knowledge
+        </Button>
+      </Banner>
+    );
   }
 
   if (isUnhealthy) {
