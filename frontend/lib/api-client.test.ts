@@ -48,4 +48,22 @@ describe("apiClient", () => {
       apiClient.getUri({ url: "https://graph.microsoft.com/v1.0/me" }),
     ).toBe("https://graph.microsoft.com/v1.0/me");
   });
+
+  it("falls back to the base-path login page for unsafe redirects", async () => {
+    vi.stubEnv("NEXT_PUBLIC_OPENRAG_FRONTEND_BASE_PATH", "/openrag-fe");
+    const { getUnauthorizedRedirectUrl } = await import("./api-client");
+
+    expect(getUnauthorizedRedirectUrl("https://evil.example/login")).toBe(
+      "/openrag-fe/login",
+    );
+    expect(getUnauthorizedRedirectUrl("//evil.example/login")).toBe(
+      "/openrag-fe/login",
+    );
+    expect(getUnauthorizedRedirectUrl("http://[invalid/login")).toBe(
+      "/openrag-fe/login",
+    );
+    expect(getUnauthorizedRedirectUrl("/auth/callback")).toBe(
+      "/openrag-fe/auth/callback",
+    );
+  });
 });

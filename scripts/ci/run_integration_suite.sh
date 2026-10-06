@@ -15,15 +15,18 @@ fi
 COMPOSE_PROJECT_NAME=""
 OPENSEARCH_PORT=""
 LANGFLOW_PORT=""
+OPENRAG_FRONTEND_BASE_PATH=""
 if [[ -f "$env_file" ]]; then
   COMPOSE_PROJECT_NAME="$(grep -E '^COMPOSE_PROJECT_NAME=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
   OPENSEARCH_PORT="$(grep -E '^OPENSEARCH_PORT=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
   LANGFLOW_PORT="$(grep -E '^LANGFLOW_PORT=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
+  OPENRAG_FRONTEND_BASE_PATH="$(grep -E '^OPENRAG_FRONTEND_BASE_PATH=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
 fi
 
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openrag}"
 OPENSEARCH_PORT="${OPENSEARCH_PORT:-9200}"
 LANGFLOW_PORT="${LANGFLOW_PORT:-7860}"
+FRONTEND_URL="http://localhost:3000${OPENRAG_FRONTEND_BASE_PATH}"
 
 compose_cmd+=("-p" "$COMPOSE_PROJECT_NAME")
 
@@ -288,7 +291,7 @@ run_attempt() {
       test_jwt_opensearch || exit_code=1
       ;;
     sdk-python)
-      if ! wait_for_url "frontend at http://localhost:3000" "http://localhost:3000/" 60; then
+      if ! wait_for_url "frontend at ${FRONTEND_URL}" "${FRONTEND_URL}/" 60; then
         return 1
       fi
       echo "::group::SDK Integration Tests (Python)"
@@ -299,11 +302,11 @@ run_attempt() {
         echo "${red}ERROR: uv pip install failed${nc}"
         return 1
       fi
-      SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || exit_code=1
+      SDK_TESTS_ONLY=true OPENRAG_URL="${FRONTEND_URL}" uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || exit_code=1
       echo "::endgroup::"
       ;;
     sdk-typescript)
-      if ! wait_for_url "frontend at http://localhost:3000" "http://localhost:3000/" 60; then
+      if ! wait_for_url "frontend at ${FRONTEND_URL}" "${FRONTEND_URL}/" 60; then
         return 1
       fi
       echo "::group::SDK Integration Tests (TypeScript)"
@@ -311,7 +314,7 @@ run_attempt() {
       echo "${purple} SDK Integration Tests (TypeScript)${nc}"
       echo "${cyan}════════════════════════════════════════${nc}"
       cd sdks/typescript
-      npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || exit_code=1
+      npm install && npm run build && OPENRAG_URL="${FRONTEND_URL}" npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || exit_code=1
       cd ../..
       echo "::endgroup::"
       ;;

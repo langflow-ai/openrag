@@ -27,6 +27,7 @@ CONTAINER_RUNTIME := $(shell command -v docker >/dev/null 2>&1 && echo "docker" 
 # Next.js compiles `basePath` into the frontend bundle, so every direct
 # frontend image build must receive the same value used by docker compose.
 FRONTEND_BASE_PATH_BUILD_ARG := --build-arg OPENRAG_FRONTEND_BASE_PATH="$(OPENRAG_FRONTEND_BASE_PATH)"
+FRONTEND_LOCAL_URL := http://localhost:3000$(OPENRAG_FRONTEND_BASE_PATH)
 
 # Host UID/GID — evaluated once at parse time and used in Docker-assisted chown commands
 # so that Alpine (running as root) can re-own volume directories back to the host user.
@@ -1144,9 +1145,9 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml || TEST_RESULT=1; \
 	echo "::endgroup::"; \
 	echo ""; \
-	echo "$(YELLOW)Waiting for frontend at http://localhost:3000...$(NC)"; \
+	echo "$(YELLOW)Waiting for frontend at $(FRONTEND_LOCAL_URL)...$(NC)"; \
 	for i in $$(seq 1 60); do \
-		curl -s http://localhost:3000/ >/dev/null 2>&1 && break || sleep 2; \
+		curl -s $(FRONTEND_LOCAL_URL)/ >/dev/null 2>&1 && break || sleep 2; \
 	done; \
 	echo "::group::SDK Integration Tests (Python)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1154,7 +1155,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	uv pip install --quiet -e sdks/python; \
 	mkdir -p service-logs; \
-	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || TEST_RESULT=1; \
+	SDK_TESTS_ONLY=true OPENRAG_URL=$(FRONTEND_LOCAL_URL) uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || TEST_RESULT=1; \
 	echo "::endgroup::"; \
 	echo "::group::SDK Integration Tests (TypeScript)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1162,7 +1163,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	cd sdks/typescript && \
 	npm install && npm run build && \
-	OPENRAG_URL=http://localhost:3000 npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || TEST_RESULT=1; \
+	OPENRAG_URL=$(FRONTEND_LOCAL_URL) npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || TEST_RESULT=1; \
 	cd ../..; \
 	echo "::endgroup::"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1273,9 +1274,9 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml || TEST_RESULT=1; \
 	echo "::endgroup::"; \
 	echo ""; \
-	echo "$(YELLOW)Waiting for frontend at http://localhost:3000...$(NC)"; \
+	echo "$(YELLOW)Waiting for frontend at $(FRONTEND_LOCAL_URL)...$(NC)"; \
 	for i in $$(seq 1 60); do \
-		curl -s http://localhost:3000/ >/dev/null 2>&1 && break || sleep 2; \
+		curl -s $(FRONTEND_LOCAL_URL)/ >/dev/null 2>&1 && break || sleep 2; \
 	done; \
 	echo "::group::SDK Integration Tests (Python)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1283,7 +1284,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	uv pip install --quiet -e sdks/python; \
 	mkdir -p service-logs; \
-	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || TEST_RESULT=1; \
+	SDK_TESTS_ONLY=true OPENRAG_URL=$(FRONTEND_LOCAL_URL) uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || TEST_RESULT=1; \
 	echo "::endgroup::"; \
 	echo "::group::SDK Integration Tests (TypeScript)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1291,7 +1292,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	cd sdks/typescript && \
 	npm install && npm run build && \
-	OPENRAG_URL=http://localhost:3000 npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || TEST_RESULT=1; \
+	OPENRAG_URL=$(FRONTEND_LOCAL_URL) npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || TEST_RESULT=1; \
 	cd ../..; \
 	echo "::endgroup::"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1323,10 +1324,10 @@ test-sdk: ## Run SDK integration tests (requires running OpenRAG at localhost:30
 	@echo "$(CYAN)════════════════════════════════════════$(NC)"
 	@echo "$(YELLOW)Make sure OpenRAG is running at localhost:3000 (make dev)$(NC)"
 	uv pip install -e sdks/python
-	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s
+	SDK_TESTS_ONLY=true OPENRAG_URL=$(FRONTEND_LOCAL_URL) uv run pytest tests/integration/sdk/ -vv -s
 	@echo ""
 	@echo "$(PURPLE)Running TypeScript SDK tests...$(NC)"
-	cd sdks/typescript && npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test
+	cd sdks/typescript && npm install && npm run build && OPENRAG_URL=$(FRONTEND_LOCAL_URL) npm test
 	@echo "$(PURPLE)SDK tests complete.$(NC)"
 
 lint: ## Run linting checks
@@ -1345,7 +1346,7 @@ status: ## Show container status
 health: ## Check health of all services
 	@printf "$(PURPLE)Health check:$(NC)\n"
 	@printf "$(CYAN)Frontend:$(NC)   "
-	@if curl -s -k --fail http://127.0.0.1:$${FRONTEND_PORT:-3000}/ >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
+	@if curl -s -k --fail http://127.0.0.1:$${FRONTEND_PORT:-3000}$(OPENRAG_FRONTEND_BASE_PATH)/ >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
 	@printf "$(CYAN)Backend:$(NC)     "
 	@if curl -s -k --fail http://127.0.0.1:$${OPENRAG_BACKEND_PORT:-8000}/health >/dev/null 2>&1; then \
 		printf "$(GREEN)Healthy$(NC)\n"; \

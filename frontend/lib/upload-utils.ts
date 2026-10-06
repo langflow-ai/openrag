@@ -1,4 +1,17 @@
 import { apiClient } from "@/lib/api-client";
+
+function getUploadErrorMessage(data: unknown): string {
+  if (typeof data === "string") return data;
+  if (!data || typeof data !== "object") return "";
+
+  const payload = data as Record<string, unknown>;
+  for (const key of ["error", "detail", "message"]) {
+    if (typeof payload[key] === "string" && payload[key]) {
+      return payload[key];
+    }
+  }
+  return "";
+}
 export type UploadContextResult =
   | { type: "task"; taskId: string }
   | { type: "direct"; filename: string; responseId: string };
@@ -18,7 +31,7 @@ export async function uploadFileForContext(
   const response = await apiClient.post("/upload_context", formData);
 
   if (response.status < 200 || response.status >= 300) {
-    const errorText = typeof response.data === "string" ? response.data : "";
+    const errorText = getUploadErrorMessage(response.data);
     throw new Error(errorText || "Failed to process document");
   }
 
@@ -70,7 +83,7 @@ export async function duplicateCheck(
   );
 
   if (response.status < 200 || response.status >= 300) {
-    const errorText = typeof response.data === "string" ? response.data : "";
+    const errorText = getUploadErrorMessage(response.data);
     throw new Error(
       errorText || `Failed to check duplicates: ${response.statusText}`,
     );
@@ -105,10 +118,14 @@ export async function uploadFiles(
     throw new Error("Upload failed: unable to parse server response");
   }
 
+  if (typeof payload === "string") {
+    throw new Error("Upload failed: unable to parse server response");
+  }
+
   const json = typeof payload === "object" && payload !== null ? payload : {};
 
   if (uploadResponse.status < 200 || uploadResponse.status >= 300) {
-    const errorMessage = (json as { error?: string }).error || "Upload failed";
+    const errorMessage = getUploadErrorMessage(json) || "Upload failed";
     throw new Error(errorMessage);
   }
 
@@ -161,13 +178,16 @@ export async function uploadFile(
       throw new Error("Upload failed: unable to parse server response");
     }
 
+    if (typeof payload === "string") {
+      throw new Error("Upload failed: unable to parse server response");
+    }
+
     const uploadIngestJson =
       typeof payload === "object" && payload !== null ? payload : {};
 
     if (uploadResponse.status < 200 || uploadResponse.status >= 300) {
       const errorMessage =
-        (uploadIngestJson as { error?: string }).error ||
-        "Upload and ingest failed";
+        getUploadErrorMessage(uploadIngestJson) || "Upload and ingest failed";
       throw new Error(errorMessage);
     }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
 import { useEffect, useRef, useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -121,7 +122,12 @@ export default function AzureBlobSettingsDialog({
     } catch (err: unknown) {
       // Ignore cancellations — they are intentional (dialog closed or new test
       // started) and must not surface an error message to the user.
-      if (err instanceof DOMException && err.name === "AbortError") return;
+      if (
+        (err instanceof DOMException && err.name === "AbortError") ||
+        axios.isCancel(err)
+      ) {
+        return;
+      }
       setContainersError(
         err instanceof Error ? err.message : "Connection failed",
       );
