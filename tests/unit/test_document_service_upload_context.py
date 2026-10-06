@@ -62,19 +62,33 @@ _IMAGE_WITH_DESCRIPTION = {
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("enabled", [True, False])
-async def test_upload_context_sends_configured_ingestion_settings_to_docling(enabled):
+@pytest.mark.parametrize(
+    ("ocr", "table_structure", "picture_descriptions"),
+    [
+        (True, False, False),
+        (False, True, False),
+        (False, False, True),
+        (False, False, False),
+    ],
+    ids=["ocr-only", "table-structure-only", "picture-descriptions-only", "all-off"],
+)
+async def test_upload_context_sends_configured_ingestion_settings_to_docling(
+    ocr, table_structure, picture_descriptions
+):
+    # One setting enabled at a time, so a request field wired to the wrong
+    # setting fails instead of passing by coincidence.
     service, client = _document_service(_IMAGE_WITH_DESCRIPTION)
-    config = _knowledge_config(ocr=enabled, table_structure=enabled, picture_descriptions=enabled)
+    config = _knowledge_config(
+        ocr=ocr, table_structure=table_structure, picture_descriptions=picture_descriptions
+    )
 
     with patch("services.docling_service.get_openrag_config", return_value=config):
         await service.process_upload_context(_FakeUpload(b"png-bytes", "cat.png"), "cat.png")
 
     data = client.post.call_args.kwargs["data"]
-    expected = "true" if enabled else "false"
-    assert data["do_ocr"] == expected
-    assert data["do_table_structure"] == expected
-    assert data["do_picture_description"] == expected
+    assert data["do_ocr"] == str(ocr).lower()
+    assert data["do_table_structure"] == str(table_structure).lower()
+    assert data["do_picture_description"] == str(picture_descriptions).lower()
 
 
 @pytest.mark.asyncio
