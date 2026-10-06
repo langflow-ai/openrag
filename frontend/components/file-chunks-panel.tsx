@@ -235,6 +235,7 @@ export function FileChunksPanel({
         className,
       )}
       data-testid="file-chunks-panel"
+      data-applied-filter={needle}
     >
       {!hideSearch && (
         <KnowledgeSearchInput

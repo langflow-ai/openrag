@@ -463,10 +463,9 @@ export class Settings {
       await this.removeModelProviderButton().click();
       await this.getRemoveConfigButton().click();
       await this.clickRemoveAnywayIfDisplayed();
-      await expect(
-        this.getToastByText(`${providerName} configuration removed`),
-      ).toBeVisible({ timeout: 15000 });
-      await this.page.waitForTimeout(10000);
+      // The toast can disappear before the optional second confirmation has
+      // finished. The Configure button reflects the saved provider state.
+      await expect(configureButton).toBeVisible({ timeout: 30000 });
     }
     // If not configured
     else if (await configureButton.isVisible()) {
