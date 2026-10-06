@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import type { NextConfig } from "next";
 import path from "path";
+import { normalizeFrontendBasePath } from "./lib/frontend-base-path";
 
 // Load environment variables from the root env file. Honors ENV_FILE (set by
 // the Makefile) so per-instance env files like `.env.instance2` are respected;
@@ -8,6 +9,10 @@ import path from "path";
 dotenv.config({
   path: path.resolve(process.cwd(), "..", process.env.ENV_FILE || ".env"),
 });
+
+const frontendBasePath = normalizeFrontendBasePath(
+  process.env.OPENRAG_FRONTEND_BASE_PATH,
+);
 
 function getAllowedDevOrigins(): string[] {
   const allowedDevOrigins = process.env.NEXT_ALLOWED_DEV_ORIGINS;
@@ -26,6 +31,12 @@ function getAllowedDevOrigins(): string[] {
 }
 
 const nextConfig: NextConfig = {
+  // `basePath` is compiled into the browser bundle. The same value is exposed
+  // below so the Axios API client calls /<basePath>/api rather than /api.
+  basePath: frontendBasePath,
+  env: {
+    NEXT_PUBLIC_OPENRAG_FRONTEND_BASE_PATH: frontendBasePath,
+  },
   // Build/dev output directory. Overridable via NEXT_DIST_DIR so multiple
   // `next dev` servers can run simultaneously from this same directory: Next.js
   // 16 acquires a lock at `<distDir>/lock` keyed on the project dir + distDir

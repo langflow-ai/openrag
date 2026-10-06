@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 interface RefreshOpenRAGDocsResponse {
   message: string;
@@ -8,26 +9,17 @@ interface RefreshOpenRAGDocsResponse {
 }
 
 const refreshOpenragDocs = async (): Promise<RefreshOpenRAGDocsResponse> => {
-  const response = await fetch("/api/openrag-docs/refresh", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-  });
+  const response = await apiClient.post<unknown>("/openrag-docs/refresh");
 
-  if (!response.ok) {
+  if (response.status < 200 || response.status >= 300) {
     let errorMessage = "Failed to refresh OpenRAG docs";
 
     try {
-      const contentType = response.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) {
-        const error = await response.json();
+      if (typeof response.data === "object" && response.data !== null) {
+        const error = response.data as { detail?: string; error?: string };
         errorMessage = error.detail || error.error || errorMessage;
-      } else {
-        const text = (await response.text()).trim();
-        if (text) {
-          errorMessage = text;
-        }
+      } else if (typeof response.data === "string" && response.data.trim()) {
+        errorMessage = response.data.trim();
       }
     } catch {
       // Keep default fallback message for malformed/non-JSON bodies.
@@ -36,7 +28,7 @@ const refreshOpenragDocs = async (): Promise<RefreshOpenRAGDocsResponse> => {
     throw new Error(errorMessage);
   }
 
-  return response.json();
+  return response.data as RefreshOpenRAGDocsResponse;
 };
 
 export const useRefreshOpenragDocs = () => {

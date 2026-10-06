@@ -26,6 +26,11 @@ FROM registry.access.redhat.com/ubi10/nodejs-24-minimal AS builder
 WORKDIR /opt/app-root/src
 USER 0
 
+# Next.js inlines basePath into browser bundles, so it has to be supplied when
+# this image is built rather than only at container runtime.
+ARG OPENRAG_FRONTEND_BASE_PATH
+ENV OPENRAG_FRONTEND_BASE_PATH=${OPENRAG_FRONTEND_BASE_PATH}
+
 COPY --from=deps /opt/app-root/src/node_modules ./node_modules
 COPY --from=deps /opt/app-root/src/stubs ./stubs
 COPY frontend/package*.json ./
