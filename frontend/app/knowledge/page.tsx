@@ -384,11 +384,7 @@ export function StatusCellContent({
     return <SkippedStatusCell warning={data?.warning} />;
   }
 
-  return (
-    <StatusBadge
-      status={status as import("@/components/ui/status-badge").Status}
-    />
-  );
+  return <StatusBadge status={status} />;
 }
 
 export function resolveActionsVariant(
