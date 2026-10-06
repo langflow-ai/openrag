@@ -1,7 +1,12 @@
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IngestSettings } from "@/components/cloud-picker/types";
-import { fireEvent, renderWithProviders, screen } from "@/test-utils/render";
+import {
+  fireEvent,
+  renderWithProviders,
+  screen,
+  waitFor,
+} from "@/test-utils/render";
 import { FileBrowserDialog } from "./file-browser-dialog";
 
 /**
@@ -66,5 +71,64 @@ describe("FileBrowserDialog ingest validation", () => {
     });
     expect(global.fetch).not.toHaveBeenCalled();
     expect(mutateAsync).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A failed duplicate check must not fall through to the ingest. Proceeding
+ * silently takes the "skip duplicates" path: the sync runs, every colliding
+ * file is skipped with "a file with this name already exists", and the user
+ * never gets the choice the check exists to offer — indistinguishable from
+ * "there were no duplicates", and reported as the dialog not appearing.
+ */
+describe("FileBrowserDialog duplicate-check failures", () => {
+  beforeEach(() => {
+    mutateAsync.mockReset();
+    vi.mocked(toast.error).mockClear();
+  });
+
+  function ingest() {
+    renderDialog(baseSettings);
+    fireEvent.click(screen.getByText("report.pdf"));
+    fireEvent.click(screen.getByRole("button", { name: /Ingest 1 file/ }));
+  }
+
+  it("ingests nothing and says so when the check request rejects", async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error("network down"));
+
+    ingest();
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Could not check for existing files",
+        {
+          description: "Nothing was ingested. Try again.",
+        },
+      ),
+    );
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("ingests nothing and says so when the check returns an error status", async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValue({ ok: false, statusText: "Gateway Timeout" });
+
+    ingest();
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("still ingests when the check succeeds and finds nothing", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ duplicate_names: [], duplicate_count: 0 }),
+    });
+
+    ingest();
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });
