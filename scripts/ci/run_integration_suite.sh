@@ -15,21 +15,26 @@ fi
 COMPOSE_PROJECT_NAME=""
 OPENSEARCH_PORT=""
 LANGFLOW_PORT=""
-OPENRAG_FRONTEND_BASE_PATH=""
+if [[ ${OPENRAG_FRONTEND_BASE_PATH+x} != x ]]; then
+  OPENRAG_FRONTEND_BASE_PATH=""
+  if [[ -f "$env_file" ]]; then
+    OPENRAG_FRONTEND_BASE_PATH="$(
+      { grep -E '^OPENRAG_FRONTEND_BASE_PATH=' "$env_file" || [[ $? -eq 1 ]]; } |
+        cut -d= -f2- |
+        tr -d '"'\'
+    )"
+  fi
+fi
 if [[ -f "$env_file" ]]; then
   COMPOSE_PROJECT_NAME="$(grep -E '^COMPOSE_PROJECT_NAME=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
   OPENSEARCH_PORT="$(grep -E '^OPENSEARCH_PORT=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
   LANGFLOW_PORT="$(grep -E '^LANGFLOW_PORT=' "$env_file" | cut -d= -f2- | tr -d '"'\')"
-  OPENRAG_FRONTEND_BASE_PATH="$(
-    { grep -E '^OPENRAG_FRONTEND_BASE_PATH=' "$env_file" || [[ $? -eq 1 ]]; } |
-      cut -d= -f2- |
-      tr -d '"'\'
-  )"
 fi
 
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openrag}"
 OPENSEARCH_PORT="${OPENSEARCH_PORT:-9200}"
 LANGFLOW_PORT="${LANGFLOW_PORT:-7860}"
+export OPENRAG_FRONTEND_BASE_PATH
 FRONTEND_URL="http://localhost:3000${OPENRAG_FRONTEND_BASE_PATH}"
 
 compose_cmd+=("-p" "$COMPOSE_PROJECT_NAME")
