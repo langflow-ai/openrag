@@ -25,6 +25,20 @@ function getAllowedDevOrigins(): string[] {
     .filter(Boolean);
 }
 
+function browserSourceMapsEnabled(): boolean {
+  // Minified client bundles make a production crash report nearly unusable: a
+  // stack arrives as `a.className` in `1qo6lnr83k_k3.js:31:3093`, with no way
+  // to reach the component or the line. Enabling this emits .map files beside
+  // the chunks so the browser resolves those frames itself.
+  //
+  // Off by default. Source maps let anyone who can fetch the assets read the
+  // original source, so this is opt-in per deployment rather than always on —
+  // dev and staging images, where diagnosing a QA report is worth more than
+  // the obscurity, and where the assets already sit behind authentication.
+  const raw = process.env.OPENRAG_BROWSER_SOURCE_MAPS;
+  return ["true", "1", "yes", "on"].includes((raw ?? "").trim().toLowerCase());
+}
+
 const nextConfig: NextConfig = {
   // Build/dev output directory. Overridable via NEXT_DIST_DIR so multiple
   // `next dev` servers can run simultaneously from this same directory: Next.js
@@ -50,6 +64,9 @@ const nextConfig: NextConfig = {
   },
   // Allow cross-origin requests in development
   allowedDevOrigins: getAllowedDevOrigins(),
+  // Ship client source maps when OPENRAG_BROWSER_SOURCE_MAPS is set, so a
+  // minified stack from a deployed build can be read. See the note above.
+  productionBrowserSourceMaps: browserSourceMapsEnabled(),
 };
 
 export default nextConfig;
