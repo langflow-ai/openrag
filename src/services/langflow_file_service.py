@@ -17,6 +17,7 @@ from config.settings import (
     clients,
     get_ingest_callback_url,
 )
+from services.docling_service import DoclingServeError
 from services.document_index_writer import DocumentIndexContext
 from utils.hash_utils import hash_id
 from utils.langflow_utils import enable_mcp_none_for_project
@@ -1015,6 +1016,7 @@ class LangflowFileService:
         ocr: bool | None = None,
         picture_descriptions: bool | None = None,
         preview_mode: bool = False,
+        display_filename: str | None = None,
     ) -> str:
         """Upload a file to Docling Serve and return the task_id immediately.
 
@@ -1036,12 +1038,18 @@ class LangflowFileService:
                 ocr=ocr,
                 picture_descriptions=picture_descriptions,
                 preview_mode=preview_mode,
+                display_filename=display_filename,
             )
             logger.debug(
                 "[LF] Docling submission accepted",
                 extra={"task_id": task_id, "filename": filename},
             )
             return task_id
+        except DoclingServeError:
+            # Already carries an actionable message; re-wrapping would bury it
+            # behind a generic prefix and discard the type.
+            logger.error("[LF] Docling submission failed", extra={"filename": filename})
+            raise
         except Exception as e:
             logger.error(
                 "[LF] Docling submission failed",
@@ -1122,6 +1130,7 @@ class LangflowFileService:
             ocr=ocr_override,
             picture_descriptions=pic_desc_override,
             preview_mode=preview_mode,
+            display_filename=original_filename,
         )
 
         if file_task is not None:

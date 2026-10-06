@@ -483,9 +483,16 @@ class DoclingService:
         ocr: bool | None = None,
         picture_descriptions: bool | None = None,
         preview_mode: bool = False,
+        display_filename: str | None = None,
     ) -> str:
         """
         Upload a file to Docling Serve asynchronously using direct multipart/form-data upload.
+
+        ``display_filename`` is the name to quote back to the user in errors.
+        ``filename`` is what Docling receives, and the two differ: `.txt` is
+        renamed to `.md` on the way in (see
+        ``langflow_safe_filename_and_mimetype``), so an error quoting it would
+        name a file the user never uploaded.
         """
         options = await self._build_docling_options_async(
             ocr_override=ocr,
@@ -527,6 +534,22 @@ class DoclingService:
                     files=files,
                     data=data,
                     headers=headers,
+                )
+
+            # A 413 here is never the document's fault and never resolves on
+            # retry: a proxy in front of docling-serve capped the request body
+            # (nginx defaults to 1m) before Docling saw the file. raise_for_status
+            # would surface "Client error '413 Request Entity Too Large' for url
+            # ..." , which tells the user nothing they can act on.
+            if response.status_code == 413:
+                size_mb = len(file_content) / (1024 * 1024)
+                raise DoclingServeError(
+                    f"'{display_filename or filename}' ({size_mb:.1f} MB) was rejected "
+                    f"as too large by the "
+                    f"Docling Serve endpoint at {self.docling_url} (HTTP 413). The limit "
+                    f"is set by a proxy in front of docling-serve, not by OpenRAG — nginx "
+                    f"defaults to 1 MB. Raise that limit, or lower OPENRAG_MAX_UPLOAD_MB "
+                    f"so the file is refused at upload time instead."
                 )
 
             response.raise_for_status()

@@ -53,6 +53,7 @@ import {
   type PreviewDialogState,
 } from "@/lib/ingest-preview";
 import {
+  batchFilesBySizeAndCount,
   duplicateCheck,
   uploadFiles,
   uploadFile as uploadFileUtil,
@@ -117,6 +118,7 @@ export function KnowledgeDropdown() {
   const [showFolderDialog, setShowFolderDialog] = useState(false);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [uploadBatchSize, setUploadBatchSize] = useState(25);
+  const [maxUploadSizeMb, setMaxUploadSizeMb] = useState(100);
   const [folderPath, setFolderPath] = useState("");
   const [folderLoading, setFolderLoading] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
@@ -177,6 +179,12 @@ export function KnowledgeDropdown() {
             uploadOptionsData.upload_batch_size > 0
           ) {
             setUploadBatchSize(uploadOptionsData.upload_batch_size);
+          }
+          if (
+            typeof uploadOptionsData.max_upload_size_mb === "number" &&
+            uploadOptionsData.max_upload_size_mb > 0
+          ) {
+            setMaxUploadSizeMb(uploadOptionsData.max_upload_size_mb);
           }
         }
 
@@ -309,6 +317,14 @@ export function KnowledgeDropdown() {
       const file = files[0];
 
       // File selection will close dropdown automatically
+
+      if (file.size > maxUploadSizeMb * 1024 * 1024) {
+        toast.error("File too large", {
+          description: `${file.name} is ${(file.size / (1024 * 1024)).toFixed(1)} MB. The maximum is ${maxUploadSizeMb} MB.`,
+        });
+        resetFileInput();
+        return;
+      }
 
       try {
         const exists = await isDuplicateFile(file);
@@ -450,10 +466,11 @@ export function KnowledgeDropdown() {
 
     openPreviewForFiles(filesToUpload, `${filesToUpload.length} files`);
 
-    const batches: File[][] = [];
-    for (let i = 0; i < filesToUpload.length; i += uploadBatchSize) {
-      batches.push(filesToUpload.slice(i, i + uploadBatchSize));
-    }
+    const batches = batchFilesBySizeAndCount(
+      filesToUpload,
+      uploadBatchSize,
+      maxUploadSizeMb * 1024 * 1024,
+    );
 
     const taskIdsByBatch: (string | undefined)[] = [];
     const failedBatchIndexes: number[] = [];
@@ -632,19 +649,44 @@ export function KnowledgeDropdown() {
     try {
       const fileList = Array.from(files);
 
-      const filteredFiles = fileList.filter((file) => {
+      const supportedFiles = fileList.filter((file) => {
         const ext = file.name
           .substring(file.name.lastIndexOf("."))
           .toLowerCase();
         return supportedExtensionSet.has(ext);
       });
-      const unsupportedCount = fileList.length - filteredFiles.length;
+      const unsupportedCount = fileList.length - supportedFiles.length;
+
+      const maxUploadBytes = maxUploadSizeMb * 1024 * 1024;
+      const filteredFiles = supportedFiles.filter(
+        (file) => file.size <= maxUploadBytes,
+      );
+      const oversizedCount = supportedFiles.length - filteredFiles.length;
+      if (oversizedCount > 0) {
+        toast.error(
+          `Skipping ${oversizedCount} file(s) over the ${maxUploadSizeMb} MB limit`,
+          {
+            description: supportedFiles
+              .filter((file) => file.size > maxUploadBytes)
+              .slice(0, 5)
+              .map(
+                (file) =>
+                  `${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)`,
+              )
+              .join(", "),
+          },
+        );
+      }
 
       if (filteredFiles.length === 0) {
-        toast.error("No supported files found", {
-          description:
-            "Please select a folder containing supported document files (PDF, DOCX, PPTX, XLSX, CSV, HTML, images, etc.).",
-        });
+        // Oversized files already produced their own toast. This message is
+        // only true when nothing in the folder had a supported extension.
+        if (supportedFiles.length === 0) {
+          toast.error("No supported files found", {
+            description:
+              "Please select a folder containing supported document files (PDF, DOCX, PPTX, XLSX, CSV, HTML, images, etc.).",
+          });
+        }
         return;
       }
 

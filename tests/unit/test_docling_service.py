@@ -8,7 +8,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from services.docling_service import DoclingServeError, DoclingService
+from services.docling_service import (
+    DoclingServeError,
+    DoclingService,
+    DoclingTransientError,
+)
 
 # Shape of a /v1/result body for a password-protected PDF: the task ran to
 # completion, but the conversion failed and no document was exported.
@@ -217,6 +221,68 @@ async def test_upload_http_error(docling_service, mock_httpx_client):
 
         with pytest.raises(httpx.HTTPStatusError):
             await docling_service.upload_to_docling_direct_async("test.pdf", b"data")
+
+
+@pytest.mark.asyncio
+async def test_upload_413_is_actionable_and_not_transient(docling_service, mock_httpx_client):
+    """A 413 means a proxy capped the body, not that the document is bad.
+
+    raise_for_status would surface "Client error '413 Request Entity Too
+    Large' for url ...", which names neither the file, its size, nor who set
+    the limit. It must also not be classed as transient: retrying a body the
+    proxy refuses cannot succeed.
+    """
+    mock_httpx_client.post.return_value = _make_response(413)
+
+    with patch("services.docling_service.get_openrag_config") as mock_get_config:
+        mock_config = MagicMock()
+        mock_config.knowledge.table_structure = False
+        mock_config.knowledge.ocr = False
+        mock_config.knowledge.picture_descriptions = False
+        mock_config.knowledge.vlm_enabled = False
+        mock_get_config.return_value = mock_config
+
+        with pytest.raises(DoclingServeError) as excinfo:
+            await docling_service.upload_to_docling_direct_async(
+                "big.pdf", b"x" * (2 * 1024 * 1024)
+            )
+
+    message = str(excinfo.value)
+    assert "big.pdf" in message
+    assert "2.0 MB" in message
+    assert "http://docling:8000" in message
+    assert not isinstance(excinfo.value, DoclingTransientError)
+
+
+@pytest.mark.asyncio
+async def test_413_names_the_file_the_user_uploaded_not_the_renamed_one(
+    docling_service, mock_httpx_client
+):
+    """`.txt` reaches Docling as `.md`, so the error must not quote that name.
+
+    Telling someone who uploaded notes.txt that 'notes.md' was rejected sends
+    them looking for a file that does not exist.
+    """
+    mock_httpx_client.post.return_value = _make_response(413)
+
+    with patch("services.docling_service.get_openrag_config") as mock_get_config:
+        mock_config = MagicMock()
+        mock_config.knowledge.table_structure = False
+        mock_config.knowledge.ocr = False
+        mock_config.knowledge.picture_descriptions = False
+        mock_config.knowledge.vlm_enabled = False
+        mock_get_config.return_value = mock_config
+
+        with pytest.raises(DoclingServeError) as excinfo:
+            await docling_service.upload_to_docling_direct_async(
+                "notes.md",
+                b"x" * (2 * 1024 * 1024),
+                display_filename="notes.txt",
+            )
+
+    message = str(excinfo.value)
+    assert "notes.txt" in message
+    assert "notes.md" not in message
 
 
 # ── Configuration Logic ─────────────────────────────────────────────

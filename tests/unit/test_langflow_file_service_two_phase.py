@@ -74,9 +74,12 @@ async def test_two_phase_success_invokes_langflow_with_task_id(
         ocr=None,
         picture_descriptions=None,
         preview_mode=False,
+        display_filename=None,
     )
 
     # Langflow was invoked exactly once, with the docling_task_id forwarded.
+    # (display_filename is None here: the caller passed no original_filename,
+    # so Docling's own name is the best one to quote back.)
     assert langflow_service.run_ingestion_flow.call_count == 1
     kwargs = langflow_service.run_ingestion_flow.call_args.kwargs
     assert kwargs["docling_task_id"] == "task-abc-123"
@@ -350,3 +353,54 @@ async def test_docling_submit_failure_skips_polling_and_langflow(
     assert mock_polling_service.poll_until_ready.call_count == 0
     assert svc.run_ingestion_flow.call_count == 0
     assert file_task.docling_task_id is None
+
+
+@pytest.mark.asyncio
+async def test_docling_serve_error_reaches_the_task_unwrapped(
+    mock_docling_service, mock_polling_service, file_tuple, file_task
+):
+    """The size-rejection message is what the user sees on the failed task.
+
+    Wrapping it in "Docling upload failed: ..." truncates nothing, but the
+    generic prefix hid the fact that a proxy, not Docling, refused the body.
+    """
+    from services.docling_service import DoclingServeError
+
+    mock_docling_service.upload_to_docling_direct_async.side_effect = DoclingServeError(
+        "'big.pdf' (2.0 MB) was rejected as too large by the Docling Serve endpoint"
+    )
+    svc = LangflowFileService(docling_service=mock_docling_service)
+    svc.run_ingestion_flow = AsyncMock()
+
+    with pytest.raises(DoclingServeError) as excinfo:
+        await svc.upload_and_ingest_file(
+            file_tuple=file_tuple,
+            docling_polling_service=mock_polling_service,
+            file_task=file_task,
+        )
+
+    assert "Docling upload failed" not in str(excinfo.value)
+    assert "rejected as too large" in str(excinfo.value)
+    assert svc.run_ingestion_flow.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_original_filename_is_forwarded_as_the_name_to_quote_in_errors(
+    langflow_service, mock_docling_service, mock_polling_service, file_task
+):
+    """`.txt` is renamed to `.md` before Docling sees it, so the name Docling
+    knows is not the one to show the user when the upload is refused."""
+    mock_polling_service.poll_until_ready.return_value = DoclingPollResult(
+        outcome=PollOutcome.SUCCESS, elapsed_seconds=1.0
+    )
+
+    await langflow_service.upload_and_ingest_file(
+        file_tuple=("notes.md", b"TEXTDATA", "text/markdown"),
+        docling_polling_service=mock_polling_service,
+        file_task=file_task,
+        owner="owner-123",
+        original_filename="notes.txt",
+    )
+
+    kwargs = mock_docling_service.upload_to_docling_direct_async.await_args.kwargs
+    assert kwargs["display_filename"] == "notes.txt"

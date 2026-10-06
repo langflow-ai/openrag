@@ -243,6 +243,26 @@ If you experience timeouts during ingestion, edit the following environment vari
 * `LANGFLOW_WORKERS`
 * `DOCLING_WORKERS`
 
+### Ingestion fails with 413 Request Entity Too Large {#ingestion-fails-with-413}
+
+An upload is refused, or an ingestion task fails with a message like:
+
+```
+'report.pdf' (1.1 MB) was rejected as too large by the Docling Serve endpoint
+at https://docling-serve:5001 (HTTP 413).
+```
+
+**This limit is not set by OpenRAG.** OpenRAG posts each document to Docling Serve as a multipart request, and Docling Serve itself imposes no body limit. A `413` therefore comes from a reverse proxy in front of it, and the common cause is nginx's default `client_max_body_size` of `1m`, which rejects any document above roughly 1 MB.
+
+The failure depends on the size of the whole multipart request, not on the file type, so every supported format fails at the same boundary. Note that a file slightly *under* the limit can still be refused, because the multipart envelope adds a few hundred bytes.
+
+To fix it, raise the limit on whatever proxy fronts Docling Serve:
+
+* For nginx, set `client_max_body_size` to the largest document you expect to ingest.
+* For an ingress-nginx Ingress, set the `nginx.ingress.kubernetes.io/proxy-body-size` annotation. This only applies if the proxy is ingress-nginx — check before relying on it.
+
+If you cannot change that proxy, set [`OPENRAG_MAX_UPLOAD_MB`](/reference/configuration) to match the limit it enforces. OpenRAG then refuses oversized files at upload time with a message naming the file and its size, instead of accepting them and failing minutes later during conversion.
+
 ### OCR ingestion fails (easyocr not installed) {#ocr-ingestion-fails-easyocr-not-installed}
 
 Docling ingestion can fail with an OCR-related error that mentions `easyocr` is missing.

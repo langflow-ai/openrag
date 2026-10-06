@@ -7,6 +7,7 @@ import {
 } from "@/test-utils/msw/multipart";
 import { server } from "@/test-utils/msw/server";
 import {
+  batchFilesBySizeAndCount,
   duplicateCheck,
   uploadFile,
   uploadFileForContext,
@@ -243,6 +244,32 @@ describe("uploadFiles", () => {
     );
   });
 
+  // A proxy that caps the request body answers 413 with an HTML page, so
+  // parsing JSON first would report "unable to parse server response" and
+  // bury the real cause.
+  it("reports a size rejection when a 413 carries no JSON", async () => {
+    server.use(
+      http.post(UPLOAD_INGEST, () =>
+        HttpResponse.text(
+          "<html><head><title>413 Request Entity Too Large</title></head></html>",
+          { status: 413 },
+        ),
+      ),
+    );
+
+    await expect(uploadFiles([txt()])).rejects.toThrow("File too large");
+  });
+
+  it("surfaces the status when a non-413 failure carries no JSON", async () => {
+    server.use(
+      http.post(UPLOAD_INGEST, () =>
+        HttpResponse.text("<html>bad gateway</html>", { status: 502 }),
+      ),
+    );
+
+    await expect(uploadFiles([txt()])).rejects.toThrow("502");
+  });
+
   it("throws when a successful response carries no task id", async () => {
     server.use(http.post(UPLOAD_INGEST, () => HttpResponse.json({})));
 
@@ -410,5 +437,49 @@ describe("uploadFile", () => {
         }),
       ).resolves.toMatchObject({ fileId: "f" });
     });
+  });
+});
+
+describe("batchFilesBySizeAndCount", () => {
+  const sized = (name: string, bytes: number) =>
+    new File(["x".repeat(bytes)], name, { type: "text/plain" });
+
+  const sizes = (batches: File[][]) => batches.map((b) => b.length);
+
+  it("splits on the count limit", () => {
+    const files = [1, 2, 3, 4, 5].map((n) => sized(`${n}.txt`, 10));
+
+    expect(sizes(batchFilesBySizeAndCount(files, 2, 1_000))).toEqual([2, 2, 1]);
+  });
+
+  // The bug this guards: batching on count alone lets many small files form
+  // one request that a 1MB body limit rejects.
+  it("splits on the byte budget before the count limit is reached", () => {
+    const files = [1, 2, 3, 4].map((n) => sized(`${n}.txt`, 400));
+
+    expect(sizes(batchFilesBySizeAndCount(files, 25, 1_000))).toEqual([2, 2]);
+  });
+
+  it("gives a file larger than the budget its own request", () => {
+    const files = [sized("small.txt", 10), sized("huge.txt", 5_000)];
+
+    const batches = batchFilesBySizeAndCount(files, 25, 1_000);
+
+    expect(sizes(batches)).toEqual([1, 1]);
+    expect(batches[1][0].name).toBe("huge.txt");
+  });
+
+  it("returns no batches for no files", () => {
+    expect(batchFilesBySizeAndCount([], 25, 1_000)).toEqual([]);
+  });
+
+  it("keeps every file exactly once", () => {
+    const files = Array.from({ length: 11 }, (_, i) => sized(`${i}.txt`, 300));
+
+    const names = batchFilesBySizeAndCount(files, 3, 1_000)
+      .flat()
+      .map((f) => f.name);
+
+    expect(names).toEqual(files.map((f) => f.name));
   });
 });

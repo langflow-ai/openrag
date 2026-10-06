@@ -50,6 +50,56 @@ export interface DuplicateCheckResponse {
   [key: string]: unknown;
 }
 
+/**
+ * Read an upload response, preferring the server's own error message.
+ *
+ * A rejection does not always carry JSON: a proxy that caps the request body
+ * answers 413 with an HTML page, and parsing that first would report "unable
+ * to parse server response" and hide the real cause.
+ */
+async function readUploadResponse(
+  response: Response,
+  fallbackMessage: string,
+): Promise<Record<string, unknown>> {
+  let payload: unknown;
+  let parsed = true;
+  try {
+    payload = await response.json();
+  } catch {
+    parsed = false;
+  }
+
+  const json =
+    parsed && typeof payload === "object" && payload !== null
+      ? (payload as Record<string, unknown>)
+      : {};
+
+  if (response.ok) {
+    if (!parsed) {
+      throw new Error("Upload failed: unable to parse server response");
+    }
+    return json;
+  }
+
+  const serverError = json.error;
+  if (typeof serverError === "string" && serverError) {
+    throw new Error(serverError);
+  }
+
+  if (response.status === 413) {
+    throw new Error(
+      "File too large: the server rejected the upload (413). Ask an " +
+        "administrator to raise the request body limit, or split the file.",
+    );
+  }
+
+  throw new Error(
+    response.statusText
+      ? `${fallbackMessage} (${response.status} ${response.statusText})`
+      : `${fallbackMessage} (${response.status})`,
+  );
+}
+
 export interface UploadFileResult {
   fileId: string;
   filePath: string;
@@ -62,6 +112,45 @@ export interface UploadFileResult {
   taskId?: string;
   /** Whether the backend honored preview=true (flag + run-mode gated). */
   previewMode?: boolean;
+}
+
+/**
+ * Group files into upload requests bounded by both count and total bytes.
+ *
+ * Batching on count alone lets many small files form one oversized request —
+ * at the default batch size of 25, twenty-five 50KB files already exceed a 1MB
+ * body limit. A file bigger than the budget gets its own request, where the
+ * server can reject it with a message naming the file.
+ */
+export function batchFilesBySizeAndCount(
+  files: File[],
+  maxCount: number,
+  maxBytes: number,
+): File[][] {
+  const batches: File[][] = [];
+  let current: File[] = [];
+  let currentBytes = 0;
+
+  for (const file of files) {
+    const wouldExceedCount = current.length >= maxCount;
+    const wouldExceedBytes =
+      current.length > 0 && currentBytes + file.size > maxBytes;
+
+    if (wouldExceedCount || wouldExceedBytes) {
+      batches.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+
+    current.push(file);
+    currentBytes += file.size;
+  }
+
+  if (current.length > 0) {
+    batches.push(current);
+  }
+
+  return batches;
 }
 
 export async function duplicateCheck(
@@ -100,19 +189,7 @@ export async function uploadFiles(
     body: formData,
   });
 
-  let payload: unknown;
-  try {
-    payload = await uploadResponse.json();
-  } catch {
-    throw new Error("Upload failed: unable to parse server response");
-  }
-
-  const json = typeof payload === "object" && payload !== null ? payload : {};
-
-  if (!uploadResponse.ok) {
-    const errorMessage = (json as { error?: string }).error || "Upload failed";
-    throw new Error(errorMessage);
-  }
+  const json = await readUploadResponse(uploadResponse, "Upload failed");
 
   const taskId = (json as { task_id?: string }).task_id;
   const fileCount =
@@ -156,22 +233,10 @@ export async function uploadFile(
       body: formData,
     });
 
-    let payload: unknown;
-    try {
-      payload = await uploadResponse.json();
-    } catch (_error) {
-      throw new Error("Upload failed: unable to parse server response");
-    }
-
-    const uploadIngestJson =
-      typeof payload === "object" && payload !== null ? payload : {};
-
-    if (!uploadResponse.ok) {
-      const errorMessage =
-        (uploadIngestJson as { error?: string }).error ||
-        "Upload and ingest failed";
-      throw new Error(errorMessage);
-    }
+    const uploadIngestJson = await readUploadResponse(
+      uploadResponse,
+      "Upload and ingest failed",
+    );
 
     const fileId =
       (uploadIngestJson as { upload?: { id?: string } }).upload?.id ||

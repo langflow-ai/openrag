@@ -709,6 +709,17 @@ FETCH_OPENRAG_DOCS_AT_STARTUP = os.getenv("FETCH_OPENRAG_DOCS_AT_STARTUP", "fals
 # Maximum number of files to upload / ingest (in batch) per task when adding knowledge via folder
 UPLOAD_BATCH_SIZE = get_env_int("UPLOAD_BATCH_SIZE", 25)
 
+# Largest single file accepted for ingestion, in megabytes.
+#
+# Enforced at the API edge so an oversized file is refused while the user is
+# still watching, rather than accepted with a 202 and failing minutes later in
+# the background Docling submission. The bound must stay at or below the
+# smallest body limit on the path to docling-serve: that hop pushes the whole
+# file as multipart, and a reverse proxy in front of it (nginx defaults to 1m)
+# rejects anything larger with a 413.
+MAX_UPLOAD_SIZE_MB = get_env_int("OPENRAG_MAX_UPLOAD_MB", 100)
+MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
 # Langflow HTTP timeout configuration (in seconds)
 # For large documents (300+ pages), ingestion can take 30+ minutes
 # Default: 40 minutes total, 40 minutes read timeout
