@@ -1,4 +1,5 @@
 import os
+import unicodedata
 from collections import defaultdict
 
 from utils.logging_config import get_logger
@@ -6,6 +7,21 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 IMAGE_PLACEHOLDER = "<!-- image -->"
+
+# Some PDF fonts map common kanji (日, 月, 木, 金, 土, ...) to the look-alike
+# Kangxi Radical code points in their /ToUnicode CMap, and Docling copies them
+# through unchanged. Map just those blocks back to CJK Unified Ideographs;
+# full NFKC would also rewrite full-width digits, ㈱, ①, half-width katakana.
+_CJK_RADICAL_TABLE = {
+    cp: unicodedata.normalize("NFKC", chr(cp))
+    for cp in range(0x2E80, 0x2FE0)  # CJK Radicals Supplement + Kangxi Radicals
+    if unicodedata.normalize("NFKC", chr(cp)) != chr(cp)
+}
+
+
+def normalize_cjk_radicals(text: str) -> str:
+    """Replace Kangxi/CJK radical code points with their unified ideographs."""
+    return text.translate(_CJK_RADICAL_TABLE)
 
 
 def process_text_file(file_path: str) -> dict:
@@ -176,6 +192,9 @@ def extract_relevant(doc_dict: dict) -> dict:
                 "text": IMAGE_PLACEHOLDER,
             }
         )
+
+    for chunk in chunks:
+        chunk["text"] = normalize_cjk_radicals(chunk["text"])
 
     return {
         "id": origin.get("binary_hash"),
