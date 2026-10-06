@@ -59,6 +59,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useRegisterDirty } from "@/contexts/unsaved-changes-context";
 import { trackButton } from "@/lib/analytics";
+import { apiClient } from "@/lib/api-client";
 import {
   DEFAULT_KNOWLEDGE_SETTINGS,
   OCR_LANGUAGE_OPTIONS,
@@ -616,17 +617,14 @@ export function IngestSettingsSection() {
       elementId: "restore-ingest-flow-button",
       namespace: "settings",
     });
-    fetch("/api/reset-flow/ingest", { method: "POST" })
-      .then((res) =>
-        res.text().then((text) => {
-          const body = text ? JSON.parse(text) : {};
-          if (!res.ok) {
-            throw new Error(
-              body.error ?? `HTTP ${res.status}: ${res.statusText}`,
-            );
-          }
-        }),
-      )
+    apiClient
+      .post("/reset-flow/ingest")
+      .then((res) => {
+        if (res.status < 200 || res.status >= 300) {
+          const body = res.data ?? {};
+          throw new Error(body.error ?? `HTTP ${res.status}`);
+        }
+      })
       .then(() => {
         setChunkSize(DEFAULT_KNOWLEDGE_SETTINGS.chunk_size);
         setChunkOverlap(DEFAULT_KNOWLEDGE_SETTINGS.chunk_overlap);

@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { ParsedQueryData } from "@/contexts/knowledge-filter-context";
+import { apiClient } from "@/lib/api-client";
 import { SEARCH_CONSTANTS } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 
@@ -161,24 +162,19 @@ export const useGetSearchQuery = (
           buildSearchPayloadFilters(queryData.filters) ?? undefined;
       }
 
-      const response = await fetch(`/api/search`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(searchPayload),
-      });
+      const response = await apiClient.post(`/search`, searchPayload);
 
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
+      if (response.status < 200 || response.status >= 300) {
+        const errorData =
+          response.data && typeof response.data === "object"
+            ? (response.data as { error?: string })
+            : { error: "Unknown error" };
         throw new Error(
           errorData.error || `Search failed with status ${response.status}`,
         );
       }
 
-      const data = await response.json();
+      const data = response.data;
       // Group chunks by filename to create file results similar to page.tsx
       const fileMap = new Map<
         string,

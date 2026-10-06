@@ -1,20 +1,25 @@
 import { renderHook, waitFor } from "@testing-library/react";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
+import { server } from "@/test-utils/msw/server";
 import { createQueryWrapper } from "@/test-utils/render";
 import { useCancelFileMutation } from "./useCancelFileMutation";
 
 describe("useCancelFileMutation", () => {
   it("calls the cancel file API endpoint with correct parameters", async () => {
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: () =>
-          Promise.resolve({
+    const seen = vi.fn();
+    server.use(
+      http.post(
+        "/api/tasks/test-task-123/files/cancel",
+        async ({ request }) => {
+          seen(await request.json());
+          return HttpResponse.json({
             status: "cancelled",
             task_id: "test-task-123",
             file_path: "test.pdf",
-          }),
-      } as Response),
+          });
+        },
+      ),
     );
 
     const { result } = renderHook(() => useCancelFileMutation(), {
@@ -24,23 +29,17 @@ describe("useCancelFileMutation", () => {
     result.current.mutate({ taskId: "test-task-123", filePath: "test.pdf" });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(global.fetch).toHaveBeenCalledWith(
-      "/api/tasks/test-task-123/files/cancel",
-      expect.objectContaining({
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_path: "test.pdf" }),
-      }),
-    );
+    expect(seen).toHaveBeenCalledWith({ file_path: "test.pdf" });
   });
 
   it("handles error when file cannot be cancelled", async () => {
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
-        ok: false,
-        json: () =>
-          Promise.resolve({ error: "File not found or cannot be cancelled" }),
-      } as Response),
+    server.use(
+      http.post("/api/tasks/test-task-123/files/cancel", () =>
+        HttpResponse.json(
+          { error: "File not found or cannot be cancelled" },
+          { status: 404 },
+        ),
+      ),
     );
 
     const { result } = renderHook(() => useCancelFileMutation(), {
@@ -56,11 +55,11 @@ describe("useCancelFileMutation", () => {
   });
 
   it("handles network errors gracefully", async () => {
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
-        ok: false,
-        json: () => Promise.reject(new Error("Network error")),
-      } as Response),
+    server.use(
+      http.post(
+        "/api/tasks/test-task-123/files/cancel",
+        () => new HttpResponse("not JSON", { status: 500 }),
+      ),
     );
 
     const { result } = renderHook(() => useCancelFileMutation(), {

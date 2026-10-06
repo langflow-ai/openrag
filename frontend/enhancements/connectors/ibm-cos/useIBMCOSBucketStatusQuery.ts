@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 export interface IBMCOSBucketStatus {
   name: string;
@@ -9,15 +10,14 @@ export interface IBMCOSBucketStatus {
 async function fetchIBMCOSBucketStatus(
   connectionId: string,
 ): Promise<IBMCOSBucketStatus[]> {
-  const res = await fetch(
-    `/api/connectors/ibm_cos/${connectionId}/bucket-status`,
+  const res = await apiClient.get<{ buckets: IBMCOSBucketStatus[] }>(
+    `/connectors/ibm_cos/${connectionId}/bucket-status`,
   );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
+  if (res.status < 200 || res.status >= 300) {
+    const err = (res.data ?? {}) as { error?: string };
     throw new Error(err.error || "Failed to fetch bucket status");
   }
-  const data = await res.json();
-  return data.buckets as IBMCOSBucketStatus[];
+  return res.data.buckets;
 }
 
 export function useIBMCOSBucketStatusQuery(

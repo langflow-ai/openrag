@@ -32,6 +32,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useRegisterDirty } from "@/contexts/unsaved-changes-context";
 import { trackButton } from "@/lib/analytics";
+import { apiClient } from "@/lib/api-client";
 import { DEFAULT_AGENT_SETTINGS, UI_CONSTANTS } from "@/lib/constants";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
@@ -226,17 +227,14 @@ export function AgentSettingsSection() {
       namespace: "settings",
     });
 
-    fetch("/api/reset-flow/retrieval", { method: "POST" })
-      .then((res) =>
-        res.text().then((text) => {
-          const body = text ? JSON.parse(text) : {};
-          if (!res.ok) {
-            throw new Error(
-              body.error ?? `HTTP ${res.status}: ${res.statusText}`,
-            );
-          }
-        }),
-      )
+    apiClient
+      .post("/reset-flow/retrieval")
+      .then((res) => {
+        if (res.status < 200 || res.status >= 300) {
+          const body = res.data ?? {};
+          throw new Error(body.error ?? `HTTP ${res.status}`);
+        }
+      })
       .then(() => {
         setSystemPrompt(DEFAULT_AGENT_SETTINGS.system_prompt);
         setUserEdited(false);

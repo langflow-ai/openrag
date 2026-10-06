@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 export interface IBMCOSConfigurePayload {
   auth_mode: "iam" | "hmac";
@@ -17,13 +18,10 @@ export interface IBMCOSConfigurePayload {
 }
 
 async function configureIBMCOS(payload: IBMCOSConfigurePayload) {
-  const res = await fetch("/api/connectors/ibm_cos/configure", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Failed to configure IBM COS");
+  const res = await apiClient.post("/connectors/ibm_cos/configure", payload);
+  const data = res.data ?? {};
+  if (res.status < 200 || res.status >= 300)
+    throw new Error(data.error || "Failed to configure IBM COS");
   return data as { connection_id: string; status: string };
 }
 

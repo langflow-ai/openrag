@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
 import { trackProcessFailure, trackStartProcess } from "@/lib/analytics";
+import { apiClient } from "@/lib/api-client";
 
 interface BucketDuplicateFile {
   id: string;
@@ -235,24 +236,19 @@ export function SharedBucketView({
 
     setIsCheckingDuplicates(true);
     try {
-      const checkResponse = await fetch(
-        `/api/connectors/${connector.type}/check-duplicates`,
+      const checkResponse = await apiClient.post(
+        `/connectors/${connector.type}/check-duplicates`,
         {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            connection_id: connector.connectionId,
-            bucket_filter: Array.from(selectedBuckets),
-          }),
+          connection_id: connector.connectionId,
+          bucket_filter: Array.from(selectedBuckets),
         },
       );
 
-      if (!checkResponse.ok) {
+      if (checkResponse.status < 200 || checkResponse.status >= 300) {
         throw new Error(`Duplicate check failed: ${checkResponse.statusText}`);
       }
 
-      const checkData =
-        (await checkResponse.json()) as BucketDuplicateCheckResponse;
+      const checkData = checkResponse.data as BucketDuplicateCheckResponse;
       const duplicateNames = checkData.duplicate_names || [];
       const duplicateCount =
         typeof checkData.duplicate_count === "number"

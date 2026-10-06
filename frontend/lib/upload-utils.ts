@@ -1,3 +1,4 @@
+import { apiClient } from "@/lib/api-client";
 export type UploadContextResult =
   | { type: "task"; taskId: string }
   | { type: "direct"; filename: string; responseId: string };
@@ -14,17 +15,14 @@ export async function uploadFileForContext(
     formData.append("previous_response_id", previousResponseId);
   }
 
-  const response = await fetch("/api/upload_context", {
-    method: "POST",
-    body: formData,
-  });
+  const response = await apiClient.post("/upload_context", formData);
 
-  if (!response.ok) {
-    const errorText = await response.text();
+  if (response.status < 200 || response.status >= 300) {
+    const errorText = typeof response.data === "string" ? response.data : "";
     throw new Error(errorText || "Failed to process document");
   }
 
-  const result = await response.json();
+  const result = response.data;
 
   if (response.status === 201) {
     const taskId = result.task_id || result.id;
@@ -67,18 +65,18 @@ export interface UploadFileResult {
 export async function duplicateCheck(
   file: File,
 ): Promise<DuplicateCheckResponse> {
-  const response = await fetch(
-    `/api/documents/check-filename?filename=${encodeURIComponent(file.name)}`,
+  const response = await apiClient.get(
+    `/documents/check-filename?filename=${encodeURIComponent(file.name)}`,
   );
 
-  if (!response.ok) {
-    const errorText = await response.text();
+  if (response.status < 200 || response.status >= 300) {
+    const errorText = typeof response.data === "string" ? response.data : "";
     throw new Error(
       errorText || `Failed to check duplicates: ${response.statusText}`,
     );
   }
 
-  return response.json();
+  return response.data;
 }
 
 export async function uploadFiles(
@@ -95,21 +93,21 @@ export async function uploadFiles(
     formData.append("preview", "true");
   }
 
-  const uploadResponse = await fetch("/api/router/upload_ingest", {
-    method: "POST",
-    body: formData,
-  });
+  const uploadResponse = await apiClient.post(
+    "/router/upload_ingest",
+    formData,
+  );
 
   let payload: unknown;
   try {
-    payload = await uploadResponse.json();
+    payload = uploadResponse.data;
   } catch {
     throw new Error("Upload failed: unable to parse server response");
   }
 
   const json = typeof payload === "object" && payload !== null ? payload : {};
 
-  if (!uploadResponse.ok) {
+  if (uploadResponse.status < 200 || uploadResponse.status >= 300) {
     const errorMessage = (json as { error?: string }).error || "Upload failed";
     throw new Error(errorMessage);
   }
@@ -151,14 +149,14 @@ export async function uploadFile(
       formData.append("preview", "true");
     }
 
-    const uploadResponse = await fetch("/api/router/upload_ingest", {
-      method: "POST",
-      body: formData,
-    });
+    const uploadResponse = await apiClient.post(
+      "/router/upload_ingest",
+      formData,
+    );
 
     let payload: unknown;
     try {
-      payload = await uploadResponse.json();
+      payload = uploadResponse.data;
     } catch (_error) {
       throw new Error("Upload failed: unable to parse server response");
     }
@@ -166,7 +164,7 @@ export async function uploadFile(
     const uploadIngestJson =
       typeof payload === "object" && payload !== null ? payload : {};
 
-    if (!uploadResponse.ok) {
+    if (uploadResponse.status < 200 || uploadResponse.status >= 300) {
       const errorMessage =
         (uploadIngestJson as { error?: string }).error ||
         "Upload and ingest failed";

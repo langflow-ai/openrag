@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useChat } from "@/contexts/chat-context";
+import { apiClient } from "@/lib/api-client";
 import { useProviderHealthQuery } from "./useProviderHealthQuery";
 
 type Nudge = string;
@@ -68,15 +69,12 @@ export const useGetNudgesQuery = (
         requestBody.score_threshold = scoreThreshold;
       }
 
-      const response = await fetch(`/api/nudges${chatId ? `/${chatId}` : ""}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-        signal: context.signal,
-      });
-      const data = await response.json();
+      const response = await apiClient.post(
+        `/nudges${chatId ? `/${chatId}` : ""}`,
+        requestBody,
+        { signal: context.signal },
+      );
+      const data = response.data;
 
       if (data.response && typeof data.response === "string") {
         return data.response.split("\n").filter(Boolean);

@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 export interface KnowledgeFilter {
   id: string;
@@ -23,14 +24,12 @@ export const useGetFiltersSearchQuery = (
   const queryClient = useQueryClient();
 
   async function getFilters(): Promise<KnowledgeFilter[]> {
-    const response = await fetch("/api/knowledge-filter/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: search, limit }),
-    });
-
-    const json = await response.json();
-    if (!response.ok || !json.success) {
+    const response = await apiClient.post<{
+      success?: boolean;
+      filters?: KnowledgeFilter[];
+    }>("/knowledge-filter/search", { query: search, limit });
+    const json = response.data;
+    if (response.status < 200 || response.status >= 300 || !json.success) {
       // ensure we always return a KnowledgeFilter[] to satisfy the return type
       return [];
     }

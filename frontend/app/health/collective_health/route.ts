@@ -1,3 +1,4 @@
+import axios from "axios";
 import { NextResponse } from "next/server";
 
 interface PodStatus {
@@ -14,20 +15,14 @@ interface HealthCheckResponse {
 }
 
 async function checkPodLiveness(url: string, timeout = 3000): Promise<boolean> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      method: "GET",
+    const response = await axios.get(url, {
+      timeout,
+      validateStatus: () => true,
     });
-
-    clearTimeout(timeoutId);
     // Pod is alive if it responds (any status code means it's running)
     return response.status < 500;
   } catch {
-    clearTimeout(timeoutId);
     return false;
   }
 }

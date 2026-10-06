@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { apiClient } from "@/lib/api-client";
 import AzureBlobIcon from "./icon";
 import { type AzureBlobFormData, AzureBlobSettingsForm } from "./settings-form";
 import { useAzureBlobConfigureMutation } from "./useAzureBlobConfigureMutation";
@@ -97,21 +98,21 @@ export default function AzureBlobSettingsDialog({
       // Validate credentials + list containers WITHOUT persisting. Saving is
       // reserved for the Save button (onSubmit), so testing never creates or
       // mutates the connection or clobbers the stored container selection.
-      const res = await fetch("/api/connectors/azure_blob/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
+      const res = await apiClient.post(
+        "/connectors/azure_blob/test",
+        {
           auth_mode: data.auth_mode,
           connection_string: data.connection_string || undefined,
           account_name: data.account_name || undefined,
           account_key: data.account_key || undefined,
           endpoint: data.endpoint || undefined,
           connection_id: defaults?.connection_id ?? undefined,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to list containers");
+        },
+        { signal: controller.signal },
+      );
+      const json = res.data;
+      if (res.status < 200 || res.status >= 300)
+        throw new Error(json.error || "Failed to list containers");
 
       const fetched: string[] = json.containers;
       setContainers(fetched);
@@ -149,8 +150,8 @@ export default function AzureBlobSettingsDialog({
       const latestDefaults = await queryClient.fetchQuery({
         queryKey: ["azure-blob-defaults"],
         queryFn: async () => {
-          const res = await fetch("/api/connectors/azure_blob/defaults");
-          return res.json();
+          const res = await apiClient.get("/connectors/azure_blob/defaults");
+          return res.data;
         },
         staleTime: 0,
       });

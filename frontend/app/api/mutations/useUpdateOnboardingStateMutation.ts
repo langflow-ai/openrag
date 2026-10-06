@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { FunctionCall } from "@/app/chat/_types/types";
+import { apiClient } from "@/lib/api-client";
 
 interface UpdateOnboardingStateVariables {
   current_step?: number;
@@ -21,20 +22,14 @@ export const useUpdateOnboardingStateMutation = () => {
 
   return useMutation({
     mutationFn: async (variables: UpdateOnboardingStateVariables) => {
-      const response = await fetch("/api/onboarding/state", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(variables),
-      });
+      const response = await apiClient.post("/onboarding/state", variables);
 
-      if (!response.ok) {
-        const error = await response.json();
+      if (response.status < 200 || response.status >= 300) {
+        const error = response.data ?? {};
         throw new Error(error.error || "Failed to update onboarding state");
       }
 
-      return response.json();
+      return response.data;
     },
     onSuccess: () => {
       // Invalidate settings query to refetch updated onboarding state
