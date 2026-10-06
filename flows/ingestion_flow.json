@@ -3775,7 +3775,7 @@
                 ],
                 "total_dependencies": 5
               },
-              "module": "custom_components.opensearch_multimodel_multiembedding"
+              "module": "_lfx_ext.extra.openrag.opensearch_multimodal"
             },
             "minimized": false,
             "output_types": [],
@@ -4599,7 +4599,7 @@
           },
           "selected_output": "search_results",
           "showNode": false,
-          "type": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding"
+          "type": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
         },
         "dragging": false,
         "id": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-WaE28",
