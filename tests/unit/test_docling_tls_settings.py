@@ -155,6 +155,7 @@ def _https_server(pki):
     httpd = _DoclingServer(("127.0.0.1", 0), _DoclingHandler)
     httpd.client_certs = []
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     ctx.load_cert_chain(pki.server_cert, pki.server_key)
     # Ask for (but don't require) a client cert, so the tests can see whether
     # the backend volunteers one. The real sidecar doesn't ask at all.
