@@ -893,11 +893,7 @@ function SearchPage() {
           return <SkippedStatusCell warning={data?.warning} />;
         }
 
-        return (
-          <StatusBadge
-            status={status as import("@/components/ui/status-badge").Status}
-          />
-        );
+        return <StatusBadge status={status} />;
       },
     },
     {
