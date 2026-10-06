@@ -209,6 +209,23 @@ class DoclingRemoteComponent(BaseFileComponent):
         # Default behavior
         return super().update_build_config(build_config, field_value, field_name)
 
+    def _raise_if_task_missing(self, response: httpx.Response, task_id: str) -> None:
+        """Raise a clear error when Docling Serve no longer knows the task.
+
+        Docling Serve deletes a finished task some minutes after its result is
+        first fetched, and forgets every task when it restarts. Polling such a
+        task returns 404, which would otherwise surface as a bare HTTP error.
+        """
+        if response.status_code != httpx.codes.NOT_FOUND:
+            return
+        msg = (
+            f"Docling task {task_id} was not found on the Docling Serve server. Its result "
+            "may have expired (Docling Serve deletes finished results after a delay) or the "
+            "server restarted. Re-ingest the file."
+        )
+        self.log(msg)
+        raise RuntimeError(msg)
+
     def _poll_and_fetch_result(
         self, client: httpx.Client, base_url: str, task_id: str, file_path: str | None = None
     ) -> Data | None:
@@ -229,6 +246,7 @@ class DoclingRemoteComponent(BaseFileComponent):
         start_wait_time = time.monotonic()
 
         response = client.get(f"{base_url}/status/poll/{task_id}")
+        self._raise_if_task_missing(response, task_id)
         response.raise_for_status()
         task = response.json()
 
@@ -255,6 +273,8 @@ class DoclingRemoteComponent(BaseFileComponent):
                     return None
                 continue
 
+            self._raise_if_task_missing(response, task_id)
+            response.raise_for_status()
             task = response.json()
 
         result_resp = client.get(f"{base_url}/result/{task_id}")

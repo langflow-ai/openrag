@@ -719,7 +719,11 @@ async def test_switching_to_a_model_the_cluster_lacks_is_still_blocked(monkeypat
     )
     with pytest.raises(Exception, match="not supported"):
         await provider_validation.validate_provider_setup(
-            provider=PROVIDER, credentials=credentials, llm_model="ibm/nope", embedding_model=None
+            provider=PROVIDER,
+            credentials=credentials,
+            llm_model="ibm/nope",
+            embedding_model=None,
+            verify_model=True,
         )
 
     assert probes == ["real-call"], "a model in hand must be probed for real"
@@ -747,6 +751,7 @@ async def test_switching_an_embedding_model_is_probed_for_real(monkeypatch) -> N
         credentials=credentials,
         llm_model=None,
         embedding_model="ibm/slate-125m-english-rtrvr-v2",
+        verify_model=True,
     )
 
     assert probes == ["watsonx/ibm/slate-125m-english-rtrvr-v2"]
@@ -1005,6 +1010,7 @@ async def test_validating_an_embedding_model_sends_a_list_not_a_string(monkeypat
         ),
         llm_model=None,
         embedding_model="ibm/slate-30m-english-rtrvr",
+        verify_model=True,
     )
 
     assert isinstance(sent["input"], list), sent["input"]

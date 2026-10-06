@@ -403,3 +403,80 @@ async def test_last_error_populated_on_failure(monkeypatch):
     r = await check_langflow()
     assert r.last_error is not None
     assert len(r.last_error) > 0
+
+
+# Busy-vs-down classification: a timeout after the connection opened is DEGRADED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    argnames="client_attr,check,target",
+    argvalues=[
+        ("langflow_http_client", check_langflow, "/api/v1/version"),
+        ("docling_http_client", check_docling, "/version"),
+    ],
+)
+async def test_read_timeout_is_degraded(monkeypatch, client_attr, check, target):
+    monkeypatch.setattr(
+        clients, client_attr, _mock_http(raises=httpx.ReadTimeout("")), raising=False
+    )
+
+    r = await check()
+
+    assert r.status == ComponentState.DEGRADED
+    assert "slow to respond" in (r.message or "")
+    assert r.last_error is not None
+    assert "ReadTimeout after" in r.last_error
+    assert target in r.last_error
+    assert r.version is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    argnames="client_attr,check",
+    argvalues=[
+        ("langflow_http_client", check_langflow),
+        ("docling_http_client", check_docling),
+    ],
+)
+async def test_connect_timeout_is_unhealthy(monkeypatch, client_attr, check):
+    monkeypatch.setattr(
+        clients, client_attr, _mock_http(raises=httpx.ConnectTimeout("")), raising=False
+    )
+
+    r = await check()
+
+    assert r.status == ComponentState.UNHEALTHY
+    assert "unreachable" in (r.message or "").lower()
+    assert "ConnectTimeout" in (r.last_error or "")
+
+
+@pytest.mark.asyncio
+async def test_langflow_read_timeout_records_one_warning_then_recovers(monkeypatch):
+    monkeypatch.setattr(
+        clients,
+        "langflow_http_client",
+        _mock_http(raises=httpx.ReadTimeout("")),
+        raising=False,
+    )
+    await check_langflow()
+    await check_langflow()
+
+    entries = _cl.get_entries("langflow", 10)
+    assert [e["level"] for e in entries] == ["warning"]
+    assert "ReadTimeout" in (entries[0]["detail"] or "")
+    assert "target:" in (entries[0]["detail"] or "")
+
+    monkeypatch.setattr(clients, "langflow_http_client", _mock_http(200), raising=False)
+    r = await check_langflow()
+
+    assert r.status == ComponentState.HEALTHY
+    entries = _cl.get_entries("langflow", 10)
+    assert entries[-1]["level"] == "info"
+    assert entries[-1]["message"].startswith("recovered:")
+
+
+def test_check_timeout_stays_below_outer_deadline():
+    from services import status_service
+
+    assert status_checks._CHECK_TIMEOUT_S < status_service.CHECK_TIMEOUT_S
