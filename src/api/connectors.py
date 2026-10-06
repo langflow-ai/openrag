@@ -1073,6 +1073,7 @@ async def _expand_selected_connector_files(
 
 async def _classify_connector_duplicates(
     connector,
+    connector_type: str,
     selected_files_raw: list[Any],
     session_manager,
     user_id: str,
@@ -1081,6 +1082,14 @@ async def _classify_connector_duplicates(
     """Expand connector selections and split them into duplicate/non-duplicate files."""
     expanded_files_info = await _expand_selected_connector_files(connector, selected_files_raw)
     if not expanded_files_info:
+        # The selection named only folders that expanded to nothing, so there is
+        # nothing to compare. Counted against what the caller asked for, which
+        # separates an empty expansion from an empty request.
+        logger.info(
+            "Duplicate check found nothing to check",
+            connector_type=connector_type,
+            selected=len(selected_files_raw),
+        )
         return {
             "duplicate_names": [],
             "duplicate_files": [],
@@ -1101,6 +1110,13 @@ async def _classify_connector_duplicates(
         all_candidates.update(aliases)
 
     if not all_candidates:
+        # Files expanded but none yielded a comparable name, so the index was
+        # never queried: every file is reported new without having been checked.
+        logger.info(
+            "Duplicate check skipped: no comparable filenames",
+            connector_type=connector_type,
+            listed=len(cleaned_files),
+        )
         return {
             "duplicate_names": [],
             "duplicate_files": [],
@@ -1135,6 +1151,7 @@ async def _classify_connector_duplicates(
     # answered from the server side.
     logger.info(
         "Duplicate check complete",
+        connector_type=connector_type,
         selected=len(cleaned_files),
         duplicates=len(duplicate_files),
         new_files=len(non_duplicate_files),
@@ -1504,6 +1521,7 @@ async def connector_check_duplicates(
         return JSONResponse(
             await _classify_connector_duplicates(
                 connector=connector,
+                connector_type=connector_type,
                 selected_files_raw=selected_files_raw,
                 session_manager=session_manager,
                 user_id=user.user_id,
@@ -1832,6 +1850,7 @@ async def connector_sync(
                     connector=await connector_service.get_connector(
                         working_connection.connection_id
                     ),
+                    connector_type=connector_type,
                     selected_files_raw=file_infos,
                     session_manager=session_manager,
                     user_id=user.user_id,

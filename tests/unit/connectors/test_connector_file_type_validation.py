@@ -601,3 +601,104 @@ async def test_bucket_duplicate_check_logs_an_empty_listing(monkeypatch):
 
     assert result["duplicate_count"] == 0
     assert any(msg == "Duplicate check found nothing to check" for msg, _ in logged)
+
+
+@pytest.mark.asyncio
+async def test_selected_files_check_logs_an_empty_expansion(monkeypatch):
+    """Folders that expand to nothing answer "no duplicates" without ever
+    comparing anything. Logged against what the caller selected, so the OAuth
+    connectors are as diagnosable as the bucket ones."""
+    from api import connectors as connectors_api
+
+    connector = MagicMock()
+    connector.cfg = MagicMock()
+    connector.list_selected_files = AsyncMock(return_value={"files": []})
+
+    logged = []
+    monkeypatch.setattr(connectors_api.logger, "info", lambda msg, **kw: logged.append((msg, kw)))
+
+    result = await connectors_api._classify_connector_duplicates(
+        connector=connector,
+        connector_type="onedrive",
+        selected_files_raw=[
+            {"id": "folder-1", "name": "Empty 1", "isFolder": True},
+            {"id": "folder-2", "name": "Empty 2", "isFolder": True},
+        ],
+        session_manager=MagicMock(),
+        user_id="u1",
+        jwt_token="t",
+    )
+
+    assert result["duplicate_count"] == 0
+    summary = next(kw for msg, kw in logged if msg == "Duplicate check found nothing to check")
+    assert summary["connector_type"] == "onedrive"
+    assert summary["selected"] == 2
+
+
+@pytest.mark.asyncio
+async def test_selected_files_check_logs_when_no_name_is_comparable(monkeypatch):
+    """Files expanded but none produced a name to compare, so the index was
+    never queried — every file is reported new without having been checked."""
+    from api import connectors as connectors_api
+
+    connector = MagicMock()
+    connector.cfg = None  # not a cfg-backed connector: use the raw selection
+
+    logged = []
+    monkeypatch.setattr(connectors_api.logger, "info", lambda msg, **kw: logged.append((msg, kw)))
+
+    result = await connectors_api._classify_connector_duplicates(
+        connector=connector,
+        connector_type="google_drive",
+        selected_files_raw=[{"id": "f1", "name": "", "mimeType": ""}],
+        session_manager=MagicMock(),
+        user_id="u1",
+        jwt_token="t",
+    )
+
+    assert result["duplicate_count"] == 0
+    summary = next(
+        kw for msg, kw in logged if msg == "Duplicate check skipped: no comparable filenames"
+    )
+    assert summary["connector_type"] == "google_drive"
+    assert summary["listed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_selected_files_check_names_its_connector_in_the_summary(monkeypatch):
+    """One grep covers both connector families; connector_type says which path
+    the line came from."""
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+
+    client = AsyncMock()
+    client.search = AsyncMock(
+        return_value={"aggregations": {"filenames": {"buckets": [{"key": "taken.pdf"}]}}}
+    )
+    session_manager = MagicMock()
+    session_manager.get_user_opensearch_client = MagicMock(return_value=client)
+
+    connector = MagicMock()
+    connector.cfg = None
+
+    logged = []
+    monkeypatch.setattr(connectors_api.logger, "info", lambda msg, **kw: logged.append((msg, kw)))
+
+    await connectors_api._classify_connector_duplicates(
+        connector=connector,
+        connector_type="sharepoint",
+        selected_files_raw=[
+            {"id": "f1", "name": "taken.pdf", "mimeType": "application/pdf"},
+            {"id": "f2", "name": "fresh.pdf", "mimeType": "application/pdf"},
+        ],
+        session_manager=session_manager,
+        user_id="u1",
+        jwt_token="t",
+    )
+
+    summary = next(kw for msg, kw in logged if msg == "Duplicate check complete")
+    assert summary["connector_type"] == "sharepoint"
+    assert summary["selected"] == 2
+    assert summary["duplicates"] == 1
+    assert summary["new_files"] == 1
