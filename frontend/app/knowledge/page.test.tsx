@@ -36,7 +36,6 @@ import ProtectedSearchPage, {
   getSkippedWarningText,
   getStatusSortRank,
   isSkippedStatus,
-  NoSearchResultsOverlay,
   RelevanceCellContent,
   resolveActionsVariant,
   resolveDisplayStatus,
@@ -119,16 +118,6 @@ describe("SkippedStatusCell", () => {
       </TooltipProvider>,
     );
     expect(screen.getByText("Duplicate")).toBeTruthy();
-  });
-});
-
-describe("NoSearchResultsOverlay", () => {
-  it("renders the no-results heading and hint text", () => {
-    render(<NoSearchResultsOverlay />);
-    expect(screen.getByText("No results found")).toBeInTheDocument();
-    expect(
-      screen.getByText(/No chunks matched your search/i),
-    ).toBeInTheDocument();
   });
 });
 

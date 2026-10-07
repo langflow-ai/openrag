@@ -63,7 +63,7 @@ export const UI_CONSTANTS = {
  */
 export const SEARCH_CONSTANTS = {
   WILDCARD_QUERY_LIMIT: 10000,
-  DEFAULT_SCORE_THRESHOLD: 2.0,
+  DEFAULT_SCORE_THRESHOLD: 0,
 } as const;
 
 export const ANIMATION_DURATION = 0.4;

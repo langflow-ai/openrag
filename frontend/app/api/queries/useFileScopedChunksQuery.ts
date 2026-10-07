@@ -42,7 +42,6 @@ export function useFileScopedChunksQuery(
   const { data: allData = EMPTY_SEARCH_RESULT, isFetching: isFetchingAll } =
     useGetSearchQuery("*", queryData, {
       enabled: Boolean(filename),
-      disableLiteralGate: true,
       refetchInterval: (query) => {
         const files = (query.state.data as SearchResult | undefined)?.files;
         const hasChunks = files?.some(
@@ -64,7 +63,6 @@ export function useFileScopedChunksQuery(
     useGetSearchQuery(isRealQuery ? searchQuery! : "*", queryData, {
       enabled: Boolean(filename) && isRealQuery,
       placeholderData: undefined,
-      disableLiteralGate: true,
     });
 
   const file = useMemo(() => {

@@ -111,109 +111,6 @@ export { EMPTY_SEARCH_RESULT };
 export const RELEVANCE_HIGH_THRESHOLD = 0.65;
 export const RELEVANCE_MED_THRESHOLD = 0.35;
 
-/** Stopwords excluded from the literal-match gate to avoid false passes on tokens like "the" or "your". */
-const GATE_STOPWORDS = new Set([
-  "a",
-  "an",
-  "the",
-  "and",
-  "or",
-  "but",
-  "in",
-  "on",
-  "at",
-  "to",
-  "for",
-  "of",
-  "with",
-  "by",
-  "from",
-  "is",
-  "it",
-  "its",
-  "was",
-  "are",
-  "were",
-  "be",
-  "been",
-  "being",
-  "have",
-  "has",
-  "had",
-  "do",
-  "does",
-  "did",
-  "will",
-  "would",
-  "could",
-  "should",
-  "may",
-  "might",
-  "shall",
-  "can",
-  "not",
-  "no",
-  "nor",
-  "so",
-  "yet",
-  "both",
-  "either",
-  "neither",
-  "this",
-  "that",
-  "these",
-  "those",
-  "my",
-  "your",
-  "his",
-  "her",
-  "our",
-  "their",
-  "its",
-  "i",
-  "you",
-  "he",
-  "she",
-  "we",
-  "they",
-  "me",
-  "him",
-  "us",
-  "them",
-  "what",
-  "which",
-  "who",
-  "whom",
-  "how",
-  "when",
-  "where",
-  "why",
-  "all",
-  "each",
-  "every",
-  "any",
-  "some",
-  "such",
-  "than",
-  "then",
-  "as",
-  "if",
-  "up",
-  "out",
-  "about",
-  "into",
-  "through",
-  "during",
-  "before",
-  "after",
-  "above",
-  "below",
-  "between",
-  "own",
-  "same",
-  "other",
-]);
-
 const getFileIdentity = (chunk: ChunkResult): string => {
   const normalizedFilename = chunk.filename?.trim();
   if (normalizedFilename) {
@@ -234,10 +131,7 @@ export const useGetSearchQuery = (
   options?: Omit<
     UseQueryOptions<SearchResult, Error, SearchResult, unknown[]>,
     "queryKey" | "queryFn"
-  > & {
-    /** Skip the literal-match gate. Set on the single-file chunks view where the user navigated deliberately. */
-    disableLiteralGate?: boolean;
-  },
+  >,
 ) => {
   const queryClient = useQueryClient();
 
@@ -347,45 +241,9 @@ export const useGetSearchQuery = (
         }
       });
 
-      // Literal-match gate: prune files where no meaningful query token appears
-      // verbatim in any of their chunks, so irrelevant files from KNN drift do
-      // not pollute search results or distort min-max score normalization.
-      // Warnings are always preserved. Not applied for wildcard queries.
       const pendingWarnings: SearchWarning[] = Array.isArray(data.warnings)
         ? data.warnings
         : [];
-
-      if (!isWildcardQuery && !options?.disableLiteralGate) {
-        const allTokens = normalizedQuery
-          .toLowerCase()
-          .split(/\s+/)
-          .filter((t) => t.length > 0);
-
-        const meaningfulTokens = allTokens.filter(
-          (t) => !GATE_STOPWORDS.has(t),
-        );
-
-        // Fall back to all tokens when the query is entirely stopwords.
-        const gateTokens =
-          meaningfulTokens.length > 0 ? meaningfulTokens : allTokens;
-
-        if (gateTokens.length > 0) {
-          for (const [fileKey, fileEntry] of fileMap.entries()) {
-            const fileHasMatch = fileEntry.chunks.some((c) => {
-              const text = (c.text ?? "").toLowerCase();
-              return gateTokens.some((token) => text.includes(token));
-            });
-
-            if (!fileHasMatch) {
-              fileMap.delete(fileKey);
-            }
-          }
-        }
-
-        if (fileMap.size === 0) {
-          return { files: [], warnings: pendingWarnings };
-        }
-      }
 
       // Min-max normalise: best chunk → 1.0, worst → 0.0. Single result → 1.0 (avoids / 0).
       const allChunks = Array.from(fileMap.values()).flatMap((f) => f.chunks);

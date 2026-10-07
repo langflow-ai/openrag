@@ -253,20 +253,6 @@ export function getFileStatus(status?: File["status"]): string {
   return status || "active";
 }
 
-export function NoSearchResultsOverlay() {
-  return (
-    <div className="flex flex-col items-center gap-3 pb-[45px] select-none">
-      <div className="text-base font-semibold text-foreground">
-        No results found
-      </div>
-      <div className="text-sm text-muted-foreground text-center max-w-xs">
-        No chunks matched your search. Try different keywords or broaden your
-        query.
-      </div>
-    </div>
-  );
-}
-
 export function buildChunksUrl(
   filename: string,
   effectiveSearchText: string,
@@ -1380,20 +1366,16 @@ function SearchPage() {
               onSortChanged={onSortChanged}
               headerHeight={64}
               rowHeight={64}
-              noRowsOverlayComponent={
-                isWildcardQuery
-                  ? () => (
-                      <div className="text-center pb-[45px]">
-                        <div className="text-lg text-primary font-semibold">
-                          No knowledge
-                        </div>
-                        <div className="text-sm mt-1 text-muted-foreground">
-                          Add files from local or your preferred cloud.
-                        </div>
-                      </div>
-                    )
-                  : NoSearchResultsOverlay
-              }
+              noRowsOverlayComponent={() => (
+                <div className="text-center pb-[45px]">
+                  <div className="text-lg text-primary font-semibold">
+                    No knowledge
+                  </div>
+                  <div className="text-sm mt-1 text-muted-foreground">
+                    Add files from local or your preferred cloud.
+                  </div>
+                </div>
+              )}
             />
           </div>
         ) : (
@@ -1421,20 +1403,16 @@ function SearchPage() {
               onGridPreDestroyed={handleGridPreDestroyed}
               onSelectionChanged={onSelectionChanged}
               onSortChanged={onSortChanged}
-              noRowsOverlayComponent={
-                isWildcardQuery
-                  ? () => (
-                      <div className="text-center pb-[45px]">
-                        <div className="text-lg text-primary font-semibold">
-                          No knowledge
-                        </div>
-                        <div className="text-sm mt-1 text-muted-foreground">
-                          Add files from local or your preferred cloud.
-                        </div>
-                      </div>
-                    )
-                  : NoSearchResultsOverlay
-              }
+              noRowsOverlayComponent={() => (
+                <div className="text-center pb-[45px]">
+                  <div className="text-lg text-primary font-semibold">
+                    No knowledge
+                  </div>
+                  <div className="text-sm mt-1 text-muted-foreground">
+                    Add files from local or your preferred cloud.
+                  </div>
+                </div>
+              )}
             />
           </div>
         )}
