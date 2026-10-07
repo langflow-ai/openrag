@@ -314,6 +314,7 @@ def test_exclusions_default_to_none_and_ignore_a_non_list(monkeypatch, tmp_path)
 
 # ── OPENRAG_GEMINI env gate ───────────────────────────────────────────────────
 
+
 def test_gemini_is_hidden_in_every_mode_by_default(monkeypatch):
     """Gemini must not appear in normal deployments without the flag."""
     for mode in ("oss", "on_prem", "saas"):
@@ -364,9 +365,7 @@ def test_gemini_payload_carries_in_development_badge(monkeypatch):
     model_providers.reload()
 
     payload = model_providers.provider_visibility_payload()
-    gemini_entry = next(
-        (e for e in payload["providers"] if e["name"] == "gemini"), None
-    )
+    gemini_entry = next((e for e in payload["providers"] if e["name"] == "gemini"), None)
     assert gemini_entry is not None, "gemini must appear in the payload when enabled"
     assert gemini_entry["badge"] == "In development"
 

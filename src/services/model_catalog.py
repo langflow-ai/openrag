@@ -279,8 +279,7 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
     chat_by_provider: dict[str, list[dict[str, Any]]] = {}
     embed_by_provider: dict[str, list[dict[str, Any]]] = {}
 
-
-    #prevents duplicate models in gemini, tracking seen model names
+    # prevents duplicate models in gemini, tracking seen model names
     seen_chat: dict[str, set[str]] = {}
     seen_embed: dict[str, set[str]] = {}
 
