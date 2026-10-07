@@ -19,9 +19,11 @@ export class Settings {
   private readonly settingsLink = () =>
     this.page.getByRole("link", { name: "Settings" });
   private readonly saveIngestSettingsButton = () =>
-    this.page.getByRole("button", { name: /save ingest settings/i });
+    this.page.getByTestId("ingest-save");
   private readonly settingsUpdatedToast = () =>
     this.page.getByText(/settings updated successfully/i).first();
+  private readonly ingestSettingsSavedToast = () =>
+    this.page.getByText(/ingest settings saved/i).first();
   private readonly pictureDescriptionsToggle = () =>
     this.page.getByRole("switch", { name: /picture descriptions/i });
   private readonly tableStructureToggle = () =>
@@ -227,9 +229,14 @@ export class Settings {
     await saveButton.scrollIntoViewIfNeeded();
     await this.page.waitForTimeout(500);
     await expect(saveButton).toBeVisible();
-    await expect(saveButton).toBeEnabled({ timeout: 10000 });
+    // Allow up to 30s: enabling picture-descriptions makes the save button
+    // wait until the VLM model catalogue has loaded and auto-selected a model
+    // (vlmModelPending gate). 10s was too short on slow CI runners.
+    await expect(saveButton).toBeEnabled({ timeout: 30000 });
     await saveButton.click();
-    await expect(this.settingsUpdatedToast()).toBeVisible({ timeout: 120000 });
+    await expect(this.ingestSettingsSavedToast()).toBeVisible({
+      timeout: 120000,
+    });
   }
 
   async setPictureDescriptions(enabled: boolean) {

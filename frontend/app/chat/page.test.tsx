@@ -11,7 +11,7 @@
  * ChatPage is not exported; we mount via the default export ProtectedChatPage
  * and stub ProtectedRoute to a passthrough.
  */
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authPresets, makeUser, withAuth } from "@/test-utils/fixtures/auth";
 import { renderWithProviders } from "@/test-utils/render";
@@ -127,12 +127,42 @@ vi.mock("@/app/chat/_components/assistant-message", () => ({
   ),
 }));
 
+const { imeStateHolder, submitSpy } = vi.hoisted(() => ({
+  imeStateHolder: {
+    current: { composing: false, compositionEndedAt: 0, now: 0 },
+  },
+  submitSpy: vi.fn((event: { preventDefault: () => void }) => {
+    event.preventDefault();
+  }),
+}));
+
 vi.mock("@/app/chat/_components/chat-input", () => {
-  const { forwardRef } = require("react");
+  const { forwardRef, useImperativeHandle } = require("react");
   return {
-    ChatInput: forwardRef((_props: unknown, _ref: unknown) => (
-      <div data-testid="chat-input" />
-    )),
+    ChatInput: forwardRef(
+      (
+        props: {
+          onChange?: (value: string) => void;
+          onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+        },
+        ref: React.Ref<{ getImeState: () => unknown }>,
+      ) => {
+        useImperativeHandle(ref, () => ({
+          focusInput() {},
+          clickFileInput() {},
+          getImeState: () => imeStateHolder.current,
+        }));
+        return (
+          <form onSubmit={submitSpy}>
+            <textarea
+              data-testid="chat-input"
+              onChange={(e) => props.onChange?.(e.target.value)}
+              onKeyDown={props.onKeyDown}
+            />
+          </form>
+        );
+      },
+    ),
   };
 });
 
@@ -155,7 +185,15 @@ import ProtectedChatPage from "./page";
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("ChatPage — coverage for diff-flagged lines", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => {
+    vi.useFakeTimers();
+    imeStateHolder.current = {
+      composing: false,
+      compositionEndedAt: 0,
+      now: 0,
+    };
+    submitSpy.mockClear();
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -214,6 +252,51 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
       expect(text).not.toBe(PLACEHOLDER_GREETING.content);
       expect(text).toMatch(/Olfa/);
     });
+  });
+
+  it("does not submit when Enter confirms an IME candidate", () => {
+    vi.useRealTimers();
+    renderWithProviders(<ProtectedChatPage />, {
+      providers: ["auth"],
+      auth: authPresets.noAuthMode,
+    });
+    const input = screen.getByTestId("chat-input");
+
+    expect(fireEvent.keyDown(input, { key: "Enter", isComposing: true })).toBe(
+      true,
+    );
+    expect(fireEvent.keyDown(input, { key: "Enter", keyCode: 229 })).toBe(true);
+  });
+
+  it("does not submit the Enter Safari fires just after composition ends", () => {
+    vi.useRealTimers();
+    imeStateHolder.current = {
+      composing: false,
+      compositionEndedAt: 1_000,
+      now: 1_010,
+    };
+    renderWithProviders(<ProtectedChatPage />, {
+      providers: ["auth"],
+      auth: authPresets.noAuthMode,
+    });
+    const input = screen.getByTestId("chat-input");
+    fireEvent.change(input, { target: { value: "日本語" } });
+
+    expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(false);
+    expect(submitSpy).not.toHaveBeenCalled();
+  });
+
+  it("prevents a newline and submits when Enter is not an IME confirmation", () => {
+    vi.useRealTimers();
+    renderWithProviders(<ProtectedChatPage />, {
+      providers: ["auth"],
+      auth: authPresets.noAuthMode,
+    });
+    const input = screen.getByTestId("chat-input");
+    fireEvent.change(input, { target: { value: "hello" } });
+
+    expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(false);
+    expect(submitSpy).toHaveBeenCalledOnce();
   });
 
   it("replaces the placeholder greeting after mount in no-auth mode", async () => {

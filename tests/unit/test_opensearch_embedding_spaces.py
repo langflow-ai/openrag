@@ -350,3 +350,45 @@ def test_direct_ingest_persists_provider_qualified_space(
     assert captured[0]["embedding_model"] == "text-embedding-3-small"
     assert captured[0]["embedding_provider"] == "azure"
     assert captured[0]["embedding_space_id"] == "azure:text-embedding-3-small"
+
+
+def test_ingest_normalizes_kangxi_radicals_before_embedding_and_indexing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+
+    class _Doc:
+        text_key = "text"
+        default_value = ""
+
+        def model_dump_json(self):
+            return '{"text": "11 \\u2f49 27 \\u2f47 ( \\u2f4a )", "filename": "slip.pdf"}'
+
+    class _WatsonxEmbedding:
+        model = "ibm/granite-embedding-278m-multilingual"
+
+        def __init__(self):
+            self.embedded = []
+
+        def embed_documents(self, texts):
+            self.embedded.extend(texts)
+            return [[0.1, 0.2] for _ in texts]
+
+    embedding = _WatsonxEmbedding()
+    component = _component(module, client=object(), embedding=embedding)
+    component.embedding_model_name = ""
+    component.docs_metadata = []
+    component._prepare_ingest_data = lambda: [_Doc()]
+    component._openrag_ingest_callback_config = lambda: ("url", "token", "task")
+    indexed = []
+
+    def _bulk_ingest(**kwargs):
+        indexed.extend(kwargs["texts"])
+        return ["id"]
+
+    component._bulk_ingest_embeddings = _bulk_ingest
+
+    component._add_documents_to_vector_store(object())
+
+    assert embedding.embedded == ["11 月 27 日 ( 木 )"]
+    assert indexed == ["11 月 27 日 ( 木 )"]

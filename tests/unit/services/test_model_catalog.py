@@ -495,6 +495,40 @@ def test_the_shipped_config_excludes_on_azure_as_well_as_openai(monkeypatch) -> 
     assert not [model_id for model_id in ids if "gpt-3.5" in model_id or "luna" in model_id]
 
 
+def test_an_exclusion_without_a_wildcard_leaves_the_dated_snapshots(monkeypatch) -> None:
+    """Why the shipped luna patterns end in `*`.
+
+    A pattern with no wildcard matches that id alone, so the provider's dated
+    snapshot of the same model stays in the picker — which is how
+    `gpt-5.6-luna-2026-07-09` survived an exclusion of `gpt-5.6-luna`. Pinned
+    because the fix is a single character in a YAML file and reads like a typo.
+    """
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    exact = model_catalog._excluded("gpt-5.6-luna-2026-07-09", ("gpt-5.6-luna",))
+    wildcard = model_catalog._excluded("gpt-5.6-luna-2026-07-09", ("gpt-5.6-luna*",))
+
+    assert not exact
+    assert wildcard
+    # The wildcard keeps covering the regional forms the bare name covered.
+    assert model_catalog._excluded("us/gpt-5.6-luna", ("gpt-5.6-luna*",))
+
+
+def test_both_luna_generations_are_excluded_from_both_rows(monkeypatch) -> None:
+    """LiteLLM's table cannot be trusted for this, so the config carries it.
+
+    Every luna row reports `supports_function_calling: true`, including the 5.6
+    that refuses them in practice — which is why the exclusion is
+    hand-maintained. A new generation is treated as defective until proven
+    otherwise, since an excluded id can still be typed by hand but a broken one
+    offered in the picker fails at agent runtime.
+    """
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    for provider in ("openai", "azure"):
+        patterns = model_catalog.exclusions_for(provider)
+        assert any(pattern.startswith("gpt-5.6-luna") for pattern in patterns), provider
+        assert any(pattern.startswith("gpt-6-luna") for pattern in patterns), provider
+
+
 @pytest.mark.asyncio
 async def test_live_model_failure_does_not_block_other_provider_refreshes(monkeypatch):
     calls: list[str] = []
@@ -524,3 +558,32 @@ async def test_live_model_failure_does_not_block_other_provider_refreshes(monkey
     await model_catalog.refresh_live_models()
 
     assert calls == ["broken", "healthy"]
+
+
+@pytest.mark.asyncio
+async def test_refresh_live_models_can_be_narrowed_to_one_provider(monkeypatch):
+    """A caller asking about one provider must not wait on another's cluster."""
+    calls: list[str] = []
+
+    def lister(name):
+        async def fetch(_credentials):
+            calls.append(name)
+
+        return fetch
+
+    first = SimpleNamespace(PROVIDER_KEY="first", fetch_models=lister("first"))
+    second = SimpleNamespace(PROVIDER_KEY="second", fetch_models=lister("second"))
+    providers = SimpleNamespace(stored_credentials=lambda _provider: {"api_key": "secret"})
+
+    monkeypatch.setattr(model_catalog, "provider_enhancements", lambda: (first, second))
+    monkeypatch.setattr(
+        model_catalog, "supported_provider_keys", lambda: frozenset({"first", "second"})
+    )
+    monkeypatch.setattr(
+        "config.settings.get_openrag_config",
+        lambda: SimpleNamespace(providers=providers),
+    )
+
+    await model_catalog.refresh_live_models(" Second ")
+
+    assert calls == ["second"]
