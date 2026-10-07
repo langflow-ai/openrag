@@ -44,7 +44,6 @@ spec:
         cpu: "1"
         memory: "2Gi"
     # envSecret: my-openrag-langflow-env     # Secret with ".env" key
-    flowsRef: release-saas-0.1   # Download flows from this branch
     storage:
       enabled: true
       size: "1Gi"

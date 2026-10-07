@@ -45,8 +45,6 @@ spec:
     storage:
       enabled: true
       size: "1Gi"
-    flowsRef: release-saas-0.1   # branch name or commit SHA
-    # flowsInitImage: python:3-alpine
 
   # llm:
   #   provider: watsonx

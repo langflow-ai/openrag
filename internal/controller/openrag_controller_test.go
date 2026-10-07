@@ -2582,68 +2582,6 @@ func TestPodBuilders_AutomountServiceAccountTokenDefaults(t *testing.T) {
 	}
 }
 
-// guards the one build with a pre-existing operator-manager init container: downloader must run first
-func TestLangflow_UserInitContainerAppendedAfterFlowsDownloader(t *testing.T) {
-	s := newScheme(t)
-	r, _ := reconciler(s)
-
-	cr := minimalCR("x", "ns")
-	cr.Spec.Langflow.FlowsRef = "main"
-	cr.Spec.Langflow.InitContainers = []corev1.Container{{Name: "user-init", Image: "busybox:latest"}}
-
-	ps := r.langflowDeployment(cr, "ns", "hash").Spec.Template.Spec
-
-	require.Len(t, ps.InitContainers, 2, "expected flows downloader + init container")
-	assert.Equal(t, "download-flows", ps.InitContainers[0].Name, "operator-managed downloader must run first")
-	assert.Equal(t, "user-init", ps.InitContainers[1].Name, "user init container must be appended after")
-}
-
-func TestLangflow_FlowsGithubTokenSecret_AddedToInitEnv(t *testing.T) {
-	s := newScheme(t)
-	r, _ := reconciler(s)
-
-	cr := minimalCR("x", "ns")
-	cr.Spec.Langflow.FlowsRef = "main"
-	cr.Spec.Langflow.FlowsGithubTokenSecret = &corev1.SecretKeySelector{
-		LocalObjectReference: corev1.LocalObjectReference{Name: "github-token"},
-		Key:                  "token",
-	}
-
-	ps := r.langflowDeployment(cr, "ns", "hash").Spec.Template.Spec
-
-	require.Len(t, ps.InitContainers, 1)
-	env := ps.InitContainers[0].Env
-
-	var githubTokenVar *corev1.EnvVar
-	for i := range env {
-		if env[i].Name == "GITHUB_TOKEN" {
-			githubTokenVar = &env[i]
-			break
-		}
-	}
-
-	require.NotNil(t, githubTokenVar, "GITHUB_TOKEN env var must be present when FlowsGithubTokenSecret is set")
-	require.NotNil(t, githubTokenVar.ValueFrom)
-	require.NotNil(t, githubTokenVar.ValueFrom.SecretKeyRef)
-	assert.Equal(t, "github-token", githubTokenVar.ValueFrom.SecretKeyRef.Name)
-	assert.Equal(t, "token", githubTokenVar.ValueFrom.SecretKeyRef.Key)
-}
-
-func TestLangflow_FlowsGithubTokenSecret_AbsentWhenNotSet(t *testing.T) {
-	s := newScheme(t)
-	r, _ := reconciler(s)
-
-	cr := minimalCR("x", "ns")
-	cr.Spec.Langflow.FlowsRef = "main"
-
-	ps := r.langflowDeployment(cr, "ns", "hash").Spec.Template.Spec
-
-	require.Len(t, ps.InitContainers, 1)
-	for _, e := range ps.InitContainers[0].Env {
-		assert.NotEqual(t, "GITHUB_TOKEN", e.Name, "GITHUB_TOKEN must not be injected when FlowsGithubTokenSecret is nil")
-	}
-}
-
 func containsContainer(cs []corev1.Container, name string) bool {
 	for _, c := range cs {
 		if c.Name == name {

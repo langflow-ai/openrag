@@ -300,7 +300,7 @@ func TestEnvVarManager_NewEnvVarManagerDefaults(t *testing.T) {
 	assert.NotNil(t, manager.DefaultLangflowEnvVars)
 	assert.Equal(t, "sqlite:////app/data/langflow.db", manager.DefaultLangflowEnvVars["LANGFLOW_DATABASE_URL"])
 	assert.Equal(t, "true", manager.DefaultLangflowEnvVars["LANGFLOW_AUTO_LOGIN"])
-	assert.Equal(t, "/app/flows", manager.DefaultLangflowEnvVars["LANGFLOW_LOAD_FLOWS_PATH"])
+	assert.NotContains(t, manager.DefaultLangflowEnvVars, "LANGFLOW_LOAD_FLOWS_PATH")
 	assert.Equal(t, "4", manager.DefaultLangflowEnvVars["LANGFLOW_WORKERS"])
 
 	// Verify Backend defaults
@@ -309,6 +309,7 @@ func TestEnvVarManager_NewEnvVarManagerDefaults(t *testing.T) {
 	assert.Equal(t, "2400", manager.DefaultOpenRagBEEnvVars["LANGFLOW_TIMEOUT"])
 	assert.Equal(t, "/app/backend-data", manager.DefaultOpenRagBEEnvVars["OPENRAG_DATA_PATH"])
 	assert.Equal(t, "/app/openrag-documents", manager.DefaultOpenRagBEEnvVars["OPENRAG_DOCUMENTS_PATH"])
+	assert.Equal(t, "/app/flows", manager.DefaultOpenRagBEEnvVars["OPENRAG_FLOWS_PATH"])
 	assert.Equal(t, "DEBUG", manager.DefaultOpenRagBEEnvVars["LOG_LEVEL"])
 	assert.Equal(t, "json", manager.DefaultOpenRagBEEnvVars["LOG_FORMAT"])
 	assert.Equal(t, "3600", manager.DefaultOpenRagBEEnvVars["INGESTION_TIMEOUT"])

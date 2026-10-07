@@ -94,12 +94,6 @@ spec:
       annotations:
         snapshot.storage.kubernetes.io/is-default-class: "true"
 
-    # if you are hitting github rate limits for flow download uncomment this and set
-    # the secret 
-    # flowsGithubTokenSecret:
-    #   name: github-token
-    #   key: token
-
   # Optional: Docling components with custom labels/annotations
   doclingComponents:
     enabled: true

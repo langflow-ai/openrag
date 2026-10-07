@@ -1120,47 +1120,6 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 		mounts = append(mounts, corev1.VolumeMount{Name: "langflow-data", MountPath: "/app/data"})
 	}
 
-	// Only create initContainer if FlowsRef is specified
-	// Use nil (not empty slice) to ensure initContainers are removed when FlowsRef is cleared
-	var initContainers []corev1.Container
-	if spec.FlowsRef != "" {
-		volumes = append(volumes, corev1.Volume{
-			Name:         "langflow-flows",
-			VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-		})
-		mounts = append(mounts, corev1.VolumeMount{Name: "langflow-flows", MountPath: "/app/flows"})
-
-		initImage := spec.FlowsInitImage
-		if initImage == "" {
-			initImage = "python:3-alpine"
-		}
-		initEnv := []corev1.EnvVar{
-			{Name: "FLOWS_REF", Value: spec.FlowsRef},
-		}
-		if spec.FlowsGithubTokenSecret != nil {
-			initEnv = append(initEnv, corev1.EnvVar{
-				Name: "GITHUB_TOKEN",
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: spec.FlowsGithubTokenSecret,
-				},
-			})
-		}
-		initContainers = []corev1.Container{
-			{
-				Name:    "download-flows",
-				Image:   initImage,
-				Command: []string{"python3", "-c", flowsDownloadScript},
-				Env:     initEnv,
-				VolumeMounts: []corev1.VolumeMount{
-					{Name: "langflow-flows", MountPath: "/app/flows"},
-				},
-			},
-		}
-	} else {
-		// Explicitly set to nil when FlowsRef is empty to ensure initContainers are removed
-		initContainers = nil
-	}
-
 	// ALL env vars (including spec.Env) are now in the .env file
 	// Container Env should be empty to prevent values from showing in 'env' command
 	// The .env file is mounted and sourced by the application
@@ -1207,7 +1166,7 @@ func (r *OpenRAGReconciler) langflowDeployment(o *openragv1alpha1.OpenRAG, targe
 					Tolerations:                  spec.Tolerations,
 					Affinity:                     spec.Affinity,
 					SecurityContext:              spec.PodSecurityContext,
-					InitContainers:               append(initContainers, spec.InitContainers...),
+					InitContainers:               spec.InitContainers,
 					Volumes:                      volumes,
 					Containers: append([]corev1.Container{
 						{
@@ -2763,36 +2722,6 @@ func setAnnotation(obj client.Object, key, value string) {
 	ann[key] = value
 	obj.SetAnnotations(ann)
 }
-
-// flowsDownloadScript is run by the init container to fetch all *.json flow
-// files from the langflow-ai/openrag GitHub repository at the given ref.
-// It uses only Python stdlib so that python:3-alpine suffices.
-const flowsDownloadScript = `
-import urllib.request, json, os
-ref = os.environ['FLOWS_REF']
-token = os.environ.get('GITHUB_TOKEN', '')
-headers = {
-    'Accept': 'application/vnd.github.v3+json',
-    'User-Agent': 'openrag-operator/1.0',
-}
-if token:
-    headers['Authorization'] = 'Bearer ' + token
-api = 'https://api.github.com/repos/langflow-ai/openrag/contents/flows?ref=' + ref
-req = urllib.request.Request(api, headers=headers)
-with urllib.request.urlopen(req) as r:
-    entries = json.load(r)
-os.makedirs('/app/flows', exist_ok=True)
-for e in entries:
-    if not e['name'].endswith('.json'):
-        continue
-    print('Downloading ' + e['name'] + '...', flush=True)
-    dl_req = urllib.request.Request(e['download_url'], headers=headers)
-    with urllib.request.urlopen(dl_req) as r:
-        data = r.read()
-    with open('/app/flows/' + e['name'], 'wb') as f:
-        f.write(data)
-print('All flows downloaded', flush=True)
-`
 
 // SetupWithManager registers the controller with the manager.
 func (r *OpenRAGReconciler) SetupWithManager(mgr ctrl.Manager) error {

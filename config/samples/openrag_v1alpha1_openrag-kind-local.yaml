@@ -68,12 +68,6 @@ spec:
     storage:
       enabled: true
       size: "1Gi"
-    flowsRef: release-saas-0.1
-    # if you are hitting github rate limits for flow download uncomment this and set
-    # the secret 
-    # flowsGithubTokenSecret:
-    #   name: github-token
-    #   key: token
 
   # External OpenSearch — required unless credentials are in backend envSecret
   opensearch:

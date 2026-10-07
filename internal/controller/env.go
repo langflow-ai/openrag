@@ -50,7 +50,6 @@ func NewEnvVarManager() *EnvVarManager {
 			"HIDE_GETTING_STARTED_PROGRESS":  "true",
 			"LANGFLOW_ALEMBIC_LOG_TO_STDOUT": "true",
 			"LANGFLOW_DEACTIVATE_TRACING":    "true",
-			"LANGFLOW_LOAD_FLOWS_PATH":       "/app/flows",
 			"LANGFUSE_HOST":                  "https://cloud.langfuse.com",
 			"LANGFLOW_KEY_RETRIES":           "15",
 			"LANGFLOW_KEY_RETRY_DELAY":       "2",
@@ -117,6 +116,7 @@ func NewEnvVarManager() *EnvVarManager {
 			// Backend data paths
 			"OPENRAG_DATA_PATH":         "/app/backend-data",
 			"OPENRAG_DOCUMENTS_PATH":    "/app/openrag-documents",
+			"OPENRAG_FLOWS_PATH":        "/app/flows",
 			"OPENRAG_FLOWS_BACKUP_PATH": "/app/backend-data/flow-backups",
 			"OPENRAG_KEYS_PATH":         "/app/backend-data/keys",
 			"OPENRAG_CONFIG_PATH":       "/app/backend-data/config",

@@ -326,19 +326,6 @@ spec:
 
 See [`config/samples/openrag_v1alpha1_openrag.yaml`](config/samples/openrag_v1alpha1_openrag.yaml) for a full annotated example.
 
-## Troubleshooting FAQ
-
-**Flows download (`flowsRef`) hitting GitHub rate limit:**
-
-Unauthenticated GitHub API calls are limited to 60/hour. samples in `config/samples/` already includes a `github-token` Secret at the bottom, uncomment and fill in your [fine-grained GitHub PAT](https://github.com/settings/personal-access-tokens) (read-only, public repos) there before applying:
-
-```yaml
-stringData:
-  token: <your-pat-here>
-```
-
-The Langflow CR already references it via `flowsGithubTokenSecret`, uncomment that section to use it properly
-
 ## Release Process
 
 The operator uses GitHub Actions for automated releases:
