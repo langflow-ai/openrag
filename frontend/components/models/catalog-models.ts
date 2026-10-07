@@ -82,7 +82,13 @@ function sortedProviderOptions(
   provider: CatalogProvider,
   kind: CatalogModelKind,
 ): CatalogSelectOption[] {
+  const seen = new Set<string>();
   return modelsForKind(provider, kind)
+    .filter((entry) => {
+      if (seen.has(entry.model)) return false;
+      seen.add(entry.model);
+      return true;
+    })
     .map((entry) => toOption(entry, provider.key))
     .sort((left, right) => compareCatalogOptions(left, right, kind));
 }
