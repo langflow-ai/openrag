@@ -9,14 +9,17 @@ import {
 import { fileScopedSearchQueryData } from "@/lib/file-chunks";
 
 /**
- * Loads every chunk for one filename (shared by chunks page + FileChunksPanel).
+ * Loads chunks for one filename (shared by chunks page + FileChunksPanel).
  *
- * When `searchQuery` is a non-wildcard string, a second search request is fired
- * in parallel to fetch highlight fragments for that query. The full wildcard
- * result (all chunks) is always returned as the source of truth for chunk count
- * and the local "Search chunks" filter. Highlights are merged in by chunk_id so
- * non-matching chunks stay visible with an empty highlights list, while matching
- * chunks get their <mark> fragments attached.
+ * When `searchQuery` is a non-wildcard string, two requests are fired:
+ * 1. Wildcard — fetches all chunks (used when no search is active).
+ * 2. Highlight fetch — fetches only the semantically matched chunks plus
+ *    highlight fragments for that query.
+ *
+ * When a real searchQuery is active the highlight fetch result defines which
+ * chunks are shown (so the count matches the knowledge page) and highlights
+ * are merged in by chunk_id. When no search is active, all wildcard chunks
+ * are returned as before.
  */
 export function useFileScopedChunksQuery(
   filename: string | null | undefined,
@@ -53,7 +56,7 @@ export function useFileScopedChunksQuery(
     );
     if (!allFile || !isRealQuery) return allFile;
 
-    // Build chunk_id → highlights lookup from the search result.
+    // Build chunk_id → highlights lookup from the semantic search result.
     const hlFile = (hlData as SearchResult).files.find(
       (entry: File) => entry.filename === filename,
     );
@@ -67,12 +70,23 @@ export function useFileScopedChunksQuery(
       }
     }
 
-    // Merge highlights onto the full chunk list without dropping any chunks.
-    const mergedChunks: ChunkResult[] = (allFile.chunks ?? []).map((chunk) => {
-      const key = chunk.chunk_id ?? chunk.id;
-      const highlights = key ? (hlMap.get(key) ?? []) : [];
-      return highlights.length > 0 ? { ...chunk, highlights } : chunk;
-    });
+    // Use only the semantically matched chunks (from the highlight fetch) so
+    // the count on the chunks page matches the knowledge page. Merge highlights
+    // where BM25 also matched (highlights array non-empty); pure KNN hits show
+    // with no highlight markup but are still included.
+    const matchedChunkIds = new Set(
+      (hlFile.chunks ?? []).map((c) => c.chunk_id ?? c.id).filter(Boolean),
+    );
+    const mergedChunks: ChunkResult[] = (allFile.chunks ?? [])
+      .filter((chunk) => {
+        const key = chunk.chunk_id ?? chunk.id;
+        return key ? matchedChunkIds.has(key) : true;
+      })
+      .map((chunk) => {
+        const key = chunk.chunk_id ?? chunk.id;
+        const highlights = key ? (hlMap.get(key) ?? []) : [];
+        return highlights.length > 0 ? { ...chunk, highlights } : chunk;
+      });
 
     return { ...allFile, chunks: mergedChunks };
   }, [allData, hlData, filename, isRealQuery]);
