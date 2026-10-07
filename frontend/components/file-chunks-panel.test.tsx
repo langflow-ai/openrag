@@ -141,4 +141,35 @@ describe("FileChunksPanel — highlight wiring", () => {
     // Verify the highlight mark is rendered
     expect(container.querySelector("mark")?.textContent).toBe("fox");
   });
+  it("filters chunks locally by keyword when no searchQuery is provided", async () => {
+    server.use(
+      http.post("/api/search", () =>
+        HttpResponse.json({
+          results: [
+            chunk({ chunk_id: "c1", text: "Matching content fox" }),
+            chunk({ chunk_id: "c2", text: "Unrelated content here" }),
+          ],
+          warnings: [],
+        }),
+      ),
+    );
+
+    renderWithProviders(
+      <FileChunksPanel
+        filename="doc.pdf"
+        filterQuery="fox"
+        onFilterQueryChange={() => {}}
+        hideSearch
+      />,
+      { providers: ["auth", "knowledgeFilter"] },
+    );
+
+    // Only the chunk containing "fox" should be visible.
+    await waitFor(() =>
+      expect(screen.getByText("Matching content fox")).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByText("Unrelated content here"),
+    ).not.toBeInTheDocument();
+  });
 });
