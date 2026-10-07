@@ -327,6 +327,18 @@ describe("StatusCellContent", () => {
     expect(container.textContent?.toLowerCase()).toContain("cancel");
   });
 
+  it("renders a Skipped badge for skip reasons other than duplicate content", () => {
+    render(
+      <TooltipProvider>
+        <StatusCellContent
+          {...baseProps}
+          data={f({ status: "skipped", skip_reason: "duplicate_filename" })}
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.getByText("Skipped")).toBeInTheDocument();
+  });
+
   it("renders the Refreshing indicator when hasOpenragRefreshCue and isOpenragDocsRow", () => {
     render(
       <TooltipProvider>
