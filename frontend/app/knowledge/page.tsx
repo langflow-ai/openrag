@@ -685,9 +685,25 @@ function SearchPage() {
   const error = isWildcardQuery ? listFilesError : searchError;
   const isError = isWildcardQuery ? isListFilesError : isSearchError;
 
+  // When in search mode, filter client-side by date so the range picker applies
+  // to both list and search results.
+  const dateFilteredSearchFiles = isWildcardQuery
+    ? []
+    : searchFiles.filter((file) => {
+        if (!createdAfter && !createdBefore) return true;
+        const t = file.indexed_time
+          ? new Date(file.indexed_time).getTime()
+          : null;
+        if (t === null || Number.isNaN(t)) return true;
+        if (createdAfter && t < new Date(createdAfter).getTime()) return false;
+        if (createdBefore && t > new Date(createdBefore).getTime())
+          return false;
+        return true;
+      });
+
   const effectiveData: File[] = isWildcardQuery
     ? (listFilesData?.files ?? [])
-    : searchFiles.slice(
+    : dateFilteredSearchFiles.slice(
         (currentPage - 1) * currentPageSize,
         currentPage * currentPageSize,
       );
@@ -763,7 +779,7 @@ function SearchPage() {
 
   const serverTotal = isWildcardQuery
     ? (listFilesData?.total ?? 0)
-    : searchFiles.length;
+    : dateFilteredSearchFiles.length;
   const gridRows: File[] = fileResults;
   const totalPages = Math.max(1, Math.ceil(serverTotal / currentPageSize));
 
