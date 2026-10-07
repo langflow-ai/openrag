@@ -14,7 +14,7 @@ import json
 import re
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 from uuid import uuid4
 
 from services import provider_error_log
@@ -48,14 +48,47 @@ class LlmGatewayError(Exception):
 
     `message` is safe to return to the caller. `detail` carries the internal
     text (upstream exception type and body) and is for logs only — returning it
-    is stack-trace exposure (CodeQL py/stack-trace-exposure).
+    is stack-trace exposure (CodeQL py/stack-trace-exposure). `code` is the
+    OpenAI `error.code` for the failure, when it has been classified.
     """
 
-    def __init__(self, message: str, status_code: int = 400, detail: str | None = None):
+    def __init__(
+        self,
+        message: str,
+        status_code: int = 400,
+        detail: str | None = None,
+        code: str | None = None,
+    ):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
         self.detail = detail or message
+        self.code = code
+
+
+CONTEXT_LENGTH_ERROR_CODE = "context_length_exceeded"
+
+
+class LlmContextLengthError(LlmGatewayError):
+    """The input does not fit the model's context window.
+
+    The provider is serving and a shorter input succeeds, so a caller that can
+    shorten or split what it sent catches this instead of the base class.
+    `max_tokens` and `requested_tokens` are None when the provider's error did
+    not state them.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        detail: str | None = None,
+        *,
+        max_tokens: int | None = None,
+        requested_tokens: int | None = None,
+    ):
+        super().__init__(message, 400, detail, code=CONTEXT_LENGTH_ERROR_CODE)
+        self.max_tokens = max_tokens
+        self.requested_tokens = requested_tokens
 
 
 def _get_config():
@@ -671,16 +704,10 @@ def _provider_error_text(detail: str, exc: BaseException | None) -> str | None:
 
 #: Upstream statuses worth passing through: a client can act on these itself.
 #: Everything else becomes 502 — an upstream 401/403 must not read as an OpenRAG
-#: auth failure, and an upstream 400 must not read as a bad request to us.
+#: auth failure, and an upstream 400 must not read as a bad request to us. The
+#: one exception is an input that overflows the context window, which *is* a bad
+#: request to us; see `_classify_upstream_failure`.
 _PASSTHROUGH_UPSTREAM_STATUSES = frozenset({408, 429, 503, 504})
-
-
-def _upstream_status_code(exc: BaseException) -> int:
-    """HTTP status for a failed upstream call, from the provider's own where useful."""
-    status = getattr(exc, "status_code", None)
-    if isinstance(status, int) and status in _PASSTHROUGH_UPSTREAM_STATUSES:
-        return status
-    return 502
 
 
 def _upstream_client_message(
@@ -743,6 +770,81 @@ def _is_request_scoped_failure(detail: str, exc: BaseException | None) -> bool:
     ):
         return True
     return is_context_window_error(detail)
+
+
+#: Exception classes, anywhere in the MRO, that mean the provider was never
+#: reached. LiteLLM gives its own APIConnectionError a 500, so on the status
+#: alone it would read as the provider failing.
+_UNREACHABLE_EXCEPTION_NAMES = frozenset(
+    {"APIConnectionError", "ConnectionError", "ConnectError", "ClientConnectionError"}
+)
+
+
+class _UpstreamFailure(NamedTuple):
+    """How one failed upstream call is reported to the caller and to the banner."""
+
+    code: str
+    status_code: int
+    counts_against_provider: bool
+
+
+def _classify_upstream_failure(detail: str, exc: BaseException | None) -> _UpstreamFailure:
+    """Name a failed upstream call: its `error.code`, its HTTP status, its blame.
+
+    The status keeps the passthrough rule above. The code says what the status
+    cannot: a 502 covers a rejected key, a model that does not exist and a
+    provider that is down, and a client deciding whether to retry needs to know
+    which. Only an input that overflows the context window is the caller's own
+    doing, so only that becomes a 400 and stays out of the provider's health.
+    """
+    from api.provider_validation import (
+        is_provider_credential_error,
+        is_provider_tls_error,
+        is_provider_truncated_response_error,
+    )
+
+    if _is_request_scoped_failure(detail, exc):
+        return _UpstreamFailure(CONTEXT_LENGTH_ERROR_CODE, 400, counts_against_provider=False)
+
+    status = getattr(exc, "status_code", None)
+    if not isinstance(status, int):
+        status = None
+    # Same precedence as `_upstream_client_message`, so the code and the text
+    # never describe two different failures.
+    if is_provider_tls_error(detail) or is_provider_truncated_response_error(detail):
+        code = "upstream_unreachable"
+    elif status in (401, 403) or is_provider_credential_error(detail):
+        code = "upstream_auth_error"
+    elif status == 429:
+        code = "rate_limit_exceeded"
+    elif status in (408, 504):
+        code = "upstream_timeout"
+    elif exc is not None and any(
+        cls.__name__ in _UNREACHABLE_EXCEPTION_NAMES for cls in type(exc).__mro__
+    ):
+        code = "upstream_unreachable"
+    elif status in (500, 502, 503):
+        code = "upstream_unavailable"
+    elif status is not None and 400 <= status < 500:
+        code = "upstream_invalid_request"
+    else:
+        code = "upstream_error"
+    http_status = status if status in _PASSTHROUGH_UPSTREAM_STATUSES else 502
+    return _UpstreamFailure(code, http_status, counts_against_provider=True)
+
+
+def _upstream_gateway_error(
+    message: str, detail: str, failure: _UpstreamFailure
+) -> LlmGatewayError:
+    """The exception a classified upstream failure is raised as."""
+    if failure.code == CONTEXT_LENGTH_ERROR_CODE:
+        from api.provider_validation import context_window_token_counts
+
+        max_tokens, requested_tokens = context_window_token_counts(detail)
+        return LlmContextLengthError(
+            message, detail, max_tokens=max_tokens, requested_tokens=requested_tokens
+        )
+    return LlmGatewayError(message, failure.status_code, detail=detail, code=failure.code)
 
 
 def _redact(message: str, credentials: Mapping[str, Any]) -> str:
@@ -1148,13 +1250,10 @@ async def chat_completions(
         # The health banner otherwise reports whatever its own probe hit, which
         # is a different request and so often a different error. Hand it the
         # text this caller is being shown.
-        if not _is_request_scoped_failure(detail, exc):
+        failure = _classify_upstream_failure(detail, exc)
+        if failure.counts_against_provider:
             provider_error_log.record_failure(provider, "chat", message)
-        raise LlmGatewayError(
-            message,
-            _upstream_status_code(exc),
-            detail=detail,
-        ) from exc
+        raise _upstream_gateway_error(message, detail, failure) from exc
 
     if stream:
         # A stream can still fail mid-flight, so _stream_sse clears the record
@@ -1369,7 +1468,7 @@ def _empty_stream_message(provider: str, model: str, finish_reason: str | None) 
     )
 
 
-def _error_frame(message: str, provider: str, model: str) -> str:
+def _error_frame(message: str, provider: str, model: str, code: str = "upstream_error") -> str:
     """SSE frame an OpenAI client turns back into a raised APIError."""
     return (
         "data: "
@@ -1378,7 +1477,7 @@ def _error_frame(message: str, provider: str, model: str) -> str:
                 "error": {
                     "message": message,
                     "type": "api_error",
-                    "code": "upstream_error",
+                    "code": code,
                     "provider": provider,
                     "model": model,
                 }
@@ -1491,9 +1590,10 @@ async def _stream_sse(
         tally.error = detail
         logger.error("LLM chat stream failed", provider=provider, model=model, error=detail)
         message = _upstream_client_message(detail, provider, model, exc)
-        if not _is_request_scoped_failure(detail, exc):
+        failure = _classify_upstream_failure(detail, exc)
+        if failure.counts_against_provider:
             provider_error_log.record_failure(provider, "chat", message)
-        yield _error_frame(message, provider, model)
+        yield _error_frame(message, provider, model, failure.code)
     finally:
         close = getattr(stream, "aclose", None) or getattr(stream, "close", None)
         if close is not None:
@@ -1625,11 +1725,11 @@ async def embeddings(
         detail = _redact(f"{type(exc).__name__}: {exc}", credentials)
         logger.error("LLM embeddings failed", provider=provider, model=litellm_model, error=detail)
         message = _upstream_client_message(detail, provider, litellm_model, exc)
-        provider_error_log.record_failure(provider, "embedding", message)
-        raise LlmGatewayError(
-            message,
-            _upstream_status_code(exc),
-            detail=detail,
-        ) from exc
+        # An over-length input is one chunk's problem. Recording it latched the
+        # banner against a provider that was embedding every other chunk fine.
+        failure = _classify_upstream_failure(detail, exc)
+        if failure.counts_against_provider:
+            provider_error_log.record_failure(provider, "embedding", message)
+        raise _upstream_gateway_error(message, detail, failure) from exc
     provider_error_log.record_success(provider, "embedding")
     return response

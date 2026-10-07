@@ -181,6 +181,32 @@ def _provider_credential_failure_metadata(error: str) -> dict | None:
     }
 
 
+def _context_window_failure_metadata(error: str) -> dict | None:
+    """Classify a chunk the embedding model rejected as longer than its input limit."""
+    from api.provider_validation import context_window_token_counts, is_context_window_error
+
+    if not is_context_window_error(error):
+        return None
+
+    limit, requested = context_window_token_counts(error)
+    if limit and requested:
+        size = f" ({requested} tokens; the limit is {limit})"
+    elif limit:
+        size = f" (the limit is {limit} tokens)"
+    else:
+        size = ""
+    return {
+        "component": "openrag",
+        "failure_phase": "embedding",
+        "user_facing_message": (
+            f"A section of this document is longer than the embedding model accepts{size}. "
+            "Try a smaller chunk size or an embedding model with a larger input limit, "
+            "then retry ingestion."
+        ),
+        "actionable_by": "USER_ACTIONABLE",
+    }
+
+
 def _is_transient_connectivity_error(error: str) -> bool:
     lowered = error.lower()
     return any(marker in lowered for marker in _TRANSIENT_CONNECTIVITY_ERROR_MARKERS)
@@ -1398,6 +1424,12 @@ class TaskService:
         credential_meta = _provider_credential_failure_metadata(error)
         if credential_meta:
             return credential_meta
+
+        # Before the Langflow fallbacks, which would report the provider's raw
+        # sentence as a retryable failure: retrying the same chunk fails again.
+        context_window_meta = _context_window_failure_metadata(error)
+        if context_window_meta:
+            return context_window_meta
 
         if _is_transient_connectivity_error(error) or _is_langflow_transport_failure(error):
             return {

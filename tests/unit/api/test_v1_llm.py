@@ -10,7 +10,7 @@ from fastapi import params as fastapi_params
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from api.v1 import llm as v1_llm
-from services.llm_gateway import LlmGatewayError
+from services.llm_gateway import LlmContextLengthError, LlmGatewayError
 from services.model_catalog import CATALOG_UNAVAILABLE_MESSAGE, CatalogUnavailableError
 from session_manager import User
 
@@ -109,6 +109,50 @@ async def test_chat_completions_maps_gateway_errors(monkeypatch):
     assert response.status_code == 400
     data = json.loads(response.body)
     assert data["error"]["message"] == "OpenAI API key is not configured"
+    # No code is invented for a failure the gateway did not classify.
+    assert "code" not in data["error"]
+
+
+@pytest.mark.asyncio
+async def test_embeddings_reports_an_over_length_input_as_a_coded_400(monkeypatch):
+    """What an OpenAI client expects for it, so it can branch on `error.code`."""
+    message = "watsonx/e5: This model's maximum context length is 512 tokens."
+    monkeypatch.setattr(
+        v1_llm,
+        "embeddings",
+        AsyncMock(side_effect=LlmContextLengthError(message, detail="BadRequestError: ...")),
+    )
+    request = MagicMock()
+    request.json = AsyncMock(return_value={"model": "watsonx:e5", "input": ["x"]})
+
+    response = await v1_llm.embeddings_endpoint(request, user=_user())
+
+    assert response.status_code == 400
+    assert json.loads(response.body) == {
+        "error": {
+            "message": message,
+            "type": "invalid_request_error",
+            "code": "context_length_exceeded",
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_classified_upstream_failure_carries_its_code(monkeypatch):
+    monkeypatch.setattr(
+        v1_llm,
+        "embeddings",
+        AsyncMock(
+            side_effect=LlmGatewayError("rate limited", 429, code="rate_limit_exceeded"),
+        ),
+    )
+    request = MagicMock()
+    request.json = AsyncMock(return_value={"model": "watsonx:e5", "input": ["x"]})
+
+    response = await v1_llm.embeddings_endpoint(request, user=_user())
+
+    assert response.status_code == 429
+    assert json.loads(response.body)["error"]["code"] == "rate_limit_exceeded"
 
 
 @pytest.mark.asyncio

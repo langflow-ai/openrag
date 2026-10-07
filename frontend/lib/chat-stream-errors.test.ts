@@ -188,4 +188,48 @@ describe("formatProviderErrorMessage", () => {
       "Invalid API key",
     );
   });
+
+  // The OpenAI SDK prints the body as a Python dict, which is how a gateway
+  // error reads once Langflow relays it. It used to collapse to "400 -".
+  const overflow =
+    "watsonx/intfloat/multilingual-e5-large: Invalid input argument for Model " +
+    "'intfloat/multilingual-e5-large': This model's maximum context length is 512 " +
+    "tokens. However, you requested 548 tokens in the input for embedding generation.";
+
+  it("reads the message out of an OpenAI SDK error printed as a Python dict", () => {
+    assert.equal(
+      formatProviderErrorMessage(
+        `Error code: 400 - {'error': {'message': "${overflow}", 'type': 'invalid_request_error', 'code': 'context_length_exceeded'}}`,
+      ),
+      overflow,
+    );
+    assert.equal(
+      formatProviderErrorMessage(
+        `Error building Component OpenSearch: \n\nError code: 400 - {'error': {'message': "${overflow}", 'type': 'invalid_request_error'}}`,
+      ),
+      overflow,
+    );
+  });
+
+  it("unescapes a single-quoted Python message", () => {
+    assert.equal(
+      formatProviderErrorMessage(
+        "Error code: 404 - {'error': {'message': 'The model `x` doesn\\'t exist, said \"the API\"', 'type': 'api_error'}}",
+      ),
+      'The model `x` doesn\'t exist, said "the API"',
+    );
+  });
+
+  it("keeps the whole string when the prefix is only a status code", () => {
+    const raw = "Error code: 502 - {'error': <object at 0x1>}";
+    assert.equal(
+      formatProviderErrorMessage(raw),
+      "502 - {'error': <object at 0x1>}",
+    );
+  });
+
+  it("does not read a message out of prose that merely mentions one", () => {
+    const raw = "The reply had 'message': 'hello' in it";
+    assert.equal(formatProviderErrorMessage(raw), raw);
+  });
 });

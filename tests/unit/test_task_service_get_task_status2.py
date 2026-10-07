@@ -312,6 +312,48 @@ class TestInferFailureMetadata:
         assert "error running graph" not in meta["user_facing_message"].lower()
         assert "{" not in meta["user_facing_message"]
 
+    def test_chunk_too_long_for_the_embedding_model_is_user_actionable(self, task_service):
+        """Retrying resends the same chunk, so RETRYABLE would be a false promise."""
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error=(
+                "watsonx/intfloat/multilingual-e5-large: Invalid input argument for Model "
+                "'intfloat/multilingual-e5-large': This model's maximum context length is 512 "
+                "tokens. However, you requested 548 tokens in the input for embedding generation."
+            ),
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta == {
+            "component": "openrag",
+            "failure_phase": "embedding",
+            "user_facing_message": (
+                "A section of this document is longer than the embedding model accepts "
+                "(548 tokens; the limit is 512). Try a smaller chunk size or an embedding "
+                "model with a larger input limit, then retry ingestion."
+            ),
+            "actionable_by": "USER_ACTIONABLE",
+        }
+
+    @pytest.mark.parametrize(
+        ("error", "size"),
+        [
+            ("This model's maximum context length is 512 tokens.", " (the limit is 512 tokens)"),
+            ("Error code: 400 - {'error': {'code': 'context_length_exceeded'}}", ""),
+        ],
+    )
+    def test_chunk_too_long_states_only_the_counts_the_provider_gave(
+        self, task_service, error, size
+    ):
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW, docling_status=DoclingPhaseStatus.SUCCESS, error=error
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta["user_facing_message"].startswith(
+            f"A section of this document is longer than the embedding model accepts{size}. "
+        )
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+
     def test_langflow_disconnect_with_api_key_text_prefers_credentials(self, task_service):
         ft = _make_file_task(
             phase=IngestionPhase.LANGFLOW,
