@@ -66,6 +66,56 @@ class TestQualifiedModelId:
             "azure_ai:my-deployment"
         )
 
+    @pytest.mark.parametrize(
+        "provider, stored, expected",
+        [
+            ("azure", "azure/prod-embed", "azure:prod-embed"),
+            (
+                "watsonx_onprem",
+                "watsonx_onprem/ibm/slate-125m",
+                "watsonx_onprem:ibm/slate-125m",
+            ),
+            ("azure", "AZURE/prod-embed", "azure:prod-embed"),
+        ],
+    )
+    def test_a_legacy_slash_tag_is_not_re_tagged(self, provider, stored, expected) -> None:
+        """Ids stored before the switch to `provider:` are still in config.
+
+        Re-tagging one gives `azure:azure/prod-embed`; `split_model_id` then
+        strips the colon tag and leaves `azure/prod-embed` as the model name,
+        so LiteLLM is asked for `azure/azure/prod-embed` and the call fails as
+        a missing model.
+        """
+        assert qualified_model_id(provider, stored) == expected
+
+    @pytest.mark.parametrize(
+        "provider, model, expected",
+        [
+            # A slash in the name is part of the name, not a tag.
+            ("watsonx", "ibm/slate-125m", "watsonx:ibm/slate-125m"),
+            ("watsonx", "openai/gpt-oss-120b", "watsonx:openai/gpt-oss-120b"),
+            # Another provider's tag is also just a name here.
+            ("azure_ai", "openai/gpt-4o", "azure_ai:openai/gpt-4o"),
+        ],
+    )
+    def test_only_this_providers_own_prefix_is_stripped(self, provider, model, expected) -> None:
+        """watsonx genuinely serves `openai/gpt-oss-120b`."""
+        assert qualified_model_id(provider, model) == expected
+
+    @pytest.mark.parametrize(
+        "provider, stored, expected_route",
+        [
+            ("azure", "azure/prod-embed", "azure/prod-embed"),
+            ("watsonx", "ibm/slate-125m", "watsonx/ibm/slate-125m"),
+        ],
+    )
+    def test_what_litellm_finally_receives(self, provider, stored, expected_route) -> None:
+        """The bug is only visible after the round trip, so assert that too."""
+        from services.llm_gateway import split_model_id
+
+        resolved, name = split_model_id(qualified_model_id(provider, stored))
+        assert f"{resolved}/{name}" == expected_route
+
     @pytest.mark.parametrize("provider", [None, "", "   "])
     def test_without_a_provider_the_id_is_left_for_the_default(self, provider) -> None:
         """Unchanged, so the gateway falls back to the configured default.
@@ -77,6 +127,20 @@ class TestQualifiedModelId:
 
     def test_a_blank_model_stays_blank(self) -> None:
         assert qualified_model_id("openai", "") == ""
+
+    def test_the_public_id_shares_these_rules(self) -> None:
+        """`public_model_id` delegates, so de-duplication cannot drift apart.
+
+        It had the same double-tagging defect: the two helpers differ only in
+        the OpenAI case, and keeping the tagging rules in one place is what
+        stops one being fixed and the other not.
+        """
+        from services.model_catalog import public_model_id
+
+        assert public_model_id("azure", "azure/prod-embed") == "azure:prod-embed"
+        assert public_model_id("azure", "azure:prod-embed") == "azure:prod-embed"
+        # OpenAI still gets a bare id, which is the one difference.
+        assert public_model_id("openai", "text-embedding-3-small") == ("text-embedding-3-small")
 
 
 def _processor(model: str):

@@ -252,7 +252,12 @@ async def test_langflow_preflight_detects_embedding_dimensions_with_probe(monkey
     # One call for two invocations: the probe is cached per provider+model.
     # The id is provider-tagged with `:` so the gateway routes it to the
     # provider the caller named rather than to the configured default.
-    assert calls == [("provider:provider/model", ["dimension probe"])]
+    #
+    # `provider/model` is the legacy tagged spelling of the same id, so the
+    # tag is replaced rather than stacked. Asserting `provider:provider/model`
+    # here, as this did, encoded the double-tagging bug: the gateway strips
+    # the colon tag and would ask LiteLLM for `provider/provider/model`.
+    assert calls == [("provider:model", ["dimension probe"])]
 
 
 @pytest.mark.asyncio
