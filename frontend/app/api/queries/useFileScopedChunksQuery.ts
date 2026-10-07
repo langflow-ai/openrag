@@ -80,7 +80,7 @@ export function useFileScopedChunksQuery(
     const mergedChunks: ChunkResult[] = (allFile.chunks ?? [])
       .filter((chunk) => {
         const key = chunk.chunk_id ?? chunk.id;
-        return key ? matchedChunkIds.has(key) : true;
+        return key ? matchedChunkIds.has(key) : false;
       })
       .map((chunk) => {
         const key = chunk.chunk_id ?? chunk.id;

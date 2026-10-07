@@ -108,6 +108,7 @@ describe("useFileScopedChunksQuery", () => {
     serveSearch([
       chunk({
         filename: "test.pdf",
+        chunk_id: "c1",
         text: "chunk with keyword",
         highlights: ["<mark>keyword</mark>"],
       }),
@@ -232,5 +233,54 @@ describe("useFileScopedChunksQuery", () => {
     expect(texts).toContain("matched chunk one");
     expect(texts).toContain("matched chunk three");
     expect(texts).not.toContain("unmatched chunk two");
+  });
+
+  it("excludes unidentified chunks (no chunk_id or id) when searchQuery is active", async () => {
+    server.use(
+      http.post("/api/search", async ({ request }) => {
+        const body = (await request.json()) as { query: string };
+        if (body.query === "*") {
+          return HttpResponse.json({
+            results: [
+              chunk({
+                filename: "test.pdf",
+                chunk_id: "c1",
+                text: "identified chunk",
+              }),
+              // chunk with no chunk_id and no id
+              {
+                filename: "test.pdf",
+                mimetype: "application/pdf",
+                page: 1,
+                text: "unidentified chunk",
+                score: 1,
+              },
+            ],
+            warnings: [],
+          });
+        }
+        return HttpResponse.json({
+          results: [
+            chunk({
+              filename: "test.pdf",
+              chunk_id: "c1",
+              text: "identified chunk",
+              highlights: [],
+            }),
+          ],
+          warnings: [],
+        });
+      }),
+    );
+
+    const { result } = renderHook(
+      () => useFileScopedChunksQuery("test.pdf", "keyword"),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    // The unidentified chunk must be excluded — it cannot be matched to a semantic result.
+    expect(result.current.file?.chunks).toHaveLength(1);
+    expect(result.current.file?.chunks?.[0]?.text).toBe("identified chunk");
   });
 });
