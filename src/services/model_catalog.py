@@ -278,11 +278,9 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
     keys = {entry.name for entry in providers}
     chat_by_provider: dict[str, list[dict[str, Any]]] = {}
     embed_by_provider: dict[str, list[dict[str, Any]]] = {}
-    # Track seen names per (kind, provider) pair so that a bare entry like
-    # `gemini-exp-1206` and a prefixed one `gemini/gemini-exp-1206` in
-    # litellm.model_cost both strip to the same name and only the first is kept.
-    # Without this, the frontend receives duplicate model ids and React warns
-    # about children with the same key.
+
+
+    #prevents duplicate models in gemini, tracking seen model names
     seen_chat: dict[str, set[str]] = {}
     seen_embed: dict[str, set[str]] = {}
 

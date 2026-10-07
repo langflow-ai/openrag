@@ -83,10 +83,7 @@ _FALLBACK_PROVIDERS: tuple[dict[str, Any], ...] = (
 
 _TRUTHY = {"true", "1", "yes", "on"}
 
-# Providers that are gated behind a dedicated env flag (OPENRAG_<UPPER> = true).
-# When the flag is set, the provider's modes are overridden to be visible in all
-# run modes — the YAML itself lists them all as false so the default is always
-# hidden regardless of how the config is read.
+# dev testing model: gemini hidden behind OPENRAG_GEMINI config in .env
 _ENV_GATED_PROVIDERS: dict[str, str] = {
     "gemini": "OPENRAG_GEMINI",
 }

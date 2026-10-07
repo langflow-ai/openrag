@@ -163,8 +163,8 @@ providers:
       on_prem: true
       saas: true
 
-  # Google Gemini — early stand-in, not yet production-ready.
-  # Hidden in every run mode by default; enable by setting OPENRAG_GEMINI=true
+  # Google Gemini: testing / dev phase
+  # enable by setting OPENRAG_GEMINI=true
   - name: gemini
     display_name: Google Gemini
     badge: In development
