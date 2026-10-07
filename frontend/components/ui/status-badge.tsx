@@ -61,7 +61,10 @@ const statusConfig = {
 };
 
 export const StatusBadge = ({ status, className }: StatusBadgeProps) => {
-  const config = statusConfig[status];
+  const config = statusConfig[status] ?? {
+    label: status,
+    className: "text-muted-foreground",
+  };
 
   return (
     <div

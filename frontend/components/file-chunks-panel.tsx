@@ -196,9 +196,13 @@ export function FileChunksPanel({
 
   const deferredQuery = useDeferredValue(localQuery);
   const needle = deferredQuery.trim().toLowerCase();
-  const chunks = needle
-    ? allChunks.filter((chunk) => chunkMatches(chunk, needle))
-    : allChunks;
+  // When a semantic searchQuery is active the backend already filtered and
+  // ranked the chunks — skip the local keyword filter so chunks that matched
+  // semantically but don't contain the literal term are still shown.
+  const chunks =
+    needle && !searchQuery
+      ? allChunks.filter((chunk) => chunkMatches(chunk, needle))
+      : allChunks;
 
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
