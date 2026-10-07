@@ -118,7 +118,9 @@ export function KnowledgeDropdown() {
   const [showFolderDialog, setShowFolderDialog] = useState(false);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [uploadBatchSize, setUploadBatchSize] = useState(25);
-  const [maxUploadSizeMb, setMaxUploadSizeMb] = useState(100);
+  // Read only inside upload handlers (toasts and the batch budget), so a ref
+  // keeps the server limit without redrawing the menu when options arrive.
+  const maxUploadSizeMbRef = useRef(100);
   const [folderPath, setFolderPath] = useState("");
   const [folderLoading, setFolderLoading] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
@@ -184,7 +186,7 @@ export function KnowledgeDropdown() {
             typeof uploadOptionsData.max_upload_size_mb === "number" &&
             uploadOptionsData.max_upload_size_mb > 0
           ) {
-            setMaxUploadSizeMb(uploadOptionsData.max_upload_size_mb);
+            maxUploadSizeMbRef.current = uploadOptionsData.max_upload_size_mb;
           }
         }
 
@@ -315,6 +317,7 @@ export function KnowledgeDropdown() {
 
     if (files && files.length > 0) {
       const file = files[0];
+      const maxUploadSizeMb = maxUploadSizeMbRef.current;
 
       // File selection will close dropdown automatically
 
@@ -469,7 +472,7 @@ export function KnowledgeDropdown() {
     const batches = batchFilesBySizeAndCount(
       filesToUpload,
       uploadBatchSize,
-      maxUploadSizeMb * 1024 * 1024,
+      maxUploadSizeMbRef.current * 1024 * 1024,
     );
 
     const taskIdsByBatch: (string | undefined)[] = [];
@@ -657,6 +660,7 @@ export function KnowledgeDropdown() {
       });
       const unsupportedCount = fileList.length - supportedFiles.length;
 
+      const maxUploadSizeMb = maxUploadSizeMbRef.current;
       const maxUploadBytes = maxUploadSizeMb * 1024 * 1024;
       const filteredFiles = supportedFiles.filter(
         (file) => file.size <= maxUploadBytes,

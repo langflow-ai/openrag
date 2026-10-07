@@ -36,6 +36,15 @@ interface IngestSaveContextValue {
 
 const IngestSaveContext = createContext<IngestSaveContextValue | null>(null);
 
+function entriesMap(ref: {
+  current: Map<string, SaveEntry> | null;
+}): Map<string, SaveEntry> {
+  if (ref.current === null) {
+    ref.current = new Map();
+  }
+  return ref.current;
+}
+
 /**
  * Collects the save handlers of every ingest settings section so the tab can
  * render a single Save button, as the design calls for. Sections stay owners of
@@ -44,14 +53,16 @@ const IngestSaveContext = createContext<IngestSaveContextValue | null>(null);
 export function IngestSaveProvider({ children }: { children: ReactNode }) {
   // Handlers live in a ref so re-registering a fresh closure on each render
   // never triggers a render of its own; only the flags below do that.
-  const entriesRef = useRef<Map<string, SaveEntry>>(new Map());
+  // The map is created on first use. Passing `new Map()` to useRef would
+  // allocate a throwaway map on every render.
+  const entriesRef = useRef<Map<string, SaveEntry> | null>(null);
   const [flags, setFlags] = useState<
     Record<string, { isDirty: boolean; blocked: boolean }>
   >({});
   const [isSaving, setIsSaving] = useState(false);
 
   const register = useCallback((key: string, entry: SaveEntry) => {
-    entriesRef.current.set(key, entry);
+    entriesMap(entriesRef).set(key, entry);
     setFlags((prev) => {
       const current = prev[key];
       if (
@@ -69,7 +80,7 @@ export function IngestSaveProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const unregister = useCallback((key: string) => {
-    entriesRef.current.delete(key);
+    entriesMap(entriesRef).delete(key);
     setFlags((prev) => {
       if (!(key in prev)) return prev;
       const next = { ...prev };
@@ -87,7 +98,7 @@ export function IngestSaveProvider({ children }: { children: ReactNode }) {
     setIsSaving(true);
     try {
       // Insertion order, so sections save top-to-bottom as they appear.
-      for (const entry of entriesRef.current.values()) {
+      for (const entry of entriesMap(entriesRef).values()) {
         if (!entry.isDirty) continue;
         if ((await entry.save()) === false) return false;
       }
