@@ -6,7 +6,15 @@ per-file limit would be fully received first. This middleware counts the
 bytes as they arrive on the ingest routes and stops the read once they pass
 the per-file limit plus a fixed allowance for the multipart envelope.
 
-The allowance is what lets a file at the limit, plus its boundary and
+That cap is the whole request. Both ingest routes accept several files, but
+the body is one stream, so the read cannot tell two valid files from one
+file that is already too big. Two files that are each under the per-file
+limit still stop the read when their total passes it. Folder uploads are
+split to stay under that total. Other clients have to send fewer files per
+request. Raising the cap to a whole batch would let one oversized file be
+stored before the per-file check could reject it.
+
+The allowance is what lets a single file at the limit, plus its boundary and
 headers, still reach the per-file check, which is the response that names
 the file. A larger body never gets that far.
 """
@@ -53,9 +61,9 @@ def limited_receive(receive: Receive, max_bytes: int) -> Receive:
             raise HTTPException(
                 status_code=413,
                 detail=(
-                    f"Upload too large. The request body exceeded the {MAX_UPLOAD_SIZE_MB} MB "
-                    "per-file limit plus multipart overhead, so the upload was stopped "
-                    "while it was still being received."
+                    f"Upload too large. One ingest request cannot exceed {MAX_UPLOAD_SIZE_MB} MB "
+                    "plus multipart overhead, so the upload was stopped while it was still "
+                    "being received. Send fewer or smaller files."
                 ),
             )
         return message

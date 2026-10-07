@@ -85,7 +85,7 @@ def test_a_body_past_the_allowance_stops_before_the_endpoint(monkeypatch):
     )
 
     assert response.status_code == 413
-    assert "stopped while" in response.json()["detail"]
+    assert "One ingest request cannot exceed" in response.json()["detail"]
     assert called == []
 
 
@@ -121,3 +121,26 @@ def test_the_allowance_is_one_mebibyte_above_the_per_file_limit(monkeypatch):
     from api.upload_body_limit import upload_request_body_limit_bytes
 
     assert upload_request_body_limit_bytes() == 100 * MB + UPLOAD_BODY_OVERHEAD_BYTES
+
+
+@pytest.mark.parametrize("raw", ["0", "-1", "-100"])
+def test_a_non_positive_upload_limit_is_rejected(monkeypatch, raw):
+    monkeypatch.setenv("OPENRAG_MAX_UPLOAD_MB", raw)
+    from config.settings import resolve_max_upload_size_mb
+
+    with pytest.raises(RuntimeError, match="positive"):
+        resolve_max_upload_size_mb()
+
+
+def test_an_unset_upload_limit_uses_the_default(monkeypatch):
+    monkeypatch.delenv("OPENRAG_MAX_UPLOAD_MB", raising=False)
+    from config.settings import resolve_max_upload_size_mb
+
+    assert resolve_max_upload_size_mb() == 100
+
+
+def test_a_positive_upload_limit_is_kept(monkeypatch):
+    monkeypatch.setenv("OPENRAG_MAX_UPLOAD_MB", "25")
+    from config.settings import resolve_max_upload_size_mb
+
+    assert resolve_max_upload_size_mb() == 25
