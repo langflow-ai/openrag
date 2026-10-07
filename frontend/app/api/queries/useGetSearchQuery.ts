@@ -81,6 +81,7 @@ export interface File {
   chunks?: ChunkResult[];
   allowed_users?: string[];
   allowed_groups?: string[];
+  indexed_time?: string;
 }
 
 // Non-fatal signal from the backend — e.g. an embedding provider was removed

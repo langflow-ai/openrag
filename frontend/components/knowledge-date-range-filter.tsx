@@ -24,6 +24,8 @@ function formatDateLabel(date: Date): string {
 export function KnowledgeDateRangeFilter() {
   const { dateRange, setDateRange } = useKnowledgeFilter();
   const [open, setOpen] = useState(false);
+  // Captured once on mount so server/client renders agree on the same Date.
+  const [today] = useState(() => new Date());
 
   const selectedRange: DateRange | undefined = dateRange
     ? { from: dateRange.from, to: dateRange.to }
@@ -47,8 +49,7 @@ export function KnowledgeDateRangeFilter() {
   const handleThisMonth = () => {
     const now = new Date();
     const from = new Date(now.getFullYear(), now.getMonth(), 1);
-    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    setDateRange({ from, to });
+    setDateRange({ from, to: now });
     setOpen(false);
   };
 
@@ -64,88 +65,77 @@ export function KnowledgeDateRangeFilter() {
     : null;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant={dateRange ? "secondary" : "outline"}
-          className={cn(
-            "flex-shrink-0 rounded-lg gap-2",
-            dateRange && "border-primary/50",
-          )}
-          aria-label={label ?? "Filter by date range"}
-        >
-          <CalendarIcon className="h-4 w-4" />
-          {label ? (
-            <span className="hidden sm:inline text-sm">{label}</span>
-          ) : (
-            <span className="hidden sm:inline text-sm">Date range</span>
-          )}
-          {dateRange && (
-            <span
-              role="button"
-              tabIndex={0}
-              aria-label="Clear date range"
-              className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-muted"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleClear();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.stopPropagation();
-                  handleClear();
-                }
-              }}
+    <div className="flex-shrink-0 flex items-center gap-0.5">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant={dateRange ? "secondary" : "outline"}
+            className={cn("rounded-lg gap-2", dateRange && "border-primary/50")}
+            aria-label={label ?? "Filter by date range"}
+          >
+            <CalendarIcon className="h-4 w-4" />
+            {label ? (
+              <span className="hidden sm:inline text-sm">{label}</span>
+            ) : (
+              <span className="hidden sm:inline text-sm">Date range</span>
+            )}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <div className="flex gap-1 p-2 border-b">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs"
+              onClick={() => handlePreset(7)}
             >
-              <X className="h-3 w-3" />
-            </span>
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <div className="flex gap-1 p-2 border-b">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs"
-            onClick={() => handlePreset(7)}
-          >
-            Last 7 days
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs"
-            onClick={() => handlePreset(30)}
-          >
-            Last 30 days
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs"
-            onClick={handleThisMonth}
-          >
-            This month
-          </Button>
-        </div>
-        <Calendar
-          mode="range"
-          selected={selectedRange}
-          onSelect={handleSelect}
-          numberOfMonths={2}
-          defaultMonth={dateRange?.from ?? new Date()}
-          disabled={{ after: new Date() }}
-        />
-        {dateRange && (
-          <div className="border-t p-2 flex justify-end">
-            <Button variant="ghost" size="sm" onClick={handleClear}>
-              Clear
+              Last 7 days
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs"
+              onClick={() => handlePreset(30)}
+            >
+              Last 30 days
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs"
+              onClick={handleThisMonth}
+            >
+              This month
             </Button>
           </div>
-        )}
-      </PopoverContent>
-    </Popover>
+          <Calendar
+            mode="range"
+            selected={selectedRange}
+            onSelect={handleSelect}
+            numberOfMonths={2}
+            defaultMonth={dateRange?.from ?? today}
+            disabled={{ after: today }}
+          />
+          {dateRange && (
+            <div className="border-t p-2 flex justify-end">
+              <Button variant="ghost" size="sm" onClick={handleClear}>
+                Clear
+              </Button>
+            </div>
+          )}
+        </PopoverContent>
+      </Popover>
+      {dateRange && (
+        <button
+          type="button"
+          aria-label="Clear date range"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-muted text-muted-foreground"
+          onClick={handleClear}
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </div>
   );
 }

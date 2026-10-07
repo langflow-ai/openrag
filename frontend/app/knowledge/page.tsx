@@ -135,6 +135,7 @@ const AG_FIELD_TO_SORT_BY: Record<string, string> = {
   mimetype: "mimetype",
   owner: "owner",
   chunkCount: "chunk_count",
+  indexed_time: "indexed_time",
   status: "status",
 };
 
@@ -944,6 +945,26 @@ function SearchPage() {
     comparator: serverSideComparator,
   };
 
+  const colIndexedTime: ColDef<File> = {
+    field: "indexed_time",
+    headerName: "Date Uploaded",
+    ...(isCloudBrand ? { flex: 1.2, minWidth: 140 } : { minWidth: 130 }),
+    sortable: true,
+    comparator: serverSideComparator,
+    cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
+    valueFormatter: ({ value }: ValueFormatterParams<File>) => {
+      if (!value) return "—";
+      const d = new Date(value);
+      return Number.isNaN(d.getTime())
+        ? "—"
+        : d.toLocaleDateString(undefined, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          });
+    },
+  };
+
   const colChunks: ColDef<File> = {
     field: "chunkCount",
     headerName: "Chunks",
@@ -1041,6 +1062,7 @@ function SearchPage() {
         colSize,
         colType,
         colOwner,
+        colIndexedTime,
         colChunks,
         colAvgScore,
         colStatus,

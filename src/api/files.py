@@ -8,6 +8,7 @@ using FileServiceV2 (composite-aggregation cursor pagination). Pass `after_key`
 """
 
 import json
+from datetime import datetime
 
 from fastapi import Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -17,6 +18,19 @@ from session_manager import User
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def _validate_iso_timestamp(value: str | None, param_name: str) -> None:
+    """Raise HTTP 422 when *value* is present but is not a valid ISO 8601 timestamp."""
+    if value is None:
+        return
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as err:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{param_name} must be a valid ISO 8601 timestamp",
+        ) from err
 
 
 def _parse_after_key(after_key: str | None) -> dict | None:
@@ -60,6 +74,8 @@ async def list_files(
     user: User = Depends(get_current_user),
 ):
     """List ingested files with composite-aggregation pagination, filtering, and sorting."""
+    _validate_iso_timestamp(created_after, "created_after")
+    _validate_iso_timestamp(created_before, "created_before")
     parsed_after_key = _parse_after_key(after_key)
 
     try:

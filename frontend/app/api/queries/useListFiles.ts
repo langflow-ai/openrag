@@ -86,6 +86,7 @@ export const useListFiles = (
         embedding_dimensions: f.embedding_dimensions as number | undefined,
         allowed_users: (f.allowed_users as string[]) || [],
         allowed_groups: (f.allowed_groups as string[]) || [],
+        indexed_time: (f.indexed_time as string) || undefined,
         status: "active" as const,
       }),
     );
