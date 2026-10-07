@@ -53,7 +53,9 @@ async def list_files(
     after_key: str | None = Query(None, description="Composite pagination cursor (JSON-encoded)"),
     data_sources: list[str] | None = Query(None, description="Filename whitelist (repeatable)"),
     created_after: str | None = Query(None, description="Filter files created after ISO timestamp"),
-    created_before: str | None = Query(None, description="Filter files created before ISO timestamp"),
+    created_before: str | None = Query(
+        None, description="Filter files created before ISO timestamp"
+    ),
     file_service=Depends(get_file_service_v2),
     user: User = Depends(get_current_user),
 ):
