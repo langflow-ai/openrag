@@ -52,6 +52,8 @@ async def list_files(
     search: str | None = Query(None, description="Search filename"),
     after_key: str | None = Query(None, description="Composite pagination cursor (JSON-encoded)"),
     data_sources: list[str] | None = Query(None, description="Filename whitelist (repeatable)"),
+    created_after: str | None = Query(None, description="Filter files created after ISO timestamp"),
+    created_before: str | None = Query(None, description="Filter files created before ISO timestamp"),
     file_service=Depends(get_file_service_v2),
     user: User = Depends(get_current_user),
 ):
@@ -72,6 +74,8 @@ async def list_files(
             search=search,
             after_key=parsed_after_key,
             data_sources=data_sources,
+            created_after=created_after,
+            created_before=created_before,
         )
         return JSONResponse(result)
     except Exception as e:
