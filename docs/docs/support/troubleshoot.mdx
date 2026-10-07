@@ -256,12 +256,12 @@ at https://docling-serve:5001 (HTTP 413).
 
 The failure depends on the size of the whole multipart request, not on the file type, so every supported format fails at the same boundary. Note that a file slightly *under* the limit can still be refused, because the multipart envelope adds a few hundred bytes.
 
-To fix it, raise the limit on whatever proxy fronts Docling Serve:
+To fix it, set the body limit on the proxy in front of Docling Serve above [`OPENRAG_MAX_UPLOAD_MB`](/reference/configuration), and leave room for the multipart envelope. OpenRAG posts the file plus its boundary and headers, so a proxy limit equal to the file limit still rejects a file that OpenRAG accepted.
 
-* For nginx, set `client_max_body_size` to the largest document you expect to ingest.
-* For an ingress-nginx Ingress, set the `nginx.ingress.kubernetes.io/proxy-body-size` annotation. This only applies if the proxy is ingress-nginx — check before relying on it.
+* For nginx, set `client_max_body_size` above that file limit, with room for the overhead.
+* For an ingress-nginx Ingress, set the `nginx.ingress.kubernetes.io/proxy-body-size` annotation the same way. This only applies if the proxy is ingress-nginx — check before relying on it.
 
-If you cannot change that proxy, set [`OPENRAG_MAX_UPLOAD_MB`](/reference/configuration) to match the limit it enforces. OpenRAG then refuses oversized files at upload time with a message naming the file and its size, instead of accepting them and failing minutes later during conversion.
+OpenRAG refuses a file above `OPENRAG_MAX_UPLOAD_MB` at upload time, with a message naming the file and its size.
 
 ### OCR ingestion fails (easyocr not installed) {#ocr-ingestion-fails-easyocr-not-installed}
 

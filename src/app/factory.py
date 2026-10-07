@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from api.upload_body_limit import UploadBodyLimitMiddleware
 from app.container import initialize_services
 from app.lifespan import run_shutdown, run_startup
 from app.middleware import RequestLoggingMiddleware
@@ -36,6 +37,9 @@ async def create_app():
             allow_headers=["*"],
         )
 
+    # Inside the access log, outside the router, so a stopped upload is logged
+    # with the 413 FastAPI returns for the HTTPException raised mid-read.
+    app.add_middleware(UploadBodyLimitMiddleware)
     # Wire up ASGI request logging middleware (pure ASGI, not BaseHTTPMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
 

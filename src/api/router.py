@@ -80,6 +80,9 @@ async def upload_ingest_router(
     - If DISABLE_INGEST_WITH_LANGFLOW is True: uses traditional OpenRAG upload
     - If DISABLE_INGEST_WITH_LANGFLOW is False (default): uses Langflow upload-ingest via task service
     """
+    # A body past the per-file limit plus multipart overhead never arrives here:
+    # UploadBodyLimitMiddleware stops the read first. What reaches this check
+    # was fully received, so the response can name the file.
     oversized = _oversized_upload_response(file)
     if oversized is not None:
         return oversized

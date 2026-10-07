@@ -713,10 +713,10 @@ UPLOAD_BATCH_SIZE = get_env_int("UPLOAD_BATCH_SIZE", 25)
 #
 # Enforced at the API edge so an oversized file is refused while the user is
 # still watching, rather than accepted with a 202 and failing minutes later in
-# the background Docling submission. The bound must stay at or below the
-# smallest body limit on the path to docling-serve: that hop pushes the whole
-# file as multipart, and a reverse proxy in front of it (nginx defaults to 1m)
-# rejects anything larger with a 413.
+# the background Docling submission. The proxy in front of docling-serve must
+# sit above this value: that hop posts the whole file as multipart, so a proxy
+# limit equal to the file limit still rejects a file at the limit (nginx
+# defaults to 1m).
 MAX_UPLOAD_SIZE_MB = get_env_int("OPENRAG_MAX_UPLOAD_MB", 100)
 MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 
