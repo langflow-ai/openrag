@@ -40,6 +40,7 @@ interface KnowledgeActionsDropdownProps {
   filename: string;
   connectorType?: string;
   webSourceId?: string;
+  webPageId?: string;
   webChildCount?: number;
 }
 
@@ -54,6 +55,7 @@ export const KnowledgeActionsDropdown = ({
   filename,
   connectorType,
   webSourceId,
+  webPageId,
   webChildCount,
 }: KnowledgeActionsDropdownProps) => {
   const { refreshTasks } = useTask();
@@ -165,6 +167,23 @@ export const KnowledgeActionsDropdown = ({
         <DropdownMenuContent side="right" align="start" sideOffset={-10}>
           {webSourceId ? (
             <>
+              {!webPageId && (
+                <DropdownMenuItem
+                  className="text-primary focus:text-primary cursor-pointer"
+                  onClick={() => {
+                    trackButton({
+                      CTA: "View Pages",
+                      elementId: "view-website-pages-button",
+                      namespace: "knowledge",
+                    });
+                    router.push(
+                      `/knowledge?website=${encodeURIComponent(webSourceId)}`,
+                    );
+                  }}
+                >
+                  View pages
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 className="text-primary focus:text-primary cursor-pointer"
                 disabled={syncWebsiteSourceMutation.isPending}

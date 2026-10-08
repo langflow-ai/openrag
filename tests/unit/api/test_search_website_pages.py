@@ -1,10 +1,9 @@
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
+from api import search as search_api
 from api.search import SearchBody, _website_page_search_result
-from db.models.website_source import WebsitePage, WebsiteSource
 from services.search_service import _build_search_filter_clauses
 
 
@@ -25,78 +24,48 @@ def test_url_source_filter_matches_current_and_legacy_keyword_mappings():
 
 
 @pytest.mark.asyncio
-async def test_website_page_search_hydrates_search_hits_and_zero_chunk_pages():
-    source = WebsiteSource(
-        id="source-1",
-        owner_id="user-1",
-        name="Docs",
-        starting_url="https://docs.example.com",
-        crawl_settings={},
-    )
-    active = WebsitePage(
-        id="page-active",
-        web_source_id=source.id,
-        canonical_url="https://docs.example.com/guide",
-        title="Guide",
-        document_id="doc-active",
-        byte_size=1024,
-        chunk_count=2,
-        status="active",
-    )
-    disabled = WebsitePage(
-        id="page-disabled",
-        web_source_id=source.id,
-        canonical_url="https://docs.example.com/archived",
-        title="Archived guide",
-        document_id="doc-disabled",
-        chunk_count=0,
-        status="disabled",
-    )
-    session = SimpleNamespace(
-        get=AsyncMock(return_value=source),
-        execute=AsyncMock(
-            return_value=SimpleNamespace(
-                scalars=lambda: SimpleNamespace(all=lambda: [active, disabled])
-            )
-        ),
-    )
-    result = await _website_page_search_result(
+async def test_website_page_search_reads_zero_chunk_manifest_rows(monkeypatch):
+    source = {"id": "source-1", "owner_id": "user-1"}
+    manifests = [
         {
-            "results": [
-                {
-                    "document_id": active.document_id,
-                    "text": "The guide content",
-                    "score": 3.5,
-                    "filename": "stale title",
-                }
-            ]
+            "web_source_id": source["id"],
+            "web_page_id": "page-active",
+            "document_id": "web-page:source-1:active",
+            "content_document_id": "doc-active",
+            "canonical_url": "https://docs.example.com/guide",
+            "source_url": "https://docs.example.com/guide",
+            "filename": "Guide",
+            "file_size": 1024,
+            "chunk_count": 2,
+            "status": "active",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_dimensions": 1536,
         },
+        {
+            "web_source_id": source["id"],
+            "web_page_id": "page-disabled",
+            "document_id": "web-page:source-1:disabled",
+            "content_document_id": "doc-disabled",
+            "canonical_url": "https://docs.example.com/archived",
+            "filename": "Archived guide",
+            "chunk_count": 0,
+            "status": "disabled",
+        },
+    ]
+    monkeypatch.setattr(search_api, "get_source_manifest", AsyncMock(return_value=source))
+    monkeypatch.setattr(search_api, "list_page_manifests", AsyncMock(return_value=manifests))
+
+    result = await _website_page_search_result(
         SearchBody(
             query="*",
-            filters={"web_source_ids": [source.id]},
+            filters={"web_source_ids": [source["id"]]},
             resultMode="website_pages",
         ),
-        session,
-        SimpleNamespace(user_id=source.owner_id),
+        type("User", (), {"user_id": source["owner_id"]})(),
     )
 
     by_document = {chunk["document_id"]: chunk for chunk in result["results"]}
-    assert by_document[active.document_id] == {
-        "document_id": active.document_id,
-        "text": "The guide content",
-        "score": 3.5,
-        "filename": active.title,
-        "mimetype": "text/html",
-        "source_url": active.canonical_url,
-        "file_size": active.byte_size,
-        "connector_type": "url",
-        "web_source_id": source.id,
-        "web_page_id": active.id,
-        "web_page_depth": active.depth,
-        "canonical_url": active.canonical_url,
-        "status": "active",
-        "error": None,
-        "chunk_count": active.chunk_count,
-    }
-    assert by_document[disabled.document_id]["status"] == "disabled"
-    assert by_document[disabled.document_id]["chunk_count"] == 0
+    assert by_document["doc-active"]["embedding_dimensions"] == 1536
+    assert by_document["doc-active"]["chunk_count"] == 2
+    assert by_document["doc-disabled"]["status"] == "disabled"
+    assert by_document["doc-disabled"]["chunk_count"] == 0

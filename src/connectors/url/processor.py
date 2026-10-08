@@ -1,8 +1,4 @@
-"""Task processor for one URL source crawl.
-
-It intentionally uses TaskProcessor.process_document_standard so web pages
-follow the same native conversion, embeddings and index-writer path as uploads.
-"""
+"""Task processor for one managed URL source crawl."""
 
 from __future__ import annotations
 
@@ -12,20 +8,23 @@ import tempfile
 import time
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import col
-
-from db.engine import SessionLocal, init_engine
-from db.models.website_source import WebsiteCrawlRun, WebsitePage, WebsiteSource
 from models.processors import TaskProcessor
 from models.tasks import FileTask, TaskStatus, UploadTask
 
 from .crawler import CrawlResult, crawl
-from .locks import source_operation_lock
 from .policy import CrawlSpec
-from .projection import delete_page_chunks, delete_source_projection, upsert_source_projection
+from .projection import (
+    delete_page_chunks,
+    delete_source_chunks,
+    get_page_index_metadata,
+    get_page_manifest,
+    get_source_manifest,
+    list_page_manifests,
+    upsert_page_manifest,
+    upsert_source_manifest,
+)
 
 
 def _document_id(source_id: str, canonical_url: str) -> str:
@@ -53,276 +52,222 @@ class WebsiteSourceProcessor(TaskProcessor):
         self.owner_email = owner_email
         self.page_id = page_id
 
-    async def _ensure_source_active(self, session, source: WebsiteSource) -> WebsiteSource:
-        """Lock and refresh only the source row without expiring pending pages."""
-        if isinstance(session, AsyncSession):
-            source = (
-                await session.execute(
-                    select(WebsiteSource)
-                    .where(col(WebsiteSource.id) == self.source_id)
-                    .with_for_update()
-                    .execution_options(populate_existing=True)
-                )
-            ).scalar_one_or_none()
-        elif hasattr(session, "refresh"):
-            await session.refresh(source, attribute_names=["deleting"])
-        if source is None or source.deleting:
-            raise ValueError("Website source was deleted while processing")
+    async def _source_is_active(self) -> dict[str, Any]:
+        source = await get_source_manifest(self.source_id)
+        if source is None or source.get("deleting"):
+            raise ValueError("Website source no longer exists")
         return source
 
+    @staticmethod
+    def _new_page(source: dict[str, Any], page_id: str, canonical_url: str) -> dict[str, Any]:
+        now = datetime.now(UTC).isoformat()
+        return {
+            "web_source_id": source["id"],
+            "web_page_id": page_id,
+            "content_document_id": _document_id(source["id"], canonical_url),
+            "canonical_url": canonical_url,
+            "source_url": canonical_url,
+            "filename": canonical_url,
+            "mimetype": "text/html",
+            "file_size": 0,
+            "chunk_count": 0,
+            "status": "unavailable",
+            "suppressed_by_user": False,
+            "last_seen_at": now,
+            "updated_at": now,
+        }
+
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
-        if SessionLocal is None:
-            init_engine()
-        from db.engine import SessionLocal as sessions
+        source = await self._source_is_active()
+        target_page = (
+            await get_page_manifest(source["id"], self.page_id)
+            if self.page_id is not None
+            else None
+        )
+        if self.page_id is not None and target_page is None:
+            raise ValueError("Website page no longer exists")
 
-        assert sessions is not None
-        async with sessions() as session:
-            source = await session.get(WebsiteSource, self.source_id)
-            if source is None or source.deleting:
-                raise ValueError("Website source no longer exists")
-            target_page = None
-            if self.page_id is not None:
-                target_page = await session.get(WebsitePage, self.page_id)
-                if target_page is None or target_page.web_source_id != source.id:
-                    raise ValueError("Website page no longer exists")
-            source_is_established = source.last_successful_sync_at is not None
-            if not source_is_established:
-                source_is_established = (
-                    await session.execute(
-                        select(col(WebsitePage.id))
-                        .where(col(WebsitePage.web_source_id) == source.id)
-                        .limit(1)
-                    )
-                ).scalar_one_or_none() is not None
-            started_at = datetime.now(UTC)
-            source.status = "processing"
-            run = WebsiteCrawlRun(
-                id=str(uuid.uuid4()),
-                web_source_id=source.id,
-                task_id=upload_task.task_id,
-                settings_snapshot=source.crawl_settings,
+        pages = await list_page_manifests(source["id"])
+        pages_by_url = {str(page["canonical_url"]): page for page in pages}
+        source_is_established = bool(source.get("last_successful_sync_at")) or bool(pages)
+        started_at = datetime.now(UTC)
+        source.update(status="processing", last_error=None, updated_at=started_at.isoformat())
+        await upsert_source_manifest(source, pages=pages)
+
+        spec_values = dict(source["crawl_settings"])
+        if target_page is not None:
+            spec_values.update(
+                seed_url=target_page["canonical_url"], scope="page", max_pages=1, max_depth=0
             )
-            session.add(run)
-            await session.commit()
-            spec_values = dict(source.crawl_settings)
-            if target_page is not None:
-                spec_values.update(
-                    seed_url=target_page.canonical_url,
-                    scope="page",
-                    max_pages=1,
-                    max_depth=0,
-                )
-            elif source.resync_behavior == "root":
-                spec_values.update(scope="page", max_pages=1, max_depth=0)
-            try:
-                if source_is_established:
-                    async with source_operation_lock(source.id):
-                        source = await self._ensure_source_active(session, source)
-                        await upsert_source_projection(source)
-                        await session.commit()
+        elif source.get("resync_behavior") == "root":
+            spec_values.update(scope="page", max_pages=1, max_depth=0)
+
+        try:
+            result = await crawl(CrawlSpec(**spec_values))
+            if not result.pages and not result.reason and not result.capped:
                 result = await crawl(CrawlSpec(**spec_values))
-            except Exception as exc:
-                result = CrawlResult(
-                    (),
-                    complete=False,
-                    capped=False,
-                    reason=str(exc) or "Website crawl failed",
-                )
-            indexed = 0
-            successful_pages = 0
-            page_errors: list[str] = []
-            for outcome in result.pages:
-                existing = (
-                    await session.execute(
-                        select(WebsitePage).where(
-                            col(WebsitePage.web_source_id) == source.id,
-                            col(WebsitePage.canonical_url) == outcome.canonical_url,
-                        )
-                    )
-                ).scalar_one_or_none()
-                page = existing or WebsitePage(
-                    id=str(uuid.uuid4()),
-                    web_source_id=source.id,
-                    canonical_url=outcome.canonical_url,
-                    final_url=outcome.final_url,
-                    title=outcome.canonical_url,
-                    document_id=_document_id(source.id, outcome.canonical_url),
-                )
-                if existing is None:
-                    session.add(page)
-                page.final_url, page.depth, page.last_seen_at, page.updated_at = (
-                    outcome.final_url,
-                    outcome.depth,
-                    datetime.now(UTC),
-                    datetime.now(UTC),
-                )
-                if outcome.error:
-                    page.status, page.last_error = "failed", outcome.error
-                    page_errors.append(outcome.error)
-                    continue
-                if outcome.document is None or outcome.noindex:
-                    if outcome.noindex:
-                        await delete_page_chunks(page.document_id)
-                        page.chunk_count = 0
-                    page.status = "unavailable"
-                    continue
-                document = outcome.document
-                page.title, page.byte_size, page.content_type = (
-                    document.title,
-                    document.byte_size,
-                    "text/html",
-                )
-                if page.suppressed_by_user:
-                    page.status = "disabled"
-                    continue
-                if (
-                    source.change_detection == "normalized_content_hash"
-                    and page.content_hash == document.content_hash
-                    and page.status == "active"
-                    and page.chunk_count > 0
-                ):
-                    page.status = "active"
-                    page.last_error = None
-                    successful_pages += 1
-                    continue
-                handle = tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".md", delete=False, encoding="utf-8"
-                )
-                try:
-                    handle.write(document.markdown)
-                    handle.close()
-                    try:
-                        async with source_operation_lock(source.id):
-                            source = await self._ensure_source_active(session, source)
-
-                            async def ensure_active_before_index(
-                                active_source: WebsiteSource = source,
-                            ) -> None:
-                                await self._ensure_source_active(session, active_source)
-
-                            processed = await self.process_document_standard(
-                                file_path=handle.name,
-                                file_hash=page.document_id,
-                                document_id=page.document_id,
-                                replace_existing=True,
-                                owner_user_id=self.owner_id,
-                                jwt_token=self.jwt_token,
-                                owner_name=self.owner_name,
-                                owner_email=self.owner_email,
-                                file_size=document.byte_size,
-                                original_filename=document.title,
-                                connector_type="url",
-                                source_url=outcome.final_url,
-                                web_source_id=source.id,
-                                web_page_id=page.id,
-                                web_page_depth=outcome.depth,
-                                root_source_url=source.starting_url,
-                                canonical_url=outcome.canonical_url,
-                                before_index_write=ensure_active_before_index,
-                            )
-                    except Exception as exc:
-                        page.status, page.last_error = (
-                            "failed",
-                            str(exc) or "Website page ingestion failed",
-                        )
-                        page_errors.append(page.last_error)
-                        continue
-                    if processed.get("status") == "error":
-                        page.status, page.last_error = (
-                            "failed",
-                            (processed.get("error") or "Failed to ingest website page"),
-                        )
-                        page_errors.append(page.last_error)
-                    else:
-                        page.content_hash, page.chunk_count, page.status = (
-                            document.content_hash,
-                            processed.get("chunk_count", 0),
-                            "active",
-                        )
-                        page.last_error = None
-                        page.last_ingested_at, indexed = datetime.now(UTC), indexed + 1
-                        successful_pages += 1
-                finally:
-                    try:
-                        os.unlink(handle.name)
-                    except FileNotFoundError:
-                        pass
-            if target_page is None and source.resync_behavior == "full" and result.complete:
-                missing = (
-                    (
-                        await session.execute(
-                            select(WebsitePage).where(
-                                col(WebsitePage.web_source_id) == source.id,
-                                col(WebsitePage.last_seen_at) < started_at,
-                                col(WebsitePage.suppressed_by_user).is_(False),
-                            )
-                        )
-                    )
-                    .scalars()
-                    .all()
-                )
-                for page in missing:
-                    page.status = "unavailable"
-                    if source.removed_page_behavior == "delete":
-                        await delete_page_chunks(page.document_id)
-                        page.chunk_count = 0
-            failure_reason = (
-                result.reason
-                or next(iter(page_errors), None)
-                or "No indexable website pages were found."
+        except Exception as exc:
+            result = CrawlResult(
+                (), complete=False, capped=False, reason=str(exc) or "Website crawl failed"
             )
+
+        indexed = 0
+        successful_pages = 0
+        page_errors: list[str] = []
+        for outcome in result.pages:
+            page = pages_by_url.get(outcome.canonical_url)
+            if page is None:
+                page = self._new_page(source, str(uuid.uuid4()), outcome.canonical_url)
+                pages_by_url[outcome.canonical_url] = page
+            page_depth = outcome.depth
             if (
                 target_page is not None
-                and successful_pages == 0
-                and target_page.status == "processing"
+                and page.get("web_page_id") == target_page.get("web_page_id")
+                and page.get("web_page_depth") is not None
             ):
-                target_page.status, target_page.last_error = "failed", failure_reason
-            async with source_operation_lock(source.id):
-                source = await self._ensure_source_active(session, source)
-                succeeded = successful_pages > 0
-                source.status = "active" if succeeded else "failed"
-                source.last_error = result.reason if succeeded else failure_reason
-                if succeeded:
-                    source.last_successful_sync_at = datetime.now(UTC)
-                source.updated_at = datetime.now(UTC)
-                run.completed, run.capped, run.error, run.finished_at = (
-                    result.complete and succeeded,
-                    result.capped,
-                    source.last_error,
-                    datetime.now(UTC),
+                # A page-scoped crawl starts at the selected page, so Scrapy
+                # reports depth 0. Keep the source-relative depth already
+                # recorded for that page instead of replacing it with 0.
+                page_depth = int(page["web_page_depth"])
+            page.setdefault(
+                "content_document_id", _document_id(source["id"], outcome.canonical_url)
+            )
+            now = datetime.now(UTC).isoformat()
+            page.update(
+                final_url=outcome.final_url,
+                source_url=outcome.final_url,
+                web_page_depth=page_depth,
+                canonical_url=outcome.canonical_url,
+                last_seen_at=now,
+                updated_at=now,
+            )
+
+            # Task failures are ephemeral, just like ordinary document uploads.
+            # Do not overwrite an existing page manifest with a transient failure.
+            if outcome.error:
+                page_errors.append(outcome.error)
+                continue
+            if outcome.document is None or outcome.noindex:
+                if outcome.noindex:
+                    await delete_page_chunks(str(page["content_document_id"]))
+                    page["chunk_count"] = 0
+                page["status"] = "unavailable"
+                await upsert_page_manifest(page)
+                continue
+
+            document = outcome.document
+            page.update(
+                filename=document.title,
+                file_size=document.byte_size,
+                mimetype="text/html",
+            )
+            if page.get("suppressed_by_user"):
+                page["status"] = "disabled"
+                await upsert_page_manifest(page)
+                successful_pages += 1
+                continue
+            if (
+                source.get("change_detection") == "normalized_content_hash"
+                and page.get("content_hash") == document.content_hash
+                and page.get("status") == "active"
+                and int(page.get("chunk_count") or 0) > 0
+            ):
+                await upsert_page_manifest(page)
+                successful_pages += 1
+                continue
+
+            handle = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".md", delete=False, encoding="utf-8"
+            )
+            try:
+                handle.write(document.markdown)
+                handle.close()
+                try:
+                    processed = await self.process_document_standard(
+                        file_path=handle.name,
+                        file_hash=str(page["content_document_id"]),
+                        document_id=str(page["content_document_id"]),
+                        replace_existing=True,
+                        owner_user_id=self.owner_id,
+                        jwt_token=self.jwt_token,
+                        owner_name=self.owner_name,
+                        owner_email=self.owner_email,
+                        file_size=document.byte_size,
+                        original_filename=document.title,
+                        connector_type="url",
+                        source_url=outcome.final_url,
+                        web_source_id=source["id"],
+                        web_page_id=str(page["web_page_id"]),
+                        web_page_depth=page_depth,
+                        root_source_url=source["starting_url"],
+                        canonical_url=outcome.canonical_url,
+                        before_index_write=self._source_is_active,
+                    )
+                except Exception as exc:
+                    page_errors.append(str(exc) or "Website page ingestion failed")
+                    continue
+                if processed.get("status") == "error":
+                    page_errors.append(processed.get("error") or "Failed to ingest website page")
+                    continue
+                embedding_metadata = await get_page_index_metadata(str(page["content_document_id"]))
+                page.update(
+                    content_hash=document.content_hash,
+                    chunk_count=processed.get("chunk_count", 0),
+                    embedding_model=embedding_metadata.get("embedding_model", ""),
+                    embedding_provider=embedding_metadata.get("embedding_provider", ""),
+                    embedding_space_id=embedding_metadata.get("embedding_space_id", ""),
+                    embedding_dimensions=embedding_metadata.get("embedding_dimensions"),
+                    status="active",
+                    last_ingested_at=datetime.now(UTC).isoformat(),
+                    last_error=None,
                 )
-                await session.commit()
-                discard_failed_new_source = not succeeded and not source_is_established
-                if discard_failed_new_source:
-                    # Failed regular uploads never become Knowledge records. Do the
-                    # same for a URL source that has never successfully indexed a
-                    # page, so a task-expired failure cannot become an orphaned row.
-                    await delete_source_projection(source.id)
-                    await session.execute(
-                        delete(WebsitePage).where(col(WebsitePage.web_source_id) == source.id)
-                    )
-                    await session.execute(
-                        delete(WebsiteCrawlRun).where(
-                            col(WebsiteCrawlRun.web_source_id) == source.id
-                        )
-                    )
-                    await session.delete(source)
-                    await session.commit()
-                else:
-                    source = await self._ensure_source_active(session, source)
-                    child_count = (
-                        (
-                            await session.execute(
-                                select(WebsitePage).where(
-                                    col(WebsitePage.web_source_id) == source.id
-                                )
-                            )
-                        )
-                        .scalars()
-                        .all()
-                    )
-                    await upsert_source_projection(source, child_count=len(child_count))
-                    await session.commit()
+                await upsert_page_manifest(page)
+                indexed, successful_pages = indexed + 1, successful_pages + 1
+            finally:
+                try:
+                    os.unlink(handle.name)
+                except FileNotFoundError:
+                    pass
+
+        if target_page is None and source.get("resync_behavior") == "full" and result.complete:
+            for page in pages_by_url.values():
+                if (
+                    page.get("suppressed_by_user")
+                    or page.get("last_seen_at", "") >= started_at.isoformat()
+                ):
+                    continue
+                page["status"] = "unavailable"
+                page["updated_at"] = datetime.now(UTC).isoformat()
+                if source.get("removed_page_behavior") == "delete":
+                    await delete_page_chunks(str(page["content_document_id"]))
+                    page["chunk_count"] = 0
+                await upsert_page_manifest(page)
+
+        failure_reason = (
+            result.reason
+            or next(iter(page_errors), None)
+            or "No indexable website pages were found."
+        )
+        try:
+            source = await self._source_is_active()
+        except ValueError:
+            failure_reason = "Website source was deleted"
+            succeeded = False
+        else:
+            succeeded = successful_pages > 0
+            source["status"] = "active" if succeeded or source_is_established else "failed"
+            source["last_error"] = (
+                None if source_is_established else (None if succeeded else failure_reason)
+            )
+            if succeeded:
+                source["last_successful_sync_at"] = datetime.now(UTC).isoformat()
+            source["updated_at"] = datetime.now(UTC).isoformat()
+
+            if not succeeded and not source_is_established:
+                await delete_source_chunks(source["id"])
+            else:
+                await upsert_source_manifest(source, pages=await list_page_manifests(source["id"]))
+
         if not succeeded:
             file_task.status, file_task.error, file_task.result, file_task.updated_at = (
                 TaskStatus.FAILED,

@@ -1,18 +1,40 @@
 """Smoke coverage for the isolated Scrapy runner contract."""
 
+import asyncio
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from scrapy import Request
 from scrapy.http import Response
 
-from connectors.url import scrapy_runner
+from connectors.url import crawler, scrapy_runner
 from connectors.url.policy import CrawlSpec
 from connectors.url.scrapy_runner import ManagedWebsiteSpider, ValidatedAddressResolver
+
+
+@pytest.mark.asyncio
+async def test_crawler_runs_scrapy_in_an_isolated_process_session(monkeypatch):
+    process = MagicMock(returncode=0)
+    process.communicate = AsyncMock(return_value=(b"", b""))
+
+    async def create_process(*args, **_kwargs):
+        output_dir = Path(args[args.index("--output-dir") + 1])
+        (output_dir / "result.json").write_text(
+            json.dumps({"pages": [], "complete": True, "capped": False})
+        )
+        return process
+
+    create_subprocess = AsyncMock(side_effect=create_process)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create_subprocess)
+
+    await crawler.crawl(CrawlSpec(seed_url="https://docs.example.com/"))
+
+    assert create_subprocess.await_args.kwargs["start_new_session"] is True
 
 
 def test_scrapy_runner_writes_a_manifest_when_policy_rejects_the_seed(tmp_path):

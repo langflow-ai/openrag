@@ -9,7 +9,13 @@ import {
   type ValueGetterParams,
 } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
-import { AlertTriangle, Cloud, FileIcon, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronRight,
+  Cloud,
+  FileIcon,
+  RefreshCw,
+} from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Suspense,
@@ -619,6 +625,10 @@ function SearchPage() {
       cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
         const status = data?.status || "active";
         const isActive = status === "active";
+        const isParentWebsiteSource =
+          data?.connector_type === "url" &&
+          Boolean(data.web_source_id) &&
+          !data.web_page_id;
         const showOpenragSourceAnimation =
           isOpenragDocsRow(data) && hasOpenragRefreshCue;
         return (
@@ -669,6 +679,12 @@ function SearchPage() {
                   {value}
                 </TooltipContent>
               </Tooltip>
+              {isParentWebsiteSource && (
+                <ChevronRight
+                  aria-hidden="true"
+                  className="ml-auto size-5 shrink-0 text-link-primary"
+                />
+              )}
             </button>
           </div>
         );
@@ -892,6 +908,7 @@ function SearchPage() {
             filename={data?.filename || ""}
             connectorType={data?.connector_type}
             webSourceId={data?.web_source_id}
+            webPageId={data?.web_page_id}
             webChildCount={data?.web_child_count}
           />
         );

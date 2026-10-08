@@ -109,6 +109,10 @@ async def crawl(spec: CrawlSpec) -> CrawlResult:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=environment,
+            # Keep Scrapy outside the backend process group. This lets the
+            # TaskService stop the crawler by PID without a group-level signal
+            # ever reaching Uvicorn or its parent `make backend` process.
+            start_new_session=True,
         )
         try:
             _, stderr = await asyncio.wait_for(

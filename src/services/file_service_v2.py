@@ -327,6 +327,7 @@ class FileServiceV2:
         # become persistent Knowledge rows.
         query["bool"]["must_not"] = [
             self._exact_metadata_filter("record_kind", "web_page"),
+            self._exact_metadata_filter("record_kind", "web_page_manifest"),
             {
                 "bool": {
                     "filter": [
@@ -413,6 +414,8 @@ class FileServiceV2:
                                     "web_page_id",
                                     "web_page_depth",
                                     "web_child_count",
+                                    "chunk_count",
+                                    "record_kind",
                                     "status",
                                     "error",
                                 ],
@@ -475,6 +478,8 @@ class FileServiceV2:
                                     "web_page_id",
                                     "web_page_depth",
                                     "web_child_count",
+                                    "chunk_count",
+                                    "record_kind",
                                     "status",
                                     "error",
                                 ],
@@ -561,7 +566,11 @@ class FileServiceV2:
                     "embedding_space_id": source.get("embedding_space_id", ""),
                     "embedding_dimensions": source.get("embedding_dimensions"),
                     "indexed_time": source.get("indexed_time", ""),
-                    "chunk_count": bucket.get("chunk_count", {}).get("value", 0),
+                    "chunk_count": (
+                        source.get("chunk_count", 0)
+                        if source.get("record_kind") == "web_source"
+                        else bucket.get("chunk_count", {}).get("value", 0)
+                    ),
                     "allowed_users": source.get("allowed_users", []),
                     "allowed_groups": source.get("allowed_groups", []),
                     "allowed_principal_labels": source.get("allowed_principal_labels", []),

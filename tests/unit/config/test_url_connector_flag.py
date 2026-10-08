@@ -72,7 +72,6 @@ async def test_website_page_search_rejects_disabled_connector(monkeypatch):
                 resultMode="website_pages",
             ),
             search_service=None,
-            session=None,
             user=None,
         )
 

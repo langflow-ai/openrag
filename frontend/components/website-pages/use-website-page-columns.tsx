@@ -11,7 +11,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { type Status, StatusBadge } from "@/components/ui/status-badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { formatFileSize } from "@/lib/file-format";
 import { cn } from "@/lib/utils";
 
@@ -22,7 +27,10 @@ export function useWebsitePageColumns({
 }: {
   sourceId: string;
   isCloudBrand: boolean;
-  onAction(pageId?: string, operation?: "sync" | "delete"): Promise<void>;
+  onAction(
+    pageId?: string,
+    operation?: "sync" | "enable" | "disable",
+  ): Promise<void>;
 }) {
   const router = useRouter();
   const viewChunks = useCallback(
@@ -133,9 +141,48 @@ export function useWebsitePageColumns({
         headerName: "Status",
         minWidth: 120,
         sortable: true,
-        cellRenderer: ({ value }: CustomCellRendererProps<File>) => (
-          <StatusBadge status={value || "active"} />
-        ),
+        cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
+          const status = (value || data?.status || "active") as Status;
+          const badge = <StatusBadge status={status} />;
+          const tooltipMessage =
+            status === "disabled"
+              ? "Page disabled. Sync is paused and will resume once the page is enabled."
+              : status === "failed"
+                ? data?.error
+                : undefined;
+
+          if (!tooltipMessage) {
+            return badge;
+          }
+
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-full cursor-help items-center",
+                    status === "failed" && "text-destructive hover:opacity-80",
+                  )}
+                  aria-label={
+                    status === "disabled"
+                      ? "View disabled page status"
+                      : `View page ingestion error: ${tooltipMessage}`
+                  }
+                >
+                  {badge}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                align="end"
+                className="max-w-80 whitespace-pre-wrap break-words"
+              >
+                {tooltipMessage}
+              </TooltipContent>
+            </Tooltip>
+          );
+        },
       },
       {
         colId: "actions",
@@ -156,20 +203,35 @@ export function useWebsitePageColumns({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => viewChunks(data.document_id)}>
-                  View chunks
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => onAction(data.web_page_id, "sync")}
-                >
-                  Re-sync page
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onClick={() => onAction(data.web_page_id, "delete")}
-                >
-                  Delete page
-                </DropdownMenuItem>
+                {data.status === "disabled" ? (
+                  <DropdownMenuItem
+                    className="text-primary focus:text-primary cursor-pointer"
+                    onClick={() => onAction(data.web_page_id, "enable")}
+                  >
+                    Enable Page
+                  </DropdownMenuItem>
+                ) : (
+                  <>
+                    <DropdownMenuItem
+                      className="text-primary focus:text-primary cursor-pointer"
+                      onClick={() => viewChunks(data.document_id)}
+                    >
+                      View chunks
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-primary focus:text-primary cursor-pointer"
+                      onClick={() => onAction(data.web_page_id, "sync")}
+                    >
+                      Re-sync page
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-primary focus:text-primary cursor-pointer"
+                      onClick={() => onAction(data.web_page_id, "disable")}
+                    >
+                      Disable Page
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null,

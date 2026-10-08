@@ -36,6 +36,12 @@ describe("KnowledgeActionsDropdown", () => {
     );
 
     await user.click(screen.getByRole("button"));
+    await user.click(
+      await screen.findByRole("menuitem", { name: "View pages" }),
+    );
+    expect(mockRouter.push).toHaveBeenCalledWith("/knowledge?website=source-1");
+
+    await user.click(screen.getByRole("button"));
     await user.click(await screen.findByRole("menuitem", { name: "Sync" }));
     await waitFor(() => expect(syncCalls).toBe(1));
 

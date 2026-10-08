@@ -3,13 +3,10 @@ from typing import Any, Literal
 from fastapi import Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import is_url_connector_enabled
-from db.models.website_source import WebsitePage, WebsiteSource
+from connectors.url.projection import get_source_manifest, list_page_manifests
 from dependencies import (
-    get_db_session,
     get_search_service,
     require_permission,
 )
@@ -30,92 +27,51 @@ class SearchBody(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-def _website_page_chunk(page: WebsitePage, source_id: str) -> dict[str, Any]:
-    """Adapt persisted page state to the search result shape used by the table."""
+def _website_page_chunk(page: dict[str, Any]) -> dict[str, Any]:
+    """Adapt one OpenSearch page manifest to the child-page table shape."""
     return {
-        "filename": page.title,
-        "mimetype": page.content_type or "text/html",
+        "filename": page.get("filename") or page.get("canonical_url") or "Untitled page",
+        "mimetype": page.get("mimetype") or "text/html",
         "page": 1,
         "text": "",
         "score": 0,
-        "source_url": page.final_url or page.canonical_url,
-        "file_size": page.byte_size,
+        "source_url": page.get("source_url") or page.get("canonical_url") or "",
+        "file_size": page.get("file_size") or 0,
         "connector_type": "url",
-        "document_id": page.document_id,
-        "web_source_id": source_id,
-        "web_page_id": page.id,
-        "web_page_depth": page.depth,
-        "canonical_url": page.canonical_url,
-        "status": page.status,
-        "error": page.last_error,
-        "chunk_count": page.chunk_count,
+        "document_id": page.get("content_document_id") or page.get("document_id"),
+        "web_source_id": page.get("web_source_id"),
+        "web_page_id": page.get("web_page_id"),
+        "web_page_depth": page.get("web_page_depth") or 0,
+        "canonical_url": page.get("canonical_url"),
+        "status": page.get("status") or "active",
+        "error": page.get("last_error"),
+        "chunk_count": page.get("chunk_count") or 0,
+        "embedding_model": page.get("embedding_model"),
+        "embedding_dimensions": page.get("embedding_dimensions"),
     }
 
 
 async def _website_page_search_result(
-    result: dict[str, Any],
     body: SearchBody,
-    session: AsyncSession,
     user: User,
 ) -> dict[str, Any]:
-    """Hydrate URL search hits with page state, including zero-chunk rows."""
+    """List durable child-page manifests, including zero-chunk pages."""
     source_ids = body.filters.get("web_source_ids")
     if not isinstance(source_ids, list) or len(source_ids) != 1 or not source_ids[0]:
         raise HTTPException(422, "website_pages search requires one web_source_ids filter")
     source_id = source_ids[0]
-    source = await session.get(WebsiteSource, source_id)
-    if source is None or source.owner_id != user.user_id:
+    source = await get_source_manifest(source_id)
+    if source is None or source.get("owner_id") != user.user_id:
         raise HTTPException(404, "Website source not found")
 
-    pages = (
-        (await session.execute(select(WebsitePage).where(WebsitePage.web_source_id == source_id)))
-        .scalars()
-        .all()
-    )
-    pages_by_document = {page.document_id: page for page in pages}
-    hits_by_document: dict[str, list[dict[str, Any]]] = {}
-    for chunk in result.get("results", []):
-        document_id = chunk.get("document_id")
-        if document_id in pages_by_document:
-            hits_by_document.setdefault(document_id, []).append(chunk)
-
-    wildcard = body.query.strip() in {"", "*"}
-    visible_document_ids = set(pages_by_document) if wildcard else set(hits_by_document)
-    hydrated_chunks: list[dict[str, Any]] = []
-    for document_id in visible_document_ids:
-        page = pages_by_document[document_id]
-        page_chunk = _website_page_chunk(page, source_id)
-        page_hits = hits_by_document.get(document_id, [])
-        if page_hits:
-            metadata = {
-                key: page_chunk[key]
-                for key in (
-                    "filename",
-                    "mimetype",
-                    "source_url",
-                    "file_size",
-                    "connector_type",
-                    "document_id",
-                    "web_source_id",
-                    "web_page_id",
-                    "web_page_depth",
-                    "canonical_url",
-                    "status",
-                    "error",
-                    "chunk_count",
-                )
-            }
-            hydrated_chunks.extend([{**chunk, **metadata} for chunk in page_hits])
-        else:
-            hydrated_chunks.append(page_chunk)
-
-    return {**result, "results": hydrated_chunks, "total": len(hydrated_chunks)}
+    pages = await list_page_manifests(source_id, body.query)
+    results = [_website_page_chunk(page) for page in pages]
+    return {"results": results, "total": len(results)}
 
 
 async def search(
     body: SearchBody,
     search_service=Depends(get_search_service),
-    session: AsyncSession = Depends(get_db_session),
     user: User = Depends(require_permission("search:use")),
 ):
     """Search for documents"""
@@ -135,16 +91,17 @@ async def search(
             score_threshold=body.scoreThreshold,
         )
 
-        result = await search_service.search(
-            body.query,
-            user_id=user.user_id,
-            jwt_token=jwt_token,
-            filters=body.filters,
-            limit=body.limit,
-            score_threshold=body.scoreThreshold,
-        )
         if body.resultMode == "website_pages":
-            result = await _website_page_search_result(result, body, session, user)
+            result = await _website_page_search_result(body, user)
+        else:
+            result = await search_service.search(
+                body.query,
+                user_id=user.user_id,
+                jwt_token=jwt_token,
+                filters=body.filters,
+                limit=body.limit,
+                score_threshold=body.scoreThreshold,
+            )
         return JSONResponse(result, status_code=200)
     except HTTPException:
         raise

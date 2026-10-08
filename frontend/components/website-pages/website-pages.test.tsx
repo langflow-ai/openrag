@@ -11,6 +11,7 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { File } from "@/app/api/queries/useGetSearchQuery";
 import { useGetWebsiteSourceQuery } from "@/app/api/queries/useGetWebsiteSourceQuery";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { authPresets } from "@/test-utils/fixtures/auth";
 import { server } from "@/test-utils/msw/server";
 import { createQueryWrapper, renderWithProviders } from "@/test-utils/render";
@@ -300,6 +301,45 @@ describe("website page presentation", () => {
     expect(screen.getByText("text-embedding-3-small")).toBeInTheDocument();
     expect(screen.getByText("1536")).toBeInTheDocument();
 
+    const failedPage = page({
+      status: "failed",
+      error: "No indexable website pages were found.",
+    });
+    render(
+      <TooltipProvider>
+        {
+          status?.cellRenderer?.({
+            data: failedPage,
+            value: failedPage.status,
+          } as never) as never
+        }
+      </TooltipProvider>,
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "View page ingestion error: No indexable website pages were found.",
+      }),
+    ).toBeInTheDocument();
+
+    const disabledPage = page({ status: "disabled" });
+    render(
+      <TooltipProvider>
+        {
+          status?.cellRenderer?.({
+            data: disabledPage,
+            value: disabledPage.status,
+          } as never) as never
+        }
+      </TooltipProvider>,
+    );
+    const disabledStatus = screen.getByRole("button", {
+      name: "View disabled page status",
+    });
+    await user.hover(disabledStatus);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Page disabled. Sync is paused and will resume once the page is enabled.",
+    );
+
     render(actions?.cellRenderer?.({ data } as never) as never);
     await user.click(screen.getByRole("button", { name: "Page actions" }));
     await user.click(screen.getByRole("menuitem", { name: "Re-sync page" }));
@@ -312,7 +352,36 @@ describe("website page presentation", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Page actions" }));
-    await user.click(screen.getByRole("menuitem", { name: "Delete page" }));
-    expect(onAction).toHaveBeenLastCalledWith("page-1", "delete");
+    await user.click(screen.getByRole("menuitem", { name: "Disable Page" }));
+    expect(onAction).toHaveBeenLastCalledWith("page-1", "disable");
+  });
+
+  it("shows only Enable Page for a disabled page", async () => {
+    const user = userEvent.setup();
+    const onAction = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(
+      () =>
+        useWebsitePageColumns({
+          sourceId: "source-1",
+          isCloudBrand: true,
+          onAction,
+        }),
+      { wrapper: createQueryWrapper() },
+    );
+    const actions = result.current.find((column) => column.colId === "actions");
+    const data = page({ status: "disabled" });
+
+    render(actions?.cellRenderer?.({ data } as never) as never);
+    await user.click(screen.getByRole("button", { name: "Page actions" }));
+
+    const enablePage = await screen.findByRole("menuitem", {
+      name: "Enable Page",
+    });
+    expect(screen.queryByRole("menuitem", { name: "View chunks" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Re-sync page" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Disable Page" })).toBeNull();
+
+    await user.click(enablePage);
+    expect(onAction).toHaveBeenCalledWith("page-1", "enable");
   });
 });

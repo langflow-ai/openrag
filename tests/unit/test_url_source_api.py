@@ -1,11 +1,30 @@
+"""Managed URL source API coverage with OpenSearch-only manifests."""
+
 from unittest.mock import AsyncMock
 
 import pytest
 
 from connectors.url import api
 from connectors.url.api import CreateSourceBody
-from db.models.website_source import WebsitePage, WebsiteSource
 from session_manager import User
+
+
+def _source(**overrides) -> dict:
+    values = {
+        "id": "source-1",
+        "owner_id": "owner-1",
+        "name": "Documentation",
+        "starting_url": "https://docs.example.com/",
+        "crawl_settings": {"seed_url": "https://docs.example.com/"},
+        "status": "active",
+        "deleting": False,
+    }
+    values.update(overrides)
+    return values
+
+
+def _user(source: dict) -> User:
+    return User(user_id=source["owner_id"], email="owner@example.com", name="Owner")
 
 
 def test_create_source_body_keeps_change_detection_outside_crawl_spec():
@@ -16,134 +35,100 @@ def test_create_source_body_keeps_change_detection_outside_crawl_spec():
     )
 
     assert body.change_detection == "always_reingest"
-    crawl_settings = body.spec().as_dict()
-    assert crawl_settings["seed_url"] == "https://docs.example.com/"
-    assert "change_detection" not in crawl_settings
-
-
-def test_create_source_body_defaults_to_normalized_content_hash():
-    body = CreateSourceBody(name="Documentation", starting_url="https://docs.example.com/")
-
-    assert body.change_detection == "normalized_content_hash"
-
-
-class _Session:
-    def __init__(self, source: WebsiteSource, page: WebsitePage | None = None):
-        self.source = source
-        self.page = page
-        self.commits = 0
-        self.deleted: list[object] = []
-
-    async def get(self, model, identifier):
-        if model is WebsiteSource:
-            return self.source if identifier == self.source.id else None
-        if model is WebsitePage:
-            return self.page if self.page and identifier == self.page.id else None
-        return None
-
-    async def commit(self):
-        self.commits += 1
-
-    async def delete(self, value):
-        self.deleted.append(value)
-
-    async def execute(self, _):
-        statement = str(_)
-        if "count(" in statement:
-            return type("Result", (), {"scalar_one": lambda self: 1})()
-        return type("Result", (), {"scalar_one_or_none": lambda _result: self.source})()
+    assert "change_detection" not in body.spec().as_dict()
 
 
 @pytest.mark.asyncio
-async def test_page_sync_enqueues_a_page_scoped_processor(monkeypatch):
-    source = WebsiteSource(
-        id="source-1",
-        owner_id="owner-1",
-        name="Documentation",
-        starting_url="https://docs.example.com/",
-        crawl_settings={"seed_url": "https://docs.example.com/"},
-        status="active",
+async def test_create_source_persists_crawl_configuration_in_its_manifest(monkeypatch):
+    persisted: list[dict] = []
+    monkeypatch.setattr(
+        api,
+        "upsert_source_manifest",
+        AsyncMock(side_effect=lambda source, **_: persisted.append(dict(source))),
     )
-    page = WebsitePage(
-        id="page-1",
-        web_source_id=source.id,
-        canonical_url="https://docs.example.com/guide",
-        title="Guide",
-        document_id="document-1",
-        status="active",
-    )
-    enqueue = AsyncMock(return_value="task-1")
-    monkeypatch.setattr(api, "_enqueue", enqueue)
+    monkeypatch.setattr(api, "_enqueue", AsyncMock(return_value="task-1"))
+    source = _source()
 
-    result = await api.sync_page(
-        source.id,
-        page.id,
-        session=_Session(source, page),
+    result = await api.create_source(
+        CreateSourceBody(
+            name="Documentation",
+            starting_url="https://docs.example.com/",
+            scope="site",
+            change_detection="always_reingest",
+        ),
         task_service=object(),
-        user=User(user_id=source.owner_id, email="owner@example.com", name="Owner"),
+        user=_user(source),
     )
 
-    assert enqueue.await_args.kwargs["page_id"] == page.id
-    assert source.status == "processing"
-    assert page.status == "processing"
-    assert result == {"id": page.id, "status": "processing", "task_id": "task-1"}
+    assert persisted[0]["crawl_settings"]["scope"] == "site"
+    assert persisted[0]["change_detection"] == "always_reingest"
+    assert persisted[-1]["last_task_id"] == "task-1"
+    assert result["last_task_id"] == "task-1"
 
 
 @pytest.mark.asyncio
-async def test_sync_rejects_a_source_marked_for_deletion():
-    source = WebsiteSource(
-        id="source-deleting",
-        owner_id="owner-1",
-        name="Documentation",
-        starting_url="https://docs.example.com/",
-        crawl_settings={"seed_url": "https://docs.example.com/"},
-        deleting=True,
-    )
+async def test_page_sync_enqueues_a_manifest_scoped_processor(monkeypatch):
+    source = _source()
+    page = {
+        "web_source_id": source["id"],
+        "web_page_id": "page-1",
+        "canonical_url": "https://docs.example.com/guide",
+        "status": "disabled",
+        "suppressed_by_user": True,
+    }
+    enqueue = AsyncMock(return_value="task-1")
+    persist_page, persist_source = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(api, "get_source_manifest", AsyncMock(return_value=source))
+    monkeypatch.setattr(api, "_enqueue", enqueue)
+    monkeypatch.setattr(api, "get_page_manifest", AsyncMock(return_value=page))
+    monkeypatch.setattr(api, "upsert_page_manifest", persist_page)
+    monkeypatch.setattr(api, "upsert_source_manifest", persist_source)
 
-    with pytest.raises(api.HTTPException, match="being deleted"):
-        await api.sync_source(
-            source.id,
-            session=_Session(source),
-            task_service=object(),
-            user=User(user_id=source.owner_id, email="owner@example.com", name="Owner"),
-        )
+    result = await api.sync_page(source["id"], "page-1", task_service=object(), user=_user(source))
+
+    assert enqueue.await_args.kwargs["page_id"] == "page-1"
+    assert page["suppressed_by_user"] is False
+    persist_page.assert_awaited_once_with(page)
+    assert result == {"id": "page-1", "status": "disabled", "task_id": "task-1"}
 
 
 @pytest.mark.asyncio
-async def test_source_deletion_marks_durable_state_before_waiting_for_task(monkeypatch):
-    source = WebsiteSource(
-        id="source-delete",
-        owner_id="owner-1",
-        name="Documentation",
-        starting_url="https://docs.example.com/",
-        crawl_settings={"seed_url": "https://docs.example.com/"},
-        status="processing",
-        last_task_id="task-delete",
-    )
-    session = _Session(source)
+async def test_disabling_a_page_updates_manifests_and_removes_chunks(monkeypatch):
+    source = _source()
+    page = {
+        "web_source_id": source["id"],
+        "web_page_id": "page-1",
+        "document_id": "web-page:source-1:page-1",
+        "content_document_id": "document-1",
+        "status": "active",
+    }
+    delete_chunks, persist_page, persist_source = AsyncMock(), AsyncMock(), AsyncMock()
+    monkeypatch.setattr(api, "get_source_manifest", AsyncMock(return_value=source))
+    monkeypatch.setattr(api, "get_page_manifest", AsyncMock(return_value=page))
+    monkeypatch.setattr(api, "delete_page_chunks", delete_chunks)
+    monkeypatch.setattr(api, "upsert_page_manifest", persist_page)
+    monkeypatch.setattr(api, "list_page_manifests", AsyncMock(return_value=[page]))
+    monkeypatch.setattr(api, "upsert_source_manifest", persist_source)
 
-    async def cancel_task(owner_id, task_id):
-        assert owner_id == source.owner_id
-        assert task_id == source.last_task_id
-        assert source.deleting is True
-        assert source.status == "deleting"
-        return True
+    result = await api.delete_page(source["id"], "page-1", user=_user(source))
 
-    task_service = type("TaskService", (), {"cancel_task": AsyncMock(side_effect=cancel_task)})()
-    delete_chunks = AsyncMock()
-    delete_projection = AsyncMock()
-    monkeypatch.setattr(api, "delete_source_chunks", delete_chunks)
-    monkeypatch.setattr(api, "delete_source_projection", delete_projection)
+    assert result == {"id": "page-1", "status": "disabled"}
+    delete_chunks.assert_awaited_once_with("document-1")
+    assert page["status"] == "disabled"
+    assert page["chunk_count"] == 0
+    assert persist_source.await_args.kwargs["pages"] == [page]
 
-    result = await api.delete_source(
-        source.id,
-        session=session,
-        task_service=task_service,
-        user=User(user_id=source.owner_id, email="owner@example.com", name="Owner"),
-    )
 
-    assert result == {"deleted": True, "child_count": 1}
-    task_service.cancel_task.assert_awaited_once_with(source.owner_id, "task-delete")
-    delete_chunks.assert_awaited_once_with(source.id)
-    delete_projection.assert_awaited_once_with(source.id)
-    assert session.deleted == [source]
+@pytest.mark.asyncio
+async def test_source_deletion_uses_manifests_without_a_database(monkeypatch):
+    source = _source(status="processing", last_task_id="task-1")
+    monkeypatch.setattr(api, "get_source_manifest", AsyncMock(return_value=source))
+    monkeypatch.setattr(api, "list_page_manifests", AsyncMock(return_value=[{}, {}]))
+    monkeypatch.setattr(api, "delete_source_chunks", AsyncMock())
+    monkeypatch.setattr(api, "upsert_source_manifest", AsyncMock())
+    task_service = type("TaskService", (), {"cancel_task": AsyncMock(return_value=True)})()
+
+    result = await api.delete_source(source["id"], task_service=task_service, user=_user(source))
+
+    assert result == {"deleted": True, "child_count": 2}
+    task_service.cancel_task.assert_awaited_once_with(source["owner_id"], "task-1")

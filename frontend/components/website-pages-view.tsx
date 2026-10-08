@@ -3,7 +3,7 @@
 import { type ColDef } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import {
   useDeleteWebsiteSourcePageMutation,
@@ -36,6 +36,7 @@ export function WebsitePagesView({ sourceId }: { sourceId: string }) {
     isPagesLoading,
     onSortChanged,
     pages,
+    refetchPages,
     search,
     setCurrentPage,
     setCurrentPageSize,
@@ -46,9 +47,12 @@ export function WebsitePagesView({ sourceId }: { sourceId: string }) {
   const deleteWebsiteSourcePageMutation = useDeleteWebsiteSourcePageMutation();
 
   const action = useCallback(
-    async (pageId?: string, operation: "sync" | "delete" = "sync") => {
+    async (
+      pageId?: string,
+      operation: "sync" | "enable" | "disable" = "sync",
+    ) => {
       try {
-        if (operation === "delete") {
+        if (operation === "disable") {
           await deleteWebsiteSourcePageMutation.mutateAsync({
             sourceId,
             pageId,
@@ -56,7 +60,9 @@ export function WebsitePagesView({ sourceId }: { sourceId: string }) {
           toast.success("Page disabled");
         } else {
           await syncWebsiteSourceMutation.mutateAsync({ sourceId, pageId });
-          toast.success("Sync started");
+          toast.success(
+            operation === "enable" ? "Page enabled" : "Sync started",
+          );
         }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Action failed");
@@ -66,6 +72,12 @@ export function WebsitePagesView({ sourceId }: { sourceId: string }) {
   );
 
   const syncSource = () => action();
+
+  useEffect(() => {
+    if (source?.status && source.status !== "processing") {
+      void refetchPages();
+    }
+  }, [refetchPages, source?.status]);
 
   const defaultColDef = useMemo<ColDef<File>>(
     () => ({
