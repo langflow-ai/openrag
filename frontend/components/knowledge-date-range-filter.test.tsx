@@ -1,5 +1,5 @@
 import { act, fireEvent } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, screen } from "@/test-utils/render";
 import { KnowledgeDateRangeFilter } from "./knowledge-date-range-filter";
 
@@ -85,19 +85,50 @@ describe("KnowledgeDateRangeFilter", () => {
     expect(screen.getByText("Date range")).toBeInTheDocument();
   });
 
-  it("selects a range by clicking two calendar days", async () => {
-    renderFilter();
-    await openPopover();
-    const enabledDays = screen
-      .getAllByRole("gridcell")
-      .filter(
-        (cell) =>
-          cell.tagName === "BUTTON" &&
-          !cell.hasAttribute("disabled") &&
-          !cell.className.includes("day-outside"),
+  describe("calendar range selection", () => {
+    // Only Date is faked so act()/Radix timers keep running normally.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2024, 5, 20, 12));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("selects a range by clicking two calendar days", async () => {
+      renderFilter();
+      await openPopover();
+      // June 2024 is the first month shown; July is fully disabled (after today).
+      const juneDay = (day: number) => {
+        const cell = screen
+          .getAllByRole("gridcell")
+          .find(
+            (c) =>
+              c.tagName === "BUTTON" &&
+              !c.hasAttribute("disabled") &&
+              !c.className.includes("day-outside") &&
+              c.textContent === String(day),
+          );
+        if (!cell) throw new Error(`June ${day} not selectable`);
+        return cell;
+      };
+      await click(juneDay(10));
+      await click(juneDay(15));
+
+      const fmt = (d: Date) =>
+        d.toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+      const expected = `${fmt(new Date(2024, 5, 10))} – ${fmt(new Date(2024, 5, 15))}`;
+      expect(screen.queryByText("Date range")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: expected })).toHaveTextContent(
+        expected,
       );
-    await click(enabledDays[0]);
-    await click(enabledDays[1]);
-    expect(screen.queryByText("Date range")).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /last 7 days/i }),
+      ).not.toBeInTheDocument();
+    });
   });
 });
