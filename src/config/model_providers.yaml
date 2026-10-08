@@ -133,9 +133,11 @@ providers:
   # is not `openai_like` (that key silently drops the per-provider TLS setting a
   # cluster CA needs).
   #
-  # Off in every mode as shipped. It needs two endpoint URLs and a cluster token
-  # that only the deployment knows, so it is enabled per deployment with
-  # OPENRAG_MODEL_PROVIDERS_CONFIG rather than offered to everyone.
+  # Offered wherever a cluster can be reached, the same as `watsonx_onprem`
+  # above. The endpoints and token are deployment-specific, so the card sits
+  # unconfigured in Settings — and out of the model pickers, which skip a
+  # provider that is not configured — until someone enters them, or until the
+  # `RHOAI_*` environment variables seed them on first boot.
   #
   # The two lists below are a *fallback*, not the catalogue. OpenRAG asks each
   # InferenceService what it serves (`GET /v1/models`) and shows that in the
@@ -145,9 +147,9 @@ providers:
   - name: rhoai
     display_name: Red Hat OpenShift AI
     modes:
-      oss: false
-      on_prem: false
-      saas: false
+      oss: true
+      on_prem: true
+      saas: false # a cluster-hosted deployment has no place in multi-tenant SaaS
     # Verified on an RHOAI 3.5.0 cluster running the x86 CPU vLLM runtime.
     # These are `--served-model-name` values, not image tags: whatever the
     # InferenceService was started with is the id that has to be sent.
