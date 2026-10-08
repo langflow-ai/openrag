@@ -20,13 +20,7 @@ import {
 import { ModelSelector } from "@/components/models/model-selector";
 import { RequirePermission } from "@/components/require-permission";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
@@ -234,6 +228,15 @@ export function AgentSettingsSection() {
           const body = res.data ?? {};
           throw new Error(body.error ?? `HTTP ${res.status}`);
         }
+        return (
+          // The flow reset above only replaces the Langflow graph. The system
+          // prompt lives in a separate store, so restore must persist the
+          // default there too, or it reverts on refresh while leaving Save
+          // stuck enabled against it.
+          updateSettingsMutation.mutateAsync({
+            system_prompt: DEFAULT_AGENT_SETTINGS.system_prompt,
+          })
+        );
       })
       .then(() => {
         setSystemPrompt(DEFAULT_AGENT_SETTINGS.system_prompt);
@@ -252,180 +255,179 @@ export function AgentSettingsSection() {
   };
 
   return (
-    <Card id="agent-card">
-      <CardHeader>
-        <div className="flex items-center justify-between mb-3">
-          <CardTitle
+    <section id="agent-card" className="space-y-8">
+      <header className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+        <div className="max-w-[685px] space-y-3">
+          <h3
             className={cn(
-              "text-lg",
+              "text-lg font-semibold leading-tight tracking-tight",
               isCloudBrand && "ibm-settings-section-title",
             )}
           >
             Agent
-          </CardTitle>
-          <RequirePermission perm="flows:edit">
-            <div className="flex gap-2">
-              <ConfirmationDialog
-                trigger={
-                  <Button ignoreTitleCase={true} variant="outline">
-                    Restore flow
-                  </Button>
-                }
-                title="Restore default Agent flow"
-                description="This restores defaults and discards all custom settings and overrides. This can't be undone."
-                confirmText="Restore"
-                variant="destructive"
-                onConfirm={handleRestoreRetrievalFlow}
-                isLoading={isRestoringFlow}
-              />
-              <ConfirmationDialog
-                trigger={
-                  <Button>
-                    <LangflowIcon />
-                    Edit in Langflow
-                  </Button>
-                }
-                title="Edit Agent flow in Langflow"
-                description={
-                  <>
-                    <p className="mb-2">
-                      You&apos;re entering Langflow. You can edit the{" "}
-                      <b>Agent flow</b> and other underlying flows. Manual
-                      changes to components, wiring, or I/O can break this
-                      experience.
-                    </p>
-                    <p className="mb-2">
-                      To enable editing, you need to unlock the flow by clicking
-                      on its name and disabling the <b>Lock flow</b> option.
-                    </p>
-                    <p>You can restore this flow from Settings.</p>
-                  </>
-                }
-                confirmText="Proceed"
-                confirmIcon={<ArrowUpRight />}
-                onConfirm={handleEditInLangflow}
-                variant="warning"
-              />
-            </div>
-          </RequirePermission>
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            This Agent retrieves from your knowledge and generates chat
+            responses. Edit in Langflow for full control.
+          </p>
         </div>
-        <CardDescription>
-          This Agent retrieves from your knowledge and generates chat responses.
-          Edit in Langflow for full control.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-6">
-          <div className="space-y-6">
-            <LabelWrapper
-              label="Language model"
-              helperText={
-                needsExplicitLlmModel ? undefined : "Model used for chat"
+        <RequirePermission perm="flows:edit">
+          <div className="flex shrink-0 gap-2">
+            <ConfirmationDialog
+              trigger={
+                <Button ignoreTitleCase={true} variant="outline">
+                  Restore flow
+                </Button>
               }
+              title="Restore default Agent flow"
+              description="This restores defaults and discards all custom settings and overrides. This can't be undone."
+              confirmText="Restore"
+              variant="destructive"
+              onConfirm={handleRestoreRetrievalFlow}
+              isLoading={isRestoringFlow}
+            />
+            <ConfirmationDialog
+              trigger={
+                <Button>
+                  <LangflowIcon />
+                  Edit in Langflow
+                </Button>
+              }
+              title="Edit Agent flow in Langflow"
               description={
-                needsExplicitLlmModel
-                  ? "Select or enter an Azure deployment name before chatting"
+                <>
+                  <p className="mb-2">
+                    You&apos;re entering Langflow. You can edit the{" "}
+                    <b>Agent flow</b> and other underlying flows. Manual changes
+                    to components, wiring, or I/O can break this experience.
+                  </p>
+                  <p className="mb-2">
+                    To enable editing, you need to unlock the flow by clicking
+                    on its name and disabling the <b>Lock flow</b> option.
+                  </p>
+                  <p>You can restore this flow from Settings.</p>
+                </>
+              }
+              confirmText="Proceed"
+              confirmIcon={<ArrowUpRight />}
+              onConfirm={handleEditInLangflow}
+              variant="warning"
+            />
+          </div>
+        </RequirePermission>
+      </header>
+      <div className="space-y-6">
+        <div className="space-y-6">
+          <LabelWrapper
+            label="Language model"
+            helperText={
+              needsExplicitLlmModel ? undefined : "Model used for chat"
+            }
+            description={
+              needsExplicitLlmModel
+                ? "Select or enter an Azure deployment name before chatting"
+                : undefined
+            }
+            id="language-model"
+            required={true}
+          >
+            <ModelSelector
+              groupedOptions={groupedLlmModels}
+              custom
+              noOptionsPlaceholder={
+                isLoadingAnyLlmModels
+                  ? "Loading models..."
+                  : catalogError
+                    ? "Could not load the model catalogue. Retry later."
+                    : "No language models detected. Configure a provider first."
+              }
+              value={settings.agent?.llm_model || ""}
+              selectedProvider={settings.agent?.llm_provider}
+              onValueChange={handleModelChange}
+              searchPlaceholder={
+                requiresExplicitModelSelection(settings.agent?.llm_provider)
+                  ? "Search models or type Azure deployment name"
                   : undefined
               }
-              id="language-model"
-              required={true}
-            >
-              <ModelSelector
-                groupedOptions={groupedLlmModels}
-                custom
-                noOptionsPlaceholder={
-                  isLoadingAnyLlmModels
-                    ? "Loading models..."
-                    : catalogError
-                      ? "Could not load the model catalogue. Retry later."
-                      : "No language models detected. Configure a provider first."
-                }
-                value={settings.agent?.llm_model || ""}
-                selectedProvider={settings.agent?.llm_provider}
-                onValueChange={handleModelChange}
-                searchPlaceholder={
-                  requiresExplicitModelSelection(settings.agent?.llm_provider)
-                    ? "Search models or type Azure deployment name"
-                    : undefined
-                }
-                hasError={needsExplicitLlmModel}
-                defaultOpen={openLlmSelector}
-              />
-            </LabelWrapper>
-            {settings.agent?.llm_model && selectedLlmGroup && (
-              <ModelFeatures
-                model={
-                  selectedLlm?.model ?? { model: settings.agent.llm_model }
-                }
-                providerName={selectedLlmGroup.group}
-                provider={selectedLlmGroup.provider}
-              />
-            )}
-          </div>
-          <div className="space-y-2">
-            <LabelWrapper label="Agent Instructions" id="system-prompt">
-              <Textarea
-                id="system-prompt"
-                placeholder="Enter your agent instructions here..."
-                value={systemPrompt}
-                onChange={(e) => {
-                  setUserEdited(true);
-                  setSystemPrompt(e.target.value);
-                }}
-                rows={6}
-                className={`resize-none ${
-                  systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
-                    ? "!border-destructive focus:border-destructive"
-                    : ""
-                }`}
-              />
-            </LabelWrapper>
+              hasError={needsExplicitLlmModel}
+              defaultOpen={openLlmSelector}
+            />
+          </LabelWrapper>
+          {settings.agent?.llm_model && selectedLlmGroup && (
+            <ModelFeatures
+              model={selectedLlm?.model ?? { model: settings.agent.llm_model }}
+              providerName={selectedLlmGroup.group}
+              provider={selectedLlmGroup.provider}
+            />
+          )}
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-4">
+            <Label htmlFor="system-prompt" className="font-medium !text-mmd">
+              Agent instructions
+            </Label>
             <span
-              className={`text-xs ${
+              aria-live="polite"
+              className={cn(
+                "text-xs tabular-nums",
                 systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
                   ? "text-destructive"
-                  : "text-muted-foreground"
-              }`}
+                  : "text-muted-foreground",
+              )}
             >
-              {systemPrompt.length}/{MAX_SYSTEM_PROMPT_CHARS} characters
+              {systemPrompt.length}/{MAX_SYSTEM_PROMPT_CHARS}
             </span>
           </div>
-          <div className="flex justify-end pt-2 gap-2">
-            {settings.agent?.default_system_prompt && (
-              <Button
-                onClick={() => {
-                  setUserEdited(true);
-                  setSystemPrompt(settings.agent?.default_system_prompt || "");
-                }}
-                variant="outline"
-                size="sm"
-                disabled={systemPrompt === settings.agent.default_system_prompt}
-              >
-                Restore Default
-              </Button>
+          <Textarea
+            id="system-prompt"
+            placeholder="Enter your agent instructions here..."
+            value={systemPrompt}
+            onChange={(e) => {
+              setUserEdited(true);
+              setSystemPrompt(e.target.value);
+            }}
+            rows={14}
+            className={cn(
+              "resize-y",
+              systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS &&
+                "!border-destructive focus:border-destructive",
             )}
-            <Button
-              onClick={handleSystemPromptSave}
-              disabled={
-                updateSettingsMutation.isPending ||
-                systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
-              }
-              className="min-w-[120px]"
-              size="sm"
-              variant="outline"
-            >
-              {updateSettingsMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                "Save Agent Instructions"
-              )}
-            </Button>
-          </div>
+          />
         </div>
-      </CardContent>
-    </Card>
+        <div className="flex justify-end gap-4 pt-2">
+          {settings.agent?.default_system_prompt && (
+            <Button
+              ignoreTitleCase={true}
+              onClick={() => {
+                setUserEdited(true);
+                setSystemPrompt(settings.agent?.default_system_prompt || "");
+              }}
+              variant="ghost"
+              disabled={systemPrompt === settings.agent.default_system_prompt}
+            >
+              Restore default
+            </Button>
+          )}
+          <Button
+            ignoreTitleCase={true}
+            onClick={handleSystemPromptSave}
+            disabled={
+              updateSettingsMutation.isPending ||
+              systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
+            }
+            className="min-w-[120px]"
+          >
+            {updateSettingsMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save agent instructions"
+            )}
+          </Button>
+        </div>
+      </div>
+    </section>
   );
 }

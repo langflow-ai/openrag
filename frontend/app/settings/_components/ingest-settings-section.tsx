@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, ChevronDown, Loader2, Minus, Plus } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Minus, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -30,13 +30,6 @@ import {
 } from "@/components/models/model-selector";
 import { RequirePermission } from "@/components/require-permission";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Collapsible,
   CollapsibleContent,
@@ -68,6 +61,7 @@ import { allowedLanguages, englishLast } from "@/lib/ocr-languages";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
+import { useRegisterSave } from "./ingest-save-context";
 import { LangflowIcon } from "./langflow-icon";
 
 const DEFAULT_WATSONX_API_VERSION = "2023-05-29";
@@ -268,9 +262,6 @@ export function IngestSettingsSection() {
     "";
 
   const updateSettingsMutation = useUpdateSettingsMutation({
-    onSuccess: () => {
-      toast.success("Settings updated successfully");
-    },
     onError: (error) => {
       toast.error("Failed to update settings", { description: error.message });
     },
@@ -293,13 +284,17 @@ export function IngestSettingsSection() {
 
   const handleEmbeddingModelChange = useCallback(
     (newModel: string, provider?: string) => {
+      const onSuccess = () => toast.success("Settings updated successfully");
       if (newModel && provider) {
-        updateSettingsMutation.mutate({
-          embedding_model: newModel,
-          embedding_provider: provider,
-        });
+        updateSettingsMutation.mutate(
+          { embedding_model: newModel, embedding_provider: provider },
+          { onSuccess },
+        );
       } else if (newModel) {
-        updateSettingsMutation.mutate({ embedding_model: newModel });
+        updateSettingsMutation.mutate(
+          { embedding_model: newModel },
+          { onSuccess },
+        );
       }
     },
     [updateSettingsMutation],
@@ -511,7 +506,7 @@ export function IngestSettingsSection() {
     setChunkOverlap(Math.max(0, Number.parseInt(value, 10) || 0));
   };
 
-  const handleKnowledgeIngestSave = () => {
+  const handleKnowledgeIngestSave = async (): Promise<boolean> => {
     // Only include VLM fields when the VLM UI is enabled; a hidden section
     // must not drive backend VLM state or trip its validation.
     const vlmPayload = showVlmSettings
@@ -549,7 +544,7 @@ export function IngestSettingsSection() {
       toast.error("Could not save ingest settings", {
         description: chunkValidationError,
       });
-      return;
+      return false;
     }
 
     if (showVlmSettings && pictureDescriptions) {
@@ -558,18 +553,18 @@ export function IngestSettingsSection() {
           "Model name is required when picture descriptions are enabled";
         setValidationError(msg);
         toast.error("Could not save ingest settings", { description: msg });
-        return;
+        return false;
       }
       if (vlmMaxTokens < 1 || vlmConcurrency < 1 || vlmTimeout < 1) {
         const msg = "Max tokens, concurrency, and timeout must be at least 1";
         setValidationError(msg);
         toast.error("Could not save ingest settings", { description: msg });
-        return;
+        return false;
       }
     }
 
-    updateSettingsMutation.mutate(
-      {
+    try {
+      await updateSettingsMutation.mutateAsync({
         chunk_size: chunkSize,
         chunk_overlap: chunkOverlap,
         table_structure: tableStructure,
@@ -578,15 +573,21 @@ export function IngestSettingsSection() {
         picture_descriptions: pictureDescriptions,
         disable_ingest_with_langflow: disableIngestWithLangflow,
         ...vlmPayload,
-      },
-      {
-        onSuccess: () => {
-          setValidationError(null);
-          setUserEdited(false);
-        },
-      },
-    );
+      });
+    } catch {
+      // onError already surfaced the failure; stop the combined save here.
+      return false;
+    }
+    setValidationError(null);
+    setUserEdited(false);
+    return true;
   };
+
+  useRegisterSave("ingest-settings", {
+    isDirty: knowledgeIngestDirty,
+    blocked: vlmModelPending || !!chunkValidationError,
+    save: handleKnowledgeIngestSave,
+  });
 
   const handleEditInLangflow = (closeDialog: () => void) => {
     trackButton({
@@ -624,6 +625,22 @@ export function IngestSettingsSection() {
           const body = res.data ?? {};
           throw new Error(body.error ?? `HTTP ${res.status}`);
         }
+        return (
+          // The flow reset above only replaces the Langflow graph. The knowledge
+          // settings (chunk size, OCR, etc.) live in a separate store, so restore
+          // must persist the defaults there too, or the form shows defaults that
+          // vanish on refresh while leaving Save stuck enabled against them.
+          updateSettingsMutation.mutateAsync({
+            chunk_size: DEFAULT_KNOWLEDGE_SETTINGS.chunk_size,
+            chunk_overlap: DEFAULT_KNOWLEDGE_SETTINGS.chunk_overlap,
+            table_structure: DEFAULT_KNOWLEDGE_SETTINGS.table_structure,
+            ocr: DEFAULT_KNOWLEDGE_SETTINGS.ocr,
+            ocr_languages: [...DEFAULT_KNOWLEDGE_SETTINGS.ocr_languages],
+            picture_descriptions:
+              DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions,
+            disable_ingest_with_langflow: false,
+          })
+        );
       })
       .then(() => {
         setChunkSize(DEFAULT_KNOWLEDGE_SETTINGS.chunk_size);
@@ -648,19 +665,97 @@ export function IngestSettingsSection() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between mb-3">
-          <CardTitle
-            className={cn(
-              "text-lg",
-              isCloudBrand && "ibm-settings-section-title",
-            )}
-          >
-            Knowledge Ingest
-          </CardTitle>
+    <section>
+      <div className="max-w-[685px] space-y-3">
+        <h3
+          className={cn(
+            "text-lg font-semibold leading-tight tracking-tight",
+            isCloudBrand && "ibm-settings-section-title",
+          )}
+        >
+          Knowledge Ingest
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          Select the embedding model used to index your files. It saves as soon
+          as you pick one.
+        </p>
+      </div>
+      <div className="mt-6 space-y-2">
+        <LabelWrapper
+          helperText={
+            needsExplicitEmbeddingModel
+              ? undefined
+              : "Saves immediately when you select a model"
+          }
+          description={
+            needsExplicitEmbeddingModel
+              ? "Select or enter an Azure deployment name before ingesting files"
+              : undefined
+          }
+          id="embedding-model-select"
+          label="Embedding model"
+          required={true}
+        >
+          <ModelSelector
+            groupedOptions={groupedEmbeddingModels}
+            custom
+            noOptionsPlaceholder={
+              isLoadingAnyEmbeddingModels
+                ? "Loading models..."
+                : catalogError
+                  ? "Could not load the model catalogue. Retry later."
+                  : "No embedding models detected. Configure a provider first."
+            }
+            value={settings.knowledge?.embedding_model || ""}
+            selectedProvider={settings.knowledge?.embedding_provider}
+            onValueChange={handleEmbeddingModelChange}
+            searchPlaceholder={
+              requiresExplicitModelSelection(
+                settings.knowledge?.embedding_provider,
+              )
+                ? "Search models or type Azure deployment name"
+                : undefined
+            }
+            hasError={needsExplicitEmbeddingModel}
+          />
+        </LabelWrapper>
+        {settings.knowledge?.embedding_model && selectedEmbeddingGroup && (
+          <div className="mt-3">
+            <ModelFeatures
+              model={
+                selectedEmbedding?.model ?? {
+                  model: settings.knowledge.embedding_model,
+                  // Without an explicit mode the panel treats an
+                  // off-catalogue embedding model as a language model and
+                  // warns that it cannot run the agent tools.
+                  mode: "embedding",
+                }
+              }
+              providerName={selectedEmbeddingGroup.group}
+              provider={selectedEmbeddingGroup.provider}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="mt-8 space-y-6 border-t border-border pt-8">
+        <header className="flex items-start justify-between gap-6">
+          <div className="max-w-[545px] space-y-3">
+            <h3
+              className={cn(
+                "text-lg font-semibold leading-tight tracking-tight",
+                isCloudBrand && "ibm-settings-section-title",
+              )}
+            >
+              Langflow configuration
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Configure how files are chunked and parsed during ingest. These
+              options use Save changes. Edit in Langflow for full control.
+            </p>
+          </div>
           <RequirePermission perm="flows:edit">
-            <div className="flex gap-2">
+            <div className="flex shrink-0 gap-2">
               <ConfirmationDialog
                 trigger={
                   <Button ignoreTitleCase={true} variant="outline">
@@ -704,512 +799,413 @@ export function IngestSettingsSection() {
               />
             </div>
           </RequirePermission>
-        </div>
-        <CardDescription>
-          Configure how files are ingested and stored for retrieval. The
-          embedding model saves as soon as you pick one; chunk and ingest
-          options use Save ingest settings. Edit in Langflow for full control.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-6">
+        </header>
+        <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <LabelWrapper
-              helperText={
-                needsExplicitEmbeddingModel
-                  ? undefined
-                  : "Saves immediately when you select a model"
-              }
-              description={
-                needsExplicitEmbeddingModel
-                  ? "Select or enter an Azure deployment name before ingesting files"
-                  : undefined
-              }
-              id="embedding-model-select"
-              label="Embedding model"
-              required={true}
-            >
-              <ModelSelector
-                groupedOptions={groupedEmbeddingModels}
-                custom
-                noOptionsPlaceholder={
-                  isLoadingAnyEmbeddingModels
-                    ? "Loading models..."
-                    : catalogError
-                      ? "Could not load the model catalogue. Retry later."
-                      : "No embedding models detected. Configure a provider first."
-                }
-                value={settings.knowledge?.embedding_model || ""}
-                selectedProvider={settings.knowledge?.embedding_provider}
-                onValueChange={handleEmbeddingModelChange}
-                searchPlaceholder={
-                  requiresExplicitModelSelection(
-                    settings.knowledge?.embedding_provider,
-                  )
-                    ? "Search models or type Azure deployment name"
-                    : undefined
-                }
-                hasError={needsExplicitEmbeddingModel}
-              />
-            </LabelWrapper>
-            {settings.knowledge?.embedding_model && selectedEmbeddingGroup && (
-              <div className="mt-3">
-                <ModelFeatures
-                  model={
-                    selectedEmbedding?.model ?? {
-                      model: settings.knowledge.embedding_model,
-                      // Without an explicit mode the panel treats an
-                      // off-catalogue embedding model as a language model and
-                      // warns that it cannot run the agent tools.
-                      mode: "embedding",
-                    }
-                  }
-                  providerName={selectedEmbeddingGroup.group}
-                  provider={selectedEmbeddingGroup.provider}
+            <LabelWrapper id="chunk-size" label="Chunk size">
+              <div className="relative [&:has(input:hover):not(:has(input:focus))_button]:border-muted-foreground [&:has(input:focus)_button]:border-foreground">
+                <Input
+                  id="chunk-size"
+                  type="number"
+                  min="1"
+                  value={chunkSize}
+                  onChange={(e) => handleChunkSizeChange(e.target.value)}
+                  className={`w-full pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none${chunkValidationError ? " border-destructive" : ""}`}
                 />
+                <div className="absolute inset-y-0 right-0 flex items-center">
+                  <span className="text-sm text-placeholder-foreground mr-4 pointer-events-none">
+                    characters
+                  </span>
+                  <div className="flex flex-col">
+                    <Button
+                      aria-label="Increase value"
+                      className="h-5 rounded-l-none rounded-br-none border-input border-b-[0.5px] focus-visible:relative transition-colors"
+                      variant="outline"
+                      size="iconSm"
+                      onClick={() =>
+                        handleChunkSizeChange((chunkSize + 1).toString())
+                      }
+                    >
+                      <Plus className="text-muted-foreground" size={8} />
+                    </Button>
+                    <Button
+                      aria-label="Decrease value"
+                      className="h-5 rounded-l-none rounded-tr-none border-input border-t-[0.5px] focus-visible:relative transition-colors"
+                      variant="outline"
+                      size="iconSm"
+                      onClick={() =>
+                        handleChunkSizeChange((chunkSize - 1).toString())
+                      }
+                    >
+                      <Minus className="text-muted-foreground" size={8} />
+                    </Button>
+                  </div>
+                </div>
               </div>
+            </LabelWrapper>
+          </div>
+          <div className="space-y-2">
+            <LabelWrapper id="chunk-overlap" label="Chunk overlap">
+              <div className="relative [&:has(input:hover):not(:has(input:focus))_button]:border-muted-foreground [&:has(input:focus)_button]:border-foreground">
+                <Input
+                  id="chunk-overlap"
+                  type="number"
+                  min="0"
+                  value={chunkOverlap}
+                  onChange={(e) => handleChunkOverlapChange(e.target.value)}
+                  className={`w-full pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none${chunkValidationError ? " border-destructive" : ""}`}
+                />
+                <div className="absolute inset-y-0 right-0 flex items-center">
+                  <span className="text-sm text-placeholder-foreground mr-4 pointer-events-none">
+                    characters
+                  </span>
+                  <div className="flex flex-col">
+                    <Button
+                      aria-label="Increase value"
+                      className="h-5 rounded-l-none rounded-br-none border-input border-b-[0.5px] focus-visible:relative transition-colors"
+                      variant="outline"
+                      size="iconSm"
+                      onClick={() =>
+                        handleChunkOverlapChange((chunkOverlap + 1).toString())
+                      }
+                    >
+                      <Plus className="text-muted-foreground" size={8} />
+                    </Button>
+                    <Button
+                      aria-label="Decrease value"
+                      className="h-5 rounded-l-none rounded-tr-none border-input border-t-[0.5px] focus-visible:relative transition-colors"
+                      variant="outline"
+                      size="iconSm"
+                      onClick={() =>
+                        handleChunkOverlapChange((chunkOverlap - 1).toString())
+                      }
+                    >
+                      <Minus className="text-muted-foreground" size={8} />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </LabelWrapper>
+            {chunkValidationError && (
+              <p className="text-sm text-destructive mt-1" role="alert">
+                {chunkValidationError}
+              </p>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <LabelWrapper id="chunk-size" label="Chunk size">
-                <div className="relative [&:has(input:hover):not(:has(input:focus))_button]:border-muted-foreground [&:has(input:focus)_button]:border-foreground">
-                  <Input
-                    id="chunk-size"
-                    type="number"
-                    min="1"
-                    value={chunkSize}
-                    onChange={(e) => handleChunkSizeChange(e.target.value)}
-                    className={`w-full pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none${chunkValidationError ? " border-destructive" : ""}`}
-                  />
-                  <div className="absolute inset-y-0 right-0 flex items-center">
-                    <span className="text-sm text-placeholder-foreground mr-4 pointer-events-none">
-                      characters
-                    </span>
-                    <div className="flex flex-col">
-                      <Button
-                        aria-label="Increase value"
-                        className="h-5 rounded-l-none rounded-br-none border-input border-b-[0.5px] focus-visible:relative transition-colors"
-                        variant="outline"
-                        size="iconSm"
-                        onClick={() =>
-                          handleChunkSizeChange((chunkSize + 1).toString())
-                        }
-                      >
-                        <Plus className="text-muted-foreground" size={8} />
-                      </Button>
-                      <Button
-                        aria-label="Decrease value"
-                        className="h-5 rounded-l-none rounded-tr-none border-input border-t-[0.5px] focus-visible:relative transition-colors"
-                        variant="outline"
-                        size="iconSm"
-                        onClick={() =>
-                          handleChunkSizeChange((chunkSize - 1).toString())
-                        }
-                      >
-                        <Minus className="text-muted-foreground" size={8} />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </LabelWrapper>
+        </div>
+        {/* Toggles read as one panel in the design: a filled, rounded card
+            whose rows are split by hairlines that stop short of the card edge
+            (hence last:border-b-0). */}
+        <div className="rounded-lg bg-muted/50 px-5">
+          <div className="flex items-center justify-between gap-6 border-b border-border py-6 last:border-b-0">
+            <div className="flex-1 space-y-2 pl-3">
+              <Label
+                htmlFor="disable-ingest-with-langflow"
+                className="text-base font-semibold cursor-pointer"
+              >
+                Disable Langflow Ingestion
+              </Label>
+              <div className="text-sm text-muted-foreground">
+                Bypass Langflow for document ingestion and use traditional
+                processing.
+              </div>
             </div>
-            <div className="space-y-2">
-              <LabelWrapper id="chunk-overlap" label="Chunk overlap">
-                <div className="relative [&:has(input:hover):not(:has(input:focus))_button]:border-muted-foreground [&:has(input:focus)_button]:border-foreground">
-                  <Input
-                    id="chunk-overlap"
-                    type="number"
-                    min="0"
-                    value={chunkOverlap}
-                    onChange={(e) => handleChunkOverlapChange(e.target.value)}
-                    className={`w-full pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none${chunkValidationError ? " border-destructive" : ""}`}
-                  />
-                  <div className="absolute inset-y-0 right-0 flex items-center">
-                    <span className="text-sm text-placeholder-foreground mr-4 pointer-events-none">
-                      characters
-                    </span>
-                    <div className="flex flex-col">
-                      <Button
-                        aria-label="Increase value"
-                        className="h-5 rounded-l-none rounded-br-none border-input border-b-[0.5px] focus-visible:relative transition-colors"
-                        variant="outline"
-                        size="iconSm"
-                        onClick={() =>
-                          handleChunkOverlapChange(
-                            (chunkOverlap + 1).toString(),
-                          )
-                        }
-                      >
-                        <Plus className="text-muted-foreground" size={8} />
-                      </Button>
-                      <Button
-                        aria-label="Decrease value"
-                        className="h-5 rounded-l-none rounded-tr-none border-input border-t-[0.5px] focus-visible:relative transition-colors"
-                        variant="outline"
-                        size="iconSm"
-                        onClick={() =>
-                          handleChunkOverlapChange(
-                            (chunkOverlap - 1).toString(),
-                          )
-                        }
-                      >
-                        <Minus className="text-muted-foreground" size={8} />
-                      </Button>
-                    </div>
-                  </div>
+            <Switch
+              id="disable-ingest-with-langflow"
+              checked={disableIngestWithLangflow}
+              onCheckedChange={(v) => {
+                setUserEdited(true);
+                setDisableIngestWithLangflow(v);
+              }}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-6 border-b border-border py-6 last:border-b-0">
+            <div className="flex-1 space-y-2 pl-3">
+              <Label
+                htmlFor="table-structure"
+                className="text-base font-semibold cursor-pointer"
+              >
+                Table Structure
+              </Label>
+              <div className="text-sm text-muted-foreground">
+                Capture table structure during ingest.
+              </div>
+            </div>
+            <Switch
+              id="table-structure"
+              checked={tableStructure}
+              onCheckedChange={(v) => {
+                setUserEdited(true);
+                setTableStructure(v);
+              }}
+            />
+          </div>
+          <div className="border-b border-border last:border-b-0">
+            <div className="flex items-center justify-between gap-6 py-6">
+              <div className="flex-1 space-y-2 pl-3">
+                <Label
+                  htmlFor="ocr"
+                  className="text-base font-semibold cursor-pointer"
+                >
+                  OCR
+                </Label>
+                <div className="text-sm text-muted-foreground">
+                  Extracts text from images/PDFs. Ingest is slower when enabled.
                 </div>
-              </LabelWrapper>
-              {chunkValidationError && (
-                <p className="text-sm text-destructive mt-1" role="alert">
-                  {chunkValidationError}
+              </div>
+              <Switch
+                id="ocr"
+                checked={ocr}
+                onCheckedChange={(v) => {
+                  setUserEdited(true);
+                  setOcr(v);
+                }}
+              />
+            </div>
+            <Collapsible
+              open={ocrOpen}
+              onOpenChange={setOcrOpen}
+              className={cn(
+                "pl-3 pb-6 transition-all duration-200",
+                !ocr && "opacity-50",
+              )}
+            >
+              <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-sm font-medium text-foreground hover:text-foreground/80">
+                Advanced OCR Settings
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 mr-4 text-muted-foreground transition-transform duration-200",
+                    ocrOpen && "rotate-180",
+                  )}
+                />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-4 space-y-6">
+                <div className="space-y-2">
+                  <LabelWrapper
+                    id="ocr-languages"
+                    label="OCR languages"
+                    helperText="Languages are prioritized in this order; English stays last when combined with others"
+                    disabled={!ocr}
+                    flex
+                  >
+                    <MultiSelect
+                      options={ocrLanguageOptions}
+                      value={ocrLanguages}
+                      onValueChange={(v) => {
+                        setUserEdited(true);
+                        // An empty selection would make docling fall back to its
+                        // English-only default without saying so; keep English.
+                        setOcrLanguages(englishLast(v.length > 0 ? v : ["en"]));
+                      }}
+                      showAllOption={false}
+                      placeholder="Select languages..."
+                      searchPlaceholder="Search languages..."
+                      className="w-64"
+                      inlineLabelLimit={2}
+                      disabled={!ocr}
+                    />
+                  </LabelWrapper>
+                  <p className="text-sm text-muted-foreground">
+                    Most languages can only be combined with English, so
+                    incompatible options are disabled once you choose one.
+                  </p>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+          <div className="flex items-center justify-between gap-6 border-b border-border py-6 last:border-b-0">
+            <div className="flex-1 space-y-2 pl-3">
+              <Label
+                htmlFor="picture-descriptions"
+                className="text-base font-semibold cursor-pointer"
+              >
+                Picture Descriptions
+              </Label>
+              <div className="text-sm text-muted-foreground">
+                Adds captions for images. Ingest is slower when enabled.
+              </div>
+            </div>
+            <Switch
+              id="picture-descriptions"
+              checked={pictureDescriptions}
+              onCheckedChange={(v) => {
+                setUserEdited(true);
+                setPictureDescriptions(v);
+              }}
+            />
+          </div>
+        </div>
+        {showVlmSettings && (
+          <Collapsible
+            open={vlmOpen}
+            onOpenChange={setVlmOpen}
+            className={cn(
+              "px-4 transition-all duration-200",
+              !pictureDescriptions && "opacity-50",
+            )}
+          >
+            <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-sm font-medium text-foreground hover:text-foreground/80">
+              Advanced Vision Model (VLM) Settings
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                  vlmOpen && "rotate-180",
+                )}
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-4 space-y-6">
+              <div className="space-y-2">
+                <LabelWrapper
+                  id="vlm-model"
+                  label="Vision model"
+                  helperText="Pick a vision-capable model; the provider is set from your selection"
+                  required={pictureDescriptions}
+                >
+                  <ModelSelector
+                    groupedOptions={groupedVlmModels}
+                    custom
+                    noOptionsPlaceholder={
+                      isLoadingAnyVlmModels
+                        ? "Loading models..."
+                        : catalogError
+                          ? "Could not load the model catalogue. Retry later."
+                          : "No models detected. Configure a model provider with vision-capable models first."
+                    }
+                    value={vlmModel}
+                    selectedProvider={effectiveVlmProvider}
+                    onValueChange={handleVlmModelChange}
+                    hasError={!!validationError}
+                    disabled={!pictureDescriptions}
+                  />
+                </LabelWrapper>
+                {providerWarning && (
+                  <p className="text-sm text-destructive" role="alert">
+                    Configure a provider with vision-capable models in Settings
+                    &gt; Providers first.
+                  </p>
+                )}
+              </div>
+
+              {effectiveVlmProvider === "watsonx" && (
+                <div className="space-y-2">
+                  <LabelWrapper
+                    id="vlm-watsonx-api-version"
+                    label="watsonx API version"
+                    helperText="API version date sent to watsonx.ai"
+                  >
+                    <Input
+                      id="vlm-watsonx-api-version"
+                      type="text"
+                      placeholder={DEFAULT_WATSONX_API_VERSION}
+                      value={vlmWatsonxApiVersion}
+                      onChange={(e) => {
+                        setUserEdited(true);
+                        setVlmWatsonxApiVersion(e.target.value);
+                      }}
+                      disabled={!pictureDescriptions}
+                    />
+                  </LabelWrapper>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <LabelWrapper
+                  id="vlm-prompt"
+                  label="Prompt"
+                  helperText="Sent to the VLM for every page"
+                >
+                  <Textarea
+                    id="vlm-prompt"
+                    rows={3}
+                    value={vlmPrompt}
+                    onChange={(e) => {
+                      setUserEdited(true);
+                      setVlmPrompt(e.target.value);
+                    }}
+                    disabled={!pictureDescriptions}
+                  />
+                </LabelWrapper>
+              </div>
+
+              <div className="space-y-2">
+                <LabelWrapper
+                  id="vlm-response-format"
+                  label="Response format"
+                  helperText="Per-page VLM output. Markdown is compatible with the existing pipeline; the final document is always Docling JSON."
+                >
+                  <Select
+                    value={vlmResponseFormat}
+                    onValueChange={(v) => {
+                      setUserEdited(true);
+                      setVlmResponseFormat(v);
+                    }}
+                    disabled={!pictureDescriptions}
+                  >
+                    <SelectTrigger
+                      id="vlm-response-format"
+                      disabled={!pictureDescriptions}
+                    >
+                      <SelectValue placeholder="Select a format" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RESPONSE_FORMATS.map((format) => (
+                        <SelectItem key={format.value} value={format.value}>
+                          {format.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </LabelWrapper>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <NumberInput
+                  id="vlm-max-tokens"
+                  label="Max tokens per page"
+                  value={vlmMaxTokens}
+                  onChange={(value) => {
+                    setUserEdited(true);
+                    setVlmMaxTokens(Math.max(1, value));
+                  }}
+                  unit="tokens"
+                  min={1}
+                  disabled={!pictureDescriptions}
+                />
+                <NumberInput
+                  id="vlm-concurrency"
+                  label="Concurrency"
+                  value={vlmConcurrency}
+                  onChange={(value) => {
+                    setUserEdited(true);
+                    setVlmConcurrency(Math.max(1, value));
+                  }}
+                  unit="requests"
+                  min={1}
+                  disabled={!pictureDescriptions}
+                />
+                <NumberInput
+                  id="vlm-timeout"
+                  label="API timeout"
+                  value={vlmTimeout}
+                  onChange={(value) => {
+                    setUserEdited(true);
+                    setVlmTimeout(Math.max(1, value));
+                  }}
+                  unit="seconds"
+                  min={1}
+                  disabled={!pictureDescriptions}
+                />
+              </div>
+
+              {validationError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {validationError}
                 </p>
               )}
-            </div>
-          </div>
-          <div>
-            <div className="flex items-center justify-between py-3 border-b border-border">
-              <div className="flex-1">
-                <Label
-                  htmlFor="disable-ingest-with-langflow"
-                  className="text-base font-medium cursor-pointer pb-3"
-                >
-                  Disable Langflow Ingestion
-                </Label>
-                <div className="text-sm text-muted-foreground">
-                  Bypass Langflow for document ingestion and use traditional
-                  processing.
-                </div>
-              </div>
-              <Switch
-                id="disable-ingest-with-langflow"
-                checked={disableIngestWithLangflow}
-                onCheckedChange={(v) => {
-                  setUserEdited(true);
-                  setDisableIngestWithLangflow(v);
-                }}
-              />
-            </div>
-            <div className="flex items-center justify-between py-3 border-b border-border">
-              <div className="flex-1">
-                <Label
-                  htmlFor="table-structure"
-                  className="text-base font-medium cursor-pointer pb-3"
-                >
-                  Table Structure
-                </Label>
-                <div className="text-sm text-muted-foreground">
-                  Capture table structure during ingest.
-                </div>
-              </div>
-              <Switch
-                id="table-structure"
-                checked={tableStructure}
-                onCheckedChange={(v) => {
-                  setUserEdited(true);
-                  setTableStructure(v);
-                }}
-              />
-            </div>
-            <div className="border-b border-border">
-              <div className="flex items-center justify-between py-3">
-                <div className="flex-1">
-                  <Label
-                    htmlFor="ocr"
-                    className="text-base font-medium cursor-pointer pb-3"
-                  >
-                    OCR
-                  </Label>
-                  <div className="text-sm text-muted-foreground">
-                    Extracts text from images/PDFs. Ingest is slower when
-                    enabled.
-                  </div>
-                </div>
-                <Switch
-                  id="ocr"
-                  checked={ocr}
-                  onCheckedChange={(v) => {
-                    setUserEdited(true);
-                    setOcr(v);
-                  }}
-                />
-              </div>
-              <Collapsible
-                open={ocrOpen}
-                onOpenChange={setOcrOpen}
-                className={cn(
-                  "pl-4 pb-3 transition-all duration-200",
-                  !ocr && "opacity-50",
-                )}
-              >
-                <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-sm font-medium text-foreground hover:text-foreground/80">
-                  Advanced OCR Settings
-                  <ChevronDown
-                    className={cn(
-                      "h-4 w-4 mr-4 text-muted-foreground transition-transform duration-200",
-                      ocrOpen && "rotate-180",
-                    )}
-                  />
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-4 space-y-6">
-                  <div className="space-y-2">
-                    <LabelWrapper
-                      id="ocr-languages"
-                      label="OCR languages"
-                      helperText="Languages are prioritized in this order; English stays last when combined with others"
-                      disabled={!ocr}
-                      flex
-                    >
-                      <MultiSelect
-                        options={ocrLanguageOptions}
-                        value={ocrLanguages}
-                        onValueChange={(v) => {
-                          setUserEdited(true);
-                          // An empty selection would make docling fall back to its
-                          // English-only default without saying so; keep English.
-                          setOcrLanguages(
-                            englishLast(v.length > 0 ? v : ["en"]),
-                          );
-                        }}
-                        showAllOption={false}
-                        placeholder="Select languages..."
-                        searchPlaceholder="Search languages..."
-                        className="w-64"
-                        inlineLabelLimit={2}
-                        disabled={!ocr}
-                      />
-                    </LabelWrapper>
-                    <p className="text-sm text-muted-foreground">
-                      Most languages can only be combined with English, so
-                      incompatible options are disabled once you choose one.
-                    </p>
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            </div>
-            <div className="flex items-center justify-between py-3">
-              <div className="flex-1">
-                <Label
-                  htmlFor="picture-descriptions"
-                  className="text-base font-medium cursor-pointer pb-3"
-                >
-                  Picture Descriptions
-                </Label>
-                <div className="text-sm text-muted-foreground">
-                  Adds captions for images. Ingest is slower when enabled.
-                </div>
-              </div>
-              <Switch
-                id="picture-descriptions"
-                checked={pictureDescriptions}
-                onCheckedChange={(v) => {
-                  setUserEdited(true);
-                  setPictureDescriptions(v);
-                }}
-              />
-            </div>
-            {showVlmSettings && (
-              <>
-                <hr className="mt-4 border-border" />
-                <Collapsible
-                  open={vlmOpen}
-                  onOpenChange={setVlmOpen}
-                  className={cn(
-                    "mt-4 pl-4 transition-all duration-200",
-                    !pictureDescriptions && "opacity-50",
-                  )}
-                >
-                  <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-sm font-medium text-foreground hover:text-foreground/80">
-                    Advanced Vision Model (VLM) Settings
-                    <ChevronDown
-                      className={cn(
-                        "h-4 w-4 mr-4 text-muted-foreground transition-transform duration-200",
-                        vlmOpen && "rotate-180",
-                      )}
-                    />
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="pt-4 space-y-6">
-                    <div className="space-y-2">
-                      <LabelWrapper
-                        id="vlm-model"
-                        label="Vision model"
-                        helperText="Pick a vision-capable model; the provider is set from your selection"
-                        required={pictureDescriptions}
-                      >
-                        <ModelSelector
-                          groupedOptions={groupedVlmModels}
-                          custom
-                          noOptionsPlaceholder={
-                            isLoadingAnyVlmModels
-                              ? "Loading models..."
-                              : catalogError
-                                ? "Could not load the model catalogue. Retry later."
-                                : "No models detected. Configure a model provider with vision-capable models first."
-                          }
-                          value={vlmModel}
-                          selectedProvider={effectiveVlmProvider}
-                          onValueChange={handleVlmModelChange}
-                          hasError={!!validationError}
-                          disabled={!pictureDescriptions}
-                        />
-                      </LabelWrapper>
-                      {providerWarning && (
-                        <p className="text-sm text-destructive" role="alert">
-                          Configure a provider with vision-capable models in
-                          Settings &gt; Providers first.
-                        </p>
-                      )}
-                    </div>
-
-                    {effectiveVlmProvider === "watsonx" && (
-                      <div className="space-y-2">
-                        <LabelWrapper
-                          id="vlm-watsonx-api-version"
-                          label="watsonx API version"
-                          helperText="API version date sent to watsonx.ai"
-                        >
-                          <Input
-                            id="vlm-watsonx-api-version"
-                            type="text"
-                            placeholder={DEFAULT_WATSONX_API_VERSION}
-                            value={vlmWatsonxApiVersion}
-                            onChange={(e) => {
-                              setUserEdited(true);
-                              setVlmWatsonxApiVersion(e.target.value);
-                            }}
-                            disabled={!pictureDescriptions}
-                          />
-                        </LabelWrapper>
-                      </div>
-                    )}
-
-                    <div className="space-y-2">
-                      <LabelWrapper
-                        id="vlm-prompt"
-                        label="Prompt"
-                        helperText="Sent to the VLM for every page"
-                      >
-                        <Textarea
-                          id="vlm-prompt"
-                          rows={3}
-                          value={vlmPrompt}
-                          onChange={(e) => {
-                            setUserEdited(true);
-                            setVlmPrompt(e.target.value);
-                          }}
-                          disabled={!pictureDescriptions}
-                        />
-                      </LabelWrapper>
-                    </div>
-
-                    <div className="space-y-2">
-                      <LabelWrapper
-                        id="vlm-response-format"
-                        label="Response format"
-                        helperText="Per-page VLM output. Markdown is compatible with the existing pipeline; the final document is always Docling JSON."
-                      >
-                        <Select
-                          value={vlmResponseFormat}
-                          onValueChange={(v) => {
-                            setUserEdited(true);
-                            setVlmResponseFormat(v);
-                          }}
-                          disabled={!pictureDescriptions}
-                        >
-                          <SelectTrigger
-                            id="vlm-response-format"
-                            disabled={!pictureDescriptions}
-                          >
-                            <SelectValue placeholder="Select a format" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {RESPONSE_FORMATS.map((format) => (
-                              <SelectItem
-                                key={format.value}
-                                value={format.value}
-                              >
-                                {format.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </LabelWrapper>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-4">
-                      <NumberInput
-                        id="vlm-max-tokens"
-                        label="Max tokens per page"
-                        value={vlmMaxTokens}
-                        onChange={(value) => {
-                          setUserEdited(true);
-                          setVlmMaxTokens(Math.max(1, value));
-                        }}
-                        unit="tokens"
-                        min={1}
-                        disabled={!pictureDescriptions}
-                      />
-                      <NumberInput
-                        id="vlm-concurrency"
-                        label="Concurrency"
-                        value={vlmConcurrency}
-                        onChange={(value) => {
-                          setUserEdited(true);
-                          setVlmConcurrency(Math.max(1, value));
-                        }}
-                        unit="requests"
-                        min={1}
-                        disabled={!pictureDescriptions}
-                      />
-                      <NumberInput
-                        id="vlm-timeout"
-                        label="API timeout"
-                        value={vlmTimeout}
-                        onChange={(value) => {
-                          setUserEdited(true);
-                          setVlmTimeout(Math.max(1, value));
-                        }}
-                        unit="seconds"
-                        min={1}
-                        disabled={!pictureDescriptions}
-                      />
-                    </div>
-
-                    {validationError && (
-                      <p className="text-sm text-destructive" role="alert">
-                        {validationError}
-                      </p>
-                    )}
-                  </CollapsibleContent>
-                </Collapsible>
-              </>
-            )}
-          </div>
-          <div className="flex justify-end pt-2">
-            <Button
-              onClick={handleKnowledgeIngestSave}
-              disabled={
-                updateSettingsMutation.isPending ||
-                !knowledgeIngestDirty ||
-                vlmModelPending ||
-                !!chunkValidationError
-              }
-              className="min-w-[120px]"
-              size="sm"
-              variant="outline"
-            >
-              {updateSettingsMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                "Save ingest settings"
-              )}
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+      </div>
+    </section>
   );
 }

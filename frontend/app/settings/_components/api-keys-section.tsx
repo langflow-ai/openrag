@@ -11,13 +11,6 @@ import { LabelWrapper } from "@/components/label-wrapper";
 import { RequirePermission } from "@/components/require-permission";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -106,131 +99,133 @@ export function ApiKeysSection() {
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between mb-3">
-            <CardTitle
+      <section className="space-y-8">
+        <header className="flex items-start justify-between gap-6">
+          <div className="max-w-[685px] space-y-3">
+            <h3
               className={cn(
-                "text-lg",
+                "text-lg font-semibold leading-tight tracking-tight",
                 isCloudBrand && "ibm-settings-section-title",
               )}
             >
               API Keys
-            </CardTitle>
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              API keys allow programmatic access to OpenRAG via the public API.
+              Keep your keys secure and never share them publicly.
+            </p>
+          </div>
+          <RequirePermission perm="apikeys:create:self">
+            <Button
+              className="shrink-0"
+              onClick={() => setCreateKeyDialogOpen(true)}
+              size="sm"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Create Key
+            </Button>
+          </RequirePermission>
+        </header>
+        {apiKeysLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : apiKeysData?.keys && apiKeysData.keys.length > 0 ? (
+          <div className="border rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
+                    Name
+                  </th>
+                  <th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
+                    Key
+                  </th>
+                  <th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
+                    Created
+                  </th>
+                  <th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
+                    Last Used
+                  </th>
+                  <th className="text-right text-sm font-medium text-muted-foreground px-4 py-3">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {apiKeysData.keys.map((key) => (
+                  <tr key={key.key_id} className="border-t">
+                    <td className="px-4 py-3 text-sm font-medium">
+                      {key.name}
+                    </td>
+                    <td className="px-4 py-3">
+                      <code className="text-sm bg-muted px-2 py-1 rounded">
+                        {key.key_prefix}...
+                      </code>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      {formatDate(key.created_at)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      {formatDate(key.last_used_at)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <ConfirmationDialog
+                        trigger={
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        }
+                        title="Revoke API Key"
+                        description={
+                          <>
+                            Are you sure you want to revoke the API key{" "}
+                            <strong>{key.name}</strong>? This action cannot be
+                            undone and any applications using this key will stop
+                            working.
+                          </>
+                        }
+                        confirmText="Revoke"
+                        variant="destructive"
+                        onConfirm={(closeDialog) => {
+                          trackButton({
+                            CTA: "Revoke API Key",
+                            elementId: "revoke-api-key-button",
+                            namespace: "settings",
+                          });
+                          revokeApiKeyMutation.mutate({ key_id: key.key_id });
+                          closeDialog();
+                        }}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <Key className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+            <p className="text-muted-foreground mb-4">
+              No API keys yet. Create one to get started.
+            </p>
             <RequirePermission perm="apikeys:create:self">
-              <Button onClick={() => setCreateKeyDialogOpen(true)} size="sm">
+              <Button
+                variant="outline"
+                onClick={() => setCreateKeyDialogOpen(true)}
+                size="sm"
+              >
                 <Plus className="h-4 w-4 mr-2" />
-                Create Key
+                Create your first API key
               </Button>
             </RequirePermission>
           </div>
-          <CardDescription>
-            API keys allow programmatic access to OpenRAG via the public API.
-            Keep your keys secure and never share them publicly.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {apiKeysLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : apiKeysData?.keys && apiKeysData.keys.length > 0 ? (
-            <div className="border rounded-lg overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
-                      Name
-                    </th>
-                    <th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
-                      Key
-                    </th>
-                    <th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
-                      Created
-                    </th>
-                    <th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
-                      Last Used
-                    </th>
-                    <th className="text-right text-sm font-medium text-muted-foreground px-4 py-3">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {apiKeysData.keys.map((key) => (
-                    <tr key={key.key_id} className="border-t">
-                      <td className="px-4 py-3 text-sm font-medium">
-                        {key.name}
-                      </td>
-                      <td className="px-4 py-3">
-                        <code className="text-sm bg-muted px-2 py-1 rounded">
-                          {key.key_prefix}...
-                        </code>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {formatDate(key.created_at)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {formatDate(key.last_used_at)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <ConfirmationDialog
-                          trigger={
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          }
-                          title="Revoke API Key"
-                          description={
-                            <>
-                              Are you sure you want to revoke the API key{" "}
-                              <strong>{key.name}</strong>? This action cannot be
-                              undone and any applications using this key will
-                              stop working.
-                            </>
-                          }
-                          confirmText="Revoke"
-                          variant="destructive"
-                          onConfirm={(closeDialog) => {
-                            trackButton({
-                              CTA: "Revoke API Key",
-                              elementId: "revoke-api-key-button",
-                              namespace: "settings",
-                            });
-                            revokeApiKeyMutation.mutate({ key_id: key.key_id });
-                            closeDialog();
-                          }}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <Key className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-              <p className="text-muted-foreground mb-4">
-                No API keys yet. Create one to get started.
-              </p>
-              <RequirePermission perm="apikeys:create:self">
-                <Button
-                  variant="outline"
-                  onClick={() => setCreateKeyDialogOpen(true)}
-                  size="sm"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create your first API key
-                </Button>
-              </RequirePermission>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        )}
+      </section>
 
       <Dialog open={createKeyDialogOpen} onOpenChange={setCreateKeyDialogOpen}>
         <DialogContent>
