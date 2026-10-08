@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 
 from api.files import _validate_iso_timestamp
 from dependencies import (
-    get_current_user,
     get_search_service,
     get_session_manager,
     require_permission,
