@@ -4,6 +4,7 @@ import { server } from "@/test-utils/msw/server";
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   vi.resetModules();
 });
 
@@ -40,6 +41,27 @@ describe("apiClient", () => {
 
     expect(response.status).toBe(403);
     expect(response.data).toEqual({ error: "forbidden" });
+  });
+
+  it("does not redirect for a 401 without a login URL", async () => {
+    const location = {
+      origin: "http://localhost:3000",
+      href: "http://localhost:3000/current-page",
+    };
+    vi.stubGlobal("window", { location });
+    server.use(
+      http.get("/api/unauthorized", () =>
+        HttpResponse.json(
+          { error: "invalid provider credentials" },
+          { status: 401 },
+        ),
+      ),
+    );
+    const { apiClient } = await import("./api-client");
+    const response = await apiClient.get("/unauthorized");
+
+    expect(response.status).toBe(401);
+    expect(location.href).toBe("http://localhost:3000/current-page");
   });
 
   it("does not use the API base URL for absolute third-party URLs", async () => {

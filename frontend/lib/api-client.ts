@@ -58,6 +58,8 @@ function redirectForUnauthorized(response: AxiosResponse<unknown>) {
     (payload as Record<string, unknown>).redirect_url ||
     (payload as Record<string, unknown>).redirectUrl ||
     (payload as Record<string, unknown>).redirect;
+  if (typeof redirectUrl !== "string" || !redirectUrl) return;
+
   window.location.href = getUnauthorizedRedirectUrl(redirectUrl);
 }
 
