@@ -67,6 +67,21 @@ async def test_create_source_persists_crawl_configuration_in_its_manifest(monkey
 
 
 @pytest.mark.asyncio
+async def test_create_source_rejects_duplicate_name_for_the_same_owner(monkeypatch):
+    source = _source()
+    monkeypatch.setattr(api, "list_source_manifests", AsyncMock(return_value=[source]))
+
+    with pytest.raises(Exception, match="already exists") as error:
+        await api.create_source(
+            CreateSourceBody(name=" documentation ", starting_url="https://other.example.com/"),
+            task_service=object(),
+            user=_user(source),
+        )
+
+    assert getattr(error.value, "status_code", None) == 409
+
+
+@pytest.mark.asyncio
 async def test_page_sync_enqueues_a_manifest_scoped_processor(monkeypatch):
     source = _source()
     page = {
@@ -88,8 +103,9 @@ async def test_page_sync_enqueues_a_manifest_scoped_processor(monkeypatch):
 
     assert enqueue.await_args.kwargs["page_id"] == "page-1"
     assert page["suppressed_by_user"] is False
+    assert page["status"] == "processing"
     persist_page.assert_awaited_once_with(page)
-    assert result == {"id": "page-1", "status": "disabled", "task_id": "task-1"}
+    assert result == {"id": "page-1", "status": "processing", "task_id": "task-1"}
 
 
 @pytest.mark.asyncio

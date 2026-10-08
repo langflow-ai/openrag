@@ -9,6 +9,11 @@ import { UrlSourceDialog } from "./url-source-dialog";
 describe("UrlSourceDialog", () => {
   it("switches between source and re-sync steps from the dialog header", async () => {
     const user = userEvent.setup();
+    server.use(
+      http.get("/api/connectors/url/sources", () =>
+        HttpResponse.json({ sources: [] }),
+      ),
+    );
 
     renderWithProviders(<UrlSourceDialog open onOpenChange={vi.fn()} />);
 
@@ -43,6 +48,9 @@ describe("UrlSourceDialog", () => {
     const onCreated = vi.fn();
     let requestBody: Record<string, unknown> | undefined;
     server.use(
+      http.get("/api/connectors/url/sources", () =>
+        HttpResponse.json({ sources: [] }),
+      ),
       http.post("/api/connectors/url/sources", async ({ request }) => {
         requestBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ last_task_id: "website-task" });
@@ -108,5 +116,34 @@ describe("UrlSourceDialog", () => {
       max_depth: 0,
       removed_page_behavior: "delete",
     });
+  });
+
+  it("reports an existing website connection name before submission", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("/api/connectors/url/sources", () =>
+        HttpResponse.json({
+          sources: [
+            {
+              id: "source-1",
+              name: "Docs",
+              starting_url: "https://docs.example.com",
+              status: "active",
+            },
+          ],
+        }),
+      ),
+    );
+
+    renderWithProviders(<UrlSourceDialog open onOpenChange={vi.fn()} />);
+
+    await user.type(screen.getByLabelText("Connection name"), " docs ");
+
+    expect(
+      await screen.findByText(
+        "A website connection with this name already exists.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
   });
 });

@@ -54,6 +54,19 @@ export function lines(value: string) {
   });
 }
 
+export function isWebsiteSourceNameAvailable(
+  name: string,
+  existingNames: readonly string[],
+) {
+  const normalized = name.trim().toLocaleLowerCase();
+  return (
+    !normalized ||
+    !existingNames.some(
+      (existingName) => existingName.trim().toLocaleLowerCase() === normalized,
+    )
+  );
+}
+
 function validUrl(value: string) {
   try {
     const url = new URL(value);
@@ -70,7 +83,10 @@ function validUrl(value: string) {
   }
 }
 
-export function isUrlSourceFormValid(form: UrlSourceForm) {
+export function isUrlSourceFormValid(
+  form: UrlSourceForm,
+  existingNames: readonly string[] = [],
+) {
   const pageScope = form.scope === "page";
   const limitsAreValid = (
     Object.entries(CRAWL_LIMITS) as [
@@ -98,7 +114,8 @@ export function isUrlSourceFormValid(form: UrlSourceForm) {
       [...lines(form.include_paths), ...lines(form.exclude_paths)].every(
         (path) => path.startsWith("/"),
       ) &&
-      limitsAreValid,
+      limitsAreValid &&
+      isWebsiteSourceNameAvailable(form.name, existingNames),
   );
 }
 

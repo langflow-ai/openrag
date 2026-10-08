@@ -80,6 +80,11 @@ export function useWebsitePagesTable(
       }
     };
     return [...searchPages].sort((left, right) => {
+      const leftDisabled = left.status === "disabled";
+      const rightDisabled = right.status === "disabled";
+      if (leftDisabled !== rightDisabled) {
+        return leftDisabled ? 1 : -1;
+      }
       const leftValue = sortValue(left);
       const rightValue = sortValue(right);
       const comparison =

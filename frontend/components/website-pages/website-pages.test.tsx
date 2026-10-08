@@ -199,6 +199,44 @@ describe("website page data", () => {
       setIntervalSpy.mockRestore();
     }
   });
+
+  it("keeps disabled pages at the end of the paginated table", async () => {
+    server.use(
+      http.post("/api/search", () =>
+        HttpResponse.json({
+          results: [
+            page({ document_id: "doc-active-b", filename: "Beta" }),
+            page({
+              document_id: "doc-disabled",
+              filename: "Alpha disabled",
+              status: "disabled",
+            }),
+            page({ document_id: "doc-active-a", filename: "Alpha" }),
+          ],
+          warnings: [],
+        }),
+      ),
+    );
+    const gridRef = { current: { api: { getColumnState: () => [] } } } as never;
+    const table = renderHook(() => useWebsitePagesTable("source-1", gridRef), {
+      wrapper: createQueryWrapper(),
+    });
+
+    await waitFor(() => expect(table.result.current.total).toBe(3));
+    expect(table.result.current.pages.map((item) => item.filename)).toEqual([
+      "Alpha",
+      "Beta",
+      "Alpha disabled",
+    ]);
+
+    act(() => {
+      table.result.current.setCurrentPageSize(2);
+      table.result.current.setCurrentPage(2);
+    });
+    expect(table.result.current.pages.map((item) => item.filename)).toEqual([
+      "Alpha disabled",
+    ]);
+  });
 });
 
 describe("website page presentation", () => {

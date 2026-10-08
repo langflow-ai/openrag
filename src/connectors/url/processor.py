@@ -255,6 +255,15 @@ class WebsiteSourceProcessor(TaskProcessor):
             succeeded = False
         else:
             succeeded = successful_pages > 0
+            if not succeeded and target_page is not None:
+                final_page = pages_by_url.get(str(target_page["canonical_url"]), target_page)
+                if final_page.get("status") == "processing":
+                    final_page.update(
+                        status="failed",
+                        last_error=failure_reason,
+                        updated_at=datetime.now(UTC).isoformat(),
+                    )
+                    await upsert_page_manifest(final_page)
             source["status"] = "active" if succeeded or source_is_established else "failed"
             source["last_error"] = (
                 None if source_is_established else (None if succeeded else failure_reason)

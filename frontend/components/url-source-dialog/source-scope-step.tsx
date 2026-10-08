@@ -9,11 +9,13 @@ import type { UpdateUrlSourceForm, UrlSourceForm } from "./form";
 export function SourceScopeStep({
   form,
   advanced,
+  nameError,
   onAdvancedChange,
   onUpdate,
 }: {
   form: UrlSourceForm;
   advanced: boolean;
+  nameError?: string;
   onAdvancedChange(open: boolean): void;
   onUpdate: UpdateUrlSourceForm;
 }) {
@@ -37,9 +39,15 @@ export function SourceScopeStep({
           <Label htmlFor="url-name">Connection name</Label>
           <Input
             id="url-name"
+            aria-invalid={Boolean(nameError)}
             value={form.name}
             onChange={(event) => onUpdate("name", event.target.value)}
           />
+          {nameError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {nameError}
+            </p>
+          ) : null}
         </div>
         <div className="space-y-2">
           <Label htmlFor="url-start">Starting URL</Label>

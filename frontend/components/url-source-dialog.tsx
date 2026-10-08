@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { useCreateWebsiteSourceMutation } from "@/app/api/mutations/useWebsiteSourceMutation";
+import { useGetWebsiteSourcesQuery } from "@/app/api/queries/useGetWebsiteSourcesQuery";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,6 +16,7 @@ import {
   createUrlSourcePayload,
   INITIAL_URL_SOURCE_FORM,
   isUrlSourceFormValid,
+  isWebsiteSourceNameAvailable,
   type UrlSourceForm,
 } from "./url-source-dialog/form";
 import { ResyncBehaviorStep } from "./url-source-dialog/resync-behavior-step";
@@ -37,12 +39,15 @@ export function UrlSourceDialog({
   const [advanced, setAdvanced] = useState(false);
   const [form, setForm] = useState<UrlSourceForm>(INITIAL_URL_SOURCE_FORM);
   const createWebsiteSourceMutation = useCreateWebsiteSourceMutation();
+  const { data: sources = [] } = useGetWebsiteSourcesQuery(open);
 
   const update = <K extends keyof UrlSourceForm>(
     key: K,
     value: UrlSourceForm[K],
   ) => setForm((current) => ({ ...current, [key]: value }));
-  const valid = isUrlSourceFormValid(form);
+  const existingNames = sources.map((source) => source.name);
+  const nameAvailable = isWebsiteSourceNameAvailable(form.name, existingNames);
+  const valid = isUrlSourceFormValid(form, existingNames);
 
   const close = (next: boolean) => {
     if (!next) {
@@ -89,6 +94,11 @@ export function UrlSourceDialog({
             <SourceScopeStep
               form={form}
               advanced={advanced}
+              nameError={
+                form.name.trim() && !nameAvailable
+                  ? "A website connection with this name already exists."
+                  : undefined
+              }
               onAdvancedChange={setAdvanced}
               onUpdate={update}
             />

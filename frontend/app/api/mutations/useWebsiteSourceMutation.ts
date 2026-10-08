@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { TASKS_QUERY_KEY } from "@/app/api/queries/useGetTasksQuery";
 import { websiteSourceQueryKey } from "@/app/api/queries/useGetWebsiteSourceQuery";
+import { websiteSourcesQueryKey } from "@/app/api/queries/useGetWebsiteSourcesQuery";
 import type { WebsiteSource } from "@/components/website-pages/types";
 
 export interface CreateWebsiteSourceRequest {
@@ -92,6 +93,7 @@ function invalidateWebsiteSourceQueries(
   sourceId: string,
 ) {
   queryClient.invalidateQueries({ queryKey: websiteSourceQueryKey(sourceId) });
+  queryClient.invalidateQueries({ queryKey: websiteSourcesQueryKey });
   queryClient.invalidateQueries({ queryKey: ["search"] });
   queryClient.invalidateQueries({ queryKey: [...TASKS_QUERY_KEY] });
 }
@@ -104,6 +106,7 @@ export function useCreateWebsiteSourceMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["search"] });
       queryClient.invalidateQueries({ queryKey: ["listFiles"] });
+      queryClient.invalidateQueries({ queryKey: websiteSourcesQueryKey });
       queryClient.invalidateQueries({ queryKey: [...TASKS_QUERY_KEY] });
     },
   });

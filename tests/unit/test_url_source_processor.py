@@ -196,6 +196,38 @@ async def test_failed_resync_keeps_existing_page_manifests_and_source_active(mon
 
 
 @pytest.mark.asyncio
+async def test_failed_page_resync_replaces_processing_status_with_error(monkeypatch):
+    source = _source(last_successful_sync_at=datetime.now(UTC).isoformat())
+    page = _page(source, "https://docs.example.com/guide", status="processing")
+    manifests = [page]
+    persist_page = AsyncMock()
+
+    monkeypatch.setattr(processor_module, "get_source_manifest", AsyncMock(return_value=source))
+    monkeypatch.setattr(processor_module, "get_page_manifest", AsyncMock(return_value=page))
+    monkeypatch.setattr(
+        processor_module, "list_page_manifests", AsyncMock(side_effect=lambda *_: manifests)
+    )
+    monkeypatch.setattr(processor_module, "upsert_page_manifest", persist_page)
+    monkeypatch.setattr(processor_module, "upsert_source_manifest", AsyncMock())
+    monkeypatch.setattr(
+        processor_module,
+        "crawl",
+        AsyncMock(
+            return_value=CrawlResult((), complete=False, capped=False, reason="network down")
+        ),
+    )
+
+    task, file_task = UploadTask(task_id="task-1", total_files=1), FileTask(file_path="source-1")
+    await _processor(source, page_id=page["web_page_id"]).process_item(
+        task, file_task.file_path, file_task
+    )
+
+    assert page["status"] == "failed"
+    assert page["last_error"] == "network down"
+    persist_page.assert_awaited_once_with(page)
+
+
+@pytest.mark.asyncio
 async def test_page_resync_preserves_existing_source_relative_depth(monkeypatch):
     source = _source(last_successful_sync_at=datetime.now(UTC).isoformat())
     page = _page(source, "https://docs.example.com/guides/deep", web_page_depth=3)

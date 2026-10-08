@@ -3,6 +3,7 @@ import {
   createUrlSourcePayload,
   INITIAL_URL_SOURCE_FORM,
   isUrlSourceFormValid,
+  isWebsiteSourceNameAvailable,
   lines,
 } from "./form";
 
@@ -56,5 +57,16 @@ describe("URL source form helpers", () => {
     expect(isUrlSourceFormValid({ ...valid, max_downloaded_mb: 2049 })).toBe(
       false,
     );
+  });
+
+  it("rejects website connection names that already exist", () => {
+    const form = {
+      ...INITIAL_URL_SOURCE_FORM,
+      name: "Docs",
+      starting_url: "https://docs.example.com",
+    };
+
+    expect(isWebsiteSourceNameAvailable(" docs ", ["Docs"])).toBe(false);
+    expect(isUrlSourceFormValid(form, ["DOCS"])).toBe(false);
   });
 });

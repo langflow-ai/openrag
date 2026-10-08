@@ -127,6 +127,14 @@ async def create_source(
     except CrawlPolicyError as exc:
         raise HTTPException(422, str(exc)) from exc
 
+    normalized_name = body.name.casefold()
+    existing_sources = await list_source_manifests(user.user_id)
+    if any(
+        str(source.get("name", "")).strip().casefold() == normalized_name
+        for source in existing_sources
+    ):
+        raise HTTPException(409, "A website connection with this name already exists")
+
     now = datetime.now(UTC).isoformat()
     source: dict[str, Any] = {
         "id": str(uuid.uuid4()),
@@ -250,8 +258,12 @@ async def sync_page(
     if page is None:
         raise HTTPException(404, "Website page not found")
 
-    page["suppressed_by_user"] = False
-    page["updated_at"] = datetime.now(UTC).isoformat()
+    page.update(
+        suppressed_by_user=False,
+        status="processing",
+        last_error=None,
+        updated_at=datetime.now(UTC).isoformat(),
+    )
     await upsert_page_manifest(page)
     source["status"], source["last_error"], source["updated_at"] = (
         "processing",
@@ -263,6 +275,8 @@ async def sync_page(
         source["last_task_id"] = await _enqueue(source, user, task_service, page_id=page_id)
     except Exception:
         source["status"], source["updated_at"] = "active", datetime.now(UTC).isoformat()
+        page.update(status="failed", last_error="Unable to start page re-sync")
+        await upsert_page_manifest(page)
         await upsert_source_manifest(source)
         raise
     await upsert_source_manifest(source)
