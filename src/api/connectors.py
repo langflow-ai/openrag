@@ -2408,10 +2408,10 @@ async def connector_webhook(
                 # it already has.
                 # allow_anonymous_delete=False for the same reason: nobody is
                 # here to authorize removing a document the whole instance can
-                # see. A file this connector indexed as shared loses nothing —
-                # shared resolves True from the index and that alone keeps the
-                # wider scope. What it stops is a private file's re-sync
-                # deleting a same-named shared document from another source.
+                # see, so a webhook replaces only what the connection's owner
+                # owns. A file indexed as shared is left as it is until someone
+                # holding the permission syncs it; no connector that delivers
+                # webhooks can index one today.
                 task_id = await connector_service.sync_specific_files(
                     connection.connection_id,
                     connection.user_id,

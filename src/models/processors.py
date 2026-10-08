@@ -368,7 +368,8 @@ class TaskProcessor:
 
         ``shared`` describes how the replacement is about to be *written*, not
         what is already indexed, so it must not narrow what we delete: with an
-        owner in hand the scope is "owned by this user OR ownerless".
+        owner in hand, and the permission below, the scope is "owned by this
+        user OR ownerless".
         Choosing an owner-only scope for a shared document matched none of its
         chunks, and the caller read that zero as "nothing to replace" and
         skipped the file — leaving the stale copy in the index even though the
@@ -388,8 +389,11 @@ class TaskProcessor:
         to the processor constructors and the task-service helpers that feed
         them; one acting for the system rather than for a user passes True and
         says why.
-        Deliberately ignored when ``shared`` is True: a shared write already
-        required the permission upstream."""
+        ``shared`` does not stand in for it. An explicit shared sync already
+        holds the permission (connector_sync refuses one without it), but on
+        the re-sync paths ``shared`` is inferred from what is indexed, and an
+        inferred answer authorizes nothing: honouring it let a caller without
+        the permission replace a shared document simply by re-syncing it."""
         from config.settings import clients, get_index_name
         from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
         from utils.opensearch_queries import (
@@ -415,7 +419,7 @@ class TaskProcessor:
                     )
                     return 0
 
-            elif shared or allow_anonymous_delete:
+            elif allow_anonymous_delete:
                 build_query = build_replace_filename_query
             else:
                 build_query = build_owned_filename_query
