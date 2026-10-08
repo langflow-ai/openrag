@@ -9,7 +9,9 @@ import {
   onboardingCredentialFields,
   providerCatalogOptions,
   providerCredentialsSatisfied,
+  providerDiscoversModels,
   savedSecretFieldsForProvider,
+  withDiscoveredModels,
 } from "./catalog-models";
 
 const catalog = {
@@ -416,5 +418,74 @@ describe("mergeLiveCatalogOptions creates a missing group", () => {
       merged[0].options.map((option) => option.value),
       ["ibm/slate-125m-english-rtrvr"],
     );
+  });
+});
+
+describe("withDiscoveredModels", () => {
+  const clusterCatalog = {
+    providers: [
+      {
+        key: "rhoai",
+        discovers_models: true,
+        models: [{ model: "granite-3.3-2b-instruct" }],
+        embedding_models: [{ model: "granite-embedding-english-r2" }],
+      },
+      { key: "openai", models: [{ model: "gpt-4.1" }] },
+    ],
+  };
+
+  it("replaces the provider's configured models with what the cluster serves", () => {
+    const result = withDiscoveredModels(clusterCatalog, "rhoai", {
+      models: [{ model: "gpt-oss-120b", mode: "chat" }],
+      embedding_models: null,
+    });
+
+    assert.deepEqual(
+      providerCatalogOptions(result, "rhoai", "language").map(
+        (option) => option.value,
+      ),
+      ["gpt-oss-120b"],
+    );
+    // A half the cluster could not list keeps the configured fallback.
+    assert.deepEqual(
+      providerCatalogOptions(result, "rhoai", "embedding").map(
+        (option) => option.value,
+      ),
+      ["granite-embedding-english-r2"],
+    );
+    // Other providers are untouched.
+    assert.deepEqual(
+      providerCatalogOptions(result, "openai", "language").map(
+        (option) => option.value,
+      ),
+      ["gpt-4.1"],
+    );
+  });
+
+  it("returns the catalogue unchanged when nothing was discovered", () => {
+    assert.equal(
+      withDiscoveredModels(clusterCatalog, "rhoai", undefined),
+      clusterCatalog,
+    );
+    assert.equal(
+      withDiscoveredModels(clusterCatalog, "rhoai", {
+        models: null,
+        embedding_models: null,
+      }),
+      clusterCatalog,
+    );
+    assert.equal(
+      withDiscoveredModels(undefined, "rhoai", {
+        models: [],
+        embedding_models: [],
+      }),
+      undefined,
+    );
+  });
+
+  it("knows which providers can list their own models", () => {
+    assert.equal(providerDiscoversModels(clusterCatalog, "rhoai"), true);
+    assert.equal(providerDiscoversModels(clusterCatalog, "openai"), false);
+    assert.equal(providerDiscoversModels(undefined, "rhoai"), false);
   });
 });

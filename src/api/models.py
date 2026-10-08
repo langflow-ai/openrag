@@ -1,4 +1,7 @@
 import re
+from collections.abc import Mapping
+from types import ModuleType
+from typing import Any
 
 import httpx
 from fastapi import Depends
@@ -50,6 +53,51 @@ class IBMBody(BaseModel):
 class WatsonxOnPremSpacesBody(BaseModel):
     credentials: dict[str, str] = Field(default_factory=dict)
     auth_method: str | None = None
+
+
+class ModelDiscoveryBody(BaseModel):
+    credentials: dict[str, str] = Field(default_factory=dict)
+    auth_method: str | None = None
+
+
+#: Fields that say *where* credentials are sent. When a form changes one, the
+#: stored values belong to a different host and must not travel with it.
+_CREDENTIAL_TARGET_FIELDS = ("api_base", "embedding_api_base", "ssl_verify")
+
+
+def _draft_credentials(
+    enhancement: ModuleType, submitted: Mapping[str, str], auth_method: str | None
+) -> dict[str, Any]:
+    """Credentials a form has typed, completed from the stored ones where safe.
+
+    A secret the operator saved earlier is shown blank in the form, so the
+    stored value fills in whatever was not typed — but only while the form still
+    points at the same host. A changed endpoint or TLS setting drops every
+    stored value, so a saved token is never sent somewhere it was not saved for.
+    Only the fields the provider's form defines (for the chosen auth method,
+    where it has several) are kept.
+    """
+    config = get_openrag_config()
+    stored = config.providers.stored_credentials(enhancement.PROVIDER_KEY)
+    fields_for_auth_method = getattr(enhancement, "credential_fields_for_auth_method", None)
+    if callable(fields_for_auth_method):
+        stored_config = config.providers.get_provider_config(enhancement.PROVIDER_KEY)
+        method = auth_method or getattr(stored_config, "auth_method", None)
+        if method is None:
+            method = "zen_api_key" if stored.get("zen_api_key") else "username_api_key"
+        allowed = set(fields_for_auth_method(method))
+    else:
+        allowed = {str(field["key"]) for field in enhancement.CREDENTIAL_FIELDS}
+    typed = {
+        name: str(value).strip()
+        for name, value in submitted.items()
+        if name in allowed and str(value).strip()
+    }
+    target_changed = any(
+        name in typed and typed[name] != stored.get(name) for name in _CREDENTIAL_TARGET_FIELDS
+    )
+    base = {} if target_changed else stored
+    return {name: value for name, value in {**base, **typed}.items() if name in allowed}
 
 
 def _models_error_response(exc: Exception) -> JSONResponse:
@@ -232,28 +280,7 @@ async def get_watsonx_onprem_spaces(
 
     request = body or WatsonxOnPremSpacesBody()
     try:
-        config = get_openrag_config()
-        stored_config = config.providers.get_provider_config(onprem.PROVIDER_KEY)
-        stored_credentials = config.providers.stored_credentials(onprem.PROVIDER_KEY)
-        auth_method = request.auth_method or getattr(stored_config, "auth_method", None)
-        if auth_method is None:
-            auth_method = (
-                "zen_api_key" if stored_credentials.get("zen_api_key") else "username_api_key"
-            )
-        allowed = onprem.credential_fields_for_auth_method(auth_method)
-        submitted = {
-            name: str(value).strip()
-            for name, value in request.credentials.items()
-            if name in allowed and str(value).strip()
-        }
-        target_changed = any(
-            name in submitted and submitted[name] != stored_credentials.get(name)
-            for name in ("api_base", "ssl_verify")
-        )
-        base = {} if target_changed else stored_credentials
-        credentials = {
-            name: value for name, value in {**base, **submitted}.items() if name in allowed
-        }
+        credentials = _draft_credentials(onprem, request.credentials, request.auth_method)
         spaces = await onprem.list_spaces(credentials)
         return JSONResponse(
             {"spaces": spaces},
@@ -278,6 +305,47 @@ async def get_watsonx_onprem_spaces(
         logger.error("Failed to list watsonx.ai on-prem spaces", exc_info=exc)
         return JSONResponse(
             {"error": "Unable to list deployment spaces from the cluster."},
+            status_code=500,
+        )
+
+
+async def discover_provider_models(
+    provider: str,
+    body: ModelDiscoveryBody | None = None,
+    user: User = Depends(require_permission("providers:write")),
+):
+    """Models a cluster serves, asked with credentials that may not be saved yet.
+
+    POST /models/{provider}/discover. Onboarding calls this while the operator
+    is still filling the form: the catalogue only lists a cluster with *saved*
+    credentials, and a vLLM `--served-model-name` can be anything, so without it
+    the picker offers the configured fallback rather than what is deployed.
+
+    Each half is null when that endpoint could not be listed, and the caller
+    keeps the catalogue's rows for it.
+    """
+    from enhancements.providers.registry import model_discovery_for
+    from services.model_catalog import discovered_model_payload, supported_provider_keys
+
+    key = (provider or "").strip().lower()
+    enhancement = model_discovery_for(key)
+    if enhancement is None or key not in supported_provider_keys():
+        return JSONResponse(
+            {"error": "This provider cannot list its models."},
+            status_code=404,
+        )
+    request = body or ModelDiscoveryBody()
+    try:
+        credentials = _draft_credentials(enhancement, request.credentials, request.auth_method)
+        listed = await enhancement.list_cluster_models(credentials)
+        return JSONResponse(
+            discovered_model_payload(key, listed),
+            headers={"Cache-Control": "no-store"},
+        )
+    except Exception as exc:
+        logger.error("Failed to discover provider models", provider=key, exc_info=exc)
+        return JSONResponse(
+            {"error": "Unable to list models from the provider."},
             status_code=500,
         )
 

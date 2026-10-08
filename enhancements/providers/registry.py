@@ -52,6 +52,20 @@ def enhancements() -> tuple[ModuleType, ...]:
     return tuple(_ENHANCEMENTS.values())
 
 
+def model_discovery_for(provider: str) -> ModuleType | None:
+    """The enhancement that can list `provider`'s models from unsaved credentials.
+
+    The optional `list_cluster_models(credentials)` member of the contract: the
+    same listing `fetch_models()` caches, without the cache, for a form that is
+    asking what a cluster serves before anything is saved. None when the
+    provider has no enhancement or the enhancement cannot list its own models.
+    """
+    enhancement = get(provider)
+    if enhancement is None or not callable(getattr(enhancement, "list_cluster_models", None)):
+        return None
+    return enhancement
+
+
 def live_models_for(provider: str, kind: CallKind) -> tuple[str, ...] | None:
     """What `provider` last said it serves for `kind`, if it can say at all.
 

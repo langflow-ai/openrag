@@ -766,6 +766,45 @@ async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
     return result
 
 
+async def list_cluster_models(credentials: Mapping[str, Any]) -> ClusterModels:
+    """Ask each endpoint what it serves, without touching the catalogue's cache.
+
+    For credentials that have not been saved yet — the onboarding form asking
+    what a cluster serves while the operator is still typing. `fetch_models()`
+    cannot be used for that: its cache is keyed on one set of credentials, and
+    `cached_models()` hands whatever it holds to the catalogue, so a draft
+    listing would replace the saved cluster's models in every picker.
+
+    A half is None when its endpoint could not be asked or listed nothing
+    usable, so the caller falls back to the configured list for that half.
+    """
+    import httpx
+
+    values = _values(credentials)
+    chat_base, embedding_base = endpoints(values)
+    api_key = values.get("api_key", "")
+    if not chat_base or not api_key:
+        return ClusterModels(chat=None, embedding=None)
+
+    try:
+        async with httpx.AsyncClient(
+            verify=ssl_verify_for(values), timeout=MODELS_TIMEOUT_SECONDS
+        ) as client:
+            chat = await _list_models(client, chat_base, api_key)
+            embedding = (
+                chat
+                if embedding_base == chat_base
+                else await _list_models(client, embedding_base, api_key)
+            )
+    except Exception as error:
+        logger.warning("Could not list models on OpenShift AI", error=str(error))
+        return ClusterModels(chat=None, embedding=None)
+
+    # An empty listing is far more likely one we could not interpret than an
+    # endpoint serving nothing, so it falls back like a failure does.
+    return ClusterModels(chat=chat or None, embedding=embedding or None)
+
+
 # --------------------------------------------------------------------------
 # Health
 # --------------------------------------------------------------------------
