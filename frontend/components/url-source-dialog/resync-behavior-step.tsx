@@ -1,16 +1,19 @@
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { Choice } from "./choice";
 import type { UpdateUrlSourceForm, UrlSourceForm } from "./form";
 
 export function ResyncBehaviorStep({
   form,
+  isCloudBrand,
   onUpdate,
 }: {
   form: UrlSourceForm;
+  isCloudBrand: boolean;
   onUpdate: UpdateUrlSourceForm;
 }) {
   return (
-    <div className="space-y-8 px-3 py-6">
+    <div className={cn("space-y-8 py-6", isCloudBrand ? "px-3" : "px-6")}>
       <div>
         <h3 className="text-lg font-semibold">How should re-syncs work?</h3>
         <p className="text-sm text-muted-foreground">

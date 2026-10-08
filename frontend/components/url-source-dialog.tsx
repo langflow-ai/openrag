@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import {
   createUrlSourcePayload,
   INITIAL_URL_SOURCE_FORM,
@@ -38,6 +39,7 @@ export function UrlSourceDialog({
   const [step, setStep] = useState<UrlSourceDialogStep>(1);
   const [advanced, setAdvanced] = useState(false);
   const [form, setForm] = useState<UrlSourceForm>(INITIAL_URL_SOURCE_FORM);
+  const isCloudBrand = useIsCloudBrand();
   const createWebsiteSourceMutation = useCreateWebsiteSourceMutation();
   const { data: sources = [] } = useGetWebsiteSourcesQuery(open);
 
@@ -87,6 +89,7 @@ export function UrlSourceDialog({
         <UrlSourceDialogTabs
           step={step}
           sourceComplete={valid}
+          isCloudBrand={isCloudBrand}
           onStepChange={setStep}
         />
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -94,6 +97,7 @@ export function UrlSourceDialog({
             <SourceScopeStep
               form={form}
               advanced={advanced}
+              isCloudBrand={isCloudBrand}
               nameError={
                 form.name.trim() && !nameAvailable
                   ? "A website connection with this name already exists."
@@ -103,7 +107,11 @@ export function UrlSourceDialog({
               onUpdate={update}
             />
           ) : (
-            <ResyncBehaviorStep form={form} onUpdate={update} />
+            <ResyncBehaviorStep
+              form={form}
+              isCloudBrand={isCloudBrand}
+              onUpdate={update}
+            />
           )}
         </div>
         <div className="flex shrink-0 justify-end gap-3 border-t bg-background px-6 py-4">

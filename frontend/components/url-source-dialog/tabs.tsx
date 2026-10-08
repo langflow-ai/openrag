@@ -7,15 +7,20 @@ export type UrlSourceDialogStep = 1 | 2;
 export function UrlSourceDialogTabs({
   step,
   sourceComplete,
+  isCloudBrand,
   onStepChange,
 }: {
   step: UrlSourceDialogStep;
   sourceComplete: boolean;
+  isCloudBrand: boolean;
   onStepChange(step: UrlSourceDialogStep): void;
 }) {
   return (
     <div
-      className="-mx-6 grid shrink-0 grid-cols-2 border-y"
+      className={cn(
+        "grid shrink-0 grid-cols-2 border-y",
+        isCloudBrand && "-mx-6",
+      )}
       role="group"
       aria-label="Website connection steps"
     >
@@ -24,7 +29,7 @@ export function UrlSourceDialogTabs({
         aria-current={step === 1 ? "step" : undefined}
         onClick={() => onStepChange(1)}
         className={cn(
-          "flex w-full items-center gap-3 px-4 py-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:underline focus-visible:underline-offset-4",
+          "flex w-full items-center gap-3 px-6 py-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:underline focus-visible:underline-offset-4",
           step === 1 && "border-b-2 border-b-primary",
         )}
       >
@@ -51,7 +56,7 @@ export function UrlSourceDialogTabs({
         aria-current={step === 2 ? "step" : undefined}
         onClick={() => onStepChange(2)}
         className={cn(
-          "flex w-full items-center gap-3 border-l px-4 py-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:underline focus-visible:underline-offset-4",
+          "flex w-full items-center gap-3 border-l px-6 py-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:underline focus-visible:underline-offset-4",
           step === 2 && "border-b-2 border-b-primary",
         )}
       >

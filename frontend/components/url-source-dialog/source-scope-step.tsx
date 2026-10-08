@@ -9,18 +9,20 @@ import type { UpdateUrlSourceForm, UrlSourceForm } from "./form";
 export function SourceScopeStep({
   form,
   advanced,
+  isCloudBrand,
   nameError,
   onAdvancedChange,
   onUpdate,
 }: {
   form: UrlSourceForm;
   advanced: boolean;
+  isCloudBrand: boolean;
   nameError?: string;
   onAdvancedChange(open: boolean): void;
   onUpdate: UpdateUrlSourceForm;
 }) {
   return (
-    <div className="space-y-7 px-3 py-6">
+    <div className={cn("space-y-7 py-6", isCloudBrand ? "px-3" : "px-6")}>
       <div className="flex gap-3 border border-primary/30 bg-primary/5 p-4 text-sm">
         <AlertTriangle className="mt-0.5 size-5 shrink-0 text-primary" />
         <p>
