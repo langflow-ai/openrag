@@ -35,6 +35,7 @@ def _build_processor() -> LangflowFileProcessor:
         session_manager=session_manager,
         owner_user_id="user-1",
         jwt_token="Bearer token",
+        allow_anonymous_delete=True,
     )
 
 
@@ -225,6 +226,7 @@ async def test_langflow_processor_concurrent_same_hash_only_one_proceeds(tmp_pat
             session_manager=session_manager,
             owner_user_id="user-1",
             jwt_token="Bearer token",
+            allow_anonymous_delete=True,
         )
         processor.resolve_duplicate_filename = AsyncMock(return_value="proceed")
         processor.check_document_exists = fake_check_document_exists

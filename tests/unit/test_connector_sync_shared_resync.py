@@ -73,6 +73,7 @@ def _build_processor(*, shared: bool | None) -> ConnectorFileProcessor:
         replace_duplicates=True,
         connector_type="ibm_cos",
         shared=shared,
+        allow_anonymous_delete=True,
     )
 
 

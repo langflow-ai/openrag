@@ -2406,6 +2406,12 @@ async def connector_webhook(
                 # shared=None like the other re-sync paths: no user is in the
                 # loop to express an intent, so each file keeps the sharing state
                 # it already has.
+                # allow_anonymous_delete=False for the same reason: nobody is
+                # here to authorize removing a document the whole instance can
+                # see. A file this connector indexed as shared loses nothing —
+                # shared resolves True from the index and that alone keeps the
+                # wider scope. What it stops is a private file's re-sync
+                # deleting a same-named shared document from another source.
                 task_id = await connector_service.sync_specific_files(
                     connection.connection_id,
                     connection.user_id,
@@ -2413,6 +2419,7 @@ async def connector_webhook(
                     jwt_token=jwt_token,
                     replace_duplicates=_connector_sync_should_replace(connector_type),
                     shared=None,
+                    allow_anonymous_delete=False,
                 )
 
                 result = {

@@ -215,8 +215,7 @@ def test_processor_default_polling_service_is_none():
 
     lf_svc = LangflowFileService(docling_service=AsyncMock())
     processor = LangflowFileProcessor(
-        langflow_file_service=lf_svc,
-        session_manager=None,
+        langflow_file_service=lf_svc, session_manager=None, allow_anonymous_delete=True
     )
     assert processor.docling_polling_service is None
 
@@ -231,6 +230,7 @@ def test_processor_accepts_injected_polling_service():
         langflow_file_service=lf_svc,
         session_manager=None,
         docling_polling_service=injected,
+        allow_anonymous_delete=True,
     )
     assert processor.docling_polling_service is injected
 
@@ -325,6 +325,7 @@ async def test_task_service_threads_polling_service_to_processor(monkeypatch):
         file_paths=["/tmp/x.pdf"],
         langflow_file_service=AsyncMock(),
         session_manager=AsyncMock(),
+        allow_anonymous_delete=True,
     )
 
     assert captured["docling_polling_service"] is injected
