@@ -150,6 +150,37 @@ async def test_webhook_sync_replaces_existing_files(monkeypatch):
     assert sync_kwargs["replace_duplicates"] is True
 
 
+@pytest.mark.asyncio
+async def test_webhook_sync_runs_without_the_permission_to_delete_shared_documents(monkeypatch):
+    """Nobody is in the loop on a webhook to authorize removing a document the
+    whole instance can see, so the replace it triggers must not reach one: a
+    private file's re-sync would otherwise delete a same-named shared document
+    that came from another source."""
+    from api.connectors import connector_webhook
+
+    connection = _scope_guard_connection()
+    service = _scope_guard_service(connection)
+    handler = MagicMock()
+    handler.handle_webhook = AsyncMock(return_value=["file-1"])
+    service._get_connector = AsyncMock(return_value=handler)
+    _mock_indexed_files(monkeypatch, ["file-1"])
+
+    request = _FakeRequest({"content-type": "application/json", "x-goog-channel-id": "chan-1"})
+    await connector_webhook(
+        "google_drive",
+        request,
+        connector_service=service,
+        session_manager=MagicMock(),
+        session=MagicMock(),
+    )
+
+    sync_kwargs = service.sync_specific_files.await_args.kwargs
+    assert sync_kwargs["allow_anonymous_delete"] is False
+    # A file this connector indexed as shared keeps its wider scope through
+    # this, resolved per file from the index, not through the permission.
+    assert sync_kwargs["shared"] is None
+
+
 # ---------------------------------------------------------------------------
 # connector_webhook — scope guard (only ingest files already indexed)
 # ---------------------------------------------------------------------------

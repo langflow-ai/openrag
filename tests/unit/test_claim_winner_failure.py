@@ -41,6 +41,7 @@ class _RacingProcessor(TaskProcessor):
             replace=False,
             owner_user_id="user-1",
             claim_holder=self._claim_holder(upload_task, file_task),
+            allow_anonymous_delete=True,
         )
         if action in DUPLICATE_SKIP_ACTIONS:
             # Both skips finish a file the same way; only the reconcile in
@@ -141,6 +142,7 @@ class _HeldClaimProcessor(TaskProcessor):
             replace=False,
             owner_user_id="user-1",
             claim_holder=self._claim_holder(upload_task, file_task),
+            allow_anonymous_delete=True,
         )
         assert action == "proceed"
         self.claimed.set()
@@ -161,6 +163,7 @@ class _LosingProcessor(TaskProcessor):
             replace=False,
             owner_user_id="user-1",
             claim_holder=self._claim_holder(upload_task, file_task),
+            allow_anonymous_delete=True,
         )
         assert action in DUPLICATE_SKIP_ACTIONS
         self.mark_duplicate_skipped(upload_task, file_task)
@@ -288,6 +291,7 @@ async def test_an_ordinary_duplicate_skip_still_cleans_up(tmp_path):
                 replace=False,
                 owner_user_id="user-1",
                 claim_holder=self._claim_holder(upload_task, file_task),
+                allow_anonymous_delete=True,
             )
             assert action in DUPLICATE_SKIP_ACTIONS
             self.mark_duplicate_skipped(upload_task, file_task)

@@ -265,9 +265,9 @@ class TaskProcessor:
         *,
         replace: bool,
         owner_user_id: str | None,
+        allow_anonymous_delete: bool,
         shared: bool = False,
         claim_holder: str | None = None,
-        allow_anonymous_delete: bool = True,
     ) -> Literal["proceed", "skip", "skip_in_flight", "replaced"]:
         """Single duplicate-filename policy shared by every processor.
 
@@ -293,6 +293,9 @@ class TaskProcessor:
         racing the index check. TaskService releases the claim when the file
         reaches a terminal state. Callers that pass None get the OpenSearch
         policy alone — every processor passes one.
+
+        ``allow_anonymous_delete`` is handed to ``delete_document_by_filename``
+        and, like there, has no default: see that docstring.
         """
         if claim_holder is not None and not filename_claims.claim(
             claim_holder, filename, owner_user_id=owner_user_id, shared=shared
@@ -357,7 +360,8 @@ class TaskProcessor:
         opensearch_client,
         owner_user_id: str | None = None,
         shared: bool = False,
-        allow_anonymous_delete: bool = True,
+        *,
+        allow_anonymous_delete: bool,
     ) -> int:
         """Delete all chunks of a document with the given filename from
         OpenSearch.  Returns the number of chunks deleted.
@@ -376,10 +380,14 @@ class TaskProcessor:
         in the instance, so replacing a document that turns out to be one is a
         deletion of shared content: without that permission the scope stays
         owner-only and someone else's shared document is left alone (the file
-        then resolves as a duplicate the user may not replace). It defaults to
-        True because callers that have not resolved the permission — uploads,
-        the Langflow path, sample docs — keep their existing behaviour; see the
-        note in the PR about closing that across every entry point.
+        then resolves as a duplicate the user may not replace). It has no
+        default on purpose. It used to default to True, and the entry points
+        that never resolved the permission — local upload, S3, the Langflow
+        path — inherited that silently, so any user could replace a shared
+        document through them. Every caller now has to say which it is, down
+        to the processor constructors and the task-service helpers that feed
+        them; one acting for the system rather than for a user passes True and
+        says why.
         Deliberately ignored when ``shared`` is True: a shared write already
         required the permission upstream."""
         from config.settings import clients, get_index_name
@@ -806,6 +814,8 @@ class DocumentFileProcessor(TaskProcessor):
         replace_duplicates: bool = False,
         session_manager=None,
         settings: dict | None = None,
+        *,
+        allow_anonymous_delete: bool,
     ):
         super().__init__(
             document_service,
@@ -824,6 +834,9 @@ class DocumentFileProcessor(TaskProcessor):
             document_service.session_manager if document_service else None
         )
         self.settings = settings
+        # The uploading user's resolved knowledge:delete:anonymous; see
+        # delete_document_by_filename.
+        self.allow_anonymous_delete = allow_anonymous_delete
         if self.session_manager is None:
             raise ValueError("session_manager is required for DocumentFileProcessor")
 
@@ -850,6 +863,7 @@ class DocumentFileProcessor(TaskProcessor):
                 replace=self.replace_duplicates,
                 owner_user_id=self.owner_user_id,
                 claim_holder=self._claim_holder(upload_task, file_task),
+                allow_anonymous_delete=self.allow_anonymous_delete,
             )
             if duplicate_action in DUPLICATE_SKIP_ACTIONS:
                 self.mark_duplicate_skipped(upload_task, file_task)
@@ -957,7 +971,8 @@ class ConnectorFileProcessor(TaskProcessor):
         connector_type: str | None = None,
         preview_mode: bool = False,
         shared: bool | None = False,
-        allow_anonymous_delete: bool = True,
+        *,
+        allow_anonymous_delete: bool,
     ):
         super().__init__(
             document_service=document_service,
@@ -1584,6 +1599,8 @@ class S3FileProcessor(TaskProcessor):
         models_service=None,
         docling_service=None,
         replace_duplicates: bool = False,
+        *,
+        allow_anonymous_delete: bool,
     ):
         import boto3
 
@@ -1599,6 +1616,9 @@ class S3FileProcessor(TaskProcessor):
         self.owner_name = owner_name
         self.owner_email = owner_email
         self.replace_duplicates = replace_duplicates
+        # The uploading user's resolved knowledge:delete:anonymous; see
+        # delete_document_by_filename.
+        self.allow_anonymous_delete = allow_anonymous_delete
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Download an S3 object and process it using DocumentService"""
@@ -1621,6 +1641,7 @@ class S3FileProcessor(TaskProcessor):
                 replace=self.replace_duplicates,
                 owner_user_id=self.owner_user_id,
                 claim_holder=self._claim_holder(upload_task, file_task),
+                allow_anonymous_delete=self.allow_anonymous_delete,
             )
             if duplicate_action in DUPLICATE_SKIP_ACTIONS:
                 self.mark_duplicate_skipped(upload_task, file_task)
@@ -1691,6 +1712,8 @@ class LangflowFileProcessor(TaskProcessor):
         connector_type: str = "local",
         docling_polling_service=None,
         preview_mode: bool = False,
+        *,
+        allow_anonymous_delete: bool,
     ):
         super().__init__()
         self.langflow_file_service = langflow_file_service
@@ -1706,6 +1729,9 @@ class LangflowFileProcessor(TaskProcessor):
         self.connector_type = connector_type
         self.docling_polling_service = docling_polling_service
         self.preview_mode = preview_mode
+        # The uploading user's resolved knowledge:delete:anonymous; see
+        # delete_document_by_filename.
+        self.allow_anonymous_delete = allow_anonymous_delete
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a file path using LangflowFileService upload_and_ingest_file"""
@@ -1729,6 +1755,7 @@ class LangflowFileProcessor(TaskProcessor):
                 replace=self.replace_duplicates,
                 owner_user_id=self.owner_user_id,
                 claim_holder=self._claim_holder(upload_task, file_task),
+                allow_anonymous_delete=self.allow_anonymous_delete,
             )
             if duplicate_action in DUPLICATE_SKIP_ACTIONS:
                 self.mark_duplicate_skipped(upload_task, file_task)

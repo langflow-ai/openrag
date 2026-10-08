@@ -48,6 +48,7 @@ async def test_traditional_processor_duplicate_exists_no_replace():
         jwt_token="mock-token",
         replace_duplicates=False,
         session_manager=mock_session_manager,
+        allow_anonymous_delete=True,
     )
 
     # Assert that session_manager was set correctly on the processor
@@ -85,6 +86,7 @@ async def test_traditional_processor_duplicate_exists_with_replace():
         jwt_token="mock-token",
         replace_duplicates=True,
         session_manager=mock_session_manager,
+        allow_anonymous_delete=True,
     )
 
     # Assert that session_manager was set correctly on the processor
@@ -133,6 +135,7 @@ async def test_langflow_processor_duplicate_exists_no_replace():
         owner_user_id="user-123",
         jwt_token="mock-token",
         replace_duplicates=False,
+        allow_anonymous_delete=True,
     )
     processor.check_filename_exists = AsyncMock(return_value=True)
     processor.delete_document_by_filename = AsyncMock()
@@ -165,6 +168,7 @@ async def test_resolve_duplicate_skips_when_delete_removes_nothing():
         opensearch_client,
         replace=True,
         owner_user_id=None,
+        allow_anonymous_delete=True,
     )
 
     assert result == "skip"
@@ -198,6 +202,7 @@ async def test_delete_document_by_filename_shared_without_owner(monkeypatch):
         opensearch_client,
         owner_user_id=None,
         shared=True,
+        allow_anonymous_delete=True,
     )
 
     assert deleted == 1
@@ -208,7 +213,8 @@ async def test_delete_document_by_filename_shared_without_owner(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_delete_document_by_filename_replaces_owned_and_ownerless(monkeypatch):
-    """With an owner in hand the replace scope is "mine OR ownerless", always.
+    """With an owner in hand, and the permission to delete shared documents,
+    the replace scope is "mine OR ownerless".
 
     ``shared`` says how the replacement will be written; it must not narrow what
     gets deleted. An owner-only scope matched none of a shared document's
@@ -239,6 +245,7 @@ async def test_delete_document_by_filename_replaces_owned_and_ownerless(monkeypa
         opensearch_client,
         owner_user_id="user-123",
         shared=False,
+        allow_anonymous_delete=True,
     )
 
     assert deleted == 1
@@ -266,6 +273,7 @@ def _build_s3_processor(replace_duplicates: bool) -> S3FileProcessor:
         models_service=MagicMock(),
         docling_service=MagicMock(),
         replace_duplicates=replace_duplicates,
+        allow_anonymous_delete=True,
     )
     return processor
 
