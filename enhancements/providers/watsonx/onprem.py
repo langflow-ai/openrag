@@ -714,8 +714,6 @@ async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
     catalogue request never fails because the cluster is unreachable; the caller
     keeps whatever it had.
     """
-    import httpx
-
     values = litellm_credentials(credentials)
     api_base = (values.get("api_base") or "").strip()
     header = auth_header(credentials)
@@ -733,6 +731,31 @@ async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
     fresh = cached_models()
     if fresh is not None and _models_cache["key"] == key:
         return fresh
+
+    models = await list_cluster_models(credentials)
+    if models is None:
+        return None
+    _models_cache.update(key=key, at=time.monotonic(), value=models)
+    return models
+
+
+async def list_cluster_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
+    """List the cluster's foundation models without touching the cache.
+
+    `fetch_models()` is this plus the TTL cache the catalogue reads. Called
+    directly for credentials that have not been saved yet — the onboarding form
+    asking what a cluster serves — because caching a draft listing would hand
+    an unsaved cluster's models to every picker through `cached_models()`.
+
+    None on any failure, or when the credentials are incomplete.
+    """
+    import httpx
+
+    values = litellm_credentials(credentials)
+    api_base = (values.get("api_base") or "").strip()
+    header = auth_header(credentials)
+    if not api_base or not header:
+        return None
 
     headers = {"Authorization": header, "Accept": "application/json"}
     url = model_specs_url(api_base)
@@ -787,7 +810,6 @@ async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
         )
         return None
 
-    _models_cache.update(key=key, at=time.monotonic(), value=models)
     logger.info(
         "Listed models on the watsonx.ai cluster",
         chat=len(models.chat),

@@ -1,9 +1,14 @@
-import { HttpResponse, http } from "msw";
+import { HttpResponse, http, type RequestHandler } from "msw";
 import type { Dispatch, SetStateAction } from "react";
 import { describe, expect, it } from "vitest";
 import type { OnboardingVariables } from "@/app/api/mutations/useOnboardingMutation";
 import type { SavedProvidersSnapshot } from "@/components/models/catalog-models";
-import { renderWithProviders, screen, userEvent } from "@/test-utils/render";
+import {
+  renderWithProviders,
+  screen,
+  userEvent,
+  waitFor,
+} from "@/test-utils/render";
 import { GenericOnboarding } from "./generic-onboarding";
 
 const catalog = {
@@ -75,6 +80,35 @@ const catalog = {
       ],
       embedding_models: [],
     },
+    {
+      key: "rhoai",
+      name: "Red Hat OpenShift AI",
+      discovers_models: true,
+      credential_fields: [
+        {
+          key: "api_base",
+          label: "Chat endpoint",
+          required: true,
+          field_type: "text",
+        },
+        {
+          key: "embedding_api_base",
+          label: "Embedding endpoint",
+          required: false,
+          field_type: "text",
+        },
+        {
+          key: "api_key",
+          label: "Token",
+          required: true,
+          field_type: "password",
+        },
+      ],
+      models: [{ model: "granite-3.3-2b-instruct", mode: "chat" }],
+      embedding_models: [
+        { model: "granite-embedding-english-r2", mode: "embedding" },
+      ],
+    },
   ],
 };
 
@@ -82,6 +116,7 @@ function renderOnboarding(
   provider: string,
   isEmbedding = false,
   savedProviders?: SavedProvidersSnapshot,
+  extraHandlers: RequestHandler[] = [],
 ) {
   let settings: OnboardingVariables = {};
   const setSettings: Dispatch<SetStateAction<OnboardingVariables>> = (next) => {
@@ -107,6 +142,7 @@ function renderOnboarding(
             ],
           }),
         ),
+        ...extraHandlers,
       ],
     },
   );
@@ -286,5 +322,208 @@ describe("GenericOnboarding model selection", () => {
       await screen.findByRole("option", { name: "text-embedding-3-large" }),
     );
     expect(getSettings().embedding_model).toBe("text-embedding-3-large");
+  });
+});
+
+describe("GenericOnboarding cluster model discovery", () => {
+  // Debounce (500 ms) plus the request.
+  const DISCOVERY_TIMEOUT = { timeout: 3000 };
+
+  function discoverHandler(
+    response: () => Response,
+    requests: Array<{ credentials: Record<string, string> }> = [],
+  ) {
+    return http.post("/api/models/rhoai/discover", async ({ request }) => {
+      requests.push(
+        (await request.json()) as { credentials: Record<string, string> },
+      );
+      return response();
+    });
+  }
+
+  const served = () =>
+    HttpResponse.json({
+      models: [{ model: "gpt-oss-120b", mode: "chat" }],
+      embedding_models: [{ model: "nomic-embed-text", mode: "embedding" }],
+    });
+
+  async function typeCredentials(user: ReturnType<typeof userEvent.setup>) {
+    await user.type(
+      await screen.findByLabelText(/Chat endpoint/),
+      "https://chat.example.com/v1",
+    );
+    await user.type(screen.getByLabelText(/Token/), "sha256~token");
+  }
+
+  it("offers the models the cluster serves instead of the configured fallback", async () => {
+    const requests: Array<{ credentials: Record<string, string> }> = [];
+    const { user, getSettings } = renderOnboarding("rhoai", false, undefined, [
+      discoverHandler(served, requests),
+    ]);
+    await waitFor(() =>
+      expect(getSettings().llm_model).toBe("granite-3.3-2b-instruct"),
+    );
+
+    await typeCredentials(user);
+
+    expect(
+      await screen.findByText(
+        "Showing 1 language model served by the cluster.",
+        {},
+        DISCOVERY_TIMEOUT,
+      ),
+    ).toBeInTheDocument();
+    // The automatic default follows the list; the cluster does not serve granite.
+    expect(getSettings().llm_model).toBe("gpt-oss-120b");
+    expect(requests.at(-1)?.credentials).toEqual({
+      api_base: "https://chat.example.com/v1",
+      api_key: "sha256~token",
+    });
+
+    await user.click(screen.getByRole("combobox", { name: "Language model" }));
+    expect(
+      await screen.findByRole("option", { name: "gpt-oss-120b" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "granite-3.3-2b-instruct" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("uses the embedding endpoint's listing for the embedding picker", async () => {
+    const { user, getSettings } = renderOnboarding("rhoai", true, undefined, [
+      discoverHandler(served),
+    ]);
+
+    await typeCredentials(user);
+
+    await screen.findByText(
+      "Showing 1 embedding model served by the cluster.",
+      {},
+      DISCOVERY_TIMEOUT,
+    );
+    expect(getSettings().embedding_model).toBe("nomic-embed-text");
+  });
+
+  it("keeps a model the user chose even when the cluster does not list it", async () => {
+    const { user, getSettings } = renderOnboarding("rhoai", false, undefined, [
+      discoverHandler(served),
+    ]);
+    await user.click(
+      await screen.findByRole("combobox", { name: "Language model" }),
+    );
+    await user.click(
+      await screen.findByRole("option", { name: "granite-3.3-2b-instruct" }),
+    );
+
+    await typeCredentials(user);
+
+    await screen.findByText(
+      "Showing 1 language model served by the cluster.",
+      {},
+      DISCOVERY_TIMEOUT,
+    );
+    expect(getSettings().llm_model).toBe("granite-3.3-2b-instruct");
+  });
+
+  it("falls back to the configured models when the cluster cannot be listed", async () => {
+    const { user, getSettings } = renderOnboarding("rhoai", false, undefined, [
+      discoverHandler(() =>
+        HttpResponse.json({ models: null, embedding_models: null }),
+      ),
+    ]);
+
+    await typeCredentials(user);
+
+    expect(
+      await screen.findByText(
+        /Couldn't list language models from the cluster/,
+        {},
+        DISCOVERY_TIMEOUT,
+      ),
+    ).toBeInTheDocument();
+    expect(getSettings().llm_model).toBe("granite-3.3-2b-instruct");
+  });
+
+  it("reports a failed discovery request the same way", async () => {
+    const { user } = renderOnboarding("rhoai", false, undefined, [
+      discoverHandler(() =>
+        HttpResponse.json(
+          { error: "Unable to list models from the provider." },
+          { status: 500 },
+        ),
+      ),
+    ]);
+
+    await typeCredentials(user);
+
+    expect(
+      await screen.findByText(
+        /Couldn't list language models from the cluster/,
+        {},
+        DISCOVERY_TIMEOUT,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("does not ask the cluster until the required credentials are filled", async () => {
+    const requests: Array<{ credentials: Record<string, string> }> = [];
+    const { user } = renderOnboarding("rhoai", false, undefined, [
+      discoverHandler(served, requests),
+    ]);
+
+    await user.type(
+      await screen.findByLabelText(/Chat endpoint/),
+      "https://chat.example.com/v1",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    expect(requests).toHaveLength(0);
+  });
+
+  it("reuses a saved token without retyping it", async () => {
+    const requests: Array<{ credentials: Record<string, string> }> = [];
+    renderOnboarding(
+      "rhoai",
+      false,
+      {
+        custom: {
+          rhoai: {
+            credential_values: { api_base: "https://chat.example.com/v1" },
+            secret_fields: ["api_key"],
+          },
+        },
+      },
+      [discoverHandler(served, requests)],
+    );
+
+    await screen.findByText(
+      "Showing 1 language model served by the cluster.",
+      {},
+      DISCOVERY_TIMEOUT,
+    );
+    // The backend fills the saved token in; it never reaches the browser.
+    expect(requests.at(-1)?.credentials).toEqual({
+      api_base: "https://chat.example.com/v1",
+    });
+  });
+
+  it("never asks a provider that cannot list its models", async () => {
+    const requests: Array<{ credentials: Record<string, string> }> = [];
+    const { user } = renderOnboarding("openai_like", false, undefined, [
+      http.post("/api/models/openai_like/discover", async ({ request }) => {
+        requests.push(
+          (await request.json()) as { credentials: Record<string, string> },
+        );
+        return HttpResponse.json({ models: [], embedding_models: [] });
+      }),
+    ]);
+
+    await user.type(
+      await screen.findByLabelText("API base"),
+      "https://other.example",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    expect(requests).toHaveLength(0);
   });
 });

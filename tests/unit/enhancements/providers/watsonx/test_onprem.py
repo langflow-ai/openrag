@@ -983,6 +983,49 @@ async def test_an_empty_listing_is_treated_as_a_bad_filter_not_an_empty_cluster(
 
 
 @pytest.mark.asyncio
+async def test_draft_discovery_lists_without_caching(monkeypatch, _forget_cluster_models) -> None:
+    """Onboarding lists a cluster before its credentials are saved; that answer
+    must not reach the catalogue through `cached_models()`."""
+
+    class _Client:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url, headers=None, params=None):
+            return _specs_response(CLUSTER_RESOURCES)
+
+    monkeypatch.setattr("httpx.AsyncClient", _Client)
+    credentials = {"api_base": "https://cpd.example.com", "username": "u", "api_key": "k"}
+
+    models = await watsonx_onprem.list_cluster_models(credentials)
+
+    assert models.chat == ("openai/gpt-oss-120b",)
+    assert models.embedding == ("ibm/slate-30m-english-rtrvr",)
+    assert watsonx_onprem.cached_models() is None
+
+    await watsonx_onprem.fetch_models(credentials)
+    assert watsonx_onprem.cached_models() == models
+
+
+@pytest.mark.asyncio
+async def test_draft_discovery_with_incomplete_credentials_makes_no_request(
+    monkeypatch,
+) -> None:
+    def _explode(**kwargs):
+        raise AssertionError("no HTTP call should be made")
+
+    monkeypatch.setattr("httpx.AsyncClient", _explode)
+
+    assert await watsonx_onprem.list_cluster_models({"api_base": "https://cpd.example.com"}) is None
+
+
+@pytest.mark.asyncio
 async def test_validating_an_embedding_model_sends_a_list_not_a_string(monkeypatch) -> None:
     """watsonx.ai takes `inputs` only as an array.
 

@@ -6,14 +6,17 @@ import {
   useRef,
   useState,
 } from "react";
+import { useDiscoverProviderModelsQuery } from "@/app/api/queries/useDiscoverProviderModelsQuery";
 import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { LabelInput } from "@/components/label-input";
 import {
   onboardingCredentialFields,
   providerCatalogOptions,
+  providerDiscoversModels,
   type SavedProvidersSnapshot,
   savedCredentialValuesForProvider,
   savedSecretFieldsForProvider,
+  withDiscoveredModels,
 } from "@/components/models/catalog-models";
 import {
   getProviderChrome,
@@ -21,10 +24,11 @@ import {
 } from "@/components/models/model-helpers";
 import { WatsonxSpaceSelect } from "@/components/models/watsonx-space-select";
 import { WatsonxTlsSettings } from "@/components/models/watsonx-tls-settings";
+import { useDebouncedValue } from "@/lib/debounce";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { AdvancedOnboarding } from "./advanced";
 import { GenericProviderCredentialFields } from "./generic-provider-credential-fields";
-import { AZURE_AUTH_GROUPS } from "./generic-provider-credential-fields.helpers";
+import { activeCredentialKeys } from "./generic-provider-credential-fields.helpers";
 
 /**
  * Onboarding step for a provider with no hand-built component.
@@ -87,25 +91,13 @@ export function GenericOnboarding({
   ) => {
     const submitted: Record<string, string> = {};
     const removals: string[] = [];
-    const activeAzureFields = new Set([
-      "api_base",
-      "api_version",
-      ...(AZURE_AUTH_GROUPS.find((group) => group.key === azureAuthMethod)
-        ?.fields ?? []),
-    ]);
-    const activeOnPremFields = new Set([
-      "api_base",
-      "space_id",
-      "project_id",
-      "ssl_verify",
-      ...(onPremAuthMethod === "zen_api_key"
-        ? ["zen_api_key"]
-        : ["username", "api_key"]),
-    ]);
+    const active = activeCredentialKeys(
+      provider,
+      azureAuthMethod,
+      onPremAuthMethod,
+    );
     for (const [key, value] of Object.entries(nextCredentials)) {
-      if (provider === "azure" && !activeAzureFields.has(key)) continue;
-      if (provider === "watsonx_onprem" && !activeOnPremFields.has(key))
-        continue;
+      if (active && !active.has(key)) continue;
       const trimmed = (value ?? "").trim();
       if (trimmed !== "") {
         submitted[key] = trimmed;
@@ -155,31 +147,88 @@ export function GenericOnboarding({
     });
   };
 
+  // A cluster-hosted provider serves whatever its operator deployed, and the
+  // catalogue can only list it once credentials are saved. Ask the cluster
+  // with what has been typed so far, so the picker offers what it serves
+  // rather than the configured fallback.
+  const discovers = providerDiscoversModels(catalog, provider);
+  const active = activeCredentialKeys(
+    provider,
+    azureAuthMethod,
+    onPremAuthMethod,
+  );
+  const typedCredentials: Record<string, string> = {};
+  for (const [key, value] of Object.entries(credentials)) {
+    const trimmed = (value ?? "").trim();
+    if (trimmed && (!active || active.has(key)))
+      typedCredentials[key] = trimmed;
+  }
+  // Debounced as a string: a fresh object each render would reset the timer.
+  const discoveryKey = useDebouncedValue(JSON.stringify(typedCredentials), 500);
+  const discoveryCredentials = useMemo(
+    () => JSON.parse(discoveryKey) as Record<string, string>,
+    [discoveryKey],
+  );
+  const hasValue = (key: string) =>
+    Boolean(discoveryCredentials[key]) || savedSecrets.has(key);
+  const activeFields = fields.filter(
+    (field) => !active || active.has(field.key),
+  );
+  const discoveryReady =
+    discovers &&
+    activeFields.every((field) => !field.required || hasValue(field.key)) &&
+    activeFields
+      .filter((field) => field.field_type === "password")
+      .every((field) => hasValue(field.key));
+  const discovery = useDiscoverProviderModelsQuery(
+    {
+      provider,
+      credentials: discoveryCredentials,
+      authMethod: provider === "watsonx_onprem" ? onPremAuthMethod : undefined,
+    },
+    { enabled: discoveryReady },
+  );
+  const discovered = discoveryReady ? discovery.data : undefined;
+  const discoveredHalf = isEmbedding
+    ? discovered?.embedding_models
+    : discovered?.models;
+
   const models = useMemo(
     () =>
       providerCatalogOptions(
-        catalog,
+        withDiscoveredModels(catalog, provider, discovered),
         provider,
         isEmbedding ? "embedding" : "language",
       ),
-    [catalog, provider, isEmbedding],
+    [catalog, provider, isEmbedding, discovered],
   );
 
   // Azure's catalogue lists model families, not this customer's deployments,
   // so require an explicit choice. Other providers still default to the
   // highest-ranked model when the catalogue loads or provider changes.
   const defaultedModelRef = useRef<string | undefined>(undefined);
+  // Whether the current model was picked here rather than by the user. An
+  // automatic choice follows the list: when discovery replaces the configured
+  // fallback, a model the cluster does not serve must not stay selected.
+  const autoSelectedRef = useRef(false);
   useEffect(() => {
-    if (
-      requiresExplicitModelSelection(provider) ||
-      model ||
-      models.length === 0
-    )
+    if (requiresExplicitModelSelection(provider) || models.length === 0) return;
+    if (model) {
+      if (
+        !autoSelectedRef.current ||
+        models.some((option) => option.value === model)
+      )
+        return;
+      const nextModel = models[0].value;
+      setModel(nextModel);
+      syncParentSettings(credentials, nextModel);
       return;
+    }
     const defaultModel = models[0].value;
     // Only set once per provider so switching back doesn't re-default.
     if (defaultedModelRef.current === `${provider}:${defaultModel}`) return;
     defaultedModelRef.current = `${provider}:${defaultModel}`;
+    autoSelectedRef.current = true;
     setModel(defaultModel);
     syncParentSettings(credentials, defaultModel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -192,22 +241,32 @@ export function GenericOnboarding({
   };
 
   const handleModelChange = (newModel: string) => {
+    autoSelectedRef.current = false;
     setModel(newModel);
     syncParentSettings(credentials, newModel);
   };
+
+  const kindLabel = isEmbedding ? "embedding" : "language";
+  let discoveryStatus: string | null = null;
+  if (discoveryReady) {
+    if (discovery.isFetching) {
+      discoveryStatus = "Checking which models the cluster serves…";
+    } else if (discovery.isError || (discovery.isSuccess && !discoveredHalf)) {
+      discoveryStatus = `Couldn't list ${kindLabel} models from the cluster — showing configured defaults. Type a model ID to use another.`;
+    } else if (discoveredHalf && discoveredHalf.length > 0) {
+      discoveryStatus = `Showing ${discoveredHalf.length} ${kindLabel} ${
+        discoveredHalf.length === 1 ? "model" : "models"
+      } served by the cluster.`;
+    }
+  }
 
   const handleAzureAuthMethodChange = (method: string) => {
     setAzureAuthMethod(method);
     // The closure still holds the previous method during this event; submit
     // just the new method's fields explicitly so inactive values stay local.
-    const active = new Set([
-      "api_base",
-      "api_version",
-      ...(AZURE_AUTH_GROUPS.find((group) => group.key === method)?.fields ??
-        []),
-    ]);
+    const active = activeCredentialKeys("azure", method, onPremAuthMethod);
     const selected = Object.fromEntries(
-      Object.entries(credentials).filter(([key]) => active.has(key)),
+      Object.entries(credentials).filter(([key]) => active?.has(key)),
     );
     setSettings((prev) => ({
       ...prev,
@@ -218,15 +277,13 @@ export function GenericOnboarding({
 
   const handleOnPremAuthMethodChange = (method: string) => {
     setOnPremAuthMethod(method);
-    const active = new Set([
-      "api_base",
-      "space_id",
-      "project_id",
-      "ssl_verify",
-      ...(method === "zen_api_key" ? ["zen_api_key"] : ["username", "api_key"]),
-    ]);
+    const active = activeCredentialKeys(
+      "watsonx_onprem",
+      azureAuthMethod,
+      method,
+    );
     const selected = Object.fromEntries(
-      Object.entries(credentials).filter(([key]) => active.has(key)),
+      Object.entries(credentials).filter(([key]) => active?.has(key)),
     );
     setSettings((prev) => ({
       ...prev,
@@ -307,6 +364,11 @@ export function GenericOnboarding({
           onOnPremAuthMethodChange={handleOnPremAuthMethodChange}
           renderField={renderField}
         />
+        {discoveryStatus && (
+          <p className="text-mmd text-muted-foreground" role="status">
+            {discoveryStatus}
+          </p>
+        )}
         {models.length === 0 && (
           <p className="text-mmd text-muted-foreground">
             {chrome.name} publishes no {isEmbedding ? "embedding" : "language"}{" "}
