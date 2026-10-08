@@ -563,6 +563,8 @@ export class Settings {
    */
   async configureOpenAPI() {
     logger.info("Configuring Openai settings");
+    const card = this.getProviderCard("openai");
+    await expect(card).toBeVisible({ timeout: 15000 });
     const configureBtn = this.getConfigureButton("openai");
     const editBtn = this.getEditSetupButton("openai");
 
@@ -580,14 +582,32 @@ export class Settings {
       logger.info("OpenAI configuration completed");
       await expect(editBtn).toBeEnabled();
     }
-    // Else if already configured -> skip setup
+    // Else if already configured -> skip setup (or reconfigure if in Fix Setup state)
     else if (await editBtn.isVisible()) {
-      logger.info("OpenAI already configured. Skipping setup.");
-      await expect(editBtn).toBeEnabled();
+      const btnText = await editBtn.innerText();
+      if (/fix setup/i.test(btnText)) {
+        logger.info("OpenAI is in Fix Setup state. Reconfiguring...");
+        await editBtn.click();
+        await expect(this.getSetupHeading("OpenAI")).toBeVisible();
+        const apiKey = config.openaiApiKey;
+        await this.apiKeyInput().fill(apiKey);
+        await this.saveModelProviderButton().click();
+        await this.awaitProviderConfigResult(
+          "OpenAI",
+          "OpenAI successfully configured",
+        );
+        logger.info("OpenAI configuration completed");
+        await expect(editBtn).toBeEnabled();
+      } else {
+        logger.info("OpenAI already configured. Skipping setup.");
+        await expect(editBtn).toBeEnabled();
+      }
     }
     // Neither found
     else {
-      throw new Error("Neither Configure nor Edit Setup button is visible");
+      throw new Error(
+        "Neither Configure nor Edit Setup button is visible for OpenAI",
+      );
     }
   }
 
