@@ -535,7 +535,7 @@ class SearchService:
                             # Multiple values filter
                             filter_clauses.append({"terms": {field_name: values}})
 
-                date_range_clause: dict[str, Any] = {}
+                date_range_clause = {}
                 if filters.get("created_after"):
                     date_range_clause["gte"] = filters["created_after"]
                 if filters.get("created_before"):
