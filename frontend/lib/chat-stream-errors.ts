@@ -19,6 +19,21 @@ function stripErrorLabelPrefixes(text: string): string {
   }
 }
 
+/**
+ * The OpenAI SDK prints an error body as a Python dict —
+ * `Error code: 400 - {'error': {'message': "...", ...}}` — which JSON.parse
+ * rejects. That is the shape a gateway error has once Langflow relays it.
+ * Mirrors _load_error_body in src/api/provider_validation.py.
+ */
+const PYTHON_DICT_MESSAGE =
+  /^\s*\{[\s\S]*?'message':\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/;
+
+function tryParsePythonDictMessage(text: string): string | null {
+  const match = PYTHON_DICT_MESSAGE.exec(text);
+  const message = (match?.[1] ?? match?.[2])?.replace(/\\(['"\\])/g, "$1");
+  return message?.trim() ? message : null;
+}
+
 function tryParseJsonMessage(text: string): string | null {
   try {
     const data = JSON.parse(text) as Record<string, unknown>;
@@ -55,7 +70,7 @@ function tryParseJsonMessage(text: string): string | null {
       return data.detail;
     }
   } catch {
-    return null;
+    return tryParsePythonDictMessage(text);
   }
   return null;
 }
@@ -66,22 +81,23 @@ function extractBalancedJsonObject(text: string): string | null {
     return null;
   }
   let depth = 0;
-  let inString = false;
+  // Either quote opens a string: a Python dict repr uses `'` where it can.
+  let quote = "";
   let escaped = false;
   for (let i = start; i < text.length; i++) {
     const ch = text[i];
-    if (inString) {
+    if (quote) {
       if (escaped) {
         escaped = false;
       } else if (ch === "\\") {
         escaped = true;
-      } else if (ch === '"') {
-        inString = false;
+      } else if (ch === quote) {
+        quote = "";
       }
       continue;
     }
-    if (ch === '"') {
-      inString = true;
+    if (ch === '"' || ch === "'") {
+      quote = ch;
     } else if (ch === "{") {
       depth += 1;
     } else if (ch === "}") {
@@ -180,11 +196,14 @@ function humanizeProviderErrorMessage(message: string): string {
  * transport error, and the payload after that quote is the entire diagnosis — so
  * keeping only the prefix discards everything useful. A real prefix ("Invalid API
  * key {...") ends on a word character and is still preferred.
+ *
+ * Nor is a prefix with no words in it: `Error code: 502 - {...}` leaves "502 -",
+ * which names no cause at all.
  */
 const SYNTACTIC_FRAGMENT_TAIL = /[([{'"`,=:]$/;
 
 function isReadablePrefix(prefix: string): boolean {
-  return prefix.length > 0 && !SYNTACTIC_FRAGMENT_TAIL.test(prefix);
+  return /\p{L}/u.test(prefix) && !SYNTACTIC_FRAGMENT_TAIL.test(prefix);
 }
 
 /**

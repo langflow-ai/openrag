@@ -14,6 +14,7 @@ from config.config_manager import (
     WatsonXConfig,
 )
 from services.llm_gateway import (
+    LlmContextLengthError,
     LlmGatewayError,
     chat_completions,
     embeddings,
@@ -1923,6 +1924,11 @@ class TestRequestScopedFailuresStayOutOfTheBanner:
 
         assert "maximum context length" in str(raised.value)
         assert provider_error_log.latest_failure("rhoai", "chat") is None
+        # The caller's own doing, so it is told so: OpenAI's status and code.
+        assert isinstance(raised.value, llm_gateway.LlmContextLengthError)
+        assert raised.value.status_code == 400
+        assert raised.value.code == "context_length_exceeded"
+        assert (raised.value.max_tokens, raised.value.requested_tokens) == (32768, 32769)
 
     @pytest.mark.asyncio
     async def test_an_overflow_does_not_erase_a_real_failure(self, monkeypatch):
@@ -1967,7 +1973,170 @@ class TestRequestScopedFailuresStayOutOfTheBanner:
 
         error = json.loads(lines[-2][len("data: ") :])["error"]
         assert "maximum context length" in error["message"]
+        assert error["code"] == "context_length_exceeded"
         assert provider_error_log.latest_failure("rhoai", "chat") is None
+
+
+#: The provider's sentence from tracker issue 93001, in a watsonx error body.
+_EMBEDDING_OVERFLOW = (
+    'watsonxException - {"errors":[{"message":"Invalid input argument for Model '
+    "'intfloat/multilingual-e5-large': This model's maximum context length is 512 tokens. "
+    "However, you requested 548 tokens in the input for embedding generation. Please reduce "
+    'the length of the input."}]}'
+)
+_E5 = {"model": "watsonx:intfloat/multilingual-e5-large", "input": ["one long chunk"]}
+
+
+class TestAnOverLengthEmbeddingInput:
+    """One chunk too long for the model is that chunk's problem, not the provider's.
+
+    It used to come back as a 502 and latch the health banner against a
+    provider that was embedding every other chunk of the document fine.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clean(self):
+        from services import provider_error_log
+
+        provider_error_log.clear()
+        yield
+        provider_error_log.clear()
+
+    def _raise(self, monkeypatch, exc: BaseException):
+        async def _boom(**_kwargs):
+            raise exc
+
+        monkeypatch.setattr("litellm.aembedding", _boom)
+
+    @pytest.mark.asyncio
+    async def test_it_is_a_400_carrying_the_openai_code_and_the_providers_words(self, monkeypatch):
+        self._raise(monkeypatch, _FakeLiteLLMError(_EMBEDDING_OVERFLOW, status_code=400))
+
+        with pytest.raises(LlmContextLengthError) as raised:
+            await embeddings(_E5, config=_config())
+
+        assert raised.value.status_code == 400
+        assert raised.value.code == "context_length_exceeded"
+        assert (raised.value.max_tokens, raised.value.requested_tokens) == (512, 548)
+        assert raised.value.message.startswith("watsonx/intfloat/multilingual-e5-large: ")
+        assert "maximum context length is 512 tokens" in raised.value.message
+
+    @pytest.mark.asyncio
+    async def test_it_is_not_recorded_against_the_provider(self, monkeypatch):
+        from services import provider_error_log
+
+        self._raise(monkeypatch, _FakeLiteLLMError(_EMBEDDING_OVERFLOW, status_code=400))
+
+        with pytest.raises(LlmGatewayError):
+            await embeddings(_E5, config=_config())
+
+        assert provider_error_log.latest_failure("watsonx", "embedding") is None
+
+    @pytest.mark.asyncio
+    async def test_it_does_not_erase_a_real_failure(self, monkeypatch):
+        from services import provider_error_log
+
+        provider_error_log.record_failure("watsonx", "embedding", "earlier real failure")
+        self._raise(monkeypatch, _FakeLiteLLMError(_EMBEDDING_OVERFLOW, status_code=400))
+
+        with pytest.raises(LlmGatewayError):
+            await embeddings(_E5, config=_config())
+
+        assert provider_error_log.latest_failure("watsonx", "embedding") == "earlier real failure"
+
+    @pytest.mark.asyncio
+    async def test_an_overflow_without_counts_still_raises_the_typed_error(self, monkeypatch):
+        self._raise(monkeypatch, RuntimeError('{"error": {"code": "context_length_exceeded"}}'))
+
+        with pytest.raises(LlmContextLengthError) as raised:
+            await embeddings(_E5, config=_config())
+
+        assert (raised.value.max_tokens, raised.value.requested_tokens) == (None, None)
+
+    @pytest.mark.asyncio
+    async def test_other_embedding_failures_are_still_recorded(self, monkeypatch):
+        from services import provider_error_log
+
+        self._raise(
+            monkeypatch,
+            _FakeLiteLLMError(
+                '{"error": {"message": "The model `e5` does not exist."}}', status_code=404
+            ),
+        )
+
+        with pytest.raises(LlmGatewayError) as raised:
+            await embeddings(_E5, config=_config())
+
+        assert not isinstance(raised.value, LlmContextLengthError)
+        assert raised.value.status_code == 502
+        assert "does not exist" in provider_error_log.latest_failure("watsonx", "embedding")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("upstream_status", "upstream_text", "status_code", "code"),
+    [
+        # Passed through: a client can act on these itself.
+        (429, "rate limit exceeded, retry in 30s", 429, "rate_limit_exceeded"),
+        (408, "the request took too long", 408, "upstream_timeout"),
+        (504, "no response from the model server", 504, "upstream_timeout"),
+        (503, "the model is still loading", 503, "upstream_unavailable"),
+        # Still a 502, so an upstream 4xx never reads as a bad request to us,
+        # but no longer indistinguishable from one another.
+        (500, "internal error", 502, "upstream_unavailable"),
+        (401, "Incorrect API key provided", 502, "upstream_auth_error"),
+        (403, "this project may not call the model", 502, "upstream_auth_error"),
+        (404, "the model `e5` does not exist", 502, "upstream_invalid_request"),
+        (400, "encoding_format is not supported for this model", 502, "upstream_invalid_request"),
+    ],
+)
+async def test_embeddings_names_an_upstream_failure_and_keeps_its_status(
+    monkeypatch, upstream_status, upstream_text, status_code, code
+):
+    async def boom(**kwargs):
+        raise _FakeLiteLLMError(upstream_text, status_code=upstream_status)
+
+    monkeypatch.setattr("litellm.aembedding", boom)
+    with pytest.raises(LlmGatewayError) as exc:
+        await embeddings(_E5, config=_config())
+
+    assert (exc.value.status_code, exc.value.code) == (status_code, code)
+
+
+class _FakeTimeout(ConnectionError):
+    """LiteLLM's Timeout: a connection error by ancestry, a 408 by status."""
+
+    status_code = 408
+
+
+class APIConnectionError(Exception):
+    """Named as LiteLLM's is: the gateway matches on the class name, not the import."""
+
+    status_code = 500
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [
+        # LiteLLM stamps its connection error with a 500; the provider never answered.
+        (APIConnectionError("Cannot connect to host"), ("upstream_unreachable", 502)),
+        (ConnectionRefusedError("[Errno 111] Connection refused"), ("upstream_unreachable", 502)),
+        (
+            RuntimeError("SSLCertVerificationError: certificate verify failed"),
+            ("upstream_unreachable", 502),
+        ),
+        # A timeout is one too, by ancestry, but its own status says more.
+        (_FakeTimeout("timed out"), ("upstream_timeout", 408)),
+        (RuntimeError("something nobody anticipated"), ("upstream_error", 502)),
+    ],
+)
+def test_a_failure_with_no_useful_status_is_named_from_what_raised_it(exc, expected):
+    from services.llm_gateway import _classify_upstream_failure
+
+    failure = _classify_upstream_failure(f"{type(exc).__name__}: {exc}", exc)
+
+    assert (failure.code, failure.status_code) == expected
+    assert failure.counts_against_provider
 
 
 class TestToolsBesideReasoningEffort:

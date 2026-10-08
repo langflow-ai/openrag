@@ -29,18 +29,23 @@ _embeddings_use = require_llm_proxy_any_permission(("chat:use", "knowledge:uploa
 _chat_use = require_llm_proxy_permission("chat:use")
 
 
-def _openai_error(message: str, status_code: int, error_type: str = "invalid_request_error"):
-    return JSONResponse(
-        {"error": {"message": message, "type": error_type}},
-        status_code=status_code,
-    )
+def _openai_error(
+    message: str,
+    status_code: int,
+    error_type: str = "invalid_request_error",
+    code: str | None = None,
+):
+    error = {"message": message, "type": error_type}
+    if code:
+        error["code"] = code
+    return JSONResponse({"error": error}, status_code=status_code)
 
 
 def _gateway_error(exc: LlmGatewayError):
     error_type = "invalid_request_error" if exc.status_code < 500 else "api_error"
     if exc.detail != exc.message:
         logger.error("LLM gateway error", status_code=exc.status_code, error=exc.detail)
-    return _openai_error(exc.message, exc.status_code, error_type)
+    return _openai_error(exc.message, exc.status_code, error_type, exc.code)
 
 
 async def list_openai_models_endpoint(
