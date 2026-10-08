@@ -640,6 +640,7 @@ class SearchService:
                 "allowed_users",
                 "allowed_groups",
                 "allowed_principal_labels",
+                "indexed_time",
             ],
             "size": limit,
         }
@@ -800,6 +801,7 @@ class SearchService:
                     "allowed_users": source.get("allowed_users", []),
                     "allowed_groups": source.get("allowed_groups", []),
                     "allowed_principal_labels": source.get("allowed_principal_labels", []),
+                    "indexed_time": source.get("indexed_time"),
                 }
             )
 

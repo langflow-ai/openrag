@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 
 def _validate_iso_timestamp(value: str | None, param_name: str) -> None:
     """Raise HTTP 422 when *value* is present but is not a valid ISO 8601 timestamp."""
-    if value is None:
+    if not isinstance(value, str):
         return
     try:
         datetime.fromisoformat(value.replace("Z", "+00:00"))

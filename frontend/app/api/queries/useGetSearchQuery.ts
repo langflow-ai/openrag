@@ -45,6 +45,7 @@ export interface ChunkResult {
   index?: number;
   allowed_users?: string[];
   allowed_groups?: string[];
+  indexed_time?: string;
 }
 
 export interface File {
@@ -198,6 +199,7 @@ export const useGetSearchQuery = (
           embedding_dimensions?: number;
           allowed_users?: string[];
           allowed_groups?: string[];
+          indexed_time?: string;
         }
       >();
 
@@ -238,6 +240,7 @@ export const useGetSearchQuery = (
             embedding_dimensions: chunk.embedding_dimensions,
             allowed_users: chunk.allowed_users || [],
             allowed_groups: chunk.allowed_groups || [],
+            indexed_time: chunk.indexed_time,
           });
         }
       });
@@ -258,6 +261,7 @@ export const useGetSearchQuery = (
         chunks: file.chunks,
         allowed_users: file.allowed_users || [],
         allowed_groups: file.allowed_groups || [],
+        indexed_time: file.indexed_time,
       }));
 
       const warnings: SearchWarning[] = Array.isArray(data.warnings)
