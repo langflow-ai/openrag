@@ -53,14 +53,13 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
             assert provider == "openai"
             return embedding_model
 
-    class EmbeddingClient:
-        class Embeddings:
-            async def create(self, model, input):
-                return SimpleNamespace(
-                    data=[SimpleNamespace(embedding=[0.1, 0.2, 0.3]) for _ in input]
-                )
-
-        embeddings = Embeddings()
+    async def gateway_embeddings(body):
+        return {
+            "data": [
+                {"embedding": [0.1, 0.2, 0.3], "index": index}
+                for index, _ in enumerate(body["input"])
+            ]
+        }
 
     async def ensure_embedding_field_exists(client, model_name, index_name, dimensions):
         mapping_clients.append(client)
@@ -69,20 +68,9 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
         assert dimensions == 3
         return "chunk_embedding_openai_text_embedding_3_small"
 
-    monkeypatch.setattr(
-        "config.settings.clients",
-        SimpleNamespace(
-            opensearch=admin_client,
-            patched_embedding_client=EmbeddingClient(),
-        ),
-    )
-    monkeypatch.setattr(
-        "models.processors.clients",
-        SimpleNamespace(
-            opensearch=admin_client,
-            patched_embedding_client=EmbeddingClient(),
-        ),
-    )
+    monkeypatch.setattr("config.settings.clients", SimpleNamespace(opensearch=admin_client))
+    monkeypatch.setattr("models.processors.clients", SimpleNamespace(opensearch=admin_client))
+    monkeypatch.setattr("services.llm_gateway.embeddings", gateway_embeddings)
     monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
     monkeypatch.setattr("models.processors.get_index_name", lambda: "documents")
     monkeypatch.setattr(
@@ -177,15 +165,6 @@ async def test_standard_processor_routes_onprem_embeddings_through_gateway(
             assert provider == "watsonx_onprem"
             return f"watsonx_onprem/{embedding_model}"
 
-    class FailingEmbeddingClient:
-        class Embeddings:
-            async def create(self, **kwargs):
-                raise AssertionError(
-                    "watsonx.ai on-prem must not use the environment-backed embedding client"
-                )
-
-        embeddings = Embeddings()
-
     class Writer:
         async def index_chunks(self, context, chunks, *, final=False):
             indexed.append((context, chunks, final))
@@ -201,10 +180,9 @@ async def test_standard_processor_routes_onprem_embeddings_through_gateway(
             )
         ),
     )
-    monkeypatch.setattr(
-        "models.processors.clients",
-        SimpleNamespace(opensearch=None, patched_embedding_client=FailingEmbeddingClient()),
-    )
+    # No embedding client to stub: every provider embeds through the gateway,
+    # and reaching for one is guarded in test_embedding_calls_use_the_gateway.
+    monkeypatch.setattr("models.processors.clients", SimpleNamespace(opensearch=None))
     monkeypatch.setattr("services.llm_gateway.embeddings", gateway_embeddings)
 
     file_path = tmp_path / "doc.md"

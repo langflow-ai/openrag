@@ -21,7 +21,7 @@ export function Message({
       <div
         className={
           isAssistant && !unstyledContent
-            ? "px-5 py-4 bg-secondary/20 rounded-2xl flex-1"
+            ? "px-5 py-4 bg-muted rounded-2xl flex-1"
             : "flex-1 flex w-full overflow-hidden"
         }
       >

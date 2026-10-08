@@ -8,7 +8,10 @@ import {
   type RemoteFile,
   useBrowseConnectionFiles,
 } from "@/app/api/queries/useBrowseConnectionFiles";
-import type { IngestSettings } from "@/components/cloud-picker/types";
+import {
+  type IngestSettings,
+  validateIngestSettingsOrToast,
+} from "@/components/cloud-picker/types";
 import { formatFileSize } from "@/lib/file-format";
 import { DuplicateHandlingDialog } from "./duplicate-handling-dialog";
 import { Badge } from "./ui/badge";
@@ -187,6 +190,7 @@ export function FileBrowserDialog({
 
   const handleIngest = useCallback(async () => {
     if (selectedFiles.length === 0) return;
+    if (!validateIngestSettingsOrToast(ingestSettings)) return;
 
     const filesPayload: SyncFilePayload[] = selectedFiles.map((f) => ({
       id: f.id,
@@ -241,14 +245,15 @@ export function FileBrowserDialog({
       setDuplicateDialogOpen(true);
     } catch (err) {
       console.error("[File Browser] Duplicate check failed:", err);
-      // Fallback: proceed without overwrite (backend will still skip
-      // exact-duplicate filenames on its own), unless we already know some
-      // selected files are stale re-ingests.
-      await submitSync(filesPayload, hasStale);
+      // Don't fall through to the sync: see shared-bucket-view. Ingesting
+      // without the answer silently skips every duplicate instead of asking.
+      toast.error("Could not check for existing files", {
+        description: "Nothing was ingested. Try again.",
+      });
     } finally {
       setIsCheckingDuplicates(false);
     }
-  }, [selectedFiles, connectorType, connectionId, submitSync]);
+  }, [selectedFiles, connectorType, connectionId, submitSync, ingestSettings]);
 
   const handleOverwriteDuplicates = () => {
     if (!pendingSync) return;

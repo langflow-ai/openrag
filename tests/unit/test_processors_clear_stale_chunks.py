@@ -87,19 +87,18 @@ def _patch_embedding_pipeline(monkeypatch, chunk_count: int, write_client=None):
         lambda texts, max_tokens=8000: [list(texts)],
     )
 
-    # patched_embedding_client.embeddings.create — return one embedding per text.
-    # `clients` is the singleton imported at module scope; replace it wholesale
-    # (the real one's `patched_embedding_client` is a read-only @property).
-    class _FakeEmbedResp:
-        def __init__(self, n):
-            self.data = [{"embedding": [0.1, 0.2, 0.3]} for _ in range(n)]
+    # Embeddings go through the gateway for every provider, so stub it at its
+    # source module — `process_document_standard` imports it lazily per call.
+    from services import llm_gateway as gateway_mod
 
-    fake_embed_client = MagicMock()
-    fake_embed_client.embeddings.create = AsyncMock(
-        side_effect=lambda model, input: _FakeEmbedResp(len(input))
-    )
+    async def _fake_embeddings(body, **_kwargs):
+        return {"data": [{"embedding": [0.1, 0.2, 0.3]} for _ in body["input"]]}
+
+    monkeypatch.setattr(gateway_mod, "embeddings", _fake_embeddings)
+
+    # `clients` is the singleton imported at module scope; replace it wholesale
+    # so the OpenSearch write client is the test's.
     fake_clients = MagicMock()
-    fake_clients.patched_embedding_client = fake_embed_client
     fake_clients.opensearch = write_client
     monkeypatch.setattr(processors_mod, "clients", fake_clients)
 

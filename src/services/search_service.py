@@ -453,8 +453,10 @@ class SearchService:
                         # Use the same credential-aware gateway as Langflow.
                         # Provider-qualified and legacy routes are resolved in
                         # one place and upstream credentials never leave OpenRAG.
+                        # A query, so it must not queue behind bulk ingestion.
                         resp = await gateway_embeddings(
-                            {"model": space.route_model, "input": [query]}
+                            {"model": space.route_model, "input": [query]},
+                            interactive=True,
                         )
                         data = resp.get("data", [])
                         embedding = data[0].get("embedding") if data else None

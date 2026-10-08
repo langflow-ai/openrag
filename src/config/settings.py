@@ -33,6 +33,23 @@ def get_legacy_embedding_provider_map_json() -> str | None:
     return os.getenv("OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP")
 
 
+def get_rhoai_env_credentials() -> dict[str, str | None]:
+    """Return the raw ``RHOAI_*`` first-boot seed values, keyed by credential field.
+
+    Seeds the ``rhoai`` provider enhancement (see
+    ``enhancements/providers/redhat/openshift_ai.py``). Values are passed through
+    unvalidated: the enhancement owns parsing, and an invalid
+    ``embedding_max_concurrency`` falls back to its default with a warning.
+    """
+    return {
+        "api_base": os.getenv("RHOAI_ENDPOINT"),
+        "embedding_api_base": os.getenv("RHOAI_EMBEDDINGS_ENDPOINT"),
+        "api_key": os.getenv("RHOAI_API_KEY"),
+        "ssl_verify": os.getenv("RHOAI_TLS_VERIFY"),
+        "embedding_max_concurrency": os.getenv("RHOAI_EMBEDDING_MAX_CONCURRENCY"),
+    }
+
+
 def get_opensearch_index_name_override() -> str | None:
     """Return the raw ``OPENSEARCH_INDEX_NAME`` env override.
 
@@ -710,7 +727,56 @@ UPLOAD_BATCH_SIZE = get_env_int("UPLOAD_BATCH_SIZE", 25)
 LANGFLOW_TIMEOUT = get_env_float("LANGFLOW_TIMEOUT", 2400.0)  # 40 minutes
 LANGFLOW_CONNECT_TIMEOUT = get_env_float("LANGFLOW_CONNECT_TIMEOUT", 30.0)  # 30 seconds
 # Retries for transient Langflow HTTP failures (disconnects, 502/503/504).
+# Only idempotent requests are replayed after the server may have acted on
+# them; see `_retryable_langflow_statuses`.
 LANGFLOW_REQUEST_RETRIES = get_env_int("LANGFLOW_REQUEST_RETRIES", 2)
+
+#: RFC 9110 §9.2.2 idempotent methods: repeating one leaves the server in the
+#: same state, so a failure after the request was sent can be replayed safely.
+_IDEMPOTENT_HTTP_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
+#: Statuses retried for any method, because they arrive before the request is
+#: processed: 429 is a rate-limit rejection, and a 503 from Langflow itself is
+#: emitted before processing. RFC 9110 does not guarantee this for 503 in
+#: general: a proxy in front of Langflow (for example Envoy's "reset before
+#: headers") can send one after forwarding the request. This relies on the
+#: backend reaching Langflow directly, as it does in compose and over a
+#: Kubernetes Service with no service mesh.
+_LANGFLOW_ALWAYS_RETRYABLE_STATUSES = frozenset({429, 503})
+#: Statuses that can arrive *after* the server acted. Langflow answers 500 when
+#: a flow run's graph fails, so replaying `POST /api/v1/run` re-executes the
+#: whole flow (re-embedding, re-polling a Docling task that has since been
+#: deleted) and the replay's error masks the original one.
+_LANGFLOW_IDEMPOTENT_ONLY_STATUSES = frozenset({408, 500, 502, 504})
+#: Transport errors raised before the request reached the server.
+_LANGFLOW_PRE_SEND_ERRORS: tuple[type[httpx.RequestError], ...] = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.PoolTimeout,
+)
+
+
+def _is_idempotent_request(method: str, idempotent: bool | None) -> bool:
+    """Whether a request may be replayed after the server could have acted on it."""
+    if idempotent is not None:
+        return idempotent
+    return (method or "").upper() in _IDEMPOTENT_HTTP_METHODS
+
+
+def _retryable_langflow_statuses(idempotent: bool) -> frozenset[int]:
+    """HTTP statuses worth retrying for a request of the given idempotency."""
+    if idempotent:
+        return _LANGFLOW_ALWAYS_RETRYABLE_STATUSES | _LANGFLOW_IDEMPOTENT_ONLY_STATUSES
+    return _LANGFLOW_ALWAYS_RETRYABLE_STATUSES
+
+
+def _is_retry_safe_transport_error(exc: httpx.RequestError, idempotent: bool) -> bool:
+    """Whether a transport error may be retried without risking a double execution.
+
+    A read timeout or dropped connection can happen after Langflow started a
+    flow run; only connection-phase failures prove the request was never seen.
+    """
+    return idempotent or isinstance(exc, _LANGFLOW_PRE_SEND_ERRORS)
+
 
 # Per-file processing timeout for document ingestion tasks (in seconds)
 # Should be >= LANGFLOW_TIMEOUT to allow long-running ingestion to complete
@@ -1410,11 +1476,6 @@ class AppClients:
         """Alias for patched_async_client - for backward compatibility with code expecting separate clients."""
         return self.patched_async_client
 
-    @property
-    def patched_embedding_client(self):
-        """Alias for patched_async_client - for backward compatibility with code expecting separate clients."""
-        return self.patched_async_client
-
     async def refresh_patched_client(self):
         """Reset patched client so next use picks up updated provider credentials."""
         if self._patched_async_client is not None:
@@ -1500,13 +1561,32 @@ class AppClients:
         """Alias for cleanup() for convenience."""
         await self.cleanup()
 
-    async def langflow_request(self, method: str, endpoint: str, **kwargs):
+    async def langflow_request(
+        self,
+        method: str,
+        endpoint: str,
+        *,
+        idempotent: bool | None = None,
+        **kwargs,
+    ):
         """Central method for all Langflow API requests.
 
-        Retries transient transport/server errors and once with a fresh API key on
-        auth failures (401/403).
+        Retries once with a fresh API key on auth failures (401/403), and retries
+        transient failures according to whether the request is safe to repeat:
+
+        - Any request is retried when it provably was not processed: connection
+          errors before the request was sent, 429, and 503.
+        - Only idempotent requests are also retried on 408/500/502/504 and on
+          transport errors after sending (read timeouts, dropped connections).
+
+        `idempotent` defaults to the method's RFC 9110 semantics (GET, HEAD,
+        OPTIONS, PUT, DELETE). Pass `idempotent=True` for a POST/PATCH that sets
+        absolute state and can be repeated harmlessly. Replaying a non-idempotent
+        request such as `POST /api/v1/run/{flow}` re-executes the flow, and the
+        replay's error hides the original failure.
         """
-        _TRANSIENT_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+        is_idempotent = _is_idempotent_request(method, idempotent)
+        retryable_statuses = _retryable_langflow_statuses(is_idempotent)
         max_attempts = max(1, LANGFLOW_REQUEST_RETRIES + 1)
         last_error: Exception | None = None
         auth_retry_attempted = False
@@ -1560,12 +1640,24 @@ class AppClients:
             except httpx.RequestError as exc:
                 last_error = exc
                 if attempt + 1 < max_attempts:
+                    if not _is_retry_safe_transport_error(exc, is_idempotent):
+                        logger.warning(
+                            "Langflow request failed; not retrying non-idempotent request",
+                            method=method,
+                            endpoint=endpoint,
+                            attempt=attempt + 1,
+                            error_type=type(exc).__name__,
+                            error=str(exc),
+                        )
+                        raise
                     delay = min(2**attempt, 4)
                     logger.warning(
                         "Langflow request transport error, retrying",
+                        method=method,
                         endpoint=endpoint,
                         attempt=attempt + 1,
                         max_attempts=max_attempts,
+                        error_type=type(exc).__name__,
                         error=str(exc),
                         retry_in_seconds=delay,
                     )
@@ -1604,6 +1696,17 @@ class AppClients:
                     except httpx.RequestError as exc:
                         last_error = exc
                         if attempt + 1 < max_attempts:
+                            if not _is_retry_safe_transport_error(exc, is_idempotent):
+                                logger.warning(
+                                    "Langflow auth retry failed; not retrying "
+                                    "non-idempotent request",
+                                    method=method,
+                                    endpoint=endpoint,
+                                    attempt=attempt + 1,
+                                    error_type=type(exc).__name__,
+                                    error=str(exc),
+                                )
+                                raise
                             delay = min(2**attempt, 4)
                             logger.warning(
                                 "Langflow auth retry transport error, retrying",
@@ -1630,10 +1733,26 @@ class AppClients:
                 await asyncio.sleep(delay)
                 continue
 
-            if response.status_code in _TRANSIENT_STATUS_CODES and attempt + 1 < max_attempts:
+            if (
+                response.status_code in _LANGFLOW_IDEMPOTENT_ONLY_STATUSES
+                and response.status_code not in retryable_statuses
+                and attempt + 1 < max_attempts
+            ):
+                # Surface the first failure as-is: a replay would re-execute
+                # the request (e.g. a whole flow run) and could mask the error.
+                logger.warning(
+                    "Langflow request failed; not retrying non-idempotent request",
+                    method=method,
+                    endpoint=endpoint,
+                    status_code=response.status_code,
+                    attempt=attempt + 1,
+                )
+
+            if response.status_code in retryable_statuses and attempt + 1 < max_attempts:
                 delay = min(2**attempt, 4)
                 logger.warning(
                     "Langflow request returned transient status, retrying",
+                    method=method,
                     endpoint=endpoint,
                     status_code=response.status_code,
                     attempt=attempt + 1,
@@ -1808,7 +1927,10 @@ class AppClients:
             }
 
             patch_response = await self.langflow_request(
-                "PATCH", f"/api/v1/variables/{variable_id}", json=update_payload
+                "PATCH",
+                f"/api/v1/variables/{variable_id}",
+                json=update_payload,
+                idempotent=True,
             )
 
             if patch_response.status_code == 200:

@@ -16,10 +16,10 @@ function getTimeSlot(hour: number): TimeSlot {
 const GREETING_MESSAGES: Record<TimeSlot, string[]> = {
   morning: [
     "Good morning{name}! How can I assist you today?",
-    "Morning{name}! How can I help?",
+    "Good morning{name}! How can I help?",
     "Good morning{name}! What can I help you with?",
     "Good morning{name}! How may I help you today?",
-    "Morning{name}! What are we working on today?",
+    "Good morning{name}! What are we working on today?",
   ],
   afternoon: [
     "Good afternoon{name}! How can I assist?",
@@ -30,7 +30,7 @@ const GREETING_MESSAGES: Record<TimeSlot, string[]> = {
   ],
   evening: [
     "Good evening{name}! How can I assist?",
-    "Evening{name}! How can I help you?",
+    "Good evening{name}! How can I help you?",
     "Good evening{name}! What can I do for you?",
     "Good evening{name}! How may I assist you?",
     "Evening{name}! What are we working on tonight?",
