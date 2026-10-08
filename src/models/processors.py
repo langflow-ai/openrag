@@ -637,23 +637,21 @@ class TaskProcessor:
 
         text_batches = chunk_texts_for_embeddings(texts, max_tokens=max_tokens)
         embeddings = []
-        from services.model_catalog import litellm_provider_key, public_model_id
+        # Every provider goes through the gateway, not just the aliased ones.
+        # The gateway resolves credentials per call from config; the direct
+        # client resolved them from process-global environment written once per
+        # process, which is never unset when a provider is deconfigured and is
+        # shared by every provider in the process. Gating on "is this provider
+        # aliased?" also meant the correctness of ingestion depended on an
+        # unrelated routing detail.
+        from services.llm_gateway import embeddings as gateway_embeddings
+        from services.llm_gateway import qualified_model_id
 
-        gateway_model = None
-        if litellm_provider_key(embedding_provider) != embedding_provider:
-            from services.llm_gateway import embeddings as gateway_embeddings
-
-            gateway_model = public_model_id(embedding_provider, embedding_model)
+        gateway_model = qualified_model_id(embedding_provider, embedding_model)
 
         for batch in text_batches:
-            if gateway_model is not None:
-                response = await gateway_embeddings({"model": gateway_model, "input": batch})
-                data = response.get("data", [])
-            else:
-                response = await clients.patched_embedding_client.embeddings.create(
-                    model=litellm_embedding_model, input=batch
-                )
-                data = response.data
+            response = await gateway_embeddings({"model": gateway_model, "input": batch})
+            data = response.get("data", [])
             embeddings.extend(
                 [item["embedding"] if isinstance(item, dict) else item.embedding for item in data]
             )
