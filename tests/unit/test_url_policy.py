@@ -36,3 +36,14 @@ def test_resolved_addresses_are_normalized_to_strings(monkeypatch):
 def test_canonicalize_url_rejects_ambiguous_encoded_paths(path):
     with pytest.raises(policy.CrawlPolicyError):
         policy.canonicalize_url(f"https://docs.example.com{path}")
+
+
+def test_path_scope_include_paths_cannot_expand_past_seed_path():
+    spec = policy.CrawlSpec(
+        seed_url="https://docs.example.com/guides",
+        scope="path",
+        include_paths=("/guides", "/admin"),
+    )
+
+    assert spec.allows("https://docs.example.com/guides/getting-started") is True
+    assert spec.allows("https://docs.example.com/admin") is False

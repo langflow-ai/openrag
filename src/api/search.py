@@ -22,7 +22,7 @@ class SearchBody(BaseModel):
     filters: dict[str, Any] = Field(default_factory=dict)
     limit: int = 10
     scoreThreshold: float = Field(default=0, alias="scoreThreshold")
-    resultMode: Literal["chunks", "website_pages"] = "chunks"
+    resultMode: Literal["chunks", "knowledge_sources", "website_pages"] = "chunks"
 
     model_config = {"populate_by_name": True}
 
@@ -102,6 +102,11 @@ async def search(
                 limit=body.limit,
                 score_threshold=body.scoreThreshold,
             )
+            if body.resultMode == "knowledge_sources":
+                result["results"] = [
+                    item for item in result.get("results", []) if not item.get("web_page_id")
+                ]
+                result["total"] = len(result["results"])
         return JSONResponse(result, status_code=200)
     except HTTPException:
         raise

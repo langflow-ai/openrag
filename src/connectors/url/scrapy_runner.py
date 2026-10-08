@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -126,6 +127,11 @@ class ManagedWebsiteSpider(scrapy.Spider):
         self.reason = "safety limit reached"
         self.crawler.engine.close_spider(self, reason)
 
+    def _mark_frontier_capped(self) -> None:
+        """Stop growing the frontier while allowing accepted requests to finish."""
+        self.capped = True
+        self.reason = "safety limit reached"
+
     def mark_incomplete(self, reason: str) -> None:
         self.incomplete = True
         self.reason = self.reason or reason
@@ -146,6 +152,7 @@ class ManagedWebsiteSpider(scrapy.Spider):
         noindex: bool = False,
         error: str | None = None,
         content: bytes | None = None,
+        encoding: str | None = None,
     ) -> None:
         if canonical_url in self._recorded:
             return
@@ -163,6 +170,8 @@ class ManagedWebsiteSpider(scrapy.Spider):
             relative_path = Path("pages") / f"{len(self.pages):06d}.html"
             (self.output_dir / relative_path).write_bytes(content)
             record["content_path"] = str(relative_path)
+            if encoding:
+                record["encoding"] = encoding
         self.pages.append(record)
 
     def request_rejected(self, request: Request, error: str) -> None:
@@ -179,6 +188,9 @@ class ManagedWebsiteSpider(scrapy.Spider):
         except CrawlPolicyError:
             return None
         if canonical_url in self._scheduled or not self.spec.allows(canonical_url):
+            return None
+        if len(self._scheduled) >= self.spec.max_pages:
+            self._mark_frontier_capped()
             return None
         self._scheduled.add(canonical_url)
         return Request(
@@ -226,33 +238,43 @@ class ManagedWebsiteSpider(scrapy.Spider):
             self._record(canonical_url, final_url, depth, content=response.body)
             return
 
-        robots = " ".join(
-            response.xpath(
-                "//meta[translate(@name, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', "
-                "'abcdefghijklmnopqrstuvwxyz')='robots']/@content"
-            ).getall()
-        ).lower()
-        noindex, nofollow = "noindex" in robots, "nofollow" in robots
+        directives = self._robot_directives(response)
+        noindex, nofollow = "noindex" in directives, "nofollow" in directives
         self._record(
             canonical_url,
             final_url,
             depth,
             noindex=noindex,
             content=response.body,
+            encoding=response.encoding,
         )
 
         if nofollow or self.spec.scope == "page":
             return
-        requests = [
-            request
-            for link in self._links.extract_links(response)
-            if (request := self._request(link.url, depth + 1)) is not None
+        for link in self._links.extract_links(response):
+            request = self._request(link.url, depth + 1)
+            if request is not None:
+                yield request
+            if self.capped:
+                return
+
+    @staticmethod
+    def _robot_directives(response: scrapy.http.TextResponse) -> set[str]:
+        meta_values = response.xpath(
+            "//meta[translate(@name, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', "
+            "'abcdefghijklmnopqrstuvwxyz')='robots']/@content"
+        ).getall()
+        header_values = [
+            value.decode("latin1") for value in response.headers.getlist(b"X-Robots-Tag")
         ]
-        if len(self._recorded) >= self.spec.max_pages:
-            if requests:
-                self._stop_for_limit("openrag_page_limit")
-            return
-        yield from requests
+        directives: set[str] = set()
+        for value in (*meta_values, *header_values):
+            # A header can be agent-targeted (for example, "googlebot: noindex").
+            # For OpenRAG, honor the directives that follow the optional target.
+            directives.update(re.findall(r"[a-z-]+", value.lower().split(":")[-1]))
+        if "none" in directives:
+            directives.update({"noindex", "nofollow"})
+        return directives
 
     def request_failed(self, failure: Any) -> None:
         request = failure.request

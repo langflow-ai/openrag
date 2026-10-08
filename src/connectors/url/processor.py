@@ -99,7 +99,7 @@ class WebsiteSourceProcessor(TaskProcessor):
             spec_values.update(
                 seed_url=target_page["canonical_url"], scope="page", max_pages=1, max_depth=0
             )
-        elif source.get("resync_behavior") == "root":
+        elif source_is_established and source.get("resync_behavior") == "root":
             spec_values.update(scope="page", max_pages=1, max_depth=0)
 
         try:

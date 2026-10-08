@@ -441,9 +441,12 @@ function SearchPage() {
     isLoading: isSearchLoading,
     error: searchError,
     isError: isSearchError,
-  } = useGetSearchQuery(queryOverride, parsedFilterData, {
-    enabled: !isWildcardQuery,
-  });
+  } = useGetSearchQuery(
+    queryOverride,
+    parsedFilterData,
+    { enabled: !isWildcardQuery },
+    { resultMode: "knowledge_sources" },
+  );
 
   const { files: searchFiles, warnings: searchWarnings } =
     searchData as SearchResult;

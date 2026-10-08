@@ -1,6 +1,13 @@
 export type Scope = "path" | "page" | "site";
 export type ChangeDetection = "normalized_content_hash" | "always_reingest";
 
+export const CRAWL_LIMITS = {
+  max_pages: { min: 1, max: 10_000 },
+  max_depth: { min: 0, max: 20 },
+  max_downloaded_mb: { min: 1, max: 2048 },
+  max_crawl_minutes: { min: 1, max: 60 },
+} as const;
+
 export type UrlSourceForm = {
   name: string;
   starting_url: string;
@@ -64,6 +71,24 @@ function validUrl(value: string) {
 }
 
 export function isUrlSourceFormValid(form: UrlSourceForm) {
+  const pageScope = form.scope === "page";
+  const limitsAreValid = (
+    Object.entries(CRAWL_LIMITS) as [
+      keyof typeof CRAWL_LIMITS,
+      (typeof CRAWL_LIMITS)[keyof typeof CRAWL_LIMITS],
+    ][]
+  ).every(([key, limits]) => {
+    const value =
+      pageScope && key === "max_pages"
+        ? 1
+        : pageScope && key === "max_depth"
+          ? 0
+          : form[key];
+    return (
+      Number.isInteger(value) && value >= limits.min && value <= limits.max
+    );
+  });
+
   return Boolean(
     form.name.trim() &&
       validUrl(form.starting_url) &&
@@ -72,7 +97,8 @@ export function isUrlSourceFormValid(form: UrlSourceForm) {
       ) &&
       [...lines(form.include_paths), ...lines(form.exclude_paths)].every(
         (path) => path.startsWith("/"),
-      ),
+      ) &&
+      limitsAreValid,
   );
 }
 

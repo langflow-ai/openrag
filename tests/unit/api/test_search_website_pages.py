@@ -1,3 +1,4 @@
+import json
 from unittest.mock import AsyncMock
 
 import pytest
@@ -69,3 +70,37 @@ async def test_website_page_search_reads_zero_chunk_manifest_rows(monkeypatch):
     assert by_document["doc-active"]["chunk_count"] == 2
     assert by_document["doc-disabled"]["status"] == "disabled"
     assert by_document["doc-disabled"]["chunk_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_root_knowledge_search_excludes_child_page_hits():
+    search_service = type(
+        "SearchService",
+        (),
+        {
+            "search": AsyncMock(
+                return_value={
+                    "results": [
+                        {
+                            "filename": "Child page",
+                            "web_source_id": "source-1",
+                            "web_page_id": "page-1",
+                        },
+                        {"filename": "Document.pdf"},
+                    ],
+                    "total": 2,
+                }
+            )
+        },
+    )()
+    user = type("User", (), {"user_id": "user-1", "jwt_token": None})()
+
+    response = await search_api.search(
+        SearchBody(query="guide", resultMode="knowledge_sources"),
+        search_service=search_service,
+        user=user,
+    )
+
+    body = json.loads(response.body)
+    assert body["results"] == [{"filename": "Document.pdf"}]
+    assert body["total"] == 1

@@ -51,5 +51,10 @@ describe("URL source form helpers", () => {
     expect(isUrlSourceFormValid({ ...valid, include_paths: "docs" })).toBe(
       false,
     );
+    expect(isUrlSourceFormValid({ ...valid, max_pages: 0 })).toBe(false);
+    expect(isUrlSourceFormValid({ ...valid, max_depth: 21 })).toBe(false);
+    expect(isUrlSourceFormValid({ ...valid, max_downloaded_mb: 2049 })).toBe(
+      false,
+    );
   });
 });

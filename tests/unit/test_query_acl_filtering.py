@@ -174,6 +174,30 @@ def test_file_service_v2_requests_url_source_chunk_count_in_table_queries():
     assert "chunk_count" in terms_fields
 
 
+def test_file_service_v2_groups_sources_by_document_id_not_display_name():
+    from src.services.file_service_v2 import FileServiceV2
+
+    service = FileServiceV2()
+    query = service._build_filter_query(user_id="user-123")
+
+    composite_sources = service._build_composite_aggregation(
+        query=query,
+        page_size=25,
+        sort_field="filename",
+        sort_order="asc",
+        after_key=None,
+    )["aggs"]["files"]["composite"]["sources"]
+    terms_field = service._build_terms_aggregation_for_chunk_count(
+        query=query,
+        page_size=25,
+        offset=0,
+        sort_order="asc",
+    )["aggs"]["files"]["terms"]["field"]
+
+    assert composite_sources[-1]["document_id_tiebreak"]["terms"]["field"] == "document_id"
+    assert terms_field == "document_id"
+
+
 def test_service_query_paths_do_not_apply_document_visibility_filters():
     repo_root = Path(__file__).resolve().parents[2]
     helper_name = "build" + "_acl_filter"

@@ -8,7 +8,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { UpdateUrlSourceForm, UrlSourceForm } from "./form";
+import {
+  CRAWL_LIMITS,
+  type UpdateUrlSourceForm,
+  type UrlSourceForm,
+} from "./form";
 
 export function AdvancedCrawlSettings({
   form,
@@ -86,7 +90,8 @@ export function AdvancedCrawlSettings({
             <Label>{label}</Label>
             <Input
               type="number"
-              min={0}
+              min={CRAWL_LIMITS[key].min}
+              max={CRAWL_LIMITS[key].max}
               disabled={
                 pageScope && (key === "max_pages" || key === "max_depth")
               }

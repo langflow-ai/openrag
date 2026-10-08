@@ -152,10 +152,11 @@ class CrawlSpec:
         if not host_allowed:
             return False
         path = parsed.path or "/"
-        includes = self.include_paths or ((seed.path or "/",) if self.scope == "path" else ("/",))
-        return any(_matches_path(path, p) for p in includes) and not any(
-            _matches_path(path, p) for p in self.exclude_paths
-        )
+        if self.scope == "path" and not _matches_path(path, seed.path or "/"):
+            return False
+        if self.include_paths and not any(_matches_path(path, p) for p in self.include_paths):
+            return False
+        return not any(_matches_path(path, p) for p in self.exclude_paths)
 
     def as_dict(self) -> dict:
         return {name: getattr(self, name) for name in self.__dataclass_fields__}

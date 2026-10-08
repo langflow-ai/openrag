@@ -122,6 +122,50 @@ async def test_crawl_writes_page_manifest_and_parent_summary(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_initial_crawl_keeps_saved_scope_when_future_resync_is_root_only(monkeypatch):
+    source = _source(resync_behavior="root")
+    manifests: list[dict] = []
+    document = WebDocument("Guide", "# Guide\n\nContent", "hash-1", 512)
+    crawl = AsyncMock(
+        return_value=CrawlResult(
+            (
+                CrawledPage(
+                    "https://docs.example.com/guide",
+                    "https://docs.example.com/guide",
+                    1,
+                    document,
+                ),
+            ),
+            complete=True,
+            capped=False,
+        )
+    )
+
+    monkeypatch.setattr(processor_module, "get_source_manifest", AsyncMock(return_value=source))
+    monkeypatch.setattr(
+        processor_module, "list_page_manifests", AsyncMock(side_effect=lambda *_: manifests)
+    )
+    monkeypatch.setattr(
+        processor_module, "upsert_page_manifest", AsyncMock(side_effect=manifests.append)
+    )
+    monkeypatch.setattr(processor_module, "upsert_source_manifest", AsyncMock())
+    monkeypatch.setattr(processor_module, "crawl", crawl)
+    monkeypatch.setattr(
+        WebsiteSourceProcessor,
+        "process_document_standard",
+        AsyncMock(return_value={"status": "indexed", "chunk_count": 1}),
+    )
+    monkeypatch.setattr(processor_module, "get_page_index_metadata", AsyncMock(return_value={}))
+
+    task, file_task = UploadTask(task_id="task-1", total_files=1), FileTask(file_path="source-1")
+    await _processor(source).process_item(task, file_task.file_path, file_task)
+
+    spec = crawl.await_args.args[0]
+    assert spec.scope == "path"
+    assert spec.max_pages == 250
+
+
+@pytest.mark.asyncio
 async def test_failed_resync_keeps_existing_page_manifests_and_source_active(monkeypatch):
     source = _source(last_successful_sync_at=datetime.now(UTC).isoformat())
     manifests = [_page(source, "https://docs.example.com/guide")]

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from scrapy import Request
-from scrapy.http import Response
+from scrapy.http import Response, TextResponse
 
 from connectors.url import crawler, scrapy_runner
 from connectors.url.policy import CrawlSpec
@@ -129,3 +129,55 @@ def test_aggregate_limit_counts_error_and_redirect_response_bodies(tmp_path):
     assert spider.downloaded_bytes == 1_100_000
     assert spider.capped is True
     spider.crawler.engine.close_spider.assert_called_once()
+
+
+def test_x_robots_tag_prevents_indexing_and_link_following(tmp_path):
+    spider = ManagedWebsiteSpider(
+        spec={"seed_url": "https://docs.example.com/"}, output_dir=str(tmp_path)
+    )
+    spider._links = MagicMock()
+    response = TextResponse(
+        "https://docs.example.com/",
+        status=200,
+        headers={b"Content-Type": b"text/html", b"X-Robots-Tag": b"noindex, nofollow"},
+        body=b"<html><body>Documentation</body></html>",
+        encoding="utf-8",
+        request=Request(
+            "https://docs.example.com/",
+            meta={"canonical_url": "https://docs.example.com/", "crawl_depth": 0},
+        ),
+    )
+
+    assert list(spider.parse_page(response)) == []
+    assert spider.pages[0]["noindex"] is True
+    spider._links.extract_links.assert_not_called()
+
+
+def test_frontier_does_not_schedule_more_requests_than_page_limit(tmp_path):
+    spider = ManagedWebsiteSpider(
+        spec={"seed_url": "https://docs.example.com/", "max_pages": 2},
+        output_dir=str(tmp_path),
+    )
+    spider._links = MagicMock()
+    spider._scheduled.add("https://docs.example.com/")
+    spider._links.extract_links.return_value = [
+        type("Link", (), {"url": f"https://docs.example.com/page-{index}"})()
+        for index in range(100)
+    ]
+    response = TextResponse(
+        "https://docs.example.com/",
+        status=200,
+        headers={b"Content-Type": b"text/html"},
+        body=b"<html><body>Documentation</body></html>",
+        encoding="utf-8",
+        request=Request(
+            "https://docs.example.com/",
+            meta={"canonical_url": "https://docs.example.com/", "crawl_depth": 0},
+        ),
+    )
+
+    requests = list(spider.parse_page(response))
+
+    assert len(requests) == 1
+    assert len(spider._scheduled) == 2
+    assert spider.capped is True

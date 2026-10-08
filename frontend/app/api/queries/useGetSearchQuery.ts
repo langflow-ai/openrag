@@ -15,7 +15,7 @@ export interface SearchPayload {
   limit: number;
   scoreThreshold: number;
   filters?: FilterInput;
-  resultMode?: "chunks" | "website_pages";
+  resultMode?: "chunks" | "knowledge_sources" | "website_pages";
 }
 
 export interface ChunkResult {
@@ -113,7 +113,7 @@ export interface SearchResult {
 
 export interface SearchResultDisplayOptions {
   groupBy?: "filename" | "document_id";
-  resultMode?: "chunks" | "website_pages";
+  resultMode?: "chunks" | "knowledge_sources" | "website_pages";
 }
 
 const EMPTY_SEARCH_RESULT: SearchResult = { files: [], warnings: [] };

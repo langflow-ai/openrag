@@ -1,7 +1,7 @@
 """
 File service v2 — composite aggregation pagination.
 
-Uses OpenSearch composite aggregation for  O(page_size) server-side
+Uses OpenSearch composite aggregation for O(page_size) server-side
 pagination. Only page_size buckets are processed per request regardless of
 total file count.
 
@@ -376,6 +376,15 @@ class FileServiceV2:
                     if sort_field != "filename"
                     else []
                 ),
+                {
+                    "document_id_tiebreak": {
+                        "terms": {
+                            "field": "document_id",
+                            "order": sort_order,
+                            "missing_bucket": True,
+                        }
+                    }
+                },
             ],
         }
 
@@ -448,7 +457,7 @@ class FileServiceV2:
             "aggs": {
                 "files": {
                     "terms": {
-                        "field": "filename",
+                        "field": "document_id",
                         "size": offset + page_size,
                         "order": {"chunk_count": sort_order},
                     },
@@ -501,7 +510,7 @@ class FileServiceV2:
     async def _get_file_count(
         self, opensearch_client: Any, query: dict[str, Any]
     ) -> tuple[int, bool]:
-        """Approximate unique-filename count via cardinality aggregation (O(1)).
+        """Approximate unique-document count via cardinality aggregation (O(1)).
 
         Returns (count, is_approximate).  is_approximate is always True on
         success (cardinality agg is inherently approximate) and True when the
@@ -513,7 +522,7 @@ class FileServiceV2:
             "aggs": {
                 "file_count": {
                     "cardinality": {
-                        "field": "filename",
+                        "field": "document_id",
                         "precision_threshold": 3000,
                     }
                 }

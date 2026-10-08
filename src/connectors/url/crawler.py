@@ -66,7 +66,7 @@ def _page(record: dict[str, Any], work_dir: Path) -> CrawledPage:
     if not error and content_path:
         try:
             content = (work_dir / str(content_path)).read_bytes()
-            document = html_to_document(content, final_url)
+            document = html_to_document(content, final_url, encoding=record.get("encoding"))
         except (OSError, ValueError) as exc:
             error = str(exc)
     return CrawledPage(

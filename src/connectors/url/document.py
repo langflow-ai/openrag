@@ -54,8 +54,13 @@ class WebDocument:
     byte_size: int
 
 
-def html_to_document(content: bytes, source_url: str) -> WebDocument:
-    raw = content.decode("utf-8", errors="replace")
+def html_to_document(
+    content: bytes, source_url: str, *, encoding: str | None = None
+) -> WebDocument:
+    try:
+        raw = content.decode(encoding or "utf-8", errors="replace")
+    except LookupError:
+        raw = content.decode("utf-8", errors="replace")
     title_match = re.search(r"<title[^>]*>(.*?)</title\s*>", raw, re.I | re.S)
     title = (
         re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", unescape(title_match.group(1)))).strip()
