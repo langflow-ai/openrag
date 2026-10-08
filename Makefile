@@ -376,8 +376,8 @@ help_local: ## Show local development commands
 	@echo "    $(CYAN)/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt$(NC)"
 	@echo "  From a laptop, port-forward each InferenceService and set RHOAI_TLS_VERIFY=false:"
 	@echo "    $(CYAN)oc port-forward -n <ns> svc/<isvc>-predictor 8443:8443$(NC)"
-	@echo "  The provider is hidden in every run mode until $(CYAN)OPENRAG_MODEL_PROVIDERS_CONFIG$(NC)"
-	@echo "  points at a model_providers.yaml enabling it (see .env.example)."
+	@echo "  Offered in the oss and on_prem run modes; point $(CYAN)OPENRAG_MODEL_PROVIDERS_CONFIG$(NC)"
+	@echo "  at a model_providers.yaml of your own to change that (see .env.example)."
 	@echo ''
 	@echo "$(PURPLE)Installation:$(NC)"
 	@echo "  $(PURPLE)make install$(NC)         - Install all dependencies"
