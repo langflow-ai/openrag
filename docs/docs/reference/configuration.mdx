@@ -244,6 +244,7 @@ For Langflow flow IDs and Langflow timeout settings, see [Langflow settings](#la
 | `HOST_DOCKER_INTERNAL` | `host.docker.internal` | Host address for accessing services running on the host machine from within Docker containers. This is used to connect to the local Docling Serve instance started by OpenRAG. If your system uses a different hostname for this purpose, set this variable accordingly. |
 | `INGESTION_TIMEOUT` | `3600` | Document ingestion timeout limit in seconds for each file. Increase this value if you experience timeouts when ingesting very large documents. Must be greater than or equal to [`LANGFLOW_TIMEOUT`](#langflow-settings).  |
 | `UPLOAD_BATCH_SIZE` | `25` | When ingesting folders, set the maximum number of files to ingest per batch. Each batch is an [ingestion task](/ingestion#monitor-ingestion). Increase this value to ingest more files per batch. If this value is too high, performance issues can occur. |
+| `OPENRAG_EMBEDDING_OVERFLOW_POLICY` | `average` | What OpenRAG does when the embedding model rejects a chunk or query as longer than its input limit. With `average`, OpenRAG embeds the text in smaller pieces and stores the length-weighted average of their vectors, so ingestion continues; the full text is still stored and searchable by keyword. With `error`, the request fails and the file reports that a section is longer than the model accepts. |
 
 ## Langflow settings {#langflow-settings}
 

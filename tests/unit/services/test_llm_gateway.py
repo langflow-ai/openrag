@@ -1,6 +1,7 @@
 """LLM gateway: route OpenAI-shaped requests through LiteLLM using OpenRAG config."""
 
 import json
+import math
 from types import SimpleNamespace
 
 import pytest
@@ -2137,6 +2138,329 @@ def test_a_failure_with_no_useful_status_is_named_from_what_raised_it(exc, expec
 
     assert (failure.code, failure.status_code) == expected
     assert failure.counts_against_provider
+
+
+def _direction(text: str) -> list[float]:
+    """A unit vector that leans towards "a" or "b" by how much of each the text has."""
+    a, b = text.count("a"), text.count("b")
+    length = math.hypot(a, b) or 1.0
+    return [a / length, b / length]
+
+
+class _LimitedProvider:
+    """Stands in for `litellm.aembedding` at a model with an input limit.
+
+    One character is one token, plus `dense` more for every "z", so a test can
+    pack more tokens into one part of a text than another.
+    """
+
+    def __init__(self, limit: int, *, state_counts: bool = True, dense: int = 0, vector=_direction):
+        self.limit = limit
+        self.state_counts = state_counts
+        self.dense = dense
+        self.vector = vector
+        self.calls: list[list] = []
+        self.rejections = 0
+
+    def tokens(self, text: str) -> int:
+        return len(text) + self.dense * text.count("z")
+
+    async def __call__(self, **kwargs):
+        inputs = kwargs["input"]
+        self.calls.append(list(inputs))
+        longest = max(self.tokens(text) for text in inputs)
+        if longest > self.limit:
+            self.rejections += 1
+            raise _FakeLiteLLMError(
+                f"This model's maximum context length is {self.limit} tokens. However, you "
+                f"requested {longest} tokens in the input for embedding generation."
+                if self.state_counts
+                else '{"error": {"code": "context_length_exceeded"}}',
+                status_code=400,
+            )
+        spent = sum(self.tokens(text) for text in inputs)
+        return {
+            "object": "list",
+            "model": "intfloat/multilingual-e5-large",
+            "data": [
+                {"object": "embedding", "index": index, "embedding": self.vector(text)}
+                for index, text in enumerate(inputs)
+            ],
+            "usage": {"prompt_tokens": spent, "total_tokens": spent},
+        }
+
+
+#: 100 characters against a limit of 80: two pieces of 50, cut at the space.
+_OVER_LIMIT = "a" * 49 + " " + "b" * 50
+_E5_MODEL = "watsonx:intfloat/multilingual-e5-large"
+
+
+class TestAnOverLengthEmbeddingInputIsAveraged:
+    """The gateway embeds an over-length input in pieces and returns their average.
+
+    `/v1/embeddings` owes one vector per input, so the caller cannot be handed
+    more chunks; failing instead stopped whole documents ingesting through
+    flows that have no way to split the chunk themselves.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clean(self, monkeypatch):
+        from services import provider_error_log
+
+        monkeypatch.delenv("OPENRAG_EMBEDDING_OVERFLOW_POLICY", raising=False)
+        provider_error_log.clear()
+        yield
+        provider_error_log.clear()
+
+    def _provider(self, monkeypatch, provider):
+        monkeypatch.setattr("litellm.aembedding", provider)
+        return provider
+
+    @pytest.mark.asyncio
+    async def test_one_vector_comes_back_for_the_input(self, monkeypatch):
+        from services import provider_error_log
+
+        provider = self._provider(monkeypatch, _LimitedProvider(80))
+
+        result = await embeddings({"model": _E5_MODEL, "input": [_OVER_LIMIT]}, config=_config())
+
+        assert provider.calls == [[_OVER_LIMIT], [_OVER_LIMIT[:50], _OVER_LIMIT[50:]]]
+        # Half "a" and half "b" by length, at the unit length the pieces have.
+        assert result["data"] == [
+            {"object": "embedding", "index": 0, "embedding": pytest.approx([0.5**0.5, 0.5**0.5])}
+        ]
+        assert result["model"] == "intfloat/multilingual-e5-large"
+        assert result["usage"] == {"prompt_tokens": 100, "total_tokens": 100}
+        assert provider_error_log.latest_failure("watsonx", "embedding") is None
+
+    @pytest.mark.asyncio
+    async def test_a_bare_string_input_is_handled_the_same_way(self, monkeypatch):
+        self._provider(monkeypatch, _LimitedProvider(80))
+
+        result = await embeddings({"model": _E5_MODEL, "input": _OVER_LIMIT}, config=_config())
+
+        assert len(result["data"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_the_warning_gives_the_sizes_and_never_the_text(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from services import llm_gateway
+
+        log = MagicMock()
+        monkeypatch.setattr(llm_gateway, "logger", log)
+        self._provider(monkeypatch, _LimitedProvider(80))
+
+        await embeddings({"model": _E5_MODEL, "input": [_OVER_LIMIT]}, config=_config())
+
+        assert [call.kwargs for call in log.warning.call_args_list] == [
+            {
+                "provider": "watsonx",
+                "model": "watsonx/intfloat/multilingual-e5-large",
+                "max_tokens": 80,
+                "requested_tokens": 100,
+                "chars": 100,
+                "pieces": 2,
+            }
+        ]
+        assert "aaaa" not in repr(log.mock_calls)
+        log.error.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_only_the_offending_input_in_a_batch_is_cut(self, monkeypatch):
+        provider = self._provider(monkeypatch, _LimitedProvider(80))
+        batch = ["aaa", _OVER_LIMIT, "bbb", "aab"]
+
+        result = await embeddings({"model": _E5_MODEL, "input": batch}, config=_config())
+
+        # The provider does not say which input was too long, so the batch is
+        # halved until that input is alone; every other input is sent whole.
+        assert provider.calls == [
+            batch,
+            ["aaa", _OVER_LIMIT],
+            ["aaa"],
+            [_OVER_LIMIT],
+            [_OVER_LIMIT[:50], _OVER_LIMIT[50:]],
+            ["bbb", "aab"],
+        ]
+        assert [item["index"] for item in result["data"]] == [0, 1, 2, 3]
+        assert [item["embedding"] for item in result["data"]] == [
+            _direction("aaa"),
+            pytest.approx([0.5**0.5, 0.5**0.5]),
+            _direction("bbb"),
+            _direction("aab"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_rejection_without_counts_halves_the_input(self, monkeypatch):
+        provider = self._provider(monkeypatch, _LimitedProvider(80, state_counts=False))
+
+        result = await embeddings({"model": _E5_MODEL, "input": [_OVER_LIMIT]}, config=_config())
+
+        assert provider.calls[1] == [_OVER_LIMIT[:50], _OVER_LIMIT[50:]]
+        assert len(result["data"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_piece_that_is_still_too_long_is_cut_again(self, monkeypatch):
+        # Every token-heavy "z" sits in the second half, so pieces sized by the
+        # overall proportion fit in the first half and overflow in the second.
+        text = ("a" * 9 + " ") * 5 + ("z" * 9 + " ") * 5
+        provider = self._provider(
+            monkeypatch, _LimitedProvider(100, dense=9, vector=lambda _text: [1.0, 0.0])
+        )
+
+        result = await embeddings({"model": _E5_MODEL, "input": [text]}, config=_config())
+
+        assert result["data"][0]["embedding"] == pytest.approx([1.0, 0.0])
+        assert len(result["data"]) == 1
+        # The whole text, then the first set of pieces, then pieces of pieces.
+        assert provider.rejections > 2
+
+    @pytest.mark.asyncio
+    async def test_it_gives_up_after_three_rounds_of_cutting(self, monkeypatch):
+        from services import provider_error_log
+
+        # A limit nothing can meet, so every piece is rejected however small.
+        provider = self._provider(monkeypatch, _LimitedProvider(0))
+
+        with pytest.raises(LlmContextLengthError) as raised:
+            await embeddings({"model": _E5_MODEL, "input": ["one long chunk"]}, config=_config())
+
+        assert raised.value.status_code == 400
+        # One call for the input, then two per round: the pieces, and one of them alone.
+        assert len(provider.calls) == 7
+        assert provider_error_log.latest_failure("watsonx", "embedding") is None
+
+    @pytest.mark.asyncio
+    async def test_the_error_policy_returns_the_rejection_untouched(self, monkeypatch):
+        monkeypatch.setenv("OPENRAG_EMBEDDING_OVERFLOW_POLICY", "error")
+        provider = self._provider(monkeypatch, _LimitedProvider(80))
+
+        with pytest.raises(LlmContextLengthError) as raised:
+            await embeddings({"model": _E5_MODEL, "input": [_OVER_LIMIT]}, config=_config())
+
+        assert provider.calls == [[_OVER_LIMIT]]
+        assert (raised.value.max_tokens, raised.value.requested_tokens) == (80, 100)
+
+    @pytest.mark.asyncio
+    async def test_token_array_inputs_are_not_cut(self, monkeypatch):
+        calls = []
+
+        async def reject(**kwargs):
+            calls.append(kwargs["input"])
+            raise _FakeLiteLLMError(_EMBEDDING_OVERFLOW, status_code=400)
+
+        monkeypatch.setattr("litellm.aembedding", reject)
+
+        with pytest.raises(LlmContextLengthError):
+            await embeddings({"model": _E5_MODEL, "input": [[101, 2023, 102]]}, config=_config())
+
+        assert calls == [[[101, 2023, 102]]]
+
+    @pytest.mark.asyncio
+    async def test_another_failure_among_the_pieces_is_reported_as_itself(self, monkeypatch):
+        from services import provider_error_log
+
+        calls = []
+
+        async def overflow_then_rate_limit(**kwargs):
+            calls.append(kwargs["input"])
+            if len(calls) == 1:
+                raise _FakeLiteLLMError(_EMBEDDING_OVERFLOW, status_code=400)
+            raise _FakeLiteLLMError("rate limit exceeded, retry in 30s", status_code=429)
+
+        monkeypatch.setattr("litellm.aembedding", overflow_then_rate_limit)
+
+        with pytest.raises(LlmGatewayError) as raised:
+            await embeddings({"model": _E5_MODEL, "input": [_OVER_LIMIT]}, config=_config())
+
+        assert (raised.value.status_code, raised.value.code) == (429, "rate_limit_exceeded")
+        assert len(calls) == 2
+        assert "rate limit" in provider_error_log.latest_failure("watsonx", "embedding")
+
+    @pytest.mark.asyncio
+    async def test_a_rejection_it_does_not_recognise_is_left_alone(self, monkeypatch):
+        calls = []
+
+        async def reject(**kwargs):
+            calls.append(kwargs["input"])
+            raise _FakeLiteLLMError("the input is too large for this deployment", status_code=400)
+
+        monkeypatch.setattr("litellm.aembedding", reject)
+
+        with pytest.raises(LlmGatewayError) as raised:
+            await embeddings({"model": _E5_MODEL, "input": [_OVER_LIMIT]}, config=_config())
+
+        assert (raised.value.status_code, raised.value.code) == (502, "upstream_invalid_request")
+        assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("value", "policy"),
+    [(None, "average"), ("", "average"), ("average", "average"), (" Error ", "error")],
+)
+def test_embedding_overflow_policy_defaults_to_averaging(monkeypatch, value, policy):
+    from config.settings import embedding_overflow_policy
+
+    if value is None:
+        monkeypatch.delenv("OPENRAG_EMBEDDING_OVERFLOW_POLICY", raising=False)
+    else:
+        monkeypatch.setenv("OPENRAG_EMBEDDING_OVERFLOW_POLICY", value)
+
+    assert embedding_overflow_policy() == policy
+
+
+class TestCuttingAnInputIntoPieces:
+    def test_pieces_are_equal_and_cut_at_whitespace(self):
+        from services.llm_gateway import _split_into_pieces
+
+        text = "word " * 200
+
+        pieces = _split_into_pieces(text, 100, 700)
+
+        # 700 tokens against 100, with headroom: nine pieces, not seven.
+        assert len(pieces) == 9
+        assert "".join(pieces) == text
+        assert all(piece.endswith(" ") for piece in pieces)
+        assert max(map(len, pieces)) - min(map(len, pieces)) <= len(text) // 9 // 5
+
+    def test_a_long_unbroken_run_is_cut_where_it_falls(self):
+        from services.llm_gateway import _split_into_pieces
+
+        assert _split_into_pieces("x" * 100, 80, 100) == ["x" * 50, "x" * 50]
+
+    def test_without_counts_the_text_is_halved(self):
+        from services.llm_gateway import _split_into_pieces
+
+        assert _split_into_pieces(_OVER_LIMIT, None, None) == [_OVER_LIMIT[:50], _OVER_LIMIT[50:]]
+
+    def test_a_text_too_short_to_cut_comes_back_whole(self):
+        from services.llm_gateway import _split_into_pieces
+
+        assert _split_into_pieces("x", 512, 548) == ["x"]
+
+
+class TestAveragingPieceVectors:
+    def test_longer_pieces_weigh_more(self):
+        from services.llm_gateway import _weighted_mean_vector
+
+        mean = _weighted_mean_vector([[1.0, 0.0], [0.0, 1.0]], [3, 1])
+
+        assert mean == pytest.approx([0.9486833, 0.3162278])
+        assert math.hypot(*mean) == pytest.approx(1.0)
+
+    def test_vectors_that_are_not_unit_length_keep_their_scale(self):
+        from services.llm_gateway import _weighted_mean_vector
+
+        # Lengths 3 and 4: the mean is scaled to 3.5, not left at 2.5 or forced to 1.
+        mean = _weighted_mean_vector([[3.0, 0.0], [0.0, 4.0]], [1, 1])
+
+        assert mean == pytest.approx([2.1, 2.8])
+
+    def test_pieces_that_cancel_out_are_left_as_the_zero_vector(self):
+        from services.llm_gateway import _weighted_mean_vector
+
+        assert _weighted_mean_vector([[1.0, 0.0], [-1.0, 0.0]], [1, 1]) == [0.0, 0.0]
 
 
 class TestToolsBesideReasoningEffort:

@@ -658,6 +658,18 @@ DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false"
     "yes",
 )
 
+
+def embedding_overflow_policy() -> str:
+    """What the gateway does with an embedding input the model rejects as too long.
+
+    ``average`` (the default) embeds the input in pieces and returns their
+    averaged vector, so the caller still gets one vector per input. ``error``
+    returns the provider's rejection as a 400 instead.
+    """
+    raw = os.getenv("OPENRAG_EMBEDDING_OVERFLOW_POLICY", "").strip().lower()
+    return "error" if raw == "error" else "average"
+
+
 # Show the "+" file upload button in the chat input
 OPENRAG_INGEST_VIA_CHAT = os.getenv("OPENRAG_INGEST_VIA_CHAT", "false").lower() in (
     "true",
