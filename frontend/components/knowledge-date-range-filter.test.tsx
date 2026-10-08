@@ -33,9 +33,15 @@ describe("KnowledgeDateRangeFilter", () => {
   it("shows presets when opened", async () => {
     renderFilter();
     await openPopover();
-    expect(screen.getByText(/last 7 days/i)).toBeInTheDocument();
-    expect(screen.getByText(/last 30 days/i)).toBeInTheDocument();
-    expect(screen.getByText(/this month/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /last 7 days/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /last 30 days/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /this month/i }),
+    ).toBeInTheDocument();
   });
 
   it.each([
@@ -45,8 +51,10 @@ describe("KnowledgeDateRangeFilter", () => {
   ])("applies the %s preset and closes the popover", async (preset) => {
     renderFilter();
     await openPopover();
-    await click(screen.getByText(preset));
-    expect(screen.queryByText(preset)).not.toBeInTheDocument();
+    await click(screen.getByRole("button", { name: preset }));
+    expect(
+      screen.queryByRole("button", { name: preset }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Date range")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /clear date range/i }),
@@ -56,7 +64,7 @@ describe("KnowledgeDateRangeFilter", () => {
   it("clears the range from the external clear button", async () => {
     renderFilter();
     await openPopover();
-    await click(screen.getByText(/last 7 days/i));
+    await click(screen.getByRole("button", { name: /last 7 days/i }));
     await click(screen.getByRole("button", { name: /clear date range/i }));
     expect(
       screen.queryByRole("button", { name: /clear date range/i }),
@@ -67,7 +75,7 @@ describe("KnowledgeDateRangeFilter", () => {
   it("clears the range from the Clear button inside the popover", async () => {
     renderFilter();
     await openPopover();
-    await click(screen.getByText(/last 7 days/i));
+    await click(screen.getByRole("button", { name: /last 7 days/i }));
     const trigger = screen
       .getAllByRole("button")
       .find((b) => b.getAttribute("aria-haspopup") === "dialog");

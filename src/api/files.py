@@ -8,6 +8,7 @@ using FileServiceV2 (composite-aggregation cursor pagination). Pass `after_key`
 """
 
 import json
+import re
 from datetime import datetime
 
 from fastapi import Depends, HTTPException, Query
@@ -19,18 +20,26 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# fromisoformat also accepts basic forms (e.g. "20240101"), which OpenSearch's
+# strict_date_optional_time mapping on indexed_time rejects.
+_EXTENDED_ISO_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}"
+    r"(T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?)?"
+    r"(Z|[+-]\d{2}:\d{2})?$"
+)
+
 
 def _validate_iso_timestamp(value: str | None, param_name: str) -> None:
     """Raise HTTP 422 when *value* is present but is not a valid ISO 8601 timestamp."""
     if not isinstance(value, str):
         return
+    detail = f"{param_name} must be a valid ISO 8601 timestamp"
+    if not _EXTENDED_ISO_RE.match(value):
+        raise HTTPException(status_code=422, detail=detail)
     try:
         datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as err:
-        raise HTTPException(
-            status_code=422,
-            detail=f"{param_name} must be a valid ISO 8601 timestamp",
-        ) from err
+        raise HTTPException(status_code=422, detail=detail) from err
 
 
 def _parse_after_key(after_key: str | None) -> dict | None:
