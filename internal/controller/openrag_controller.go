@@ -1720,6 +1720,13 @@ func (r *OpenRAGReconciler) doclingServeDeployment(o *openragv1alpha1.OpenRAG, t
 		Value: string(engineKind),
 	})
 
+	// Disable PyTorch model compilation to avoid overhead, slow startup,
+	// and potential runtime issues during document processing.
+	envVars = append(envVars, corev1.EnvVar{
+		Name:  "DOCLING_INFERENCE_COMPILE_TORCH_MODELS",
+		Value: "false",
+	})
+
 	// Feature-flag env vars (mirrors helm doclingServe.enableUI / allowCustomVlmConfig / enableRemoteServices)
 	enableUI := true
 	if spec.EnableUI != nil {
@@ -1856,6 +1863,13 @@ func (r *OpenRAGReconciler) doclingWorkerDeployment(o *openragv1alpha1.OpenRAG, 
 		// The rq-worker always runs in RQ mode (helm: DOCLING_SERVE_ENG_KIND=rq)
 		{Name: "DOCLING_SERVE_ENG_KIND", Value: "rq"},
 	}
+
+	// Disable PyTorch model compilation to avoid overhead, slow startup,
+	// and potential runtime issues during document processing.
+	envVars = append(envVars, corev1.EnvVar{
+		Name:  "DOCLING_INFERENCE_COMPILE_TORCH_MODELS",
+		Value: "false",
+	})
 
 	// Feature flags shared with the serve proxy (mirrors helm rq-worker template)
 	serveSpec := o.Spec.DoclingComponents.Serve

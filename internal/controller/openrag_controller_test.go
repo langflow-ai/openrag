@@ -2716,6 +2716,7 @@ func TestDoclingServeDeployment_RQEngineEnvVars(t *testing.T) {
 		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
 
 		assert.Equal(t, "rq", env["DOCLING_SERVE_ENG_KIND"])
+		assert.Equal(t, "false", env["DOCLING_INFERENCE_COMPILE_TORCH_MODELS"])
 		assert.Contains(t, env, "DOCLING_SERVE_ENG_RQ_REDIS_URL")
 		assert.Contains(t, env, "DOCLING_SERVE_ENG_RQ_RESULTS_PREFIX")
 		assert.Contains(t, env, "DOCLING_SERVE_ENG_RQ_SUB_CHANNEL")
@@ -2743,6 +2744,7 @@ func TestDoclingServeDeployment_RQEngineEnvVars(t *testing.T) {
 		dep := r.doclingServeDeployment(cr, "ns")
 		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
 		assert.Equal(t, "local", env["DOCLING_SERVE_ENG_KIND"])
+		assert.Equal(t, "false", env["DOCLING_INFERENCE_COMPILE_TORCH_MODELS"])
 		assert.NotContains(t, env, "DOCLING_SERVE_ENG_RQ_REDIS_URL")
 	})
 
@@ -2908,6 +2910,7 @@ func TestDoclingWorkerDeployment_RQEnvVars(t *testing.T) {
 		dep := r.doclingWorkerDeployment(crWithValkey(), "ns")
 		env := envVarMap(dep.Spec.Template.Spec.Containers[0].Env)
 		assert.Equal(t, "rq", env["DOCLING_SERVE_ENG_KIND"])
+		assert.Equal(t, "false", env["DOCLING_INFERENCE_COMPILE_TORCH_MODELS"])
 	})
 
 	t.Run("emits DOCLING_SERVE_ENG_RQ_REDIS_URL alongside QUEUE_URL", func(t *testing.T) {
