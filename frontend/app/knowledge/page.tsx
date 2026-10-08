@@ -668,9 +668,12 @@ function SearchPage() {
     isLoading: isSearchLoading,
     error: searchError,
     isError: isSearchError,
-  } = useGetSearchQuery(queryOverride, parsedFilterData, {
-    enabled: !isWildcardQuery,
-  });
+  } = useGetSearchQuery(
+    queryOverride,
+    parsedFilterData,
+    { enabled: !isWildcardQuery },
+    { createdAfter, createdBefore },
+  );
 
   const { files: searchFiles, warnings: searchWarnings } =
     searchData as SearchResult;
@@ -681,32 +684,9 @@ function SearchPage() {
   const error = isWildcardQuery ? listFilesError : searchError;
   const isError = isWildcardQuery ? isListFilesError : isSearchError;
 
-  // When in search mode, filter client-side by date so the range picker applies
-  // to both list and search results. Compute bound timestamps once outside the
-  // predicate to avoid repeated Date construction per file.
-  const createdAfterMs = createdAfter
-    ? new Date(createdAfter).getTime()
-    : undefined;
-  const createdBeforeMs = createdBefore
-    ? new Date(createdBefore).getTime()
-    : undefined;
-  const dateFilteredSearchFiles = isWildcardQuery
-    ? []
-    : searchFiles.filter((file) => {
-        if (createdAfterMs === undefined && createdBeforeMs === undefined)
-          return true;
-        const t = file.indexed_time
-          ? new Date(file.indexed_time).getTime()
-          : null;
-        if (t === null || Number.isNaN(t)) return true;
-        if (createdAfterMs !== undefined && t < createdAfterMs) return false;
-        if (createdBeforeMs !== undefined && t > createdBeforeMs) return false;
-        return true;
-      });
-
   const effectiveData: File[] = isWildcardQuery
     ? (listFilesData?.files ?? [])
-    : dateFilteredSearchFiles.slice(
+    : searchFiles.slice(
         (currentPage - 1) * currentPageSize,
         currentPage * currentPageSize,
       );
@@ -782,7 +762,7 @@ function SearchPage() {
 
   const serverTotal = isWildcardQuery
     ? (listFilesData?.total ?? 0)
-    : dateFilteredSearchFiles.length;
+    : searchFiles.length;
   const gridRows: File[] = fileResults;
   const totalPages = Math.max(1, Math.ceil(serverTotal / currentPageSize));
 

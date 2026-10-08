@@ -17,6 +17,8 @@ export interface SearchPayload {
     owners?: string[];
     connector_types?: string[];
   };
+  created_after?: string;
+  created_before?: string;
 }
 
 export interface ChunkResult {
@@ -125,6 +127,7 @@ export const useGetSearchQuery = (
     UseQueryOptions<SearchResult, Error, SearchResult, unknown[]>,
     "queryKey" | "queryFn"
   >,
+  dateRange?: { createdAfter?: string; createdBefore?: string },
 ) => {
   const queryClient = useQueryClient();
 
@@ -161,6 +164,12 @@ export const useGetSearchQuery = (
       if (queryData?.filters) {
         searchPayload.filters =
           buildSearchPayloadFilters(queryData.filters) ?? undefined;
+      }
+      if (dateRange?.createdAfter) {
+        searchPayload.created_after = dateRange.createdAfter;
+      }
+      if (dateRange?.createdBefore) {
+        searchPayload.created_before = dateRange.createdBefore;
       }
 
       const response = await fetch(`/api/search`, {
@@ -278,7 +287,7 @@ export const useGetSearchQuery = (
 
   return useQuery(
     {
-      queryKey: ["search", queryData, query],
+      queryKey: ["search", queryData, query, dateRange],
       placeholderData: (prev) => prev,
       staleTime: 0,
       queryFn: getFiles,

@@ -345,6 +345,14 @@ class SearchService:
                             # Multiple values filter
                             filter_clauses.append({"terms": {field_name: values}})
 
+                date_range_clause: dict[str, Any] = {}
+                if filters.get("created_after"):
+                    date_range_clause["gte"] = filters["created_after"]
+                if filters.get("created_before"):
+                    date_range_clause["lte"] = filters["created_before"]
+                if date_range_clause:
+                    filter_clauses.append({"range": {"indexed_time": date_range_clause}})
+
             try:
                 seen_spaces: set[str] = set()
                 for legacy in (False, True):
@@ -526,6 +534,14 @@ class SearchService:
                         else:
                             # Multiple values filter
                             filter_clauses.append({"terms": {field_name: values}})
+
+                date_range_clause: dict[str, Any] = {}
+                if filters.get("created_after"):
+                    date_range_clause["gte"] = filters["created_after"]
+                if filters.get("created_before"):
+                    date_range_clause["lte"] = filters["created_before"]
+                if date_range_clause:
+                    filter_clauses.append({"range": {"indexed_time": date_range_clause}})
 
         # Build query body
         if is_wildcard_match_all:

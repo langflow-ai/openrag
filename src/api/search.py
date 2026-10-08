@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import Depends
 from pydantic import BaseModel, Field
@@ -13,6 +13,7 @@ from dependencies import (
     require_permission,
 )
 from session_manager import User
+from api.files import _validate_iso_timestamp
 
 logger = get_logger(__name__)
 
@@ -22,6 +23,8 @@ class SearchBody(BaseModel):
     filters: Dict[str, Any] = Field(default_factory=dict)
     limit: int = 10
     scoreThreshold: float = Field(default=0, alias="scoreThreshold")
+    created_after: Optional[str] = None
+    created_before: Optional[str] = None
 
     model_config = {"populate_by_name": True}
 
@@ -33,6 +36,15 @@ async def search(
     user: User = Depends(require_permission("search:use")),
 ):
     """Search for documents"""
+    _validate_iso_timestamp(body.created_after, "created_after")
+    _validate_iso_timestamp(body.created_before, "created_before")
+
+    merged_filters: Dict[str, Any] = dict(body.filters)
+    if body.created_after:
+        merged_filters["created_after"] = body.created_after
+    if body.created_before:
+        merged_filters["created_before"] = body.created_before
+
     try:
         jwt_token = user.jwt_token
 
@@ -50,7 +62,7 @@ async def search(
             body.query,
             user_id=user.user_id,
             jwt_token=jwt_token,
-            filters=body.filters,
+            filters=merged_filters if merged_filters else None,
             limit=body.limit,
             score_threshold=body.scoreThreshold,
         )
