@@ -11,9 +11,11 @@ import asyncio
 import contextlib
 import functools
 import json
+import math
 import re
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from itertools import pairwise
 from typing import Any, Literal, NamedTuple
 from uuid import uuid4
 
@@ -1641,6 +1643,146 @@ def _embedding_input(value: Any) -> Any:
     return [value] if isinstance(value, str) else value
 
 
+#: How many times one input is cut smaller before the gateway gives up on it.
+_MAX_OVERFLOW_SPLIT_ROUNDS = 3
+#: Pieces are sized under the proportion the provider reported: tokens are not
+#: spread evenly through a text, and a cut may land a little short of its mark.
+_OVERFLOW_HEADROOM = 0.85
+
+
+def _is_text_list(value: Any) -> bool:
+    """Whether `value` is a batch of strings, the only input that can be cut into pieces."""
+    return isinstance(value, list) and bool(value) and all(isinstance(item, str) for item in value)
+
+
+def _split_into_pieces(
+    text: str, max_tokens: int | None, requested_tokens: int | None
+) -> list[str]:
+    """Cut `text` into equal pieces expected to fit the model, at whitespace where it can.
+
+    The provider's own counts say how far over the input was, so the number of
+    pieces follows that proportion; with no counts, the text is halved. Equal
+    pieces rather than "as much as fits, then the rest": a short tail would
+    carry little context of its own into the average.
+    """
+    count = 2
+    if max_tokens and requested_tokens and requested_tokens > max_tokens:
+        count = max(2, math.ceil(requested_tokens / (max_tokens * _OVERFLOW_HEADROOM)))
+    size = len(text) / count
+    slack = int(size // 10)
+    cuts = [0]
+    for number in range(1, count):
+        ideal = round(number * size)
+        earliest = max(ideal - slack, cuts[-1] + 1)
+        cuts.append(
+            next((at for at in range(ideal, earliest - 1, -1) if text[at - 1].isspace()), ideal)
+        )
+    cuts.append(len(text))
+    return [piece for start, end in pairwise(cuts) if (piece := text[start:end]).strip()]
+
+
+def _weighted_mean_vector(vectors: list[list[float]], weights: list[int]) -> list[float]:
+    """The mean of `vectors` weighted by `weights`, at the length the model's vectors have.
+
+    A plain mean of vectors that point different ways is shorter than any of
+    them, which would understate the chunk wherever the index compares raw
+    lengths (l2, inner product). Scaling it back to the pieces' weighted mean
+    length keeps it comparable to every other vector from the same model: unit
+    length when the model normalises its output, its usual magnitude when not.
+    """
+    total = sum(weights)
+    mean = [
+        sum(vector[axis] * weight for vector, weight in zip(vectors, weights, strict=True)) / total
+        for axis in range(len(vectors[0]))
+    ]
+    length = math.hypot(*mean)
+    if not length:
+        return mean
+    target = (
+        sum(math.hypot(*vector) * weight for vector, weight in zip(vectors, weights, strict=True))
+        / total
+    )
+    return [value * target / length for value in mean]
+
+
+async def _embed_averaging_overflow(
+    send: Callable[[list[str]], Awaitable[dict[str, Any]]],
+    texts: list[str],
+    overflow: LlmContextLengthError,
+    *,
+    provider: str,
+    model: str,
+) -> dict[str, Any]:
+    """Embed a batch the provider rejected as too long, still one vector per input.
+
+    An embeddings call owes its caller exactly one vector per input, so an
+    over-length input cannot become several chunks here. It is embedded in
+    pieces and the piece vectors are averaged by length instead, so every part
+    of the text still contributes to the vector. The provider says only that
+    something in the batch was too long, so the batch is halved until the
+    offending input is alone. `send` raises `LlmContextLengthError` for a
+    rejection of that kind and `LlmGatewayError` for anything else.
+    """
+    envelope: dict[str, Any] = {}
+    usage: dict[str, int | float] = {}
+
+    async def embed(
+        batch: list[str], rounds: int, rejected: LlmContextLengthError | None = None
+    ) -> list[list[float]]:
+        if rejected is None:
+            try:
+                payload = await send(batch)
+            except LlmContextLengthError as error:
+                rejected = error
+            else:
+                if not envelope:
+                    envelope.update(
+                        {
+                            key: value
+                            for key, value in payload.items()
+                            if key not in {"data", "usage"}
+                        }
+                    )
+                for key, value in (payload.get("usage") or {}).items():
+                    if isinstance(value, (int, float)):
+                        usage[key] = usage.get(key, 0) + value
+                items = sorted(payload.get("data", []), key=lambda item: item.get("index", 0))
+                return [item["embedding"] for item in items]
+        if len(batch) > 1:
+            middle = len(batch) // 2
+            return await embed(batch[:middle], rounds) + await embed(batch[middle:], rounds)
+        return [await average(batch[0], rounds, rejected)]
+
+    async def average(text: str, rounds: int, rejected: LlmContextLengthError) -> list[float]:
+        pieces = _split_into_pieces(text, rejected.max_tokens, rejected.requested_tokens)
+        if rounds >= _MAX_OVERFLOW_SPLIT_ROUNDS or len(pieces) < 2:
+            raise rejected
+        vectors = await embed(pieces, rounds + 1)
+        # Sizes only: the text itself is the customer's document.
+        logger.warning(
+            "Embedding input exceeded the model's limit; embedded in pieces and averaged",
+            provider=provider,
+            model=model,
+            max_tokens=rejected.max_tokens,
+            requested_tokens=rejected.requested_tokens,
+            chars=len(text),
+            pieces=len(pieces),
+        )
+        return _weighted_mean_vector(vectors, [len(piece) for piece in pieces])
+
+    vectors = await embed(texts, 0, overflow)
+    response = {
+        **envelope,
+        "data": [
+            {"object": "embedding", "index": index, "embedding": vector}
+            for index, vector in enumerate(vectors)
+        ],
+    }
+    if usage:
+        response["usage"] = usage
+    return response
+
+
 async def embeddings(
     body: Mapping[str, Any], *, config=None, interactive: bool = False
 ) -> dict[str, Any]:
@@ -1649,7 +1791,13 @@ async def embeddings(
     `interactive` marks a query embedding someone is waiting on (search, chat
     retrieval). At a provider with a concurrency limit it waits in its own
     lane instead of behind bulk ingestion; see `_embedding_limiter`.
+
+    An input the model rejects as too long is embedded in pieces and averaged
+    rather than failed, unless `OPENRAG_EMBEDDING_OVERFLOW_POLICY=error`; see
+    `_embed_averaging_overflow`.
     """
+    from config.settings import embedding_overflow_policy
+
     cfg = config or _get_config()
     litellm_model, provider, credentials = resolve_call(
         body.get("model"), kind="embedding", config=cfg
@@ -1658,21 +1806,22 @@ async def embeddings(
     limiter = _embedding_limiter(provider, cfg)
     lane = _INTERACTIVE_LANE if interactive else _BULK_LANE
     embedding_input = _embedding_input(body.get("input"))
-    should_batch = (
-        provider == "watsonx_onprem"
-        and isinstance(embedding_input, list)
-        and len(embedding_input) > _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE
-        and not all(isinstance(item, int) for item in embedding_input)
-    )
-    try:
+
+    async def call_provider(inputs: Any) -> dict[str, Any]:
         import litellm
 
+        should_batch = (
+            provider == "watsonx_onprem"
+            and isinstance(inputs, list)
+            and len(inputs) > _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE
+            and not all(isinstance(item, int) for item in inputs)
+        )
         if not should_batch:
             async with _embedding_slot(limiter, provider, litellm_model, lane):
                 result = await with_stale_connection_retry(
                     lambda: litellm.aembedding(
                         model=litellm_model,
-                        input=embedding_input,
+                        input=inputs,
                         **credentials,
                         **runtime_kwargs,
                     ),
@@ -1687,10 +1836,10 @@ async def embeddings(
             usage: dict[str, int | float] = {}
             for offset in range(
                 0,
-                len(embedding_input),
+                len(inputs),
                 _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE,
             ):
-                batch = embedding_input[offset : offset + _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE]
+                batch = inputs[offset : offset + _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE]
                 async with _embedding_slot(limiter, provider, litellm_model, lane):
                     result = await with_stale_connection_retry(
                         functools.partial(
@@ -1719,17 +1868,36 @@ async def embeddings(
             response["data"] = data
             if usage:
                 response["usage"] = usage
-    except LlmGatewayError:
+        return response
+
+    async def send(inputs: Any) -> dict[str, Any]:
+        try:
+            return await call_provider(inputs)
+        except LlmGatewayError:
+            raise
+        except Exception as exc:
+            detail = _redact(f"{type(exc).__name__}: {exc}", credentials)
+            message = _upstream_client_message(detail, provider, litellm_model, exc)
+            # An over-length input is one chunk's problem. Recording it latched the
+            # banner against a provider that was embedding every other chunk fine.
+            failure = _classify_upstream_failure(detail, exc)
+            if failure.counts_against_provider:
+                provider_error_log.record_failure(provider, "embedding", message)
+            raise _upstream_gateway_error(message, detail, failure) from exc
+
+    try:
+        try:
+            response = await send(embedding_input)
+        except LlmContextLengthError as overflow:
+            if embedding_overflow_policy() != "average" or not _is_text_list(embedding_input):
+                raise
+            response = await _embed_averaging_overflow(
+                send, embedding_input, overflow, provider=provider, model=litellm_model
+            )
+    except LlmGatewayError as error:
+        logger.error(
+            "LLM embeddings failed", provider=provider, model=litellm_model, error=error.detail
+        )
         raise
-    except Exception as exc:
-        detail = _redact(f"{type(exc).__name__}: {exc}", credentials)
-        logger.error("LLM embeddings failed", provider=provider, model=litellm_model, error=detail)
-        message = _upstream_client_message(detail, provider, litellm_model, exc)
-        # An over-length input is one chunk's problem. Recording it latched the
-        # banner against a provider that was embedding every other chunk fine.
-        failure = _classify_upstream_failure(detail, exc)
-        if failure.counts_against_provider:
-            provider_error_log.record_failure(provider, "embedding", message)
-        raise _upstream_gateway_error(message, detail, failure) from exc
     provider_error_log.record_success(provider, "embedding")
     return response
