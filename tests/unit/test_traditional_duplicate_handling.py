@@ -388,9 +388,12 @@ async def test_replace_without_anonymous_delete_permission_stays_owner_scoped(mo
 
 
 @pytest.mark.asyncio
-async def test_shared_write_still_widens_without_the_flag(monkeypatch):
-    """A shared write already required the permission upstream (connector_sync
-    returns 403 without it), so the flag must not narrow that path."""
+async def test_shared_does_not_stand_in_for_the_permission(monkeypatch):
+    """``shared`` says how the replacement is written, and on the re-sync paths
+    it is inferred from what is indexed. Letting it widen the delete meant a
+    caller without knowledge:delete:anonymous could replace a shared document
+    by re-syncing it. An explicit shared sync loses nothing by this: it cannot
+    get here without the permission (connector_sync returns 403)."""
     from models.processors import TaskProcessor
 
     opensearch_client = _delete_scope_env(monkeypatch)
@@ -403,10 +406,10 @@ async def test_shared_write_still_widens_without_the_flag(monkeypatch):
         allow_anonymous_delete=False,
     )
 
-    from utils.opensearch_queries import build_replace_filename_query
+    from utils.opensearch_queries import build_owned_filename_query
 
     query = opensearch_client.search.await_args.kwargs["body"]["query"]
-    assert query == build_replace_filename_query("report.pdf", "user-123")
+    assert query == build_owned_filename_query("report.pdf", "user-123")
 
 
 @pytest.mark.asyncio

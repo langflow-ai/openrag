@@ -52,7 +52,9 @@ def _make_document() -> ConnectorDocument:
     )
 
 
-def _build_processor(*, shared: bool | None) -> ConnectorFileProcessor:
+def _build_processor(
+    *, shared: bool | None, allow_anonymous_delete: bool = True
+) -> ConnectorFileProcessor:
     document_service = MagicMock()
     document_service.docling_service = MagicMock()
     document_service.session_manager = MagicMock()
@@ -73,7 +75,7 @@ def _build_processor(*, shared: bool | None) -> ConnectorFileProcessor:
         replace_duplicates=True,
         connector_type="ibm_cos",
         shared=shared,
-        allow_anonymous_delete=True,
+        allow_anonymous_delete=allow_anonymous_delete,
     )
 
 
@@ -184,6 +186,33 @@ async def test_resync_replaces_shared_cos_file_and_keeps_it_shared(
     # ...and it stays shared, rather than being quietly reassigned to the
     # user who happened to run the sync.
     assert mock_process.await_args.kwargs["shared"] is True
+
+
+@pytest.mark.asyncio
+async def test_resync_without_the_permission_leaves_a_shared_file_alone(
+    monkeypatch, backend_write_client
+):
+    """Inheriting a file's sharing state is not being allowed to replace it.
+
+    The files a sync walks come from a query scoped by connector type and read
+    through DLS, so they include shared files that another user's connection
+    ingested. A caller without knowledge:delete:anonymous must not be able to
+    delete and rewrite one of those by running an ordinary sync.
+    """
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_processor(shared=None, allow_anonymous_delete=False)
+    _wire(processor, _make_document(), indexed_owner=None)
+
+    file_task, _, mock_process = await _run(processor)
+
+    backend_write_client.delete.assert_not_awaited()
+    mock_process.assert_not_awaited()
+    assert file_task.status == TaskStatus.SKIPPED
+    assert file_task.result["reason"] == "duplicate_filename"
+    # ...and it is still shared afterwards: the owner fields reconciled on the
+    # way out are the shared ones, not this user's.
+    script = backend_write_client.update_by_query.await_args.kwargs["body"]["script"]
+    assert script["params"]["shared"] is True
 
 
 @pytest.mark.asyncio

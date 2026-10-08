@@ -176,8 +176,8 @@ async def test_webhook_sync_runs_without_the_permission_to_delete_shared_documen
 
     sync_kwargs = service.sync_specific_files.await_args.kwargs
     assert sync_kwargs["allow_anonymous_delete"] is False
-    # A file this connector indexed as shared keeps its wider scope through
-    # this, resolved per file from the index, not through the permission.
+    # Sharing is still inherited per file: a shared one is skipped as a
+    # duplicate the webhook may not replace, not re-ingested as private.
     assert sync_kwargs["shared"] is None
 
 
