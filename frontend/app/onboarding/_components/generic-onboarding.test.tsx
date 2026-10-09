@@ -556,6 +556,9 @@ describe("GenericOnboarding cluster model discovery", () => {
     // being asked again.
     expect(getSettings().llm_model).toBe("gpt-oss-120b");
 
+    // The status reflects the query, not the handler; release only once the
+    // handler has installed its resolver.
+    await waitFor(() => expect(calls).toBe(2), DISCOVERY_TIMEOUT);
     release();
     await screen.findByText(
       "Showing 1 language model served by the cluster.",
