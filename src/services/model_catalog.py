@@ -609,10 +609,14 @@ def public_model_id(provider: str, model: str) -> str:
     The tag uses `provider:model`, not `provider/model`: watsonx serves
     `openai/gpt-oss-120b`, so a slash-joined id is indistinguishable from that
     model's own name.
-    """
-    from services.llm_gateway import PROVIDER_SEPARATOR
 
-    return model if provider == "openai" else f"{provider}{PROVIDER_SEPARATOR}{model}"
+    Delegates the tagging itself, so the rules for what counts as an existing
+    tag — including the legacy `provider/` spelling — live in one place rather
+    than drifting between two modules that differ only in this OpenAI case.
+    """
+    from services.llm_gateway import qualified_model_id
+
+    return model if provider == "openai" else qualified_model_id(provider, model)
 
 
 def openai_models_list(today: datetime.date | None = None) -> dict[str, Any]:
