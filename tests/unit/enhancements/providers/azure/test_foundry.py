@@ -680,6 +680,44 @@ class TestSaveTimeModelProbe:
     """
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("kind", ["chat", "embedding"])
+    @pytest.mark.parametrize("unsupported_endpoint", [False, True])
+    async def test_route_errors_use_the_gateway_400(
+        self, monkeypatch, kind, unsupported_endpoint
+    ) -> None:
+        from api.provider_validation import validate_provider_setup
+        from services.llm_gateway import LlmGatewayError
+
+        error = (
+            foundry.UnsupportedEndpointError(foundry.UNSUPPORTED_ENDPOINT_MESSAGE)
+            if unsupported_endpoint
+            else ValueError("Invalid provider route")
+        )
+
+        def reject_route(*_args):
+            raise error
+
+        async def unexpected_call(**_kwargs):
+            pytest.fail("An invalid route must fail before calling the provider")
+
+        monkeypatch.setattr("services.model_catalog.litellm_provider_key", reject_route)
+        monkeypatch.setattr("litellm.acompletion", unexpected_call)
+        monkeypatch.setattr("litellm.aembedding", unexpected_call)
+
+        with pytest.raises(LlmGatewayError) as caught:
+            await validate_provider_setup(
+                provider="azure_ai",
+                credentials={"api_base": f"{RESOURCE}/openai/v1", "api_key": "k"},
+                llm_model="my-deployment" if kind == "chat" else None,
+                embedding_model="my-embed-deployment" if kind == "embedding" else None,
+                verify_model=True,
+            )
+
+        assert caught.value.status_code == 400
+        assert caught.value.message == str(error)
+        assert caught.value.__cause__ is error
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "api_base, expected_route",
         [

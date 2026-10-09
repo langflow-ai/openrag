@@ -932,7 +932,7 @@ async def _test_litellm_provider(
     """Validate arbitrary providers through the same LiteLLM adapter used at runtime."""
     import litellm
 
-    from services.llm_gateway import with_stale_connection_retry
+    from services.llm_gateway import LlmGatewayError, with_stale_connection_retry
     from services.model_catalog import litellm_provider_key
 
     model = embedding_model or llm_model
@@ -940,7 +940,11 @@ async def _test_litellm_provider(
         raise ValueError("A model is required to validate the provider")
     # Same aliasing the gateway applies, so the probe hits the route the real
     # call will: `watsonx_onprem/<model>` is not a prefix LiteLLM can resolve.
-    litellm_model = f"{litellm_provider_key(provider, credentials)}/{model}"
+    try:
+        route = litellm_provider_key(provider, credentials)
+    except ValueError as exc:
+        raise LlmGatewayError(str(exc), 400) from exc
+    litellm_model = f"{route}/{model}"
     # And the same retry: a dead pooled connection is not a provider failure,
     # and reporting one would block a save or raise the banner for nothing.
     if embedding_model:
