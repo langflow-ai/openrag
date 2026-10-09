@@ -116,3 +116,27 @@ def build_replace_filename_query(filename: str, owner: str) -> dict:
             ]
         }
     }
+
+
+def build_date_range_query(
+    field: str, gte: str | None = None, lte: str | None = None
+) -> dict | None:
+    """
+    Build a date range query clause for OpenSearch.
+
+    Args:
+        field: The date field name to filter on (e.g. 'created_time')
+        gte: Lower bound ISO-8601 string (inclusive)
+        lte: Upper bound ISO-8601 string (inclusive)
+
+    Returns:
+        A dict containing {"range": {field: {...}}} or None if both bounds are None.
+    """
+    range_bounds: dict[str, str] = {}
+    if gte is not None:
+        range_bounds["gte"] = gte
+    if lte is not None:
+        range_bounds["lte"] = lte
+    if not range_bounds:
+        return None
+    return {"range": {field: range_bounds}}

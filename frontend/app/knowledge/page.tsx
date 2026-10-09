@@ -14,6 +14,7 @@ import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
 import { AlertTriangle, Cloud, FileIcon, Globe, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { KnowledgeDateRangeFilter } from "@/components/knowledge-date-range-filter";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
@@ -54,7 +55,11 @@ import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
 } from "@/lib/knowledge-table-state";
-import { parseTimestampMs } from "@/lib/time-utils";
+import {
+  parseTimestampMs,
+  toUtcDayEndISOString,
+  toUtcDayStartISOString,
+} from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
 import {
   DeleteConfirmationDialog,
@@ -130,6 +135,7 @@ const AG_FIELD_TO_SORT_BY: Record<string, string> = {
   mimetype: "mimetype",
   owner: "owner",
   chunkCount: "chunk_count",
+  indexed_time: "indexed_time",
   status: "status",
 };
 
@@ -426,6 +432,7 @@ function SearchPage() {
     queryOverride,
     selectedFilter,
     setSelectedSources,
+    dateRange,
   } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
 
@@ -617,6 +624,13 @@ function SearchPage() {
     !hasActiveFilters;
   const filterPageResetKey = buildFilterPageResetKey(parsedFilterData);
 
+  const createdAfter = dateRange?.from
+    ? toUtcDayStartISOString(dateRange.from)
+    : undefined;
+  const createdBefore = dateRange?.to
+    ? toUtcDayEndISOString(dateRange.to)
+    : undefined;
+
   const {
     data: listFilesData,
     isLoading: isListFilesLoading,
@@ -640,6 +654,8 @@ function SearchPage() {
       dataSources: listFilesFilterValues(
         parsedFilterData?.filters?.data_sources,
       ),
+      createdAfter,
+      createdBefore,
     },
     {
       refetchInterval: 5000,
@@ -652,9 +668,12 @@ function SearchPage() {
     isLoading: isSearchLoading,
     error: searchError,
     isError: isSearchError,
-  } = useGetSearchQuery(queryOverride, parsedFilterData, {
-    enabled: !isWildcardQuery,
-  });
+  } = useGetSearchQuery(
+    queryOverride,
+    parsedFilterData,
+    { enabled: !isWildcardQuery },
+    { createdAfter, createdBefore },
+  );
 
   const { files: searchFiles, warnings: searchWarnings } =
     searchData as SearchResult;
@@ -750,7 +769,7 @@ function SearchPage() {
   useEffect(() => {
     cursorCacheRef.current = new Map();
     setCurrentPage(1);
-  }, [effectiveSearchText, filterPageResetKey]);
+  }, [effectiveSearchText, filterPageResetKey, createdAfter, createdBefore]);
 
   // when the server responds with an after_key for page N, cache it as the cursor for page N+1
   useEffect(() => {
@@ -932,6 +951,26 @@ function SearchPage() {
     comparator: serverSideComparator,
   };
 
+  const colIndexedTime: ColDef<File> = {
+    field: "indexed_time",
+    headerName: "Date Uploaded",
+    ...(isCloudBrand ? { flex: 1.2, minWidth: 140 } : { minWidth: 130 }),
+    sortable: true,
+    comparator: serverSideComparator,
+    cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
+    valueFormatter: ({ value }: ValueFormatterParams<File>) => {
+      if (!value) return "—";
+      const d = new Date(value);
+      return Number.isNaN(d.getTime())
+        ? "—"
+        : d.toLocaleDateString(undefined, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          });
+    },
+  };
+
   const colChunks: ColDef<File> = {
     field: "chunkCount",
     headerName: "Chunks",
@@ -1029,6 +1068,7 @@ function SearchPage() {
         colSize,
         colType,
         colOwner,
+        colIndexedTime,
         colChunks,
         colAvgScore,
         colStatus,
@@ -1261,6 +1301,7 @@ function SearchPage() {
                 Delete
               </Button>
             )}
+            <KnowledgeDateRangeFilter />
             <div className="ml-auto">
               <KnowledgeDropdown />
             </div>
@@ -1327,12 +1368,25 @@ function SearchPage() {
               rowHeight={64}
               noRowsOverlayComponent={() => (
                 <div className="text-center pb-[45px]">
-                  <div className="text-lg text-primary font-semibold">
-                    No knowledge
-                  </div>
-                  <div className="text-sm mt-1 text-muted-foreground">
-                    Add files from local or your preferred cloud.
-                  </div>
+                  {dateRange && serverTotal === 0 ? (
+                    <>
+                      <div className="text-lg text-primary font-semibold">
+                        No results for the selected date range
+                      </div>
+                      <div className="text-sm mt-1 text-muted-foreground">
+                        Try a wider range or clear the date filter.
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-lg text-primary font-semibold">
+                        No knowledge
+                      </div>
+                      <div className="text-sm mt-1 text-muted-foreground">
+                        Add files from local or your preferred cloud.
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             />
@@ -1361,12 +1415,25 @@ function SearchPage() {
               onSortChanged={onSortChanged}
               noRowsOverlayComponent={() => (
                 <div className="text-center pb-[45px]">
-                  <div className="text-lg text-primary font-semibold">
-                    No knowledge
-                  </div>
-                  <div className="text-sm mt-1 text-muted-foreground">
-                    Add files from local or your preferred cloud.
-                  </div>
+                  {dateRange && serverTotal === 0 ? (
+                    <>
+                      <div className="text-lg text-primary font-semibold">
+                        No results for the selected date range
+                      </div>
+                      <div className="text-sm mt-1 text-muted-foreground">
+                        Try a wider range or clear the date filter.
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-lg text-primary font-semibold">
+                        No knowledge
+                      </div>
+                      <div className="text-sm mt-1 text-muted-foreground">
+                        Add files from local or your preferred cloud.
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             />

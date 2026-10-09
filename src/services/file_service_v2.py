@@ -21,6 +21,7 @@ from typing import Any
 
 from config.settings import get_index_name
 from utils.logging_config import get_logger
+from utils.opensearch_queries import build_date_range_query
 
 logger = get_logger(__name__)
 
@@ -55,6 +56,8 @@ class FileServiceV2:
         search: str | None = None,
         after_key: dict | None = None,
         data_sources: list[str] | None = None,
+        created_after: str | None = None,
+        created_before: str | None = None,
     ) -> dict[str, Any]:
         """
         List files with server-side pagination via composite aggregation.
@@ -71,7 +74,14 @@ class FileServiceV2:
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
         query = self._build_filter_query(
-            user_id, connector_type, mimetype, owner, search, data_sources
+            user_id,
+            connector_type,
+            mimetype,
+            owner,
+            search,
+            data_sources,
+            created_after,
+            created_before,
         )
         total, is_approximate = await self._get_file_count(opensearch_client, query)
 
@@ -232,6 +242,8 @@ class FileServiceV2:
         owner: list[str] | None = None,
         search: str | None = None,
         data_sources: list[str] | None = None,
+        created_after: str | None = None,
+        created_before: str | None = None,
     ) -> dict[str, Any]:
         def _effective_values(values: str | list[str] | None) -> list[str]:
             if values is None:
@@ -278,6 +290,12 @@ class FileServiceV2:
                 else {"terms": {"filename": effective_sources}}
             )
             filter_clauses.append(clause)
+
+        date_range_clause = build_date_range_query(
+            "indexed_time", gte=created_after, lte=created_before
+        )
+        if date_range_clause is not None:
+            filter_clauses.append(date_range_clause)
 
         if search:
             must.append(

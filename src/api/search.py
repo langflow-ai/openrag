@@ -1,27 +1,29 @@
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import Depends
-from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
-from utils.logging_config import get_logger
-from utils.opensearch_utils import OpenSearchDiskSpaceError, DISK_SPACE_ERROR_MESSAGE
+from pydantic import BaseModel, Field
 
+from api.files import _validate_iso_timestamp
 from dependencies import (
     get_search_service,
     get_session_manager,
-    get_current_user,
     require_permission,
 )
 from session_manager import User
+from utils.logging_config import get_logger
+from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpaceError
 
 logger = get_logger(__name__)
 
 
 class SearchBody(BaseModel):
     query: str
-    filters: Dict[str, Any] = Field(default_factory=dict)
+    filters: dict[str, Any] = Field(default_factory=dict)
     limit: int = 10
     scoreThreshold: float = Field(default=0, alias="scoreThreshold")
+    created_after: str | None = None
+    created_before: str | None = None
 
     model_config = {"populate_by_name": True}
 
@@ -33,6 +35,15 @@ async def search(
     user: User = Depends(require_permission("search:use")),
 ):
     """Search for documents"""
+    _validate_iso_timestamp(body.created_after, "created_after")
+    _validate_iso_timestamp(body.created_before, "created_before")
+
+    merged_filters: dict[str, Any] = dict(body.filters)
+    if body.created_after:
+        merged_filters["created_after"] = body.created_after
+    if body.created_before:
+        merged_filters["created_before"] = body.created_before
+
     try:
         jwt_token = user.jwt_token
 
@@ -50,7 +61,7 @@ async def search(
             body.query,
             user_id=user.user_id,
             jwt_token=jwt_token,
-            filters=body.filters,
+            filters=merged_filters if merged_filters else None,
             limit=body.limit,
             score_threshold=body.scoreThreshold,
         )
@@ -59,10 +70,7 @@ async def search(
         return JSONResponse({"error": DISK_SPACE_ERROR_MESSAGE}, status_code=507)
     except Exception as e:
         error_msg = str(e)
-        if (
-            "AuthenticationException" in error_msg
-            or "access denied" in error_msg.lower()
-        ):
+        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
             return JSONResponse({"error": error_msg}, status_code=403)
         else:
             return JSONResponse({"error": error_msg}, status_code=500)

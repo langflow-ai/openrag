@@ -345,6 +345,14 @@ class SearchService:
                             # Multiple values filter
                             filter_clauses.append({"terms": {field_name: values}})
 
+                date_range_clause: dict[str, Any] = {}
+                if filters.get("created_after"):
+                    date_range_clause["gte"] = filters["created_after"]
+                if filters.get("created_before"):
+                    date_range_clause["lte"] = filters["created_before"]
+                if date_range_clause:
+                    filter_clauses.append({"range": {"indexed_time": date_range_clause}})
+
             try:
                 seen_spaces: set[str] = set()
                 for legacy in (False, True):
@@ -527,6 +535,14 @@ class SearchService:
                             # Multiple values filter
                             filter_clauses.append({"terms": {field_name: values}})
 
+                date_range_clause = {}
+                if filters.get("created_after"):
+                    date_range_clause["gte"] = filters["created_after"]
+                if filters.get("created_before"):
+                    date_range_clause["lte"] = filters["created_before"]
+                if date_range_clause:
+                    filter_clauses.append({"range": {"indexed_time": date_range_clause}})
+
         # Build query body
         if is_wildcard_match_all:
             # Match all documents; still allow filters to narrow scope
@@ -640,6 +656,7 @@ class SearchService:
                 "allowed_users",
                 "allowed_groups",
                 "allowed_principal_labels",
+                "indexed_time",
             ],
             "size": limit,
         }
@@ -800,6 +817,7 @@ class SearchService:
                     "allowed_users": source.get("allowed_users", []),
                     "allowed_groups": source.get("allowed_groups", []),
                     "allowed_principal_labels": source.get("allowed_principal_labels", []),
+                    "indexed_time": source.get("indexed_time"),
                 }
             )
 
