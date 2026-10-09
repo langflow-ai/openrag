@@ -28,6 +28,17 @@ import { activeCredentialKeys } from "./generic-provider-credential-fields.helpe
 import { useOnboardingModelDiscovery } from "./use-onboarding-model-discovery";
 
 /**
+ * Fields that say *where* credentials are sent. Mirrors
+ * `_CREDENTIAL_TARGET_FIELDS` in `src/api/models.py`: once a form changes one,
+ * the backend drops every stored value, so a saved secret no longer counts.
+ */
+const CREDENTIAL_TARGET_FIELDS = [
+  "api_base",
+  "embedding_api_base",
+  "ssl_verify",
+];
+
+/**
  * Onboarding step for a provider with no hand-built component.
  *
  * The credential inputs come from the catalogue's field spec and the model list
@@ -68,6 +79,16 @@ export function GenericOnboarding({
 
   const [credentials, setCredentials] =
     useState<Record<string, string>>(savedCredentials);
+  // A saved secret belongs to the host it was saved for: once the endpoint or
+  // TLS setting is edited it is neither offered for reuse nor sent anywhere.
+  const targetChanged = CREDENTIAL_TARGET_FIELDS.some((key) => {
+    const typed = (credentials[key] ?? "").trim();
+    return typed !== "" && typed !== (savedCredentials[key] ?? "");
+  });
+  const reusableSecrets = useMemo(
+    () => (targetChanged ? new Set<string>() : savedSecrets),
+    [targetChanged, savedSecrets],
+  );
   const [azureAuthMethod, setAzureAuthMethod] = useState(
     providers?.custom?.[provider]?.auth_method ?? "api_key",
   );
@@ -159,7 +180,7 @@ export function GenericOnboarding({
       azureAuthMethod,
       onPremAuthMethod,
     ),
-    savedSecrets,
+    savedSecrets: reusableSecrets,
     authMethod: provider === "watsonx_onprem" ? onPremAuthMethod : undefined,
   });
 
@@ -251,8 +272,8 @@ export function GenericOnboarding({
           idPrefix={`onboarding-${provider}`}
           credentials={credentials}
           authMethod={onPremAuthMethod}
-          hasSavedApiKey={savedSecrets.has("api_key")}
-          hasSavedZenApiKey={savedSecrets.has("zen_api_key")}
+          hasSavedApiKey={reusableSecrets.has("api_key")}
+          hasSavedZenApiKey={reusableSecrets.has("zen_api_key")}
           value={credentials.space_id}
           onValueChange={(value) => handleCredentialChange("space_id", value)}
           helperText={field.tooltip ?? undefined}
@@ -273,7 +294,7 @@ export function GenericOnboarding({
 
     const isSecret =
       field.field_type === "password" || field.field_type === "textarea";
-    const hasSaved = isSecret && savedSecrets.has(field.key);
+    const hasSaved = isSecret && reusableSecrets.has(field.key);
     return (
       <div key={field.key} className="space-y-1">
         <LabelInput

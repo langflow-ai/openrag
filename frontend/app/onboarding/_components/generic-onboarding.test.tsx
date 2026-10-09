@@ -515,6 +515,56 @@ describe("GenericOnboarding cluster model discovery", () => {
     });
   });
 
+  it("asks for the token again once the endpoint changes", async () => {
+    const requests: Array<{ credentials: Record<string, string> }> = [];
+    const { user } = renderOnboarding(
+      "rhoai",
+      false,
+      {
+        custom: {
+          rhoai: {
+            credential_values: { api_base: "https://chat.example.com/v1" },
+            secret_fields: ["api_key"],
+          },
+        },
+      },
+      [discoverHandler(served, requests)],
+    );
+    const endpoint = await screen.findByLabelText(/Chat endpoint/);
+    expect(
+      screen.getByText(
+        "A value is already saved. Leave this blank to keep it.",
+      ),
+    ).toBeInTheDocument();
+
+    await user.clear(endpoint);
+    await user.type(endpoint, "https://other.example.com/v1");
+
+    // The backend drops the saved token for a new host, so it no longer counts.
+    expect(
+      screen.queryByText(
+        "A value is already saved. Leave this blank to keep it.",
+      ),
+    ).not.toBeInTheDocument();
+    const asked = requests.length;
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(
+      requests
+        .slice(asked)
+        .some((r) => r.credentials.api_base === "https://other.example.com/v1"),
+    ).toBe(false);
+
+    await user.type(screen.getByLabelText(/Token/), "sha256~new-token");
+    await waitFor(
+      () =>
+        expect(requests.at(-1)?.credentials).toEqual({
+          api_base: "https://other.example.com/v1",
+          api_key: "sha256~new-token",
+        }),
+      DISCOVERY_TIMEOUT,
+    );
+  });
+
   it("keeps the discovered model while the cluster is asked again", async () => {
     let calls = 0;
     let release: () => void = () => {};
