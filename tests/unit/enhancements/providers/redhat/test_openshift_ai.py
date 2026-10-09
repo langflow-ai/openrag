@@ -978,8 +978,10 @@ async def test_draft_discovery_retries_less_than_the_catalogue(monkeypatch) -> N
 
 
 @pytest.mark.asyncio
-async def test_draft_discovery_asks_both_endpoints_at_once(monkeypatch) -> None:
-    """One after the other, a mistyped host's timeouts would add up."""
+@pytest.mark.parametrize("lister", ["list_cluster_models", "fetch_models"])
+async def test_both_endpoints_are_asked_at_once(monkeypatch, lister) -> None:
+    """One after the other, a mistyped host's timeouts would add up — for the
+    onboarding form and the catalogue alike, since both list through one helper."""
     import asyncio
 
     arrived: list[str] = []
@@ -997,7 +999,7 @@ async def test_draft_discovery_asks_both_endpoints_at_once(monkeypatch) -> None:
     monkeypatch.setattr("httpx.AsyncClient", _client_returning({}))
     monkeypatch.setattr(rhoai, "_http_request_with_retry", _barrier)
 
-    models = await rhoai.list_cluster_models(_stored())
+    models = await getattr(rhoai, lister)(_stored())
 
     assert models == rhoai.ClusterModels(chat=(CHAT_MODEL,), embedding=(EMBED_MODEL,))
 
