@@ -12,7 +12,7 @@ import contextlib
 import functools
 import json
 import re
-from collections import deque
+from collections import OrderedDict, deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from typing import Any, Literal
 from uuid import uuid4
@@ -542,19 +542,33 @@ def _stored_credentials(provider: str, config) -> dict[str, Any]:
     """A provider's credentials as the operator entered them, or `{}`.
 
     Only routing reads this here; the call itself uses the translated form.
+
+    `{}` means "this configuration does not keep the untranslated form", which
+    is true of some test doubles and of any config object predating it. It does
+    *not* swallow a failure to read: an empty mapping sends
+    `litellm_provider_key` to the static alias, and for a provider whose
+    transport depends on its endpoint that is a silent wrong route — the opaque
+    upstream 404 this module exists to prevent. A real error belongs in the
+    caller's face instead.
     """
-    try:
-        providers = config.providers
-        if hasattr(providers, "stored_credentials"):
-            return dict(providers.stored_credentials(provider))
-    except Exception:
-        logger.debug("Could not read stored credentials for routing", provider=provider)
-    return {}
+    providers = getattr(config, "providers", None)
+    reader = getattr(providers, "stored_credentials", None)
+    if reader is None:
+        return {}
+    return dict(reader(provider))
 
 
-#: Routes already reported by `_warn_on_unexpected_route`, so a mismatch is
-#: logged once rather than on every request.
-_REPORTED_ROUTE_MISMATCHES: set[str] = set()
+#: Model ids `_warn_on_unexpected_route` has already checked, so the resolver
+#: runs once per distinct id rather than on every request, and a mismatch is
+#: logged once rather than repeatedly.
+#:
+#: Bounded, and an LRU rather than a set: the key contains the model id, which
+#: on `/v1/chat/completions` comes straight from the request body, so an
+#: unbounded memo is a cache an unauthenticated caller can grow. Evicting the
+#: oldest entry costs at worst a repeated warning for a model nobody has used
+#: in the last `_ROUTE_CHECK_MEMO_MAX` distinct ids.
+_ROUTE_CHECK_MEMO_MAX = 256
+_CHECKED_ROUTES: OrderedDict[tuple[str, str], None] = OrderedDict()
 
 
 def _warn_on_unexpected_route(provider: str, litellm_model: str, intended_route: str) -> None:
@@ -572,6 +586,23 @@ def _warn_on_unexpected_route(provider: str, litellm_model: str, intended_route:
     an opaque 404. The floor this repo pins no longer does it; this makes a
     return visible instead of mysterious.
     """
+    if not litellm_model.startswith(f"{intended_route}/"):
+        # Nothing was asserted, so there is nothing to check. This is the bare
+        # name form that `openai` alone uses: the id goes out unprefixed, so
+        # LiteLLM resolves it from the name and is entitled to its own answer.
+        # A model whose *name* carries a vendor segment — `meta-llama/...` on
+        # an OpenAI-compatible server — lands here too, and would otherwise
+        # warn on every healthy request. A prefixed id is still checked even
+        # when the route equals the provider key: `azure_ai/gpt-4o` silently
+        # becoming `azure` is the regression this guard was written for.
+        return
+    key = (provider, litellm_model)
+    if key in _CHECKED_ROUTES:
+        _CHECKED_ROUTES.move_to_end(key)
+        return
+    _CHECKED_ROUTES[key] = None
+    while len(_CHECKED_ROUTES) > _ROUTE_CHECK_MEMO_MAX:
+        _CHECKED_ROUTES.popitem(last=False)
     try:
         from litellm import get_llm_provider
 
@@ -580,10 +611,6 @@ def _warn_on_unexpected_route(provider: str, litellm_model: str, intended_route:
         return
     if resolved == intended_route:
         return
-    signature = f"{provider}:{litellm_model}:{resolved}"
-    if signature in _REPORTED_ROUTE_MISMATCHES:
-        return
-    _REPORTED_ROUTE_MISMATCHES.add(signature)
     logger.warning(
         "LiteLLM resolved this model to a different provider than the gateway "
         "selected; the request will be built by that provider's handler",
@@ -596,7 +623,7 @@ def _warn_on_unexpected_route(provider: str, litellm_model: str, intended_route:
 
 def forget_route_mismatches() -> None:
     """Clear the once-per-route warning memo. For tests."""
-    _REPORTED_ROUTE_MISMATCHES.clear()
+    _CHECKED_ROUTES.clear()
 
 
 _UPSTREAM_FAILURE_MESSAGE = "The model provider could not be reached. Please try again."
@@ -668,6 +695,23 @@ _PRIVATE_HOST_PATTERN = re.compile(
 _ANSI_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
 
 
+def _label_route(provider: str) -> str:
+    """The transport `provider` resolves to, for display only.
+
+    Never raises. This feeds error messages, and a provider misconfigured badly
+    enough to fail here is already on its way to an error the caller needs to
+    read — losing the label's prefix-stripping is a cosmetic degradation, while
+    raising would replace the real failure with this one.
+    """
+    try:
+        return litellm_provider_key(provider, _stored_credentials(provider, _get_config()))
+    except Exception:
+        try:
+            return litellm_provider_key(provider)
+        except Exception:
+            return ""
+
+
 def _call_label(provider: str, model: str, route: str = "") -> str:
     """`provider/model` for humans, without repeating a prefix LiteLLM already added.
 
@@ -676,10 +720,12 @@ def _call_label(provider: str, model: str, route: str = "") -> str:
     "watsonx_onprem/watsonx/openai/gpt-oss-120b", which names two providers and
     reads like a bug in the error it appears in.
     """
-    # `route` is passed by callers that already resolved it from the stored
-    # configuration; the static alias is only a fallback for those that did
-    # not, and is wrong for a provider whose transport varies by endpoint.
-    route = route or (litellm_provider_key(provider) if provider else "")
+    # `route` is passed by callers that already have it. The rest resolve it
+    # the same way `resolve_call` did, from the stored configuration: the
+    # static alias answers `azure_ai` for a Foundry endpoint routed over
+    # `hosted_vllm`, which leaves the transport prefix on and produces exactly
+    # the two-provider label this function exists to avoid.
+    route = route or (_label_route(provider) if provider else "")
     if route and route != provider and model.startswith(f"{route}/"):
         model = model[len(route) + 1 :]
     if model and provider and not model.startswith(f"{provider}/"):

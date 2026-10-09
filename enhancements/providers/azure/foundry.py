@@ -133,7 +133,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any, Literal
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 from utils.logging_config import get_logger
 
@@ -198,7 +198,7 @@ UNSUPPORTED_ENDPOINT_MESSAGE = (
 DEPLOYMENT_URI_MESSAGE = (
     "This is a single deployment's Target URI, so every model selected would be "
     "sent to that one deployment. Use the resource endpoint ending in /openai/v1 "
-    "and enter deployment names separately."
+    "and name the deployment when selecting a model."
 )
 
 
@@ -225,15 +225,15 @@ _DEPLOYMENT_MARKER = "/openai/deployments/"
 #: Azure OpenAI Service hosts, where the legacy Target URI shape still routes.
 _AZURE_OPENAI_HOST_SUFFIX = ".openai.azure.com"
 
+#: The Foundry hostname family. LiteLLM's `azure_ai` handler keys the legacy
+#: call path off this string: on it a bare resource root becomes
+#: `/models/chat/completions`, and on anything else plain `/chat/completions`.
+_FOUNDRY_HOST_SUFFIX = ".services.ai.azure.com"
+
 #: Endpoint paths an operator pastes from a curl example or the portal's
 #: "Target URI" box. They name one call, not the base, and LiteLLM appends its
 #: own — so `.../chat/completions` becomes `.../chat/completions/chat/completions`.
 _CALL_SUFFIXES = ("/chat/completions", "/embeddings", "/responses")
-
-#: Fields the operator fills in that are not LiteLLM kwargs. Forwarding one
-#: would land it in the request body, since LiteLLM passes kwargs it does not
-#: recognise straight through.
-_LOCAL_ONLY_FIELDS = frozenset({"deployment_names"})
 
 
 CREDENTIAL_FIELDS: list[dict[str, Any]] = [
@@ -278,29 +278,6 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "options": None,
         "default_value": None,
     },
-    {
-        "key": "deployment_names",
-        "label": "Deployment names",
-        "placeholder": "prod-chat-gpt4o, prod-embed-3-large",
-        "tooltip": (
-            "Comma-separated deployment names. Foundry names are chosen by whoever "
-            "created the deployment, so the model catalogue cannot know yours. "
-            "Listing them here is what puts them in the model pickers."
-        ),
-        "required": False,
-        # `text`, not `textarea`, although a list wants more than one line.
-        # `model_catalog.secret_field_keys` classifies by field *type* rather
-        # than meaning and treats every `textarea` as a secret, so a textarea
-        # here would AES-encrypt deployment names at rest and leave ciphertext
-        # in config.yaml where plain configuration belongs. The form system has
-        # no non-secret multiline type — only `text` and `select` are
-        # non-secret — so the single-line control is the honest choice until
-        # one exists. `deployment_names()` accepts commas, newlines and
-        # whitespace regardless, so a pasted multi-line list still works.
-        "field_type": "text",
-        "options": None,
-        "default_value": None,
-    },
 ]
 
 
@@ -333,6 +310,19 @@ def normalized_api_base(value: Any) -> str:
             path = path[: -len(suffix)]
             break
 
+    # A pasted *listing* URL for the v1 surface names the same endpoint as its
+    # parent: `.../openai/v1/models` is where the deployments are read from,
+    # not where calls go. Left on, it matches `_LEGACY_SUFFIX` first and the
+    # endpoint is classified legacy, so LiteLLM builds
+    # `.../openai/v1/models/chat/completions` — a 404, and precisely the
+    # confusion this module exists to prevent. Only the v1 parent is stripped:
+    # on the legacy route the `/models` suffix *is* the base, and removing it
+    # there would break the endpoint that is spelled correctly.
+    if path.lower().endswith(_LEGACY_SUFFIX):
+        parent = path[: -len(_LEGACY_SUFFIX)].rstrip("/")
+        if parent.lower().endswith(_V1_SUFFIX):
+            path = parent
+
     # The query is always dropped: `api-version` belongs in its own field, and
     # a v1 endpoint has no use for it at all.
     normalized = urlunsplit((parts.scheme, parts.netloc, path.rstrip("/"), "", ""))
@@ -341,35 +331,84 @@ def normalized_api_base(value: Any) -> str:
         # carry credentials in its query string — a Target URI copied from the
         # portal already carries `?api-version=`, and nothing stops a key or
         # SAS token being in there too. `normalized` has the query stripped by
-        # construction, so it is the safe half to record; whether anything was
-        # dropped is the only other fact worth having when diagnosing.
+        # construction; `_loggable` takes off the other half, because a URL can
+        # also carry `user:password@` in its netloc and that survives
+        # normalization. Whether anything was dropped is the only other fact
+        # worth having when diagnosing.
         logger.debug(
             "Normalized the Azure AI Foundry endpoint",
-            normalized=normalized,
+            normalized=_loggable(normalized),
             dropped_query=bool(parts.query),
         )
     return normalized
 
 
+def _loggable(api_base: str) -> str:
+    """`api_base` with any `user:password@` removed, safe to record.
+
+    Userinfo is a credential wherever it appears, and this module's own
+    invariant is that nothing an operator pastes reaches a log line unredacted.
+    `normalized_api_base` refuses to return such an endpoint to a caller that
+    would *use* it (see `_reject_userinfo`), but the diagnostic log runs first
+    and has to be safe on its own.
+    """
+    parts = urlsplit(api_base)
+    if not (parts.username or parts.password):
+        return api_base
+    host = parts.hostname or ""
+    if parts.port:
+        host = f"{host}:{parts.port}"
+    return urlunsplit((parts.scheme, host, parts.path, "", ""))
+
+
+def _is_foundry_host(parts: SplitResult) -> bool:
+    """Whether a split URL points at the Foundry hostname family."""
+    return (parts.hostname or "").lower().endswith(_FOUNDRY_HOST_SUFFIX)
+
+
 def endpoint_profile(api_base: Any) -> Profile:
     """Which Foundry surface `api_base` names.
 
-    Classified on the path alone. The hostname deliberately does not take part:
-    a Foundry resource can serve Azure OpenAI deployments too, so the host says
-    nothing about which API is being addressed — which is the same reason
-    `provider_validation.is_azure_ai_foundry_endpoint` exists separately.
+    Classified on the path wherever the path is enough, which is every spelled-
+    out endpoint: a Foundry resource can serve Azure OpenAI deployments too, so
+    the host usually says nothing about which API is being addressed — the same
+    reason `provider_validation.is_azure_ai_foundry_endpoint` exists
+    separately.
+
+    The two exceptions are endpoints that carry no path to read. A bare
+    resource root is one (see below), and a per-deployment Target URI is the
+    other.
     """
     base = normalized_api_base(api_base)
     if not base:
         return "unknown"
     parts = urlsplit(base)
+    if parts.username or parts.password:
+        # Credentials in the URL. Refused rather than routed: the value is
+        # passed to LiteLLM and to this module's own health check, so httpx
+        # would send it as Basic auth alongside the real API key, and it would
+        # be stored in config.yaml in the clear.
+        return "unknown"
     path = parts.path.rstrip("/").lower()
     if path.endswith(_V1_SUFFIX):
         return "project_openai_v1" if _PROJECT_MARKER in path else "resource_openai_v1"
-    if path.endswith(_LEGACY_SUFFIX) or not path:
-        # A bare resource root is the legacy route's own default: LiteLLM's
-        # `azure_ai` handler appends `/models/...` to it and reaches the right
-        # place.
+    if not path:
+        # A bare resource root is only unambiguous on the Foundry hostname.
+        # LiteLLM's `azure_ai` handler picks the legacy call path by testing
+        # the host: on `*.services.ai.azure.com` it appends
+        # `/models/chat/completions` and reaches the right place, and on any
+        # other host — `*.cognitiveservices.azure.com`, a private-link or
+        # custom domain — it appends plain `/chat/completions`, which 404s.
+        #
+        # Spelling `/models` onto the root would fix the path on both, but not
+        # the auth header: LiteLLM picks that by hostname too, sending
+        # `api-key` on the Foundry and Azure OpenAI families and
+        # `Authorization: Bearer` everywhere else. Fixing half of a
+        # host-dependent pair would turn a legible 404 into a puzzling 401, so
+        # the root is refused off the Foundry host and the operator is asked
+        # for the endpoint in full.
+        return "legacy_models" if _is_foundry_host(parts) else "unknown"
+    if path.endswith(_LEGACY_SUFFIX):
         return "legacy_models"
     if _DEPLOYMENT_MARKER in path and (parts.hostname or "").lower().endswith(
         _AZURE_OPENAI_HOST_SUFFIX
@@ -426,19 +465,24 @@ def _require_https(api_base: str) -> None:
         )
 
 
-def deployment_names(stored: Mapping[str, Any] | None) -> tuple[str, ...]:
-    """Deployment names the operator listed, in order, de-duplicated.
+def _reject_userinfo(api_base: str) -> None:
+    """Refuse an endpoint with `user:password@` in it.
 
-    Accepts newline, comma or whitespace separation, because the field is a
-    textarea and people paste all three.
+    The value reaches three places that all treat it as trustworthy: LiteLLM
+    builds the request URL from it, `models_url` is fetched with httpx, which
+    turns userinfo into a Basic auth header, and it is written to config.yaml
+    as ordinary non-secret configuration. None of those is a reasonable home
+    for a credential, and Foundry authenticates with the API key field rather
+    than with the URL, so there is no shape of this that is correct.
     """
-    raw = _clean((stored or {}).get("deployment_names")).replace(",", "\n")
-    seen: dict[str, None] = {}
-    for line in raw.split("\n"):
-        name = line.strip()
-        if name:
-            seen.setdefault(name, None)
-    return tuple(seen)
+    if not api_base:
+        return
+    parts = urlsplit(api_base)
+    if parts.username or parts.password:
+        raise ValueError(
+            "The Azure AI Foundry endpoint must not carry credentials in the URL. "
+            "Remove the 'user:password@' part and put the key in the API key field."
+        )
 
 
 def litellm_credentials(stored: Mapping[str, Any], *, kind: CallKind = "chat") -> dict[str, Any]:
@@ -451,11 +495,10 @@ def litellm_credentials(stored: Mapping[str, Any], *, kind: CallKind = "chat") -
 
     api_base = normalized_api_base(stored.get("api_base"))
     _require_https(api_base)
+    _reject_userinfo(api_base)
 
     credentials: dict[str, Any] = {
-        name: value
-        for name, value in stored.items()
-        if name not in _LOCAL_ONLY_FIELDS and name not in {"api_base", "api_version"}
+        name: value for name, value in stored.items() if name not in {"api_base", "api_version"}
     }
     if api_base:
         credentials["api_base"] = api_base
@@ -545,7 +588,7 @@ async def lightweight_health_check(credentials: Mapping[str, Any]) -> None:
     if response.status_code == 403:
         raise PermissionError(
             "The credentials were accepted but this identity cannot list deployments. "
-            "Inference may still work; enter a deployment name to use it."
+            "Inference may still work; type the deployment name into the model field."
         )
     if response.status_code >= 400:
         detail = response.text[:400] if response.text else f"HTTP {response.status_code}"

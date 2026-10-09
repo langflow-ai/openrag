@@ -18,10 +18,11 @@ RESOURCE = "https://contoso.services.ai.azure.com"
 
 
 class TestEndpointProfile:
-    """The surface is classified from the path, never from the hostname.
+    """The surface is classified from the path wherever the path says enough.
 
-    A Foundry resource can serve Azure OpenAI deployments too, so the host says
-    nothing about which API is being addressed.
+    A Foundry resource can serve Azure OpenAI deployments too, so a spelled-out
+    path says which API is being addressed and the host does not. The host is
+    consulted only for the shapes that carry no path to read.
     """
 
     @pytest.mark.parametrize(
@@ -33,14 +34,48 @@ class TestEndpointProfile:
             (f"{RESOURCE}/api/projects/proj-1/openai/v1/", "project_openai_v1"),
             (f"{RESOURCE}/models", "legacy_models"),
             (f"{RESOURCE}/models/", "legacy_models"),
-            # A bare resource root is the legacy route's own default: litellm's
-            # azure_ai handler appends `/models/...` and reaches the right place.
+            # A bare resource root is the legacy route's own default *on this
+            # host*: litellm's azure_ai handler appends `/models/...` and
+            # reaches the right place. See the host test below.
             (RESOURCE, "legacy_models"),
             (f"{RESOURCE}/", "legacy_models"),
+            # The model *listing* URL names the same surface as its parent.
+            # Pasted whole it used to match `/models` first and route as
+            # legacy, so litellm built `.../openai/v1/models/chat/completions`.
+            (f"{RESOURCE}/openai/v1/models", "resource_openai_v1"),
+            (f"{RESOURCE}/openai/v1/models/", "resource_openai_v1"),
+            (f"{RESOURCE}/api/projects/proj-1/openai/v1/models", "project_openai_v1"),
         ],
     )
     def test_the_supported_shapes(self, api_base, expected) -> None:
         assert foundry.endpoint_profile(api_base) == expected
+
+    @pytest.mark.parametrize(
+        "host, expected",
+        [
+            ("contoso.services.ai.azure.com", "legacy_models"),
+            # LiteLLM picks the legacy call path by testing the hostname for
+            # `services.ai.azure.com`. Off it, a bare root becomes plain
+            # `/chat/completions` and 404s, and the auth header changes from
+            # `api-key` to `Authorization` as well — so the root is refused
+            # rather than routed on a host-dependent guess.
+            ("contoso.cognitiveservices.azure.com", "unknown"),
+            ("foundry.internal.example", "unknown"),
+        ],
+    )
+    def test_a_bare_root_is_only_unambiguous_on_the_foundry_host(self, host, expected) -> None:
+        assert foundry.endpoint_profile(f"https://{host}") == expected
+
+    def test_an_explicit_models_path_routes_on_any_host(self) -> None:
+        """Spelled out, the path is enough and the host stops mattering.
+
+        This is what an operator on a non-Foundry hostname is asked for when
+        the bare root is refused, so it has to keep working.
+        """
+        assert (
+            foundry.endpoint_profile("https://contoso.cognitiveservices.azure.com/models")
+            == "legacy_models"
+        )
 
     @pytest.mark.parametrize(
         "api_base",
@@ -53,6 +88,12 @@ class TestEndpointProfile:
             "not-a-url",
             "",
             None,
+            # Credentials in the URL. httpx would send the userinfo as Basic
+            # auth next to the real API key, and the value is stored as
+            # ordinary non-secret configuration, so it is refused outright
+            # rather than classified and used.
+            "https://user:secret@contoso.services.ai.azure.com/openai/v1",
+            "https://user@contoso.services.ai.azure.com/models",
         ],
     )
     def test_anything_else_is_unknown_rather_than_guessed_at(self, api_base) -> None:
@@ -147,6 +188,36 @@ class TestNormalization:
             "normalized": f"{RESOURCE}/openai/v1",
             "dropped_query": True,
         }
+
+    def test_url_embedded_credentials_never_reach_the_logs(self, monkeypatch) -> None:
+        """Stripping the query is only half of it.
+
+        `user:password@` survives normalization — it lives in the netloc, not
+        the query — so the diagnostic log has to take it off separately. The
+        endpoint is refused elsewhere, but the log runs first and has to be
+        safe on its own.
+        """
+        records: list[dict] = []
+
+        class _Recorder:
+            def debug(self, _message, **fields):
+                records.append(fields)
+
+            def __getattr__(self, _name):
+                return lambda *args, **kwargs: None
+
+        monkeypatch.setattr(foundry, "logger", _Recorder())
+
+        secret = "url-embedded-password"
+        foundry.normalized_api_base(
+            f"https://operator:{secret}@contoso.services.ai.azure.com/openai/v1/chat/completions"
+        )
+
+        assert records, "normalization should have been logged"
+        rendered = repr(records)
+        assert secret not in rendered
+        assert "operator" not in rendered
+        assert records[0]["normalized"] == f"{RESOURCE}/openai/v1"
 
     def test_no_query_is_reported_as_none_dropped(self, monkeypatch) -> None:
         records: list[dict] = []
@@ -262,12 +333,23 @@ class TestCredentials:
         )
         assert credentials["api_version"] == "2024-05-01"
 
-    def test_local_only_fields_never_reach_the_request_body(self) -> None:
-        """LiteLLM passes kwargs it does not recognise straight through."""
-        credentials = foundry.litellm_credentials(
-            {"api_base": f"{RESOURCE}/openai/v1", "api_key": "k", "deployment_names": "a\nb"}
-        )
-        assert "deployment_names" not in credentials
+    @pytest.mark.parametrize(
+        "api_base",
+        [
+            "https://operator:secret@contoso.services.ai.azure.com/openai/v1",
+            "https://operator@contoso.services.ai.azure.com/openai/v1",
+        ],
+    )
+    def test_credentials_in_the_url_are_refused(self, api_base) -> None:
+        """The endpoint is handed to LiteLLM, to httpx and to config.yaml.
+
+        httpx turns userinfo into a Basic auth header sent alongside the real
+        API key, and config.yaml stores the endpoint as plain non-secret
+        configuration. Foundry authenticates with the key field, so there is
+        no correct form of this.
+        """
+        with pytest.raises(ValueError, match="credentials in the URL"):
+            foundry.litellm_credentials({"api_base": api_base, "api_key": "k"})
 
     @pytest.mark.parametrize("scheme", ["http", "ftp"])
     def test_a_cleartext_endpoint_is_refused(self, scheme) -> None:
@@ -281,20 +363,6 @@ class TestCredentials:
                 {"api_base": f"{scheme}://contoso.services.ai.azure.com/openai/v1", "api_key": "k"}
             )
 
-    @pytest.mark.parametrize(
-        "raw, expected",
-        [
-            ("a\nb", ("a", "b")),
-            ("a, b,c", ("a", "b", "c")),
-            ("  a  \n\n  b  ", ("a", "b")),
-            ("a\na\nb", ("a", "b")),
-            ("", ()),
-            (None, ()),
-        ],
-    )
-    def test_deployment_names_accept_what_people_paste(self, raw, expected) -> None:
-        assert foundry.deployment_names({"deployment_names": raw}) == expected
-
 
 class TestCredentialForm:
     def test_every_secret_is_typed_so_it_is_encrypted_at_rest(self) -> None:
@@ -305,19 +373,6 @@ class TestCredentialForm:
         from services.model_catalog import secret_field_keys
 
         assert "api_key" in secret_field_keys("azure_ai")
-
-    def test_deployment_names_are_configuration_not_a_credential(self) -> None:
-        """`secret_field_keys` classifies by field type, not meaning.
-
-        A `textarea` would be encrypted at rest, leaving ciphertext in
-        config.yaml where plain configuration belongs. The form system has no
-        non-secret multiline type, so this is `text` until it does.
-        """
-        from services.model_catalog import credential_fields, secret_field_keys
-
-        assert "deployment_names" not in secret_field_keys("azure_ai")
-        field = next(f for f in credential_fields("azure_ai") if f["key"] == "deployment_names")
-        assert field["field_type"] == "text"
 
     def test_the_form_replaces_litellms_deployment_pinning_placeholder(self) -> None:
         """LiteLLM's own `api_base` placeholder is a per-deployment Target URI.
@@ -331,11 +386,18 @@ class TestCredentialForm:
         assert "/openai/v1" in (api_base["placeholder"] or "")
         assert "deployments/" not in (api_base["placeholder"] or "")
 
-    def test_the_form_asks_for_deployment_names(self) -> None:
+    def test_the_form_asks_only_for_what_this_release_consumes(self) -> None:
+        """No field is offered that nothing reads.
+
+        A deployment list belongs here eventually — the catalogue cannot know
+        names an operator chose — but the hook that would surface it does not
+        exist yet, and a form field that silently does nothing is worse than
+        its absence.
+        """
         from services.model_catalog import credential_fields
 
         keys = {field["key"] for field in credential_fields("azure_ai")}
-        assert {"api_base", "api_key", "api_version", "deployment_names"} <= keys
+        assert keys == {"api_base", "api_key", "api_version"}
 
 
 class TestModelsUrl:
@@ -666,6 +728,200 @@ class TestGatewayRouting:
 
         assert provider == "azure_ai"
         assert litellm_model == "hosted_vllm/my-deployment"
+
+
+class TestErrorLabels:
+    """What the user is told the call was, when it fails.
+
+    The label is built from the *routed* id, so for Foundry on `/openai/v1` it
+    carries `hosted_vllm/`. Joined naively onto the OpenRAG key that produces
+    `azure_ai/hosted_vllm/<deployment>`, which names two providers and reads
+    like a bug in the error it appears in.
+    """
+
+    def test_the_transport_prefix_is_stripped_for_a_v1_foundry_model(self, monkeypatch) -> None:
+        from services import llm_gateway
+
+        monkeypatch.setattr(llm_gateway, "_get_config", lambda: _config(f"{RESOURCE}/openai/v1"))
+        assert (
+            llm_gateway._call_label("azure_ai", "hosted_vllm/my-deployment")
+            == "azure_ai/my-deployment"
+        )
+
+    def test_the_legacy_route_needs_no_stripping(self, monkeypatch) -> None:
+        from services import llm_gateway
+
+        monkeypatch.setattr(llm_gateway, "_get_config", lambda: _config(f"{RESOURCE}/models"))
+        assert (
+            llm_gateway._call_label("azure_ai", "azure_ai/my-deployment")
+            == "azure_ai/my-deployment"
+        )
+
+    def test_a_models_name_that_contains_a_slash_is_left_whole(self, monkeypatch) -> None:
+        """Only a *transport* prefix comes off, never part of the model id.
+
+        watsonx serves `openai/gpt-oss-120b`, whose own name starts with a
+        provider key. Deriving the route from the id's first segment instead
+        of from the configuration would eat it.
+        """
+        from services import llm_gateway
+
+        monkeypatch.setattr(llm_gateway, "_get_config", lambda: _config(f"{RESOURCE}/openai/v1"))
+        assert (
+            llm_gateway._call_label("watsonx_onprem", "watsonx/openai/gpt-oss-120b")
+            == "watsonx_onprem/openai/gpt-oss-120b"
+        )
+
+    def test_a_broken_configuration_still_produces_a_label(self, monkeypatch) -> None:
+        """This runs while building an error message; it cannot raise its own."""
+        from services import llm_gateway
+
+        def _explode():
+            raise RuntimeError("config is unreadable")
+
+        monkeypatch.setattr(llm_gateway, "_get_config", _explode)
+        assert llm_gateway._call_label("azure_ai", "hosted_vllm/my-deployment")
+
+
+class TestRouteResolutionFailsClosed:
+    """A configuration that cannot be read must not fall back to a guess.
+
+    `litellm_provider_key` treats an empty mapping as "nothing to go on" and
+    answers with the static alias, which for Foundry is `azure_ai` — the
+    native handler, and the wrong URL for a `/openai/v1` endpoint. Swallowing
+    a read failure therefore turns a fixable error into the opaque upstream
+    404 this module exists to prevent.
+    """
+
+    def test_a_config_without_the_untranslated_form_is_not_an_error(self) -> None:
+        """Some config objects simply do not keep it; that is not a failure."""
+        from types import SimpleNamespace
+
+        from services.llm_gateway import _stored_credentials
+
+        assert _stored_credentials("azure_ai", SimpleNamespace(providers=object())) == {}
+        assert _stored_credentials("azure_ai", SimpleNamespace()) == {}
+
+    def test_a_failure_to_read_surfaces_instead_of_routing_on_the_alias(self) -> None:
+        from types import SimpleNamespace
+
+        from services.llm_gateway import _stored_credentials
+
+        def _explode(_provider):
+            raise RuntimeError("credential store is down")
+
+        config = SimpleNamespace(providers=SimpleNamespace(stored_credentials=_explode))
+        with pytest.raises(RuntimeError, match="credential store is down"):
+            _stored_credentials("azure_ai", config)
+
+
+class TestRerouteGuardHygiene:
+    """The guard runs on every `resolve_call`, so its memo is on a hot path."""
+
+    def test_the_memo_is_bounded(self) -> None:
+        """Its key holds the model id, which arrives in the request body.
+
+        Unbounded, that is a cache an unauthenticated caller can grow without
+        limit by varying the model name.
+        """
+        from services import llm_gateway
+
+        llm_gateway.forget_route_mismatches()
+        try:
+            for index in range(llm_gateway._ROUTE_CHECK_MEMO_MAX * 2):
+                llm_gateway._warn_on_unexpected_route(
+                    "azure_ai", f"hosted_vllm/model-{index}", "hosted_vllm"
+                )
+            assert len(llm_gateway._CHECKED_ROUTES) <= llm_gateway._ROUTE_CHECK_MEMO_MAX
+        finally:
+            llm_gateway.forget_route_mismatches()
+
+    def test_a_repeated_model_does_not_re_run_the_resolver(self, monkeypatch) -> None:
+        """One resolver call per distinct id, not one per request."""
+        import litellm
+
+        from services import llm_gateway
+
+        calls: list[str] = []
+
+        def _counting(model, **_kwargs):
+            calls.append(model)
+            return model, "hosted_vllm", None, None
+
+        monkeypatch.setattr(litellm, "get_llm_provider", _counting)
+        llm_gateway.forget_route_mismatches()
+        try:
+            for _ in range(5):
+                llm_gateway._warn_on_unexpected_route(
+                    "azure_ai", "hosted_vllm/my-deployment", "hosted_vllm"
+                )
+            assert calls == ["hosted_vllm/my-deployment"]
+        finally:
+            llm_gateway.forget_route_mismatches()
+
+    @pytest.mark.parametrize(
+        "provider, litellm_model, route",
+        [
+            # `openai` sends the id unprefixed, so nothing was asserted.
+            ("openai", "claude-sonnet-4", "openai"),
+            # A model whose own *name* carries a vendor segment. The id still
+            # does not begin with the route that was asked for.
+            ("openai", "meta-llama/Llama-3-70B", "openai"),
+        ],
+    )
+    def test_an_unasserted_route_is_not_second_guessed(
+        self, monkeypatch, provider, litellm_model, route
+    ) -> None:
+        """LiteLLM resolving these elsewhere is not evidence of anything.
+
+        The guard's claim is "we asked for `<route>/<name>`". Where the id
+        does not carry the route, there is no claim, and an OpenAI-compatible
+        server serving either of these would warn on every healthy request.
+        """
+        import litellm
+
+        from services import llm_gateway
+
+        def _unexpected(**_kwargs):
+            pytest.fail("an unasserted route has nothing to check")
+
+        monkeypatch.setattr(litellm, "get_llm_provider", _unexpected)
+        llm_gateway.forget_route_mismatches()
+        try:
+            llm_gateway._warn_on_unexpected_route(provider, litellm_model, route)
+        finally:
+            llm_gateway.forget_route_mismatches()
+
+    def test_a_prefixed_id_is_checked_even_when_the_route_is_the_provider_key(
+        self, monkeypatch
+    ) -> None:
+        """The regression this guard exists for is an identity route.
+
+        litellm 1.84.0 silently rerouted `azure_ai/gpt-4o` to `azure`, calling
+        a Foundry hostname with the Azure OpenAI handler. Skipping the check
+        wherever route == provider would have missed exactly that.
+        """
+        import litellm
+
+        from services import llm_gateway
+
+        warnings: list[dict] = []
+
+        monkeypatch.setattr(
+            litellm, "get_llm_provider", lambda model, **_k: (model, "azure", None, None)
+        )
+        monkeypatch.setattr(
+            llm_gateway.logger,
+            "warning",
+            lambda _message, **fields: warnings.append(fields),
+        )
+        llm_gateway.forget_route_mismatches()
+        try:
+            llm_gateway._warn_on_unexpected_route("azure_ai", "azure_ai/gpt-4o", "azure_ai")
+        finally:
+            llm_gateway.forget_route_mismatches()
+
+        assert warnings and warnings[0]["resolved_route"] == "azure"
 
 
 class TestSaveTimeModelProbe:
