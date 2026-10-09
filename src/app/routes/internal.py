@@ -466,6 +466,12 @@ def register_internal_routes(app: FastAPI):
         tags=["internal"],
     )
     app.add_api_route(
+        "/models/{provider}/discover",
+        models.discover_provider_models,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
         "/models/catalog", models.get_model_catalog, methods=["GET"], tags=["internal"]
     )
     app.add_api_route(

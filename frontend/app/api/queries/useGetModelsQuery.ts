@@ -301,6 +301,11 @@ export interface CatalogProvider {
   model_placeholder: string | null;
   models: CatalogModel[];
   embedding_models: CatalogModel[];
+  /**
+   * Whether `POST /api/models/{key}/discover` can list what this provider
+   * serves from credentials that are not saved yet (cluster-hosted providers).
+   */
+  discovers_models?: boolean;
 }
 
 export interface ModelCatalogResponse {

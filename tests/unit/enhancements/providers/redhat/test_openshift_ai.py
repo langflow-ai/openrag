@@ -878,6 +878,144 @@ async def test_incomplete_credentials_are_not_taken_to_the_network(monkeypatch) 
     assert await rhoai.fetch_models({"api_base": CHAT_BASE}) is None
 
 
+@pytest.mark.asyncio
+async def test_draft_discovery_lists_each_endpoint(monkeypatch) -> None:
+    """Onboarding asks before anything is saved; each endpoint fills its own picker."""
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning(
+            {
+                f"{CHAT_BASE}/models": _Response(200, _models_body("gpt-oss-120b")),
+                f"{EMBED_BASE}/models": _Response(200, _models_body(EMBED_MODEL)),
+            },
+            seen,
+        ),
+    )
+
+    models = await rhoai.list_cluster_models(_stored())
+
+    assert models == rhoai.ClusterModels(chat=("gpt-oss-120b",), embedding=(EMBED_MODEL,))
+    assert seen["headers"]["Authorization"] == f"Bearer {TOKEN}"
+
+
+@pytest.mark.asyncio
+async def test_draft_discovery_on_one_endpoint_fills_both_pickers(monkeypatch) -> None:
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning({f"{CHAT_BASE}/models": _Response(200, _models_body("solo"))}, seen),
+    )
+
+    models = await rhoai.list_cluster_models(_stored(embedding_api_base=None))
+
+    assert models == rhoai.ClusterModels(chat=("solo",), embedding=("solo",))
+    assert seen["urls"] == [f"{CHAT_BASE}/models"]
+
+
+@pytest.mark.asyncio
+async def test_draft_discovery_leaves_a_failed_half_unknown(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning(
+            {
+                f"{CHAT_BASE}/models": _Response(200, _models_body(CHAT_MODEL)),
+                f"{EMBED_BASE}/models": _Response(401, {"error": {"message": "nope"}}),
+            }
+        ),
+    )
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _no_retry)
+
+    models = await rhoai.list_cluster_models(_stored())
+
+    assert models == rhoai.ClusterModels(chat=(CHAT_MODEL,), embedding=None)
+
+
+@pytest.mark.asyncio
+async def test_draft_discovery_never_touches_the_catalogue_cache(monkeypatch) -> None:
+    """`cached_models()` feeds every picker, so a draft cluster's listing must not
+    replace the saved cluster's — nor be dropped by it."""
+    other = "https://draft-chat.svc:8443/v1"
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning(
+            {
+                f"{CHAT_BASE}/models": _Response(200, _models_body(CHAT_MODEL)),
+                f"{EMBED_BASE}/models": _Response(200, _models_body(EMBED_MODEL)),
+                f"{other}/models": _Response(200, _models_body("draft-model")),
+            }
+        ),
+    )
+    await rhoai.fetch_models(_stored())
+    saved = rhoai.cached_models()
+
+    draft = await rhoai.list_cluster_models(_stored(api_base=other, embedding_api_base=None))
+
+    assert draft.chat == ("draft-model",)
+    assert rhoai.cached_models() == saved
+
+
+@pytest.mark.asyncio
+async def test_draft_discovery_retries_less_than_the_catalogue(monkeypatch) -> None:
+    """Onboarding has someone watching the picker; the catalogue can wait out a rollout."""
+    calls: list[int] = []
+
+    async def _count(method, url, *, client, max_retries=2, **kwargs):
+        calls.append(max_retries)
+        return _Response(200, _models_body(CHAT_MODEL))
+
+    monkeypatch.setattr("httpx.AsyncClient", _client_returning({}))
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _count)
+
+    await rhoai.list_cluster_models(_stored())
+    assert calls == [rhoai.DISCOVERY_MAX_RETRIES] * 2
+    assert rhoai.DISCOVERY_MAX_RETRIES < 2
+
+    calls.clear()
+    rhoai.forget_models()
+    await rhoai.fetch_models(_stored())
+    assert calls == [2, 2]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("lister", ["list_cluster_models", "fetch_models"])
+async def test_both_endpoints_are_asked_at_once(monkeypatch, lister) -> None:
+    """One after the other, a mistyped host's timeouts would add up — for the
+    onboarding form and the catalogue alike, since both list through one helper."""
+    import asyncio
+
+    arrived: list[str] = []
+    both_asked = asyncio.Event()
+
+    async def _barrier(method, url, *, client, **kwargs):
+        arrived.append(url)
+        if len(arrived) == 2:
+            both_asked.set()
+        # Asked one at a time, the first call never sees the second arrive.
+        await asyncio.wait_for(both_asked.wait(), timeout=1)
+        model = CHAT_MODEL if url.startswith(CHAT_BASE) else EMBED_MODEL
+        return _Response(200, _models_body(model))
+
+    monkeypatch.setattr("httpx.AsyncClient", _client_returning({}))
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _barrier)
+
+    models = await getattr(rhoai, lister)(_stored())
+
+    assert models == rhoai.ClusterModels(chat=(CHAT_MODEL,), embedding=(EMBED_MODEL,))
+
+
+@pytest.mark.asyncio
+async def test_draft_discovery_with_incomplete_credentials_makes_no_request(monkeypatch) -> None:
+    def _explode(**kwargs):
+        raise AssertionError("no HTTP call should be made")
+
+    monkeypatch.setattr("httpx.AsyncClient", _explode)
+
+    unknown = rhoai.ClusterModels(chat=None, embedding=None)
+    assert await rhoai.list_cluster_models({"api_key": TOKEN}) == unknown
+    assert await rhoai.list_cluster_models({"api_base": CHAT_BASE}) == unknown
+
+
 @pytest.mark.parametrize(
     "body, expected",
     [

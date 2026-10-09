@@ -8,6 +8,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { server } from "@/test-utils/msw/server";
 import { createQueryWrapper, createTestQueryClient } from "@/test-utils/render";
+import { useGetModelCatalogQuery } from "../queries/useGetModelsQuery";
 import { useOnboardingMutation } from "./useOnboardingMutation";
 
 const toast = vi.hoisted(() => ({
@@ -69,6 +70,34 @@ describe("useOnboardingMutation", () => {
     await waitFor(() =>
       expect(stateBody).toEqual({ openrag_docs_filter_id: "filter-123" }),
     );
+  });
+
+  it("refreshes the model catalogue once onboarding has saved credentials", async () => {
+    let catalogFetchCount = 0;
+    server.use(
+      http.post("/api/onboarding", () =>
+        HttpResponse.json({ message: "done", edited: true }),
+      ),
+      http.get("/api/models/catalog", () => {
+        catalogFetchCount += 1;
+        return HttpResponse.json({ providers: [] });
+      }),
+    );
+
+    const { result } = renderHook(
+      () => ({
+        catalog: useGetModelCatalogQuery(),
+        mutation: useOnboardingMutation(),
+      }),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() => expect(catalogFetchCount).toBe(1));
+
+    act(() => result.current.mutation.mutate({ llm_provider: "rhoai" }));
+
+    await waitFor(() => expect(result.current.mutation.isSuccess).toBe(true));
+    await waitFor(() => expect(catalogFetchCount).toBe(2));
   });
 
   it("explains when watsonx.ai on-prem reduces the ingestion chunk size", async () => {

@@ -847,10 +847,12 @@ class ConfigManager:
                 onprem_credentials,
                 required=("api_base",),
             )
+            from enhancements.providers.watsonx.onprem import default_auth_method
+
             entry = config_data["providers"]["custom"]["watsonx_onprem"]
             stored = entry["credentials"]
             has_zen = bool(stored.get("zen_api_key"))
-            entry["auth_method"] = "zen_api_key" if has_zen else "username_api_key"
+            entry["auth_method"] = default_auth_method(stored)
             entry["configured"] = bool(
                 stored.get("api_base")
                 and (has_zen or (stored.get("username") and stored.get("api_key")))

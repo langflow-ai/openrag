@@ -90,6 +90,12 @@ export const useOnboardingMutation = (
     onSettled: async (data, error, variables, onMutateResult, context) => {
       // Invalidate settings query to refetch updated onboarding state
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
+      // The catalogue lists a cluster-hosted provider with its saved
+      // credentials, which onboarding has just written.
+      await queryClient.invalidateQueries({
+        queryKey: ["models", "catalog"],
+        exact: true,
+      });
       await options?.onSettled?.(
         data,
         error,

@@ -52,6 +52,20 @@ def enhancements() -> tuple[ModuleType, ...]:
     return tuple(_ENHANCEMENTS.values())
 
 
+def model_discovery_for(provider: str) -> ModuleType | None:
+    """The enhancement that can list `provider`'s models from unsaved credentials.
+
+    The optional `list_cluster_models(credentials)` member of the contract: the
+    same listing `fetch_models()` caches, without the cache, for a form that is
+    asking what a cluster serves before anything is saved. None when the
+    provider has no enhancement or the enhancement cannot list its own models.
+    """
+    enhancement = get(provider)
+    if enhancement is None or not callable(getattr(enhancement, "list_cluster_models", None)):
+        return None
+    return enhancement
+
+
 def live_models_for(provider: str, kind: CallKind) -> tuple[str, ...] | None:
     """What `provider` last said it serves for `kind`, if it can say at all.
 
@@ -153,6 +167,25 @@ def embedding_concurrency_for(
     if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
         return None
     return limit
+
+
+def default_auth_method_for(provider: str, stored: Mapping[str, Any] | None) -> str | None:
+    """The authentication method to assume for `provider` when none was chosen.
+
+    The optional `default_auth_method(stored)` member of the enhancement
+    contract, for a provider whose form offers several methods. None when the
+    provider has no such hook, the hook fails (logged and ignored), or it
+    returns anything but a non-empty string.
+    """
+    hook = getattr(get(provider), "default_auth_method", None)
+    if not callable(hook):
+        return None
+    try:
+        method = hook(stored or {})
+    except Exception as exc:
+        _log_hook_failure(provider, "default_auth_method", exc)
+        return None
+    return method if isinstance(method, str) and method else None
 
 
 def _log_hook_failure(provider: str, hook: str, exc: Exception) -> None:

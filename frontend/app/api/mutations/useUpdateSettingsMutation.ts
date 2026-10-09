@@ -138,6 +138,12 @@ export const useUpdateSettingsMutation = (
       queryClient.invalidateQueries({
         queryKey: ["settings"],
       });
+      // A cluster-hosted provider's models are listed with its *saved*
+      // credentials, so a save can change what the catalogue offers.
+      queryClient.invalidateQueries({
+        queryKey: ["models", "catalog"],
+        exact: true,
+      });
       refetchModels(); // Refetch models for the settings page
       options?.onSuccess?.(...args);
     },

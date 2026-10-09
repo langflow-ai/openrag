@@ -33,6 +33,7 @@ from typing import Any
 from config.model_providers import ProviderEntry, visible_provider_entries
 from enhancements.providers.registry import (
     credential_field_overrides,
+    model_discovery_for,
     route_aliases,
 )
 from enhancements.providers.registry import (
@@ -337,6 +338,9 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
                 "name": display_name or (specs.get(key) or {}).get("provider_display_name") or key,
                 "credential_fields": credential_fields(key),
                 "model_placeholder": (specs.get(key) or {}).get("default_model_placeholder"),
+                # Whether `POST /models/{provider}/discover` can list what this
+                # provider serves from credentials that are not saved yet.
+                "discovers_models": model_discovery_for(key) is not None,
                 "models": sorted(chat, key=lambda entry: entry["model"]),
                 "embedding_models": sorted(embed, key=lambda entry: entry["model"]),
             }
@@ -373,6 +377,32 @@ def exclusions_for(provider: str) -> tuple[str, ...]:
         if entry.name == key:
             return entry.exclude_models
     return ()
+
+
+def discovered_model_payload(provider: str, listed: Any) -> dict[str, Any]:
+    """Catalogue rows for what a cluster said it serves, per picker.
+
+    `listed` is an enhancement's `ClusterModels` (or None). A half is None when
+    that endpoint could not be listed — the caller keeps the catalogue's rows
+    for it — and a list otherwise. `exclude_models` still applies, exactly as it
+    does to the catalogue: a deployment that suppresses an id means it wherever
+    the id came from.
+    """
+    excluded = exclusions_for(provider)
+
+    def _rows(names: Any, mode: str) -> list[dict[str, Any]] | None:
+        if names is None:
+            return None
+        return [
+            entry
+            for entry in _declared_entries(tuple(str(name) for name in names), mode)
+            if not _excluded(entry["model"], excluded)
+        ]
+
+    return {
+        "models": _rows(getattr(listed, "chat", None), "chat"),
+        "embedding_models": _rows(getattr(listed, "embedding", None), EMBEDDING_MODE),
+    }
 
 
 #: Keys in a live `/models/{provider}` payload that hold model lists.

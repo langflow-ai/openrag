@@ -137,24 +137,23 @@ providers:
   # that only the deployment knows, so it is enabled per deployment with
   # OPENRAG_MODEL_PROVIDERS_CONFIG rather than offered to everyone.
   #
-  # The two lists below are a *fallback*, not the catalogue. OpenRAG asks each
-  # InferenceService what it serves (`GET /v1/models`) and shows that in the
-  # pickers, so a model the cluster does not have is never offered. These rows
-  # are what it falls back to while the endpoints are unreachable or before any
-  # credentials are entered.
+  # No `models:` / `embedding_models:` rows are shipped. Model ids are the
+  # InferenceServices' `--served-model-name` values, which only the deployment
+  # knows, so OpenRAG asks each endpoint what it serves (`GET /v1/models`):
+  # with the saved credentials for the catalogue, and with the typed ones
+  # (`POST /models/rhoai/discover`) during onboarding. A model the cluster does
+  # not serve is never offered; while it cannot be reached, the pickers accept
+  # a typed model id.
+  #
+  # A deployment's own config may still add rows as a fallback for while the
+  # endpoints are unreachable, e.g. `models: [gpt-oss-120b]`. Use the
+  # served-model-name, not the image tag.
   - name: rhoai
     display_name: Red Hat OpenShift AI
     modes:
       oss: false
       on_prem: false
       saas: false
-    # Verified on an RHOAI 3.5.0 cluster running the x86 CPU vLLM runtime.
-    # These are `--served-model-name` values, not image tags: whatever the
-    # InferenceService was started with is the id that has to be sent.
-    models:
-      - gpt-oss-120b
-    embedding_models:
-      - granite-embedding-english-r2
 
   - name: anthropic
     display_name: Anthropic
