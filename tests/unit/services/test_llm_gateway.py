@@ -438,10 +438,11 @@ async def test_onprem_embeddings_batch_large_document_inputs(monkeypatch):
         }
 
     monkeypatch.setattr("litellm.aembedding", fake_aembedding)
-    monkeypatch.setattr(
-        "services.llm_gateway._provider_runtime_kwargs",
-        lambda provider, config: {},
-    )
+
+    async def no_runtime_kwargs(provider, config, kind="chat"):
+        return {}
+
+    monkeypatch.setattr("services.llm_gateway._provider_runtime_kwargs", no_runtime_kwargs)
 
     result = await embeddings(
         {
@@ -2412,9 +2413,11 @@ class TestAnOverLengthEmbeddingInputIsAveraged:
     def _onprem(self, monkeypatch, provider):
         """`provider` behind watsonx on-prem, which takes at most 32 inputs a request."""
         self._provider(monkeypatch, provider)
-        monkeypatch.setattr(
-            "services.llm_gateway._provider_runtime_kwargs", lambda provider, config: {}
-        )
+
+        async def no_runtime_kwargs(provider, config, kind="chat"):
+            return {}
+
+        monkeypatch.setattr("services.llm_gateway._provider_runtime_kwargs", no_runtime_kwargs)
         return SimpleNamespace(
             providers=ProvidersConfig(
                 openai=OpenAIConfig(),
@@ -2799,10 +2802,11 @@ async def test_onprem_sub_batches_are_numbered_in_trace_metadata(monkeypatch, tr
         },
     )
     calls = _capture_embedding(monkeypatch)
-    monkeypatch.setattr(
-        "services.llm_gateway._provider_runtime_kwargs",
-        lambda provider, config: {},
-    )
+
+    async def no_runtime_kwargs(provider, config, kind="chat"):
+        return {}
+
+    monkeypatch.setattr("services.llm_gateway._provider_runtime_kwargs", no_runtime_kwargs)
 
     await embeddings(
         {
