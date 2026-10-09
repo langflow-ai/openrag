@@ -69,6 +69,27 @@ def test_router_url_derives_backend_host_on_router_port(monkeypatch):
     assert settings._derive_router_url() == "http://openrag-be:8100"
 
 
+def test_router_url_always_http_even_when_backend_internal_url_is_https(monkeypatch):
+    """Router is plain uvicorn HTTP — must not inherit https:// from the BE URL."""
+    monkeypatch.setattr(settings, "OPENRAG_BACKEND_INTERNAL_URL", "https://openrag-be:8000")
+    monkeypatch.setattr(settings, "OPENRAG_BACKEND_ROUTER_PORT", 8100)
+    assert settings._derive_router_url() == "http://openrag-be:8100"
+
+
+def test_router_upstream_url_derives_scheme_and_port(monkeypatch):
+    """Upstream is loopback inside the pod — tracks backend scheme and port."""
+    monkeypatch.setattr(settings, "OPENRAG_TLS_CERT_PATH", None)
+    monkeypatch.setattr(settings, "OPENRAG_BACKEND_INTERNAL_URL", "http://openrag-be:8000")
+    assert settings._derive_router_upstream_url() == "http://127.0.0.1:8000"
+
+    monkeypatch.setattr(settings, "OPENRAG_BACKEND_INTERNAL_URL", "https://openrag-be:8443")
+    assert settings._derive_router_upstream_url() == "https://127.0.0.1:8443"
+
+    monkeypatch.setattr(settings, "OPENRAG_TLS_CERT_PATH", "/app/certs/tls.crt")
+    monkeypatch.setattr(settings, "OPENRAG_BACKEND_INTERNAL_URL", "http://openrag-be:8000")
+    assert settings._derive_router_upstream_url() == "https://127.0.0.1:8000"
+
+
 # --- proxy behaviour --------------------------------------------------------
 
 
