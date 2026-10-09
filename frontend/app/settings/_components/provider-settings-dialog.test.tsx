@@ -1,4 +1,5 @@
 import { HttpResponse, http } from "msw";
+import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import type { UpdateSettingsRequest } from "@/app/api/mutations/useUpdateSettingsMutation";
 import { makeSettings } from "@/test-utils/fixtures/settings";
@@ -41,6 +42,12 @@ const catalog = {
           field_type: "text",
         },
         {
+          key: "project_id",
+          label: "Project ID",
+          required: false,
+          field_type: "text",
+        },
+        {
           key: "ssl_verify",
           label: "TLS certificate verification",
           required: false,
@@ -53,7 +60,86 @@ const catalog = {
   ],
 };
 
+const ProviderDialogHarness = () => {
+  const [open, setOpen] = useState(true);
+  return (
+    <ProviderSettingsDialog
+      provider="watsonx_onprem"
+      displayName="IBM watsonx.ai (on-prem)"
+      open={open}
+      setOpen={setOpen}
+    />
+  );
+};
+
 describe("ProviderSettingsDialog watsonx.ai on-prem TLS", () => {
+  it("shows TLS verification before the deployment scope fields", async () => {
+    const settings = makeSettings({
+      providers: {
+        custom: {
+          watsonx_onprem: {
+            configured: true,
+            auth_method: "username_api_key",
+            credential_values: {
+              api_base: "https://cpd.example.com",
+              username: "cpd-user",
+              ssl_verify: "true",
+            },
+            secret_fields: ["api_key"],
+          },
+        },
+      },
+    });
+
+    renderWithProviders(
+      <ProviderSettingsDialog
+        provider="watsonx_onprem"
+        displayName="IBM watsonx.ai (on-prem)"
+        open
+        setOpen={() => {}}
+      />,
+      {
+        providers: ["auth", "tooltip"],
+        handlers: [
+          http.get("/api/settings", () => HttpResponse.json(settings)),
+          http.get("/api/models/catalog", () => HttpResponse.json(catalog)),
+          http.post("/api/models/watsonx_onprem/spaces", () =>
+            HttpResponse.json({ spaces: [] }),
+          ),
+          http.post("/api/models/openai", () =>
+            HttpResponse.json({ models: [], embedding_models: [] }),
+          ),
+        ],
+      },
+    );
+
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Advanced settings" }),
+    );
+
+    const tlsToggle = screen.getByRole("switch", {
+      name: "Verify TLS certificates",
+    });
+    const deploymentSpace = screen.getByRole("combobox", {
+      name: "Deployment space ID",
+    });
+    const projectId = screen.getByRole("textbox", { name: "Project ID" });
+
+    expect(
+      tlsToggle.compareDocumentPosition(deploymentSpace) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      deploymentSpace.compareDocumentPosition(projectId) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      tlsToggle.compareDocumentPosition(projectId) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("submits the advanced TLS policy with only the on-prem provider", async () => {
     let submitted: UpdateSettingsRequest | undefined;
     const settings = makeSettings({
@@ -270,6 +356,94 @@ describe("ProviderSettingsDialog watsonx.ai on-prem TLS", () => {
       expect(submitted?.provider_credentials?.watsonx_onprem?.space_id).toBe(
         "space-prod",
       );
+    });
+  });
+  it("requires explicit confirmation when embedding usage cannot be determined", async () => {
+    const submissions: UpdateSettingsRequest[] = [];
+    const settings = makeSettings({
+      providers: {
+        openai: { configured: true },
+        custom: {
+          watsonx_onprem: {
+            configured: true,
+            auth_method: "username_api_key",
+            credential_values: {
+              api_base: "https://cpd.example.com",
+              username: "cpd-user",
+            },
+            secret_fields: ["api_key"],
+          },
+        },
+      },
+    });
+
+    renderWithProviders(<ProviderDialogHarness />, {
+      providers: ["auth", "tooltip"],
+      handlers: [
+        http.get("/api/settings", () => HttpResponse.json(settings)),
+        http.get("/api/models/catalog", () => HttpResponse.json(catalog)),
+        http.post("/api/models/watsonx_onprem/spaces", () =>
+          HttpResponse.json({ spaces: [] }),
+        ),
+        http.post("/api/settings", async ({ request }) => {
+          const submission = (await request.json()) as UpdateSettingsRequest;
+          submissions.push(submission);
+          if (!submission.force_remove) {
+            return HttpResponse.json(
+              {
+                error:
+                  "Could not verify whether indexed documents depend on IBM watsonx.ai.",
+                code: "embedding_usage_unknown",
+                affected_provider: "watsonx_onprem",
+                unresolved_legacy_models: ["shared-model"],
+              },
+              { status: 503 },
+            );
+          }
+          return HttpResponse.json({ message: "saved", settings });
+        }),
+        http.post("/api/models/openai", () =>
+          HttpResponse.json({ models: [], embedding_models: [] }),
+        ),
+      ],
+    });
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Remove" }));
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+
+    expect(
+      await screen.findByText(
+        /Could not verify whether indexed documents use this provider/,
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    await screen.findByText(
+      /Could not verify whether indexed documents use this provider/,
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: /Remove anyway/i }),
+    );
+
+    await waitFor(() => {
+      expect(submissions).toEqual([
+        {
+          remove_provider_config: "watsonx_onprem",
+          force_remove: false,
+        },
+        {
+          remove_provider_config: "watsonx_onprem",
+          force_remove: false,
+        },
+        {
+          remove_provider_config: "watsonx_onprem",
+          force_remove: true,
+        },
+      ]);
     });
   });
 });

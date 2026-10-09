@@ -19,15 +19,14 @@ from api.provider_validation import (
     validate_provider_setup,
 )
 from api.settings.helpers import (
-    _affected_embedding_models,
     _create_openrag_docs_filter,
     _default_embedding_model,
     _default_llm_model,
     _embedding_conflict_response,
+    _embedding_usage_unknown_response,
     _first_configured_embedding_provider,
     _first_configured_llm_provider,
     _get_flows_service,
-    _has_other_configured_provider,
 )
 from api.settings.langflow_sync import (
     _background_tasks,
@@ -67,6 +66,7 @@ from config.config_manager import (
     DEFAULT_SYSTEM_PROMPT,
     is_permitted_index_name,
 )
+from config.model_providers import provider_display_name
 from config.settings import (
     DEFAULT_DOCS_URL,
     ENVIRONMENT,
@@ -96,6 +96,7 @@ from dependencies import (
     get_knowledge_filter_service,
     get_langflow_file_service,
     get_models_service,
+    get_provider_removal_service,
     get_rbac_service,
     get_session_manager,
     get_task_service,
@@ -104,6 +105,7 @@ from dependencies import (
 from services import provider_error_log
 from services.docling_service import DoclingConfig, get_docling_preset_configs
 from services.model_catalog import secret_field_keys
+from services.provider_removal_service import ProviderRemovalStatus
 from services.rbac_service import is_rbac_enforced
 from session_manager import User
 from utils import provider_health_cache
@@ -126,6 +128,24 @@ def _provider_key(provider: str | None) -> str:
     "gemini".
     """
     return (provider or "").strip().lower()
+
+
+def _requested_removal_providers(body: SettingsUpdateBody, config) -> tuple[str, ...]:
+    """Configured providers this request intends to remove, in request order."""
+    providers: list[str] = []
+    for requested, provider in (
+        (body.remove_ollama_config, "ollama"),
+        (body.remove_openai_config, "openai"),
+        (body.remove_anthropic_config, "anthropic"),
+        (body.remove_watsonx_config, "watsonx"),
+    ):
+        if requested:
+            providers.append(provider)
+    if body.remove_provider_config:
+        provider = _provider_key(body.remove_provider_config)
+        if provider in config.providers.custom and provider not in providers:
+            providers.append(provider)
+    return tuple(providers)
 
 
 def _custom_providers_for_settings(openrag_config) -> dict[str, GenericProviderConfig]:
@@ -398,6 +418,7 @@ async def update_settings(
     user: User = Depends(require_permission("config:write")),
     models_service=Depends(get_models_service),
     rbac=Depends(get_rbac_service),
+    provider_removal_service=Depends(get_provider_removal_service),
 ) -> SettingsUpdateResponse:
     """Update settings in configuration"""
     try:
@@ -470,6 +491,56 @@ async def update_settings(
                     detail={"error": "permission_denied", "required": "providers:write"},
                 )
 
+        # Provider removal must be fully validated before this endpoint mutates
+        # config or updates Langflow. A failed or ambiguous provenance lookup is
+        # a fail-closed response unless the caller explicitly forces removal.
+        requested_removals = _requested_removal_providers(body, current_config)
+        decision = (
+            await provider_removal_service.evaluate(
+                requested_removals, current_config, force_remove=body.force_remove
+            )
+            if requested_removals
+            else None
+        )
+        if decision is not None and decision.status == ProviderRemovalStatus.NO_PROVIDER:
+            provider = decision.provider
+            if provider == "ollama":
+                error = (
+                    "Cannot remove Ollama configuration: configure another model provider first."
+                )
+            elif provider == "openai":
+                error = (
+                    "Cannot remove OpenAI configuration: configure another model provider first."
+                )
+            elif provider == "anthropic":
+                error = (
+                    "Cannot remove Anthropic configuration: configure another model provider first."
+                )
+            elif provider == "watsonx":
+                error = (
+                    "Cannot remove IBM watsonx.ai configuration: "
+                    "configure another model provider first."
+                )
+            else:
+                error = (
+                    "Cannot remove provider configuration: configure another model provider first."
+                )
+            return JSONResponse({"error": error}, status_code=400)
+
+        if decision is not None:
+            label = provider_display_name(decision.provider)
+            if decision.status == ProviderRemovalStatus.UNKNOWN:
+                return _embedding_usage_unknown_response(
+                    label,
+                    decision.provider,
+                    decision.unresolved_legacy_models,
+                )
+            if decision.status == ProviderRemovalStatus.IN_USE:
+                return _embedding_conflict_response(
+                    label,
+                    decision.provider,
+                    list(decision.affected_models),
+                )
         if should_validate:
             try:
                 logger.info("Running provider validation before modifying config")
@@ -679,15 +750,6 @@ async def update_settings(
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_SYSTEM_PROMPT
             )
-
-            # Also update the chat flow with the new system prompt
-            try:
-                flows_service = _get_flows_service()
-                await _update_langflow_system_prompt(working_config, flows_service)
-            except Exception as e:
-                logger.error(f"Failed to update chat flow system prompt: {str(e)}")
-                # Don't fail the entire settings update if flow update fails
-                # The config will still be saved
 
         # Update knowledge settings
         if body.embedding_model is not None:
@@ -978,19 +1040,6 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_ollama_config:
-            if not _has_other_configured_provider(working_config, "ollama"):
-                return JSONResponse(
-                    {
-                        "error": "Cannot remove Ollama configuration: configure another model provider first."
-                    },
-                    status_code=400,
-                )
-            if not body.force_remove:
-                affected = await _affected_embedding_models(
-                    "ollama", session_manager, user, models_service
-                )
-                if affected:
-                    return _embedding_conflict_response("Ollama", "ollama", affected)
             working_config.providers.ollama.endpoint = ""
             working_config.providers.ollama.configured = False
             if working_config.agent.llm_provider == "ollama":
@@ -1005,19 +1054,6 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_openai_config:
-            if not _has_other_configured_provider(working_config, "openai"):
-                return JSONResponse(
-                    {
-                        "error": "Cannot remove OpenAI configuration: configure another model provider first."
-                    },
-                    status_code=400,
-                )
-            if not body.force_remove:
-                affected = await _affected_embedding_models(
-                    "openai", session_manager, user, models_service
-                )
-                if affected:
-                    return _embedding_conflict_response("OpenAI", "openai", affected)
             working_config.providers.openai.api_key = ""
             working_config.providers.openai.configured = False
             if working_config.agent.llm_provider == "openai":
@@ -1032,13 +1068,6 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_anthropic_config:
-            if not _has_other_configured_provider(working_config, "anthropic"):
-                return JSONResponse(
-                    {
-                        "error": "Cannot remove Anthropic configuration: configure another model provider first."
-                    },
-                    status_code=400,
-                )
             working_config.providers.anthropic.api_key = ""
             working_config.providers.anthropic.configured = False
             if working_config.agent.llm_provider == "anthropic":
@@ -1050,19 +1079,6 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_watsonx_config:
-            if not _has_other_configured_provider(working_config, "watsonx"):
-                return JSONResponse(
-                    {
-                        "error": "Cannot remove IBM watsonx.ai configuration: configure another model provider first."
-                    },
-                    status_code=400,
-                )
-            if not body.force_remove:
-                affected = await _affected_embedding_models(
-                    "watsonx", session_manager, user, models_service
-                )
-                if affected:
-                    return _embedding_conflict_response("IBM watsonx.ai", "watsonx", affected)
             working_config.providers.watsonx.api_key = ""
             working_config.providers.watsonx.endpoint = ""
             working_config.providers.watsonx.project_id = ""
@@ -1081,16 +1097,6 @@ async def update_settings(
         if body.remove_provider_config:
             provider = body.remove_provider_config.strip().lower()
             if provider in working_config.providers.custom:
-                if not _has_other_configured_provider(working_config, provider):
-                    return JSONResponse(
-                        {
-                            "error": (
-                                "Cannot remove provider configuration: "
-                                "configure another model provider first."
-                            )
-                        },
-                        status_code=400,
-                    )
                 del working_config.providers.custom[provider]
                 if working_config.agent.llm_provider == provider:
                     fallback = _first_configured_llm_provider(working_config, provider)
@@ -1123,6 +1129,13 @@ async def update_settings(
 
         # Refresh patched client immediately so subsequent requests pick up latest config.
         await clients.refresh_patched_client()
+
+        if body.system_prompt is not None:
+            try:
+                flows_service = _get_flows_service()
+                await _update_langflow_system_prompt(working_config, flows_service)
+            except Exception as e:
+                logger.error(f"Failed to update chat flow system prompt: {str(e)}")
 
         # Run expensive Langflow sync in the background to keep settings updates responsive.
         if should_validate or provider_updated:

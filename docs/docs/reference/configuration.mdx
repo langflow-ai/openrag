@@ -83,6 +83,12 @@ searchable: `text-embedding-3-small` is treated as OpenAI, while other legacy mo
 `OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP`. If a legacy provider cannot be resolved, OpenRAG skips its
 vector query but keeps those documents eligible for keyword search.
 
+Removing providers through Settings or the settings APIs (`/settings` and
+`/v1/settings`) requires at least one embedding-capable provider to remain
+configured. This applies to all providers removed in a single request, even
+with `force_remove=true`; that override only skips the check for indexed
+embeddings that still depend on a removed provider.
+
 ### Provider visibility per run mode {#model-provider-visibility}
 
 Which providers appear in **Settings**, in onboarding, and in the model pickers
