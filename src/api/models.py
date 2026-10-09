@@ -65,6 +65,10 @@ class ModelDiscoveryBody(BaseModel):
 _CREDENTIAL_TARGET_FIELDS = ("api_base", "embedding_api_base", "ssl_verify")
 
 
+class InvalidAuthMethodError(ValueError):
+    """The form named an auth method its provider does not offer — a client error."""
+
+
 def _draft_credentials(
     enhancement: ModuleType, submitted: Mapping[str, str], auth_method: str | None
 ) -> dict[str, Any]:
@@ -76,6 +80,8 @@ def _draft_credentials(
     stored value, so a saved token is never sent somewhere it was not saved for.
     Only the fields the provider's form defines (for the chosen auth method,
     where it has several) are kept.
+
+    Raises `InvalidAuthMethodError` when the provider rejects `auth_method`.
     """
     config = get_openrag_config()
     stored = config.providers.stored_credentials(enhancement.PROVIDER_KEY)
@@ -85,7 +91,10 @@ def _draft_credentials(
         method = auth_method or getattr(stored_config, "auth_method", None)
         if method is None:
             method = "zen_api_key" if stored.get("zen_api_key") else "username_api_key"
-        allowed = set(fields_for_auth_method(method))
+        try:
+            allowed = set(fields_for_auth_method(method))
+        except ValueError as exc:
+            raise InvalidAuthMethodError(str(exc)) from exc
     else:
         allowed = {str(field["key"]) for field in enhancement.CREDENTIAL_FIELDS}
     typed = {
@@ -301,6 +310,9 @@ async def get_watsonx_onprem_spaces(
         else:
             error = "Unable to list deployment spaces from the cluster."
         return JSONResponse({"error": error}, status_code=status_code)
+    except InvalidAuthMethodError as exc:
+        logger.warning("watsonx.ai on-prem space discovery named an unknown auth method")
+        return JSONResponse({"error": str(exc)}, status_code=400)
     except Exception as exc:
         logger.error("Failed to list watsonx.ai on-prem spaces", exc_info=exc)
         return JSONResponse(
@@ -342,6 +354,9 @@ async def discover_provider_models(
             discovered_model_payload(key, listed),
             headers={"Cache-Control": "no-store"},
         )
+    except InvalidAuthMethodError as exc:
+        logger.warning("Model discovery named an unknown auth method", provider=key)
+        return JSONResponse({"error": str(exc)}, status_code=400)
     except Exception as exc:
         logger.error("Failed to discover provider models", provider=key, exc_info=exc)
         return JSONResponse(

@@ -223,6 +223,30 @@ async def test_an_unexpected_failure_is_not_echoed(tmp_path, monkeypatch):
     assert b"exposed-secret" not in response.body
 
 
+@pytest.mark.asyncio
+async def test_an_unknown_auth_method_is_a_client_error(tmp_path, monkeypatch):
+    """A bad request, not a server fault: 400 with the provider's message."""
+    _offer_rhoai(tmp_path, monkeypatch)
+    _saved(monkeypatch)
+    _listing(monkeypatch, rhoai.ClusterModels(chat=("x",), embedding=None))
+
+    def _fields(method):
+        raise ValueError("Choose a valid authentication method")
+
+    monkeypatch.setattr(rhoai, "credential_fields_for_auth_method", _fields, raising=False)
+
+    response = await models_api.discover_provider_models(
+        "rhoai",
+        body=models_api.ModelDiscoveryBody(
+            credentials={"api_base": CHAT_BASE, "api_key": "t"}, auth_method="bogus"
+        ),
+        user=SimpleNamespace(),
+    )
+
+    assert response.status_code == 400
+    assert json.loads(response.body) == {"error": "Choose a valid authentication method"}
+
+
 def test_the_catalogue_says_which_providers_can_discover(tmp_path, monkeypatch):
     _offer_rhoai(tmp_path, monkeypatch)
 
