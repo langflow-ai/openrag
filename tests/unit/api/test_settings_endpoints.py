@@ -791,6 +791,145 @@ async def test_onboarding_caps_chunk_size_for_watsonx_onprem_embeddings():
     assert response.chunk_size_adjusted_to == 500
 
 
+async def _onboard_embedding_model_only(config, embedding_model: str):
+    """Run onboarding with only `embedding_model` set; return (saved config, response)."""
+    from api.settings.endpoints import onboarding
+
+    body = OnboardingBody(embedding_model=embedding_model)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.INGEST_SAMPLE_DATA", False),
+        patch(
+            "api.settings.endpoints.TelemetryClient.send_event",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.validate_provider_setup",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.wait_for_langflow",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints._update_langflow_global_variables",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints._update_mcp_server_urls",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints._update_langflow_model_values",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.config_manager.save_config_file",
+            return_value=True,
+        ) as save_config,
+        patch(
+            "api.settings.endpoints.clients.refresh_patched_client",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.clients.create_index_admin_opensearch_client",
+            return_value=MagicMock(),
+        ),
+        patch("main.init_index", new_callable=AsyncMock),
+    ):
+        response = await onboarding(
+            body=body,
+            flows_service=MagicMock(),
+            session_manager=AsyncMock(),
+            document_service=MagicMock(),
+            models_service=MagicMock(),
+            task_service=MagicMock(),
+            langflow_file_service=MagicMock(),
+            knowledge_filter_service=MagicMock(),
+            user=MagicMock(spec=User),
+        )
+
+    return save_config.call_args.args[0], response
+
+
+@pytest.mark.asyncio
+async def test_onboarding_caps_chunk_size_for_model_only_watsonx_onprem_update():
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.knowledge.embedding_provider = "watsonx_onprem"
+    config.knowledge.chunk_size = 1000
+    config.knowledge.chunk_overlap = 100
+
+    saved_config, response = await _onboard_embedding_model_only(
+        config, "ibm/slate-30m-english-rtrvr"
+    )
+
+    assert saved_config.knowledge.embedding_provider == "watsonx_onprem"
+    assert saved_config.knowledge.chunk_size == 500
+    assert saved_config.knowledge.chunk_overlap == 100
+    assert response.chunk_size_adjusted_to == 500
+
+
+@pytest.mark.asyncio
+async def test_onboarding_resets_oversized_overlap_for_model_only_watsonx_onprem_update():
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.knowledge.embedding_provider = "watsonx_onprem"
+    config.knowledge.chunk_size = 1000
+    config.knowledge.chunk_overlap = 600
+
+    saved_config, response = await _onboard_embedding_model_only(
+        config, "ibm/slate-30m-english-rtrvr"
+    )
+
+    assert saved_config.knowledge.chunk_size == 500
+    assert saved_config.knowledge.chunk_overlap == 200
+    assert response.chunk_size_adjusted_to == 500
+
+
+@pytest.mark.asyncio
+async def test_onboarding_keeps_chunk_size_for_model_only_update_of_other_provider():
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.knowledge.embedding_provider = "openai"
+    config.knowledge.chunk_size = 1000
+    config.knowledge.chunk_overlap = 600
+
+    saved_config, response = await _onboard_embedding_model_only(config, "text-embedding-3-small")
+
+    assert saved_config.knowledge.chunk_size == 1000
+    assert saved_config.knowledge.chunk_overlap == 600
+    assert response.chunk_size_adjusted_to is None
+
+
+@pytest.mark.parametrize(
+    ("provider", "chunk_size", "chunk_overlap", "expected"),
+    [
+        ("watsonx_onprem", 1000, 100, (500, 100, 500)),
+        (" WatsonX_OnPrem ", 1000, 500, (500, 200, 500)),
+        ("watsonx_onprem", 500, 100, (500, 100, None)),
+        ("watsonx", 1000, 600, (1000, 600, None)),
+        (None, 1000, 600, (1000, 600, None)),
+    ],
+)
+def test_cap_watsonx_onprem_onboarding_chunk_size(provider, chunk_size, chunk_overlap, expected):
+    from api.settings.endpoints import _cap_watsonx_onprem_onboarding_chunk_size
+    from config.config_manager import OpenRAGConfig
+
+    knowledge = OpenRAGConfig.from_dict({}).knowledge
+    knowledge.embedding_provider = provider
+    knowledge.chunk_size = chunk_size
+    knowledge.chunk_overlap = chunk_overlap
+
+    adjusted_to = _cap_watsonx_onprem_onboarding_chunk_size(knowledge)
+
+    assert (knowledge.chunk_size, knowledge.chunk_overlap, adjusted_to) == expected
+
+
 async def _save_settings(body: SettingsUpdateBody) -> None:
     from api.settings.endpoints import update_settings
     from config.config_manager import OpenRAGConfig
