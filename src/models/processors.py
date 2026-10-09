@@ -1193,65 +1193,55 @@ class ConnectorFileProcessor(TaskProcessor):
             # Get file content from connector
             try:
                 document = await connector.get_file_content(file_id)
-            except (FileNotFoundError, ValueError) as e:
-                msg = str(e).lower()
-                if "not found" in msg or "404" in msg:
-                    # File gone at source — remove its indexed chunks by the
-                    # stable connector id (matches both connector_file_id and
-                    # document_id) so it stops appearing in search/chat.
-                    opensearch_client = (
-                        self.document_service.session_manager.get_user_opensearch_client(
-                            self.user_id, self.jwt_token
-                        )
+            except FileNotFoundError as e:
+                # Only an explicit missing-file signal authorizes indexed cleanup.
+                # Invalid scope and transient failures must leave chunks intact.
+                opensearch_client = (
+                    self.document_service.session_manager.get_user_opensearch_client(
+                        self.user_id, self.jwt_token
                     )
-                    try:
-                        deleted_chunks = await self._delete_connector_chunks(
-                            file_id,
-                            opensearch_client,
-                            self.user_id,
-                            shared=await self._resolve_shared(
-                                file_id, opensearch_client, connector_type
-                            ),
-                            connector_type=connector_type,
-                            ignore_errors=False,
-                        )
-                    except Exception:
-                        file_task.status = TaskStatus.FAILED
-                        file_task.error = (
-                            "File no longer exists at source, but removing it "
-                            "from the index failed."
-                        )
-                        file_task.updated_at = time.time()
-                        upload_task.failed_files += 1
-                        return
-
-                    logger.info(
-                        "File no longer exists at source — removed from index",
-                        file_id=file_id,
-                        connection_id=self.connection_id,
-                        deleted_chunks=deleted_chunks,
-                        source_error=str(e),
-                    )
-                    # Successful cleanup: the file is gone at the source and its
-                    # chunks were removed. Mark completed (not skipped) so the
-                    # tasks view does not treat this as a warning. Enhanced
-                    # listing still surfaces this reason so the dialog can show
-                    # it as Removed instead of omitting it like a normal ingest.
-                    file_task.status = TaskStatus.COMPLETED
-                    file_task.error = None
-                    file_task.result = {
-                        "status": "completed",
-                        "reason": "deleted_at_source",
-                        "deleted_chunks": deleted_chunks,
-                        "message": (
-                            f"File no longer exists at source; removed from index "
-                            f"({deleted_chunks} chunk(s) deleted)."
+                )
+                try:
+                    deleted_chunks = await self._delete_connector_chunks(
+                        file_id,
+                        opensearch_client,
+                        self.user_id,
+                        shared=await self._resolve_shared(
+                            file_id, opensearch_client, connector_type
                         ),
-                    }
+                        connector_type=connector_type,
+                        ignore_errors=False,
+                    )
+                except Exception:
+                    file_task.status = TaskStatus.FAILED
+                    file_task.error = (
+                        "File no longer exists at source, but removing it from the index failed."
+                    )
                     file_task.updated_at = time.time()
-                    upload_task.successful_files += 1
+                    upload_task.failed_files += 1
                     return
-                raise
+
+                logger.info(
+                    "File no longer exists at source — removed from index",
+                    file_id=file_id,
+                    connection_id=self.connection_id,
+                    deleted_chunks=deleted_chunks,
+                    source_error=str(e),
+                )
+                file_task.status = TaskStatus.COMPLETED
+                file_task.error = None
+                file_task.result = {
+                    "status": "completed",
+                    "reason": "deleted_at_source",
+                    "deleted_chunks": deleted_chunks,
+                    "message": (
+                        f"File no longer exists at source; removed from index "
+                        f"({deleted_chunks} chunk(s) deleted)."
+                    ),
+                }
+                file_task.updated_at = time.time()
+                upload_task.successful_files += 1
+                return
 
             # Update filename in task once we have it from the connector
             file_task.filename = clean_connector_filename(document.filename, document.mimetype)

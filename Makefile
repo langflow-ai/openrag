@@ -847,6 +847,14 @@ backend: ## Run backend locally
 	@$(call fix_backend_volume_ownership)
 	uv run python src/main.py
 
+backend-sharepoint-onprem: ## Run host backend with the opt-in SharePoint Server NTLM package
+	@echo "$(YELLOW)Starting backend with the SharePoint Server NTLM connector...$(NC)"
+	@if [ ! -f $(ENV_FILE) ]; then echo "$(RED)$(ENV_FILE) file not found. Copy .env.example to it first$(NC)"; exit 1; fi
+	@$(call fix_backend_volume_ownership)
+	uv sync --frozen
+	uv pip install --python .venv/bin/python -e customer_connectors/sharepoint_onprem
+	OPENRAG_CONNECTOR_PLUGINS=sharepoint_onprem uv run --no-sync python src/main.py
+
 frontend: ## Run frontend locally
 	@echo "$(YELLOW)Starting frontend locally...$(NC)"
 	@if [ ! -d "frontend/node_modules" ]; then echo "$(YELLOW)Installing frontend dependencies first...$(NC)"; cd frontend && npm install; fi

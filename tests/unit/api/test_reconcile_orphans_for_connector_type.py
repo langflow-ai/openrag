@@ -408,6 +408,59 @@ async def test_multi_connection_one_offline_aborts_even_if_other_succeeds():
 
 
 @pytest.mark.asyncio
+async def test_sharepoint_onprem_reconcile_only_deletes_confirmed_file_404(monkeypatch):
+    from api.connectors import reconcile_orphans_for_connector_type
+
+    conn = _make_connection("c1")
+    connector = _make_connector(remote_file_ids=["visible"])
+    connector.is_definitively_missing = AsyncMock(side_effect=lambda fid: fid == "deleted")
+    service = _make_service([conn], {"c1": connector})
+    client = _make_opensearch_client(chunk_ids=["chunk-deleted"])
+    write_client = _patch_write_client(monkeypatch)
+
+    result = await reconcile_orphans_for_connector_type(
+        connector_type="sharepoint_onprem",
+        user_id="alice",
+        connector_service=service,
+        session_manager=_make_session_manager(client),
+        jwt_token=None,
+        existing_file_ids=["visible", "scope-trimmed", "deleted"],
+    )
+
+    assert result == ["deleted"]
+    assert connector.is_definitively_missing.await_count == 2
+    shoulds = client.search.await_args.kwargs["body"]["query"]["bool"]["filter"][0]["bool"][
+        "should"
+    ]
+    assert {tuple(next(iter(term["terms"].values()))) for term in shoulds} == {("deleted",)}
+    assert write_client.delete.await_args.kwargs["id"] == "chunk-deleted"
+
+
+@pytest.mark.asyncio
+async def test_sharepoint_onprem_reconcile_preserves_file_when_other_connection_cannot_prove_missing():
+    from api.connectors import reconcile_orphans_for_connector_type
+
+    connectors = [_make_connector([]), _make_connector([])]
+    connectors[0].is_definitively_missing = AsyncMock(return_value=True)
+    connectors[1].is_definitively_missing = AsyncMock(return_value=False)
+    service = _make_service(
+        [_make_connection("c1"), _make_connection("c2")],
+        {"c1": connectors[0], "c2": connectors[1]},
+    )
+    client = _make_opensearch_client()
+    result = await reconcile_orphans_for_connector_type(
+        connector_type="sharepoint_onprem",
+        user_id="alice",
+        connector_service=service,
+        session_manager=_make_session_manager(client),
+        jwt_token=None,
+        existing_file_ids=["file"],
+    )
+    assert result == []
+    client.search.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_paginated_listing_aggregates_all_pages():
     """Connectors without cfg (e.g. bucket connectors) use the paginated
     list_files() path.  Verify that all pages are consumed."""

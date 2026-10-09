@@ -8,6 +8,7 @@ import { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 import { useGetConnectorsQuery } from "@/app/api/queries/useGetConnectorsQuery";
 import { useGetConnectorTokenQuery } from "@/app/api/queries/useGetConnectorTokenQuery";
 import { type CloudFile, UnifiedCloudPicker } from "@/components/cloud-picker";
+import { PluginHierarchyPicker } from "@/components/cloud-picker/plugin-hierarchy-picker";
 import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
 import { Button } from "@/components/ui/button";
@@ -43,7 +44,11 @@ export default function UploadProviderPage() {
   const connector = connectors.find((c) => c.type === provider);
   const descriptor = getConnectorDescriptor(provider);
   const isDirectSyncProvider = descriptor?.kind === "bucket";
-
+  const isPluginPicker =
+    !descriptor &&
+    (connector?.browseCapability === "hierarchical" ||
+      connector?.browseCapability === "flat");
+  const isUnknownConnector = !descriptor;
   const { data: tokenData, isLoading: tokenLoading } =
     useGetConnectorTokenQuery(
       {
@@ -55,11 +60,12 @@ export default function UploadProviderPage() {
             : undefined,
       },
       {
-        // Bucket-kind connectors sync entire buckets and don't use OAuth tokens.
+        // Credential-backed hierarchy plugins have a server-side picker, not an OAuth token.
         enabled:
           !!connector &&
           connector.status === "connected" &&
-          !isDirectSyncProvider,
+          !isDirectSyncProvider &&
+          !isUnknownConnector,
       },
     );
 
@@ -80,7 +86,8 @@ export default function UploadProviderPage() {
 
   const accessToken = tokenData?.access_token || null;
   const isLoading =
-    connectorsLoading || (!isDirectSyncProvider && tokenLoading);
+    connectorsLoading ||
+    (!isDirectSyncProvider && !isUnknownConnector && tokenLoading);
   const isIngesting = syncMutation.isPending;
 
   // Error handling
@@ -348,7 +355,25 @@ export default function UploadProviderPage() {
     );
   }
 
-  if (!accessToken) {
+  if (isUnknownConnector && !isPluginPicker) {
+    return (
+      <p role="alert">
+        This connector does not support browsing files. Configure an available
+        file-source connector in Settings.
+      </p>
+    );
+  }
+
+  if (isPluginPicker && !connector.connectionId) {
+    return (
+      <p role="alert">
+        No active connection was found for {connector.name}. Configure this
+        connector in Settings.
+      </p>
+    );
+  }
+
+  if (!accessToken && !isPluginPicker) {
     return (
       <>
         <div className="mb-6">
@@ -395,20 +420,30 @@ export default function UploadProviderPage() {
       </div>
 
       <div className="max-w-3xl mx-auto">
-        <UnifiedCloudPicker
-          provider={
-            connector.type as "google_drive" | "onedrive" | "sharepoint"
-          }
-          onFileSelected={handleFileSelected}
-          selectedFiles={selectedFiles}
-          isAuthenticated={true}
-          isIngesting={isIngesting}
-          accessToken={accessToken || undefined}
-          clientId={connector.clientId}
-          baseUrl={connector.baseUrl}
-          ingestSettings={ingestSettings}
-          onIngestSettingsChange={setIngestSettings}
-        />
+        {isPluginPicker ? (
+          <PluginHierarchyPicker
+            provider={connector.type}
+            connectionId={connector.connectionId!}
+            selectedFiles={selectedFiles}
+            onFileSelected={handleFileSelected}
+            isIngesting={isIngesting}
+          />
+        ) : (
+          <UnifiedCloudPicker
+            provider={
+              connector.type as "google_drive" | "onedrive" | "sharepoint"
+            }
+            onFileSelected={handleFileSelected}
+            selectedFiles={selectedFiles}
+            isAuthenticated={true}
+            isIngesting={isIngesting}
+            accessToken={accessToken || undefined}
+            clientId={connector.clientId}
+            baseUrl={connector.baseUrl}
+            ingestSettings={ingestSettings}
+            onIngestSettingsChange={setIngestSettings}
+          />
+        )}
       </div>
 
       <div className="max-w-3xl mx-auto mt-6 sticky bottom-0 left-0 right-0 pb-6 bg-background pt-4">
