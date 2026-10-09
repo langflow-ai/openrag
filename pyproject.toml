@@ -87,6 +87,11 @@ apm = ["instana>=3.17.0,<4"]
 tracing = [
     "langfuse>=4.16,<5",
 ]
+# Oracle OCI SDK, used only to build the instance / workload principal signer for
+# the OCI Generative AI provider (API-key auth needs none of it). It is large and
+# pins its own crypto dependencies, so it is not installed by default. The
+# provider degrades to a clear "install oci" error without it.
+oci = ["oci>=2.150.0,<3"]
 
 [dependency-groups]
 dev = [
@@ -98,6 +103,8 @@ dev = [
     "mypy>=2.0.0",
     # The tracing extra, so its unit tests (tests/unit/observability) run.
     "langfuse>=4.16,<5",
+    # the OCI provider tests build its signers against the real SDK
+    "oci>=2.150.0,<3",
 ]
 
 [project.scripts]

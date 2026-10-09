@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { LabelInput } from "@/components/label-input";
+import { LabelWrapper } from "@/components/label-wrapper";
 import type { CatalogCredentialField } from "@/components/models/catalog-models";
 import {
   AZURE_AUTH_GROUPS,
@@ -13,6 +14,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { Textarea } from "@/components/ui/textarea";
 
 export function GenericProviderCredentialFields({
   provider,
@@ -137,16 +139,39 @@ export function GenericCredentialInput({
   const hasSaved = isSecret && hasSavedSecret;
   return (
     <div className="space-y-1">
-      <LabelInput
-        label={field.label}
-        helperText={field.tooltip ?? ""}
-        id={id}
-        type={field.field_type === "password" ? "password" : "text"}
-        required={field.required && !hasSaved}
-        placeholder={hasSaved ? "•••••••••" : (field.placeholder ?? undefined)}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
+      {field.field_type === "textarea" ? (
+        // A single-line input strips the newlines of a pasted PEM key.
+        <LabelWrapper
+          label={field.label}
+          helperText={field.tooltip ?? ""}
+          id={id}
+          required={field.required && !hasSaved}
+        >
+          <Textarea
+            id={id}
+            data-testid={id}
+            required={field.required && !hasSaved}
+            placeholder={
+              hasSaved ? "•••••••••" : (field.placeholder ?? undefined)
+            }
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+          />
+        </LabelWrapper>
+      ) : (
+        <LabelInput
+          label={field.label}
+          helperText={field.tooltip ?? ""}
+          id={id}
+          type={field.field_type === "password" ? "password" : "text"}
+          required={field.required && !hasSaved}
+          placeholder={
+            hasSaved ? "•••••••••" : (field.placeholder ?? undefined)
+          }
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
       {hasSaved && (
         <p className="text-mmd text-muted-foreground">
           A value is already saved. Leave this blank to keep it.
