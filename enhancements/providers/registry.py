@@ -13,12 +13,14 @@ from collections.abc import Mapping
 from types import ModuleType
 from typing import Any, Literal
 
+from enhancements.providers.oracle import oci_genai
 from enhancements.providers.redhat import openshift_ai
 from enhancements.providers.watsonx import onprem
 
 CallKind = Literal["chat", "embedding"]
 
 _ENHANCEMENTS: dict[str, ModuleType] = {
+    oci_genai.PROVIDER_KEY: oci_genai,
     onprem.PROVIDER_KEY: onprem,
     openshift_ai.PROVIDER_KEY: openshift_ai,
 }

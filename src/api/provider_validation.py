@@ -329,6 +329,7 @@ async def _probe_provider_credential_error(
     embedding_model: str | None = None,
     llm_model: str | None = None,
     credentials: dict[str, str] | None = None,
+    stored_credentials: dict[str, str] | None = None,
 ) -> str | None:
     """Run a lightweight provider check; return a cleaned credential error if auth fails."""
     if not provider:
@@ -343,6 +344,7 @@ async def _probe_provider_credential_error(
             project_id=project_id,
             test_completion=False,
             credentials=credentials,
+            stored_credentials=stored_credentials,
         )
     except Exception as probe_exc:
         cleaned = sanitize_provider_error_content(probe_exc)
@@ -385,6 +387,12 @@ def _provider_probe_inputs(
     )
     project_id = getattr(provider_config, "project_id", None) or credentials.get("project_id")
     return api_key, endpoint, project_id, credentials
+
+
+def _stored_for_probe(config: Any, provider: str) -> dict[str, str] | None:
+    """The untranslated form a provider enhancement's checks read (`stored_credentials`)."""
+    stored = getattr(getattr(config, "providers", None), "stored_credentials", None)
+    return stored(provider) if callable(stored) else None
 
 
 async def probe_provider_credential_error() -> str | None:
@@ -442,6 +450,7 @@ async def probe_provider_credential_error() -> str | None:
             embedding_model=embedding_model,
             llm_model=llm_model,
             credentials=credentials,
+            stored_credentials=_stored_for_probe(config, provider),
         )
         if error:
             return error
@@ -490,6 +499,7 @@ async def probe_chat_llm_error() -> str | None:
             project_id=project_id,
             test_completion=True,
             credentials=credentials,
+            stored_credentials=_stored_for_probe(config, provider),
         )
     except Exception as probe_exc:
         return sanitize_provider_error_content(probe_exc)
@@ -531,6 +541,7 @@ async def probe_embedding_error() -> str | None:
             project_id=project_id,
             test_completion=True,
             credentials=credentials,
+            stored_credentials=_stored_for_probe(config, provider),
         )
     except Exception as probe_exc:
         return sanitize_provider_error_content(probe_exc)
