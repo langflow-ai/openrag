@@ -226,10 +226,11 @@ def _model_entry(name: str, info: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
-def _excluded(name: str, patterns: tuple[str, ...]) -> bool:
-    """Whether a model id is one the config file keeps out of the pickers.
+def _matches(name: str, patterns: tuple[str, ...]) -> bool:
+    """Whether a model id matches a config pattern list.
 
-    Matched on the id as the picker shows it — `gpt-3.5-turbo`, not
+    Used for `exclude_models` (ids kept out of the pickers) and `vision_models`
+    (ids tagged as accepting images). Matched on the id as the picker shows it — `gpt-3.5-turbo`, not
     `openai/gpt-3.5-turbo` — because that is the name an operator reads off the
     screen when deciding what to suppress. `*` and `?` work, so a whole
     generation goes in one line.
@@ -254,6 +255,19 @@ def _declared_entries(names: tuple[str, ...], mode: str) -> list[dict[str, Any]]
     and the mode are known here — no pricing, no capability flags.
     """
     return [{"model": name, "mode": mode} for name in names]
+
+
+def _with_vision(entry: dict[str, Any]) -> dict[str, Any]:
+    """`entry` with the `vision` capability, for a config `vision_models:` match.
+
+    LiteLLM's table lags the providers: watsonx.ai serves Llama 4 Maverick and
+    Mistral Small 3.1 with image input, but the table flags neither, while
+    every watsonx id it does flag has been withdrawn.
+    """
+    capabilities = entry.get("capabilities") or []
+    if "vision" in capabilities:
+        return entry
+    return {**entry, "capabilities": [*capabilities, "vision"]}
 
 
 @lru_cache(maxsize=8)
@@ -305,7 +319,7 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
         bucket.setdefault(provider, []).append(_model_entry(name, info))
 
     entries = []
-    for key, display_name, declared_chat, declared_embed, excluded in providers:
+    for key, display_name, declared_chat, declared_embed, excluded, vision in providers:
         if not is_known_provider(key):
             # The catalogue would still render, but `split_model_id` cannot
             # recognise the prefix, so every id would be billed to the default
@@ -327,8 +341,11 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
         # Applied last, so `exclude_models` also wins over a `models:` row —
         # a deployment that suppresses an id means it, wherever the id came
         # from, and the alternative is two lines that quietly contradict.
-        chat = [entry for entry in chat if not _excluded(entry["model"], excluded)]
-        embed = [entry for entry in embed if not _excluded(entry["model"], excluded)]
+        chat = [entry for entry in chat if not _matches(entry["model"], excluded)]
+        embed = [entry for entry in embed if not _matches(entry["model"], excluded)]
+        chat = [
+            _with_vision(entry) if _matches(entry["model"], vision) else entry for entry in chat
+        ]
         entries.append(
             {
                 "key": key,
@@ -399,7 +416,7 @@ def hide_excluded_live_models(provider: str, payload: Any) -> Any:
         filtered[key] = [
             model
             for model in models
-            if not _excluded(str((model or {}).get("value", "")), patterns)
+            if not _matches(str((model or {}).get("value", "")), patterns)
             if isinstance(model, dict)
         ]
     return filtered

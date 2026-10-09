@@ -310,3 +310,19 @@ def test_exclusions_default_to_none_and_ignore_a_non_list(monkeypatch, tmp_path)
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
 
     assert model_providers.visible_provider_entries()[0].exclude_models == ()
+
+
+def test_a_row_can_declare_vision_models_by_pattern(monkeypatch, tmp_path):
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write(
+            tmp_path,
+            "providers:\n  - name: watsonx\n    modes:\n      oss: true\n"
+            "    vision_models:\n      - Meta-Llama/llama-4-*\n",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    entry = model_providers.visible_provider_entries()[0]
+    assert entry.vision_models == ("meta-llama/llama-4-*",)
+    assert entry.exclude_models == ()
