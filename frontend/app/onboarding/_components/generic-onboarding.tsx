@@ -2,21 +2,18 @@ import {
   type Dispatch,
   type SetStateAction,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { useDiscoverProviderModelsQuery } from "@/app/api/queries/useDiscoverProviderModelsQuery";
 import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { LabelInput } from "@/components/label-input";
 import {
   onboardingCredentialFields,
-  providerCatalogOptions,
-  providerDiscoversModels,
   type SavedProvidersSnapshot,
   savedCredentialValuesForProvider,
   savedSecretFieldsForProvider,
-  withDiscoveredModels,
 } from "@/components/models/catalog-models";
 import {
   getProviderChrome,
@@ -24,11 +21,11 @@ import {
 } from "@/components/models/model-helpers";
 import { WatsonxSpaceSelect } from "@/components/models/watsonx-space-select";
 import { WatsonxTlsSettings } from "@/components/models/watsonx-tls-settings";
-import { useDebouncedValue } from "@/lib/debounce";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { AdvancedOnboarding } from "./advanced";
 import { GenericProviderCredentialFields } from "./generic-provider-credential-fields";
 import { activeCredentialKeys } from "./generic-provider-credential-fields.helpers";
+import { useOnboardingModelDiscovery } from "./use-onboarding-model-discovery";
 
 /**
  * Onboarding step for a provider with no hand-built component.
@@ -71,7 +68,6 @@ export function GenericOnboarding({
 
   const [credentials, setCredentials] =
     useState<Record<string, string>>(savedCredentials);
-  const [model, setModel] = useState("");
   const [azureAuthMethod, setAzureAuthMethod] = useState(
     providers?.custom?.[provider]?.auth_method ?? "api_key",
   );
@@ -147,99 +143,52 @@ export function GenericOnboarding({
     });
   };
 
-  // A cluster-hosted provider serves whatever its operator deployed, and the
-  // catalogue can only list it once credentials are saved. Ask the cluster
-  // with what has been typed so far, so the picker offers what it serves
-  // rather than the configured fallback.
-  const discovers = providerDiscoversModels(catalog, provider);
-  const active = activeCredentialKeys(
+  const {
+    discovers,
+    models,
+    status: discoveryStatus,
+    inFlight: discoveryInFlight,
+  } = useOnboardingModelDiscovery({
+    catalog,
     provider,
-    azureAuthMethod,
-    onPremAuthMethod,
-  );
-  const typedCredentials: Record<string, string> = {};
-  for (const [key, value] of Object.entries(credentials)) {
-    const trimmed = (value ?? "").trim();
-    if (trimmed && (!active || active.has(key)))
-      typedCredentials[key] = trimmed;
-  }
-  // Debounced as a string: a fresh object each render would reset the timer.
-  const discoveryKey = useDebouncedValue(JSON.stringify(typedCredentials), 500);
-  const discoveryCredentials = useMemo(
-    () => JSON.parse(discoveryKey) as Record<string, string>,
-    [discoveryKey],
-  );
-  const hasValue = (key: string) =>
-    Boolean(discoveryCredentials[key]) || savedSecrets.has(key);
-  const activeFields = fields.filter(
-    (field) => !active || active.has(field.key),
-  );
-  const discoveryReady =
-    discovers &&
-    activeFields.every((field) => !field.required || hasValue(field.key)) &&
-    activeFields
-      .filter((field) => field.field_type === "password")
-      .every((field) => hasValue(field.key));
-  const discovery = useDiscoverProviderModelsQuery(
-    {
+    isEmbedding,
+    fields,
+    credentials,
+    activeKeys: activeCredentialKeys(
       provider,
-      credentials: discoveryCredentials,
-      authMethod: provider === "watsonx_onprem" ? onPremAuthMethod : undefined,
-    },
-    { enabled: discoveryReady },
-  );
-  const discovered = discoveryReady ? discovery.data : undefined;
-  const discoveredHalf = isEmbedding
-    ? discovered?.embedding_models
-    : discovered?.models;
-  // No answer yet for the credentials as typed. A changed credential starts a
-  // new query with no data, so the picker briefly shows the configured rows.
-  const discoveryInFlight =
-    discoveryReady && (discovery.isPending || discovery.isFetching);
+      azureAuthMethod,
+      onPremAuthMethod,
+    ),
+    savedSecrets,
+    authMethod: provider === "watsonx_onprem" ? onPremAuthMethod : undefined,
+  });
 
-  const models = useMemo(
-    () =>
-      providerCatalogOptions(
-        withDiscoveredModels(catalog, provider, discovered),
-        provider,
-        isEmbedding ? "embedding" : "language",
-      ),
-    [catalog, provider, isEmbedding, discovered],
-  );
-
+  // Only the user's own pick is state; otherwise the model follows the list.
   // Azure's catalogue lists model families, not this customer's deployments,
-  // so require an explicit choice. Other providers still default to the
-  // highest-ranked model when the catalogue loads or provider changes.
-  const defaultedModelRef = useRef<string | undefined>(undefined);
-  // Whether the current model was picked here rather than by the user. An
-  // automatic choice follows the list: when discovery replaces the configured
-  // fallback, a model the cluster does not serve must not stay selected.
-  const autoSelectedRef = useRef(false);
+  // so it requires an explicit choice. Other providers default to the
+  // highest-ranked model, which tracks the list as discovery replaces the
+  // configured fallback — a model the cluster does not serve never stays
+  // selected — while a pick is kept even when the cluster does not list it.
+  const [pickedModel, setPickedModel] = useState<string | null>(null);
+  const defaultModel = requiresExplicitModelSelection(provider)
+    ? ""
+    : (models[0]?.value ?? "");
+  // While the cluster is asked again the list briefly falls back to the
+  // configured rows: keep the last settled default rather than flick to one of
+  // those and back.
+  const [settledDefault, setSettledDefault] = useState("");
+  if (!discoveryInFlight && settledDefault !== defaultModel) {
+    setSettledDefault(defaultModel);
+  }
+  const model =
+    pickedModel ?? (discoveryInFlight ? settledDefault : defaultModel);
+
+  const syncModel = useEffectEvent((nextModel: string) => {
+    syncParentSettings(credentials, nextModel);
+  });
   useEffect(() => {
-    if (requiresExplicitModelSelection(provider) || models.length === 0) return;
-    // Wait for the cluster's answer: choosing from the configured rows in the
-    // meantime would hand the parent a model that is swapped out moments later.
-    if (discoveryInFlight) return;
-    if (model) {
-      if (
-        !autoSelectedRef.current ||
-        models.some((option) => option.value === model)
-      )
-        return;
-      const nextModel = models[0].value;
-      setModel(nextModel);
-      syncParentSettings(credentials, nextModel);
-      return;
-    }
-    const defaultModel = models[0].value;
-    // Only set once per provider so switching back doesn't re-default.
-    if (defaultedModelRef.current === `${provider}:${defaultModel}`) return;
-    defaultedModelRef.current = `${provider}:${defaultModel}`;
-    autoSelectedRef.current = true;
-    setModel(defaultModel);
-    syncParentSettings(credentials, defaultModel);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [models, model, provider, discoveryInFlight]);
+    if (model) syncModel(model);
+  }, [model]);
 
   const handleCredentialChange = (fieldKey: string, newValue: string) => {
     const nextCredentials = { ...credentials, [fieldKey]: newValue };
@@ -248,36 +197,8 @@ export function GenericOnboarding({
   };
 
   const handleModelChange = (newModel: string) => {
-    autoSelectedRef.current = false;
-    setModel(newModel);
-    syncParentSettings(credentials, newModel);
+    setPickedModel(newModel);
   };
-
-  const kindLabel = isEmbedding ? "embedding" : "language";
-  // A provider that discovers its models may configure no fallback at all, so
-  // an empty picker means "not asked yet" or "could not ask", never "this
-  // provider has nothing to offer".
-  let discoveryStatus: string | null = null;
-  if (discovers && !discoveryReady) {
-    if (models.length === 0) {
-      discoveryStatus = `Enter the credentials above to list the ${kindLabel} models the cluster serves.`;
-    }
-  } else if (discoveryReady) {
-    if (discoveryInFlight) {
-      discoveryStatus = "Checking which models the cluster serves…";
-    } else if (discovery.isError || !discoveredHalf) {
-      discoveryStatus =
-        models.length > 0
-          ? `Couldn't list ${kindLabel} models from the cluster — showing configured defaults. Type a model ID to use another.`
-          : `Couldn't list ${kindLabel} models from the cluster. Type a model ID to continue.`;
-    } else if (discoveredHalf.length > 0) {
-      discoveryStatus = `Showing ${discoveredHalf.length} ${kindLabel} ${
-        discoveredHalf.length === 1 ? "model" : "models"
-      } served by the cluster.`;
-    } else {
-      discoveryStatus = `The cluster lists no ${kindLabel} models. Type a model ID to continue.`;
-    }
-  }
 
   const handleAzureAuthMethodChange = (method: string) => {
     setAzureAuthMethod(method);
