@@ -169,6 +169,25 @@ def embedding_concurrency_for(
     return limit
 
 
+def default_auth_method_for(provider: str, stored: Mapping[str, Any] | None) -> str | None:
+    """The authentication method to assume for `provider` when none was chosen.
+
+    The optional `default_auth_method(stored)` member of the enhancement
+    contract, for a provider whose form offers several methods. None when the
+    provider has no such hook, the hook fails (logged and ignored), or it
+    returns anything but a non-empty string.
+    """
+    hook = getattr(get(provider), "default_auth_method", None)
+    if not callable(hook):
+        return None
+    try:
+        method = hook(stored or {})
+    except Exception as exc:
+        _log_hook_failure(provider, "default_auth_method", exc)
+        return None
+    return method if isinstance(method, str) and method else None
+
+
 def _log_hook_failure(provider: str, hook: str, exc: Exception) -> None:
     from utils.logging_config import get_logger
 
