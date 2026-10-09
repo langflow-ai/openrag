@@ -18,11 +18,15 @@ from config.settings import (
     get_ingest_callback_url,
 )
 from services.document_index_writer import DocumentIndexContext
+from services.llm_gateway import max_embedding_input_tokens, qualified_model_id
 from utils.hash_utils import hash_id
 from utils.langflow_utils import enable_mcp_none_for_project
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+#: Split Text counts characters; 2 per token undercounts any Latin-script text.
+_CHARS_PER_TOKEN_FLOOR = 2
 
 
 class LangflowFileService:
@@ -48,6 +52,29 @@ class LangflowFileService:
         self.ingest_preview_service = ingest_preview_service
         self.flow_id_url_ingest = LANGFLOW_URL_INGEST_FLOW_ID
         self._embedding_dimension_cache: dict[str, int] = {}
+
+    @staticmethod
+    def _cap_split_text_chunk_size(
+        tweaks: dict[str, Any],
+        provider: str | None,
+        model: str,
+        chunk_size: int,
+        chunk_overlap: int,
+    ) -> tuple[int, int]:
+        """Clamp Split Text to the embedding model's per-input token limit, if it has one.
+
+        The overlap is clamped with it: an overlap larger than the new size makes
+        the splitter raise, and one close to it multiplies the chunk count.
+        """
+        limit = max_embedding_input_tokens(qualified_model_id(provider, model))
+        if not limit or int(chunk_size) <= limit * _CHARS_PER_TOKEN_FLOOR:
+            return chunk_size, chunk_overlap
+        capped = limit * _CHARS_PER_TOKEN_FLOOR
+        overlap = min(int(chunk_overlap or 0), capped // 5)
+        split_text = tweaks.setdefault("Split Text", {})
+        split_text["chunk_size"] = capped
+        split_text["chunk_overlap"] = overlap
+        return capped, overlap
 
     _TRANSIENT_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 
@@ -512,6 +539,13 @@ class LangflowFileService:
         chunk_overlap = split_tweaks.get(
             "chunk_overlap", getattr(config.knowledge, "chunk_overlap", DEFAULT_CHUNK_OVERLAP)
         )
+        chunk_size, chunk_overlap = self._cap_split_text_chunk_size(
+            tweaks,
+            getattr(config.knowledge, "embedding_provider", None),
+            embedding_model,
+            chunk_size,
+            chunk_overlap,
+        )
 
         headers = {
             "X-Langflow-Global-Var-JWT": str(jwt_token or ""),
@@ -717,6 +751,13 @@ class LangflowFileService:
         default_chunk_overlap = getattr(config.knowledge, "chunk_overlap", DEFAULT_CHUNK_OVERLAP)
         chunk_size = split_tweaks.get("chunk_size", default_chunk_size)
         chunk_overlap = split_tweaks.get("chunk_overlap", default_chunk_overlap)
+        chunk_size, chunk_overlap = self._cap_split_text_chunk_size(
+            tweaks,
+            getattr(config.knowledge, "embedding_provider", None),
+            embedding_model,
+            chunk_size,
+            chunk_overlap,
+        )
         headers = {
             "X-Langflow-Global-Var-JWT": str(jwt_token or ""),
             "X-Langflow-Global-Var-OWNER": owner or "",
