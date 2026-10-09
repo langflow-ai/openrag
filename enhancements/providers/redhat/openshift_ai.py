@@ -72,7 +72,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import Any, Literal, NamedTuple
 from urllib.parse import urlsplit, urlunsplit
 
@@ -674,6 +674,46 @@ async def _list_models(
     return models
 
 
+#: The two pickers, each filled from its own endpoint.
+_HALVES: tuple[CallKind, ...] = ("chat", "embedding")
+
+
+async def _list_halves(
+    values: Mapping[str, str],
+    *,
+    halves: Collection[CallKind] = _HALVES,
+    max_retries: int = 2,
+) -> dict[str, tuple[str, ...] | None]:
+    """What each endpoint in `halves` serves, asked at once.
+
+    The one place the endpoints are asked; `fetch_models()` adds the
+    catalogue's cache on top and `list_cluster_models()` the draft form's
+    fallbacks. When one endpoint serves both, it is asked once and its answer
+    fills both halves, whichever were asked for. A half is None when its
+    endpoint could not be asked. Errors building the client — a CA path that
+    does not exist — propagate, so each caller keeps its own fallback.
+    """
+    import httpx
+
+    chat_base, embedding_base = endpoints(values)
+    api_key = values.get("api_key", "")
+    async with httpx.AsyncClient(
+        verify=ssl_verify_for(values), timeout=MODELS_TIMEOUT_SECONDS
+    ) as client:
+        if chat_base == embedding_base:
+            shared = await _list_models(client, chat_base, api_key, max_retries=max_retries)
+            return {"chat": shared, "embedding": shared}
+        bases = {"chat": chat_base, "embedding": embedding_base}
+        wanted = [half for half in _HALVES if half in halves]
+        listed = await asyncio.gather(
+            *(
+                _list_models(client, bases[half], api_key, max_retries=max_retries)
+                for half in wanted
+            )
+        )
+    return dict(zip(wanted, listed, strict=True))
+
+
 async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
     """Ask each configured endpoint which models it actually serves.
 
@@ -695,8 +735,6 @@ async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
     Returns None when nothing is known at all, so a catalogue request never
     fails because the cluster is unreachable; the caller keeps whatever it had.
     """
-    import httpx
-
     values = _values(credentials)
     chat_base, embedding_base = endpoints(values)
     api_key = values.get("api_key", "")
@@ -724,19 +762,9 @@ async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
         embedding_endpoint=embedding_base,
         shared_endpoint=chat_base == embedding_base,
     )
-    listed: dict[str, tuple[str, ...] | None] = {}
+    needed = [half for half in _HALVES if getattr(known, half) is None]
     try:
-        async with httpx.AsyncClient(
-            verify=ssl_verify_for(values), timeout=MODELS_TIMEOUT_SECONDS
-        ) as client:
-            if chat_base == embedding_base:
-                shared = await _list_models(client, chat_base, api_key)
-                listed = {"chat": shared, "embedding": shared}
-            else:
-                if known.chat is None:
-                    listed["chat"] = await _list_models(client, chat_base, api_key)
-                if known.embedding is None:
-                    listed["embedding"] = await _list_models(client, embedding_base, api_key)
+        listed = await _list_halves(values, halves=needed)
     except Exception as error:
         logger.warning(
             "Could not list models on OpenShift AI; keeping the configured list",
@@ -786,41 +814,25 @@ async def list_cluster_models(credentials: Mapping[str, Any]) -> ClusterModels:
     A half is None when its endpoint could not be asked or listed nothing
     usable, so the caller falls back to the configured list for that half.
 
-    Someone is watching the picker wait, so both endpoints are asked at once
-    and retried less than the catalogue does (`DISCOVERY_MAX_RETRIES`): a
-    mistyped host gives up after about 20s rather than a minute.
+    Someone is watching the picker wait, so it retries less than the catalogue
+    does (`DISCOVERY_MAX_RETRIES`): a mistyped host gives up after about 20s
+    rather than a minute.
     """
-    import httpx
-
     values = _values(credentials)
-    chat_base, embedding_base = endpoints(values)
+    chat_base, _ = endpoints(values)
     api_key = values.get("api_key", "")
     if not chat_base or not api_key:
         return ClusterModels(chat=None, embedding=None)
 
     try:
-        async with httpx.AsyncClient(
-            verify=ssl_verify_for(values), timeout=MODELS_TIMEOUT_SECONDS
-        ) as client:
-            if embedding_base == chat_base:
-                chat = await _list_models(
-                    client, chat_base, api_key, max_retries=DISCOVERY_MAX_RETRIES
-                )
-                embedding = chat
-            else:
-                chat, embedding = await asyncio.gather(
-                    _list_models(client, chat_base, api_key, max_retries=DISCOVERY_MAX_RETRIES),
-                    _list_models(
-                        client, embedding_base, api_key, max_retries=DISCOVERY_MAX_RETRIES
-                    ),
-                )
+        listed = await _list_halves(values, max_retries=DISCOVERY_MAX_RETRIES)
     except Exception as error:
         logger.warning("Could not list models on OpenShift AI", error=str(error))
         return ClusterModels(chat=None, embedding=None)
 
     # An empty listing is far more likely one we could not interpret than an
     # endpoint serving nothing, so it falls back like a failure does.
-    return ClusterModels(chat=chat or None, embedding=embedding or None)
+    return ClusterModels(chat=listed["chat"] or None, embedding=listed["embedding"] or None)
 
 
 # --------------------------------------------------------------------------
