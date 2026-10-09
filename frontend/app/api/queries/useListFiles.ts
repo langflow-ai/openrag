@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 import type { File } from "./useGetSearchQuery";
 
 export interface ListFilesParams {
@@ -50,20 +51,18 @@ export const useListFiles = (
     if (params.afterKey)
       searchParams.set("after_key", JSON.stringify(params.afterKey));
 
-    const url = `/api/files?${searchParams.toString()}`; //internal (cookie auth)
+    const url = `/files?${searchParams.toString()}`; //internal (cookie auth)
 
-    const response = await fetch(url);
+    const response = await apiClient.get(url);
 
-    if (!response.ok) {
-      const errorData = await response
-        .json()
-        .catch(() => ({ error: "Unknown error" }));
+    if (response.status < 200 || response.status >= 300) {
+      const errorData = response.data ?? { error: "Unknown error" };
       throw new Error(
         errorData.error || `Failed to list files: ${response.status}`,
       );
     }
 
-    const data = await response.json();
+    const data = response.data;
 
     const files: File[] = (data.files || []).map(
       (f: Record<string, unknown>) => ({

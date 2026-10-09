@@ -8,6 +8,7 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useBrand, useIsCloudBrand } from "@/contexts/brand-context";
+import { apiClient } from "@/lib/api-client";
 import {
   isConnectorShownInWorkspace,
   isConnectorTypeVisible,
@@ -161,9 +162,9 @@ export interface GetConnectorsResponse {
 async function fetchWorkspaceConnectorAccess(): Promise<
   Record<string, boolean>
 > {
-  const response = await fetch("/api/connectors/workspace-policy");
-  if (!response.ok) return {};
-  const data = await response.json();
+  const response = await apiClient.get("/connectors/workspace-policy");
+  if (response.status < 200 || response.status >= 300) return {};
+  const data = response.data;
   return data?.access && typeof data.access === "object" ? data.access : {};
 }
 
@@ -174,18 +175,31 @@ export const useGetConnectorsQuery = (
     useConnectorsQueryKey();
 
   async function getConnectors(): Promise<Connector[]> {
-    const connectorsResponse = await fetch("/api/connectors");
-    if (!connectorsResponse.ok) {
+    const connectorsResponse = await apiClient.get<{
+      connectors: Record<
+        string,
+        {
+          kind?: string;
+          name: string;
+          description: string;
+          icon: string;
+          available?: boolean;
+        }
+      >;
+    }>("/connectors");
+    if (connectorsResponse.status < 200 || connectorsResponse.status >= 300) {
       throw new Error("Failed to fetch available connectors");
     }
 
-    const { connectors: connectorsMap } = await connectorsResponse.json();
+    const { connectors: connectorsMap } = connectorsResponse.data;
     const connectorTypes = Object.keys(connectorsMap);
 
     const connectorsWithStatus = await Promise.all(
       connectorTypes.map(async (type) => {
         const connectorData = connectorsMap[type];
-        const statusResponse = await fetch(`/api/connectors/${type}/status`);
+        const statusResponse = await apiClient.get(
+          `/connectors/${type}/status`,
+        );
 
         let status: Connector["status"] = "not_connected";
         let connectionId: string | undefined;
@@ -195,8 +209,8 @@ export const useGetConnectorsQuery = (
         // "bucket" connectors use credential-based auth (Azure Blob, S3, IBM COS)
         const requiresOAuth = connectorData.kind === "oauth";
 
-        if (statusResponse.ok) {
-          const statusData = await statusResponse.json();
+        if (statusResponse.status >= 200 && statusResponse.status < 300) {
+          const statusData = statusResponse.data;
           const connections = statusData.connections || [];
           const activeConnection = connections.find(
             (conn: Connection) => conn.is_active && conn.is_authenticated,
@@ -299,13 +313,13 @@ export const useGetConnectorAccessQuery = (
   const { isIbmAuthMode } = useAuth();
 
   async function fetchConnectorAccess(): Promise<ConnectorAccessItem[]> {
-    const response = await fetch("/api/connectors/user-access");
-    if (!response.ok) {
+    const response = await apiClient.get("/connectors/user-access");
+    if (response.status < 200 || response.status >= 300) {
       throw new Error(
         `Failed to fetch connectors permission (${response.status})`,
       );
     }
-    const data = await response.json();
+    const data = response.data;
     const connectors = Array.isArray(data.connectors) ? data.connectors : [];
     const deploymentCtx = { isCloudBrand, isIbmAuthMode };
     return filterConnectorAccessItems(connectors, deploymentCtx);
@@ -333,18 +347,16 @@ export const useUpdateConnectorAccessMutation = () => {
     mutationFn: async (
       access: Record<string, boolean>,
     ): Promise<ConnectorAccessItem[]> => {
-      const response = await fetch("/api/connectors/user-access", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access }),
+      const response = await apiClient.put("/connectors/user-access", {
+        access,
       });
-      if (!response.ok) {
-        const result = await response.json().catch(() => ({}));
+      if (response.status < 200 || response.status >= 300) {
+        const result = response.data ?? {};
         throw new Error(
           result.error || "Failed to update connectors permission",
         );
       }
-      const data = await response.json();
+      const data = response.data;
       const connectors = Array.isArray(data.connectors) ? data.connectors : [];
       return filterConnectorAccessItems(connectors, deploymentCtx);
     },

@@ -3,6 +3,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 interface OnboardingRollbackResponse {
   message: string;
@@ -19,25 +20,25 @@ async function rollbackOnboarding(
 ): Promise<OnboardingRollbackResponse> {
   const requestBody = params || { embedding_only: false };
 
-  const response = await fetch("/api/onboarding/rollback", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(requestBody),
-  });
+  const response = await apiClient.post<OnboardingRollbackResponse>(
+    "/onboarding/rollback",
+    requestBody,
+  );
 
-  if (!response.ok) {
-    const text = await response.text();
+  if (response.status < 200 || response.status >= 300) {
+    const text = typeof response.data === "string" ? response.data : "";
     let message = "Failed to rollback onboarding";
     try {
-      const error = JSON.parse(text);
+      const error =
+        response.data && typeof response.data === "object"
+          ? response.data
+          : JSON.parse(text);
       if (error.error) message = error.error;
     } catch {}
     throw new Error(message);
   }
 
-  return response.json();
+  return response.data;
 }
 
 export const useOnboardingRollbackMutation = (

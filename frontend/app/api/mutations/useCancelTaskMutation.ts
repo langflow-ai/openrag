@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { taskDetailQueryKey } from "@/app/api/queries/useGetTaskQuery";
 import { TASKS_QUERY_KEY } from "@/app/api/queries/useGetTasksQuery";
+import { apiClient } from "@/lib/api-client";
 
 export interface CancelTaskRequest {
   taskId: string;
@@ -18,16 +19,16 @@ export interface CancelTaskResponse {
 async function cancelTask(
   variables: CancelTaskRequest,
 ): Promise<CancelTaskResponse> {
-  const response = await fetch(`/api/tasks/${variables.taskId}/cancel`, {
-    method: "POST",
-  });
+  const response = await apiClient.post<CancelTaskResponse>(
+    `/tasks/${variables.taskId}/cancel`,
+  );
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+  if (response.status < 200 || response.status >= 300) {
+    const errorData = response.data as unknown as { error?: string };
     throw new Error(errorData.error || "Failed to cancel task");
   }
 
-  return response.json();
+  return response.data;
 }
 
 export const useCancelTaskMutation = (

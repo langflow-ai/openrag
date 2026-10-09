@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { EndpointType } from "@/contexts/chat-context";
+import { apiClient } from "@/lib/api-client";
 
 export interface BulkDeleteSessionsRequest {
   session_ids: string[];
@@ -18,20 +19,21 @@ export interface BulkDeleteSessionsResponse {
 async function bulkDeleteSessions(
   variables: BulkDeleteSessionsRequest,
 ): Promise<BulkDeleteSessionsResponse> {
-  const response = await fetch("/api/sessions", {
-    method: "DELETE",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ session_ids: variables.session_ids }),
-  });
+  const response = await apiClient.delete<BulkDeleteSessionsResponse>(
+    "/sessions",
+    {
+      data: { session_ids: variables.session_ids },
+    },
+  );
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+  if (response.status < 200 || response.status >= 300) {
+    const errorData = response.data as unknown as { error?: string };
     throw new Error(
       errorData.error || `Failed to delete sessions: ${response.status}`,
     );
   }
 
-  return response.json();
+  return response.data;
 }
 
 export const useBulkDeleteSessionsMutation = (

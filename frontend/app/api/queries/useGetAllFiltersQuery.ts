@@ -3,17 +3,16 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 import type { KnowledgeFilter } from "./useGetFiltersSearchQuery";
 
 async function getAllFilters(): Promise<KnowledgeFilter[]> {
-  const response = await fetch("/api/knowledge-filter/search", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query: "", limit: 1000 }),
-  });
-
-  const json = await response.json();
-  if (!response.ok || !json.success) {
+  const response = await apiClient.post<{
+    success?: boolean;
+    filters?: KnowledgeFilter[];
+  }>("/knowledge-filter/search", { query: "", limit: 1000 });
+  const json = response.data;
+  if (response.status < 200 || response.status >= 300 || !json.success) {
     return [];
   }
   return (json.filters || []) as KnowledgeFilter[];

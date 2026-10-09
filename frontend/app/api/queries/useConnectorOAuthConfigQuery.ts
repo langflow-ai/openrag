@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 export interface ConnectorOAuthConfigStatus {
   client_id_set: boolean;
@@ -13,9 +14,13 @@ export type ConnectorOAuthConfigMap = Record<
 >;
 
 async function fetchConnectorOAuthConfig(): Promise<ConnectorOAuthConfigMap> {
-  const res = await fetch("/api/connectors/oauth-config");
-  if (!res.ok) throw new Error("Failed to fetch connector OAuth config");
-  const data = await res.json();
+  const res = await apiClient.get<{ credentials: ConnectorOAuthConfigMap }>(
+    "/connectors/oauth-config",
+  );
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error("Failed to fetch connector OAuth config");
+  }
+  const data = res.data;
   return data.credentials as ConnectorOAuthConfigMap;
 }
 

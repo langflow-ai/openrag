@@ -1,0 +1,98 @@
+import { HttpResponse, http } from "msw";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { server } from "@/test-utils/msw/server";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  vi.resetModules();
+});
+
+describe("apiClient", () => {
+  it("sends requests through Axios below Next's basePath", async () => {
+    vi.stubEnv("NEXT_PUBLIC_OPENRAG_FRONTEND_BASE_PATH", "/openrag-fe");
+    const seen = vi.fn();
+    server.use(
+      http.get("/openrag-fe/api/status", ({ request }) => {
+        seen(request.url);
+        return HttpResponse.json({ healthy: true });
+      }),
+    );
+
+    const { apiClient } = await import("./api-client");
+    const response = await apiClient.get("/status");
+
+    expect(response.status).toBe(200);
+    expect(response.data).toEqual({ healthy: true });
+    expect(seen).toHaveBeenCalledWith(
+      "http://localhost:3000/openrag-fe/api/status",
+    );
+  });
+
+  it("does not treat a non-2xx response as a transport failure", async () => {
+    vi.stubEnv("NEXT_PUBLIC_OPENRAG_FRONTEND_BASE_PATH", "/openrag-fe");
+    server.use(
+      http.get("/openrag-fe/api/forbidden", () =>
+        HttpResponse.json({ error: "forbidden" }, { status: 403 }),
+      ),
+    );
+    const { apiClient } = await import("./api-client");
+    const response = await apiClient.get("/forbidden");
+
+    expect(response.status).toBe(403);
+    expect(response.data).toEqual({ error: "forbidden" });
+  });
+
+  it("does not redirect for a 401 without a login URL", async () => {
+    const location = {
+      origin: "http://localhost:3000",
+      href: "http://localhost:3000/current-page",
+    };
+    vi.stubGlobal("window", { location });
+    server.use(
+      http.get("/api/unauthorized", () =>
+        HttpResponse.json(
+          { error: "invalid provider credentials" },
+          { status: 401 },
+        ),
+      ),
+    );
+    const { apiClient } = await import("./api-client");
+    const response = await apiClient.get("/unauthorized");
+
+    expect(response.status).toBe(401);
+    expect(location.href).toBe("http://localhost:3000/current-page");
+  });
+
+  it("does not use the API base URL for absolute third-party URLs", async () => {
+    const { apiClient } = await import("./api-client");
+    expect(
+      apiClient.getUri({ url: "https://graph.microsoft.com/v1.0/me" }),
+    ).toBe("https://graph.microsoft.com/v1.0/me");
+  });
+
+  it("falls back to the base-path login page for unsafe redirects", async () => {
+    vi.stubEnv("NEXT_PUBLIC_OPENRAG_FRONTEND_BASE_PATH", "/openrag-fe");
+    const { getUnauthorizedRedirectUrl } = await import("./api-client");
+
+    expect(getUnauthorizedRedirectUrl("https://evil.example/login")).toBe(
+      "/openrag-fe/login",
+    );
+    expect(getUnauthorizedRedirectUrl("//evil.example/login")).toBe(
+      "/openrag-fe/login",
+    );
+    expect(getUnauthorizedRedirectUrl("http://[invalid/login")).toBe(
+      "/openrag-fe/login",
+    );
+    expect(getUnauthorizedRedirectUrl("/auth/callback")).toBe(
+      "/openrag-fe/auth/callback",
+    );
+  });
+
+  it("rejects backslash-based cross-origin redirects without a base path", async () => {
+    vi.stubEnv("NEXT_PUBLIC_OPENRAG_FRONTEND_BASE_PATH", "");
+    const { getUnauthorizedRedirectUrl } = await import("./api-client");
+
+    expect(getUnauthorizedRedirectUrl("/\\evil.example/login")).toBe("/login");
+  });
+});
