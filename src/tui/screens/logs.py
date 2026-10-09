@@ -79,6 +79,9 @@ class LogsScreen(Screen):
         self.following = False
         self.follow_task = None
         self._status_task = None
+        # Keep manual tail-following state separate from Textual's built-in auto-scroll.
+        # The built-in behavior can visibly jump in some terminals (e.g. Warp) when logs stream.
+        self.auto_scroll_enabled = True
         # Track log content for copy functionality
         self._log_lines: list[str] = []
 
@@ -98,7 +101,9 @@ class LogsScreen(Screen):
         self.logs_area = Log(
             id="logs-area",
             max_lines=self.MAX_LOG_LINES,
-            auto_scroll=True,
+            # We manage tail-following ourselves with scroll_end(animate=False)
+            # to avoid the top-to-bottom flicker seen in some terminals.
+            auto_scroll=False,
         )
         return self.logs_area
 
@@ -139,11 +144,14 @@ class LogsScreen(Screen):
                         self._log_lines.append(cleaned)
             else:
                 self.logs_area.write_line(f"Failed to load logs: {logs}")
+
+            self._scroll_to_end_if_needed()
             return
 
         # Regular container services
         if not self.container_manager.is_available():
             self.logs_area.write_line("No container runtime available")
+            self._scroll_to_end_if_needed()
             return
 
         success, logs = await self.container_manager.get_service_logs(
@@ -158,6 +166,8 @@ class LogsScreen(Screen):
                     self._log_lines.append(cleaned)
         else:
             self.logs_area.write_line(f"Failed to load logs: {logs}")
+
+        self._scroll_to_end_if_needed()
 
     def _stop_following(self) -> None:
         """Stop following logs."""
@@ -174,6 +184,34 @@ class LogsScreen(Screen):
             line = line.split("\r")[-1]
         return line.rstrip()
 
+    def _set_auto_scroll(self, enabled: bool, *, notify: bool = False) -> None:
+        """Enable or disable tail-following for the log view."""
+        self.auto_scroll_enabled = enabled
+
+        # Keep the widget's own auto_scroll disabled; we explicitly scroll to end
+        # without animation to prevent repeated jumpy reflows.
+        if self.logs_area:
+            self.logs_area.auto_scroll = False
+            if enabled:
+                self._scroll_to_end_if_needed()
+
+        if notify:
+            status = "enabled" if enabled else "disabled"
+            self.notify(f"Auto scroll {status}", severity="information")
+
+    def _scroll_to_end_if_needed(self) -> None:
+        """Scroll to the latest log line when tail-following is enabled."""
+        if not self.logs_area or not self.auto_scroll_enabled:
+            return
+
+        try:
+            self.logs_area.scroll_end(animate=False)
+        except TypeError:
+            # Some Textual versions expose scroll_end without the animate kwarg.
+            self.logs_area.scroll_end()
+        except Exception:
+            pass
+
     def _append_log_line(self, line: str) -> None:
         """Append a log line efficiently."""
         cleaned = self._clean_log_line(line)
@@ -183,6 +221,7 @@ class LogsScreen(Screen):
             # Trim internal buffer to match max lines
             if len(self._log_lines) > self.MAX_LOG_LINES:
                 self._log_lines = self._log_lines[-self.MAX_LOG_LINES:]
+            self._scroll_to_end_if_needed()
 
     async def _follow_logs(self) -> None:
         """Follow logs in real-time."""
@@ -252,21 +291,22 @@ class LogsScreen(Screen):
 
     def action_toggle_auto_scroll(self) -> None:
         """Toggle auto scroll on/off."""
-        self.logs_area.auto_scroll = not self.logs_area.auto_scroll
-        status = "enabled" if self.logs_area.auto_scroll else "disabled"
-        self.notify(f"Auto scroll {status}", severity="information")
+        self._set_auto_scroll(not self.auto_scroll_enabled, notify=True)
 
     def action_scroll_top(self) -> None:
         """Scroll to the top of logs."""
-        # Disable auto-scroll when manually going to top, otherwise it snaps back
-        if self.logs_area.auto_scroll:
-            self.logs_area.auto_scroll = False
+        # Disable tail-following when the user explicitly navigates upward.
+        if self.auto_scroll_enabled:
+            self._set_auto_scroll(False)
             self.notify("Auto scroll disabled", severity="information")
         self.logs_area.scroll_home()
 
     def action_scroll_bottom(self) -> None:
-        """Scroll to the bottom of logs."""
-        self.logs_area.scroll_end()
+        """Scroll to the bottom of logs and re-enable tail-following."""
+        reenable = not self.auto_scroll_enabled
+        self._set_auto_scroll(True)
+        if reenable:
+            self.notify("Auto scroll enabled", severity="information")
 
     def action_scroll_down(self) -> None:
         """Scroll down one line."""
@@ -274,10 +314,16 @@ class LogsScreen(Screen):
 
     def action_scroll_up(self) -> None:
         """Scroll up one line."""
+        if self.auto_scroll_enabled:
+            self._set_auto_scroll(False)
+            self.notify("Auto scroll disabled", severity="information")
         self.logs_area.scroll_up()
 
     def action_scroll_page_up(self) -> None:
         """Scroll up one page."""
+        if self.auto_scroll_enabled:
+            self._set_auto_scroll(False)
+            self.notify("Auto scroll disabled", severity="information")
         self.logs_area.scroll_page_up()
 
     def action_scroll_page_down(self) -> None:
