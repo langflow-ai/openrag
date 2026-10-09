@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from types import ModuleType
 from typing import Any, Literal
 
+from enhancements.providers.aws import bedrock
 from enhancements.providers.redhat import openshift_ai
 from enhancements.providers.watsonx import onprem
 
@@ -21,6 +22,7 @@ CallKind = Literal["chat", "embedding"]
 _ENHANCEMENTS: dict[str, ModuleType] = {
     onprem.PROVIDER_KEY: onprem,
     openshift_ai.PROVIDER_KEY: openshift_ai,
+    bedrock.PROVIDER_KEY: bedrock,
 }
 
 

@@ -162,6 +162,20 @@ providers:
       oss: true
       on_prem: true
       saas: true
+
+  # Amazon Bedrock through LiteLLM's own `bedrock` provider. The enhancement
+  # (`enhancements/providers/aws/bedrock.py`) replaces LiteLLM's ten-field form
+  # with a required region plus optional keys, and checks them with STS. Off in
+  # saas: with no keys stored the AWS default chain supplies the identity, and
+  # in a multi-tenant deployment that identity is the platform's, not the
+  # tenant's.
+  - name: bedrock
+    display_name: Amazon Bedrock
+    modes:
+      oss: true
+      on_prem: true
+      saas: false
+
   - name: azure_ai
     display_name: Azure AI Foundry
     modes:
