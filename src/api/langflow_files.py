@@ -162,6 +162,9 @@ async def upload_and_ingest_user_file(
                 session_id=session_id,
                 tweaks=tweaks,
                 settings=settings,
+                # This endpoint never replaces (replace_duplicates stays
+                # False), so no delete is attempted; False keeps it that way.
+                allow_anonymous_delete=False,
             )
 
             return JSONResponse(
