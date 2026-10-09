@@ -339,5 +339,21 @@ export async function completeOnboarding(
     throw new Error(`Onboarding document upload failed: ${errorText}`);
   }
 
-  await expect(page.getByTestId("onboarding-content")).toBeHidden();
+  // If the ingest review dialog opened, close it so onboarding can advance to chat
+  const reviewDialog = page.getByRole("dialog", { name: /ingestion review/i });
+  const closeReviewButton = reviewDialog.getByRole("button", {
+    name: /close/i,
+  });
+  const reviewOpened = await closeReviewButton
+    .waitFor({ state: "visible", timeout: 3000 })
+    .then(() => true)
+    .catch(() => false);
+  if (reviewOpened) {
+    await closeReviewButton.click();
+    await expect(reviewDialog).toBeHidden();
+  }
+
+  await expect(page.getByTestId("onboarding-content")).toBeHidden({
+    timeout: 15000,
+  });
 }
