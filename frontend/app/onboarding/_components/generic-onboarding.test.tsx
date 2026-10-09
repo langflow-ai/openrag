@@ -117,10 +117,16 @@ function renderOnboarding(
   isEmbedding = false,
   savedProviders?: SavedProvidersSnapshot,
   extraHandlers: RequestHandler[] = [],
+  catalogResponse: typeof catalog = catalog,
 ) {
   let settings: OnboardingVariables = {};
+  // Every model the parent was handed, in order.
+  const modelHistory: Array<string | undefined> = [];
   const setSettings: Dispatch<SetStateAction<OnboardingVariables>> = (next) => {
     settings = typeof next === "function" ? next(settings) : next;
+    modelHistory.push(
+      isEmbedding ? settings.embedding_model : settings.llm_model,
+    );
   };
   const user = userEvent.setup();
   renderWithProviders(
@@ -133,7 +139,9 @@ function renderOnboarding(
     {
       providers: ["tooltip"],
       handlers: [
-        http.get("/api/models/catalog", () => HttpResponse.json(catalog)),
+        http.get("/api/models/catalog", () =>
+          HttpResponse.json(catalogResponse),
+        ),
         http.post("/api/models/watsonx_onprem/spaces", () =>
           HttpResponse.json({
             spaces: [
@@ -146,7 +154,7 @@ function renderOnboarding(
       ],
     },
   );
-  return { user, getSettings: () => settings };
+  return { user, getSettings: () => settings, modelHistory };
 }
 
 describe("GenericOnboarding model selection", () => {
@@ -505,6 +513,146 @@ describe("GenericOnboarding cluster model discovery", () => {
     expect(requests.at(-1)?.credentials).toEqual({
       api_base: "https://chat.example.com/v1",
     });
+  });
+
+  it("keeps the discovered model while the cluster is asked again", async () => {
+    let calls = 0;
+    let release: () => void = () => {};
+    const { user, getSettings, modelHistory } = renderOnboarding(
+      "rhoai",
+      false,
+      undefined,
+      [
+        http.post("/api/models/rhoai/discover", async () => {
+          calls += 1;
+          if (calls === 1) return served();
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return HttpResponse.json({
+            models: [{ model: "gpt-oss-20b", mode: "chat" }],
+            embedding_models: null,
+          });
+        }),
+      ],
+    );
+
+    await typeCredentials(user);
+    await screen.findByText(
+      "Showing 1 language model served by the cluster.",
+      {},
+      DISCOVERY_TIMEOUT,
+    );
+    expect(getSettings().llm_model).toBe("gpt-oss-120b");
+    const discoveredAt = modelHistory.lastIndexOf("gpt-oss-120b");
+
+    await user.type(screen.getByLabelText(/Token/), "2");
+    await screen.findByText(
+      "Checking which models the cluster serves…",
+      {},
+      DISCOVERY_TIMEOUT,
+    );
+    // The configured fallback must not be handed over while the cluster is
+    // being asked again.
+    expect(getSettings().llm_model).toBe("gpt-oss-120b");
+
+    release();
+    await screen.findByText(
+      "Showing 1 language model served by the cluster.",
+      {},
+      DISCOVERY_TIMEOUT,
+    );
+    await waitFor(() => expect(getSettings().llm_model).toBe("gpt-oss-20b"));
+    expect(modelHistory.slice(discoveredAt)).not.toContain(
+      "granite-3.3-2b-instruct",
+    );
+  });
+
+  describe("with no configured fallback", () => {
+    const noFallbackCatalog = {
+      ...catalog,
+      providers: catalog.providers.map((entry) =>
+        entry.key === "rhoai"
+          ? { ...entry, models: [], embedding_models: [] }
+          : entry,
+      ),
+    };
+
+    it("asks for credentials instead of sending the operator elsewhere", async () => {
+      renderOnboarding("rhoai", false, undefined, [], noFallbackCatalog);
+
+      expect(
+        await screen.findByText(
+          "Enter the credentials above to list the language models the cluster serves.",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/Pick a different provider/),
+      ).not.toBeInTheDocument();
+    });
+
+    it("asks for a model ID when the cluster cannot be listed", async () => {
+      const { user } = renderOnboarding(
+        "rhoai",
+        false,
+        undefined,
+        [
+          discoverHandler(() =>
+            HttpResponse.json({ models: null, embedding_models: null }),
+          ),
+        ],
+        noFallbackCatalog,
+      );
+
+      await typeCredentials(user);
+
+      expect(
+        await screen.findByText(
+          "Couldn't list language models from the cluster. Type a model ID to continue.",
+          {},
+          DISCOVERY_TIMEOUT,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/configured defaults/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/Pick a different provider/),
+      ).not.toBeInTheDocument();
+    });
+
+    it("says so when the cluster lists nothing for this picker", async () => {
+      const { user } = renderOnboarding(
+        "rhoai",
+        true,
+        undefined,
+        [
+          discoverHandler(() =>
+            HttpResponse.json({
+              models: [{ model: "gpt-oss-120b", mode: "chat" }],
+              embedding_models: [],
+            }),
+          ),
+        ],
+        noFallbackCatalog,
+      );
+
+      await typeCredentials(user);
+
+      expect(
+        await screen.findByText(
+          "The cluster lists no embedding models. Type a model ID to continue.",
+          {},
+          DISCOVERY_TIMEOUT,
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("still sends the operator elsewhere for a provider that cannot discover", async () => {
+    renderOnboarding("watsonx_onprem", true);
+
+    expect(
+      await screen.findByText(/publishes no embedding models in the catalogue/),
+    ).toBeInTheDocument();
   });
 
   it("never asks a provider that cannot list its models", async () => {

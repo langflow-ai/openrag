@@ -192,6 +192,10 @@ export function GenericOnboarding({
   const discoveredHalf = isEmbedding
     ? discovered?.embedding_models
     : discovered?.models;
+  // No answer yet for the credentials as typed. A changed credential starts a
+  // new query with no data, so the picker briefly shows the configured rows.
+  const discoveryInFlight =
+    discoveryReady && (discovery.isPending || discovery.isFetching);
 
   const models = useMemo(
     () =>
@@ -213,6 +217,9 @@ export function GenericOnboarding({
   const autoSelectedRef = useRef(false);
   useEffect(() => {
     if (requiresExplicitModelSelection(provider) || models.length === 0) return;
+    // Wait for the cluster's answer: choosing from the configured rows in the
+    // meantime would hand the parent a model that is swapped out moments later.
+    if (discoveryInFlight) return;
     if (model) {
       if (
         !autoSelectedRef.current ||
@@ -232,7 +239,7 @@ export function GenericOnboarding({
     setModel(defaultModel);
     syncParentSettings(credentials, defaultModel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [models, model, provider]);
+  }, [models, model, provider, discoveryInFlight]);
 
   const handleCredentialChange = (fieldKey: string, newValue: string) => {
     const nextCredentials = { ...credentials, [fieldKey]: newValue };
@@ -247,16 +254,28 @@ export function GenericOnboarding({
   };
 
   const kindLabel = isEmbedding ? "embedding" : "language";
+  // A provider that discovers its models may configure no fallback at all, so
+  // an empty picker means "not asked yet" or "could not ask", never "this
+  // provider has nothing to offer".
   let discoveryStatus: string | null = null;
-  if (discoveryReady) {
-    if (discovery.isFetching) {
+  if (discovers && !discoveryReady) {
+    if (models.length === 0) {
+      discoveryStatus = `Enter the credentials above to list the ${kindLabel} models the cluster serves.`;
+    }
+  } else if (discoveryReady) {
+    if (discoveryInFlight) {
       discoveryStatus = "Checking which models the cluster serves…";
-    } else if (discovery.isError || (discovery.isSuccess && !discoveredHalf)) {
-      discoveryStatus = `Couldn't list ${kindLabel} models from the cluster — showing configured defaults. Type a model ID to use another.`;
-    } else if (discoveredHalf && discoveredHalf.length > 0) {
+    } else if (discovery.isError || !discoveredHalf) {
+      discoveryStatus =
+        models.length > 0
+          ? `Couldn't list ${kindLabel} models from the cluster — showing configured defaults. Type a model ID to use another.`
+          : `Couldn't list ${kindLabel} models from the cluster. Type a model ID to continue.`;
+    } else if (discoveredHalf.length > 0) {
       discoveryStatus = `Showing ${discoveredHalf.length} ${kindLabel} ${
         discoveredHalf.length === 1 ? "model" : "models"
       } served by the cluster.`;
+    } else {
+      discoveryStatus = `The cluster lists no ${kindLabel} models. Type a model ID to continue.`;
     }
   }
 
@@ -369,7 +388,7 @@ export function GenericOnboarding({
             {discoveryStatus}
           </p>
         )}
-        {models.length === 0 && (
+        {models.length === 0 && !discovers && (
           <p className="text-mmd text-muted-foreground">
             {chrome.name} publishes no {isEmbedding ? "embedding" : "language"}{" "}
             models in the catalogue. Pick a different provider for this step.
