@@ -2406,6 +2406,12 @@ async def connector_webhook(
                 # shared=None like the other re-sync paths: no user is in the
                 # loop to express an intent, so each file keeps the sharing state
                 # it already has.
+                # allow_anonymous_delete=False for the same reason: nobody is
+                # here to authorize removing a document the whole instance can
+                # see, so a webhook replaces only what the connection's owner
+                # owns. A file indexed as shared is left as it is until someone
+                # holding the permission syncs it; no connector that delivers
+                # webhooks can index one today.
                 task_id = await connector_service.sync_specific_files(
                     connection.connection_id,
                     connection.user_id,
@@ -2413,6 +2419,7 @@ async def connector_webhook(
                     jwt_token=jwt_token,
                     replace_duplicates=_connector_sync_should_replace(connector_type),
                     shared=None,
+                    allow_anonymous_delete=False,
                 )
 
                 result = {
