@@ -186,8 +186,13 @@ export function GenericOnboarding({
   const syncModel = useEffectEvent((nextModel: string) => {
     syncParentSettings(credentials, nextModel);
   });
+  // Mirror every change, including an automatic choice the list no longer
+  // offers; mount stays a no-op so an empty model isn't written up front.
+  const syncedModelRef = useRef("");
   useEffect(() => {
-    if (model) syncModel(model);
+    if (model === syncedModelRef.current) return;
+    syncedModelRef.current = model;
+    syncModel(model);
   }, [model]);
 
   const handleCredentialChange = (fieldKey: string, newValue: string) => {

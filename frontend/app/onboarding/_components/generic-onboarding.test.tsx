@@ -650,6 +650,32 @@ describe("GenericOnboarding cluster model discovery", () => {
     });
   });
 
+  it("clears the automatic fallback when the cluster lists nothing", async () => {
+    const { user, getSettings } = renderOnboarding("rhoai", true, undefined, [
+      discoverHandler(() =>
+        HttpResponse.json({
+          models: [{ model: "gpt-oss-120b", mode: "chat" }],
+          embedding_models: [],
+        }),
+      ),
+    ]);
+    await waitFor(() =>
+      expect(getSettings().embedding_model).toBe(
+        "granite-embedding-english-r2",
+      ),
+    );
+
+    await typeCredentials(user);
+
+    await screen.findByText(
+      "The cluster lists no embedding models. Type a model ID to continue.",
+      {},
+      DISCOVERY_TIMEOUT,
+    );
+    // The cluster does not serve the fallback, so "Complete" must not send it.
+    expect(getSettings().embedding_model).toBe("");
+  });
+
   it("still sends the operator elsewhere for a provider that cannot discover", async () => {
     renderOnboarding("watsonx_onprem", true);
 
