@@ -128,6 +128,30 @@ def _provider_key(provider: str | None) -> str:
     return (provider or "").strip().lower()
 
 
+def _cap_watsonx_onprem_onboarding_chunk_size(knowledge) -> int | None:
+    """Cap the chunk size for watsonx.ai on-prem embeddings during onboarding.
+
+    Keys off the effective embedding provider on `knowledge`, so the cap also
+    applies when a request changes only the embedding model. Returns the chunk
+    size it was reduced to, or None when nothing changed.
+    """
+    if (
+        _provider_key(knowledge.embedding_provider) != "watsonx_onprem"
+        or knowledge.chunk_size <= WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+    ):
+        return None
+
+    knowledge.chunk_size = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+    if knowledge.chunk_overlap >= WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE:
+        knowledge.chunk_overlap = 200
+    logger.info(
+        "Reduced chunk size for watsonx.ai on-prem embedding compatibility",
+        chunk_size=knowledge.chunk_size,
+        chunk_overlap=knowledge.chunk_overlap,
+    )
+    return WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+
+
 def _custom_providers_for_settings(openrag_config) -> dict[str, GenericProviderConfig]:
     """Public provider payloads: never drop a legacy secret when custom slots exist."""
 
@@ -1257,19 +1281,11 @@ async def onboarding(
             logger.info(
                 f"Embedding provider selected during onboarding: {embedding_provider_selected}"
             )
-            if (
-                embedding_provider_selected.lower() == "watsonx_onprem"
-                and current_config.knowledge.chunk_size > WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
-            ):
-                current_config.knowledge.chunk_size = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
-                if current_config.knowledge.chunk_overlap >= WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE:
-                    current_config.knowledge.chunk_overlap = 200
-                chunk_size_adjusted_to = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
-                logger.info(
-                    "Reduced chunk size for watsonx.ai on-prem embedding compatibility",
-                    chunk_size=chunk_size_adjusted_to,
-                    chunk_overlap=current_config.knowledge.chunk_overlap,
-                )
+
+        if body.embedding_provider or body.embedding_model:
+            chunk_size_adjusted_to = _cap_watsonx_onprem_onboarding_chunk_size(
+                current_config.knowledge
+            )
 
         # Update provider-specific credentials
         if body.openai_api_key:
