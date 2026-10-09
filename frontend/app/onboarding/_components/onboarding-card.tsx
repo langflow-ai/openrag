@@ -148,7 +148,7 @@ const OnboardingCard = ({
     if (tabProviders.length > 0 && !tabProviders.includes(modelProvider)) {
       setModelProvider(tabProviders[0]);
     }
-  }, [tabProviders]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tabProviders, modelProvider]);
 
   // Read model-fetch loading from React Query instead of syncing it up from children.
   const isLoadingModels = useIsFetching({ queryKey: ["models"] }) > 0;
@@ -164,6 +164,7 @@ const OnboardingCard = ({
   useEffect(() => {
     const providers = currentSettings?.providers;
     if (!providers || providers === providersRef.current) return;
+    if (tabProviders.length === 0) return;
     providersRef.current = providers;
     for (const provider of tabProviders) {
       if (provider === "anthropic" && providers.anthropic?.has_api_key) {

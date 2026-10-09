@@ -18,17 +18,18 @@ from models.processors import TaskProcessor
 async def test_image_only_placeholder_succeeds_but_empty_document_fails(
     monkeypatch, pictures, chunk_size, expected_result
 ):
-    embedding_create = AsyncMock(
-        return_value=SimpleNamespace(data=[{"embedding": [0.1, 0.2, 0.3]}])
-    )
+    # Embeddings go through the gateway for every provider; it is imported
+    # lazily inside the processor, so stub it at its source module.
+    embedding_calls: list[dict] = []
+
+    async def fake_embeddings(body, **_kwargs):
+        embedding_calls.append(body)
+        return {"data": [{"embedding": [0.1, 0.2, 0.3]} for _ in body["input"]]}
+
+    monkeypatch.setattr("services.llm_gateway.embeddings", fake_embeddings)
     monkeypatch.setattr(
         "models.processors.clients",
-        SimpleNamespace(
-            opensearch=None,
-            patched_embedding_client=SimpleNamespace(
-                embeddings=SimpleNamespace(create=embedding_create)
-            ),
-        ),
+        SimpleNamespace(opensearch=None),
     )
     monkeypatch.setattr(
         "models.processors.get_openrag_config",
@@ -94,14 +95,16 @@ async def test_image_only_placeholder_succeeds_but_empty_document_fails(
             "status": "error",
             "error": "No text content could be extracted from document",
         }
-        embedding_create.assert_not_awaited()
+        assert embedding_calls == []
         assert indexed == {}
         return
 
     assert result == {"status": "indexed", "id": "image-hash"}
-    embedding_create.assert_awaited_once_with(
-        model="text-embedding-3-small", input=["<!-- image -->"]
-    )
+    # Provider-tagged so the gateway routes to the provider the processor
+    # resolved, not to whatever happens to be the configured default.
+    assert embedding_calls == [
+        {"model": "openai:text-embedding-3-small", "input": ["<!-- image -->"]}
+    ]
     assert indexed["final"] is True
     assert len(indexed["chunks"]) == 1
     assert indexed["chunks"][0].text == "<!-- image -->"

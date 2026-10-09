@@ -237,33 +237,27 @@ def test_processor_accepts_injected_polling_service():
 
 @pytest.mark.asyncio
 async def test_langflow_preflight_detects_embedding_dimensions_with_probe(monkeypatch):
-    class FakeEmbeddings:
-        def __init__(self):
-            self.calls = []
+    calls: list[tuple[str, list]] = []
 
-        async def create(self, model, input):
-            self.calls.append((model, input))
-            return SimpleNamespace(data=[SimpleNamespace(embedding=[0.1] * 7)])
+    async def fake_embeddings(body, **_kwargs):
+        calls.append((body["model"], body["input"]))
+        return {"data": [{"embedding": [0.1] * 7}]}
 
-    fake_embeddings = FakeEmbeddings()
-    fake_client = SimpleNamespace(embeddings=fake_embeddings)
-
-    async def fake_get_litellm_model_name(self, model_name, provider=None, strict=False):
-        assert model_name == "provider/model"
-        assert provider == "provider"
-        return "provider/provider/model"
-
-    monkeypatch.setattr("config.settings.clients._patched_async_client", fake_client)
-    monkeypatch.setattr(
-        "services.models_service.ModelsService.get_litellm_model_name",
-        fake_get_litellm_model_name,
-    )
+    monkeypatch.setattr("services.llm_gateway.embeddings", fake_embeddings)
 
     svc = LangflowFileService(docling_service=AsyncMock())
 
     assert await svc._detect_embedding_dimensions("provider/model", "provider") == 7
     assert await svc._detect_embedding_dimensions("provider/model", "provider") == 7
-    assert fake_embeddings.calls == [("provider/provider/model", ["dimension probe"])]
+    # One call for two invocations: the probe is cached per provider+model.
+    # The id is provider-tagged with `:` so the gateway routes it to the
+    # provider the caller named rather than to the configured default.
+    #
+    # `provider/model` is the legacy tagged spelling of the same id, so the
+    # tag is replaced rather than stacked. Asserting `provider:provider/model`
+    # here, as this did, encoded the double-tagging bug: the gateway strips
+    # the colon tag and would ask LiteLLM for `provider/provider/model`.
+    assert calls == [("provider:model", ["dimension probe"])]
 
 
 @pytest.mark.asyncio
