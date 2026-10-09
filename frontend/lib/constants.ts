@@ -23,8 +23,33 @@ export const DEFAULT_KNOWLEDGE_SETTINGS = {
   chunk_overlap: 200,
   table_structure: true,
   ocr: false,
+  ocr_languages: ["en"] as string[],
   picture_descriptions: false,
 } as const;
+
+/**
+ * OCR languages OpenRAG can request. The codes are engine-neutral; the backend
+ * translates them to whichever OCR engine the host runs (ocrmac on macOS,
+ * easyocr elsewhere). Leaving this at English only means non-Latin text is
+ * silently skipped during ingest.
+ */
+export const OCR_LANGUAGE_OPTIONS = [
+  { value: "en", label: "English" },
+  { value: "ja", label: "Japanese" },
+  { value: "ko", label: "Korean" },
+  { value: "zh-Hans", label: "Chinese (Simplified)" },
+  { value: "zh-Hant", label: "Chinese (Traditional)" },
+  { value: "fr", label: "French" },
+  { value: "de", label: "German" },
+  { value: "es", label: "Spanish" },
+  { value: "it", label: "Italian" },
+  { value: "pt", label: "Portuguese" },
+  { value: "ru", label: "Russian" },
+  { value: "uk", label: "Ukrainian" },
+  { value: "th", label: "Thai" },
+  { value: "vi", label: "Vietnamese" },
+  { value: "ar", label: "Arabic" },
+] as const;
 
 /**
  * UI Constants
