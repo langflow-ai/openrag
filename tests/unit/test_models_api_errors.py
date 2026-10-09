@@ -391,9 +391,7 @@ async def test_watsonx_space_listing_rejects_an_unknown_auth_method(monkeypatch)
     )
 
     assert response.status_code == 400
-    assert json.loads(response.body) == {
-        "error": "Choose a valid watsonx.ai on-prem authentication method"
-    }
+    assert json.loads(response.body) == {"error": models_api._INVALID_AUTH_METHOD_ERROR}
     list_spaces.assert_not_awaited()
 
 

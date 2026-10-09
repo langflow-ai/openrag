@@ -69,6 +69,11 @@ class InvalidAuthMethodError(ValueError):
     """The form named an auth method its provider does not offer — a client error."""
 
 
+#: Client-safe text for a missing or unknown auth method. The enhancement
+#: hook's own message is logged, never returned.
+_INVALID_AUTH_METHOD_ERROR = "Choose a valid authentication method."
+
+
 def _draft_credentials(
     enhancement: ModuleType, submitted: Mapping[str, str], auth_method: str | None
 ) -> dict[str, Any]:
@@ -317,8 +322,11 @@ async def get_watsonx_onprem_spaces(
             error = "Unable to list deployment spaces from the cluster."
         return JSONResponse({"error": error}, status_code=status_code)
     except InvalidAuthMethodError as exc:
-        logger.warning("watsonx.ai on-prem space discovery named an unknown auth method")
-        return JSONResponse({"error": str(exc)}, status_code=400)
+        logger.warning(
+            "watsonx.ai on-prem space discovery named an unknown auth method",
+            detail=str(exc),
+        )
+        return JSONResponse({"error": _INVALID_AUTH_METHOD_ERROR}, status_code=400)
     except Exception as exc:
         logger.error("Failed to list watsonx.ai on-prem spaces", exc_info=exc)
         return JSONResponse(
@@ -361,8 +369,10 @@ async def discover_provider_models(
             headers={"Cache-Control": "no-store"},
         )
     except InvalidAuthMethodError as exc:
-        logger.warning("Model discovery named an unknown auth method", provider=key)
-        return JSONResponse({"error": str(exc)}, status_code=400)
+        logger.warning(
+            "Model discovery named an unknown auth method", provider=key, detail=str(exc)
+        )
+        return JSONResponse({"error": _INVALID_AUTH_METHOD_ERROR}, status_code=400)
     except Exception as exc:
         logger.error("Failed to discover provider models", provider=key, exc_info=exc)
         return JSONResponse(
