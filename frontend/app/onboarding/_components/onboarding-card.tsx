@@ -143,13 +143,12 @@ const OnboardingCard = ({
 
   // The default above may not be offered here (Anthropic disabled, or the
   // embedding step). Fall back to the first provider this step does offer.
-  const [prevTabProviders, setPrevTabProviders] = useState<string[]>([]);
-  if (tabProviders !== prevTabProviders && tabProviders.length > 0) {
-    setPrevTabProviders(tabProviders);
-    if (!tabProviders.includes(modelProvider)) {
+  // useEffect so this never fires during render and triggers an update loop.
+  useEffect(() => {
+    if (tabProviders.length > 0 && !tabProviders.includes(modelProvider)) {
       setModelProvider(tabProviders[0]);
     }
-  }
+  }, [tabProviders, modelProvider]);
 
   // Read model-fetch loading from React Query instead of syncing it up from children.
   const isLoadingModels = useIsFetching({ queryKey: ["models"] }) > 0;
@@ -159,47 +158,33 @@ const OnboardingCard = ({
   // Fetch current settings to check if providers are already configured
   const { data: currentSettings } = useGetSettingsQuery();
 
-  // Auto-select the first provider that has an API key set in env vars
-  const [prevProviders, setPrevProviders] = useState<
-    ProviderSettings | undefined | null
-  >(null);
-  if (currentSettings?.providers !== prevProviders) {
-    setPrevProviders(currentSettings?.providers);
-    if (currentSettings?.providers) {
-      for (const provider of tabProviders) {
-        if (
-          provider === "anthropic" &&
-          currentSettings.providers.anthropic?.has_api_key
-        ) {
-          setModelProvider("anthropic");
-          break;
-        } else if (
-          provider === "openai" &&
-          currentSettings.providers.openai?.has_api_key
-        ) {
-          setModelProvider("openai");
-          break;
-        } else if (
-          provider === "watsonx" &&
-          currentSettings.providers.watsonx?.has_api_key
-        ) {
-          setModelProvider("watsonx");
-          break;
-        } else if (
-          provider === "ollama" &&
-          currentSettings.providers.ollama?.endpoint
-        ) {
-          setModelProvider("ollama");
-          break;
-        } else if (
-          currentSettings.providers.custom?.[provider]?.configured === true
-        ) {
-          setModelProvider(provider);
-          break;
-        }
+  // Auto-select the first provider that has an API key set in env vars.
+  // useEffect so this never fires during render and triggers an update loop.
+  const providersRef = useRef<ProviderSettings | undefined | null>(null);
+  useEffect(() => {
+    const providers = currentSettings?.providers;
+    if (!providers || providers === providersRef.current) return;
+    if (tabProviders.length === 0) return;
+    providersRef.current = providers;
+    for (const provider of tabProviders) {
+      if (provider === "anthropic" && providers.anthropic?.has_api_key) {
+        setModelProvider("anthropic");
+        break;
+      } else if (provider === "openai" && providers.openai?.has_api_key) {
+        setModelProvider("openai");
+        break;
+      } else if (provider === "watsonx" && providers.watsonx?.has_api_key) {
+        setModelProvider("watsonx");
+        break;
+      } else if (provider === "ollama" && providers.ollama?.endpoint) {
+        setModelProvider("ollama");
+        break;
+      } else if (providers.custom?.[provider]?.configured === true) {
+        setModelProvider(provider);
+        break;
       }
     }
-  }
+  }, [currentSettings?.providers, tabProviders]);
 
   const handleSetModelProvider = (provider: string) => {
     setModelProvider(provider);
