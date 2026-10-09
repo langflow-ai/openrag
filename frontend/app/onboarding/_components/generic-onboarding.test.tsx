@@ -33,6 +33,20 @@ const catalog = {
       ],
     },
     {
+      key: "oci",
+      name: "Oracle Cloud Infrastructure (OCI)",
+      credential_fields: [
+        {
+          key: "oci_key",
+          label: "Private key (PEM)",
+          required: false,
+          field_type: "textarea",
+        },
+      ],
+      models: [{ model: "cohere.command-r", capabilities: [] }],
+      embedding_models: [],
+    },
+    {
       key: "watsonx_onprem",
       name: "IBM watsonx.ai",
       credential_fields: [
@@ -181,6 +195,23 @@ describe("GenericOnboarding model selection", () => {
     await user.type(apiBase, "https://new.example");
     expect(getSettings().provider_credentials?.openai_like?.api_base).toBe(
       "https://new.example",
+    );
+  });
+
+  it("keeps the newlines of a pasted multi-line secret", async () => {
+    const { user, getSettings } = renderOnboarding("oci");
+    const key = await screen.findByRole("textbox", {
+      name: "Private key (PEM)",
+    });
+
+    await user.type(
+      key,
+      "-----BEGIN KEY-----{Enter}abc{Enter}-----END KEY-----",
+    );
+
+    expect(key.tagName).toBe("TEXTAREA");
+    expect(getSettings().provider_credentials?.oci?.oci_key).toBe(
+      "-----BEGIN KEY-----\nabc\n-----END KEY-----",
     );
   });
 

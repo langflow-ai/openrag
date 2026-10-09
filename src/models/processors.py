@@ -639,9 +639,24 @@ class TaskProcessor:
         else:
             max_tokens = 8000
 
-        # Split any chunks that exceed max_tokens before embedding, ensuring chunks and embeddings align 1-to-1.
+        from services.llm_gateway import max_embedding_input_tokens, qualified_model_id
+
+        # Models such as Cohere embed v3 reject inputs over 512 tokens (and
+        # Bedrock over 2048 characters); the batch budget (max_tokens) is per
+        # request and stays as is.
+        model_limit = max_embedding_input_tokens(
+            qualified_model_id(embedding_provider, embedding_model)
+        )
+        chunk_cap = min(max_tokens, model_limit or max_tokens)
+        if chunk_cap < max_tokens:
+            # tiktoken is not the model's tokenizer, so also bound the characters
+            # (2 per token, the same floor as the Langflow path).
+            slim_doc["chunks"] = resplit_chunks_character_windows(
+                slim_doc["chunks"], chunk_cap * 2, 0
+            )
+        # Split any chunks that exceed the cap before embedding, ensuring chunks and embeddings align 1-to-1.
         slim_doc["chunks"] = split_chunks_by_max_tokens(
-            slim_doc["chunks"], max_tokens, litellm_embedding_model
+            slim_doc["chunks"], chunk_cap, litellm_embedding_model
         )
         # Re-filter out chunks with empty or whitespace-only text that may have resulted from splitting
         slim_doc["chunks"] = [c for c in slim_doc["chunks"] if c.get("text") and c["text"].strip()]
@@ -657,7 +672,6 @@ class TaskProcessor:
         # aliased?" also meant the correctness of ingestion depended on an
         # unrelated routing detail.
         from services.llm_gateway import embeddings as gateway_embeddings
-        from services.llm_gateway import qualified_model_id
 
         gateway_model = qualified_model_id(embedding_provider, embedding_model)
 

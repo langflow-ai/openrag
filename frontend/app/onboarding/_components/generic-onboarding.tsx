@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { LabelInput } from "@/components/label-input";
+import { LabelWrapper } from "@/components/label-wrapper";
 import {
   onboardingCredentialFields,
   providerCatalogOptions,
@@ -21,6 +22,7 @@ import {
 } from "@/components/models/model-helpers";
 import { WatsonxSpaceSelect } from "@/components/models/watsonx-space-select";
 import { WatsonxTlsSettings } from "@/components/models/watsonx-tls-settings";
+import { Textarea } from "@/components/ui/textarea";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { AdvancedOnboarding } from "./advanced";
 import { GenericProviderCredentialFields } from "./generic-provider-credential-fields";
@@ -272,20 +274,44 @@ export function GenericOnboarding({
     const isSecret =
       field.field_type === "password" || field.field_type === "textarea";
     const hasSaved = isSecret && savedSecrets.has(field.key);
+    const id = `onboarding-${provider}-${field.key}`;
+    const required = field.required && !hasSaved;
+    const placeholder = hasSaved
+      ? "•••••••••"
+      : (field.placeholder ?? undefined);
     return (
       <div key={field.key} className="space-y-1">
-        <LabelInput
-          label={field.label}
-          helperText={field.tooltip ?? ""}
-          id={`onboarding-${provider}-${field.key}`}
-          type={field.field_type === "password" ? "password" : "text"}
-          required={field.required && !hasSaved}
-          placeholder={
-            hasSaved ? "•••••••••" : (field.placeholder ?? undefined)
-          }
-          value={credentials[field.key] ?? ""}
-          onChange={(e) => handleCredentialChange(field.key, e.target.value)}
-        />
+        {field.field_type === "textarea" ? (
+          // A single-line input strips the newlines of a pasted PEM key.
+          <LabelWrapper
+            label={field.label}
+            helperText={field.tooltip ?? ""}
+            id={id}
+            required={required}
+          >
+            <Textarea
+              id={id}
+              data-testid={id}
+              required={required}
+              placeholder={placeholder}
+              value={credentials[field.key] ?? ""}
+              onChange={(e) =>
+                handleCredentialChange(field.key, e.target.value)
+              }
+            />
+          </LabelWrapper>
+        ) : (
+          <LabelInput
+            label={field.label}
+            helperText={field.tooltip ?? ""}
+            id={id}
+            type={field.field_type === "password" ? "password" : "text"}
+            required={required}
+            placeholder={placeholder}
+            value={credentials[field.key] ?? ""}
+            onChange={(e) => handleCredentialChange(field.key, e.target.value)}
+          />
+        )}
         {hasSaved && (
           <p className="text-mmd text-muted-foreground">
             A value is already saved. Leave this blank to keep it.

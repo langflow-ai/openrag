@@ -194,6 +194,16 @@ providers:
     # embedding_models:
     #   - prod-embed-3-large
 
+  # Oracle Generative AI. API keys or an instance/workload principal; a
+  # principal falls back to the backend's own identity, so not offered in SaaS.
+  # See enhancements/providers/oracle/oci_genai.py.
+  - name: oci
+    display_name: Oracle Cloud Infrastructure (OCI)
+    modes:
+      oss: true
+      on_prem: true
+      saas: false
+
   # A self-hosted OpenAI-compatible endpoint (vLLM, LM Studio, an internal
   # gateway). Use one of LiteLLM's passthrough provider keys — `openai_like`,
   # `hosted_vllm`, `lm_studio`, `llamafile`, `custom_openai` — rather than

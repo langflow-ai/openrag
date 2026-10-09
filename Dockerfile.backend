@@ -50,9 +50,10 @@ WORKDIR /app
 # --extra apm bakes in the Instana tracer so the published image can turn APM on
 # with INSTANA_ENABLED alone. The extra exists so source installs that will never
 # enable it don't pay for the tracer; images ship with the capability present.
+# --extra oci does the same for the OCI SDK (instance / workload principal auth).
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv,uid=0,gid=0 \
-    uv sync --extra apm
+    uv sync --extra apm --extra oci
 
 # Application (invalidates after deps only when src/flows change)
 COPY src/ ./src/
