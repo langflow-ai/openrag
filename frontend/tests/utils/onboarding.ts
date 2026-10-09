@@ -344,8 +344,13 @@ export async function completeOnboarding(
   const closeReviewButton = reviewDialog.getByRole("button", {
     name: /close/i,
   });
-  if (await closeReviewButton.isVisible({ timeout: 3000 }).catch(() => false)) {
+  const reviewOpened = await closeReviewButton
+    .waitFor({ state: "visible", timeout: 3000 })
+    .then(() => true)
+    .catch(() => false);
+  if (reviewOpened) {
     await closeReviewButton.click();
+    await expect(reviewDialog).toBeHidden();
   }
 
   await expect(page.getByTestId("onboarding-content")).toBeHidden({

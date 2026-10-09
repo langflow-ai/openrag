@@ -504,26 +504,28 @@ export class Settings {
       );
       const removeAnywayBtn = this.removeAnywayButton();
 
+      let outcome = "pending";
       await expect
         .poll(
           async () => {
-            if (await successToast.isVisible().catch(() => false)) {
-              return "success";
-            }
             if (await removeAnywayBtn.isVisible().catch(() => false)) {
-              return "remove_anyway";
+              outcome = "remove_anyway";
+            } else if (await successToast.isVisible().catch(() => false)) {
+              outcome = "success";
+            } else {
+              outcome = "pending";
             }
-            return "pending";
+            return outcome;
           },
           { timeout: 15000 },
         )
         .not.toBe("pending");
 
-      if (await removeAnywayBtn.isVisible().catch(() => false)) {
+      if (outcome === "remove_anyway") {
         logger.info("Remove Anyway button is displayed. Clicking it.");
         await removeAnywayBtn.click();
-        await expect(successToast).toBeVisible({ timeout: 15000 });
       }
+      await expect(successToast).toBeVisible({ timeout: 15000 });
 
       await this.page.waitForTimeout(1000);
     }
