@@ -847,7 +847,9 @@ async def validate_provider_setup(
             if enhancement is not None:
                 from enhancements.providers.registry import runtime_kwargs_for
 
-                runtime_kwargs = runtime_kwargs_for(
+                # Off the event loop: a cloud signer can do blocking network I/O.
+                runtime_kwargs = await asyncio.to_thread(
+                    runtime_kwargs_for,
                     enhancement,
                     stored_credentials if stored_credentials is not None else supplied,
                 )

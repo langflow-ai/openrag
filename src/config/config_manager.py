@@ -281,6 +281,8 @@ class ProvidersConfig:
                 name: value for name, value in previous.credentials.items() if name in allowed
             }
             previous.auth_method = auth_method
+        if key == "bedrock":
+            _drop_stale_bedrock_secret(previous.credentials, clean, removals)
         for name in removals:
             previous.credentials.pop(name, None)
         previous.credentials.update(clean)
@@ -332,6 +334,8 @@ class ProvidersConfig:
     ) -> dict[str, str]:
         """`stored_credentials()` as it would read after one pending update."""
         pending = self.stored_credentials(provider)
+        if provider.strip().lower() == "bedrock":
+            _drop_stale_bedrock_secret(pending, _clean_submitted(submitted), remove or set())
         for name in remove or set():
             pending.pop(name, None)
         pending.update(_clean_submitted(submitted))
@@ -419,6 +423,20 @@ class ProvidersConfig:
             # check and the validator all issue the same call.
             return credentials_for(enhancement, custom, kind)
         return custom
+
+
+def _drop_stale_bedrock_secret(
+    stored: dict[str, str], clean: dict[str, str], removals: set[str]
+) -> None:
+    """Drop the stored secret access key when its access key ID is replaced or cleared.
+
+    A secret belongs to one key ID, and clearing the ID is the only secret-free way
+    back to the IAM role (a blank secret means "leave unchanged"). Save and
+    pre-save validation both apply this, or validation sees an orphaned secret.
+    """
+    key_id = clean.get("aws_access_key_id")
+    if "aws_access_key_id" in removals or (key_id and key_id != stored.get("aws_access_key_id")):
+        stored.pop("aws_secret_access_key", None)
 
 
 def _clean_submitted(submitted: dict[str, str] | None) -> dict[str, str]:

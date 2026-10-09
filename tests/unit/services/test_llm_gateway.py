@@ -436,10 +436,11 @@ async def test_onprem_embeddings_batch_large_document_inputs(monkeypatch):
         }
 
     monkeypatch.setattr("litellm.aembedding", fake_aembedding)
-    monkeypatch.setattr(
-        "services.llm_gateway._provider_runtime_kwargs",
-        lambda provider, config: {},
-    )
+
+    async def no_runtime_kwargs(provider, config, kind="chat"):
+        return {}
+
+    monkeypatch.setattr("services.llm_gateway._provider_runtime_kwargs", no_runtime_kwargs)
 
     result = await embeddings(
         {
