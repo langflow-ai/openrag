@@ -956,6 +956,53 @@ async def test_draft_discovery_never_touches_the_catalogue_cache(monkeypatch) ->
 
 
 @pytest.mark.asyncio
+async def test_draft_discovery_retries_less_than_the_catalogue(monkeypatch) -> None:
+    """Onboarding has someone watching the picker; the catalogue can wait out a rollout."""
+    calls: list[int] = []
+
+    async def _count(method, url, *, client, max_retries=2, **kwargs):
+        calls.append(max_retries)
+        return _Response(200, _models_body(CHAT_MODEL))
+
+    monkeypatch.setattr("httpx.AsyncClient", _client_returning({}))
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _count)
+
+    await rhoai.list_cluster_models(_stored())
+    assert calls == [rhoai.DISCOVERY_MAX_RETRIES] * 2
+    assert rhoai.DISCOVERY_MAX_RETRIES < 2
+
+    calls.clear()
+    rhoai.forget_models()
+    await rhoai.fetch_models(_stored())
+    assert calls == [2, 2]
+
+
+@pytest.mark.asyncio
+async def test_draft_discovery_asks_both_endpoints_at_once(monkeypatch) -> None:
+    """One after the other, a mistyped host's timeouts would add up."""
+    import asyncio
+
+    arrived: list[str] = []
+    both_asked = asyncio.Event()
+
+    async def _barrier(method, url, *, client, **kwargs):
+        arrived.append(url)
+        if len(arrived) == 2:
+            both_asked.set()
+        # Asked one at a time, the first call never sees the second arrive.
+        await asyncio.wait_for(both_asked.wait(), timeout=1)
+        model = CHAT_MODEL if url.startswith(CHAT_BASE) else EMBED_MODEL
+        return _Response(200, _models_body(model))
+
+    monkeypatch.setattr("httpx.AsyncClient", _client_returning({}))
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _barrier)
+
+    models = await rhoai.list_cluster_models(_stored())
+
+    assert models == rhoai.ClusterModels(chat=(CHAT_MODEL,), embedding=(EMBED_MODEL,))
+
+
+@pytest.mark.asyncio
 async def test_draft_discovery_with_incomplete_credentials_makes_no_request(monkeypatch) -> None:
     def _explode(**kwargs):
         raise AssertionError("no HTTP call should be made")

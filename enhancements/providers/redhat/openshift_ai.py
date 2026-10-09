@@ -437,6 +437,11 @@ HEALTH_TIMEOUT_SECONDS = 10.0
 #: rides out a pod mid-rollout, and a human is waiting on the answer.
 HEALTH_MAX_RETRIES = 1
 
+#: Retries for onboarding's draft discovery. Fewer than the catalogue path for
+#: the same reason as the health check: one retry still rides out a pod
+#: mid-rollout, and a human is watching the picker wait.
+DISCOVERY_MAX_RETRIES = 1
+
 #: Upper bound on the whole pre-save check, both endpoints, retries and backoff
 #: included. Without it two unreachable endpoints × attempts × timeout adds up
 #: to a minute during which the settings save just hangs.
@@ -626,7 +631,9 @@ def is_model_listing(body: Any) -> bool:
     return isinstance(body, Mapping) and isinstance(body.get("data"), list)
 
 
-async def _list_models(client: Any, api_base: str, api_key: str) -> tuple[str, ...] | None:
+async def _list_models(
+    client: Any, api_base: str, api_key: str, *, max_retries: int = 2
+) -> tuple[str, ...] | None:
     """The models one endpoint serves, or None if it could not be asked."""
     url = models_url(api_base)
     logger.debug("Listing models on the OpenShift AI endpoint", url=url)
@@ -635,6 +642,7 @@ async def _list_models(client: Any, api_base: str, api_key: str) -> tuple[str, .
             "GET",
             url,
             client=client,
+            max_retries=max_retries,
             headers=_auth_headers(api_key),
             timeout=MODELS_TIMEOUT_SECONDS,
         )
@@ -777,6 +785,10 @@ async def list_cluster_models(credentials: Mapping[str, Any]) -> ClusterModels:
 
     A half is None when its endpoint could not be asked or listed nothing
     usable, so the caller falls back to the configured list for that half.
+
+    Someone is watching the picker wait, so both endpoints are asked at once
+    and retried less than the catalogue does (`DISCOVERY_MAX_RETRIES`): a
+    mistyped host gives up after about 20s rather than a minute.
     """
     import httpx
 
@@ -790,12 +802,18 @@ async def list_cluster_models(credentials: Mapping[str, Any]) -> ClusterModels:
         async with httpx.AsyncClient(
             verify=ssl_verify_for(values), timeout=MODELS_TIMEOUT_SECONDS
         ) as client:
-            chat = await _list_models(client, chat_base, api_key)
-            embedding = (
-                chat
-                if embedding_base == chat_base
-                else await _list_models(client, embedding_base, api_key)
-            )
+            if embedding_base == chat_base:
+                chat = await _list_models(
+                    client, chat_base, api_key, max_retries=DISCOVERY_MAX_RETRIES
+                )
+                embedding = chat
+            else:
+                chat, embedding = await asyncio.gather(
+                    _list_models(client, chat_base, api_key, max_retries=DISCOVERY_MAX_RETRIES),
+                    _list_models(
+                        client, embedding_base, api_key, max_retries=DISCOVERY_MAX_RETRIES
+                    ),
+                )
     except Exception as error:
         logger.warning("Could not list models on OpenShift AI", error=str(error))
         return ClusterModels(chat=None, embedding=None)
