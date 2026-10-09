@@ -247,6 +247,45 @@ async def test_an_unknown_auth_method_is_a_client_error(tmp_path, monkeypatch):
     assert json.loads(response.body) == {"error": "Choose a valid authentication method"}
 
 
+@pytest.mark.asyncio
+async def test_the_provider_picks_the_auth_method_when_none_is_given(tmp_path, monkeypatch):
+    """The fallback is the enhancement's own rule, not one written into the route."""
+    _offer_rhoai(tmp_path, monkeypatch)
+    _saved(monkeypatch)
+    seen = _listing(monkeypatch, rhoai.ClusterModels(chat=None, embedding=None))
+    methods: list[str] = []
+
+    def _fields(method):
+        methods.append(method)
+        return frozenset({"api_base", "api_key"})
+
+    monkeypatch.setattr(rhoai, "credential_fields_for_auth_method", _fields, raising=False)
+    monkeypatch.setattr(rhoai, "default_auth_method", lambda stored: "token", raising=False)
+
+    await _discover(api_base=CHAT_BASE, api_key="t", ssl_verify="false")
+
+    assert methods == ["token"]
+    assert seen == {"api_base": CHAT_BASE, "api_key": "t"}
+
+
+@pytest.mark.asyncio
+async def test_no_auth_method_and_no_default_is_a_client_error(tmp_path, monkeypatch):
+    _offer_rhoai(tmp_path, monkeypatch)
+    _saved(monkeypatch)
+    _listing(monkeypatch, rhoai.ClusterModels(chat=None, embedding=None))
+    monkeypatch.setattr(
+        rhoai,
+        "credential_fields_for_auth_method",
+        lambda method: frozenset({"api_base", "api_key"}),
+        raising=False,
+    )
+
+    response = await _discover(api_base=CHAT_BASE, api_key="t")
+
+    assert response.status_code == 400
+    assert json.loads(response.body) == {"error": "Choose an authentication method."}
+
+
 def test_the_catalogue_says_which_providers_can_discover(tmp_path, monkeypatch):
     _offer_rhoai(tmp_path, monkeypatch)
 

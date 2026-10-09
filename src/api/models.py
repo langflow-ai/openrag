@@ -83,14 +83,20 @@ def _draft_credentials(
 
     Raises `InvalidAuthMethodError` when the provider rejects `auth_method`.
     """
+    from enhancements.providers.registry import default_auth_method_for
+
     config = get_openrag_config()
     stored = config.providers.stored_credentials(enhancement.PROVIDER_KEY)
     fields_for_auth_method = getattr(enhancement, "credential_fields_for_auth_method", None)
     if callable(fields_for_auth_method):
         stored_config = config.providers.get_provider_config(enhancement.PROVIDER_KEY)
-        method = auth_method or getattr(stored_config, "auth_method", None)
-        if method is None:
-            method = "zen_api_key" if stored.get("zen_api_key") else "username_api_key"
+        method = (
+            auth_method
+            or getattr(stored_config, "auth_method", None)
+            or default_auth_method_for(enhancement.PROVIDER_KEY, stored)
+        )
+        if not method:
+            raise InvalidAuthMethodError("Choose an authentication method.")
         try:
             allowed = set(fields_for_auth_method(method))
         except ValueError as exc:

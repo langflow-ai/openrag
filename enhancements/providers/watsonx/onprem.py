@@ -190,6 +190,15 @@ def credential_fields_for_auth_method(auth_method: str) -> frozenset[str]:
     return SHARED_CREDENTIAL_FIELDS | active
 
 
+def default_auth_method(stored: Mapping[str, Any] | None) -> str:
+    """The authentication method stored credentials imply when none was recorded.
+
+    A Zen API key means `zen_api_key`; anything else is the username and API
+    key pair, which is also the method the form offers first.
+    """
+    return "zen_api_key" if _values(stored).get("zen_api_key") else "username_api_key"
+
+
 def _values(stored: Mapping[str, Any] | None) -> dict[str, str]:
     """Stored form values as trimmed strings, excluding runtime objects."""
     values: dict[str, str] = {}
