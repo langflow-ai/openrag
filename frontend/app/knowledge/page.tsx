@@ -776,6 +776,7 @@ function SearchPage() {
     setSelectedRows((current) =>
       sameFileSelection(current, nextSelected) ? current : nextSelected,
     );
+    api.refreshCells({ force: true });
   }, [gridRowsSelectionKey, isDeletableKnowledgeRow, getGridApi]);
 
   // ── Shared column fragments ──────────────────────────────────────────────
@@ -785,6 +786,11 @@ function SearchPage() {
       headerName: "Source",
       sortable: true,
       comparator: serverSideComparator,
+      valueGetter: (params: ValueGetterParams<File>) =>
+        `${params.data?.filename ?? ""}::${params.data?.status ?? "active"}`,
+      valueFormatter: (params: ValueFormatterParams<File>) =>
+        params.data?.filename ??
+        (typeof params.value === "string" ? params.value.split("::")[0] : "-"),
       checkboxSelection: (params: CheckboxSelectionCallbackParams<File>) =>
         isDeletableKnowledgeRow(params?.data),
       headerCheckboxSelection: true,
@@ -792,6 +798,9 @@ function SearchPage() {
         ? { flex: 2.2, minWidth: 260 }
         : { initialFlex: 2, minWidth: 220 }),
       cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
+        const filename =
+          data?.filename ??
+          (typeof value === "string" ? value.split("::")[0] : "");
         const status = data?.status || "active";
         const isActive = status === "active";
         const isParentWebsiteSource =
@@ -825,9 +834,7 @@ function SearchPage() {
                   );
                   return;
                 }
-                router.push(
-                  buildChunksUrl(data?.filename ?? "", effectiveSearchText),
-                );
+                router.push(buildChunksUrl(filename, effectiveSearchText));
               }}
             >
               {getSourceIcon(data?.connector_type)}
@@ -841,11 +848,11 @@ function SearchPage() {
                         : "text-foreground",
                     )}
                   >
-                    {value}
+                    {filename}
                   </span>
                 </TooltipTrigger>
                 <TooltipContent side="top" align="start">
-                  {value}
+                  {filename}
                 </TooltipContent>
               </Tooltip>
               {isParentWebsiteSource && (
