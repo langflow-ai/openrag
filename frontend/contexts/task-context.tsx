@@ -72,6 +72,8 @@ export interface TaskFile {
 interface TaskContextType {
   tasks: Task[];
   files: TaskFile[];
+  hasUnreadFinishedTasks: boolean;
+  clearUnreadFinishedTasks: () => void;
   addTask: (
     taskId: string,
     options?: { connectorType?: string; source?: string },
@@ -107,6 +109,7 @@ const TaskContext = createContext<TaskContextType | undefined>(undefined);
 
 export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [files, setFiles] = useState<TaskFile[]>([]);
+  const [hasUnreadFinishedTasks, setHasUnreadFinishedTasks] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRecentTasksExpanded, setIsRecentTasksExpanded] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -671,6 +674,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           currentTask,
         );
 
+        if (taskJustReachedTerminal && !isMenuOpen) {
+          setHasUnreadFinishedTasks(true);
+        }
+
         if (didTaskReachCompleted(previousTask, currentTask)) {
           const completedHasFailures = hasFailedFileEntries(currentTask);
 
@@ -863,12 +870,22 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     [cancelFileMutation],
   );
 
-  const toggleMenu = useCallback(() => {
-    setIsMenuOpen((prev) => !prev);
+  const clearUnreadFinishedTasks = useCallback(() => {
+    setHasUnreadFinishedTasks(false);
   }, []);
 
   const openMenu = useCallback(() => {
     setIsMenuOpen(true);
+    setHasUnreadFinishedTasks(false);
+  }, []);
+
+  const toggleMenu = useCallback(() => {
+    setIsMenuOpen((prev) => {
+      if (!prev) {
+        setHasUnreadFinishedTasks(false);
+      }
+      return !prev;
+    });
   }, []);
 
   const closeMenu = useCallback(() => {
@@ -889,6 +906,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const value: TaskContextType = {
     tasks,
     files,
+    hasUnreadFinishedTasks,
+    clearUnreadFinishedTasks,
     addTask,
     addFiles,
     markTaskFilesProcessing,

@@ -27,6 +27,8 @@ export interface ChunkResult {
   /** OpenSearch highlight fragments with matched terms wrapped in `<mark>` tags. Empty when no keyword match. */
   highlights?: string[];
   score: number;
+  /** Normalized score [0, 1] relative to the active search result set. */
+  normalizedScore?: number;
   source_url?: string;
   owner?: string;
   owner_name?: string;
@@ -62,6 +64,8 @@ export interface File {
   relevanceTier?: RelevanceTier;
   /** Count of matched chunks per tier, shown in the relevance tooltip. */
   chunkTiers?: ChunkTiers;
+  /** True if top match for this file was semantically relevant (vector match without keyword highlights). */
+  isSemanticMatch?: boolean;
   source_url: string;
   owner?: string;
   owner_name?: string;
@@ -263,12 +267,26 @@ export const useGetSearchQuery = (
             : "low";
 
       const files: File[] = Array.from(fileMap.values()).map((file) => {
-        const normScores = file.chunks.map((c) => normalise(c.score ?? 0));
+        const chunksWithNorm = file.chunks.map((c) => ({
+          ...c,
+          normalizedScore: normalise(c.score ?? 0),
+        }));
+        const normScores = chunksWithNorm.map((c) => c.normalizedScore ?? 0);
         const fileMaxNorm = Math.max(...normScores);
         const chunkTiers: ChunkTiers = { high: 0, medium: 0, low: 0 };
         for (const norm of normScores) {
           chunkTiers[toTier(norm)]++;
         }
+        const topChunk = chunksWithNorm.reduce(
+          (best, c) => ((c.score ?? 0) > (best.score ?? 0) ? c : best),
+          chunksWithNorm[0],
+        );
+        const hasHighlights =
+          Array.isArray(topChunk?.highlights) &&
+          topChunk.highlights.length > 0 &&
+          topChunk.highlights.some((h) => h.includes("<mark>"));
+        const isSemanticMatch = (topChunk?.score ?? 0) > 0 && !hasHighlights;
+
         return {
           filename: file.filename,
           mimetype: file.mimetype,
@@ -276,6 +294,7 @@ export const useGetSearchQuery = (
           maxScore: fileMaxNorm,
           relevanceTier: toTier(fileMaxNorm),
           chunkTiers,
+          isSemanticMatch,
           source_url: file.source_url || "",
           owner: file.owner || "",
           owner_name: file.owner_name || "",
@@ -284,7 +303,7 @@ export const useGetSearchQuery = (
           connector_type: file.connector_type || "local",
           embedding_model: file.embedding_model,
           embedding_dimensions: file.embedding_dimensions,
-          chunks: file.chunks,
+          chunks: chunksWithNorm,
           allowed_users: file.allowed_users || [],
           allowed_groups: file.allowed_groups || [],
         };

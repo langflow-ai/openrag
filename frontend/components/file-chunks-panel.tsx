@@ -51,10 +51,19 @@ export interface FileChunksPanelProps {
   hideIrrelevant?: boolean;
 }
 
-function chunkMatches(chunk: ChunkResult, needle: string): boolean {
+function chunkMatches(
+  chunk: ChunkResult,
+  needle: string,
+  isSearchActive?: boolean,
+): boolean {
+  if (isSearchActive) {
+    return (
+      (chunk.score ?? 0) > 0 ||
+      Boolean(chunk.highlights && chunk.highlights.length > 0)
+    );
+  }
   const text = chunk.text.toLowerCase();
   const indexStr = chunk.index != null ? String(chunk.index) : "";
-  // Full phrase first; fall back to any token for multi-word queries.
   if (text.includes(needle) || indexStr.includes(needle)) return true;
   const tokens = needle.split(/\s+/).filter((t) => t.length > 0);
   return tokens.length > 1 && tokens.some((t) => text.includes(t));
@@ -67,6 +76,13 @@ const SCORE_TIER_CLASS: Record<RelevanceTier, string> = {
   low: "border-slate-400 text-slate-600 bg-slate-50 dark:border-slate-500 dark:text-slate-400 dark:bg-slate-900/40",
 };
 
+const SEMANTIC_SCORE_TIER_CLASS: Record<RelevanceTier, string> = {
+  high: "border-indigo-500 text-indigo-700 bg-indigo-50 dark:border-indigo-400 dark:text-indigo-300 dark:bg-indigo-950/40",
+  medium:
+    "border-purple-500 text-purple-700 bg-purple-50 dark:border-purple-400 dark:text-purple-300 dark:bg-purple-950/40",
+  low: "border-violet-400 text-violet-700 bg-violet-50 dark:border-violet-500/40 dark:text-violet-300 dark:bg-violet-950/30",
+};
+
 function FileChunkCard({
   chunk,
   listIndex,
@@ -77,6 +93,8 @@ function FileChunkCard({
   copied,
   scoreTier,
   scoreLabel,
+  isSemanticMatch,
+  searchQuery,
   onCopy,
   onSelect,
 }: {
@@ -89,6 +107,8 @@ function FileChunkCard({
   copied: boolean;
   scoreTier?: RelevanceTier;
   scoreLabel?: string;
+  isSemanticMatch?: boolean;
+  searchQuery?: string;
   onCopy: (text: string, listIndex: number) => void;
   onSelect?: () => void;
 }) {
@@ -136,19 +156,36 @@ function FileChunkCard({
             </Button>
           )}
         </div>
-        {scoreLabel && (
-          <Badge
-            variant="secondary"
-            className={cn(
-              "shrink-0 text-xxs border",
-              scoreTier
-                ? SCORE_TIER_CLASS[scoreTier]
-                : "bg-background text-foreground border-border",
-            )}
-          >
-            {scoreLabel}
-          </Badge>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {isSemanticMatch ? (
+            <Badge
+              variant="secondary"
+              className={cn(
+                "text-xxs border shrink-0",
+                scoreTier
+                  ? SEMANTIC_SCORE_TIER_CLASS[scoreTier]
+                  : SEMANTIC_SCORE_TIER_CLASS["high"],
+              )}
+            >
+              Semantically relevant
+              {scoreLabel ? ` (${scoreLabel.replace(" relevance", "")})` : ""}
+            </Badge>
+          ) : (
+            scoreLabel && (
+              <Badge
+                variant="secondary"
+                className={cn(
+                  "shrink-0 text-xxs border",
+                  scoreTier
+                    ? SCORE_TIER_CLASS[scoreTier]
+                    : "bg-background text-foreground border-border",
+                )}
+              >
+                {scoreLabel}
+              </Badge>
+            )
+          )}
+        </div>
       </div>
       {showContents ? (
         <blockquote
@@ -160,6 +197,9 @@ function FileChunkCard({
           <HighlightedText
             highlights={chunk.highlights ?? []}
             fallbackText={chunk.text}
+            isSemanticMatch={isSemanticMatch}
+            searchQuery={searchQuery}
+            scoreTier={scoreTier}
           />
         </blockquote>
       ) : (
@@ -213,11 +253,11 @@ export function FileChunksPanel({
     }));
   }, [file?.chunks]);
 
-  // Per-file min-max normalisation: best chunk in this set → 1.0, worst → 0.0.
-  // Used only when there's an active search (scores are meaningful).
   const chunkScoreInfo = useMemo((): ((
     chunk: ChunkResult,
-  ) => { tier: RelevanceTier; label: string } | undefined) => {
+  ) =>
+    | { tier: RelevanceTier; label: string; isSemanticMatch: boolean }
+    | undefined) => {
     const isSearchActive =
       Boolean(searchQuery?.trim()) && searchQuery!.trim() !== "*";
     if (!isSearchActive) return () => undefined;
@@ -226,16 +266,44 @@ export function FileChunksPanel({
     const max = Math.max(...scores);
     const spread = max - min;
     return (chunk) => {
-      const norm = spread > 0 ? ((chunk.score ?? 0) - min) / spread : 1;
+      const rawScore = chunk.score ?? 0;
+      if (rawScore === 0) {
+        return {
+          tier: "low",
+          label: "0% relevance",
+          isSemanticMatch: false,
+        };
+      }
+      const hasGlobalNorm =
+        typeof chunk.normalizedScore === "number" && chunk.normalizedScore > 0;
+      const norm = hasGlobalNorm
+        ? chunk.normalizedScore!
+        : spread > 0
+          ? (rawScore - min) / spread
+          : rawScore > 0
+            ? 1
+            : 0;
       const tier: RelevanceTier =
         norm >= RELEVANCE_HIGH_THRESHOLD
           ? "high"
           : norm >= RELEVANCE_MED_THRESHOLD
             ? "medium"
             : "low";
-      return { tier, label: `${Math.round(norm * 100)}% relevance` };
+      const hasHighlights =
+        Array.isArray(chunk.highlights) &&
+        chunk.highlights.length > 0 &&
+        chunk.highlights.some((h) => h.includes("<mark>"));
+      // Guard on isSearchFetching: highlights are [] mid-flight, which would
+      // incorrectly flag every scored chunk as semantic before marks arrive.
+      const isSemanticMatch =
+        rawScore > 0 && !hasHighlights && !isSearchFetching;
+      return {
+        tier,
+        label: `${Math.max(1, Math.round(norm * 100))}% relevance`,
+        isSemanticMatch,
+      };
     };
-  }, [allChunks, searchQuery]);
+  }, [allChunks, searchQuery, isSearchFetching]);
 
   const filterControlled = filterQuery !== undefined;
   const [internalQuery, setInternalQuery] = useState("");
@@ -253,13 +321,10 @@ export function FileChunksPanel({
   const deferredQuery = useDeferredValue(localQuery);
   const needle = deferredQuery.trim().toLowerCase();
 
-  // When hideIrrelevant is enabled and a search is active, hide low-tier chunks
-  // unless the user explicitly reveals them.
   const isSearchActive =
     Boolean(searchQuery?.trim()) && searchQuery!.trim() !== "*";
   const [showingAll, setShowingAll] = useState(false);
 
-  // Reset showingAll whenever the search query changes so a new search re-hides low results.
   const [prevSearchQuery, setPrevSearchQuery] = useState(searchQuery);
   if (searchQuery !== prevSearchQuery) {
     setPrevSearchQuery(searchQuery);
@@ -267,30 +332,41 @@ export function FileChunksPanel({
   }
 
   const textFilteredChunks = needle
-    ? allChunks.filter((chunk) => chunkMatches(chunk, needle))
+    ? allChunks.filter((chunk) => chunkMatches(chunk, needle, isSearchActive))
     : allChunks;
 
   const relevanceFilterActive = hideIrrelevant && isSearchActive && !showingAll;
 
-  // Always compute the count of low-tier chunks so the banner can show the
-  // number both when they are hidden and when the user has revealed them.
+  // Only chunks the backend scored (score > 0); zero-score chunks are from the
+  // wildcard base fetch and were not returned by the search query.
+  const scoredChunks = useMemo(
+    () =>
+      isSearchActive
+        ? textFilteredChunks.filter((c) => (c.score ?? 0) > 0)
+        : textFilteredChunks,
+    [isSearchActive, textFilteredChunks],
+  );
+
   const totalLowCount = useMemo(() => {
     if (!hideIrrelevant || !isSearchActive) return 0;
-    return textFilteredChunks.filter((c) => chunkScoreInfo(c)?.tier === "low")
-      .length;
-  }, [hideIrrelevant, isSearchActive, textFilteredChunks, chunkScoreInfo]);
+    return scoredChunks.filter((c) => chunkScoreInfo(c)?.tier === "low").length;
+  }, [hideIrrelevant, isSearchActive, scoredChunks, chunkScoreInfo]);
 
   const chunks = useMemo(() => {
-    const filtered = relevanceFilterActive
-      ? textFilteredChunks.filter((c) => chunkScoreInfo(c)?.tier !== "low")
-      : textFilteredChunks;
-    // Sort by score descending when a search is active so the most relevant
-    // chunks surface at the top. Fall back to document order (already set via
-    // the stable `index` label) when there is no active search.
-    if (!isSearchActive) return filtered;
-    return [...filtered].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    const base = isSearchActive ? scoredChunks : textFilteredChunks;
+    const sorted = isSearchActive
+      ? [...base].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+      : base;
+
+    if (!relevanceFilterActive) return sorted;
+
+    // Always keep at least one chunk visible — sorted[0] is the highest scorer.
+    const nonLow = sorted.filter((c) => chunkScoreInfo(c)?.tier !== "low");
+    if (nonLow.length > 0) return nonLow;
+    return sorted.slice(0, 1); // all low — show only the best one
   }, [
     relevanceFilterActive,
+    scoredChunks,
     textFilteredChunks,
     chunkScoreInfo,
     isSearchActive,
@@ -347,38 +423,46 @@ export function FileChunksPanel({
         </div>
       )}
 
-      {hideIrrelevant && isSearchActive && totalLowCount > 0 && !showingAll && (
-        <div className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-          <EyeOff className="h-3.5 w-3.5 shrink-0" />
-          <span className="flex-1">
-            {totalLowCount} low-relevance chunk
-            {totalLowCount !== 1 ? "s" : ""} hidden
+      {hideIrrelevant && isSearchActive && totalLowCount > 0 && (
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 rounded-md border border-border/50 bg-muted/60 px-3 py-2 text-xs text-muted-foreground hover:bg-muted transition-colors"
+          onClick={() => setShowingAll((prev) => !prev)}
+        >
+          {showingAll ? (
+            <Eye className="h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <EyeOff className="h-3.5 w-3.5 shrink-0" />
+          )}
+          <span className="flex-1 text-left">
+            {showingAll
+              ? "Showing all chunks including low-relevance"
+              : (() => {
+                  // When every scored chunk is low, the best one is still shown —
+                  // so only (totalLowCount - 1) are actually hidden.
+                  const allLow = totalLowCount === scoredChunks.length;
+                  const hiddenCount = allLow
+                    ? totalLowCount - 1
+                    : totalLowCount;
+                  if (hiddenCount === 0)
+                    return "Showing best result (low relevance)";
+                  return `${hiddenCount} low-relevance chunk${hiddenCount !== 1 ? "s" : ""} hidden`;
+                })()}
           </span>
-          <button
-            type="button"
-            className="flex items-center gap-1 text-xs font-medium text-foreground hover:text-primary"
-            onClick={() => setShowingAll(true)}
-          >
-            <Eye className="h-3 w-3" />
-            Show all
-          </button>
-        </div>
-      )}
-      {hideIrrelevant && isSearchActive && showingAll && totalLowCount > 0 && (
-        <div className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-          <Eye className="h-3.5 w-3.5 shrink-0" />
-          <span className="flex-1">
-            Showing all chunks including low-relevance
+          <span className="flex items-center gap-1 font-medium text-foreground">
+            {showingAll ? (
+              <>
+                <EyeOff className="h-3 w-3" />
+                Hide low-relevance
+              </>
+            ) : (
+              <>
+                <Eye className="h-3 w-3" />
+                Show all
+              </>
+            )}
           </span>
-          <button
-            type="button"
-            className="flex items-center gap-1 text-xs font-medium text-foreground hover:text-primary"
-            onClick={() => setShowingAll(false)}
-          >
-            <EyeOff className="h-3 w-3" />
-            Hide low-relevance
-          </button>
-        </div>
+        </button>
       )}
 
       {isFetching ? (
@@ -438,6 +522,8 @@ export function FileChunksPanel({
                 copied={copiedIndex === chunkKey}
                 scoreTier={chunkScoreInfo(chunk)?.tier}
                 scoreLabel={chunkScoreInfo(chunk)?.label}
+                isSemanticMatch={chunkScoreInfo(chunk)?.isSemanticMatch}
+                searchQuery={searchQuery}
                 onCopy={handleCopy}
                 onSelect={
                   onChunkSelect ? () => onChunkSelect(chunk) : undefined

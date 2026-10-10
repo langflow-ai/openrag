@@ -284,15 +284,40 @@ const TIER_STYLES: Record<RelevanceTier, { label: string; className: string }> =
     },
   };
 
+const SEMANTIC_TIER_STYLES: Record<
+  RelevanceTier,
+  { label: string; className: string }
+> = {
+  high: {
+    label: "High",
+    className:
+      "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-indigo-500 text-indigo-700 bg-indigo-50 dark:border-indigo-400 dark:text-indigo-300 dark:bg-indigo-950/40",
+  },
+  medium: {
+    label: "Medium",
+    className:
+      "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-purple-500 text-purple-700 bg-purple-50 dark:border-purple-400 dark:text-purple-300 dark:bg-purple-950/40",
+  },
+  low: {
+    label: "Low",
+    className:
+      "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-violet-400 text-violet-700 bg-violet-50 dark:border-violet-500/40 dark:text-violet-300 dark:bg-violet-950/30",
+  },
+};
+
 export function RelevanceCellContent({ data }: { data?: File }) {
   const tier = data?.relevanceTier;
   if (!tier) return <span className="text-muted-foreground text-xs">—</span>;
 
-  const { label, className } = TIER_STYLES[tier];
+  const isSemantic = data?.isSemanticMatch;
   const chunkTiers = data?.chunkTiers ?? { high: 0, medium: 0, low: 0 };
   const total = data?.chunkCount ?? 0;
   const pct =
     typeof data?.maxScore === "number" ? Math.round(data.maxScore * 100) : null;
+
+  const { label, className } = isSemantic
+    ? SEMANTIC_TIER_STYLES[tier]
+    : TIER_STYLES[tier];
   const badgeLabel = pct !== null ? `${label} (${pct}%)` : label;
 
   return (
@@ -301,20 +326,43 @@ export function RelevanceCellContent({ data }: { data?: File }) {
         <span className={className}>{badgeLabel}</span>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-64 text-left space-y-1">
-        <p className="font-medium">Relevance breakdown</p>
-        <p className="text-muted-foreground text-xs">
-          % = best match for this query. A file showing 100% is the strongest
-          result returned. (not a perfect match)
+        <p className="font-medium">
+          {isSemantic ? "Meaning match" : "Relevance"}
         </p>
-        <p className="text-xs mt-1">Total matched chunks: {total}</p>
+        <p className="text-muted-foreground text-xs">
+          {isSemantic
+            ? "Matched by meaning, not keywords. % shows how closely this file's concept aligns with your query."
+            : "% ranks this file against all results — 100% is the best match returned."}
+        </p>
+        <p className="text-xs mt-1">Matched chunks: {total}</p>
         <p className="text-xs flex gap-3">
-          <span className="text-emerald-600 dark:text-emerald-400">
+          <span
+            className={
+              isSemantic
+                ? "text-indigo-600 dark:text-indigo-400"
+                : "text-emerald-600 dark:text-emerald-400"
+            }
+          >
             ● High: {chunkTiers.high}
           </span>
-          <span className="text-amber-600 dark:text-amber-400">
+          <span
+            className={
+              isSemantic
+                ? "text-purple-600 dark:text-purple-400"
+                : "text-amber-600 dark:text-amber-400"
+            }
+          >
             ● Med: {chunkTiers.medium}
           </span>
-          <span className="text-slate-500">● Low: {chunkTiers.low}</span>
+          <span
+            className={
+              isSemantic
+                ? "text-violet-600 dark:text-violet-400"
+                : "text-slate-500"
+            }
+          >
+            ● Low: {chunkTiers.low}
+          </span>
         </p>
       </TooltipContent>
     </Tooltip>

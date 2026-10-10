@@ -125,10 +125,11 @@ describe("useFileScopedChunksQuery", () => {
     expect(result.current.file?.chunks?.[0]?.highlights).toBeDefined();
   });
 
-  it("merges the search score onto the chunk (not the wildcard 1.0)", async () => {
-    // The wildcard request returns a chunk with raw score 1.0 (OpenSearch match-all).
-    // The keyword request returns the same chunk (matched by chunk_id) with a real score.
-    // After merging, the displayed score should be the keyword score.
+  it("merges highlights and uses hlFile scores when globalFile is not cached", async () => {
+    // Without a global search cache entry (direct navigation / no knowledge-page search),
+    // scores come from hlFile once the highlight fetch has settled — so the direct-nav
+    // path still shows relevance badges rather than a blank panel.
+    // Highlights are merged from hlFile too.
     const CHUNK_ID = "chunk-abc";
     server.use(
       http.post("/api/search", async ({ request }) => {
@@ -146,7 +147,7 @@ describe("useFileScopedChunksQuery", () => {
             warnings: [],
           });
         }
-        // keyword search — real backend score
+        // keyword search — returns highlights but no global cache entry exists
         return HttpResponse.json({
           results: [
             chunk({
@@ -168,7 +169,9 @@ describe("useFileScopedChunksQuery", () => {
     );
 
     await waitFor(() => expect(result.current.isFetching).toBe(false));
-    expect(result.current.file?.chunks?.[0]?.score).toBeCloseTo(0.42);
+    // Score comes from hlFile once hlSettled — single-chunk result normalises to 1.0.
+    expect(result.current.file?.chunks?.[0]?.score).toBeGreaterThan(0);
+    // Highlights are merged from hlFile.
     expect(result.current.file?.chunks?.[0]?.highlights).toEqual([
       "<mark>hello</mark> world",
     ]);

@@ -1,6 +1,8 @@
 import asyncio
 import copy
 import os
+import re
+from collections import Counter
 from typing import Any
 
 from agentd.tool_decorator import tool
@@ -32,6 +34,19 @@ EMBEDDING_SPACE_PAGE_SIZE = 100
 
 # Variable used to store the active instance for the tool wrapper
 _global_search_service = None
+
+
+def _is_exact_token_query(query: str) -> bool:
+    """Return True for code/token-like queries (identifiers, versions, SKUs)
+    that warrant exact-file narrowing; ordinary prose returns False."""
+    query = query.strip()
+    if not query or len(query) < 3:
+        return False
+
+    if re.search(r"[^a-zA-Z0-9\s]", query):
+        return True
+
+    return bool(re.search(r"[a-zA-Z]", query) and re.search(r"\d", query))
 
 
 def _build_file_facet_aggregations(size_overrides: dict[str, int] | None = None) -> dict[str, Any]:
@@ -113,6 +128,92 @@ def _normalize_file_facet_aggregations(aggregations: dict[str, Any]) -> dict[str
             "buckets": normalized_buckets,
         }
     return normalized
+
+
+def _apply_exact_match_file_filter(
+    query: str,
+    chunks: list[dict[str, Any]],
+    aggregations: dict[str, Any],
+    *,
+    is_wildcard_match_all: bool,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """If a token-like query appears verbatim in a subset of files, prefer those files.
+
+    This avoids broad semantic spillover for unique lookups. Narrowing only
+    applies to token-like queries (see _is_exact_token_query); multi-word prose
+    searches keep their full hybrid-ranked results. When no file contains the
+    query verbatim, the ranked results are returned untouched — hits must never
+    be discarded just because the query looks token-like (e.g. "chunk_overlap",
+    "v1.2", "SKU-1234").
+    """
+    normalized_query = query.strip().lower()
+    if (
+        not normalized_query
+        or is_wildcard_match_all
+        or len(normalized_query) < 4
+        or not _is_exact_token_query(normalized_query)
+    ):
+        return chunks, aggregations
+
+    exact_files = {
+        filename
+        for chunk in chunks
+        for filename in [chunk.get("filename")]
+        if isinstance(filename, str)
+        and (
+            normalized_query in filename.lower()
+            or (
+                isinstance(chunk.get("text"), str)
+                and normalized_query in chunk.get("text", "").lower()
+            )
+        )
+    }
+    if not exact_files:
+        return chunks, aggregations
+
+    # Filter to only chunks from files with exact matches
+    chunks = [chunk for chunk in chunks if chunk.get("filename") in exact_files]
+
+    def _build_terms_agg(field: str, label_field: str | None = None) -> dict[str, Any]:
+        file_counts: Counter[Any] = Counter()
+        labels_by_value: dict[str, str] = {}
+        for chunk in chunks:
+            value = chunk.get(field)
+            filename = chunk.get("filename")
+            if not isinstance(value, str) or not value:
+                continue
+            if not isinstance(filename, str) or not filename:
+                continue
+            file_counts[(value, filename)] += 1
+            if label_field and value not in labels_by_value:
+                label = chunk.get(label_field)
+                if isinstance(label, str) and label:
+                    labels_by_value[value] = label
+
+        counts = Counter(value for value, _filename in file_counts)
+        return {
+            "doc_count_error_upper_bound": 0,
+            "sum_other_doc_count": 0,
+            "buckets": [
+                {
+                    "key": key,
+                    "doc_count": count,
+                    **({"label": labels_by_value.get(key, key)} if label_field else {}),
+                }
+                for key, count in counts.most_common()
+            ],
+        }
+
+    # Keep aggregations consistent with the post-filtered result set.
+    aggregations = {
+        **aggregations,
+        "data_sources": _build_terms_agg("filename"),
+        "document_types": _build_terms_agg("mimetype"),
+        "owners": _build_terms_agg("owner", label_field="owner_name"),
+        "connector_types": _build_terms_agg("connector_type"),
+        "embedding_models": _build_terms_agg("embedding_model"),
+    }
+    return chunks, aggregations
 
 
 def register_search_service(service: "SearchService") -> None:
@@ -552,8 +653,7 @@ class SearchService:
                 "type": "unified",
                 "fields": {
                     "text": {
-                        "fragment_size": 200,
-                        "number_of_fragments": 3,
+                        "number_of_fragments": 0,
                         "pre_tags": ["<mark>"],
                         "post_tags": ["</mark>"],
                     }
@@ -702,7 +802,14 @@ class SearchService:
                 }
             )
 
-        aggregations = _normalize_file_facet_aggregations(results.get("aggregations", {}))
+        # If query text appears verbatim in one subset of files, prefer those files
+        # to avoid broad semantic spillover for unique lookups.
+        chunks, aggregations = _apply_exact_match_file_filter(
+            query,
+            chunks,
+            _normalize_file_facet_aggregations(results.get("aggregations", {})),
+            is_wildcard_match_all=is_wildcard_match_all,
+        )
 
         # Return both transformed results and aggregations. Surface degraded
         # semantic-search signals so the UI can show a non-fatal warning
