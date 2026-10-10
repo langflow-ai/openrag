@@ -181,9 +181,15 @@ async def upload_options(
 ):
     """Return availability of upload features"""
     aws_enabled = bool(os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
-    from config.settings import UPLOAD_BATCH_SIZE
+    from config.settings import MAX_UPLOAD_SIZE_MB, UPLOAD_BATCH_SIZE
 
-    return JSONResponse({"aws": aws_enabled, "upload_batch_size": UPLOAD_BATCH_SIZE})
+    return JSONResponse(
+        {
+            "aws": aws_enabled,
+            "upload_batch_size": UPLOAD_BATCH_SIZE,
+            "max_upload_size_mb": MAX_UPLOAD_SIZE_MB,
+        }
+    )
 
 
 async def upload_bucket(

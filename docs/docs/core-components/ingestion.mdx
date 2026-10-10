@@ -39,6 +39,12 @@ OpenRAG has verified (tested) support for the following file types:
 You can attempt to ingest any other file type supported by Docling, but the ingestion might fail or produce suboptimal results.
 You can submit an [OpenRAG GitHub issue](https://github.com/langflow-ai/openrag/issues) to request support for specific file types or report ingestion errors.
 
+## File size limits {#file-size-limits}
+
+OpenRAG accepts files up to [`OPENRAG_MAX_UPLOAD_MB`](/reference/configuration) (100 MB by default). Larger files are refused at upload time with a message naming the file and its size.
+
+Set the body limit on the proxy in front of Docling Serve above this value, and leave room for multipart overhead. OpenRAG posts each document as a multipart request, so a proxy limit equal to the file limit can still reject a file at the limit. nginx defaults to 1 MB. See [Ingestion fails with 413 Request Entity Too Large](/support/troubleshoot#ingestion-fails-with-413).
+
 ## Ingest local files and folders
 
 You can upload files and folders from your local machine to your knowledge base:

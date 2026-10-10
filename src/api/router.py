@@ -25,6 +25,43 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def _oversized_upload_response(upload_files: list[UploadFile]) -> JSONResponse | None:
+    """Refuse files larger than the configured bound, before any work starts.
+
+    Without this the request is accepted with a 202 and dies minutes later in
+    the background Docling submission, where a reverse proxy in front of
+    docling-serve rejects the multipart body with a 413 the user never sees.
+    """
+    from config.settings import MAX_UPLOAD_SIZE_BYTES, MAX_UPLOAD_SIZE_MB
+
+    # Starlette leaves size unset when the client sends no length for a part;
+    # there is nothing to check against in that case.
+    oversized = [
+        f
+        for f in upload_files
+        if getattr(f, "size", None) is not None and f.size > MAX_UPLOAD_SIZE_BYTES
+    ]
+    if not oversized:
+        return None
+
+    names = ", ".join(f"{f.filename} ({f.size / (1024 * 1024):.1f} MB)" for f in oversized)
+    logger.warning(
+        "[INGEST] Upload refused — file exceeds the configured limit",
+        limit_mb=MAX_UPLOAD_SIZE_MB,
+        files=names,
+    )
+    return JSONResponse(
+        {
+            "error": (
+                f"File too large: {names}. The maximum is {MAX_UPLOAD_SIZE_MB} MB "
+                f"per file. Set OPENRAG_MAX_UPLOAD_MB to change it."
+            ),
+            "max_upload_size_mb": MAX_UPLOAD_SIZE_MB,
+        },
+        status_code=413,
+    )
+
+
 async def upload_ingest_router(
     request: Request,
     file: list[UploadFile] = File(...),
@@ -47,6 +84,13 @@ async def upload_ingest_router(
     - If DISABLE_INGEST_WITH_LANGFLOW is True: uses traditional OpenRAG upload
     - If DISABLE_INGEST_WITH_LANGFLOW is False (default): uses Langflow upload-ingest via task service
     """
+    # A body past the per-file limit plus multipart overhead never arrives here:
+    # UploadBodyLimitMiddleware stops the read first. What reaches this check
+    # was fully received, so the response can name the file.
+    oversized = _oversized_upload_response(file)
+    if oversized is not None:
+        return oversized
+
     disable_ingest_with_langflow = get_openrag_config().knowledge.disable_ingest_with_langflow
     requested_preview = preview.lower() == "true"
     preview_mode = requested_preview and is_ingest_preview_enabled()

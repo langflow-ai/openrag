@@ -709,6 +709,36 @@ FETCH_OPENRAG_DOCS_AT_STARTUP = os.getenv("FETCH_OPENRAG_DOCS_AT_STARTUP", "fals
 # Maximum number of files to upload / ingest (in batch) per task when adding knowledge via folder
 UPLOAD_BATCH_SIZE = get_env_int("UPLOAD_BATCH_SIZE", 25)
 
+# Largest single file accepted for ingestion, in megabytes.
+#
+# Enforced at the API edge so an oversized file is refused while the user is
+# still watching, rather than accepted with a 202 and failing minutes later in
+# the background Docling submission. The proxy in front of docling-serve must
+# sit above this value: that hop posts the whole file as multipart, so a proxy
+# limit equal to the file limit still rejects a file at the limit (nginx
+# defaults to 1m).
+_DEFAULT_MAX_UPLOAD_SIZE_MB = 100
+
+
+def resolve_max_upload_size_mb() -> int:
+    """OPENRAG_MAX_UPLOAD_MB, or the default when it is unset.
+
+    Zero and negative values are rejected. ``get_env_int`` would accept them,
+    and the API would then answer 413 for every non-empty file while the UI
+    ignores a non-positive limit and keeps the default.
+    """
+    value = get_env_int("OPENRAG_MAX_UPLOAD_MB", _DEFAULT_MAX_UPLOAD_SIZE_MB)
+    if value is None or value <= 0:
+        raise RuntimeError(
+            "OPENRAG_MAX_UPLOAD_MB must be a positive number of megabytes, "
+            f"got {os.getenv('OPENRAG_MAX_UPLOAD_MB')!r}"
+        )
+    return value
+
+
+MAX_UPLOAD_SIZE_MB = resolve_max_upload_size_mb()
+MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
 # Langflow HTTP timeout configuration (in seconds)
 # For large documents (300+ pages), ingestion can take 30+ minutes
 # Default: 40 minutes total, 40 minutes read timeout
