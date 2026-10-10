@@ -32,7 +32,6 @@ ModuleRegistry.registerModules([
   RowApiModule,
   RowSelectionModule,
   RenderApiModule,
-  RowStyleModule,
-  // Adds dev-only console warnings for bad configuration.
+  // The ValidationModule adds helpful console warnings/errors that can help identify bad configuration during development.
   ...(process.env.NODE_ENV !== "production" ? [ValidationModule] : []),
 ]);

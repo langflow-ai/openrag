@@ -294,6 +294,27 @@ describe("StatusCellContent", () => {
     setRecentTasksExpanded: noop,
   };
 
+  it("renders a file skipped for a duplicate filename without crashing", () => {
+    // The row a blocked overwrite leaves behind: skipped, but not for
+    // duplicate_content, so it falls past SkippedStatusCell to the plain
+    // badge. "skipped" had no entry there, and the throw took the whole
+    // knowledge view down (tracker #92808).
+    render(
+      <TooltipProvider>
+        <StatusCellContent
+          {...baseProps}
+          data={f({
+            status: "skipped",
+            skip_reason: "duplicate_filename",
+            warning: "A file with this name already exists.",
+          })}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(screen.getByText("Skipped")).toBeTruthy();
+  });
+
   it("renders a StatusBadge for an active file", () => {
     render(
       <TooltipProvider>
