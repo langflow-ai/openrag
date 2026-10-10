@@ -466,11 +466,7 @@ export function StatusCellContent({
     return <SkippedStatusCell warning={data?.warning} />;
   }
 
-  return (
-    <StatusBadge
-      status={status as import("@/components/ui/status-badge").Status}
-    />
-  );
+  return <StatusBadge status={status} />;
 }
 
 export function resolveActionsVariant(
@@ -902,6 +898,7 @@ function SearchPage() {
     setSelectedRows((current) =>
       sameFileSelection(current, nextSelected) ? current : nextSelected,
     );
+    api.refreshCells({ force: true });
   }, [gridRowsSelectionKey, isDeletableKnowledgeRow, getGridApi]);
 
   // ── Shared column fragments ──────────────────────────────────────────────
@@ -911,14 +908,23 @@ function SearchPage() {
       headerName: "Source",
       sortable: true,
       comparator: serverSideComparator,
+      valueGetter: (params: ValueGetterParams<File>) =>
+        `${params.data?.filename ?? ""}::${params.data?.status ?? "active"}`,
+      valueFormatter: (params: ValueFormatterParams<File>) =>
+        params.data?.filename ??
+        (typeof params.value === "string" ? params.value.split("::")[0] : "-"),
       checkboxSelection: (params: CheckboxSelectionCallbackParams<File>) =>
         isDeletableKnowledgeRow(params?.data),
       headerCheckboxSelection: true,
       ...(isCloudBrand
         ? { flex: 2.2, minWidth: 260 }
         : { initialFlex: 2, minWidth: 220 }),
-      cellRenderer: (params: CustomCellRendererProps<File>) => {
-        const { data, value } = params;
+      cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
+        const filename =
+          data?.filename ??
+          (typeof value === "string" ? value.split("::")[0] : "");
+        const status = data?.status || "active";
+        const isActive = status === "active";
         const showOpenragSourceAnimation =
           isOpenragDocsRow(data) && hasOpenragRefreshCue;
         return (
@@ -940,15 +946,8 @@ function SearchPage() {
                   : "cursor-pointer hover:text-blue-600 [.ag-row-processing_&]:cursor-default [.ag-row-processing_&]:hover:text-foreground",
               )}
               onClick={() => {
-                // Use params.node.data (the live row node) rather than the
-                // destructured `data` snapshot — ag-grid skips cell re-renders
-                // when field:"filename" is unchanged, so `data` may still carry
-                // status:"processing" even after the row became active.
-                const liveData = params.node.data;
-                if ((liveData?.status || "active") !== "active") return;
-                router.push(
-                  buildChunksUrl(liveData?.filename ?? "", effectiveSearchText),
-                );
+                if (!isActive) return;
+                router.push(buildChunksUrl(filename, effectiveSearchText));
               }}
             >
               {getSourceIcon(data?.connector_type)}
@@ -962,11 +961,11 @@ function SearchPage() {
                         : "text-foreground",
                     )}
                   >
-                    {value}
+                    {filename}
                   </span>
                 </TooltipTrigger>
                 <TooltipContent side="top" align="start">
-                  {value}
+                  {filename}
                 </TooltipContent>
               </Tooltip>
             </button>
