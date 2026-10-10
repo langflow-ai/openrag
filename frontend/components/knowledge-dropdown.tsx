@@ -13,9 +13,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { File as SearchFile } from "@/app/api/queries/useGetSearchQuery";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
 import { IngestReviewDialog } from "@/components/ingest-review";
+import { KnowledgeUrlIcon } from "@/components/knowledge-url-icon";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,6 +34,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { UrlSourceDialog } from "@/components/url-source-dialog";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
@@ -99,7 +102,11 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
 );
 
 export function KnowledgeDropdown() {
-  const { runMode } = useAuth();
+  const { runMode, isAuthenticated, isNoAuthMode } = useAuth();
+  const { data: apiSettings } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
+  const showUrlConnector = apiSettings?.show_url_connector ?? false;
   const { supportedExtensions, supportedExtensionSet } =
     useSupportedFileTypes();
   const { can } = usePermissions();
@@ -114,6 +121,7 @@ export function KnowledgeDropdown() {
   });
   const [mounted, setMounted] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [urlDialogOpen, setUrlDialogOpen] = useState(false);
   const [showFolderDialog, setShowFolderDialog] = useState(false);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [uploadBatchSize, setUploadBatchSize] = useState(25);
@@ -289,6 +297,15 @@ export function KnowledgeDropdown() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (
+      showUrlConnector &&
+      new URLSearchParams(window.location.search).get("add") === "url"
+    ) {
+      setUrlDialogOpen(true);
+    }
+  }, [showUrlConnector]);
 
   const handleFileUpload = () => {
     fileInputRef.current?.click();
@@ -853,6 +870,15 @@ export function KnowledgeDropdown() {
       icon: FolderIconWithColor,
       onClick: () => folderInputRef.current?.click(),
     },
+    ...(showUrlConnector
+      ? [
+          {
+            label: "URL",
+            icon: KnowledgeUrlIcon,
+            onClick: () => setUrlDialogOpen(true),
+          },
+        ]
+      : []),
     ...bucketConnectorItems,
     ...cloudConnectorItems,
   ];
@@ -1043,6 +1069,16 @@ export function KnowledgeDropdown() {
         taskIds={preview.taskIds}
         previewFiles={preview.files}
       />
+      {showUrlConnector && (
+        <UrlSourceDialog
+          open={urlDialogOpen}
+          onOpenChange={setUrlDialogOpen}
+          onCreated={(taskId) => {
+            if (taskId) addTask(taskId, { connectorType: "url" });
+            void queryClient.invalidateQueries({ queryKey: ["listFiles"] });
+          }}
+        />
+      )}
     </>
   );
 }

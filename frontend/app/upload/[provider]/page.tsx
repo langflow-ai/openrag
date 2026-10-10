@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle, ArrowLeft } from "lucide-react";
-import { useParams, useRouter } from "next/navigation";
+import { redirect, useParams, useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
@@ -34,6 +34,10 @@ export default function UploadProviderPage() {
   const router = useRouter();
   const provider = params.provider as string;
   const { addTask } = useTask();
+
+  if (provider === "url") {
+    redirect("/knowledge?add=url");
+  }
 
   const {
     data: connectors = [],
