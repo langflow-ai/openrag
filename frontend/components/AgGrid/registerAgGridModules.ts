@@ -9,6 +9,7 @@ import {
   ModuleRegistry,
   PaginationModule,
   QuickFilterModule,
+  RenderApiModule,
   RowApiModule,
   RowSelectionModule,
   RowStyleModule,
@@ -30,6 +31,7 @@ ModuleRegistry.registerModules([
   GridStateModule,
   RowApiModule,
   RowSelectionModule,
+  RenderApiModule,
   RowStyleModule,
   // Adds dev-only console warnings for bad configuration.
   ...(process.env.NODE_ENV !== "production" ? [ValidationModule] : []),
