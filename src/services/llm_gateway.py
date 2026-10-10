@@ -12,7 +12,7 @@ import contextlib
 import functools
 import json
 import re
-from collections import deque
+from collections import OrderedDict, deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from typing import Any, Literal
 from uuid import uuid4
@@ -521,9 +521,109 @@ def resolve_call(
     # An OpenRAG provider that LiteLLM does not know by that name is routed
     # under the key it aliases (`watsonx_onprem` -> `watsonx`). The OpenRAG key
     # is still what the caller sees and what credentials are stored under.
-    route = litellm_provider_key(provider)
+    #
+    # The stored (untranslated) form is passed because one provider's transport
+    # depends on how it was configured: Azure AI Foundry routes as `azure_ai`
+    # on its legacy `/models` endpoint and as an OpenAI-compatible transport on
+    # `/openai/v1`, which LiteLLM's `azure_ai` handler cannot address.
+    try:
+        route = litellm_provider_key(provider, _stored_credentials(provider, cfg))
+    except ValueError as exc:
+        # The provider knows its own endpoint shapes and this is not one of
+        # them. Surfaced here rather than routed on a guess, which would reach
+        # the wrong handler and fail as an opaque upstream error.
+        raise LlmGatewayError(str(exc), 400) from exc
     litellm_model = f"{route}/{name}" if route != "openai" else name
+    _warn_on_unexpected_route(provider, litellm_model, route)
     return litellm_model, provider, credentials
+
+
+def _stored_credentials(provider: str, config) -> dict[str, Any]:
+    """A provider's credentials as the operator entered them, or `{}`.
+
+    Only routing reads this here; the call itself uses the translated form.
+
+    `{}` means "this configuration does not keep the untranslated form", which
+    is true of some test doubles and of any config object predating it. It does
+    *not* swallow a failure to read: an empty mapping sends
+    `litellm_provider_key` to the static alias, and for a provider whose
+    transport depends on its endpoint that is a silent wrong route — the opaque
+    upstream 404 this module exists to prevent. A real error belongs in the
+    caller's face instead.
+    """
+    providers = getattr(config, "providers", None)
+    reader = getattr(providers, "stored_credentials", None)
+    if reader is None:
+        return {}
+    return dict(reader(provider))
+
+
+#: Model ids `_warn_on_unexpected_route` has already checked, so the resolver
+#: runs once per distinct id rather than on every request, and a mismatch is
+#: logged once rather than repeatedly.
+#:
+#: Bounded, and an LRU rather than a set: the key contains the model id, which
+#: on `/v1/chat/completions` comes straight from the request body, so an
+#: unbounded memo is a cache an unauthenticated caller can grow. Evicting the
+#: oldest entry costs at worst a repeated warning for a model nobody has used
+#: in the last `_ROUTE_CHECK_MEMO_MAX` distinct ids.
+_ROUTE_CHECK_MEMO_MAX = 256
+_CHECKED_ROUTES: OrderedDict[tuple[str, str], None] = OrderedDict()
+
+
+def _warn_on_unexpected_route(provider: str, litellm_model: str, intended_route: str) -> None:
+    """Warn when LiteLLM resolves a model to a different provider than intended.
+
+    Not a check that the route differs from the OpenRAG provider key — for
+    Foundry on `/openai/v1` it deliberately does, and comparing against
+    `azure_ai` would fire on every healthy request. The comparison is against
+    the route this gateway *asked* for, so what it catches is LiteLLM
+    re-deciding underneath us.
+
+    That is not hypothetical: litellm 1.84.0 silently rerouted
+    `azure_ai/gpt-4o` and other OpenAI-family names to the `azure` provider, so
+    a Foundry hostname was called with the Azure OpenAI handler and failed as
+    an opaque 404. The floor this repo pins no longer does it; this makes a
+    return visible instead of mysterious.
+    """
+    if not litellm_model.startswith(f"{intended_route}/"):
+        # Nothing was asserted, so there is nothing to check. This is the bare
+        # name form that `openai` alone uses: the id goes out unprefixed, so
+        # LiteLLM resolves it from the name and is entitled to its own answer.
+        # A model whose *name* carries a vendor segment — `meta-llama/...` on
+        # an OpenAI-compatible server — lands here too, and would otherwise
+        # warn on every healthy request. A prefixed id is still checked even
+        # when the route equals the provider key: `azure_ai/gpt-4o` silently
+        # becoming `azure` is the regression this guard was written for.
+        return
+    key = (provider, litellm_model)
+    if key in _CHECKED_ROUTES:
+        _CHECKED_ROUTES.move_to_end(key)
+        return
+    _CHECKED_ROUTES[key] = None
+    while len(_CHECKED_ROUTES) > _ROUTE_CHECK_MEMO_MAX:
+        _CHECKED_ROUTES.popitem(last=False)
+    try:
+        from litellm import get_llm_provider
+
+        _model, resolved, _key, _base = get_llm_provider(model=litellm_model)
+    except Exception:
+        return
+    if resolved == intended_route:
+        return
+    logger.warning(
+        "LiteLLM resolved this model to a different provider than the gateway "
+        "selected; the request will be built by that provider's handler",
+        provider=provider,
+        model=litellm_model,
+        intended_route=intended_route,
+        resolved_route=resolved,
+    )
+
+
+def forget_route_mismatches() -> None:
+    """Clear the once-per-route warning memo. For tests."""
+    _CHECKED_ROUTES.clear()
 
 
 _UPSTREAM_FAILURE_MESSAGE = "The model provider could not be reached. Please try again."
@@ -595,7 +695,24 @@ _PRIVATE_HOST_PATTERN = re.compile(
 _ANSI_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
 
 
-def _call_label(provider: str, model: str) -> str:
+def _label_route(provider: str) -> str:
+    """The transport `provider` resolves to, for display only.
+
+    Never raises. This feeds error messages, and a provider misconfigured badly
+    enough to fail here is already on its way to an error the caller needs to
+    read — losing the label's prefix-stripping is a cosmetic degradation, while
+    raising would replace the real failure with this one.
+    """
+    try:
+        return litellm_provider_key(provider, _stored_credentials(provider, _get_config()))
+    except Exception:
+        try:
+            return litellm_provider_key(provider)
+        except Exception:
+            return ""
+
+
+def _call_label(provider: str, model: str, route: str = "") -> str:
     """`provider/model` for humans, without repeating a prefix LiteLLM already added.
 
     The model here is the routed id, so for an aliased provider it carries the
@@ -603,7 +720,12 @@ def _call_label(provider: str, model: str) -> str:
     "watsonx_onprem/watsonx/openai/gpt-oss-120b", which names two providers and
     reads like a bug in the error it appears in.
     """
-    route = litellm_provider_key(provider) if provider else ""
+    # `route` is passed by callers that already have it. The rest resolve it
+    # the same way `resolve_call` did, from the stored configuration: the
+    # static alias answers `azure_ai` for a Foundry endpoint routed over
+    # `hosted_vllm`, which leaves the transport prefix on and produces exactly
+    # the two-provider label this function exists to avoid.
+    route = route or (_label_route(provider) if provider else "")
     if route and route != provider and model.startswith(f"{route}/"):
         model = model[len(route) + 1 :]
     if model and provider and not model.startswith(f"{provider}/"):
@@ -1046,14 +1168,35 @@ def _log_completion_shape(payload: dict[str, Any], provider: str, model: str) ->
 _TOOLS_NEED_REASONING_OFF: set[str] = set()
 
 
-def _model_info(model: str) -> dict[str, Any]:
-    """LiteLLM's row for `model`, by its full id or its bare name."""
+def _model_info(model: str, provider: str | None = None) -> dict[str, Any]:
+    """LiteLLM's row for `model`: transport id, then logical id, then bare name.
+
+    A provider routed under a transport alias has two identities, and only one
+    of them is in LiteLLM's table. Azure AI Foundry on its v1 surface is called
+    as `hosted_vllm/<deployment>` — a transport that owns no model rows — while
+    its metadata lives under `azure_ai/<deployment>`, which is LiteLLM's own
+    key for the provider and the key OpenRAG stores it under.
+
+    So `provider` is tried before the bare name. For a Foundry-exclusive model
+    (`Phi-4`) the bare name matches nothing and only the logical id resolves;
+    for one that a public vendor also serves (`gpt-6-luna`) the logical id is
+    the more accurate of the two rows, since it carries Azure's pricing rather
+    than OpenAI's.
+    """
     try:
         import litellm
 
         table = litellm.model_cost
-        info = table.get(model) or table.get(model.rsplit("/", 1)[-1])
-        return info if isinstance(info, dict) else {}
+        bare = model.rsplit("/", 1)[-1]
+        candidates = [model]
+        if provider:
+            candidates.append(f"{provider}/{bare}")
+        candidates.append(bare)
+        for candidate in candidates:
+            info = table.get(candidate)
+            if isinstance(info, dict):
+                return info
+        return {}
     except Exception:
         return {}
 
@@ -1070,7 +1213,7 @@ def _is_reasoning_tool_conflict(detail: str) -> bool:
     return "reasoning_effort" in lowered and "tool" in lowered
 
 
-def _reasoning_off_retry(model: str, kwargs: dict[str, Any]) -> bool:
+def _reasoning_off_retry(model: str, kwargs: dict[str, Any], provider: str | None = None) -> bool:
     """Set `reasoning_effort="none"` for a retry, if that can help here.
 
     False when the caller chose an effort itself — overriding a deliberate
@@ -1079,7 +1222,7 @@ def _reasoning_off_retry(model: str, kwargs: dict[str, Any]) -> bool:
     """
     if not kwargs.get("tools") or "reasoning_effort" in kwargs:
         return False
-    if not _model_info(model).get("supports_none_reasoning_effort"):
+    if not _model_info(model, provider).get("supports_none_reasoning_effort"):
         return False
     kwargs["reasoning_effort"] = "none"
     return True
@@ -1126,7 +1269,7 @@ async def chat_completions(
     stream = bool(body.get("stream"))
     if litellm_model in _TOOLS_NEED_REASONING_OFF:
         # Already learned about this model; do not spend a round-trip relearning.
-        _reasoning_off_retry(litellm_model, kwargs)
+        _reasoning_off_retry(litellm_model, kwargs, provider)
     messages, repairs = _sanitise_messages(body.get("messages"))
     if repairs:
         logger.warning(
@@ -1168,7 +1311,7 @@ async def chat_completions(
             # parameter, just not one this model accepts beside tools. Retry
             # once with the value the provider's own error asks for.
             if not _is_reasoning_tool_conflict(f"{exc}") or not _reasoning_off_retry(
-                litellm_model, kwargs
+                litellm_model, kwargs, provider
             ):
                 raise
             logger.info(
