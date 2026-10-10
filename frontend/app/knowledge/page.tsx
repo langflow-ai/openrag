@@ -26,6 +26,7 @@ import { isFileCancelled } from "@/lib/task-error-display";
 import {
   EMPTY_SEARCH_RESULT,
   type File,
+  type RelevanceTier,
   type SearchResult,
   useGetSearchQuery,
 } from "../api/queries/useGetSearchQuery";
@@ -48,7 +49,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
-import { formatFileSize } from "@/lib/file-format";
+import { formatFileSize, getFileTypeLabel } from "@/lib/file-format";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import {
   buildKnowledgeTableRows,
@@ -213,10 +214,6 @@ export function getOwnerLabel(file?: File): string {
   return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
 }
 
-export function formatAvgScoreLabel(value: unknown): string {
-  return typeof value === "number" ? value.toFixed(2) : "-";
-}
-
 export function formatChunkCountLabel(chunkCount?: number): string {
   return chunkCount?.toString() ?? "-";
 }
@@ -233,7 +230,7 @@ export function formatSizeLabel(value: unknown): string {
   return value ? formatFileSize(value as number) : "-";
 }
 
-/** Always returns 0 — passed to ag-grid columns whose ordering is server-side. */
+/** No-op comparator for columns sorted server-side. */
 export function serverSideComparator(): number {
   return 0;
 }
@@ -245,11 +242,11 @@ export function compareStatusRank(
   return getStatusSortRank(valueA) - getStatusSortRank(valueB);
 }
 
-export function compareAvgScore(
+export function compareRelevance(
   valueA: number | undefined,
   valueB: number | undefined,
 ): number {
-  return (valueA || 0) - (valueB || 0);
+  return (valueA ?? 0) - (valueB ?? 0);
 }
 
 export function getFileStatus(status?: File["status"]): string {
@@ -268,20 +265,105 @@ export function buildChunksUrl(
   return `/knowledge/chunks?${params.toString()}`;
 }
 
-const AVG_SCORE_TOOLTIP =
-  "Average relevance score across the matched chunks of this file. Higher means a stronger match — sort by this column to rank results by relevance.";
+const TIER_STYLES: Record<RelevanceTier, { label: string; className: string }> =
+  {
+    high: {
+      label: "High",
+      className:
+        "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-emerald-500 text-emerald-700 bg-emerald-50 dark:border-emerald-400 dark:text-emerald-300 dark:bg-emerald-950/40",
+    },
+    medium: {
+      label: "Medium",
+      className:
+        "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-amber-500 text-amber-700 bg-amber-50 dark:border-amber-400 dark:text-amber-300 dark:bg-amber-950/40",
+    },
+    low: {
+      label: "Low",
+      className:
+        "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-slate-400 text-slate-600 bg-slate-50 dark:border-slate-500 dark:text-slate-400 dark:bg-slate-900/40",
+    },
+  };
 
-export function AvgScoreCellContent({ value }: { value: unknown }) {
-  const label = formatAvgScoreLabel(value);
+const SEMANTIC_TIER_STYLES: Record<
+  RelevanceTier,
+  { label: string; className: string }
+> = {
+  high: {
+    label: "High",
+    className:
+      "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-indigo-500 text-indigo-700 bg-indigo-50 dark:border-indigo-400 dark:text-indigo-300 dark:bg-indigo-950/40",
+  },
+  medium: {
+    label: "Medium",
+    className:
+      "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-purple-500 text-purple-700 bg-purple-50 dark:border-purple-400 dark:text-purple-300 dark:bg-purple-950/40",
+  },
+  low: {
+    label: "Low",
+    className:
+      "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-violet-400 text-violet-700 bg-violet-50 dark:border-violet-500/40 dark:text-violet-300 dark:bg-violet-950/30",
+  },
+};
+
+export function RelevanceCellContent({ data }: { data?: File }) {
+  const tier = data?.relevanceTier;
+  if (!tier) return <span className="text-muted-foreground text-xs">—</span>;
+
+  const isSemantic = data?.isSemanticMatch;
+  const chunkTiers = data?.chunkTiers ?? { high: 0, medium: 0, low: 0 };
+  const total = data?.chunkCount ?? 0;
+  const pct =
+    typeof data?.maxScore === "number" ? Math.round(data.maxScore * 100) : null;
+
+  const { label, className } = isSemantic
+    ? SEMANTIC_TIER_STYLES[tier]
+    : TIER_STYLES[tier];
+  const badgeLabel = pct !== null ? `${label} (${pct}%)` : label;
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded cursor-default">
-          {label}
-        </span>
+        <span className={className}>{badgeLabel}</span>
       </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-56 text-center">
-        {AVG_SCORE_TOOLTIP}
+      <TooltipContent side="top" className="max-w-64 text-left space-y-1">
+        <p className="font-medium">
+          {isSemantic ? "Meaning match" : "Relevance"}
+        </p>
+        <p className="text-muted-foreground text-xs">
+          {isSemantic
+            ? "Matched by meaning, not keywords. % shows how closely this file's concept aligns with your query."
+            : "% ranks this file against all results — 100% is the best match returned."}
+        </p>
+        <p className="text-xs mt-1">Matched chunks: {total}</p>
+        <p className="text-xs flex gap-3">
+          <span
+            className={
+              isSemantic
+                ? "text-indigo-600 dark:text-indigo-400"
+                : "text-emerald-600 dark:text-emerald-400"
+            }
+          >
+            ● High: {chunkTiers.high}
+          </span>
+          <span
+            className={
+              isSemantic
+                ? "text-purple-600 dark:text-purple-400"
+                : "text-amber-600 dark:text-amber-400"
+            }
+          >
+            ● Med: {chunkTiers.medium}
+          </span>
+          <span
+            className={
+              isSemantic
+                ? "text-violet-600 dark:text-violet-400"
+                : "text-slate-500"
+            }
+          >
+            ● Low: {chunkTiers.low}
+          </span>
+        </p>
       </TooltipContent>
     </Tooltip>
   );
@@ -738,7 +820,7 @@ function SearchPage() {
   const fileResults = buildKnowledgeTableRows(
     effectiveData,
     taskFiles,
-    Boolean(selectedFilter),
+    Boolean(selectedFilter) || !isWildcardQuery,
   );
 
   const serverTotal = isWildcardQuery
@@ -847,20 +929,14 @@ function SearchPage() {
           isOpenragDocsRow(data) && hasOpenragRefreshCue;
         return (
           <div className="flex items-center overflow-hidden w-full min-w-0 h-full">
-            <div
-              className={`transition-opacity duration-200 ${
-                isActive ? "w-0" : "w-7"
-              }`}
-            ></div>
             <button
               type="button"
               className={cn(
                 "flex items-center gap-2 text-left flex-1 overflow-hidden transition-colors",
-                isActive
-                  ? isCloudBrand
-                    ? "cursor-pointer hover:text-primary"
-                    : "cursor-pointer hover:text-blue-600"
-                  : "cursor-default",
+                "[.ag-row-processing_&]:pl-7",
+                isCloudBrand
+                  ? "cursor-pointer hover:text-primary [.ag-row-processing_&]:cursor-default [.ag-row-processing_&]:hover:text-foreground"
+                  : "cursor-pointer hover:text-blue-600 [.ag-row-processing_&]:cursor-default [.ag-row-processing_&]:hover:text-foreground",
               )}
               onClick={() => {
                 if (!isActive) return;
@@ -917,6 +993,8 @@ function SearchPage() {
     ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
     cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
     sortable: true,
+    valueFormatter: (params: ValueFormatterParams<File>) =>
+      getFileTypeLabel(params.value),
   };
 
   const colOwner: ColDef<File> = {
@@ -945,15 +1023,15 @@ function SearchPage() {
       formatChunkCountLabel(params.data?.chunkCount),
   };
 
-  const colAvgScore: ColDef<File> = {
-    field: "avgScore",
-    headerName: "Avg score",
+  const colRelevance: ColDef<File> = {
+    field: "maxScore",
+    headerName: "Relevance",
     hide: isWildcardQuery,
     ...(isCloudBrand ? { flex: 1, minWidth: 120 } : { width: 120 }),
     sortable: true,
-    comparator: compareAvgScore,
-    cellRenderer: ({ value }: CustomCellRendererProps<File>) => (
-      <AvgScoreCellContent value={value} />
+    comparator: compareRelevance,
+    cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
+      <RelevanceCellContent data={data} />
     ),
   };
 
@@ -1023,14 +1101,14 @@ function SearchPage() {
 
   // ── Layout-aware column sets ─────────────────────────────────────────────
   const columnDefs: ColDef<File>[] = isNarrow
-    ? [colSource, colChunks, colAvgScore, colStatus, colActions]
+    ? [colSource, colChunks, colRelevance, colStatus, colActions]
     : [
         colSource,
         colSize,
         colType,
         colOwner,
         colChunks,
-        colAvgScore,
+        colRelevance,
         colStatus,
         colActions,
       ];
@@ -1314,6 +1392,9 @@ function SearchPage() {
               theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
               rowData={gridRows}
               rowSelection="multiple"
+              rowClassRules={{
+                "ag-row-processing": (p) => p.data?.status === "processing",
+              }}
               getRowId={(params: GetRowIdParams<File>) =>
                 getFileIdentity(params.data)
               }
@@ -1350,6 +1431,9 @@ function SearchPage() {
               rowSelection="multiple"
               rowMultiSelectWithClick={false}
               suppressRowClickSelection={true}
+              rowClassRules={{
+                "ag-row-processing": (p) => p.data?.status === "processing",
+              }}
               getRowId={(params: GetRowIdParams<File>) =>
                 getFileIdentity(params.data)
               }

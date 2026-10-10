@@ -653,8 +653,7 @@ class SearchService:
                 "type": "unified",
                 "fields": {
                     "text": {
-                        "fragment_size": 200,
-                        "number_of_fragments": 3,
+                        "number_of_fragments": 0,
                         "pre_tags": ["<mark>"],
                         "post_tags": ["</mark>"],
                     }

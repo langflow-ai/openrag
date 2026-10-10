@@ -14,9 +14,63 @@ import { describe, expect, it } from "vitest";
 import type { ChunkResult } from "@/app/api/queries/useGetSearchQuery";
 import { authPresets } from "@/test-utils/fixtures/auth";
 import { server } from "@/test-utils/msw/server";
-import { renderWithProviders, waitFor } from "@/test-utils/render";
+import {
+  createTestQueryClient,
+  renderWithProviders,
+  waitFor,
+} from "@/test-utils/render";
 import { setMockLocation } from "@/test-utils/router";
 import ProtectedChunksPage from "./page";
+
+/**
+ * Seed the query client with a global search result so useFileScopedChunksQuery
+ * can find globally-normalised scores via getQueriesData(["search"]).
+ * Must call setQueryDefaults BEFORE setQueryData so the entry survives gcTime:0.
+ */
+function seedGlobalSearch(
+  queryClient: ReturnType<typeof createTestQueryClient>,
+  query: string,
+  filename: string,
+  chunks: ChunkResult[],
+) {
+  const scores = chunks.map((c) => c.score ?? 0);
+  const globalMin = Math.min(...scores);
+  const globalMax = Math.max(...scores);
+  const spread = globalMax - globalMin;
+  const normalise = (raw: number) =>
+    spread > 0 ? (raw - globalMin) / spread : raw > 0 ? 1 : 0;
+
+  const chunksWithNorm = chunks.map((c) => ({
+    ...c,
+    normalizedScore: normalise(c.score ?? 0),
+  }));
+
+  const data = {
+    files: [
+      {
+        filename,
+        mimetype: "application/pdf",
+        chunkCount: chunksWithNorm.length,
+        maxScore: Math.max(
+          ...chunksWithNorm.map((c) => c.normalizedScore ?? 0),
+        ),
+        relevanceTier: "high",
+        isSemanticMatch: chunksWithNorm.every(
+          (c) => !c.highlights?.some((h) => h.includes("<mark>")),
+        ),
+        chunkTiers: { high: 0, medium: 0, low: 0 },
+        source_url: "",
+        size: 0,
+        connector_type: "local",
+        chunks: chunksWithNorm,
+      },
+    ],
+    warnings: [],
+  };
+
+  queryClient.setQueryDefaults(["search", null, query], { gcTime: Infinity });
+  queryClient.setQueryData(["search", null, query], data);
+}
 
 function chunk(overrides: Partial<ChunkResult> = {}): ChunkResult {
   return {
@@ -131,6 +185,15 @@ describe("ChunksPage — highlight wiring", () => {
       searchParams: { filename: "test.pdf", q: "fox" },
     });
 
+    const scoredChunk = chunk({
+      chunk_id: "c1",
+      text: "The quick brown fox",
+      score: 1.0,
+      highlights: ["The quick brown <mark>fox</mark>"],
+    });
+    const qc = createTestQueryClient();
+    seedGlobalSearch(qc, "fox", "test.pdf", [scoredChunk]);
+
     server.use(
       http.post("/api/search", async ({ request }) => {
         const body = (await request.json()) as { query: string };
@@ -140,22 +203,14 @@ describe("ChunksPage — highlight wiring", () => {
             warnings: [],
           });
         }
-        return HttpResponse.json({
-          results: [
-            chunk({
-              chunk_id: "c1",
-              text: "The quick brown fox",
-              highlights: ["The quick brown <mark>fox</mark>"],
-            }),
-          ],
-          warnings: [],
-        });
+        return HttpResponse.json({ results: [scoredChunk], warnings: [] });
       }),
     );
 
     const { container } = renderWithProviders(<ProtectedChunksPage />, {
       providers: ["auth", "knowledgeFilter"],
       auth: authPresets.admin,
+      queryClient: qc,
     });
 
     await waitFor(() =>

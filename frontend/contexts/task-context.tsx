@@ -25,10 +25,7 @@ import TaskDialog from "@/components/task-dialog";
 import { useAuth } from "@/contexts/auth-context";
 import { useOnboardingState } from "@/hooks/use-onboarding-state";
 import { trackProcessFailure, trackProcessSuccess } from "@/lib/analytics";
-import {
-  getKnowledgeFileIdentity,
-  inferTaskFileConnectorType,
-} from "@/lib/knowledge-table-state";
+import { inferTaskFileConnectorType } from "@/lib/knowledge-table-state";
 import {
   getTaskFailureToastDescription,
   isFileCancelled,
@@ -42,7 +39,6 @@ import {
   getDuplicateContentFileCount,
   getEnhancedListDisappearedFilePaths,
   getFailedFileCount,
-  getSkippedFileCount,
   getSuccessfulFileCount,
   hasFailedFileEntries,
   isDeletedAtSourceFile,
@@ -50,7 +46,6 @@ import {
   isTerminalFailedTask,
 } from "@/lib/task-utils";
 
-// Task interface is now imported from useGetTasksQuery
 export type { Task };
 
 export interface TaskFile {
@@ -77,6 +72,8 @@ export interface TaskFile {
 interface TaskContextType {
   tasks: Task[];
   files: TaskFile[];
+  hasUnreadFinishedTasks: boolean;
+  clearUnreadFinishedTasks: () => void;
   addTask: (
     taskId: string,
     options?: { connectorType?: string; source?: string },
@@ -112,6 +109,7 @@ const TaskContext = createContext<TaskContextType | undefined>(undefined);
 
 export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [files, setFiles] = useState<TaskFile[]>([]);
+  const [hasUnreadFinishedTasks, setHasUnreadFinishedTasks] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRecentTasksExpanded, setIsRecentTasksExpanded] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -554,7 +552,6 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           currentTask.status === "completed"
         ) {
           const successfulFiles = getSuccessfulFileCount(currentTask);
-          const skippedFiles = getSkippedFileCount(currentTask);
           const duplicateFiles = getDuplicateContentFileCount(currentTask);
           const failedFiles = getFailedFileCount(currentTask);
           const isTotalFailure = failedFiles > 0 && successfulFiles === 0;
@@ -677,6 +674,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           currentTask,
         );
 
+        if (taskJustReachedTerminal && !isMenuOpen) {
+          setHasUnreadFinishedTasks(true);
+        }
+
         if (didTaskReachCompleted(previousTask, currentTask)) {
           const completedHasFailures = hasFailedFileEntries(currentTask);
 
@@ -699,7 +700,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 e,
               );
             } finally {
-              const indexedIdentities = new Set<string>();
+              // Collect indexed filenames so skipped-duplicate overlays can be
+              // cleared once the same file is successfully re-indexed.
               const indexedFilenames = new Set<string>();
               for (const [
                 ,
@@ -708,7 +710,6 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 queryKey: ["listFiles"],
               })) {
                 for (const indexed of data?.files ?? []) {
-                  indexedIdentities.add(getKnowledgeFileIdentity(indexed));
                   if (indexed.filename?.trim()) {
                     indexedFilenames.add(indexed.filename.trim());
                   }
@@ -718,7 +719,6 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 queryKey: ["search"],
               })) {
                 for (const indexed of data?.files ?? []) {
-                  indexedIdentities.add(getKnowledgeFileIdentity(indexed));
                   if (indexed.filename?.trim()) {
                     indexedFilenames.add(indexed.filename.trim());
                   }
@@ -748,21 +748,18 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                   if (file.status === "processing") {
                     return false;
                   }
+                  // Keep active overlays in state so the row stays visible and
+                  // clickable on the knowledge page immediately after task
+                  // completion — even when the backend row hasn't arrived on the
+                  // current listFiles page yet (alphabetical pagination means it
+                  // can land on any page, not necessarily page 1).
+                  //
+                  // buildKnowledgeTableRows naturally deduplicates the overlay
+                  // once the real backend row appears on the current page; until
+                  // then the overlay row IS navigable because its filename field
+                  // is the clean original name (set by original_filenames at ingest
+                  // time) and the chunks page queries OpenSearch directly.
                   if (file.status === "active") {
-                    const identity = getKnowledgeFileIdentity({
-                      filename: file.filename,
-                      source_url: file.source_url,
-                    });
-                    if (identity && indexedIdentities.has(identity)) {
-                      return false;
-                    }
-                    const sourceUrl = file.source_url?.trim();
-                    if (!sourceUrl || !identity) {
-                      const filename = file.filename?.trim();
-                      if (filename && indexedFilenames.has(filename)) {
-                        return false;
-                      }
-                    }
                     return true;
                   }
                   return false;
@@ -873,12 +870,22 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     [cancelFileMutation],
   );
 
-  const toggleMenu = useCallback(() => {
-    setIsMenuOpen((prev) => !prev);
+  const clearUnreadFinishedTasks = useCallback(() => {
+    setHasUnreadFinishedTasks(false);
   }, []);
 
   const openMenu = useCallback(() => {
     setIsMenuOpen(true);
+    setHasUnreadFinishedTasks(false);
+  }, []);
+
+  const toggleMenu = useCallback(() => {
+    setIsMenuOpen((prev) => {
+      if (!prev) {
+        setHasUnreadFinishedTasks(false);
+      }
+      return !prev;
+    });
   }, []);
 
   const closeMenu = useCallback(() => {
@@ -899,6 +906,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const value: TaskContextType = {
     tasks,
     files,
+    hasUnreadFinishedTasks,
+    clearUnreadFinishedTasks,
     addTask,
     addFiles,
     markTaskFilesProcessing,

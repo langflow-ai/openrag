@@ -122,4 +122,37 @@ describe("HighlightedText", () => {
     expect(mark).toBeInTheDocument();
     expect(mark?.textContent).toBe("");
   });
+
+  it("applies semantic highlight span to relevant sentence when isSemanticMatch is true and highlights are empty", () => {
+    const { container } = render(
+      <HighlightedText
+        highlights={[]}
+        fallbackText="Docling converts documents. Table structure extraction reconstructs cells."
+        isSemanticMatch
+        searchQuery="table extraction"
+      />,
+    );
+    const mark = container.querySelector("mark");
+    expect(mark).toBeInTheDocument();
+    expect(mark?.textContent).toContain("Table structure extraction");
+    expect(mark?.className).toContain("bg-indigo-100");
+  });
+
+  it("skips markdown table formatting dividers and highlights substantive body text", () => {
+    const tableText = `|--------|----------------------|\n| 1 large chunk | Document processing, OCR, layout extraction, Markdown conversion |`;
+    const { container } = render(
+      <HighlightedText
+        highlights={[]}
+        fallbackText={tableText}
+        isSemanticMatch
+        searchQuery="document processing layout"
+      />,
+    );
+    const mark = container.querySelector("mark");
+    expect(mark).toBeInTheDocument();
+    expect(mark?.textContent).not.toBe("|--------|----------------------|");
+    expect(mark?.textContent).toContain(
+      "Document processing, OCR, layout extraction",
+    );
+  });
 });

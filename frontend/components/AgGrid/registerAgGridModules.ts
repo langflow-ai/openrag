@@ -12,13 +12,12 @@ import {
   RenderApiModule,
   RowApiModule,
   RowSelectionModule,
+  RowStyleModule,
   TextFilterModule,
   ValidationModule,
 } from "ag-grid-community";
 
-// Importing necessary modules from ag-grid-community
 // https://www.ag-grid.com/javascript-data-grid/modules/#selecting-modules
-
 ModuleRegistry.registerModules([
   ColumnAutoSizeModule,
   ColumnApiModule,

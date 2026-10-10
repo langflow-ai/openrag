@@ -773,4 +773,65 @@ describe("TaskProvider — source-deleted overlays", () => {
       { timeout: 5000 },
     );
   });
+
+  it("sets hasUnreadFinishedTasks to true when a running task completes while menu is closed", async () => {
+    const qc = createTestQueryClient();
+    let callCount = 0;
+    const runningTask = makeTask({
+      task_id: "task-unread",
+      status: "running",
+      files: {
+        "doc.pdf": {
+          status: "running",
+          progress: 50,
+          source_url: "doc.pdf",
+          filename: "doc.pdf",
+        },
+      },
+    });
+
+    const completedTask = makeTask({
+      task_id: "task-unread",
+      status: "completed",
+      files: {
+        "doc.pdf": {
+          status: "completed",
+          progress: 100,
+          source_url: "doc.pdf",
+          filename: "doc.pdf",
+        },
+      },
+    });
+
+    server.use(
+      http.get("/api/tasks/enhanced", () => {
+        callCount++;
+        return HttpResponse.json({
+          tasks: [callCount === 1 ? runningTask : completedTask],
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useTask(), { wrapper: wrapper(qc) });
+
+    await waitFor(() =>
+      expect(
+        result.current.tasks.some((t) => t.task_id === "task-unread"),
+      ).toBe(true),
+    );
+
+    await waitFor(
+      () => expect(result.current.hasUnreadFinishedTasks).toBe(true),
+      {
+        timeout: 5000,
+      },
+    );
+
+    // Opening the menu should clear unread state
+    act(() => {
+      result.current.openMenu();
+    });
+
+    expect(result.current.hasUnreadFinishedTasks).toBe(false);
+  });
 });
