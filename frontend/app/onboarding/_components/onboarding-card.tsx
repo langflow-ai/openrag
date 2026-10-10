@@ -20,6 +20,7 @@ import {
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import { useDoclingHealth } from "@/components/docling-health-banner";
+import { embeddingStepProviders } from "@/components/models/catalog-models";
 import {
   EMBEDDING_PROVIDER_ORDER,
   getProviderChrome,
@@ -121,21 +122,13 @@ const OnboardingCard = ({
   // models — Anthropic being the standing example. The catalogue answers that
   // for every provider except the two whose inventory comes from the running
   // server rather than LiteLLM's bundled list.
-  const tabProviders = useMemo(() => {
-    if (!isEmbedding) {
-      return providerKeys;
-    }
-    return providerKeys.filter((providerKey) => {
-      if (LIVE_MODEL_PROVIDERS.has(providerKey)) {
-        return true;
-      }
-      const entry = catalog?.providers?.find(
-        (item) => item.key === providerKey,
-      );
-      // Catalogue not loaded yet: hide nothing rather than flicker tabs away.
-      return !entry || entry.embedding_models.length > 0;
-    });
-  }, [providerKeys, isEmbedding, catalog]);
+  const tabProviders = useMemo(
+    () =>
+      isEmbedding
+        ? embeddingStepProviders(providerKeys, catalog, LIVE_MODEL_PROVIDERS)
+        : providerKeys,
+    [providerKeys, isEmbedding, catalog],
+  );
 
   const [modelProvider, setModelProvider] = useState<string>(
     isEmbedding ? "openai" : "anthropic",

@@ -90,6 +90,11 @@ export const useOnboardingMutation = (
     onSettled: async (data, error, variables, onMutateResult, context) => {
       // Invalidate settings query to refetch updated onboarding state
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
+      // A provider whose models are its own deployments publishes them from
+      // saved configuration, so the catalogue changes when a provider is
+      // saved. It is cached indefinitely otherwise, which would hide the
+      // deployments just entered.
+      await queryClient.invalidateQueries({ queryKey: ["models", "catalog"] });
       await options?.onSettled?.(
         data,
         error,

@@ -295,6 +295,12 @@ export interface CatalogCredentialField {
 }
 
 export interface CatalogProvider {
+  /**
+   * Where this provider's lists came from. "configured" means they are the
+   * operator's own deployments, so an empty list means none have been named
+   * yet — not that the provider cannot serve them.
+   */
+  inventory_source?: "configured" | "catalog";
   key: string;
   name: string;
   credential_fields: CatalogCredentialField[];
@@ -308,8 +314,12 @@ export interface ModelCatalogResponse {
 }
 
 /**
- * LiteLLM's bundled model list, grouped by provider. Static for the tab's
- * lifetime — same as openrag-next's `/agent/model-catalog` fetch.
+ * The model list grouped by provider.
+ *
+ * No longer static for the tab's lifetime. It was, when every entry came from
+ * LiteLLM's bundled table; a provider whose models are its own deployments
+ * publishes them from saved configuration, so saving one changes this payload
+ * and a cached copy would hide the deployments just entered.
  */
 export const useGetModelCatalogQuery = (
   options?: Omit<UseQueryOptions<ModelCatalogResponse>, "queryKey" | "queryFn">,

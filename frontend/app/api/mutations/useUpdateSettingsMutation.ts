@@ -138,6 +138,11 @@ export const useUpdateSettingsMutation = (
       queryClient.invalidateQueries({
         queryKey: ["settings"],
       });
+      // A provider whose models are its own deployments publishes them from
+      // saved configuration, so the catalogue changes when a provider is
+      // saved. It is cached indefinitely otherwise, which would hide the
+      // deployments just entered.
+      queryClient.invalidateQueries({ queryKey: ["models", "catalog"] });
       refetchModels(); // Refetch models for the settings page
       options?.onSuccess?.(...args);
     },

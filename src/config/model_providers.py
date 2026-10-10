@@ -34,6 +34,7 @@ from typing import Any, NamedTuple
 
 import yaml
 
+from enhancements.providers.contracts import CatalogEntry
 from utils.logging_config import get_logger
 from utils.run_mode_utils import RUN_MODE_ON_PREM, RUN_MODE_OSS, RUN_MODE_SAAS, get_run_mode
 
@@ -241,6 +242,21 @@ class ProviderEntry(NamedTuple):
     models: tuple[str, ...]
     embedding_models: tuple[str, ...]
     exclude_models: tuple[str, ...]
+    #: The provider's own complete list of selectable models, when it declares
+    #: one. Three states, and the difference between the last two matters:
+    #:
+    #:   None        this provider does not own its inventory; the catalogue is
+    #:               built from LiteLLM's table plus any `models:` rows, as it
+    #:               always has been.
+    #:   ()          the provider owns its inventory and nothing is configured.
+    #:               The pickers are empty *on purpose*, and say so.
+    #:   non-empty   the complete set of selectable models. LiteLLM's rows for
+    #:               this provider are not offered at all.
+    #:
+    #: Carried on the entry rather than fetched later because the entries are
+    #: the catalogue's `lru_cache` key: a configuration change has to rebuild
+    #: the payload instead of serving a stale one.
+    inventory: tuple[CatalogEntry, ...] | None = None
 
 
 def visible_provider_entries(
