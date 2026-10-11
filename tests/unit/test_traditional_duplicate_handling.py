@@ -13,6 +13,7 @@ import pytest
 
 from models.processors import (
     DUPLICATE_FILENAME_WARNING,
+    DUPLICATE_NOT_REPLACEABLE_WARNING,
     DocumentFileProcessor,
     LangflowFileProcessor,
     S3FileProcessor,
@@ -48,6 +49,7 @@ async def test_traditional_processor_duplicate_exists_no_replace():
         jwt_token="mock-token",
         replace_duplicates=False,
         session_manager=mock_session_manager,
+        allow_anonymous_delete=True,
     )
 
     # Assert that session_manager was set correctly on the processor
@@ -85,6 +87,7 @@ async def test_traditional_processor_duplicate_exists_with_replace():
         jwt_token="mock-token",
         replace_duplicates=True,
         session_manager=mock_session_manager,
+        allow_anonymous_delete=True,
     )
 
     # Assert that session_manager was set correctly on the processor
@@ -133,6 +136,7 @@ async def test_langflow_processor_duplicate_exists_no_replace():
         owner_user_id="user-123",
         jwt_token="mock-token",
         replace_duplicates=False,
+        allow_anonymous_delete=True,
     )
     processor.check_filename_exists = AsyncMock(return_value=True)
     processor.delete_document_by_filename = AsyncMock()
@@ -165,10 +169,60 @@ async def test_resolve_duplicate_skips_when_delete_removes_nothing():
         opensearch_client,
         replace=True,
         owner_user_id=None,
+        allow_anonymous_delete=True,
     )
 
     assert result == "skip"
     processor.delete_document_by_filename.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_resolve_duplicate_tells_a_refused_replace_from_a_declined_one():
+    """With a user in hand, a replace that deleted nothing means the document
+    under that name is not theirs to delete. That is a different outcome from
+    not having asked, and the caller needs to be able to say so."""
+    from models.processors import TaskProcessor
+
+    processor = TaskProcessor()
+    processor.check_filename_exists = AsyncMock(return_value=True)
+    processor.delete_document_by_filename = AsyncMock(return_value=0)
+
+    result = await processor.resolve_duplicate_filename(
+        "report.pdf",
+        AsyncMock(),
+        replace=True,
+        owner_user_id="user-123",
+        allow_anonymous_delete=False,
+    )
+
+    assert result == "skip_unreplaceable"
+
+
+@pytest.mark.parametrize(
+    "duplicate_action, warning",
+    [
+        ("skip", DUPLICATE_FILENAME_WARNING),
+        ("skip_in_flight", DUPLICATE_FILENAME_WARNING),
+        ("skip_unreplaceable", DUPLICATE_NOT_REPLACEABLE_WARNING),
+    ],
+)
+def test_only_the_warning_differs_between_the_skips(duplicate_action, warning):
+    """The reason is one value for all three: the claim recovery in TaskService
+    and the knowledge table both key on it."""
+    from models.processors import TaskProcessor
+
+    upload_task = UploadTask(task_id="task-123", total_files=1)
+    file_task = FileTask(file_path="/tmp/report.pdf", filename="report.pdf")
+
+    TaskProcessor().mark_duplicate_skipped(upload_task, file_task, duplicate_action)
+
+    assert file_task.status == TaskStatus.SKIPPED
+    assert file_task.result == {
+        "status": "skipped",
+        "reason": "duplicate_filename",
+        "warning": warning,
+    }
+    assert upload_task.successful_files == 1
 
 
 @pytest.mark.asyncio
@@ -198,6 +252,7 @@ async def test_delete_document_by_filename_shared_without_owner(monkeypatch):
         opensearch_client,
         owner_user_id=None,
         shared=True,
+        allow_anonymous_delete=True,
     )
 
     assert deleted == 1
@@ -208,7 +263,8 @@ async def test_delete_document_by_filename_shared_without_owner(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_delete_document_by_filename_replaces_owned_and_ownerless(monkeypatch):
-    """With an owner in hand the replace scope is "mine OR ownerless", always.
+    """With an owner in hand, and the permission to delete shared documents,
+    the replace scope is "mine OR ownerless".
 
     ``shared`` says how the replacement will be written; it must not narrow what
     gets deleted. An owner-only scope matched none of a shared document's
@@ -239,6 +295,7 @@ async def test_delete_document_by_filename_replaces_owned_and_ownerless(monkeypa
         opensearch_client,
         owner_user_id="user-123",
         shared=False,
+        allow_anonymous_delete=True,
     )
 
     assert deleted == 1
@@ -266,6 +323,7 @@ def _build_s3_processor(replace_duplicates: bool) -> S3FileProcessor:
         models_service=MagicMock(),
         docling_service=MagicMock(),
         replace_duplicates=replace_duplicates,
+        allow_anonymous_delete=True,
     )
     return processor
 
@@ -380,9 +438,12 @@ async def test_replace_without_anonymous_delete_permission_stays_owner_scoped(mo
 
 
 @pytest.mark.asyncio
-async def test_shared_write_still_widens_without_the_flag(monkeypatch):
-    """A shared write already required the permission upstream (connector_sync
-    returns 403 without it), so the flag must not narrow that path."""
+async def test_shared_does_not_stand_in_for_the_permission(monkeypatch):
+    """``shared`` says how the replacement is written, and on the re-sync paths
+    it is inferred from what is indexed. Letting it widen the delete meant a
+    caller without knowledge:delete:anonymous could replace a shared document
+    by re-syncing it. An explicit shared sync loses nothing by this: it cannot
+    get here without the permission (connector_sync returns 403)."""
     from models.processors import TaskProcessor
 
     opensearch_client = _delete_scope_env(monkeypatch)
@@ -395,10 +456,10 @@ async def test_shared_write_still_widens_without_the_flag(monkeypatch):
         allow_anonymous_delete=False,
     )
 
-    from utils.opensearch_queries import build_replace_filename_query
+    from utils.opensearch_queries import build_owned_filename_query
 
     query = opensearch_client.search.await_args.kwargs["body"]["query"]
-    assert query == build_replace_filename_query("report.pdf", "user-123")
+    assert query == build_owned_filename_query("report.pdf", "user-123")
 
 
 @pytest.mark.asyncio

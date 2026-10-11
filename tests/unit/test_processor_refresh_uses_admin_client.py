@@ -52,6 +52,7 @@ async def test_document_processor_refresh_uses_admin_client(monkeypatch, tmp_pat
         jwt_token="Bearer user-token",
         replace_duplicates=True,
         session_manager=session_manager,
+        allow_anonymous_delete=True,
     )
     processor.check_filename_exists = AsyncMock(return_value=True)
     processor.delete_document_by_filename = AsyncMock(return_value=1)
@@ -96,6 +97,7 @@ async def test_langflow_processor_refresh_uses_admin_client(monkeypatch, tmp_pat
         owner_user_id="user-1",
         jwt_token="Bearer user-token",
         replace_duplicates=True,
+        allow_anonymous_delete=True,
     )
     processor.check_filename_exists = AsyncMock(return_value=True)
     processor.delete_document_by_filename = AsyncMock(return_value=1)
