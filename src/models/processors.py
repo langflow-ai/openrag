@@ -1032,9 +1032,17 @@ class ConnectorFileProcessor(TaskProcessor):
     ) -> bool | None:
         """Whether this connector file is ALREADY indexed as shared (ownerless).
 
-        Returns True when the indexed chunks carry no ``owner`` (the share-all
-        layout), False when they carry one, and None when the file isn't indexed
-        yet or the lookup failed — callers fall back to their own default.
+        Returns False when this user has a copy of their own, True when they do
+        not and an ownerless (share-all) copy exists, and None when neither is
+        visible — the file isn't indexed for them, or the lookup failed — so
+        callers fall back to their own default.
+
+        One file id can be indexed both ways at once: this user's private copy,
+        and a shared one another connection ingested from the same object. A
+        sync of theirs is about their own copy, so that is asked for first.
+        Reading whichever chunk happened to come back made the answer arbitrary,
+        and when it came back "shared" the sync treated the user's private file
+        as the shared document.
 
         Read with the caller's (user-scoped) client, so DLS keeps documents we
         cannot see out of the answer.
@@ -1043,28 +1051,35 @@ class ConnectorFileProcessor(TaskProcessor):
             return None
         from connectors.chunk_cleanup import build_connector_file_chunks_query
 
-        try:
+        async def first_chunk_owner(**scope) -> tuple[bool, str | None]:
             response = await opensearch_client.search(
                 index=get_index_name(),
                 body={
                     "size": 1,
                     "_source": ["owner"],
                     "query": build_connector_file_chunks_query(
-                        [file_id], connector_type=connector_type
+                        [file_id], connector_type=connector_type, **scope
                     ),
                 },
             )
+            hits = response.get("hits", {}).get("hits", [])
+            return bool(hits), (hits[0].get("_source", {}).get("owner") if hits else None)
+
+        try:
+            if self.user_id:
+                found, owner = await first_chunk_owner(owner_user_id=self.user_id)
+                if found and owner == self.user_id:
+                    return False
+            found, owner = await first_chunk_owner(shared=True)
+            if found and not owner:
+                return True
         except Exception as e:
             logger.warning(
                 "Could not read indexed sharing state for connector file",
                 file_id=file_id,
                 error=str(e),
             )
-            return None
-        hits = response.get("hits", {}).get("hits", [])
-        if not hits:
-            return None
-        return not hits[0].get("_source", {}).get("owner")
+        return None
 
     async def _resolve_shared(
         self,
@@ -1090,7 +1105,15 @@ class ConnectorFileProcessor(TaskProcessor):
             return self.shared
         return bool(await self._indexed_shared_state(file_id, opensearch_client, connector_type))
 
-    async def _reconcile_shared_owner(self, filename: str, shared: bool) -> None:
+    async def _reconcile_shared_owner(
+        self,
+        filename: str,
+        shared: bool,
+        *,
+        file_id: str,
+        opensearch_client,
+        connector_type: str | None,
+    ) -> None:
         """Update owner fields on already-indexed chunks for `filename` to match
         the `shared` setting resolved for this file.
 
@@ -1108,20 +1131,22 @@ class ConnectorFileProcessor(TaskProcessor):
         keep whatever owner they
         got on their original ingest forever, since a byte-identical re-sync
         never reaches resolve_shared_owner_fields(). Scoped to chunks owned by
-        this user — and to ownerless ones only under the same
-        ``knowledge:delete:anonymous`` boundary delete_document_by_filename
-        uses — so it can't touch another user's document that happens to share
-        this filename.
+        this user, so it can't touch another user's document that happens to
+        share this filename.
 
-        That boundary matters here even more than it does for a delete. An
-        ownerless document is visible to the whole instance, and this script
-        writes an owner onto what it matches: without the permission check, a
-        private sync of a file whose name collides with a shared document would
-        quietly claim that document for the syncing user, taking it out of
-        everyone else's view. ``_indexed_shared_state`` cannot prevent it — it
-        keys on the connector file id, and a collision by definition comes from
-        a document this connector never ingested, so the lookup returns None and
-        ``shared`` falls back to the sync's own (private) intent.
+        Ownerless chunks come into scope on two conditions, and it takes both.
+        The caller holds ``knowledge:delete:anonymous``, the boundary
+        delete_document_by_filename uses. And this file is itself indexed as
+        shared (``_indexed_shared_state``), which is what says the ownerless
+        chunks under this name are this file's own.
+
+        The second is there because the script writes an owner onto whatever it
+        matches, and it matches by filename. With the permission alone, a
+        private sync of a file whose name collides with a shared document from
+        another source claimed that document for the syncing user: no delete, no
+        prompt, gone from everyone else's view. The file id is what tells the
+        two apart — a collision comes from a document this connector never
+        ingested, so the lookup does not come back True for it.
 
         `shared` comes from _resolve_shared, never straight from self.shared: on
         a re-sync it reflects the file's current indexed state, so this is a
@@ -1133,12 +1158,12 @@ class ConnectorFileProcessor(TaskProcessor):
         owner, owner_name, owner_email = resolve_shared_owner_fields(
             self.user_id, self.owner_name, self.owner_email, shared
         )
-        # A shared write already cleared the permission upstream (connector_sync
-        # rejects shared syncs without it), so it keeps the wider scope.
+        # Looked up only for a caller who may touch ownerless chunks at all.
+        reaches_ownerless = self.allow_anonymous_delete and (
+            await self._indexed_shared_state(file_id, opensearch_client, connector_type) is True
+        )
         build_query = (
-            build_replace_filename_query
-            if shared or self.allow_anonymous_delete
-            else build_owned_filename_query
+            build_replace_filename_query if reaches_ownerless else build_owned_filename_query
         )
         for candidate in get_filename_aliases(filename):
             try:
@@ -1324,6 +1349,23 @@ class ConnectorFileProcessor(TaskProcessor):
             # skips it and leaves the stale copy in place.
             shared = await self._resolve_shared(document.id, opensearch_client, connector_type)
 
+            if shared and not self.allow_anonymous_delete:
+                # Writing a shared document takes knowledge:delete:anonymous
+                # however `shared` was arrived at. An explicit shared sync is
+                # refused upstream without it, so this is the inherited case: a
+                # file another connection indexed as shared, re-synced by
+                # someone who may not replace it. Refused here, before anything
+                # is deleted, reconciled or written — the gate below would only
+                # refuse it when the caller owned nothing under the name, and
+                # otherwise deleted their copy and re-indexed the file as shared.
+                logger.warning(
+                    "Sync of a shared file refused — caller lacks knowledge:delete:anonymous",
+                    file_id=document.id,
+                    filename=file_task.filename,
+                )
+                self.mark_duplicate_skipped(upload_task, file_task, "skip_unreplaceable")
+                return
+
             duplicate_action = await self.resolve_duplicate_filename(
                 file_task.filename,
                 opensearch_client,
@@ -1344,7 +1386,13 @@ class ConnectorFileProcessor(TaskProcessor):
                 # this caller may not replace is not theirs to rewrite owner
                 # fields on either.
                 if duplicate_action == "skip":
-                    await self._reconcile_shared_owner(file_task.filename, shared)
+                    await self._reconcile_shared_owner(
+                        file_task.filename,
+                        shared,
+                        file_id=document.id,
+                        opensearch_client=opensearch_client,
+                        connector_type=connector_type,
+                    )
                 self.mark_duplicate_skipped(upload_task, file_task, duplicate_action)
                 return
 
@@ -1382,7 +1430,13 @@ class ConnectorFileProcessor(TaskProcessor):
                 file_hash = hash_id(tmp_path)
 
                 if not renamed and await self.check_document_exists(file_hash, opensearch_client):
-                    await self._reconcile_shared_owner(file_task.filename, shared)
+                    await self._reconcile_shared_owner(
+                        file_task.filename,
+                        shared,
+                        file_id=document.id,
+                        opensearch_client=opensearch_client,
+                        connector_type=connector_type,
+                    )
                     file_task.status = TaskStatus.COMPLETED
                     file_task.result = {"status": "unchanged", "id": file_hash}
                     file_task.updated_at = time.time()
