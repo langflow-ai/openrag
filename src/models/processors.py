@@ -1098,7 +1098,9 @@ class ConnectorFileProcessor(TaskProcessor):
         the unchanged-content path, and a skip against a real duplicate. Never
         for a "skip_in_flight": there the name belongs to another file that is
         still writing it, and this query matches by filename, so reconciling
-        would stamp this file's sharing answer onto that one's chunks.
+        would stamp this file's sharing answer onto that one's chunks. Nor for
+        a "skip_unreplaceable": the caller was just refused the document under
+        this name, and a refusal that still wrote to it would not be one.
 
         On those paths the file's content and name haven't changed since a prior
         sync, but the connector's "Make documents available to all users"
@@ -1338,7 +1340,10 @@ class ConnectorFileProcessor(TaskProcessor):
                 # DIFFERENT document, whose sharing state was resolved from its
                 # own file id and can differ from this one's. Reconciling then
                 # would stamp this file's answer onto another file's chunks.
-                if duplicate_action != "skip_in_flight":
+                # "skip_unreplaceable" is out for a plainer reason: a document
+                # this caller may not replace is not theirs to rewrite owner
+                # fields on either.
+                if duplicate_action == "skip":
                     await self._reconcile_shared_owner(file_task.filename, shared)
                 self.mark_duplicate_skipped(upload_task, file_task, duplicate_action)
                 return
