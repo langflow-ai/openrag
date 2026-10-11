@@ -13,6 +13,7 @@ import pytest
 
 from models.processors import (
     DUPLICATE_FILENAME_WARNING,
+    DUPLICATE_NOT_REPLACEABLE_WARNING,
     DocumentFileProcessor,
     LangflowFileProcessor,
     S3FileProcessor,
@@ -173,6 +174,55 @@ async def test_resolve_duplicate_skips_when_delete_removes_nothing():
 
     assert result == "skip"
     processor.delete_document_by_filename.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_resolve_duplicate_tells_a_refused_replace_from_a_declined_one():
+    """With a user in hand, a replace that deleted nothing means the document
+    under that name is not theirs to delete. That is a different outcome from
+    not having asked, and the caller needs to be able to say so."""
+    from models.processors import TaskProcessor
+
+    processor = TaskProcessor()
+    processor.check_filename_exists = AsyncMock(return_value=True)
+    processor.delete_document_by_filename = AsyncMock(return_value=0)
+
+    result = await processor.resolve_duplicate_filename(
+        "report.pdf",
+        AsyncMock(),
+        replace=True,
+        owner_user_id="user-123",
+        allow_anonymous_delete=False,
+    )
+
+    assert result == "skip_unreplaceable"
+
+
+@pytest.mark.parametrize(
+    "duplicate_action, warning",
+    [
+        ("skip", DUPLICATE_FILENAME_WARNING),
+        ("skip_in_flight", DUPLICATE_FILENAME_WARNING),
+        ("skip_unreplaceable", DUPLICATE_NOT_REPLACEABLE_WARNING),
+    ],
+)
+def test_only_the_warning_differs_between_the_skips(duplicate_action, warning):
+    """The reason is one value for all three: the claim recovery in TaskService
+    and the knowledge table both key on it."""
+    from models.processors import TaskProcessor
+
+    upload_task = UploadTask(task_id="task-123", total_files=1)
+    file_task = FileTask(file_path="/tmp/report.pdf", filename="report.pdf")
+
+    TaskProcessor().mark_duplicate_skipped(upload_task, file_task, duplicate_action)
+
+    assert file_task.status == TaskStatus.SKIPPED
+    assert file_task.result == {
+        "status": "skipped",
+        "reason": "duplicate_filename",
+        "warning": warning,
+    }
+    assert upload_task.successful_files == 1
 
 
 @pytest.mark.asyncio
