@@ -65,21 +65,23 @@ export function KnowledgeDateRangeFilter() {
     : null;
 
   return (
-    <div className="flex-shrink-0 flex items-center gap-0.5">
+    <div className="flex h-full flex-shrink-0 items-stretch">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
             type="button"
-            variant={dateRange ? "secondary" : "outline"}
-            className={cn("rounded-lg gap-2", dateRange && "border-primary/50")}
+            variant="ghost"
+            className={cn(
+              "h-auto gap-2 rounded-none px-3 text-sm hover:bg-accent hover:text-foreground",
+              dateRange && "bg-accent text-foreground",
+            )}
             aria-label={label ?? "Filter by date range"}
           >
-            <CalendarIcon className="h-4 w-4" />
-            {label ? (
-              <span className="hidden sm:inline text-sm">{label}</span>
-            ) : (
-              <span className="hidden sm:inline text-sm">Date range</span>
-            )}
+            <CalendarIcon className="h-4 w-4 flex-shrink-0 text-[var(--icon-primary)]" />
+            {/* The range label is wide; show it only once the bar has room for it. */}
+            <span className="hidden max-w-[16rem] truncate xl:inline">
+              {label ?? "Date range"}
+            </span>
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
@@ -130,7 +132,7 @@ export function KnowledgeDateRangeFilter() {
         <button
           type="button"
           aria-label="Clear date range"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-muted text-muted-foreground"
+          className="inline-flex w-8 flex-shrink-0 items-center justify-center bg-accent text-muted-foreground transition-colors hover:text-foreground"
           onClick={handleClear}
         >
           <X className="h-3 w-3" />

@@ -65,13 +65,16 @@ export function formatTaskTimestamp(
   return `${Math.floor(diffHours / 24)} days ago · ${formatClockTime(date)}`;
 }
 
-export function toUtcDayStartISOString(date: Date): string {
+// Day bounds are the viewer's local calendar day, sent as UTC instants. The
+// "Date Uploaded" column renders indexed_time in local time too, so a file
+// listed under a day is the file that day's filter returns, in any timezone.
+export function toLocalDayStartISOString(date: Date): string {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   return d.toISOString();
 }
 
-export function toUtcDayEndISOString(date: Date): string {
+export function toLocalDayEndISOString(date: Date): string {
   const d = new Date(date);
   d.setHours(23, 59, 59, 999);
   return d.toISOString();

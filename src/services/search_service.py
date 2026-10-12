@@ -23,6 +23,7 @@ from utils.embedding_fields import (
     get_embedding_space_id,
 )
 from utils.logging_config import get_logger
+from utils.opensearch_queries import build_date_range_query
 
 logger = get_logger(__name__)
 
@@ -345,13 +346,13 @@ class SearchService:
                             # Multiple values filter
                             filter_clauses.append({"terms": {field_name: values}})
 
-                date_range_clause: dict[str, Any] = {}
-                if filters.get("created_after"):
-                    date_range_clause["gte"] = filters["created_after"]
-                if filters.get("created_before"):
-                    date_range_clause["lte"] = filters["created_before"]
-                if date_range_clause:
-                    filter_clauses.append({"range": {"indexed_time": date_range_clause}})
+                date_range_clause = build_date_range_query(
+                    "indexed_time",
+                    gte=filters.get("created_after") or None,
+                    lte=filters.get("created_before") or None,
+                )
+                if date_range_clause is not None:
+                    filter_clauses.append(date_range_clause)
 
             try:
                 seen_spaces: set[str] = set()
@@ -535,13 +536,13 @@ class SearchService:
                             # Multiple values filter
                             filter_clauses.append({"terms": {field_name: values}})
 
-                date_range_clause = {}
-                if filters.get("created_after"):
-                    date_range_clause["gte"] = filters["created_after"]
-                if filters.get("created_before"):
-                    date_range_clause["lte"] = filters["created_before"]
-                if date_range_clause:
-                    filter_clauses.append({"range": {"indexed_time": date_range_clause}})
+                date_range_clause = build_date_range_query(
+                    "indexed_time",
+                    gte=filters.get("created_after") or None,
+                    lte=filters.get("created_before") or None,
+                )
+                if date_range_clause is not None:
+                    filter_clauses.append(date_range_clause)
 
         # Build query body
         if is_wildcard_match_all:

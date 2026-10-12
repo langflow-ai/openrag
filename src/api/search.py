@@ -4,7 +4,7 @@ from fastapi import Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from api.files import _validate_iso_timestamp
+from api.files import _validate_date_range
 from dependencies import (
     get_search_service,
     get_session_manager,
@@ -35,14 +35,13 @@ async def search(
     user: User = Depends(require_permission("search:use")),
 ):
     """Search for documents"""
-    _validate_iso_timestamp(body.created_after, "created_after")
-    _validate_iso_timestamp(body.created_before, "created_before")
-
     merged_filters: dict[str, Any] = dict(body.filters)
     if body.created_after:
         merged_filters["created_after"] = body.created_after
     if body.created_before:
         merged_filters["created_before"] = body.created_before
+    # Validate after merging: the bounds can also arrive inside `filters`.
+    _validate_date_range(merged_filters.get("created_after"), merged_filters.get("created_before"))
 
     try:
         jwt_token = user.jwt_token

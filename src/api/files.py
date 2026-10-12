@@ -9,7 +9,7 @@ using FileServiceV2 (composite-aggregation cursor pagination). Pass `after_key`
 
 import json
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -29,17 +29,42 @@ _EXTENDED_ISO_RE = re.compile(
 )
 
 
-def _validate_iso_timestamp(value: str | None, param_name: str) -> None:
-    """Raise HTTP 422 when *value* is present but is not a valid ISO 8601 timestamp."""
-    if not isinstance(value, str):
-        return
+def _parse_iso_timestamp(value: str, param_name: str) -> datetime:
+    """Parse an extended ISO 8601 timestamp, raising HTTP 422 when it is not one."""
     detail = f"{param_name} must be a valid ISO 8601 timestamp"
     if not _EXTENDED_ISO_RE.match(value):
         raise HTTPException(status_code=422, detail=detail)
     try:
-        datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as err:
         raise HTTPException(status_code=422, detail=detail) from err
+    # indexed_time is stored in UTC and OpenSearch reads offset-less values as UTC.
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _validate_iso_timestamp(value: str | None, param_name: str) -> None:
+    """Raise HTTP 422 when *value* is present but is not a valid ISO 8601 timestamp."""
+    if isinstance(value, str):
+        _parse_iso_timestamp(value, param_name)
+
+
+def _validate_date_range(created_after: str | None, created_before: str | None) -> None:
+    """Raise HTTP 422 for a malformed bound or a range whose start is after its end."""
+    after = (
+        _parse_iso_timestamp(created_after, "created_after")
+        if isinstance(created_after, str)
+        else None
+    )
+    before = (
+        _parse_iso_timestamp(created_before, "created_before")
+        if isinstance(created_before, str)
+        else None
+    )
+    if after and before and after > before:
+        raise HTTPException(
+            status_code=422,
+            detail="created_after must be earlier than or equal to created_before",
+        )
 
 
 def _parse_after_key(after_key: str | None) -> dict | None:
@@ -83,8 +108,7 @@ async def list_files(
     user: User = Depends(get_current_user),
 ):
     """List ingested files with composite-aggregation pagination, filtering, and sorting."""
-    _validate_iso_timestamp(created_after, "created_after")
-    _validate_iso_timestamp(created_before, "created_before")
+    _validate_date_range(created_after, created_before)
     parsed_after_key = _parse_after_key(after_key)
 
     try:

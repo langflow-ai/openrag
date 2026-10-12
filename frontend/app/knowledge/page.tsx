@@ -57,8 +57,8 @@ import {
 } from "@/lib/knowledge-table-state";
 import {
   parseTimestampMs,
-  toUtcDayEndISOString,
-  toUtcDayStartISOString,
+  toLocalDayEndISOString,
+  toLocalDayStartISOString,
 } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
 import {
@@ -625,10 +625,10 @@ function SearchPage() {
   const filterPageResetKey = buildFilterPageResetKey(parsedFilterData);
 
   const createdAfter = dateRange?.from
-    ? toUtcDayStartISOString(dateRange.from)
+    ? toLocalDayStartISOString(dateRange.from)
     : undefined;
   const createdBefore = dateRange?.to
-    ? toUtcDayEndISOString(dateRange.to)
+    ? toLocalDayEndISOString(dateRange.to)
     : undefined;
 
   const {
