@@ -2004,7 +2004,10 @@ class TestToolsBesideReasoningEffort:
         monkeypatch.setattr(
             llm_gateway,
             "_model_info",
-            lambda _m: {"supports_none_reasoning_effort": supports_none},
+            # Takes the logical provider too: a model routed under a transport
+            # alias has no row under the transport id, so lookups pass the
+            # provider key alongside it.
+            lambda _m, _provider=None: {"supports_none_reasoning_effort": supports_none},
         )
 
     @pytest.mark.asyncio
