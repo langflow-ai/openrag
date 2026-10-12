@@ -24,6 +24,7 @@ async def test_langflow_processor_threads_document_id_for_index_proof(tmp_path):
         session_manager=session_manager,
         owner_user_id="user-1",
         jwt_token="Bearer user-token",
+        allow_anonymous_delete=True,
     )
     processor.check_filename_exists = AsyncMock(side_effect=[False, True])
 
