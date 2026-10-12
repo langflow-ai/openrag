@@ -38,8 +38,13 @@ COPY custom_components/ /app/custom_components/
 # runtime before dropping back to uid=1000.
 COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
 COPY scripts/patch_langflow_openrag_bundle.py /tmp/patch_langflow_openrag_bundle.py
+COPY scripts/langflow_sitecustomize.py /tmp/langflow_sitecustomize.py
 USER root
 RUN python3 /tmp/patch_langflow_openrag_bundle.py
+# Preload openai.resources at `langflow run` startup to avoid a concurrent
+# lazy-import deadlock when flows build their components (#2436).
+RUN install -m 644 /tmp/langflow_sitecustomize.py \
+    "$(python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')/sitecustomize.py"
 ENV LANGFLOW_SSRF_ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal
 ENV LANGFLOW_LOG_TRACE_LOCALS=false
 ENV LANGFLOW_LOG_FORMAT=key_value
