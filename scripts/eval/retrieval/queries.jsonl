@@ -1,0 +1,83 @@
+{"id": "key-rotate", "query": "How do I swap out an API key without causing downtime?", "expected_files": ["api-keys.md"], "expected_text": "overlap window", "tags": ["semantic"]}
+{"id": "key-leaked", "query": "One of our keys was pushed to a public repo, what should we do right now?", "expected_files": ["api-keys.md"], "expected_text": "Revoke immediately", "tags": ["semantic"]}
+{"id": "key-scopes", "query": "What scopes can I give an API key?", "expected_files": ["api-keys.md"], "expected_text": "destinations:manage", "tags": ["keyword"]}
+{"id": "key-prefix-ci", "query": "What is a key starting with rwk_ci_ used for?", "expected_files": ["api-keys.md"], "expected_text": "Automation key", "tags": ["exact-token"]}
+{"id": "sig-verify", "query": "How can my server confirm that a webhook really came from Relaywise and was not forged?", "expected_files": ["signing-secrets.md"], "expected_text": "HMAC-SHA256", "tags": ["semantic"]}
+{"id": "sig-roll", "query": "How do I change the secret used to sign deliveries, and how long do the old and new ones both work?", "expected_files": ["signing-secrets.md"], "expected_text": "72 hours", "tags": ["semantic"]}
+{"id": "sig-max-age", "query": "How old can a signed request be before I should refuse it?", "expected_files": ["signing-secrets.md"], "expected_text": "five minutes", "tags": ["semantic"]}
+{"id": "sig-whsec", "query": "Where do I find the whsec_ value for a destination?", "expected_files": ["signing-secrets.md"], "expected_text": "Reveal", "tags": ["exact-token"]}
+{"id": "sso-setup", "query": "How do we let staff log in to the console with their company accounts?", "expected_files": ["single-sign-on.md"], "expected_text": "identity provider", "tags": ["semantic"]}
+{"id": "sso-lockout", "query": "If our identity provider goes down, can anyone still get into the console?", "expected_files": ["single-sign-on.md"], "expected_text": "break-glass", "tags": ["semantic"]}
+{"id": "sso-offboarding", "query": "How is someone's access removed automatically when they leave the company?", "expected_files": ["single-sign-on.md"], "expected_text": "SCIM", "tags": ["semantic"]}
+{"id": "session-length", "query": "How long before the console logs me out?", "expected_files": ["single-sign-on.md", "configuration-reference.md"], "tags": ["semantic", "multi-doc"]}
+{"id": "dlq-purge-who", "query": "Who is allowed to empty a dead-letter queue?", "expected_files": ["roles-and-permissions.md", "dead-letter-queue.md"], "tags": ["keyword", "multi-doc"]}
+{"id": "viewer-payloads", "query": "Can a read-only user see the contents of events?", "expected_files": ["roles-and-permissions.md"], "expected_text": "Payload access", "tags": ["semantic"]}
+{"id": "invite-expiry", "query": "How long does a team invitation link stay valid?", "expected_files": ["roles-and-permissions.md"], "expected_text": "valid for 7 days", "tags": ["semantic"]}
+{"id": "ownership-transfer", "query": "How do I hand a workspace over to a colleague?", "expected_files": ["roles-and-permissions.md"], "expected_text": "last Owner", "tags": ["semantic"]}
+{"id": "retry-schedule", "query": "How many times will a failed webhook be attempted, and over how long?", "expected_files": ["delivery-retries.md"], "expected_text": "27 hours", "tags": ["semantic"]}
+{"id": "cfg-max-attempts", "query": "What is the default for delivery.max_attempts?", "expected_files": ["delivery-retries.md", "configuration-reference.md"], "expected_text": "delivery.max_attempts", "tags": ["exact-token", "multi-doc"]}
+{"id": "circuit-breaker", "query": "What happens when most requests to one endpoint start failing?", "expected_files": ["delivery-retries.md"], "expected_text": "degraded", "tags": ["semantic"]}
+{"id": "gone-410", "query": "What does Relaywise do if my endpoint answers 410 Gone?", "expected_files": ["delivery-retries.md", "dead-letter-queue.md"], "expected_text": "410 Gone", "tags": ["exact-token", "multi-doc"]}
+{"id": "duplicate-events", "query": "Why did my endpoint get the same event twice?", "expected_files": ["delivery-retries.md", "troubleshooting.md"], "tags": ["semantic", "multi-doc"]}
+{"id": "ordered-delivery", "query": "Can I make sure events for one customer are delivered in sequence?", "expected_files": ["delivery-retries.md"], "expected_text": "ordering key", "tags": ["semantic"]}
+{"id": "destination-auto-disabled", "query": "Why was my destination turned off without anyone touching it?", "expected_files": ["delivery-retries.md", "troubleshooting.md"], "tags": ["semantic", "multi-doc"]}
+{"id": "dlq-what", "query": "Where do events go once every delivery attempt has been used up?", "expected_files": ["dead-letter-queue.md"], "tags": ["semantic"]}
+{"id": "dlq-retention-team", "query": "On the Team plan, how long are undeliverable events kept before they are removed?", "expected_files": ["dead-letter-queue.md"], "expected_text": "14 days", "tags": ["semantic"]}
+{"id": "dlq-replay-other-destination", "query": "How do I use rwctl dlq replay to resend failed events to a new endpoint?", "expected_files": ["dead-letter-queue.md"], "expected_text": "dst_9x1aa", "tags": ["exact-token"]}
+{"id": "replay-header", "query": "How can my endpoint tell that a delivery is a replay?", "expected_files": ["dead-letter-queue.md"], "expected_text": "Relaywise-Replay", "tags": ["semantic"]}
+{"id": "ingest-rate", "query": "How fast am I allowed to send events on each plan?", "expected_files": ["rate-limits.md"], "expected_text": "events per second", "tags": ["semantic"]}
+{"id": "err-4290", "query": "RW-4290", "expected_files": ["rate-limits.md", "error-codes.md"], "expected_text": "RW-4290", "tags": ["exact-token", "multi-doc"]}
+{"id": "payload-max-size", "query": "What is the largest event body I can send?", "expected_files": ["rate-limits.md"], "expected_text": "256 KB", "tags": ["semantic"]}
+{"id": "batch-size", "query": "How many events fit in one batch request?", "expected_files": ["rate-limits.md"], "expected_text": "500 events", "tags": ["keyword"]}
+{"id": "err-3002", "query": "What does error RW-3002 mean?", "expected_files": ["error-codes.md"], "expected_text": "TLS handshake failed", "tags": ["exact-token"]}
+{"id": "err-5004", "query": "RW-5004", "expected_files": ["error-codes.md", "transformations.md"], "expected_text": "RW-5004", "tags": ["exact-token", "multi-doc"]}
+{"id": "err-2031", "query": "Why was my destination URL rejected with RW-2031?", "expected_files": ["error-codes.md", "network-security.md"], "expected_text": "RW-2031", "tags": ["exact-token", "multi-doc"]}
+{"id": "err-7001", "query": "What causes RW-7001?", "expected_files": ["error-codes.md", "regions.md"], "expected_text": "RW-7001", "tags": ["exact-token", "multi-doc"]}
+{"id": "cfg-concurrency", "query": "Which setting limits how many requests hit my endpoint in parallel?", "expected_files": ["configuration-reference.md"], "expected_text": "delivery.max_concurrency", "tags": ["semantic"]}
+{"id": "cfg-dedupe-window", "query": "ingest.dedupe_window_seconds", "expected_files": ["configuration-reference.md"], "expected_text": "ingest.dedupe_window_seconds", "tags": ["exact-token"]}
+{"id": "cfg-explain", "query": "How do I find out which level a setting's value is coming from?", "expected_files": ["configuration-reference.md", "cli-reference.md"], "expected_text": "rwctl config explain", "tags": ["semantic", "multi-doc"]}
+{"id": "schema-validation", "query": "Can incoming payloads be checked against a schema and refused when they don't match?", "expected_files": ["configuration-reference.md"], "expected_text": "ingest.schema_validation", "tags": ["semantic"]}
+{"id": "filter-wildcard", "query": "How do I send every kind of invoice event, including nested types, to one endpoint?", "expected_files": ["event-filtering.md"], "expected_text": "invoice.**", "tags": ["semantic"]}
+{"id": "filter-missing-field", "query": "What happens when a filter refers to a field the event doesn't have?", "expected_files": ["event-filtering.md"], "expected_text": "it is not an error", "tags": ["semantic"]}
+{"id": "unrouted-events", "query": "What happens to an event that no route picks up?", "expected_files": ["event-filtering.md"], "expected_text": "unrouted", "tags": ["semantic"]}
+{"id": "route-fan-out", "query": "How many endpoints can one route deliver to?", "expected_files": ["event-filtering.md"], "expected_text": "up to 20 destinations", "tags": ["semantic"]}
+{"id": "strip-fields-before-delivery", "query": "How can I strip card numbers out of events before they are forwarded to a partner?", "expected_files": ["transformations.md"], "expected_text": "card_number", "tags": ["semantic"]}
+{"id": "transform-network", "query": "Can transformation code call an external API?", "expected_files": ["transformations.md"], "expected_text": "No network access", "tags": ["semantic"]}
+{"id": "transform-rollback", "query": "I shipped a broken transformation, how do I go back to the previous one?", "expected_files": ["transformations.md"], "expected_text": "Make active", "tags": ["semantic"]}
+{"id": "plan-scale-price", "query": "What does the Scale plan cost and how many events come with it?", "expected_files": ["billing-plans.md"], "expected_text": "20 million", "tags": ["keyword"]}
+{"id": "over-quota", "query": "What happens if we send more events in a month than our plan includes?", "expected_files": ["billing-plans.md"], "expected_text": "billed as overage", "tags": ["semantic"]}
+{"id": "spending-cap", "query": "How do I make sure we never get a surprise bill?", "expected_files": ["billing-plans.md"], "expected_text": "hard cap", "tags": ["semantic"]}
+{"id": "downgrade-timing", "query": "When does a plan downgrade kick in?", "expected_files": ["billing-plans.md"], "expected_text": "end of the current billing period", "tags": ["semantic"]}
+{"id": "nonprofit-discount", "query": "Is there a discount for nonprofits?", "expected_files": ["billing-plans.md"], "expected_text": "50 percent off", "tags": ["semantic"]}
+{"id": "card-declined", "query": "What happens if our card is declined?", "expected_files": ["invoices-and-payments.md"], "expected_text": "suspended", "tags": ["semantic"]}
+{"id": "invoice-download", "query": "Where can I download past invoices?", "expected_files": ["invoices-and-payments.md"], "expected_text": "PDF", "tags": ["keyword"]}
+{"id": "annual-refund", "query": "Can I get my money back on an annual subscription?", "expected_files": ["invoices-and-payments.md"], "expected_text": "30 days of purchase", "tags": ["semantic"]}
+{"id": "pay-by-wire", "query": "Can we pay by wire instead of by card?", "expected_files": ["invoices-and-payments.md"], "expected_text": "bank transfer", "tags": ["semantic"]}
+{"id": "payload-retention-scale", "query": "How long are event bodies stored on the Scale plan?", "expected_files": ["data-retention.md"], "expected_text": "These are maximums", "tags": ["semantic"]}
+{"id": "erasure-request", "query": "A customer asked us to erase their personal data, how do I remove their events?", "expected_files": ["data-retention.md"], "expected_text": "Delete events", "tags": ["semantic"]}
+{"id": "never-store-field", "query": "How do I keep a sensitive field from ever being saved?", "expected_files": ["data-retention.md", "configuration-reference.md"], "expected_text": "retention.redact_fields", "tags": ["semantic", "multi-doc"]}
+{"id": "export-to-own-storage", "query": "Can I keep events for longer than the plan allows by copying them to storage we own?", "expected_files": ["data-retention.md"], "expected_text": "scheduled export", "tags": ["semantic"]}
+{"id": "replay-event-gone", "query": "Replay fails saying the event isn't available any more, why?", "expected_files": ["data-retention.md", "troubleshooting.md"], "tags": ["semantic", "multi-doc"]}
+{"id": "eu-residency", "query": "We need our data to stay inside the EU, is that possible?", "expected_files": ["regions.md"], "expected_text": "eu-central", "tags": ["semantic"]}
+{"id": "move-region", "query": "Can I move an existing workspace to another region?", "expected_files": ["regions.md"], "expected_text": "cannot be changed", "tags": ["semantic"]}
+{"id": "firewall-ips", "query": "Which IP addresses do I need to let through our firewall so deliveries arrive?", "expected_files": ["regions.md", "network-security.md"], "expected_text": "rwctl network egress-ips", "tags": ["semantic", "multi-doc"]}
+{"id": "alert-on-failing-endpoint", "query": "How do I get notified when an endpoint starts failing?", "expected_files": ["monitoring-and-alerts.md"], "expected_text": "delivery.success_rate", "tags": ["semantic"]}
+{"id": "metric-dlq-depth", "query": "dlq.depth", "expected_files": ["monitoring-and-alerts.md", "dead-letter-queue.md"], "expected_text": "dlq.depth", "tags": ["exact-token", "multi-doc"]}
+{"id": "alert-noise", "query": "How do I stop an alert from notifying us over and over?", "expected_files": ["monitoring-and-alerts.md"], "expected_text": "cooldown", "tags": ["semantic"]}
+{"id": "metrics-history", "query": "How far back do the charts go?", "expected_files": ["monitoring-and-alerts.md"], "expected_text": "13 months", "tags": ["semantic"]}
+{"id": "audit-who-changed", "query": "How can I find out who changed a destination's URL?", "expected_files": ["audit-log.md"], "expected_text": "destination.url_changed", "tags": ["semantic"]}
+{"id": "audit-retention", "query": "How long is the record of admin actions kept?", "expected_files": ["audit-log.md"], "expected_text": "7 years", "tags": ["semantic"]}
+{"id": "audit-tamper", "query": "Could an admin cover their tracks by deleting log entries?", "expected_files": ["audit-log.md"], "expected_text": "hash", "tags": ["semantic"]}
+{"id": "support-access", "query": "Can Relaywise staff look at our payloads?", "expected_files": ["audit-log.md"], "expected_text": "Support access", "tags": ["semantic"]}
+{"id": "local-development", "query": "How do I receive webhooks on my laptop while developing?", "expected_files": ["cli-reference.md"], "expected_text": "rwctl listen", "tags": ["semantic"]}
+{"id": "cli-in-pipeline", "query": "How do I authenticate the command-line tool in a CI pipeline?", "expected_files": ["cli-reference.md"], "expected_text": "RELAYWISE_API_KEY", "tags": ["semantic"]}
+{"id": "cli-exit-code-5", "query": "What does exit code 5 from rwctl mean?", "expected_files": ["cli-reference.md"], "expected_text": "Rate limited", "tags": ["exact-token"]}
+{"id": "client-certificates", "query": "Our endpoint requires callers to present a client certificate, is that supported?", "expected_files": ["network-security.md"], "expected_text": "mutual TLS", "tags": ["semantic"]}
+{"id": "restrict-senders", "query": "Can I restrict which servers are allowed to send events to us?", "expected_files": ["network-security.md"], "expected_text": "ingest allowlist", "tags": ["semantic"]}
+{"id": "enforce-two-step", "query": "How do I force everyone to use two-step login?", "expected_files": ["network-security.md"], "expected_text": "Require two-factor", "tags": ["semantic"]}
+{"id": "encryption-at-rest", "query": "Is stored data encrypted?", "expected_files": ["network-security.md"], "expected_text": "AES-256", "tags": ["semantic"]}
+{"id": "nothing-arriving", "query": "My endpoint isn't getting any events, where do I start looking?", "expected_files": ["troubleshooting.md"], "expected_text": "Was the event accepted", "tags": ["semantic"]}
+{"id": "lost-authenticator", "query": "I lost my authenticator app, how do I get back in?", "expected_files": ["troubleshooting.md"], "expected_text": "second factor", "tags": ["semantic"]}
+{"id": "first-test-event", "query": "What is the quickest way to send a first test event?", "expected_files": ["getting-started.md"], "expected_text": "202 Accepted", "tags": ["semantic"]}
+{"id": "source-vs-destination", "query": "What is the difference between a source and a destination?", "expected_files": ["getting-started.md"], "expected_text": "Where events come from", "tags": ["keyword"]}
+{"id": "plain-http-destination", "query": "Can a destination use a plain http URL?", "expected_files": ["getting-started.md", "error-codes.md"], "expected_text": "localhost", "tags": ["keyword", "multi-doc"]}
