@@ -60,7 +60,8 @@ A run does the following:
 2. Uploads each corpus file under a name unique to the run, such as
    `eval-3f9a12cd-api-keys.md`, and waits until every file is searchable.
 3. Sends each question to `/v1/search`, limited to the files this run uploaded,
-   so other documents in the stack do not affect the scores.
+   so other documents in the stack are never returned. They can still shift
+   the scores slightly; see [Repeatability](#repeatability).
 4. Prints a summary and writes it, with the full results, to `results/`.
 5. Deletes the files it uploaded.
 
@@ -110,6 +111,27 @@ change under test: the corpus, the question file, the k values, the fetch
 limit, the score threshold, or the embedding and chunk settings of the stack.
 Scores from different embedding models or chunk sizes are not comparable unless
 that setting is what you are testing.
+
+### Repeatability
+
+Two runs against the same stack do not give exactly the same scores. Search
+combines vector similarity with keyword matching, and the keyword part weighs
+each word by how common it is across the whole index. That count includes
+documents outside the eval, and chunks that earlier runs deleted but OpenSearch
+has not yet purged. Each run therefore changes the index a little for the next.
+
+On a local stack with watsonx embeddings, three unchanged runs in a row gave
+the same recall@5 (0.904) and an MRR within 0.002, but up to 13 of the 83
+questions moved by one rank and were listed as regressed or improved. Halving
+the chunk size moved recall@5 by 0.036 and MRR by 0.070.
+
+To tell a real change from this noise:
+
+- Run the baseline twice and compare the two runs. Whatever that comparison
+  lists is the noise level of your stack.
+- Trust the averages and changes in recall@5 over a one-rank move on a single
+  question.
+- For the steadiest numbers, use a stack that holds no other documents.
 
 No baseline is committed. Scores depend on the embedding model and settings of
 the stack that produced them, so create the baseline on the same stack you test
