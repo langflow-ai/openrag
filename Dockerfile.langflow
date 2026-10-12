@@ -43,7 +43,7 @@ USER root
 # Upgrade libxml2 to patch CVE-2026-74860 and CVE-2026-86140 (fixed in
 # 2.12.5-10.el10_2.4) in the base image. libxslt is the runtime library for the
 # source-built lxml from the lxml-build stage. TODO: remove (see lxml-build).
-RUN microdnf update -y libxml2 \
+RUN microdnf install -y 'libxml2 >= 2.12.5-10.el10_2.4' \
     && microdnf install -y libxslt \
     && microdnf clean all \
     && rm -rf /var/cache/yum \
