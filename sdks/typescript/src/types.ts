@@ -223,6 +223,18 @@ export interface SettingsUpdateResponse {
   message: string;
 }
 
+// Models types
+export interface ModelOption {
+  value: string;
+  label: string;
+  default?: boolean;
+}
+
+export interface ModelsResponse {
+  language_models: ModelOption[];
+  embedding_models: ModelOption[];
+}
+
 // Knowledge filter types
 /** Query configuration stored in a knowledge filter. */
 export interface KnowledgeFilterQueryData {

@@ -6,6 +6,7 @@ import { ChatClient } from "./chat";
 import { DocumentsClient } from "./documents";
 import { SearchClient } from "./search";
 import { KnowledgeFiltersClient } from "./knowledge-filters";
+import { ModelsClient } from "./models";
 import {
   AuthenticationError,
   NotFoundError,
@@ -106,6 +107,8 @@ export class OpenRAGClient {
   readonly settings: SettingsClient;
   /** Knowledge filters client for managing filters. */
   readonly knowledgeFilters: KnowledgeFiltersClient;
+  /** Models client for listing provider models. */
+  readonly models: ModelsClient;
 
   constructor(options: OpenRAGClientOptions = {}) {
     // Resolve API key from argument or environment
@@ -127,6 +130,7 @@ export class OpenRAGClient {
     this.documents = new DocumentsClient(this);
     this.settings = new SettingsClient(this);
     this.knowledgeFilters = new KnowledgeFiltersClient(this);
+    this.models = new ModelsClient(this);
   }
 
   /** @internal Get request headers with authentication. */

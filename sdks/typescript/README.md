@@ -270,6 +270,14 @@ await client.settings.update({
 });
 ```
 
+## Models
+
+```typescript
+const models = await client.models.list("openai");
+console.log(models.language_models);
+console.log(models.embedding_models);
+```
+
 ## Knowledge Filters
 
 Knowledge filters are reusable, named filter configurations that can be applied to chat and search operations.
