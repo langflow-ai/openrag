@@ -44,6 +44,7 @@ def test_callback_url_uses_backend_when_disabled(monkeypatch):
 
 
 def test_llm_base_url_uses_router_when_enabled(monkeypatch):
+    monkeypatch.delenv("OPENRAG_LLM_PROXY_URL", raising=False)
     monkeypatch.setattr(settings, "OPENRAG_BACKEND_ROUTER_ENABLE", True)
     monkeypatch.setattr(settings, "OPENRAG_BACKEND_ROUTER_URL", "http://router:8100")
     assert settings.get_langflow_llm_base_url() == "http://router:8100"

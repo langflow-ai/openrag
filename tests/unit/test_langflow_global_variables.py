@@ -135,7 +135,8 @@ async def test_update_langflow_global_variable_patches_when_type_matches():
                     "value": "new-secret",
                     "default_fields": [],
                     "type": "Credential",
-                }
+                },
+                "idempotent": True,
             },
         ),
     ]
@@ -206,7 +207,8 @@ async def test_ensure_required_langflow_global_variables_removes_apply_to_fields
                 "name": "OPENAI_API_KEY",
                 "default_fields": [],
                 "type": "Credential",
-            }
+            },
+            "idempotent": True,
         },
     )
 
@@ -359,7 +361,8 @@ async def test_update_langflow_global_variable_overwrites_redacted_credential():
                     "value": "None",
                     "default_fields": [],
                     "type": "Credential",
-                }
+                },
+                "idempotent": True,
             },
         ),
     ]

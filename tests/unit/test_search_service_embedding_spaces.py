@@ -64,7 +64,9 @@ async def test_backend_search_queries_exact_and_legacy_embedding_providers(monke
     service.models_service = None
     routes = []
 
-    async def create_embedding(body):
+    async def create_embedding(body, *, interactive=False):
+        # Query embeddings take the interactive lane, never the bulk one.
+        assert interactive is True
         routes.append(body["model"])
         return {"data": [{"embedding": [0.1, 0.2]}]}
 

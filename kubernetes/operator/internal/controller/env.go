@@ -45,7 +45,7 @@ func NewEnvVarManager() *EnvVarManager {
 			// Langflow runtime configuration
 			"LANGFLOW_WORKERS":               "4",
 			"LANGFLOW_CONFIG_DIR":            "/tmp",
-			"LANGFLOW_LOG_LEVEL":             "DEBUG",
+			"LANGFLOW_LOG_LEVEL":             "INFO",
 			"HIDE_GETTING_STARTED_PROGRESS":  "true",
 			"LANGFLOW_ALEMBIC_LOG_TO_STDOUT": "true",
 			"LANGFLOW_DEACTIVATE_TRACING":    "true",

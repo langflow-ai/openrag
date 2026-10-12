@@ -14,7 +14,11 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-CHECK_TIMEOUT_S = 5.0
+# Total wall-clock deadline per check. It must exceed status_checks._CHECK_TIMEOUT_S, which
+# httpx applies per phase, so a slow service is diagnosed by its own check rather than
+# cancelled here into UNKNOWN. It is also the only bound on the OpenSearch check, and it
+# caps /status latency, since that endpoint waits for its slowest check.
+CHECK_TIMEOUT_S = 8.0
 
 CHECK_SPECS = [check_openrag_backend, check_docling, check_langflow, check_opensearch]
 

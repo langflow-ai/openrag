@@ -10,6 +10,8 @@ import pytest
 from services.document_index_writer import DocumentIndexContext
 from services.langflow_ingest_token_service import LangflowIngestTokenService
 from services.langflow_llm_token_service import (
+    HOP_PURPOSE_CHAT,
+    HOP_PURPOSE_INGEST,
     LANGFLOW_LLM_AUDIENCE,
     LangflowLlmTokenService,
     langflow_hop_audience,
@@ -84,3 +86,20 @@ def test_wrong_scope_is_rejected():
 def test_orag_key_is_not_a_hop_token():
     assert langflow_hop_audience("orag_abc") is None
     assert langflow_hop_audience("") is None
+
+
+@pytest.mark.parametrize("purpose", [HOP_PURPOSE_CHAT, HOP_PURPOSE_INGEST])
+def test_the_purpose_claim_round_trips(purpose):
+    service = LangflowLlmTokenService(secret=SECRET, ttl_seconds=60)
+    token = service.create_token(user_id="alice", purpose=purpose)
+    claims = service.validate_claims(token)
+    assert claims["purpose"] == purpose
+    assert service.user_from_claims(claims).user_id == "alice"
+    # The user it identifies is the same either way.
+    assert service.validate_token(token).provider == "langflow_llm"
+
+
+def test_a_token_minted_without_a_purpose_has_no_claim():
+    service = LangflowLlmTokenService(secret=SECRET, ttl_seconds=60)
+    claims = service.validate_claims(service.create_token(user_id="alice"))
+    assert "purpose" not in claims

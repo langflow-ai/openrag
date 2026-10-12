@@ -124,5 +124,6 @@ async def test_patch_mcp_server_url_preserves_auth_settings(monkeypatch):
                 "url": "http://langflow:7860/api/v1/mcp/project/project-id/streamable",
                 "headers": expected_headers,
             },
+            "idempotent": True,
         }
     ]

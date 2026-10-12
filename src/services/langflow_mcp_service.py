@@ -257,6 +257,7 @@ class LangflowMCPService:
                 method="PATCH",
                 endpoint=f"/api/v2/mcp/servers/{server_name}",
                 json=payload,
+                idempotent=True,
             )
             if response.status_code in (502, 503, 504):
                 response.raise_for_status()

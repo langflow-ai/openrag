@@ -73,6 +73,7 @@ async def add_provider_credentials_to_headers(
     flows_service=None,
     jwt_token: str = None,
     user_id: str | None = None,
+    purpose: str | None = None,
 ) -> None:
     """Add Langflow global variables for the OpenRAG LLM proxy and infra URLs.
 
@@ -81,7 +82,9 @@ async def add_provider_credentials_to_headers(
     speak OpenAI-compatible HTTP to OpenRAG (`OPENRAG_LLM_BASE_URL`) and
     authenticate with a short-lived hop token as `OPENRAG_LLM_TOKEN` — same
     pattern as `OPENRAG_INGEST_TOKEN`, scoped to the LLM proxy only.
-    Chat and embeddings share that base URL and hop token.
+    Chat and embeddings share that base URL and hop token. `purpose` is
+    stamped on the token (`HOP_PURPOSE_CHAT` / `HOP_PURPOSE_INGEST`) so the
+    gateway can tell a query embedding from a bulk ingest one.
 
     NOTE: `headers` may hold a JWT after this call. Never log it directly —
     use utils.logging_config.sanitize_headers() if a header dict must be logged.
@@ -92,7 +95,7 @@ async def add_provider_credentials_to_headers(
     headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_BASE_URL"] = get_langflow_llm_base_url()
 
     subject = (user_id or "").strip() or "anonymous"
-    hop_token = LangflowLlmTokenService().create_token(user_id=subject)
+    hop_token = LangflowLlmTokenService().create_token(user_id=subject, purpose=purpose)
     headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG_LLM_TOKEN"] = hop_token
     # Stock Language/Embedding Model nodes still bind api_key to OPENAI_API_KEY.
     headers["X-LANGFLOW-GLOBAL-VAR-OPENAI_API_KEY"] = hop_token

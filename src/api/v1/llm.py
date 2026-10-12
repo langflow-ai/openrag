@@ -10,6 +10,7 @@ from fastapi import Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from dependencies import require_llm_proxy_any_permission, require_llm_proxy_permission
+from services.langflow_llm_token_service import HOP_PURPOSE_CHAT
 from services.llm_gateway import LlmGatewayError, chat_completions, embeddings
 from services.model_catalog import (
     CATALOG_UNAVAILABLE_MESSAGE,
@@ -138,8 +139,11 @@ async def embeddings_endpoint(
     body = await _read_json_body(request)
     if isinstance(body, JSONResponse):
         return body
+    # A chat run's hop token marks query embeddings, which must not queue
+    # behind a bulk ingest at a concurrency-limited provider.
+    interactive = getattr(request.state, "llm_hop_purpose", None) == HOP_PURPOSE_CHAT
     try:
-        result = await embeddings(body)
+        result = await embeddings(body, interactive=interactive)
     except LlmGatewayError as exc:
         return _gateway_error(exc)
     return JSONResponse(result)

@@ -576,7 +576,21 @@ async def test_stream_sse_counts_tool_calls_as_usable_output(monkeypatch):
 
     async def gen():
         yield {
-            "choices": [{"delta": {"tool_calls": [{"index": 0}]}, "finish_reason": "tool_calls"}]
+            "choices": [
+                {
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {"name": "search_documents", "arguments": "{}"},
+                            }
+                        ]
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ]
         }
 
     [line async for line in llm_gateway._stream_sse(gen(), "openai", "gpt-4o-mini")]
@@ -1021,6 +1035,542 @@ async def test_stream_sse_logs_the_repair(monkeypatch):
 
 
 # --------------------------------------------------------------------------
+# Tool calls a provider splits across the wrong index
+# --------------------------------------------------------------------------
+
+
+def _orphaned_fragment_deltas():
+    """The gpt-oss-on-vLLM symptom: the closing brace lands under the next index.
+
+    Taken literally this truncates the real call's arguments *and* invents a
+    second call with no id and no name — the exact pair that makes the assistant
+    message the agent replays unacceptable to vLLM on every later turn.
+    """
+    opening = {
+        "id": "chatcmpl-tool-1",
+        "type": "function",
+        "index": 0,
+        "function": {"name": "search_documents", "arguments": ""},
+    }
+    fragments = ['{\n  "query": "AMCOR', ' signatories"\n']
+    chunks = [{"choices": [{"index": 0, "delta": {"tool_calls": [opening]}}]}]
+    chunks += [
+        {
+            "choices": [
+                {"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": f}}]}}
+            ]
+        }
+        for f in fragments
+    ]
+    # The stray one: same content, wrong index, and nothing naming a call.
+    chunks.append(
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"tool_calls": [{"index": 1, "function": {"arguments": "}"}}]},
+                }
+            ]
+        }
+    )
+    chunks.append({"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]})
+    return chunks
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_rejoins_a_fragment_misfiled_under_the_next_index():
+    from services import llm_gateway
+
+    async def gen():
+        for chunk in _orphaned_fragment_deltas():
+            yield chunk
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "rhoai", "hosted_vllm/gpt-oss")]
+
+    calls = _streamed_tool_calls(lines)
+    assert len(calls) == 1, "the stray fragment must not become a second tool call"
+    assert calls[0]["id"] == "chatcmpl-tool-1"
+    assert calls[0]["function"]["name"] == "search_documents"
+    # The closing brace is back where it belongs, so the arguments parse.
+    assert json.loads(calls[0]["function"]["arguments"]) == {"query": "AMCOR signatories"}
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_drops_a_buffered_call_that_names_no_tool(monkeypatch):
+    """Backstop: a call with no name can never be executed, so it must not ship."""
+    from services import llm_gateway
+
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(llm_gateway, "logger", recorder)
+
+    async def gen():
+        yield {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {"id": "call_1", "index": 0, "function": {"arguments": "{}"}}
+                        ]
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ]
+        }
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "rhoai", "hosted_vllm/gpt-oss")]
+
+    assert _streamed_tool_calls(lines) == []
+    assert any(call[0] == "warning" and "named no tool" in call[1] for call in recorder.calls)
+
+
+def _tool_call_chunk(*tool_calls, finish_reason=None):
+    choice = {"index": 0, "delta": {"tool_calls": list(tool_calls)}}
+    if finish_reason:
+        choice["finish_reason"] = finish_reason
+    return {"choices": [choice]}
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_keeps_an_arguments_fragment_that_arrives_before_the_call_is_named():
+    """Nothing is open yet, so the fragment must wait for its call, not vanish."""
+    from services import llm_gateway
+
+    async def gen():
+        yield _tool_call_chunk({"index": 0, "function": {"arguments": '{"query": '}})
+        yield _tool_call_chunk(
+            {
+                "id": "call_1",
+                "type": "function",
+                "index": 0,
+                "function": {"name": "search_documents", "arguments": '"x"}'},
+            }
+        )
+        yield {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "rhoai", "hosted_vllm/gpt-oss")]
+
+    calls = _streamed_tool_calls(lines)
+    assert len(calls) == 1
+    assert calls[0]["id"] == "call_1"
+    assert calls[0]["function"]["name"] == "search_documents"
+    assert json.loads(calls[0]["function"]["arguments"]) == {"query": "x"}
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_rejoins_both_a_leading_and_a_misfiled_trailing_fragment():
+    """The provisional call must not undo the next-index rejoin, and vice versa."""
+    from services import llm_gateway
+
+    async def gen():
+        yield _tool_call_chunk({"index": 0, "function": {"arguments": "{"}})
+        yield _tool_call_chunk(
+            {
+                "id": "call_1",
+                "type": "function",
+                "index": 0,
+                "function": {"name": "search_documents", "arguments": '"query": "x"'},
+            }
+        )
+        yield _tool_call_chunk({"index": 1, "function": {"arguments": "}"}})
+        yield {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "rhoai", "hosted_vllm/gpt-oss")]
+
+    calls = _streamed_tool_calls(lines)
+    assert len(calls) == 1, "neither stray fragment may become a call of its own"
+    assert calls[0]["id"] == "call_1"
+    assert json.loads(calls[0]["function"]["arguments"]) == {"query": "x"}
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_drops_an_unnamed_fragment_no_call_ever_claims(monkeypatch):
+    """A provisional call that never gets a name is still discarded at drain."""
+    from services import llm_gateway
+
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(llm_gateway, "logger", recorder)
+
+    async def gen():
+        yield _tool_call_chunk({"index": 0, "function": {"arguments": "{}"}})
+        yield {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "rhoai", "hosted_vllm/gpt-oss")]
+
+    assert _streamed_tool_calls(lines) == []
+    assert any(call[0] == "warning" and "named no tool" in call[1] for call in recorder.calls)
+    # Nothing reached the client, so it is told why rather than left hanging.
+    assert any('"code": "upstream_error"' in line for line in lines)
+    assert lines[-1] == "data: [DONE]\n\n"
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_mints_an_id_for_a_named_call_that_has_none():
+    """A named call is real work; only its correlation handle is missing."""
+    from services import llm_gateway
+
+    async def gen():
+        yield {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "function": {"name": "search_documents", "arguments": "{}"},
+                            }
+                        ]
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ]
+        }
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "rhoai", "hosted_vllm/gpt-oss")]
+
+    calls = _streamed_tool_calls(lines)
+    assert len(calls) == 1
+    assert isinstance(calls[0]["id"], str) and calls[0]["id"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fragments", [[], ["  "]], ids=["no-fragment", "whitespace-fragment"])
+async def test_stream_sse_defaults_a_zero_argument_call_to_an_empty_object(fragments):
+    """`""` is not a JSON object; clients that parse arguments must get `{}`."""
+    from services import llm_gateway
+
+    async def gen():
+        for chunk in _tool_call_deltas(fragments, name="list_sources"):
+            yield chunk
+
+    lines = [line async for line in llm_gateway._stream_sse(gen(), "rhoai", "hosted_vllm/gpt-oss")]
+
+    calls = _streamed_tool_calls(lines)
+    assert len(calls) == 1
+    assert calls[0]["id"] == "call_1"
+    assert calls[0]["function"]["name"] == "list_sources"
+    assert json.loads(calls[0]["function"]["arguments"]) == {}
+
+
+def test_finalise_tool_call_leaves_real_arguments_alone():
+    from services.llm_gateway import _finalise_tool_call
+
+    call = {"id": "call_1", "function": {"name": "search", "arguments": _WELL_FORMED_ARGUMENTS}}
+    assert _finalise_tool_call(call) is True
+    assert call["function"]["arguments"] == _WELL_FORMED_ARGUMENTS
+
+
+def test_finalise_tool_call_does_not_default_arguments_on_a_nameless_call():
+    from services.llm_gateway import _finalise_tool_call
+
+    call = {"id": "call_1", "function": {"name": "", "arguments": ""}}
+    assert _finalise_tool_call(call) is False
+    assert call["function"]["arguments"] == ""
+
+
+# --------------------------------------------------------------------------
+# A poisoned conversation must not wedge every later turn
+# --------------------------------------------------------------------------
+
+
+def test_sanitise_messages_drops_a_tool_call_naming_no_tool_and_its_result():
+    """vLLM rejects the whole request over this one message, so it cannot go up."""
+    from services import llm_gateway
+
+    messages = [
+        {"role": "user", "content": "For the AMCOR form, who are the signatories?"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "type": "function",
+                    "id": "call_1",
+                    "function": {"name": "search_documents", "arguments": '{"query": "AMCOR"}'},
+                },
+                # What langchain-openai echoes back for an unparseable call.
+                {"type": "function", "id": None, "function": {"name": "", "arguments": "}"}},
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_1", "content": "…"},
+        {"role": "tool", "tool_call_id": None, "content": "…"},
+    ]
+
+    cleaned, repairs = llm_gateway._sanitise_messages(messages)
+
+    assert repairs == 2
+    assert [m["role"] for m in cleaned] == ["user", "assistant", "tool"]
+    assert [c["id"] for c in cleaned[1]["tool_calls"]] == ["call_1"]
+
+
+def test_sanitise_messages_encodes_object_arguments_as_the_json_string_openai_requires():
+    from services import llm_gateway
+
+    cleaned, repairs = llm_gateway._sanitise_messages(
+        [
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "type": "function",
+                        "id": "call_1",
+                        "function": {"name": "search", "arguments": {"query": "AMCOR"}},
+                    }
+                ],
+            }
+        ]
+    )
+
+    assert repairs == 1
+    assert cleaned[0]["tool_calls"][0]["function"]["arguments"] == '{"query": "AMCOR"}'
+
+
+def test_sanitise_messages_removes_a_tool_calls_key_left_empty():
+    """`tool_calls: null` is itself a shape providers iterate without a None check."""
+    from services import llm_gateway
+
+    cleaned, repairs = llm_gateway._sanitise_messages(
+        [{"role": "assistant", "content": "hello", "tool_calls": None}]
+    )
+
+    assert "tool_calls" not in cleaned[0]
+    assert cleaned[0]["content"] == "hello"
+    assert repairs == 0
+
+
+@pytest.mark.parametrize("function", ["search", 42, ["name", "search"]])
+def test_sanitise_messages_drops_a_call_whose_function_is_not_an_object(function):
+    """Malformed history is the sanitiser's job to absorb, not to crash on."""
+    from services import llm_gateway
+
+    good = {"type": "function", "id": "call_1", "function": {"name": "search", "arguments": "{}"}}
+    cleaned, repairs = llm_gateway._sanitise_messages(
+        [
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [good, {"type": "function", "id": "call_2", "function": function}],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "content": "kept"},
+            {"role": "tool", "tool_call_id": "call_2", "content": "orphaned"},
+        ]
+    )
+
+    assert repairs == 2
+    assert [call["id"] for call in cleaned[0]["tool_calls"]] == ["call_1"]
+    assert [m["content"] for m in cleaned[1:]] == ["kept"]
+
+
+@pytest.mark.asyncio
+async def test_chat_completions_absorbs_a_non_object_function_instead_of_raising(monkeypatch):
+    """It runs before the call's error handling, so a raise here was a bare 500."""
+    captured = {}
+
+    async def fake_acompletion(**kwargs):
+        captured.update(kwargs)
+        return {"id": "1", "choices": [{"message": {"role": "assistant", "content": "hi"}}]}
+
+    monkeypatch.setattr("litellm.acompletion", fake_acompletion)
+
+    await chat_completions(
+        {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "user", "content": "hi"},
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{"type": "function", "id": "call_1", "function": "oops"}],
+                },
+            ],
+        },
+        config=_config(),
+    )
+
+    assert captured["messages"] == [{"role": "user", "content": "hi"}]
+
+
+def test_sanitise_messages_drops_the_result_of_a_dropped_call_that_had_an_id():
+    """The result carries a real id, but the call it answers is gone."""
+    from services import llm_gateway
+
+    cleaned, repairs = llm_gateway._sanitise_messages(
+        [
+            {"role": "user", "content": "q"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "type": "function",
+                        "id": "call_1",
+                        "function": {"name": "search", "arguments": "{}"},
+                    },
+                    {
+                        "type": "function",
+                        "id": "call_2",
+                        "function": {"name": "", "arguments": "{}"},
+                    },
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "content": "kept"},
+            {"role": "tool", "tool_call_id": "call_2", "content": "orphaned"},
+        ]
+    )
+
+    assert repairs == 2
+    assert [m.get("content") for m in cleaned if m["role"] == "tool"] == ["kept"]
+
+
+def test_sanitise_messages_drops_an_assistant_message_that_was_only_bad_calls():
+    """`content` is optional only beside `tool_calls`; with neither, nothing is left."""
+    from services import llm_gateway
+
+    cleaned, repairs = llm_gateway._sanitise_messages(
+        [
+            {"role": "user", "content": "q"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "type": "function",
+                        "id": "call_2",
+                        "function": {"name": "", "arguments": "{}"},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_2", "content": "orphaned"},
+            {"role": "user", "content": "again"},
+        ]
+    )
+
+    assert repairs == 2
+    assert cleaned == [{"role": "user", "content": "q"}, {"role": "user", "content": "again"}]
+
+
+def test_sanitise_messages_keeps_an_assistant_message_that_still_has_content():
+    from services import llm_gateway
+
+    cleaned, _ = llm_gateway._sanitise_messages(
+        [
+            {
+                "role": "assistant",
+                "content": "Let me look.",
+                "tool_calls": [
+                    {
+                        "type": "function",
+                        "id": "call_2",
+                        "function": {"name": "", "arguments": "{}"},
+                    }
+                ],
+            }
+        ]
+    )
+
+    assert cleaned == [{"role": "assistant", "content": "Let me look."}]
+
+
+def test_sanitise_messages_drops_a_result_not_answering_the_preceding_assistant_message():
+    """A result only answers the calls of the assistant message just before it."""
+    from services import llm_gateway
+
+    call = {"type": "function", "id": "call_1", "function": {"name": "search", "arguments": "{}"}}
+    cleaned, repairs = llm_gateway._sanitise_messages(
+        [
+            {"role": "assistant", "content": "", "tool_calls": [call]},
+            {"role": "tool", "tool_call_id": "call_1", "content": "answer"},
+            {"role": "user", "content": "next"},
+            {"role": "tool", "tool_call_id": "call_1", "content": "replayed out of place"},
+        ]
+    )
+
+    assert repairs == 1
+    assert [m.get("content") for m in cleaned] == ["", "answer", "next"]
+
+
+def test_sanitise_messages_keeps_every_result_of_parallel_calls():
+    from services import llm_gateway
+
+    messages = [
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"type": "function", "id": "a", "function": {"name": "search", "arguments": "{}"}},
+                {"type": "function", "id": "b", "function": {"name": "search", "arguments": "{}"}},
+            ],
+        },
+        {"role": "tool", "tool_call_id": "b", "content": "second"},
+        {"role": "tool", "tool_call_id": "a", "content": "first"},
+    ]
+
+    cleaned, repairs = llm_gateway._sanitise_messages(messages)
+
+    assert repairs == 0
+    assert cleaned == messages
+
+
+def test_sanitise_messages_leaves_a_healthy_conversation_untouched():
+    from services import llm_gateway
+
+    messages = [
+        {"role": "system", "content": "be helpful"},
+        {"role": "user", "content": "hi"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "type": "function",
+                    "id": "call_1",
+                    "function": {"name": "search", "arguments": '{"query": "x"}'},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_1", "content": "result"},
+    ]
+
+    cleaned, repairs = llm_gateway._sanitise_messages(messages)
+
+    assert repairs == 0
+    assert cleaned == messages
+
+
+@pytest.mark.asyncio
+async def test_chat_completions_sends_the_sanitised_conversation_upstream(monkeypatch):
+    """The repair has to reach the wire, not just exist as a helper."""
+    captured = {}
+
+    async def fake_acompletion(**kwargs):
+        captured.update(kwargs)
+        return {"id": "1", "choices": [{"message": {"role": "assistant", "content": "hi"}}]}
+
+    monkeypatch.setattr("litellm.acompletion", fake_acompletion)
+
+    await chat_completions(
+        {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "user", "content": "hi"},
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {"type": "function", "id": None, "function": {"name": "", "arguments": "}"}}
+                    ],
+                },
+            ],
+        },
+        config=_config(),
+    )
+
+    # The assistant message held nothing but the unusable call, so it goes too.
+    assert captured["messages"] == [{"role": "user", "content": "hi"}]
+
+
+# --------------------------------------------------------------------------
 # Surfacing the real upstream failure
 # --------------------------------------------------------------------------
 
@@ -1093,6 +1643,60 @@ async def test_chat_completions_masks_an_upstream_4xx_as_a_gateway_failure(monke
         await chat_completions({"model": "gpt-4o-mini", "messages": []}, config=_config())
 
     assert exc.value.status_code == 502
+
+
+class _FakeMidStreamFallbackError(Exception):
+    llm_provider = "hosted_vllm"
+
+
+_PROXY_CUTOFF = (
+    "litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: "
+    "Hosted_vllmException - Response payload is not completed: <TransferEncodingError: 400, "
+    "message='Not enough data to satisfy transfer length header.'>"
+)
+
+
+def test_a_truncated_response_names_the_proxy_not_the_wrapper_chain():
+    """aiohttp's own "400" must not read as the model rejecting the request."""
+    from services.llm_gateway import _upstream_client_message
+
+    message = _upstream_client_message(
+        f"MidStreamFallbackError: {_PROXY_CUTOFF}",
+        "rhoai",
+        "hosted_vllm/qwen2.5-0.5b-instruct",
+        _FakeMidStreamFallbackError(_PROXY_CUTOFF),
+    )
+
+    assert "closed before the response finished" in message
+    assert "timed out" in message
+    assert "rhoai/qwen2.5-0.5b-instruct" in message
+    for noise in ("MidStreamFallbackError", "TransferEncodingError", "400"):
+        assert noise not in message
+
+
+@pytest.mark.asyncio
+async def test_a_mid_stream_cutoff_is_reported_and_still_latches_the_banner():
+    """Unlike a context overflow, this fails every long request on that endpoint."""
+    from services import llm_gateway, provider_error_log
+
+    provider_error_log.clear()
+
+    async def gen():
+        raise _FakeMidStreamFallbackError(_PROXY_CUTOFF)
+        yield  # pragma: no cover - makes this an async generator
+
+    try:
+        lines = [
+            line
+            async for line in llm_gateway._stream_sse(
+                gen(), "rhoai", "hosted_vllm/qwen2.5-0.5b-instruct"
+            )
+        ]
+        error = json.loads(lines[-2][len("data: ") :])["error"]
+        assert "closed before the response finished" in error["message"]
+        assert provider_error_log.latest_failure("rhoai", "chat") == error["message"]
+    finally:
+        provider_error_log.clear()
 
 
 def test_sanitise_upstream_detail_drops_interpreter_state():
@@ -1271,6 +1875,99 @@ class TestRealFailuresReachTheBanner:
         await llm_gateway.chat_completions({"model": "gpt-4o", "messages": []})
 
         assert provider_error_log.latest_failure("openai", "chat") is None
+
+
+class TestRequestScopedFailuresStayOutOfTheBanner:
+    """A prompt that overflows the context window is this request's problem.
+
+    The provider is serving; the next, shorter prompt succeeds. Recording it
+    latched the health banner against a healthy provider, and on one whose
+    probe cannot clear it (every provider enhancement), it stayed latched.
+    """
+
+    _OVERFLOW = (
+        "This model's maximum context length is 32768 tokens. However, you requested 0 "
+        "output tokens and your prompt contains at least 32769 input tokens"
+    )
+
+    @pytest.fixture(autouse=True)
+    def _clean(self, monkeypatch):
+        from services import llm_gateway, provider_error_log
+
+        provider_error_log.clear()
+        monkeypatch.setattr(
+            llm_gateway,
+            "resolve_call",
+            lambda *a, **k: ("hosted_vllm/qwen2.5-0.5b-instruct", "rhoai", {}),
+        )
+        yield
+        provider_error_log.clear()
+
+    def _raise(self, monkeypatch, exc: BaseException):
+        async def _boom(**_kwargs):
+            raise exc
+
+        monkeypatch.setattr("litellm.acompletion", _boom)
+
+    @pytest.mark.asyncio
+    async def test_a_context_window_overflow_is_not_recorded(self, monkeypatch):
+        from services import llm_gateway, provider_error_log
+
+        class ContextWindowExceededError(Exception):
+            llm_provider = "hosted_vllm"
+
+        self._raise(monkeypatch, ContextWindowExceededError(self._OVERFLOW))
+
+        with pytest.raises(llm_gateway.LlmGatewayError) as raised:
+            await llm_gateway.chat_completions({"model": "rhoai:qwen", "messages": []})
+
+        assert "maximum context length" in str(raised.value)
+        assert provider_error_log.latest_failure("rhoai", "chat") is None
+
+    @pytest.mark.asyncio
+    async def test_an_overflow_does_not_erase_a_real_failure(self, monkeypatch):
+        from services import llm_gateway, provider_error_log
+
+        provider_error_log.record_failure("rhoai", "chat", "earlier real failure")
+        self._raise(monkeypatch, RuntimeError(self._OVERFLOW))
+
+        with pytest.raises(llm_gateway.LlmGatewayError):
+            await llm_gateway.chat_completions({"model": "rhoai:qwen", "messages": []})
+
+        assert provider_error_log.latest_failure("rhoai", "chat") == "earlier real failure"
+
+    @pytest.mark.asyncio
+    async def test_other_upstream_failures_are_still_recorded(self, monkeypatch):
+        from services import llm_gateway, provider_error_log
+
+        self._raise(
+            monkeypatch,
+            RuntimeError('{"error": {"message": "The model `qwen` does not exist."}}'),
+        )
+
+        with pytest.raises(llm_gateway.LlmGatewayError):
+            await llm_gateway.chat_completions({"model": "rhoai:qwen", "messages": []})
+
+        assert "does not exist" in provider_error_log.latest_failure("rhoai", "chat")
+
+    @pytest.mark.asyncio
+    async def test_a_mid_stream_overflow_is_reported_but_not_recorded(self):
+        from services import llm_gateway, provider_error_log
+
+        overflow = self._OVERFLOW
+
+        class BadRequestError(Exception):
+            llm_provider = "hosted_vllm"
+
+        async def gen():
+            raise BadRequestError(overflow)
+            yield  # pragma: no cover - makes this an async generator
+
+        lines = [line async for line in llm_gateway._stream_sse(gen(), "rhoai", "qwen")]
+
+        error = json.loads(lines[-2][len("data: ") :])["error"]
+        assert "maximum context length" in error["message"]
+        assert provider_error_log.latest_failure("rhoai", "chat") is None
 
 
 class TestToolsBesideReasoningEffort:

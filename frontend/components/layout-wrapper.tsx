@@ -72,7 +72,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   });
 
   const { isUnhealthy: isDoclingUnhealthy } = useDoclingHealth();
-  const { isUnhealthy: isProviderUnhealthy } = useProviderHealth();
+  const { isUnhealthy: isProviderUnhealthy, isDegraded: isProviderDegraded } =
+    useProviderHealth();
 
   if (isAuthPage) {
     return <div className="h-full">{children}</div>;
@@ -120,7 +121,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           {settings?.edited && isOnboardingComplete && (
             <AnimatedConditional
               vertical
-              isOpen={isProviderUnhealthy}
+              isOpen={isProviderUnhealthy || isProviderDegraded}
               className="w-full"
             >
               <ProviderHealthBanner />
