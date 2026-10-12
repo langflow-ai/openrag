@@ -236,6 +236,33 @@ def install_homebrew() -> bool:
         return False
 
 
+def ensure_krunkit_on_macos() -> bool:
+    """Ensure krunkit is installed on macOS for Podman machine workflows."""
+    if get_platform() != "macOS":
+        return True
+
+    if has_cmd("krunkit"):
+        say(f"krunkit already installed: {shutil.which('krunkit')}")
+        return True
+
+    if not install_homebrew():
+        say("Cannot install krunkit without Homebrew.")
+        return False
+
+    say("krunkit is required for Podman machine on macOS.")
+    if not ask_yes_no("Install krunkit via Homebrew?"):
+        return False
+
+    try:
+        subprocess.run(["brew", "tap", "slp/krunkit"], check=True)
+        subprocess.run(["brew", "install", "krunkit"], check=True)
+        return True
+    except Exception as e:
+        say(f"Failed to install krunkit: {e}")
+        say("You can install it manually with: brew tap slp/krunkit && brew install krunkit")
+        return False
+
+
 def install_podman() -> bool:
     """Install Podman CLI (not Desktop). Returns True if successful."""
     if has_cmd("podman"):
@@ -254,10 +281,11 @@ def install_podman() -> bool:
         say("Installing Podman via Homebrew...")
         try:
             subprocess.run(["brew", "install", "podman"], check=True)
-            return True
         except Exception as e:
             say(f"Failed: {e}")
             return False
+
+        return ensure_krunkit_on_macos()
 
     elif plat in ("Linux", "WSL"):
         say("Installing Podman via package manager (may prompt for sudo password)...")
@@ -350,6 +378,9 @@ def setup_podman_machine() -> bool:
     """Initialize and start Podman machine on macOS. Returns True if ready."""
     if get_platform() != "macOS":
         return podman_ready()
+
+    if not ensure_krunkit_on_macos():
+        return False
 
     # Check if machine exists
     try:
