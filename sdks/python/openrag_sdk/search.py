@@ -2,8 +2,6 @@
 
 from typing import TYPE_CHECKING, Any
 
-import httpx
-
 from .models import SearchFilters, SearchResponse, SearchResult
 
 if TYPE_CHECKING:
@@ -30,7 +28,8 @@ class SearchClient:
 
         Args:
             query: The search query text.
-            filters: Optional filters (data_sources, document_types).
+            filters: Optional filters (data_sources, document_types, owners,
+                connector_types).
             limit: Maximum number of results (default 10).
             score_threshold: Minimum score threshold (default 0).
             filter_id: Optional knowledge filter ID to apply.
