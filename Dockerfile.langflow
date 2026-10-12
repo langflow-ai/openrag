@@ -8,7 +8,11 @@ RUN pip install --no-cache-dir --upgrade "pip>=26.1.2" \
     && pip install --no-cache-dir uv
 
 USER root
-RUN mkdir -p /app/langflow-data \
+# Upgrade libxml2 to patch CVE-2026-74860 (fixed in 2.12.5-10.el10_2.4) in the base image.
+RUN microdnf update -y libxml2 \
+    && microdnf clean all \
+    && rm -rf /var/cache/yum \
+    && mkdir -p /app/langflow-data \
     && chmod 0777 /app/langflow-data
 USER 1000
 
