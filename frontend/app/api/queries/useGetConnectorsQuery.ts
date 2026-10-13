@@ -185,6 +185,7 @@ export const useGetConnectorsQuery = (
           description: string;
           icon: string;
           available?: boolean;
+          always_connected?: boolean;
         }
       >;
     }>("/connectors");
