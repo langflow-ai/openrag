@@ -549,13 +549,13 @@ def test_an_exclusion_without_a_wildcard_leaves_the_dated_snapshots(monkeypatch)
     because the fix is a single character in a YAML file and reads like a typo.
     """
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
-    exact = model_catalog._excluded("gpt-5.6-luna-2026-07-09", ("gpt-5.6-luna",))
-    wildcard = model_catalog._excluded("gpt-5.6-luna-2026-07-09", ("gpt-5.6-luna*",))
+    exact = model_catalog._matches("gpt-5.6-luna-2026-07-09", ("gpt-5.6-luna",))
+    wildcard = model_catalog._matches("gpt-5.6-luna-2026-07-09", ("gpt-5.6-luna*",))
 
     assert not exact
     assert wildcard
     # The wildcard keeps covering the regional forms the bare name covered.
-    assert model_catalog._excluded("us/gpt-5.6-luna", ("gpt-5.6-luna*",))
+    assert model_catalog._matches("us/gpt-5.6-luna", ("gpt-5.6-luna*",))
 
 
 def test_both_luna_generations_are_excluded_from_both_rows(monkeypatch) -> None:
