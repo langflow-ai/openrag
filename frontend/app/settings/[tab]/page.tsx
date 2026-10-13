@@ -1,4 +1,6 @@
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import axios from "axios";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getQueryClient } from "@/app/api/get-query-client";
 import {
@@ -6,7 +8,6 @@ import {
   canAccessConnectorAccessTab,
   canShowRbacGatedSettingsTab,
 } from "@/lib/brand";
-import { fetchFromBackend } from "@/lib/fetch-server";
 import { AgentSettingsSection } from "../_components/agent-settings-section";
 import { ApiKeysSection } from "../_components/api-keys-section";
 import { ConnectorAccessSection } from "../_components/connector-access-section";
@@ -30,18 +31,48 @@ function isValidTab(tab: string): tab is Tab {
 }
 
 async function getTabAuthContext() {
+  const backendHost = process.env.OPENRAG_BACKEND_HOST || "localhost";
+  const backendSSL = process.env.OPENRAG_BACKEND_SSL === "true";
+  const backendPort = process.env.OPENRAG_BACKEND_PORT || "8000";
+  const backendBaseUrl = `${backendSSL ? "https" : "http"}://${backendHost}:${backendPort}`;
+  const cookieStore = await cookies();
+  const incoming = await headers();
+
+  const jwtAuthHeader = (
+    process.env.OPENRAG_JWT_AUTH_HEADER || "Authorization"
+  ).toLowerCase();
+  const ibmCredentialsHeader = (
+    process.env.IBM_CREDENTIALS_HEADER || "X-IBM-LH-Credentials"
+  ).toLowerCase();
+  const forwardedHeaders: Record<string, string> = {
+    Cookie: cookieStore.toString(),
+  };
+  const authValue = incoming.get(jwtAuthHeader);
+  if (authValue) forwardedHeaders[jwtAuthHeader] = authValue;
+  const credentialsValue = incoming.get(ibmCredentialsHeader);
+  if (credentialsValue)
+    forwardedHeaders[ibmCredentialsHeader] = credentialsValue;
+
+  const requestConfig = {
+    headers: forwardedHeaders,
+    validateStatus: () => true,
+  };
   const [authRes, meRes] = await Promise.allSettled([
-    fetchFromBackend("auth/me"),
-    fetchFromBackend("users/me"),
+    axios.get(`${backendBaseUrl}/auth/me`, requestConfig),
+    axios.get(`${backendBaseUrl}/users/me`, requestConfig),
   ]);
 
   const authData =
-    authRes.status === "fulfilled" && authRes.value.ok
-      ? await authRes.value.json()
+    authRes.status === "fulfilled" &&
+    authRes.value.status >= 200 &&
+    authRes.value.status < 300
+      ? authRes.value.data
       : {};
   const meData =
-    meRes.status === "fulfilled" && meRes.value.ok
-      ? await meRes.value.json()
+    meRes.status === "fulfilled" &&
+    meRes.value.status >= 200 &&
+    meRes.value.status < 300
+      ? meRes.value.data
       : {};
 
   const permissions = new Set<string>(
@@ -59,6 +90,8 @@ async function getTabAuthContext() {
     permissions,
     rbacEnforced,
     cloudContext,
+    backendBaseUrl,
+    forwardedHeaders,
   };
 }
 
@@ -80,6 +113,8 @@ export default async function SettingsTabPage({
     permissions,
     rbacEnforced,
     cloudContext,
+    backendBaseUrl,
+    forwardedHeaders,
   } = await getTabAuthContext();
 
   const tabAccess = buildSettingsTabAccess({
@@ -118,9 +153,14 @@ export default async function SettingsTabPage({
     await queryClient.prefetchQuery({
       queryKey: ["settings"],
       queryFn: async () => {
-        const res = await fetchFromBackend("settings");
-        if (!res.ok) throw new Error("Failed to fetch settings");
-        return res.json();
+        const res = await axios.get(`${backendBaseUrl}/settings`, {
+          headers: forwardedHeaders,
+          validateStatus: () => true,
+        });
+        if (res.status < 200 || res.status >= 300) {
+          throw new Error("Failed to fetch settings");
+        }
+        return res.data;
       },
     });
   } catch {
@@ -132,9 +172,14 @@ export default async function SettingsTabPage({
       await queryClient.prefetchQuery({
         queryKey: ["api-keys"],
         queryFn: async () => {
-          const res = await fetchFromBackend("keys");
-          if (!res.ok) throw new Error("Failed to fetch api keys");
-          return res.json();
+          const res = await axios.get(`${backendBaseUrl}/keys`, {
+            headers: forwardedHeaders,
+            validateStatus: () => true,
+          });
+          if (res.status < 200 || res.status >= 300) {
+            throw new Error("Failed to fetch api keys");
+          }
+          return res.data;
         },
       });
     } catch {
