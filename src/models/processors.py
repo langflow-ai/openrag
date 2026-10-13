@@ -32,12 +32,18 @@ DOCLING_PARSER_LABEL = "Docling Serve 1.20.0"
 TEXT_PARSER_LABEL = "Text Parser"
 
 DUPLICATE_FILENAME_WARNING = "A file with this name already exists."
+DUPLICATE_NOT_REPLACEABLE_WARNING = (
+    "A document with this name already exists and you don't have permission to replace it."
+)
 
-# Both outcomes finish the file the same way — SKIPPED, counted successful,
-# duplicate warning — but only "skip" means a document with this name is
-# actually indexed. "skip_in_flight" means another file in this batch is still
-# writing it, which is a different fact about the index.
-DUPLICATE_SKIP_ACTIONS = ("skip", "skip_in_flight")
+# All of these finish the file the same way — SKIPPED, counted successful,
+# duplicate warning — but they are different facts. "skip" means a document
+# with this name is indexed and the caller did not ask to replace it.
+# "skip_in_flight" means another file in this batch is still writing it, so
+# nothing is indexed under the name yet. "skip_unreplaceable" means the caller
+# did ask, and the document is not theirs to replace; it gets its own warning,
+# because "already exists" tells someone who just chose Overwrite nothing.
+DUPLICATE_SKIP_ACTIONS = ("skip", "skip_in_flight", "skip_unreplaceable")
 DUPLICATE_CONTENT_WARNING = (
     "Identical content already exists in the knowledge base under a different filename."
 )
@@ -268,7 +274,7 @@ class TaskProcessor:
         allow_anonymous_delete: bool,
         shared: bool = False,
         claim_holder: str | None = None,
-    ) -> Literal["proceed", "skip", "skip_in_flight", "replaced"]:
+    ) -> Literal["proceed", "skip", "skip_in_flight", "skip_unreplaceable", "replaced"]:
         """Single duplicate-filename policy shared by every processor.
 
         Checks whether a document with this filename (or one of its aliases)
@@ -283,6 +289,11 @@ class TaskProcessor:
                              but nothing is indexed under the name *yet*, so a
                              caller must not treat it as a statement about what
                              is in the index (see ``_reconcile_shared_owner``).
+          * ``"skip_unreplaceable"`` — duplicate and ``replace`` is True, but
+                             nothing under the name is this caller's to delete:
+                             a shared document without the permission, or
+                             another user's. Finishes the same way, with a
+                             warning that says so.
           * ``"replaced"`` — duplicate and ``replace`` is True; the existing
                              chunks were deleted and the index refreshed, so
                              ingestion can continue.
@@ -322,7 +333,9 @@ class TaskProcessor:
                 "Replacement requested but deletion removed no chunks",
                 filename=filename,
             )
-            return "skip"
+            # With no user in hand the delete declines whatever is indexed, so
+            # that is not a statement about anyone's permissions.
+            return "skip_unreplaceable" if owner_user_id else "skip"
         # Refresh so the delete is visible before re-ingest. refresh is
         # index-wide (indices:admin/refresh) and cannot be DLS-scoped, so it
         # must run under the admin/service client, not the user client.
@@ -340,16 +353,27 @@ class TaskProcessor:
         """Identity of this file's run, for the in-flight filename claim."""
         return claim_holder(upload_task.task_id, file_task.file_path)
 
-    def mark_duplicate_skipped(self, upload_task: UploadTask, file_task: FileTask) -> None:
+    def mark_duplicate_skipped(
+        self, upload_task: UploadTask, file_task: FileTask, duplicate_action: str = "skip"
+    ) -> None:
         """Uniform terminal state for a duplicate that was not replaced:
         SKIPPED, counted toward successful files, with a warning the task view
-        surfaces. A declined replacement is a chosen outcome, not an error."""
+        surfaces. A declined replacement is a chosen outcome, not an error.
+
+        ``duplicate_action`` is what ``resolve_duplicate_filename`` returned. It
+        only picks the warning: the reason stays ``duplicate_filename`` for all
+        of them, which is what the claim recovery in TaskService and the UI key
+        on."""
         file_task.status = TaskStatus.SKIPPED
         file_task.error = None
         file_task.result = {
             "status": "skipped",
             "reason": "duplicate_filename",
-            "warning": DUPLICATE_FILENAME_WARNING,
+            "warning": (
+                DUPLICATE_NOT_REPLACEABLE_WARNING
+                if duplicate_action == "skip_unreplaceable"
+                else DUPLICATE_FILENAME_WARNING
+            ),
         }
         file_task.updated_at = time.time()
         upload_task.successful_files += 1
@@ -870,7 +894,7 @@ class DocumentFileProcessor(TaskProcessor):
                 allow_anonymous_delete=self.allow_anonymous_delete,
             )
             if duplicate_action in DUPLICATE_SKIP_ACTIONS:
-                self.mark_duplicate_skipped(upload_task, file_task)
+                self.mark_duplicate_skipped(upload_task, file_task, duplicate_action)
                 return
 
             # Compute hash
@@ -1074,7 +1098,9 @@ class ConnectorFileProcessor(TaskProcessor):
         the unchanged-content path, and a skip against a real duplicate. Never
         for a "skip_in_flight": there the name belongs to another file that is
         still writing it, and this query matches by filename, so reconciling
-        would stamp this file's sharing answer onto that one's chunks.
+        would stamp this file's sharing answer onto that one's chunks. Nor for
+        a "skip_unreplaceable": the caller was just refused the document under
+        this name, and a refusal that still wrote to it would not be one.
 
         On those paths the file's content and name haven't changed since a prior
         sync, but the connector's "Make documents available to all users"
@@ -1314,9 +1340,12 @@ class ConnectorFileProcessor(TaskProcessor):
                 # DIFFERENT document, whose sharing state was resolved from its
                 # own file id and can differ from this one's. Reconciling then
                 # would stamp this file's answer onto another file's chunks.
+                # "skip_unreplaceable" is out for a plainer reason: a document
+                # this caller may not replace is not theirs to rewrite owner
+                # fields on either.
                 if duplicate_action == "skip":
                     await self._reconcile_shared_owner(file_task.filename, shared)
-                self.mark_duplicate_skipped(upload_task, file_task)
+                self.mark_duplicate_skipped(upload_task, file_task, duplicate_action)
                 return
 
             # Rename cleanup: a connector file keeps a stable id across renames,
@@ -1648,7 +1677,7 @@ class S3FileProcessor(TaskProcessor):
                 allow_anonymous_delete=self.allow_anonymous_delete,
             )
             if duplicate_action in DUPLICATE_SKIP_ACTIONS:
-                self.mark_duplicate_skipped(upload_task, file_task)
+                self.mark_duplicate_skipped(upload_task, file_task, duplicate_action)
                 return
 
             suffix = os.path.splitext(item)[1]
@@ -1762,7 +1791,7 @@ class LangflowFileProcessor(TaskProcessor):
                 allow_anonymous_delete=self.allow_anonymous_delete,
             )
             if duplicate_action in DUPLICATE_SKIP_ACTIONS:
-                self.mark_duplicate_skipped(upload_task, file_task)
+                self.mark_duplicate_skipped(upload_task, file_task, duplicate_action)
                 return
 
             # Compute the content hash early — before reading file bytes into
