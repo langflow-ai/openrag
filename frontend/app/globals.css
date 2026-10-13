@@ -683,12 +683,17 @@
     }
   }
 
-  /* IBM Settings: inline links (Link/link-primary) */
-  [data-theme="ibm"] .ibm-settings-page a[href] {
+  /* IBM Settings: inline links (Link/link-primary) — tabs are links too, but
+     they use the blue underline border, not text-decoration */
+  [data-theme="ibm"]
+    .ibm-settings-page
+    a[href]:not([data-slot="tabs-trigger"]) {
     color: hsl(var(--link-primary));
   }
 
-  [data-theme="ibm"] .ibm-settings-page a[href]:hover {
+  [data-theme="ibm"]
+    .ibm-settings-page
+    a[href]:not([data-slot="tabs-trigger"]):hover {
     text-decoration: underline;
     text-underline-offset: 2px;
   }

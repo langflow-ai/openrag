@@ -1,8 +1,8 @@
 import type { RequestHandler } from "msw";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
-import { IngestSettingsSection } from "@/app/settings/_components/ingest-settings-section";
-import { authPresets } from "@/test-utils/fixtures/auth";
+import { IngestionTab } from "@/app/settings/_components/ingestion-tab";
+import { authPresets, withAuth } from "@/test-utils/fixtures/auth";
 import { makeSettings } from "@/test-utils/fixtures/settings";
 import { server } from "@/test-utils/msw/server";
 import {
@@ -54,16 +54,18 @@ function baseHandlers(
       ),
     ),
     http.get("/api/models/catalog", () => HttpResponse.json({ providers: [] })),
+    http.get("/api/models/providers", () => HttpResponse.json({})),
   ];
 }
 
 function renderSection(
   extraHandlers: RequestHandler[] = [],
   knowledge?: { chunk_size: number; chunk_overlap: number },
+  auth = authPresets.admin,
 ) {
-  return renderWithProviders(<IngestSettingsSection />, {
+  return renderWithProviders(<IngestionTab />, {
     providers: ["tooltip", "auth", "unsavedChanges"],
-    auth: authPresets.admin,
+    auth,
     handlers: [...baseHandlers(knowledge), ...extraHandlers],
   });
 }
@@ -157,7 +159,7 @@ describe("IngestSettingsSection", () => {
       fireEvent.change(input, { target: { value: "0" } });
 
       expect(
-        screen.getByRole("button", { name: /save ingest settings/i }),
+        screen.getByRole("button", { name: /save changes/i }),
       ).toBeDisabled();
     });
 
@@ -171,7 +173,7 @@ describe("IngestSettingsSection", () => {
       fireEvent.change(overlapInput, { target: { value: "1024" } });
 
       expect(
-        screen.getByRole("button", { name: /save ingest settings/i }),
+        screen.getByRole("button", { name: /save changes/i }),
       ).toBeDisabled();
     });
 
@@ -185,7 +187,7 @@ describe("IngestSettingsSection", () => {
 
       await waitFor(() => {
         expect(
-          screen.getByRole("button", { name: /save ingest settings/i }),
+          screen.getByRole("button", { name: /save changes/i }),
         ).toBeEnabled();
       });
     });
@@ -197,7 +199,7 @@ describe("IngestSettingsSection", () => {
       await screen.findByRole("spinbutton", { name: /chunk size/i });
 
       expect(
-        screen.getByRole("button", { name: /save ingest settings/i }),
+        screen.getByRole("button", { name: /save changes/i }),
       ).toBeDisabled();
     });
   });
@@ -225,7 +227,7 @@ describe("IngestSettingsSection", () => {
       fireEvent.change(input, { target: { value: "0" } });
 
       const saveButton = screen.getByRole("button", {
-        name: /save ingest settings/i,
+        name: /save changes/i,
       });
       expect(saveButton).toBeDisabled();
       expect(postCalled).toBe(false);
@@ -360,9 +362,7 @@ describe("IngestSettingsSection", () => {
       );
 
       // Trigger the save.
-      fireEvent.click(
-        screen.getByRole("button", { name: /save ingest settings/i }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
 
       // After the POST succeeds, userEdited resets to false.  The mutation's
       // own invalidateQueries then fires another GET, which returns 999.  The
@@ -374,11 +374,167 @@ describe("IngestSettingsSection", () => {
       });
     });
   });
+
+  // ── Group 4b: Restore flow persists defaults immediately ──────────────────
+
+  describe("restore flow", () => {
+    it("persists the restored defaults to the server, leaving Save disabled", async () => {
+      // Server state differs from DEFAULT_KNOWLEDGE_SETTINGS so restoring
+      // produces a real diff to persist.
+      // "flows:edit" isn't in the admin preset's permission list, so grant it
+      // directly — otherwise RequirePermission hides the Restore flow button.
+      renderSection(
+        [],
+        { chunk_size: 500, chunk_overlap: 50 },
+        withAuth(authPresets.admin, {
+          usersMe: { permissions: ["flows:edit"] },
+        }),
+      );
+
+      server.use(
+        http.post("/api/reset-flow/ingest", () => HttpResponse.json({})),
+        http.post("/api/settings", () =>
+          HttpResponse.json({
+            message: "ok",
+            settings: makeSettings({
+              knowledge: { chunk_size: 1000, chunk_overlap: 200 },
+              show_vlm_settings: false,
+            }),
+          }),
+        ),
+        http.get("/api/settings", () =>
+          HttpResponse.json(
+            makeSettings({
+              knowledge: { chunk_size: 1000, chunk_overlap: 200 },
+              show_vlm_settings: false,
+            }),
+          ),
+        ),
+      );
+
+      const input = await screen.findByRole("spinbutton", {
+        name: /chunk size/i,
+      });
+      expect(input).toHaveValue(500);
+
+      // The server-sync effect settles a tick after the value appears, so
+      // wait for it rather than asserting disabled against a transient render.
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: /save changes/i }),
+        ).toBeDisabled();
+      });
+
+      await userEvent.click(
+        await screen.findByRole("button", { name: /restore flow/i }),
+      );
+      await userEvent.click(screen.getByRole("button", { name: /^restore$/i }));
+
+      // Restore writes DEFAULT_KNOWLEDGE_SETTINGS.chunk_size (1000) locally
+      // AND persists it to the server — a refresh right after restoring must
+      // not lose it, so Save settles back to disabled without the user
+      // clicking it.
+      await waitFor(() => {
+        expect(
+          screen.getByRole("spinbutton", { name: /chunk size/i }),
+        ).toHaveValue(1000);
+      });
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: /save changes/i }),
+        ).toBeDisabled();
+      });
+    });
+  });
+
+  // ── Group 5: chunk steppers and toggle switches ───────────────────────────
+
+  describe("chunk steppers", () => {
+    it("increments and decrements chunk size via the stepper buttons", async () => {
+      renderSection();
+
+      const input = await screen.findByRole("spinbutton", {
+        name: /chunk size/i,
+      });
+      expect(input).toHaveValue(1024);
+
+      const [increaseSize] = screen.getAllByRole("button", {
+        name: /increase value/i,
+      });
+      fireEvent.click(increaseSize);
+      expect(input).toHaveValue(1025);
+
+      const [decreaseSize] = screen.getAllByRole("button", {
+        name: /decrease value/i,
+      });
+      fireEvent.click(decreaseSize);
+      expect(input).toHaveValue(1024);
+    });
+
+    it("increments and decrements chunk overlap via the stepper buttons", async () => {
+      renderSection();
+
+      const overlapInput = await screen.findByRole("spinbutton", {
+        name: /chunk overlap/i,
+      });
+      expect(overlapInput).toHaveValue(50);
+
+      const [, increaseOverlap] = screen.getAllByRole("button", {
+        name: /increase value/i,
+      });
+      fireEvent.click(increaseOverlap);
+      expect(overlapInput).toHaveValue(51);
+
+      const [, decreaseOverlap] = screen.getAllByRole("button", {
+        name: /decrease value/i,
+      });
+      fireEvent.click(decreaseOverlap);
+      expect(overlapInput).toHaveValue(50);
+    });
+  });
+
+  describe("toggle switches", () => {
+    it("toggles Disable Langflow Ingestion, Table Structure, OCR, and Picture Descriptions", async () => {
+      renderSection();
+
+      await screen.findByRole("spinbutton", { name: /chunk size/i });
+
+      const langflowSwitch = screen.getByRole("switch", {
+        name: /disable langflow ingestion/i,
+      });
+      const tableStructureSwitch = screen.getByRole("switch", {
+        name: /table structure/i,
+      });
+      const ocrSwitch = screen.getByRole("switch", { name: /^ocr$/i });
+      const pictureDescriptionsSwitch = screen.getByRole("switch", {
+        name: /picture descriptions/i,
+      });
+
+      expect(langflowSwitch).toHaveAttribute("aria-checked", "false");
+      fireEvent.click(langflowSwitch);
+      expect(langflowSwitch).toHaveAttribute("aria-checked", "true");
+
+      expect(tableStructureSwitch).toHaveAttribute("aria-checked", "true");
+      fireEvent.click(tableStructureSwitch);
+      expect(tableStructureSwitch).toHaveAttribute("aria-checked", "false");
+
+      expect(ocrSwitch).toHaveAttribute("aria-checked", "false");
+      fireEvent.click(ocrSwitch);
+      expect(ocrSwitch).toHaveAttribute("aria-checked", "true");
+
+      expect(pictureDescriptionsSwitch).toHaveAttribute(
+        "aria-checked",
+        "false",
+      );
+      fireEvent.click(pictureDescriptionsSwitch);
+      expect(pictureDescriptionsSwitch).toHaveAttribute("aria-checked", "true");
+    });
+  });
 });
 
 describe("IngestSettingsSection OCR languages", () => {
   it("shows English last when an existing selection was saved English-first", async () => {
-    renderWithProviders(<IngestSettingsSection />, {
+    renderWithProviders(<IngestionTab />, {
       providers: ["tooltip", "auth", "brand", "unsavedChanges"],
       handlers: [
         http.get("/api/settings", () =>
@@ -400,18 +556,20 @@ describe("IngestSettingsSection OCR languages", () => {
     );
     expect(await screen.findByText("Japanese, English")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /save ingest settings/i }),
+      screen.getByRole("button", { name: /save changes/i }),
     ).toBeDisabled();
   });
 
   it("saves a newly added Japanese selection before English", async () => {
     const save = vi.fn(() => HttpResponse.json({}));
-    renderWithProviders(<IngestSettingsSection />, {
+    renderWithProviders(<IngestionTab />, {
       providers: ["tooltip", "auth", "brand", "unsavedChanges"],
       handlers: [
         http.get("/api/settings", () =>
           HttpResponse.json(
-            makeSettings({ knowledge: { ocr: true, ocr_languages: ["en"] } }),
+            makeSettings({
+              knowledge: { ocr: true, ocr_languages: ["en"] },
+            }),
           ),
         ),
         http.get("/api/models/catalog", () =>
@@ -434,7 +592,7 @@ describe("IngestSettingsSection OCR languages", () => {
     expect(await screen.findByText("Japanese, English")).toBeInTheDocument();
 
     await userEvent.click(
-      screen.getByRole("button", { name: /save ingest settings/i }),
+      screen.getByRole("button", { name: /save changes/i }),
     );
     expect(save).toHaveBeenCalledOnce();
   });

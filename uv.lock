@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -2051,7 +2051,7 @@ requires-dist = [
     { name = "litellm", specifier = ">=1.96.2,<2.0.0" },
     { name = "mcp", specifier = ">=1.28.1" },
     { name = "msal", specifier = ">=1.29.0" },
-    { name = "openai", specifier = "==2.24.0" },
+    { name = "openai", specifier = ">=2.24.0,<3" },
     { name = "opensearch-py", extras = ["async"], specifier = ">=3.0.0" },
     { name = "prometheus-fastapi-instrumentator", specifier = ">=8.0.0" },
     { name = "protobuf", specifier = ">=7.35.0,<8" },
@@ -2915,8 +2915,8 @@ name = "secretstorage"
 version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cryptography", marker = "python_full_version >= '3.15' or sys_platform != 'win32'" },
-    { name = "jeepney", marker = "python_full_version >= '3.15' or sys_platform != 'win32'" },
+    { name = "cryptography" },
+    { name = "jeepney" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1c/03/e834bcd866f2f8a49a85eaff47340affa3bfa391ee9912a952a1faa68c7b/secretstorage-3.5.0.tar.gz", hash = "sha256:f04b8e4689cbce351744d5537bf6b1329c6fc68f91fa666f60a380edddcd11be", size = 19884, upload-time = "2025-11-23T19:02:53.191Z" }
 wheels = [

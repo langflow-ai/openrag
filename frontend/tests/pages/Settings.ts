@@ -19,9 +19,11 @@ export class Settings {
   private readonly settingsLink = () =>
     this.page.getByRole("link", { name: "Settings" });
   private readonly saveIngestSettingsButton = () =>
-    this.page.getByRole("button", { name: /save ingest settings/i });
+    this.page.getByTestId("ingest-save");
   private readonly settingsUpdatedToast = () =>
     this.page.getByText(/settings updated successfully/i).first();
+  private readonly ingestSettingsSavedToast = () =>
+    this.page.getByText(/ingest settings saved/i).first();
   private readonly pictureDescriptionsToggle = () =>
     this.page.getByRole("switch", { name: /picture descriptions/i });
   private readonly tableStructureToggle = () =>
@@ -45,7 +47,7 @@ export class Settings {
   private readonly removeModelProviderButton = () =>
     this.page.getByRole("button", { name: "Remove" });
   private readonly removeAnywayButton = () =>
-    this.page.getByRole("button", { name: "Remove Anyway" });
+    this.page.getByRole("button", { name: /remove anyway/i });
   // The dialog's Remove button is also styled `.text-destructive`, so the old
   // selector matched it and made `successToast.or(errorMsg)` ambiguous under
   // Playwright strict mode. Target the error element itself.
@@ -116,7 +118,7 @@ export class Settings {
    */
   private getEditSetupButton(providerKey: ModelProvider) {
     return this.getProviderCard(providerKey).getByRole("button", {
-      name: "Edit Setup",
+      name: /edit setup|fix setup/i,
     });
   }
 
@@ -227,9 +229,14 @@ export class Settings {
     await saveButton.scrollIntoViewIfNeeded();
     await this.page.waitForTimeout(500);
     await expect(saveButton).toBeVisible();
-    await expect(saveButton).toBeEnabled({ timeout: 10000 });
+    // Allow up to 30s: enabling picture-descriptions makes the save button
+    // wait until the VLM model catalogue has loaded and auto-selected a model
+    // (vlmModelPending gate). 10s was too short on slow CI runners.
+    await expect(saveButton).toBeEnabled({ timeout: 30000 });
     await saveButton.click();
-    await expect(this.settingsUpdatedToast()).toBeVisible({ timeout: 120000 });
+    await expect(this.ingestSettingsSavedToast()).toBeVisible({
+      timeout: 120000,
+    });
   }
 
   async setPictureDescriptions(enabled: boolean) {
@@ -378,6 +385,8 @@ export class Settings {
    */
   async configureWatsonxai() {
     logger.info("Configuring watsonx.ai settings");
+    const card = this.getProviderCard("watsonx");
+    await expect(card).toBeVisible({ timeout: 15000 });
     const configureBtn = this.getConfigureButton("watsonx");
     const editBtn = this.getEditSetupButton("watsonx");
     // If Configure button is visible -> do setup
@@ -404,10 +413,35 @@ export class Settings {
       logger.info("Watsonx.ai configuration completed");
       await expect(editBtn).toBeEnabled();
     }
-    // Else if already configured -> skip setup
+    // Else if already configured -> skip setup (or reconfigure if in Fix Setup state)
     else if (await editBtn.isVisible()) {
-      logger.info("Watsonx.ai already configured. Skipping setup.");
-      await expect(editBtn).toBeEnabled();
+      const btnText = await editBtn.innerText();
+      if (/fix setup/i.test(btnText)) {
+        logger.info("Watsonx.ai is in Fix Setup state. Reconfiguring...");
+        await editBtn.click();
+        await expect(this.getSetupHeading("IBM watsonx.ai")).toBeVisible();
+        const { url, projectId, apiKey } = config.watsonx;
+        await this.watsonxEndPointCombobox().click();
+        await this.page.waitForSelector('[role="option"]', {
+          state: "visible",
+          timeout: 15000,
+        });
+        const option = this.getWatsonxOption(url);
+        await expect(option).toBeVisible({ timeout: 10000 });
+        await option.click();
+        await this.watsonxProjectIDInput().fill(projectId);
+        await this.apiKeyInput().fill(apiKey);
+        await this.saveModelProviderButton().click();
+        await this.awaitProviderConfigResult(
+          "Watsonx.ai",
+          "IBM watsonx.ai successfully configured",
+        );
+        logger.info("Watsonx.ai configuration completed");
+        await expect(editBtn).toBeEnabled();
+      } else {
+        logger.info("Watsonx.ai already configured. Skipping setup.");
+        await expect(editBtn).toBeEnabled();
+      }
     }
     // Neither found
     else {
@@ -454,19 +488,46 @@ export class Settings {
     providerKey: ModelProvider,
     providerName: string,
   ) {
+    const card = this.getProviderCard(providerKey);
+    await expect(card).toBeVisible({ timeout: 15000 });
     const editButton = this.getEditSetupButton(providerKey);
     const configureButton = this.getConfigureButton(providerKey);
-    // If already configured (Edit Setup visible)
+    // If already configured (Edit Setup / Fix Setup visible)
     if (await editButton.isVisible()) {
       logger.info(`${providerName} is configured. Removing setup...`);
       await editButton.click();
       await this.removeModelProviderButton().click();
       await this.getRemoveConfigButton().click();
-      await this.clickRemoveAnywayIfDisplayed();
-      await expect(
-        this.getToastByText(`${providerName} configuration removed`),
-      ).toBeVisible({ timeout: 15000 });
-      await this.page.waitForTimeout(10000);
+
+      const successToast = this.getToastByText(
+        `${providerName} configuration removed`,
+      );
+      const removeAnywayBtn = this.removeAnywayButton();
+
+      let outcome = "pending";
+      await expect
+        .poll(
+          async () => {
+            if (await removeAnywayBtn.isVisible().catch(() => false)) {
+              outcome = "remove_anyway";
+            } else if (await successToast.isVisible().catch(() => false)) {
+              outcome = "success";
+            } else {
+              outcome = "pending";
+            }
+            return outcome;
+          },
+          { timeout: 15000 },
+        )
+        .not.toBe("pending");
+
+      if (outcome === "remove_anyway") {
+        logger.info("Remove Anyway button is displayed. Clicking it.");
+        await removeAnywayBtn.click();
+      }
+      await expect(successToast).toBeVisible({ timeout: 15000 });
+
+      await this.page.waitForTimeout(1000);
     }
     // If not configured
     else if (await configureButton.isVisible()) {
@@ -504,6 +565,8 @@ export class Settings {
    */
   async configureOpenAPI() {
     logger.info("Configuring Openai settings");
+    const card = this.getProviderCard("openai");
+    await expect(card).toBeVisible({ timeout: 15000 });
     const configureBtn = this.getConfigureButton("openai");
     const editBtn = this.getEditSetupButton("openai");
 
@@ -521,14 +584,32 @@ export class Settings {
       logger.info("OpenAI configuration completed");
       await expect(editBtn).toBeEnabled();
     }
-    // Else if already configured -> skip setup
+    // Else if already configured -> skip setup (or reconfigure if in Fix Setup state)
     else if (await editBtn.isVisible()) {
-      logger.info("OpenAI already configured. Skipping setup.");
-      await expect(editBtn).toBeEnabled();
+      const btnText = await editBtn.innerText();
+      if (/fix setup/i.test(btnText)) {
+        logger.info("OpenAI is in Fix Setup state. Reconfiguring...");
+        await editBtn.click();
+        await expect(this.getSetupHeading("OpenAI")).toBeVisible();
+        const apiKey = config.openaiApiKey;
+        await this.apiKeyInput().fill(apiKey);
+        await this.saveModelProviderButton().click();
+        await this.awaitProviderConfigResult(
+          "OpenAI",
+          "OpenAI successfully configured",
+        );
+        logger.info("OpenAI configuration completed");
+        await expect(editBtn).toBeEnabled();
+      } else {
+        logger.info("OpenAI already configured. Skipping setup.");
+        await expect(editBtn).toBeEnabled();
+      }
     }
     // Neither found
     else {
-      throw new Error("Neither Configure nor Edit Setup button is visible");
+      throw new Error(
+        "Neither Configure nor Edit Setup button is visible for OpenAI",
+      );
     }
   }
 
@@ -537,9 +618,10 @@ export class Settings {
    */
   async configureAzureOpenAI() {
     logger.info("Configuring Azure OpenAI settings");
+    const card = this.getProviderCard("azure");
+    await expect(card).toBeVisible({ timeout: 15000 });
     const configureBtn = this.getConfigureButton("azure");
     const editBtn = this.getEditSetupButton("azure");
-    await this.page.waitForTimeout(500);
 
     if (await configureBtn.isVisible()) {
       await configureBtn.click();
@@ -567,8 +649,37 @@ export class Settings {
       logger.info("Azure OpenAI configuration completed");
       await expect(editBtn).toBeEnabled();
     } else if (await editBtn.isVisible()) {
-      logger.info("Azure OpenAI already configured. Skipping setup.");
-      await expect(editBtn).toBeEnabled();
+      const btnText = await editBtn.innerText();
+      if (/fix setup/i.test(btnText)) {
+        logger.info("Azure OpenAI is in Fix Setup state. Reconfiguring...");
+        await editBtn.click();
+        await expect(this.getSetupHeading("Azure OpenAI")).toBeVisible();
+        const apiKey = config.azure.apiKey;
+        const endpoint = config.azure.endpoint;
+        if (endpoint) {
+          const endpointInput = this.page
+            .locator('input[id*="endpoint"], input[id*="api_base"]')
+            .first();
+          if (await endpointInput.isVisible()) {
+            await endpointInput.fill(endpoint);
+          }
+        }
+        if (apiKey) {
+          const apiKeyInput = this.providerApiKeyInput();
+          await expect(apiKeyInput).toBeVisible();
+          await apiKeyInput.fill(apiKey);
+        }
+        await this.saveModelProviderButton().click();
+        await this.awaitProviderConfigResult(
+          "Azure OpenAI",
+          "Azure OpenAI successfully configured",
+        );
+        logger.info("Azure OpenAI configuration completed");
+        await expect(editBtn).toBeEnabled();
+      } else {
+        logger.info("Azure OpenAI already configured. Skipping setup.");
+        await expect(editBtn).toBeEnabled();
+      }
     } else {
       throw new Error(
         "Neither Configure nor Edit Setup button is visible for Azure OpenAI",
@@ -585,29 +696,39 @@ export class Settings {
     apiKey: string,
   ) {
     logger.info("Configuring watsonx.ai settings with invalid credentials");
+    const card = this.getProviderCard("watsonx");
+    await expect(card).toBeVisible({ timeout: 15000 });
     const configureBtn = this.getConfigureButton("watsonx");
-    // If Configure button is visible -> do setup
+    const editBtn = this.getEditSetupButton("watsonx");
+
     if (await configureBtn.isVisible()) {
       await configureBtn.click();
-      await expect(this.getSetupHeading("IBM watsonx.ai")).toBeVisible();
-      await this.watsonxEndPointCombobox().click();
-      // Wait for the dropdown to open by polling until any option appears
-      await this.page.waitForSelector('[role="option"]', {
-        state: "visible",
-        timeout: 15000,
-      });
-      const option = this.getWatsonxOption(url);
-      await expect(option).toBeVisible({ timeout: 10000 });
-      await option.click();
-      await this.watsonxProjectIDInput().fill(projectId);
-      await this.apiKeyInput().fill(apiKey);
-      await this.saveModelProviderButton().click();
-      logger.info(
-        "Verify that watsonx.ai configuration failed due to invalid credentials",
+    } else if (await editBtn.isVisible()) {
+      await editBtn.click();
+    } else {
+      throw new Error(
+        "Neither Configure nor Edit Setup button is visible for watsonx",
       );
-      await expect(this.providerConnectionErrorMessage()).toBeVisible({
-        timeout: 30000,
-      });
     }
+
+    await expect(this.getSetupHeading("IBM watsonx.ai")).toBeVisible();
+    await this.watsonxEndPointCombobox().click();
+    // Wait for the dropdown to open by polling until any option appears
+    await this.page.waitForSelector('[role="option"]', {
+      state: "visible",
+      timeout: 15000,
+    });
+    const option = this.getWatsonxOption(url);
+    await expect(option).toBeVisible({ timeout: 10000 });
+    await option.click();
+    await this.watsonxProjectIDInput().fill(projectId);
+    await this.apiKeyInput().fill(apiKey);
+    await this.saveModelProviderButton().click();
+    logger.info(
+      "Verify that watsonx.ai configuration failed due to invalid credentials",
+    );
+    await expect(this.providerConnectionErrorMessage()).toBeVisible({
+      timeout: 30000,
+    });
   }
 }

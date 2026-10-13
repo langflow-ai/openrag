@@ -1455,11 +1455,6 @@ class AppClients:
         """Alias for patched_async_client - for backward compatibility with code expecting separate clients."""
         return self.patched_async_client
 
-    @property
-    def patched_embedding_client(self):
-        """Alias for patched_async_client - for backward compatibility with code expecting separate clients."""
-        return self.patched_async_client
-
     async def refresh_patched_client(self):
         """Reset patched client so next use picks up updated provider credentials."""
         if self._patched_async_client is not None:

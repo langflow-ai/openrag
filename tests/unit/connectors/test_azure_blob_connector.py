@@ -114,6 +114,31 @@ def test_create_client_account_key_mode_with_endpoint(monkeypatch):
     assert client is not None
 
 
+@pytest.mark.parametrize(
+    "endpoint_url",
+    [
+        # Azurite reached by its Docker service name.
+        "http://azurite:10000/devstoreaccount1",
+        # Custom domain / private endpoint with no account name in the host.
+        "https://storage.internal.example.com",
+    ],
+)
+def test_create_client_account_key_mode_custom_hostname_endpoint(monkeypatch, endpoint_url):
+    # The SDK cannot infer the account name from these URLs, so the client
+    # must be given it explicitly instead of a bare key string.
+    _clear_azure_env(monkeypatch)
+    client = az_auth.create_blob_service_client(
+        {
+            "auth_mode": "account_key",
+            "account_name": "devstoreaccount1",
+            "account_key": "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT==",
+            "endpoint_url": endpoint_url,
+        }
+    )
+    assert client.account_name == "devstoreaccount1"
+    assert client.credential.account_name == "devstoreaccount1"
+
+
 def test_create_client_connection_string_missing_raises(monkeypatch):
     _clear_azure_env(monkeypatch)
     with pytest.raises(ValueError, match="Connection string mode requires"):

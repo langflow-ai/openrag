@@ -668,15 +668,23 @@ export class Knowledge {
     // Find the document row using reliable method
     const row = await this.findRowAcrossPages(fileName);
 
-    // Click on the document link
-    const fileLink = row.locator("span").filter({ hasText: fileName }).first();
+    // Click on the document link button
+    const fileButton = row
+      .getByRole("button", { name: fileName })
+      .or(row.locator("button").filter({ hasText: fileName }));
 
-    await expect(fileLink).toBeVisible({ timeout: 10000 });
-    await fileLink.click();
+    await expect(fileButton).toBeVisible({ timeout: 10000 });
+    await expect(fileButton).not.toHaveClass(/cursor-default/, {
+      timeout: 10000,
+    });
+    await fileButton.click();
+    await this.page.waitForURL(/\/knowledge\/chunks/, { timeout: 15000 });
   }
 
   async getFirstChunkText(): Promise<string> {
-    await expect(this.page.getByText(/Chunk \d+/i).first()).toBeVisible();
+    await expect(this.page.getByText(/Chunk \d+/i).first()).toBeVisible({
+      timeout: 15000,
+    });
 
     const chunk = this.page.locator("blockquote").first();
     return (await chunk.textContent()) || "";
@@ -1067,15 +1075,33 @@ export class Knowledge {
    * @returns Array containing the top 2 chunk texts after search
    */
   async searchChunks(searchToken: string): Promise<string[]> {
-    // Locate the search input in the chunk viewer
-    const searchInp = this.searchInput();
+    // Locate the chunk-specific search input (not the knowledge-list search bar).
+    // Both inputs match placeholder*="Search"; narrow to "chunks" to avoid ambiguity.
+    const searchInp = this.page.locator('input[placeholder*="chunks"]');
     await expect(searchInp).toBeVisible({ timeout: 5000 });
     // Clear any existing search and enter the token
     await searchInp.clear();
     await searchInp.fill(searchToken);
     await this.page.keyboard.press("Enter");
-    // Wait for search to complete and chunks to re-rank
-    await this.page.waitForTimeout(2000);
+    // The panel filters via React's useDeferredValue, so the DOM update is
+    // asynchronous. Poll until at least one rendered blockquote contains the
+    // search token — this is the only reliable signal that the deferred filter
+    // update has fully committed, rather than treating a visible-but-stale
+    // first chunk or a fixed delay as evidence of completion.
+    await expect
+      .poll(
+        async () => {
+          const chunks = this.chunkElements();
+          const count = await chunks.count();
+          for (let i = 0; i < count; i++) {
+            const text = await chunks.nth(i).textContent();
+            if (text?.includes(searchToken)) return true;
+          }
+          return false;
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
     // Get all chunks after search
     const allChunks = await this.getAllChunks();
     // Return only the top 2 chunks

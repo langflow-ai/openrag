@@ -51,7 +51,7 @@ export function LabelWrapper({
           {required && <span className="text-red-500">*</span>}
           {helperText && (
             <Tooltip>
-              <TooltipTrigger>
+              <TooltipTrigger type="button">
                 <Info className="w-3.5 h-3.5 text-muted-foreground" />
               </TooltipTrigger>
               <TooltipContent side="right">{helperText}</TooltipContent>

@@ -216,8 +216,11 @@ export default function UploadProviderPage() {
       setDuplicateDialogOpen(true);
     } catch (err) {
       console.error("[Connector Sync] Duplicate check failed:", err);
-      // Fallback: proceed without overwrite
-      submitSync(connector, selectedFiles, false);
+      // Don't fall through to the sync: see shared-bucket-view. Ingesting
+      // without the answer silently skips every duplicate instead of asking.
+      toast.error("Could not check for existing files", {
+        description: "Nothing was ingested. Try again.",
+      });
     } finally {
       setIsCheckingDuplicates(false);
     }

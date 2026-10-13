@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { makeSettings } from "@/test-utils/fixtures/settings";
 import { renderWithProviders } from "@/test-utils/render";
 import { AgentSettingsSection } from "./agent-settings-section";
+import { IngestSaveProvider } from "./ingest-save-context";
 import { IngestSettingsSection } from "./ingest-settings-section";
 
 const catalog = {
@@ -80,10 +81,15 @@ describe("Azure fallback model selection", () => {
   it("asks for an explicit embedding deployment instead of saving a catalog model", async () => {
     const updates: unknown[] = [];
     const user = userEvent.setup();
-    renderWithProviders(<IngestSettingsSection />, {
-      providers: [...providers],
-      handlers: handlers(updates),
-    });
+    renderWithProviders(
+      <IngestSaveProvider>
+        <IngestSettingsSection />
+      </IngestSaveProvider>,
+      {
+        providers: [...providers],
+        handlers: handlers(updates),
+      },
+    );
 
     const selector = await screen.findByRole("combobox");
     await user.click(selector);

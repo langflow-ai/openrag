@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import datetime
 import json
+from collections.abc import Mapping
 from fnmatch import fnmatch
 from functools import lru_cache
 from typing import Any
@@ -33,6 +34,7 @@ from typing import Any
 from config.model_providers import ProviderEntry, visible_provider_entries
 from enhancements.providers.registry import (
     credential_field_overrides,
+    litellm_route_for,
     route_aliases,
 )
 from enhancements.providers.registry import (
@@ -107,9 +109,21 @@ PROVIDER_ROUTE_ALIASES: dict[str, str] = route_aliases()
 _CREDENTIAL_FIELD_OVERRIDES: dict[str, list[dict[str, Any]]] = credential_field_overrides()
 
 
-def litellm_provider_key(provider: str) -> str:
-    """The name LiteLLM routes `provider` under, which is usually itself."""
+def litellm_provider_key(provider: str, stored: Mapping[str, Any] | None = None) -> str:
+    """The name LiteLLM routes `provider` under, which is usually itself.
+
+    `stored` is the provider's untranslated credentials. Pass them whenever the
+    caller has them: a provider whose transport depends on how it was
+    configured — Azure AI Foundry, where the endpoint decides which LiteLLM
+    handler can build a correct URL — can only answer with them in hand.
+    Without them the static alias is used, which every enhancement keeps as its
+    safe default.
+    """
     key = (provider or "").strip().lower()
+    if stored:
+        dynamic = litellm_route_for(key, stored)
+        if dynamic:
+            return dynamic
     return PROVIDER_ROUTE_ALIASES.get(key, key)
 
 
@@ -609,10 +623,14 @@ def public_model_id(provider: str, model: str) -> str:
     The tag uses `provider:model`, not `provider/model`: watsonx serves
     `openai/gpt-oss-120b`, so a slash-joined id is indistinguishable from that
     model's own name.
-    """
-    from services.llm_gateway import PROVIDER_SEPARATOR
 
-    return model if provider == "openai" else f"{provider}{PROVIDER_SEPARATOR}{model}"
+    Delegates the tagging itself, so the rules for what counts as an existing
+    tag — including the legacy `provider/` spelling — live in one place rather
+    than drifting between two modules that differ only in this OpenAI case.
+    """
+    from services.llm_gateway import qualified_model_id
+
+    return model if provider == "openai" else qualified_model_id(provider, model)
 
 
 def openai_models_list(today: datetime.date | None = None) -> dict[str, Any]:
