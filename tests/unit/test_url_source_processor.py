@@ -1,5 +1,6 @@
 """OpenSearch-manifest coverage for the managed URL source processor."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
@@ -29,7 +30,9 @@ def _source(**overrides) -> dict:
     return source
 
 
-def _processor(source: dict, *, page_id: str | None = None) -> WebsiteSourceProcessor:
+def _processor(
+    source: dict, *, page_id: str | None = None, ingestion_timeout: int | None = None
+) -> WebsiteSourceProcessor:
     return WebsiteSourceProcessor(
         source_id=source["id"],
         owner_id=source["owner_id"],
@@ -39,6 +42,7 @@ def _processor(source: dict, *, page_id: str | None = None) -> WebsiteSourceProc
         document_service=None,
         models_service=None,
         page_id=page_id,
+        ingestion_timeout=ingestion_timeout,
     )
 
 
@@ -163,6 +167,42 @@ async def test_initial_crawl_keeps_saved_scope_when_future_resync_is_root_only(m
     spec = crawl.await_args.args[0]
     assert spec.scope == "path"
     assert spec.max_pages == 250
+
+
+@pytest.mark.asyncio
+async def test_crawl_leaves_task_timeout_headroom_for_page_ingestion(monkeypatch):
+    source = _source(
+        crawl_settings={"seed_url": "https://docs.example.com/", "max_crawl_minutes": 15}
+    )
+    crawl = AsyncMock(
+        return_value=CrawlResult((), complete=False, capped=False, reason="network down")
+    )
+    monkeypatch.setattr(processor_module, "get_source_manifest", AsyncMock(return_value=source))
+    monkeypatch.setattr(processor_module, "list_page_manifests", AsyncMock(return_value=[]))
+    monkeypatch.setattr(processor_module, "upsert_source_manifest", AsyncMock())
+    monkeypatch.setattr(processor_module, "crawl", crawl)
+
+    task, file_task = UploadTask(task_id="task-1", total_files=1), FileTask(file_path="source-1")
+    await _processor(source, ingestion_timeout=600).process_item(
+        task, file_task.file_path, file_task
+    )
+
+    assert crawl.await_args.args[0].max_crawl_minutes == 4
+
+
+@pytest.mark.asyncio
+async def test_cancellation_finalizes_the_source_before_propagating(monkeypatch):
+    source = _source()
+    processor = _processor(source)
+    finalize = AsyncMock()
+    monkeypatch.setattr(processor, "_process_item", AsyncMock(side_effect=asyncio.CancelledError()))
+    monkeypatch.setattr(processor, "_finalize_unhandled_failure", finalize)
+    task, file_task = UploadTask(task_id="task-1", total_files=1), FileTask(file_path="source-1")
+
+    with pytest.raises(asyncio.CancelledError):
+        await processor.process_item(task, file_task.file_path, file_task)
+
+    finalize.assert_awaited_once_with("Website crawl was cancelled.", task, file_task)
 
 
 @pytest.mark.asyncio

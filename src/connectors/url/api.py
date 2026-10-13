@@ -115,6 +115,7 @@ async def _enqueue(
         models_service=task_service.models_service,
         page_id=page_id,
         source_manifest=source,
+        ingestion_timeout=getattr(task_service, "ingestion_timeout", None),
     )
     return await task_service.create_custom_task(
         user.user_id,
@@ -270,9 +271,11 @@ async def delete_source(
 async def delete_page(
     source_id: str,
     page_id: str,
+    task_service=Depends(get_task_service),
     user: User = Depends(require_permission("knowledge:delete:own")),
 ):
     source = await _owned(source_id, user)
+    source = await _recover_terminal_processing_source(source, task_service)
     if source.get("status") == "processing":
         raise HTTPException(409, "A crawl is already running; wait before disabling a page")
     page = await get_page_manifest(source_id, page_id)

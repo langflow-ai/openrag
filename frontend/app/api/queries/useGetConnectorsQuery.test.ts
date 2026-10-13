@@ -130,6 +130,7 @@ describe("useGetConnectorsQuery", () => {
   });
 
   it("marks an always-connected managed connector connected without OAuth", async () => {
+    let statusRequests = 0;
     server.use(
       http.get("/api/connectors", () =>
         HttpResponse.json(
@@ -145,9 +146,10 @@ describe("useGetConnectorsQuery", () => {
           }),
         ),
       ),
-      http.get("/api/connectors/url/status", () =>
-        HttpResponse.json({ connections: [] }),
-      ),
+      http.get("/api/connectors/url/status", () => {
+        statusRequests += 1;
+        return HttpResponse.json({ connections: [] });
+      }),
     );
 
     const { result } = renderHook(() => useGetConnectorsQuery(), {
@@ -163,6 +165,7 @@ describe("useGetConnectorsQuery", () => {
         alwaysConnected: true,
       }),
     ]);
+    expect(statusRequests).toBe(0);
   });
 
   it("filters out aws_s3 and ibm_cos for a non-IBM oss deployment", async () => {

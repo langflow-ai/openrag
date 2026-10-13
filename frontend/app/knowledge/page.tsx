@@ -1197,7 +1197,11 @@ function SearchPage() {
           rows={gridRows}
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
-          loading={isLoading || deleteDocumentMutation.isPending}
+          loading={
+            isLoading ||
+            deleteDocumentMutation.isPending ||
+            deleteWebsiteSourceMutation.isPending
+          }
           gridRef={gridRef}
           isCloudBrand={isCloudBrand}
           rowSelection="multiple"
@@ -1229,7 +1233,10 @@ function SearchPage() {
         description={`Are you sure you want to delete ${selectedRows.length} document${selectedRows.length > 1 ? "s" : ""}?`}
         confirmText={selectedRows.length > 1 ? "Delete all" : "Delete"}
         onConfirm={handleBulkDelete}
-        isLoading={deleteDocumentMutation.isPending}
+        isLoading={
+          deleteDocumentMutation.isPending ||
+          deleteWebsiteSourceMutation.isPending
+        }
       >
         <p className="my-2">
           This will remove all chunks and data associated with these documents.

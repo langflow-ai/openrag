@@ -143,16 +143,53 @@ async def test_disabling_a_page_updates_manifests_and_removes_chunks(monkeypatch
 
 @pytest.mark.asyncio
 async def test_disabling_page_rejects_a_running_source(monkeypatch):
-    source = _source(status="processing")
+    source = _source(status="processing", last_task_id="task-1")
     delete_chunks = AsyncMock()
+    task_service = type(
+        "TaskService",
+        (),
+        {"get_upload_task": lambda *_: type("Task", (), {"status": api.TaskStatus.RUNNING})()},
+    )()
     monkeypatch.setattr(api, "get_source_manifest", AsyncMock(return_value=source))
     monkeypatch.setattr(api, "delete_page_chunks", delete_chunks)
 
     with pytest.raises(Exception, match="crawl is already running") as error:
-        await api.delete_page(source["id"], "page-1", user=_user(source))
+        await api.delete_page(source["id"], "page-1", task_service=task_service, user=_user(source))
 
     assert getattr(error.value, "status_code", None) == 409
     delete_chunks.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_disabling_page_recovers_a_source_with_a_terminal_task(monkeypatch):
+    source = _source(status="processing", last_task_id="task-1")
+    page = {
+        "web_source_id": source["id"],
+        "web_page_id": "page-1",
+        "document_id": "web-page:source-1:page-1",
+        "content_document_id": "document-1",
+        "status": "active",
+    }
+    task_service = type(
+        "TaskService",
+        (),
+        {"get_upload_task": lambda *_: type("Task", (), {"status": api.TaskStatus.FAILED})()},
+    )()
+    persist_source = AsyncMock()
+    monkeypatch.setattr(api, "get_source_manifest", AsyncMock(return_value=source))
+    monkeypatch.setattr(api, "get_page_manifest", AsyncMock(return_value=page))
+    monkeypatch.setattr(api, "list_page_manifests", AsyncMock(return_value=[page]))
+    monkeypatch.setattr(api, "upsert_source_manifest", persist_source)
+    monkeypatch.setattr(api, "upsert_page_manifest", AsyncMock())
+    monkeypatch.setattr(api, "delete_page_chunks", AsyncMock())
+
+    result = await api.delete_page(
+        source["id"], "page-1", task_service=task_service, user=_user(source)
+    )
+
+    assert result == {"id": "page-1", "status": "disabled"}
+    assert source["status"] == "failed"
+    assert persist_source.await_count == 2
 
 
 @pytest.mark.asyncio

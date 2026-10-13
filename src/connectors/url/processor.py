@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import tempfile
@@ -26,6 +27,9 @@ from .projection import (
     upsert_source_manifest,
 )
 
+CRAWL_INGESTION_HEADROOM_SECONDS = 5 * 60
+CRAWL_SHUTDOWN_GRACE_SECONDS = 30
+
 
 def _document_id(source_id: str, canonical_url: str) -> str:
     return hashlib.sha256(f"{source_id}\0{canonical_url}".encode()).hexdigest()
@@ -44,6 +48,7 @@ class WebsiteSourceProcessor(TaskProcessor):
         models_service,
         page_id: str | None = None,
         source_manifest: dict[str, Any] | None = None,
+        ingestion_timeout: int | None = None,
     ):
         super().__init__(document_service=document_service, models_service=models_service)
         self.source_id = source_id
@@ -54,6 +59,7 @@ class WebsiteSourceProcessor(TaskProcessor):
         self.page_id = page_id
         self.source_manifest = dict(source_manifest) if source_manifest is not None else None
         self._active_source: dict[str, Any] | None = None
+        self.ingestion_timeout = ingestion_timeout
 
     async def _source_is_active(self) -> dict[str, Any]:
         source = await get_source_manifest(self.source_id)
@@ -103,6 +109,13 @@ class WebsiteSourceProcessor(TaskProcessor):
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         try:
             await self._process_item(upload_task, item, file_task)
+        except asyncio.CancelledError:
+            await asyncio.shield(
+                self._finalize_unhandled_failure(
+                    "Website crawl was cancelled.", upload_task, file_task
+                )
+            )
+            raise
         except Exception as exc:
             await self._finalize_unhandled_failure(
                 str(exc) or "Website crawl failed before it could start.",
@@ -153,6 +166,22 @@ class WebsiteSourceProcessor(TaskProcessor):
             )
         elif source_is_established and source.get("resync_behavior") == "root":
             spec_values.update(scope="page", max_pages=1, max_depth=0)
+
+        if self.ingestion_timeout is not None:
+            # TaskService applies one timeout to crawling and ingestion. Keep a
+            # bounded portion for page ingestion after Scrapy returns, plus
+            # the crawler subprocess's shutdown grace period.
+            crawl_budget_seconds = (
+                self.ingestion_timeout
+                - CRAWL_INGESTION_HEADROOM_SECONDS
+                - CRAWL_SHUTDOWN_GRACE_SECONDS
+            )
+            if crawl_budget_seconds < 60:
+                raise ValueError("Task timeout is too short for a website crawl")
+            crawl_minutes = crawl_budget_seconds // 60
+            spec_values["max_crawl_minutes"] = min(
+                int(spec_values["max_crawl_minutes"]), crawl_minutes
+            )
 
         try:
             result = await crawl(CrawlSpec(**spec_values))

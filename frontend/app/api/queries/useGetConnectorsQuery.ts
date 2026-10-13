@@ -199,13 +199,6 @@ export const useGetConnectorsQuery = (
     const connectorsWithStatus = await Promise.all(
       connectorTypes.map(async (type) => {
         const connectorData = connectorsMap[type];
-        const statusResponse = await apiClient.get(
-          `/connectors/${type}/status`,
-        );
-
-        let status: Connector["status"] = "not_connected";
-        let connectionId: string | undefined;
-
         // Determine if this connector requires OAuth based on connector kind
         // "oauth" connectors require OAuth flow (Google Drive, OneDrive, SharePoint)
         // "bucket" connectors use credential-based auth (Azure Blob, S3, IBM COS)
@@ -226,6 +219,12 @@ export const useGetConnectorsQuery = (
             alwaysConnected,
           } as Connector;
         }
+
+        const statusResponse = await apiClient.get(
+          `/connectors/${type}/status`,
+        );
+        let status: Connector["status"] = "not_connected";
+        let connectionId: string | undefined;
 
         if (statusResponse.status >= 200 && statusResponse.status < 300) {
           const statusData = statusResponse.data;

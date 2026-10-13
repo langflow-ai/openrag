@@ -904,18 +904,16 @@ class SearchService:
 
             set_auth_context(user_id, jwt_token)
 
-        # Set filters and limit in context if provided
-        if filters:
-            from auth_context import set_search_filters
-
-            set_search_filters(filters)
-
         from auth_context import (
             set_score_threshold,
+            set_search_filters,
             set_search_limit,
             set_search_result_mode,
         )
 
+        # Context variables survive within a task. Reset filters for every
+        # search so an unfiltered call cannot inherit a prior request's scope.
+        set_search_filters(filters or {})
         set_search_limit(limit)
         set_score_threshold(score_threshold)
         set_search_result_mode(result_mode)

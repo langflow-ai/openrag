@@ -5,7 +5,12 @@ import pytest
 
 from api import search as search_api
 from api.search import SearchBody, _website_page_search_result
-from services.search_service import _add_result_mode_filter, _build_search_filter_clauses
+from auth_context import get_search_filters, set_search_filters
+from services.search_service import (
+    SearchService,
+    _add_result_mode_filter,
+    _build_search_filter_clauses,
+)
 
 
 def test_url_source_filter_matches_current_and_legacy_keyword_mappings():
@@ -28,6 +33,17 @@ def test_knowledge_sources_filter_excludes_child_pages_before_ranking():
     clauses = _add_result_mode_filter([], "knowledge_sources")
 
     assert clauses == [{"bool": {"must_not": [{"exists": {"field": "web_page_id"}}]}}]
+
+
+@pytest.mark.asyncio
+async def test_search_clears_filters_when_the_request_has_none():
+    service = object.__new__(SearchService)
+    service.search_tool = AsyncMock(return_value={})
+    set_search_filters({"web_source_ids": ["source-1"]})
+
+    await service.search("guide", filters=None)
+
+    assert get_search_filters() == {}
 
 
 @pytest.mark.asyncio
