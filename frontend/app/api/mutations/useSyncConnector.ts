@@ -1,8 +1,8 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-
 import type { IngestSettings } from "@/components/cloud-picker/types";
+import { apiClient } from "@/lib/api-client";
 
 // Response types
 interface SyncResponse {
@@ -46,19 +46,14 @@ export interface SyncAllPreviewResponse {
 
 // Sync all cloud connectors
 const syncAllConnectors = async (): Promise<SyncResponse> => {
-  const response = await fetch("/api/connectors/sync-all", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-  });
+  const response = await apiClient.post("/connectors/sync-all");
 
-  if (!response.ok) {
-    const error = await response.json();
+  if (response.status < 200 || response.status >= 300) {
+    const error = response.data ?? {};
     throw new Error(error.error || "Failed to sync connectors");
   }
 
-  return response.json();
+  return response.data;
 };
 
 // Sync a specific connector type
@@ -88,20 +83,17 @@ const syncConnector = async ({
     shared?: boolean;
   };
 }): Promise<SyncResponse> => {
-  const response = await fetch(`/api/connectors/${connectorType}/sync`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body || {}),
-  });
+  const response = await apiClient.post(
+    `/connectors/${connectorType}/sync`,
+    body || {},
+  );
 
-  if (!response.ok) {
-    const error = await response.json();
+  if (response.status < 200 || response.status >= 300) {
+    const error = response.data ?? {};
     throw new Error(error.error || `Failed to sync ${connectorType}`);
   }
 
-  return response.json();
+  return response.data;
 };
 
 export const useSyncAllConnectors = () => {
@@ -131,36 +123,29 @@ export const useSyncConnector = () => {
 const syncConnectorPreview = async (
   connectorType: string,
 ): Promise<SyncPreviewResponse> => {
-  const response = await fetch(
-    `/api/connectors/${connectorType}/sync-preview`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    },
+  const response = await apiClient.post(
+    `/connectors/${connectorType}/sync-preview`,
   );
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
+  if (response.status < 200 || response.status >= 300) {
+    const error = response.data ?? {};
     throw new Error(
       error.error || `Failed to preview sync for ${connectorType}`,
     );
   }
 
-  return response.json();
+  return response.data;
 };
 
 const syncAllConnectorsPreview = async (): Promise<SyncAllPreviewResponse> => {
-  const response = await fetch("/api/connectors/sync-all-preview", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
+  const response = await apiClient.post("/connectors/sync-all-preview");
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
+  if (response.status < 200 || response.status >= 300) {
+    const error = response.data ?? {};
     throw new Error(error.error || "Failed to preview sync");
   }
 
-  return response.json();
+  return response.data;
 };
 
 export const useSyncConnectorPreview = () => {

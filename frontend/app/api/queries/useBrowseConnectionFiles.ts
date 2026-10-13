@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 export interface RemoteFile {
   id: string;
@@ -62,19 +63,19 @@ export const useBrowseConnectionFiles = (
     if (params.pageToken) searchParams.set("page_token", params.pageToken);
     if (params.maxFiles) searchParams.set("max_files", String(params.maxFiles));
 
-    const url = `/api/connectors/${params.connectorType}/${params.connectionId}/browse?${searchParams.toString()}`;
-    const response = await fetch(url);
+    const url = `/connectors/${params.connectorType}/${params.connectionId}/browse?${searchParams.toString()}`;
+    const response = await apiClient.get<BrowseConnectionFilesResponse>(url);
 
-    if (!response.ok) {
-      const errorData = await response
-        .json()
-        .catch(() => ({ error: "Unknown error" }));
+    if (response.status < 200 || response.status >= 300) {
+      const errorData = (response.data ?? { error: "Unknown error" }) as {
+        error?: string;
+      };
       throw new Error(
         errorData.error || `Failed to browse files: ${response.status}`,
       );
     }
 
-    return response.json();
+    return response.data;
   }
 
   return useQuery(
