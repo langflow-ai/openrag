@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 import type { EndpointType } from "@/contexts/chat-context";
 import { useChat } from "@/contexts/chat-context";
+import { apiClient } from "@/lib/api-client";
 
 export interface RawConversation {
   response_id: string;
@@ -62,18 +63,19 @@ export const useGetConversationsQuery = (
     try {
       // Fetch from the selected endpoint only
       const apiEndpoint =
-        endpoint === "chat" ? "/api/chat/history" : "/api/langflow/history";
+        endpoint === "chat" ? "/chat/history" : "/langflow/history";
 
-      const response = await fetch(apiEndpoint, {
-        signal: context.signal,
-      });
+      const response = await apiClient.get<ConversationHistoryResponse>(
+        apiEndpoint,
+        { signal: context.signal },
+      );
 
-      if (!response.ok) {
+      if (response.status < 200 || response.status >= 300) {
         console.error(`Failed to fetch conversations: ${response.status}`);
         return [];
       }
 
-      const history: ConversationHistoryResponse = await response.json();
+      const history = response.data;
       const rawConversations = history.conversations || [];
 
       // Cast conversations to proper type and ensure endpoint is correct

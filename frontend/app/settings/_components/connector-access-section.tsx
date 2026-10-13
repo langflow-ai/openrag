@@ -35,6 +35,7 @@ import { Input } from "@/components/ui/input";
 import { type Status, StatusBadge } from "@/components/ui/status-badge";
 import { Switch } from "@/components/ui/switch";
 import { trackButton } from "@/lib/analytics";
+import { frontendUrl } from "@/lib/frontend-base-path";
 
 interface OAuthCredentialGroup {
   credentialKey: string;
@@ -403,7 +404,7 @@ export function ConnectorAccessSection() {
                                     status: "not_connected",
                                     type: group.testConnectorType,
                                   },
-                                  redirectUri: `${window.location.origin}/auth/callback`,
+                                  redirectUri: frontendUrl("/auth/callback"),
                                   purpose: "test",
                                 });
                               }}

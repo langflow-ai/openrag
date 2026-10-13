@@ -15,6 +15,7 @@ import { useOnboardingState } from "@/hooks/use-onboarding-state";
 import { useSupportedFileTypes } from "@/hooks/use-supported-file-types";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
 import { trackLLMCall } from "@/lib/analytics";
+import { apiClient } from "@/lib/api-client";
 import {
   dedupeConsecutiveErrorMessages,
   formatProviderErrorMessage,
@@ -781,17 +782,14 @@ function ChatPage() {
           requestBody.filter_id = conversationFilter.id;
         }
 
-        const response = await fetch(apiEndpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(requestBody),
-        });
+        const response = await apiClient.post(
+          apiEndpoint.replace(/^\/api/, ""),
+          requestBody,
+        );
 
-        const result = await response.json();
+        const result = response.data;
 
-        if (response.ok) {
+        if (response.status >= 200 && response.status < 300) {
           const assistantMessage: Message = {
             role: "assistant",
             content: result.response,

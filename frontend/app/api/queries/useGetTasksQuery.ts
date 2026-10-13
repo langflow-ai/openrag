@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 /** Component that failed, from GET /tasks/enhanced file metadata. */
 export type TaskFailureComponent =
@@ -89,13 +90,13 @@ export interface TasksResponse {
 export const TASKS_QUERY_KEY = ["tasks", "enhanced"] as const;
 
 async function getTasks(): Promise<Task[]> {
-  const response = await fetch("/api/tasks/enhanced");
+  const response = await apiClient.get<TasksResponse>("/tasks/enhanced");
 
-  if (!response.ok) {
+  if (response.status < 200 || response.status >= 300) {
     throw new Error("Failed to fetch tasks");
   }
 
-  const data: TasksResponse = await response.json();
+  const data = response.data;
   return data.tasks || [];
 }
 

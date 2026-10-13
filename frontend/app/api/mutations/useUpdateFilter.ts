@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 import { KnowledgeFilter } from "../queries/useGetFiltersSearchQuery";
 
 export interface UpdateFilterRequest {
@@ -24,23 +25,19 @@ async function updateFilter(
     body.description = data.description;
   if (typeof data.queryData !== "undefined") body.queryData = data.queryData;
 
-  const response = await fetch(`/api/knowledge-filter/${data.id}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  const response = await apiClient.put<UpdateFilterResponse>(
+    `/knowledge-filter/${data.id}`,
+    body,
+  );
 
-  const json = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
+  if (response.status < 200 || response.status >= 300) {
     const errorMessage =
-      (json && (json.error as string)) || "Failed to update knowledge filter";
+      (response.data as { error?: string }).error ||
+      "Failed to update knowledge filter";
     throw new Error(errorMessage);
   }
 
-  return json as UpdateFilterResponse;
+  return response.data;
 }
 
 export const useUpdateFilter = () => {

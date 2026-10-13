@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 export interface FacetBucket {
   key: string;
@@ -32,15 +33,13 @@ export const useGetSearchAggregations = (
   const queryClient = useQueryClient();
 
   async function fetchAggregations(): Promise<SearchAggregations> {
-    const response = await fetch("/api/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, limit, scoreThreshold }),
-    });
+    const response = await apiClient.post<{
+      aggregations?: SearchAggregations;
+      error?: string;
+    }>("/search", { query, limit, scoreThreshold });
+    const json = response.data;
 
-    const json = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       throw new Error(
         (json && json.error) || "Failed to load search aggregations",
       );
