@@ -62,7 +62,7 @@
     "mermaid": "11.16.1",
     "@docsearch/react": "^4.6.3",
     "launch-editor": "2.14.1",
-    "shell-quote": "1.9.0",
+    "shell-quote": "1.11.0",
     "http-proxy-middleware": "^2.0.10",
     "js-yaml": "5.4.2",
     "joi": "17.13.8",
