@@ -41,6 +41,16 @@ export function withFrontendBasePath(path: string): string {
   return `${frontendBasePath}${path}`;
 }
 
+/** Remove Next's basePath before passing an existing browser path to its router. */
+export function withoutFrontendBasePath(path: string): string {
+  if (!frontendBasePath || !path.startsWith(frontendBasePath)) return path;
+  if (path === frontendBasePath) return "/";
+  if (path.startsWith(`${frontendBasePath}/`)) {
+    return path.slice(frontendBasePath.length);
+  }
+  return path;
+}
+
 /** Build an absolute same-origin URL for OAuth callbacks and redirects. */
 export function frontendUrl(
   path: string,

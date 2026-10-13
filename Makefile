@@ -25,9 +25,12 @@ REPO ?= https://github.com/langflow-ai/langflow.git
 # Auto-detect container runtime: prefer docker, fall back to podman
 CONTAINER_RUNTIME := $(shell command -v docker >/dev/null 2>&1 && echo "docker" || echo "podman")
 # Next.js compiles `basePath` into the frontend bundle, so every direct
-# frontend image build must receive the same value used by docker compose.
-FRONTEND_BASE_PATH_BUILD_ARG := --build-arg OPENRAG_FRONTEND_BASE_PATH="$(OPENRAG_FRONTEND_BASE_PATH)"
-FRONTEND_LOCAL_URL := http://localhost:3000$(OPENRAG_FRONTEND_BASE_PATH)
+# frontend image build and local URL must use its normalized form.
+strip_trailing_slashes = $(if $(filter %/,$(1)),$(call strip_trailing_slashes,$(patsubst %/,%,$(1))),$(1))
+FRONTEND_NORMALIZED_BASE_PATH := $(call strip_trailing_slashes,$(strip $(OPENRAG_FRONTEND_BASE_PATH)))
+FRONTEND_NORMALIZED_BASE_PATH := $(if $(FRONTEND_NORMALIZED_BASE_PATH),$(if $(filter /%,$(FRONTEND_NORMALIZED_BASE_PATH)),$(FRONTEND_NORMALIZED_BASE_PATH),/$(FRONTEND_NORMALIZED_BASE_PATH)))
+FRONTEND_BASE_PATH_BUILD_ARG := --build-arg OPENRAG_FRONTEND_BASE_PATH="$(FRONTEND_NORMALIZED_BASE_PATH)"
+FRONTEND_LOCAL_URL := http://localhost:3000$(FRONTEND_NORMALIZED_BASE_PATH)
 
 # Host UID/GID — evaluated once at parse time and used in Docker-assisted chown commands
 # so that Alpine (running as root) can re-own volume directories back to the host user.
