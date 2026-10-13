@@ -55,6 +55,22 @@ def test_both_azure_providers_ship_in_every_mode(monkeypatch):
         assert {"azure_ai", "azure"} <= model_providers.visible_provider_keys(), mode
 
 
+def test_rhoai_ships_wherever_there_is_a_cluster_to_point_it_at(monkeypatch):
+    """Red Hat OpenShift AI is offered everywhere but SaaS.
+
+    Its endpoints and token belong to one OpenShift cluster, which is a reason
+    to keep it out of multi-tenant SaaS and not a reason to hide the card: it
+    sits unconfigured in Settings until someone enters them, the same as every
+    other on-prem provider. Same shape as `watsonx_onprem`.
+    """
+    for mode in ("oss", "on_prem"):
+        monkeypatch.setenv("OPENRAG_RUN_MODE", mode)
+        assert "rhoai" in model_providers.visible_provider_keys(), mode
+
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
+    assert "rhoai" not in model_providers.visible_provider_keys()
+
+
 def test_payload_reports_the_run_mode_it_filtered_on(monkeypatch):
     monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
     payload = model_providers.provider_visibility_payload()

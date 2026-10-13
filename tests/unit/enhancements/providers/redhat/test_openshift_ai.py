@@ -67,11 +67,11 @@ def _providers(**credentials: Any) -> ProvidersConfig:
 
 
 def _enable_in_oss(tmp_path, monkeypatch) -> None:
-    """Point the run mode at a config file that offers this provider.
+    """Point the run mode at a config file declaring this provider's test models.
 
-    The shipped `model_providers.yaml` has every mode false — the endpoints and
-    token are deployment-specific, so it is turned on per deployment. A test that
-    needs the catalogue has to do the same thing an operator does.
+    The shipped `model_providers.yaml` offers `rhoai` in `oss`, but lists its own
+    fallback ids. These tests assert on `CHAT_MODEL` / `EMBED_MODEL`, so they
+    supply a one-entry catalogue rather than tracking the shipped rows.
     """
     config = tmp_path / "model_providers.yaml"
     config.write_text(
@@ -1333,21 +1333,37 @@ async def test_missing_credentials_say_what_is_missing(monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("run_mode", ["oss", "on_prem", "saas"])
-def test_it_is_hidden_everywhere_as_shipped(monkeypatch, run_mode) -> None:
-    """Its endpoints and token are deployment-specific, so it is turned on with
-    OPENRAG_MODEL_PROVIDERS_CONFIG rather than offered to everyone."""
+@pytest.mark.parametrize(
+    ("run_mode", "offered"), [("oss", True), ("on_prem", True), ("saas", False)]
+)
+def test_it_ships_everywhere_a_cluster_can_be_reached(monkeypatch, run_mode, offered) -> None:
+    """Deployment-specific endpoints are a reason to keep it out of SaaS, not a
+    reason to hide the card: it stays unconfigured until someone enters them."""
     monkeypatch.delenv("OPENRAG_MODEL_PROVIDERS_CONFIG", raising=False)
     monkeypatch.setenv("OPENRAG_RUN_MODE", run_mode)
     model_providers.reload()
 
+    assert (PROVIDER in model_providers.visible_provider_keys()) is offered
+
+
+def test_a_deployment_with_no_cluster_can_hide_it_with_a_config_override(
+    tmp_path, monkeypatch
+) -> None:
+    """The shipped file offers the card; an override file takes it away again.
+
+    The direction worth pinning now that `oss` ships true, and the escape hatch
+    the documentation points a deployment with no OpenShift cluster at.
+    """
+    config = tmp_path / "model_providers.yaml"
+    config.write_text(
+        f"providers:\n  - name: {PROVIDER}\n    modes:\n      oss: false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    monkeypatch.setenv("OPENRAG_MODEL_PROVIDERS_CONFIG", str(config))
+    model_providers.reload()
+
     assert PROVIDER not in model_providers.visible_provider_keys()
-
-
-def test_a_deployment_can_offer_it_with_a_config_override(tmp_path, monkeypatch) -> None:
-    _enable_in_oss(tmp_path, monkeypatch)
-
-    assert PROVIDER in model_providers.visible_provider_keys()
 
 
 def test_the_configured_models_are_the_fallback_picker(tmp_path, monkeypatch) -> None:
