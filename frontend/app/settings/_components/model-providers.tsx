@@ -10,6 +10,7 @@ import {
 } from "@/components/models/model-helpers";
 import { useProviderHealth } from "@/components/provider-health-banner";
 import { useAuth } from "@/contexts/auth-context";
+import { withoutFrontendBasePath } from "@/lib/frontend-base-path";
 import AnthropicSettingsDialog from "./anthropic-settings-dialog";
 import ModelProviderCard from "./model-provider-card";
 import OllamaSettingsDialog from "./ollama-settings-dialog";
@@ -25,6 +26,16 @@ const BESPOKE_DIALOG_PROVIDERS = new Set<ModelProvider>([
   "ollama",
   "watsonx",
 ]);
+
+export function providerDialogCloseUrl(
+  pathname: string,
+  params: URLSearchParams,
+): string {
+  const appPathname = withoutFrontendBasePath(pathname);
+  return params.toString()
+    ? `${appPathname}?${params.toString()}`
+    : appPathname;
+}
 
 export const ModelProviders = () => {
   const { isAuthenticated, isNoAuthMode } = useAuth();
@@ -73,10 +84,7 @@ export const ModelProviders = () => {
     // Remove search param from URL
     const params = new URLSearchParams(searchParams.toString());
     params.delete("setup");
-    const newUrl = params.toString()
-      ? `${window.location.pathname}?${params.toString()}`
-      : window.location.pathname;
-    router.replace(newUrl);
+    router.replace(providerDialogCloseUrl(window.location.pathname, params));
   };
 
   const currentLlmProvider =

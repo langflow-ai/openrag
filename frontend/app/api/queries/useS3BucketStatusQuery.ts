@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 export interface S3BucketStatus {
   name: string;
@@ -9,15 +10,14 @@ export interface S3BucketStatus {
 async function fetchS3BucketStatus(
   connectionId: string,
 ): Promise<S3BucketStatus[]> {
-  const res = await fetch(
-    `/api/connectors/aws_s3/${connectionId}/bucket-status`,
+  const res = await apiClient.get<{ buckets: S3BucketStatus[] }>(
+    `/connectors/aws_s3/${connectionId}/bucket-status`,
   );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
+  if (res.status < 200 || res.status >= 300) {
+    const err = (res.data ?? {}) as { error?: string };
     throw new Error(err.error || "Failed to fetch bucket status");
   }
-  const data = await res.json();
-  return data.buckets as S3BucketStatus[];
+  return res.data.buckets;
 }
 
 export function useS3BucketStatusQuery(

@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 export interface DoclingHealthResponse {
   // "degraded": docling-serve is up but slow to answer (busy converting), so
@@ -13,15 +14,11 @@ export interface DoclingHealthResponse {
 
 async function checkDoclingHealth(): Promise<DoclingHealthResponse> {
   try {
-    const response = await fetch("/api/docling/health", {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
+    const response =
+      await apiClient.get<DoclingHealthResponse>("/docling/health");
 
-    if (response.ok) {
-      const body = await response.json().catch(() => ({}));
+    if (response.status >= 200 && response.status < 300) {
+      const body = response.data;
       if (body?.status === "degraded") {
         return { status: "degraded", message: body.message };
       }

@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 import { connectorOAuthConfigQueryKey } from "../queries/useConnectorOAuthConfigQuery";
 
 export interface SaveConnectorOAuthConfigPayload {
@@ -12,16 +13,12 @@ async function saveConnectorOAuthConfig({
   client_id,
   client_secret,
 }: SaveConnectorOAuthConfigPayload) {
-  const res = await fetch(
-    `/api/connectors/oauth-config/${encodeURIComponent(credentialKey)}`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client_id, client_secret }),
-    },
+  const res = await apiClient.put(
+    `/connectors/oauth-config/${encodeURIComponent(credentialKey)}`,
+    { client_id, client_secret },
   );
-  const data = await res.json();
-  if (!res.ok)
+  const data = res.data ?? {};
+  if (res.status < 200 || res.status >= 300)
     throw new Error(data.error || "Failed to save connector credentials");
   return data;
 }
@@ -38,12 +35,11 @@ export function useSaveConnectorOAuthConfigMutation() {
 }
 
 async function clearConnectorOAuthConfig(credentialKey: string) {
-  const res = await fetch(
-    `/api/connectors/oauth-config/${encodeURIComponent(credentialKey)}`,
-    { method: "DELETE" },
+  const res = await apiClient.delete(
+    `/connectors/oauth-config/${encodeURIComponent(credentialKey)}`,
   );
-  const data = await res.json();
-  if (!res.ok)
+  const data = res.data ?? {};
+  if (res.status < 200 || res.status >= 300)
     throw new Error(data.error || "Failed to clear connector credentials");
   return data;
 }
