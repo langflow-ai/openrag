@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { CatalogModel } from "@/components/models/catalog-models";
+import { apiClient } from "@/lib/api-client";
 import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { useGetSettingsQuery } from "./useGetSettingsQuery";
 
@@ -44,12 +45,15 @@ export interface IBMModelsParams {
 }
 
 async function throwModelsFetchError(
-  response: Response,
+  response: { data?: unknown },
   fallback: string,
 ): Promise<never> {
-  const data = await response.json().catch(() => ({}));
+  const data = response.data ?? {};
   const raw =
-    data && typeof data === "object" && typeof data.error === "string"
+    data &&
+    typeof data === "object" &&
+    "error" in data &&
+    typeof data.error === "string"
       ? data.error
       : fallback;
   throw new Error(formatProviderErrorMessage(raw));
@@ -72,13 +76,12 @@ export const useGetOpenAIModelsQuery = (
           body.api_key = apiKey;
         }
 
-        const response = await fetch("/api/models/openai", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (response.ok) {
-          return (await response.json()) as ModelsResponse;
+        const response = await apiClient.post<ModelsResponse>(
+          "/models/openai",
+          body,
+        );
+        if (response.status >= 200 && response.status < 300) {
+          return response.data;
         }
         return throwModelsFetchError(response, "Failed to fetch OpenAI models");
       },
@@ -108,13 +111,12 @@ export const useGetAnthropicModelsQuery = (
           body.api_key = apiKey;
         }
 
-        const response = await fetch("/api/models/anthropic", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (response.ok) {
-          return (await response.json()) as ModelsResponse;
+        const response = await apiClient.post<ModelsResponse>(
+          "/models/anthropic",
+          body,
+        );
+        if (response.status >= 200 && response.status < 300) {
+          return response.data;
         }
         return throwModelsFetchError(
           response,
@@ -141,14 +143,12 @@ export const useGetOllamaModelsQuery = (
     {
       queryKey: ["models", "ollama", endpoint] as const,
       queryFn: async (): Promise<ModelsResponse> => {
-        const url = new URL("/api/models/ollama", window.location.origin);
-        if (endpoint) {
-          url.searchParams.set("endpoint", endpoint);
-        }
-
-        const response = await fetch(url.toString());
-        if (response.ok) {
-          return (await response.json()) as ModelsResponse;
+        const path = endpoint
+          ? `/models/ollama?endpoint=${encodeURIComponent(endpoint)}`
+          : "/models/ollama";
+        const response = await apiClient.get<ModelsResponse>(path);
+        if (response.status >= 200 && response.status < 300) {
+          return response.data;
         }
         return throwModelsFetchError(response, "Failed to fetch Ollama models");
       },
@@ -197,13 +197,12 @@ export const useGetIBMModelsQuery = (
           body.api_key = apiKey;
         }
 
-        const response = await fetch("/api/models/ibm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (response.ok) {
-          return (await response.json()) as ModelsResponse;
+        const response = await apiClient.post<ModelsResponse>(
+          "/models/ibm",
+          body,
+        );
+        if (response.status >= 200 && response.status < 300) {
+          return response.data;
         }
         return throwModelsFetchError(response, "Failed to fetch IBM models");
       },
@@ -320,9 +319,10 @@ export const useGetModelCatalogQuery = (
     {
       queryKey: ["models", "catalog"] as const,
       queryFn: async (): Promise<ModelCatalogResponse> => {
-        const response = await fetch("/api/models/catalog");
-        if (response.ok) {
-          return (await response.json()) as ModelCatalogResponse;
+        const response =
+          await apiClient.get<ModelCatalogResponse>("/models/catalog");
+        if (response.status >= 200 && response.status < 300) {
+          return response.data;
         }
         return throwModelsFetchError(
           response,

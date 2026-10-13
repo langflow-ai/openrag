@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { useChat } from "@/contexts/chat-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { apiClient } from "@/lib/api-client";
 import { useGetSettingsQuery } from "./useGetSettingsQuery";
 import { useGetTasksQuery } from "./useGetTasksQuery";
 
@@ -93,16 +94,18 @@ export const useProviderHealthQuery = (
         url.searchParams.set("test_completion", "true");
       }
 
-      const response = await fetch(url.toString());
+      const response = await apiClient.get<ProviderHealthResponse>(
+        `/provider/health${url.search}`,
+      );
 
-      if (response.ok) {
-        const data = (await response.json()) as ProviderHealthResponse;
+      if (response.status >= 200 && response.status < 300) {
+        const data = response.data;
         if (hasChatError) {
           setChatError(false);
         }
         return data;
       } else if (response.status === 503) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = response.data ?? {};
         return {
           status: "unhealthy",
           message: errorData.message || "Provider validation failed",
@@ -115,7 +118,7 @@ export const useProviderHealthQuery = (
           warnings: errorData.warnings,
         };
       } else {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = response.data ?? {};
         return {
           status: "error",
           message: errorData.message || "Failed to check provider health",

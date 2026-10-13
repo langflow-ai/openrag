@@ -17,6 +17,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { apiClient } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { WATSONX_TLS_DISABLED_VALUES } from "./watsonx-tls-settings";
 
@@ -126,20 +127,19 @@ export function WatsonxSpaceSelect({
             ssl_verify: sslVerify,
           }).filter(([, credentialValue]) => credentialValue !== ""),
         );
-        const response = await fetch("/api/models/watsonx_onprem/spaces", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        const response = await apiClient.post(
+          "/models/watsonx_onprem/spaces",
+          {
             credentials: submittedCredentials,
             auth_method: authMethod,
-          }),
-          signal: controller.signal,
-        });
-        const result = (await response.json()) as {
+          },
+          { signal: controller.signal },
+        );
+        const result = response.data as {
           spaces?: WatsonxSpace[];
           error?: string;
         };
-        if (!response.ok) {
+        if (response.status < 200 || response.status >= 300) {
           throw new Error(result.error || "Could not load deployment spaces");
         }
         dispatch({ type: "loaded", spaces: result.spaces ?? [] });

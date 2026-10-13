@@ -100,6 +100,8 @@ async def test_upload_bucket_returns_5xx_and_skips_task_when_index_check_fails(m
         docling_service=MagicMock(),
         session_manager=MagicMock(),
         user=_make_user(),
+        request=MagicMock(),
+        rbac=MagicMock(),
     )
 
     assert 500 <= response.status_code < 600
