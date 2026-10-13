@@ -129,6 +129,45 @@ describe("useGetConnectorsQuery", () => {
     expect(result.current.data?.[0].status).toBe("not_connected");
   });
 
+  it("marks an always-connected managed connector connected without OAuth", async () => {
+    let statusRequests = 0;
+    server.use(
+      http.get("/api/connectors", () =>
+        HttpResponse.json(
+          connectorsPayload({
+            url: {
+              name: "URL",
+              description: "Crawl websites",
+              icon: "url",
+              kind: "managed",
+              always_connected: true,
+              available: true,
+            },
+          }),
+        ),
+      ),
+      http.get("/api/connectors/url/status", () => {
+        statusRequests += 1;
+        return HttpResponse.json({ connections: [] });
+      }),
+    );
+
+    const { result } = renderHook(() => useGetConnectorsQuery(), {
+      wrapper: createQueryWrapper({ providers: ["brand"] }),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([
+      expect.objectContaining({
+        id: "url",
+        status: "connected",
+        requiresOAuth: false,
+        alwaysConnected: true,
+      }),
+    ]);
+    expect(statusRequests).toBe(0);
+  });
+
   it("filters out aws_s3 and ibm_cos for a non-IBM oss deployment", async () => {
     server.use(
       http.get("/api/connectors", () =>

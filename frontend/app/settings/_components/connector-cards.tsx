@@ -8,6 +8,7 @@ import {
   type Connector as QueryConnector,
   useGetConnectorsQuery,
 } from "@/app/api/queries/useGetConnectorsQuery";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
 import { useAuth } from "@/contexts/auth-context";
 import { useBrand } from "@/contexts/brand-context";
@@ -39,6 +40,10 @@ export default function ConnectorCards() {
     useGetConnectorsQuery({
       enabled: isAuthenticated || isNoAuthMode,
     });
+  const { data: apiSettings } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
+  const showUrlConnector = apiSettings?.show_url_connector ?? false;
 
   const connectMutation = useConnectConnectorMutation();
   const disconnectMutation = useDisconnectConnectorMutation();
@@ -56,6 +61,9 @@ export default function ConnectorCards() {
   }, []);
 
   const connectors = queryConnectors.reduce<Connector[]>((acc, c) => {
+    if (c.type === "url" && !showUrlConnector) {
+      return acc;
+    }
     // Keep OAuth connectors regardless of availability
     // Only hide credential-based connectors when unavailable
     if (c.requiresOAuth || c.available !== false) {
@@ -90,6 +98,10 @@ export default function ConnectorCards() {
   };
 
   const navigateToKnowledgePage = (connector: Connector) => {
+    if (connector.type === "url") {
+      router.push("/knowledge?add=url");
+      return;
+    }
     const provider = connector.type.replace(/-/g, "_");
     router.push(`/upload/${provider}`);
   };
@@ -117,9 +129,12 @@ export default function ConnectorCards() {
     (d) => d.SettingsDialog,
   );
 
-  // Split connectors into OAuth and credential-based
+  // Split connectors into OAuth, built-in managed, and credential-based.
   const oauthConnectors = connectors.filter((c) => c.requiresOAuth);
-  const credentialConnectors = connectors.filter((c) => !c.requiresOAuth);
+  const managedConnectors = connectors.filter((c) => c.alwaysConnected);
+  const credentialConnectors = connectors.filter(
+    (c) => !c.requiresOAuth && !c.alwaysConnected,
+  );
 
   return (
     <>
@@ -155,6 +170,27 @@ export default function ConnectorCards() {
                 />
               ))
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Credential-Based Connectors Section */}
+      {managedConnectors.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Built-in Connectors</h3>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {managedConnectors.map((connector) => (
+              <ConnectorCard
+                key={connector.id}
+                connector={connector}
+                isConnecting={false}
+                isDisconnecting={false}
+                onConnect={handleConnect}
+                onDisconnect={handleDisconnect}
+                onNavigateToKnowledge={navigateToKnowledgePage}
+                onConfigure={getConfigureHandler(connector)}
+              />
+            ))}
           </div>
         </div>
       )}

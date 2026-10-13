@@ -12,6 +12,7 @@ from .base import BaseConnector
 from .google_drive import GoogleDriveConnector
 from .onedrive import OneDriveConnector
 from .sharepoint import SharePointConnector
+from .url import URLConnector
 
 # Connector classes shipped with OSS. Anything outside this list is contributed
 # by the top-level `enhancements/` package (loaded best-effort).
@@ -20,6 +21,7 @@ BUILTIN_CONNECTORS: list[type[BaseConnector]] = [
     OneDriveConnector,
     SharePointConnector,
     S3Connector,
+    URLConnector,
 ]
 
 
@@ -64,6 +66,15 @@ def get_connector_class(connector_type: str) -> type[BaseConnector] | None:
         if cls.CONNECTOR_TYPE == connector_type:
             return cls
     return None
+
+
+def get_connection_backed_connector_classes() -> list[type[BaseConnector]]:
+    """Connectors which are valid ConnectionManager connection records."""
+    return [cls for cls in get_connector_classes() if cls.CONNECTOR_KIND in {"oauth", "bucket"}]
+
+
+def get_managed_connector_classes() -> list[type[BaseConnector]]:
+    return [cls for cls in get_connector_classes() if cls.CONNECTOR_KIND == "managed"]
 
 
 def get_all_secret_keys() -> set:

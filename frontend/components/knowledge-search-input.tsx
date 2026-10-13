@@ -142,6 +142,7 @@ export function KnowledgeSearchInput({
             variant="ghost"
             className="h-full rounded-sm !px-1.5 !py-0"
             type="button"
+            aria-label="Clear search"
             onClick={handleClear}
           >
             <X className="h-4 w-4" />

@@ -11,6 +11,7 @@ export type Status =
   | "ready"
   | "fallback"
   | "not-configured"
+  | "disabled"
   | "skipped";
 
 interface StatusBadgeProps {
@@ -62,6 +63,10 @@ const statusConfig = {
   },
   "not-configured": {
     label: "Not configured",
+    className: "text-muted-foreground ",
+  },
+  disabled: {
+    label: "Disabled",
     className: "text-muted-foreground ",
   },
   skipped: {

@@ -3,7 +3,10 @@
 import { ArrowLeft, Loader2, Search } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { useFileScopedChunksQuery } from "@/app/api/queries/useFileScopedChunksQuery";
+import {
+  useDocumentScopedChunksQuery,
+  useFileScopedChunksQuery,
+} from "@/app/api/queries/useFileScopedChunksQuery";
 import { FileChunksPanel } from "@/components/file-chunks-panel";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
@@ -21,6 +24,8 @@ function ChunksPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const filename = searchParams.get("filename");
+  const documentId = searchParams.get("document_id");
+  const webSourceId = searchParams.get("web_source_id");
 
   // initialQuery comes from ?q= (set when navigating from the knowledge page).
   const initialQuery = searchParams.get("q") ?? "";
@@ -42,14 +47,17 @@ function ChunksPageContent() {
       debounceRef.current = setTimeout(() => {
         setSearchQuery(value);
         // Keep the URL in sync so the user can share/refresh the page.
-        const params = new URLSearchParams({ filename: filename ?? "" });
+        const params = new URLSearchParams();
+        if (filename) params.set("filename", filename);
+        if (documentId) params.set("document_id", documentId);
+        if (webSourceId) params.set("web_source_id", webSourceId);
         if (value.trim() && value.trim() !== "*") params.set("q", value.trim());
         router.replace(`/knowledge/chunks?${params.toString()}`, {
           scroll: false,
         });
       }, HIGHLIGHT_DEBOUNCE_MS);
     },
-    [filename, router],
+    [documentId, filename, router, webSourceId],
   );
 
   // Clean up any pending debounce on unmount.
@@ -60,12 +68,17 @@ function ChunksPageContent() {
     [],
   );
 
-  const { file: fileData } = useFileScopedChunksQuery(
+  const filenameQuery = useFileScopedChunksQuery(
     filename,
     searchQuery || undefined,
   );
+  const documentQuery = useDocumentScopedChunksQuery(
+    documentId,
+    searchQuery || undefined,
+  );
+  const { file: fileData } = documentId ? documentQuery : filenameQuery;
 
-  if (!filename) {
+  if (!filename && !documentId) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
@@ -97,14 +110,17 @@ function ChunksPageContent() {
         <div className="flex items-center gap-3 mb-6">
           <Button
             variant="ghost"
-            onClick={() => router.push("/knowledge")}
+            onClick={() => router.back()}
             size="sm"
             className="max-w-8 max-h-8 -m-2"
           >
             <ArrowLeft size={24} />
           </Button>
           <h1 className="text-lg font-semibold">
-            {filename.replace(/\.[^/.]+$/, "")}
+            {(filename || fileData?.filename || "Website page").replace(
+              /\.[^/.]+$/,
+              "",
+            )}
           </h1>
         </div>
       </div>
@@ -112,7 +128,8 @@ function ChunksPageContent() {
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-[3fr_1fr]">
         <div className="row-start-2 lg:row-start-1">
           <FileChunksPanel
-            filename={filename}
+            filename={filename || fileData?.filename || ""}
+            documentId={documentId}
             searchQuery={searchQuery || undefined}
             filterQuery={localQuery}
             onFilterQueryChange={handleQueryChange}
