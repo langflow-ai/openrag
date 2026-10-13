@@ -71,7 +71,8 @@
     "browserslist": "4.28.7",
     "image-size": "2.0.4",
     "colord": "2.9.4",
-    "compression": "1.8.2"
+    "compression": "1.8.2",
+    "source-map-js": "^1.2.2"
   },
   "browserslist": {
     "production": [
