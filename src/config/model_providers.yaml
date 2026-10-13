@@ -162,6 +162,16 @@ providers:
       oss: true
       on_prem: true
       saas: true
+
+  # Google Gemini: testing / dev phase
+  # enable by setting OPENRAG_GEMINI=true
+  - name: gemini
+    display_name: Google Gemini
+    badge: In development
+    modes:
+      oss: false
+      on_prem: false
+      saas: false
   - name: azure_ai
     display_name: Azure AI Foundry
     modes:

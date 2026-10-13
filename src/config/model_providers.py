@@ -83,6 +83,11 @@ _FALLBACK_PROVIDERS: tuple[dict[str, Any], ...] = (
 
 _TRUTHY = {"true", "1", "yes", "on"}
 
+# dev testing model: gemini hidden behind OPENRAG_GEMINI config in .env
+_ENV_GATED_PROVIDERS: dict[str, str] = {
+    "gemini": "OPENRAG_GEMINI",
+}
+
 
 def _as_bool(value: Any) -> bool:
     """Whether a YAML `modes` value means "visible".
@@ -153,6 +158,21 @@ def _normalize(entry: Any, seen: set[str]) -> dict[str, Any] | None:
     }
 
 
+def _apply_env_gates(providers: tuple[dict[str, Any], ...]) -> tuple[dict[str, Any], ...]:
+    """Override mode visibility for env-gated providers when their flag is set."""
+    result = []
+    for entry in providers:
+        name = entry.get("name", "")
+        env_var = _ENV_GATED_PROVIDERS.get(name)
+        if env_var and _as_bool(os.getenv(env_var, "false")):
+            entry = {
+                **entry,
+                "modes": {mode: True for mode in KNOWN_RUN_MODES},
+            }
+        result.append(entry)
+    return tuple(result)
+
+
 def _parse(raw: Any, source: str) -> tuple[dict[str, Any], ...]:
     if isinstance(raw, dict):
         entries = raw.get("providers")
@@ -209,8 +229,13 @@ def _configured(override: str, default_path: str) -> tuple[dict[str, Any], ...]:
 
 
 def configured_providers() -> tuple[dict[str, Any], ...]:
-    """Every provider the config file lists, regardless of run mode."""
-    return _configured((os.getenv(CONFIG_PATH_ENV) or "").strip(), str(DEFAULT_CONFIG_PATH))
+    """Every provider the config file lists, regardless of run mode.
+
+    Env-gated providers (e.g. OPENRAG_GEMINI) have their modes overridden here
+    so that the YAML can keep them hidden by default.
+    """
+    base = _configured((os.getenv(CONFIG_PATH_ENV) or "").strip(), str(DEFAULT_CONFIG_PATH))
+    return _apply_env_gates(base)
 
 
 def reload() -> None:

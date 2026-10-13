@@ -587,3 +587,54 @@ async def test_refresh_live_models_can_be_narrowed_to_one_provider(monkeypatch):
     await model_catalog.refresh_live_models(" Second ")
 
     assert calls == ["second"]
+
+
+def test_litellm_prefixed_and_bare_model_ids_are_not_duplicated(monkeypatch, tmp_path) -> None:
+    """litellm.model_cost can carry both `gemini/gemini-exp-1206` and a bare
+    `gemini-exp-1206` entry.  Both strip to the same model name, so only one
+    must appear in the catalogue — duplicate ids produce duplicate React keys.
+    """
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write_providers(
+            tmp_path,
+            "providers:\n  - name: gemini\n    display_name: Google Gemini\n"
+            "    modes:\n      oss: true\n",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    fake_cost = {
+        # Prefixed form — litellm_provider is set to the prefix.
+        "gemini/gemini-exp-1206": {
+            "litellm_provider": "gemini",
+            "mode": "chat",
+            "max_input_tokens": 1000,
+        },
+        # Bare form — same model id, same provider, no prefix in the key.
+        "gemini-exp-1206": {
+            "litellm_provider": "gemini",
+            "mode": "chat",
+            "max_input_tokens": 1000,
+        },
+        # A distinct model to prove the provider entry is still populated.
+        "gemini/gemini-2.0-flash": {
+            "litellm_provider": "gemini",
+            "mode": "chat",
+            "max_input_tokens": 2000,
+        },
+    }
+
+    import litellm as _litellm  # noqa: PLC0415
+
+    monkeypatch.setattr(_litellm, "model_cost", fake_cost)
+    model_catalog._catalog.cache_clear()
+
+    providers = {entry["key"]: entry for entry in model_catalog.catalog()["providers"]}
+    assert "gemini" in providers
+    model_names = [entry["model"] for entry in providers["gemini"]["models"]]
+
+    # The duplicate must not appear twice.
+    assert model_names.count("gemini-exp-1206") == 1, model_names
+    # The distinct model is still present.
+    assert "gemini-2.0-flash" in model_names

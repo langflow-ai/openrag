@@ -42,6 +42,7 @@ import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { cn } from "@/lib/utils";
 import { AnimatedProviderSteps } from "./animated-provider-steps";
 import { AnthropicOnboarding } from "./anthropic-onboarding";
+import { GeminiOnboarding } from "./gemini-onboarding";
 import { GenericOnboarding } from "./generic-onboarding";
 import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
@@ -756,6 +757,19 @@ const OnboardingCard = ({
                         }
                         existingEndpoint={
                           currentSettings?.providers?.ollama?.endpoint
+                        }
+                      />
+                    ) : providerKey === "gemini" ? (
+                      <GeminiOnboarding
+                        setSettings={setSettings}
+                        isEmbedding={isEmbedding}
+                        hasEnvApiKey={
+                          currentSettings?.providers?.custom?.gemini
+                            ?.credential_values?.api_key !== undefined ||
+                          (currentSettings?.providers?.custom?.gemini?.secret_fields?.includes(
+                            "api_key",
+                          ) ??
+                            false)
                         }
                       />
                     ) : (

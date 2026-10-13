@@ -293,6 +293,10 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
     chat_by_provider: dict[str, list[dict[str, Any]]] = {}
     embed_by_provider: dict[str, list[dict[str, Any]]] = {}
 
+    # prevents duplicate models in gemini, tracking seen model names
+    seen_chat: dict[str, set[str]] = {}
+    seen_embed: dict[str, set[str]] = {}
+
     for model_id, info in litellm.model_cost.items():
         if not isinstance(info, dict):
             continue
@@ -302,8 +306,10 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
             continue
         if mode in TEXT_GENERATION_MODES:
             bucket = chat_by_provider
+            seen = seen_chat
         elif mode == EMBEDDING_MODE:
             bucket = embed_by_provider
+            seen = seen_embed
         else:
             continue
         name = model_id[len(provider) + 1 :] if model_id.startswith(f"{provider}/") else model_id
@@ -316,6 +322,9 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
             # template invites picking a model that 404s. Owners of a fine-tune
             # type their full id into the picker instead.
             continue
+        if name in seen.setdefault(provider, set()):
+            continue
+        seen[provider].add(name)
         bucket.setdefault(provider, []).append(_model_entry(name, info))
 
     entries = []
