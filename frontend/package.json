@@ -129,7 +129,8 @@
     "msw": {
       "path-to-regexp": "^6.3.0"
     },
-    "@xmldom/xmldom": "0.9.12"
+    "@xmldom/xmldom": "0.9.12",
+    "source-map-js": "1.2.2"
   },
   "lint-staged": {
     "**/*.{js,ts,jsx,tsx,css}": "biome check --write --files-ignore-unknown=true"
