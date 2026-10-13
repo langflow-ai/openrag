@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "node build.js",
-    "start": "next start",
+    "start": "node server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
