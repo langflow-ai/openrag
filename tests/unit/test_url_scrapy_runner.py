@@ -150,6 +150,8 @@ def test_x_robots_tag_prevents_indexing_and_link_following(tmp_path):
 
     assert list(spider.parse_page(response)) == []
     assert spider.pages[0]["noindex"] is True
+    assert spider.incomplete is True
+    assert spider.reason == "nofollow directive prevented link discovery"
     spider._links.extract_links.assert_not_called()
 
 

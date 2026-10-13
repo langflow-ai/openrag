@@ -1,7 +1,8 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { toast } from "sonner";
+import { describe, expect, it, vi } from "vitest";
 import { authPresets } from "@/test-utils/fixtures/auth";
 import { renderWithProviders, waitFor } from "@/test-utils/render";
 import { mockRouter } from "@/test-utils/router";
@@ -69,5 +70,41 @@ describe("KnowledgeActionsDropdown", () => {
     expect(mockRouter.push).toHaveBeenCalledWith(
       "/knowledge/chunks?filename=Product%20docs.pdf",
     );
+  });
+
+  it("shows the deletion failure instead of silently closing the website dialog", async () => {
+    const user = userEvent.setup();
+    const toastError = vi.spyOn(toast, "error").mockImplementation(vi.fn());
+    try {
+      renderWithProviders(
+        <KnowledgeActionsDropdown
+          filename="Docs"
+          connectorType="url"
+          webSourceId="source-1"
+        />,
+        {
+          providers: ["task"],
+          auth: authPresets.noAuthMode,
+          handlers: [
+            http.delete("/api/connectors/url/sources/source-1", () =>
+              HttpResponse.json(
+                { detail: "Website is still syncing" },
+                { status: 409 },
+              ),
+            ),
+          ],
+        },
+      );
+
+      await user.click(screen.getByRole("button"));
+      await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+      await user.click(screen.getByRole("button", { name: "Delete" }));
+
+      await waitFor(() =>
+        expect(toastError).toHaveBeenCalledWith("Website is still syncing"),
+      );
+    } finally {
+      toastError.mockRestore();
+    }
   });
 });

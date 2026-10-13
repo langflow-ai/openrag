@@ -5,7 +5,7 @@ import pytest
 
 from api import search as search_api
 from api.search import SearchBody, _website_page_search_result
-from services.search_service import _build_search_filter_clauses
+from services.search_service import _add_result_mode_filter, _build_search_filter_clauses
 
 
 def test_url_source_filter_matches_current_and_legacy_keyword_mappings():
@@ -22,6 +22,12 @@ def test_url_source_filter_matches_current_and_legacy_keyword_mappings():
             }
         }
     ]
+
+
+def test_knowledge_sources_filter_excludes_child_pages_before_ranking():
+    clauses = _add_result_mode_filter([], "knowledge_sources")
+
+    assert clauses == [{"bool": {"must_not": [{"exists": {"field": "web_page_id"}}]}}]
 
 
 @pytest.mark.asyncio
@@ -104,3 +110,4 @@ async def test_root_knowledge_search_excludes_child_page_hits():
     body = json.loads(response.body)
     assert body["results"] == [{"filename": "Document.pdf"}]
     assert body["total"] == 1
+    assert search_service.search.await_args.kwargs["result_mode"] == "knowledge_sources"

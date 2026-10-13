@@ -196,6 +196,112 @@ async def test_failed_resync_keeps_existing_page_manifests_and_source_active(mon
 
 
 @pytest.mark.asyncio
+async def test_nofollow_resync_does_not_reconcile_unvisited_pages(monkeypatch):
+    source = _source(
+        last_successful_sync_at=datetime.now(UTC).isoformat(), removed_page_behavior="delete"
+    )
+    stale = _page(
+        source,
+        "https://docs.example.com/guide-not-discovered",
+        last_seen_at=(datetime.now(UTC) - timedelta(days=1)).isoformat(),
+    )
+    delete_chunks = AsyncMock()
+    monkeypatch.setattr(processor_module, "get_source_manifest", AsyncMock(return_value=source))
+    monkeypatch.setattr(processor_module, "list_page_manifests", AsyncMock(return_value=[stale]))
+    monkeypatch.setattr(processor_module, "upsert_page_manifest", AsyncMock())
+    monkeypatch.setattr(processor_module, "upsert_source_manifest", AsyncMock())
+    monkeypatch.setattr(processor_module, "delete_page_chunks", delete_chunks)
+    monkeypatch.setattr(
+        processor_module,
+        "crawl",
+        AsyncMock(
+            return_value=CrawlResult(
+                (),
+                complete=False,
+                capped=False,
+                reason="nofollow directive prevented link discovery",
+            )
+        ),
+    )
+
+    task, file_task = UploadTask(task_id="task-1", total_files=1), FileTask(file_path="source-1")
+    await _processor(source).process_item(task, file_task.file_path, file_task)
+
+    assert stale["status"] == "active"
+    delete_chunks.assert_not_awaited()
+    assert file_task.status is TaskStatus.FAILED
+
+
+@pytest.mark.asyncio
+async def test_partial_crawl_fails_the_task_without_advancing_last_success(monkeypatch):
+    last_success = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+    source = _source(last_successful_sync_at=last_success)
+    document = WebDocument("Guide", "# Guide\n\nContent", "hash-1", 512)
+    monkeypatch.setattr(processor_module, "get_source_manifest", AsyncMock(return_value=source))
+    monkeypatch.setattr(processor_module, "list_page_manifests", AsyncMock(return_value=[]))
+    monkeypatch.setattr(processor_module, "upsert_page_manifest", AsyncMock())
+    monkeypatch.setattr(processor_module, "upsert_source_manifest", AsyncMock())
+    monkeypatch.setattr(processor_module, "get_page_index_metadata", AsyncMock(return_value={}))
+    monkeypatch.setattr(
+        processor_module,
+        "crawl",
+        AsyncMock(
+            return_value=CrawlResult(
+                (
+                    CrawledPage(
+                        "https://docs.example.com/guide",
+                        "https://docs.example.com/guide",
+                        1,
+                        document,
+                    ),
+                    CrawledPage(
+                        "https://docs.example.com/unavailable",
+                        "https://docs.example.com/unavailable",
+                        1,
+                        None,
+                        error="HTTP 503",
+                    ),
+                ),
+                complete=False,
+                capped=False,
+                reason="HTTP 503",
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        WebsiteSourceProcessor,
+        "process_document_standard",
+        AsyncMock(return_value={"status": "indexed", "chunk_count": 1}),
+    )
+
+    task, file_task = UploadTask(task_id="task-1", total_files=1), FileTask(file_path="source-1")
+    await _processor(source).process_item(task, file_task.file_path, file_task)
+
+    assert source["status"] == "active"
+    assert source["last_error"] == "HTTP 503"
+    assert source["last_successful_sync_at"] == last_success
+    assert file_task.status is TaskStatus.FAILED
+    assert file_task.result == {"indexed": 1, "pages": 1}
+
+
+@pytest.mark.asyncio
+async def test_startup_manifest_write_failure_finalizes_the_source(monkeypatch):
+    source = _source()
+    persist_source = AsyncMock(side_effect=[RuntimeError("OpenSearch unavailable"), None])
+    monkeypatch.setattr(processor_module, "get_source_manifest", AsyncMock(return_value=source))
+    monkeypatch.setattr(processor_module, "list_page_manifests", AsyncMock(return_value=[]))
+    monkeypatch.setattr(processor_module, "upsert_source_manifest", persist_source)
+
+    task, file_task = UploadTask(task_id="task-1", total_files=1), FileTask(file_path="source-1")
+    await _processor(source).process_item(task, file_task.file_path, file_task)
+
+    assert source["status"] == "failed"
+    assert source["last_error"] == "OpenSearch unavailable"
+    assert file_task.status is TaskStatus.FAILED
+    assert persist_source.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_failed_page_resync_replaces_processing_status_with_error(monkeypatch):
     source = _source(last_successful_sync_at=datetime.now(UTC).isoformat())
     page = _page(source, "https://docs.example.com/guide", status="processing")

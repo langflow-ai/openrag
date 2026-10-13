@@ -459,7 +459,7 @@ class FileServiceV2:
                     "terms": {
                         "field": "document_id",
                         "size": offset + page_size,
-                        "order": {"chunk_count": sort_order},
+                        "order": {"sort_chunk_count": sort_order},
                     },
                     "aggs": {
                         "file_metadata": {
@@ -496,6 +496,26 @@ class FileServiceV2:
                             }
                         },
                         "chunk_count": {"value_count": {"field": "_id"}},
+                        # Website sources are represented by one summary
+                        # manifest, while ordinary documents have one record
+                        # per chunk. Sum one per normal record but use the
+                        # summary's aggregate count for website sources so the
+                        # ordering matches the value displayed in the table.
+                        "sort_chunk_count": {
+                            "sum": {
+                                "script": {
+                                    "lang": "painless",
+                                    "source": (
+                                        "if (doc.containsKey('record_kind') "
+                                        "&& doc['record_kind'].size() != 0 "
+                                        "&& doc['record_kind'].value == 'web_source') { "
+                                        "return doc.containsKey('chunk_count') "
+                                        "&& doc['chunk_count'].size() != 0 "
+                                        "? doc['chunk_count'].value : 0; } return 1;"
+                                    ),
+                                }
+                            }
+                        },
                     },
                 }
             },

@@ -62,8 +62,9 @@ async def test_create_source_persists_crawl_configuration_in_its_manifest(monkey
 
     assert persisted[0]["crawl_settings"]["scope"] == "site"
     assert persisted[0]["change_detection"] == "always_reingest"
-    assert persisted[-1]["last_task_id"] == "task-1"
-    assert result["last_task_id"] == "task-1"
+    assert len(persisted) == 1
+    assert result["last_task_id"] == persisted[0]["last_task_id"]
+    assert api._enqueue.await_args.kwargs["task_id"] == result["last_task_id"]
 
 
 @pytest.mark.asyncio
@@ -102,10 +103,15 @@ async def test_page_sync_enqueues_a_manifest_scoped_processor(monkeypatch):
     result = await api.sync_page(source["id"], "page-1", task_service=object(), user=_user(source))
 
     assert enqueue.await_args.kwargs["page_id"] == "page-1"
+    assert enqueue.await_args.kwargs["task_id"] == result["task_id"]
     assert page["suppressed_by_user"] is False
     assert page["status"] == "processing"
     persist_page.assert_awaited_once_with(page)
-    assert result == {"id": "page-1", "status": "processing", "task_id": "task-1"}
+    assert result == {
+        "id": "page-1",
+        "status": "processing",
+        "task_id": enqueue.await_args.kwargs["task_id"],
+    }
 
 
 @pytest.mark.asyncio
@@ -133,6 +139,42 @@ async def test_disabling_a_page_updates_manifests_and_removes_chunks(monkeypatch
     assert page["status"] == "disabled"
     assert page["chunk_count"] == 0
     assert persist_source.await_args.kwargs["pages"] == [page]
+
+
+@pytest.mark.asyncio
+async def test_disabling_page_rejects_a_running_source(monkeypatch):
+    source = _source(status="processing")
+    delete_chunks = AsyncMock()
+    monkeypatch.setattr(api, "get_source_manifest", AsyncMock(return_value=source))
+    monkeypatch.setattr(api, "delete_page_chunks", delete_chunks)
+
+    with pytest.raises(Exception, match="crawl is already running") as error:
+        await api.delete_page(source["id"], "page-1", user=_user(source))
+
+    assert getattr(error.value, "status_code", None) == 409
+    delete_chunks.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sync_recovers_a_processing_source_when_its_task_is_terminal(monkeypatch):
+    source = _source(status="processing", last_task_id="task-1")
+    persist = AsyncMock()
+    enqueue = AsyncMock()
+    task_service = type(
+        "TaskService",
+        (),
+        {"get_upload_task": lambda *_: type("Task", (), {"status": api.TaskStatus.FAILED})()},
+    )()
+    monkeypatch.setattr(api, "get_source_manifest", AsyncMock(return_value=source))
+    monkeypatch.setattr(api, "list_page_manifests", AsyncMock(return_value=[]))
+    monkeypatch.setattr(api, "upsert_source_manifest", persist)
+    monkeypatch.setattr(api, "_enqueue", enqueue)
+
+    result = await api.sync_source(source["id"], task_service=task_service, user=_user(source))
+
+    assert enqueue.await_count == 1
+    assert result["last_task_id"] == enqueue.await_args.kwargs["task_id"]
+    assert persist.await_count == 2
 
 
 @pytest.mark.asyncio

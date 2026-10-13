@@ -1,6 +1,6 @@
 "use client";
 
-import { type ColDef } from "ag-grid-community";
+import { type ColDef, type PostSortRowsParams } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef } from "react";
@@ -18,6 +18,13 @@ import { useWebsitePageColumns } from "./website-pages/use-website-page-columns"
 import { useWebsitePagesTable } from "./website-pages/use-website-pages-table";
 import { WebsitePagesHeader } from "./website-pages/website-pages-header";
 import { WebsitePagesToolbar } from "./website-pages/website-pages-toolbar";
+
+/** Keep user-disabled pages at the end after AG Grid applies its own sort. */
+export function moveDisabledPagesLast(nodes: Array<{ data?: File }>) {
+  const enabled = nodes.filter((node) => node.data?.status !== "disabled");
+  const disabled = nodes.filter((node) => node.data?.status === "disabled");
+  nodes.splice(0, nodes.length, ...enabled, ...disabled);
+}
 
 export function WebsitePagesView({ sourceId }: { sourceId: string }) {
   const router = useRouter();
@@ -94,6 +101,10 @@ export function WebsitePagesView({ sourceId }: { sourceId: string }) {
     isCloudBrand,
     onAction: action,
   });
+  const postSortRows = useCallback(
+    ({ nodes }: PostSortRowsParams<File>) => moveDisabledPagesLast(nodes),
+    [],
+  );
 
   if (!source && sourceLoading) {
     return (
@@ -128,6 +139,7 @@ export function WebsitePagesView({ sourceId }: { sourceId: string }) {
           data.web_page_id || data.document_id || data.filename
         }
         onSortChanged={onSortChanged}
+        postSortRows={postSortRows}
         emptyTitle="No crawled pages"
         emptyDescription="Pages will appear here as the website crawl completes."
       />

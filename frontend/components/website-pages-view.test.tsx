@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { authPresets } from "@/test-utils/fixtures/auth";
 import { server } from "@/test-utils/msw/server";
 import { renderWithProviders } from "@/test-utils/render";
-import { WebsitePagesView } from "./website-pages-view";
+import { moveDisabledPagesLast, WebsitePagesView } from "./website-pages-view";
 
 const tableProps = vi.hoisted(() => ({ current: null as unknown }));
 
@@ -27,6 +27,22 @@ vi.mock("@/components/knowledge-pagination-footer", () => ({
 }));
 
 describe("WebsitePagesView", () => {
+  it("keeps disabled rows after active rows even after AG Grid sorts them", () => {
+    const nodes = [
+      { data: { filename: "Archived", status: "disabled" } },
+      { data: { filename: "Guide", status: "active" } },
+      { data: { filename: "Reference", status: "active" } },
+    ];
+
+    moveDisabledPagesLast(nodes as never);
+
+    expect(nodes.map((node) => node.data.filename)).toEqual([
+      "Guide",
+      "Reference",
+      "Archived",
+    ]);
+  });
+
   it("loads a website source, renders its searched pages, and syncs the source", async () => {
     const user = userEvent.setup();
     let syncCalls = 0;

@@ -48,6 +48,7 @@ export interface ChunkResult {
   web_source_id?: string;
   web_page_id?: string;
   web_page_depth?: number;
+  web_child_count?: number;
   canonical_url?: string;
   status?: File["status"];
   error?: string;
@@ -227,6 +228,7 @@ export const useGetSearchQuery = (
           web_source_id?: string;
           web_page_id?: string;
           web_page_depth?: number;
+          web_child_count?: number;
           canonical_url?: string;
           status?: File["status"];
           error?: string;
@@ -258,6 +260,9 @@ export const useGetSearchQuery = (
           if (typeof chunk.chunk_count === "number") {
             existing.chunk_count = chunk.chunk_count;
           }
+          if (typeof chunk.web_child_count === "number") {
+            existing.web_child_count = chunk.web_child_count;
+          }
         } else {
           fileMap.set(fileIdentity, {
             filename:
@@ -281,6 +286,7 @@ export const useGetSearchQuery = (
             web_source_id: chunk.web_source_id,
             web_page_id: chunk.web_page_id,
             web_page_depth: chunk.web_page_depth,
+            web_child_count: chunk.web_child_count,
             canonical_url: chunk.canonical_url,
             status: chunk.status,
             error: chunk.error,
@@ -309,6 +315,7 @@ export const useGetSearchQuery = (
         web_source_id: file.web_source_id,
         web_page_id: file.web_page_id,
         web_page_depth: file.web_page_depth,
+        web_child_count: file.web_child_count,
         status: file.status,
         error: file.error,
       }));

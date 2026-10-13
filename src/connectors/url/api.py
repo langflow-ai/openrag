@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from config.settings import is_url_connector_enabled
 from dependencies import get_current_user, get_task_service, require_permission
+from models.tasks import TaskStatus
 from session_manager import User
 
 from .policy import CrawlPolicyError, CrawlSpec
@@ -97,7 +98,12 @@ async def _owned(source_id: str, user: User) -> dict[str, Any]:
 
 
 async def _enqueue(
-    source: dict[str, Any], user: User, task_service, *, page_id: str | None = None
+    source: dict[str, Any],
+    user: User,
+    task_service,
+    *,
+    task_id: str,
+    page_id: str | None = None,
 ) -> str:
     processor = WebsiteSourceProcessor(
         source_id=source["id"],
@@ -108,13 +114,44 @@ async def _enqueue(
         document_service=task_service.document_service,
         models_service=task_service.models_service,
         page_id=page_id,
+        source_manifest=source,
     )
     return await task_service.create_custom_task(
         user.user_id,
         [source["id"]],
         processor,
         original_filenames={source["id"]: source["name"]},
+        existing_task_id=task_id,
     )
+
+
+async def _recover_terminal_processing_source(
+    source: dict[str, Any], task_service
+) -> dict[str, Any]:
+    """Clear a stale processing state left by a task that already terminated.
+
+    A task can fail before the processor reaches its normal finalisation path
+    (for example, during a transient OpenSearch error).  The task store is the
+    source of truth while the task is alive; once it is terminal, the source
+    must be made retryable instead of returning a permanent 409.
+    """
+    if source.get("status") != "processing":
+        return source
+
+    task_id = source.get("last_task_id")
+    task = (
+        task_service.get_upload_task(source["owner_id"], task_id)
+        if task_id and hasattr(task_service, "get_upload_task")
+        else None
+    )
+    if task is not None and task.status in {TaskStatus.PENDING, TaskStatus.RUNNING}:
+        return source
+
+    source["status"] = "active" if source.get("last_successful_sync_at") else "failed"
+    source["last_error"] = "The previous website crawl stopped before completion."
+    source["updated_at"] = datetime.now(UTC).isoformat()
+    await upsert_source_manifest(source, pages=await list_page_manifests(source["id"]))
+    return source
 
 
 async def create_source(
@@ -130,7 +167,8 @@ async def create_source(
     normalized_name = body.name.casefold()
     existing_sources = await list_source_manifests(user.user_id)
     if any(
-        str(source.get("name", "")).strip().casefold() == normalized_name
+        source.get("status") != "failed"
+        and str(source.get("name", "")).strip().casefold() == normalized_name
         for source in existing_sources
     ):
         raise HTTPException(409, "A website connection with this name already exists")
@@ -150,7 +188,10 @@ async def create_source(
         "deleting": False,
         "status": "processing",
         "last_error": None,
-        "last_task_id": None,
+        # Reserve the ID before the manifest is persisted.  TaskService starts
+        # workers immediately, so writing it afterwards could overwrite the
+        # processor's completed or failed lifecycle state.
+        "last_task_id": str(uuid.uuid4()),
         "last_successful_sync_at": None,
         "allowed_users": [],
         "allowed_groups": [],
@@ -160,11 +201,10 @@ async def create_source(
     }
     await upsert_source_manifest(source, pages=[])
     try:
-        source["last_task_id"] = await _enqueue(source, user, task_service)
+        await _enqueue(source, user, task_service, task_id=source["last_task_id"])
     except Exception:
         await delete_source_chunks(source["id"])
         raise
-    await upsert_source_manifest(source, pages=[])
     return _view(source)
 
 
@@ -182,6 +222,7 @@ async def sync_source(
     user: User = Depends(require_permission("connectors:create")),
 ):
     source = await _owned(source_id, user)
+    source = await _recover_terminal_processing_source(source, task_service)
     if source.get("deleting"):
         raise HTTPException(409, "Website source is being deleted")
     if source.get("status") == "processing":
@@ -192,14 +233,18 @@ async def sync_source(
         None,
         datetime.now(UTC).isoformat(),
     )
+    source["last_task_id"] = str(uuid.uuid4())
     await upsert_source_manifest(source)
     try:
-        source["last_task_id"] = await _enqueue(source, user, task_service)
+        await _enqueue(source, user, task_service, task_id=source["last_task_id"])
     except Exception:
-        source["status"], source["updated_at"] = "active", datetime.now(UTC).isoformat()
+        source["status"], source["last_task_id"], source["updated_at"] = (
+            "active",
+            None,
+            datetime.now(UTC).isoformat(),
+        )
         await upsert_source_manifest(source)
         raise
-    await upsert_source_manifest(source)
     return _view(source)
 
 
@@ -228,6 +273,8 @@ async def delete_page(
     user: User = Depends(require_permission("knowledge:delete:own")),
 ):
     source = await _owned(source_id, user)
+    if source.get("status") == "processing":
+        raise HTTPException(409, "A crawl is already running; wait before disabling a page")
     page = await get_page_manifest(source_id, page_id)
     if page is None:
         raise HTTPException(404, "Website page not found")
@@ -250,6 +297,7 @@ async def sync_page(
     user: User = Depends(require_permission("connectors:create")),
 ):
     source = await _owned(source_id, user)
+    source = await _recover_terminal_processing_source(source, task_service)
     if source.get("deleting"):
         raise HTTPException(409, "Website source is being deleted")
     if source.get("status") == "processing":
@@ -270,14 +318,24 @@ async def sync_page(
         None,
         datetime.now(UTC).isoformat(),
     )
+    source["last_task_id"] = str(uuid.uuid4())
     await upsert_source_manifest(source)
     try:
-        source["last_task_id"] = await _enqueue(source, user, task_service, page_id=page_id)
+        await _enqueue(
+            source,
+            user,
+            task_service,
+            task_id=source["last_task_id"],
+            page_id=page_id,
+        )
     except Exception:
-        source["status"], source["updated_at"] = "active", datetime.now(UTC).isoformat()
+        source["status"], source["last_task_id"], source["updated_at"] = (
+            "active",
+            None,
+            datetime.now(UTC).isoformat(),
+        )
         page.update(status="failed", last_error="Unable to start page re-sync")
         await upsert_page_manifest(page)
         await upsert_source_manifest(source)
         raise
-    await upsert_source_manifest(source)
     return {"id": page_id, "status": page["status"], "task_id": source["last_task_id"]}

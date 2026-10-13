@@ -249,7 +249,13 @@ class ManagedWebsiteSpider(scrapy.Spider):
             encoding=response.encoding,
         )
 
-        if nofollow or self.spec.scope == "page":
+        if nofollow:
+            # A full crawl that intentionally stops discovery cannot prove
+            # previously known children disappeared. Keep reconciliation
+            # non-destructive for this run.
+            self.mark_incomplete("nofollow directive prevented link discovery")
+            return
+        if self.spec.scope == "page":
             return
         for link in self._links.extract_links(response):
             request = self._request(link.url, depth + 1)

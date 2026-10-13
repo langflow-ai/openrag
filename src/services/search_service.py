@@ -82,6 +82,24 @@ def _build_search_filter_clauses(filters: dict[str, Any] | None) -> list[dict[st
     return clauses
 
 
+def _add_result_mode_filter(
+    filter_clauses: list[dict[str, Any]], result_mode: str
+) -> list[dict[str, Any]]:
+    """Apply result-surface constraints before OpenSearch ranks documents.
+
+    The Knowledge table represents website connections with a source manifest,
+    while the child pages use separate page manifests/chunks.  Filtering child
+    records after the search response is assembled can leave a page of results
+    empty even when matching source records exist further down the ranked set.
+    """
+    if result_mode != "knowledge_sources":
+        return filter_clauses
+    return [
+        *filter_clauses,
+        {"bool": {"must_not": [{"exists": {"field": "web_page_id"}}]}},
+    ]
+
+
 def _is_exact_token_query(query: str) -> bool:
     """Return True for code/token-like queries (identifiers, versions, SKUs)
     that warrant exact-file narrowing; ordinary prose returns False."""
@@ -349,11 +367,13 @@ class SearchService:
             get_score_threshold,
             get_search_filters,
             get_search_limit,
+            get_search_result_mode,
         )
 
         filters = get_search_filters() or {}
         limit = get_search_limit()
         score_threshold = get_score_threshold()
+        result_mode = get_search_result_mode()
         # Detect wildcard request ("*") to return global facets/stats without semantic search
         is_wildcard_match_all = isinstance(query, str) and query.strip() == "*"
 
@@ -366,7 +386,9 @@ class SearchService:
 
         if not is_wildcard_match_all:
             # Build filter clauses first so we can use them in model detection
-            filter_clauses = _build_search_filter_clauses(filters)
+            filter_clauses = _add_result_mode_filter(
+                _build_search_filter_clauses(filters), result_mode
+            )
 
             try:
                 seen_spaces: set[str] = set()
@@ -525,7 +547,9 @@ class SearchService:
             )
         else:
             # Wildcard query - no embedding needed
-            filter_clauses = _build_search_filter_clauses(filters)
+            filter_clauses = _add_result_mode_filter(
+                _build_search_filter_clauses(filters), result_mode
+            )
 
         # Build query body
         if is_wildcard_match_all:
@@ -644,6 +668,8 @@ class SearchService:
                 "web_source_id",
                 "web_page_id",
                 "web_page_depth",
+                "web_child_count",
+                "chunk_count",
                 "canonical_url",
                 "status",
                 "error",
@@ -811,6 +837,8 @@ class SearchService:
                     "web_source_id": source.get("web_source_id"),
                     "web_page_id": source.get("web_page_id"),
                     "web_page_depth": source.get("web_page_depth"),
+                    "web_child_count": source.get("web_child_count"),
+                    "chunk_count": source.get("chunk_count"),
                     "canonical_url": source.get("canonical_url"),
                     "status": source.get("status"),
                     "error": source.get("error"),
@@ -860,6 +888,7 @@ class SearchService:
         limit: int = 10,
         score_threshold: float = 0,
         embedding_model: str = None,
+        result_mode: str = "chunks",
     ) -> dict[str, Any]:
         """Public search method for API endpoints
 
@@ -881,9 +910,14 @@ class SearchService:
 
             set_search_filters(filters)
 
-        from auth_context import set_score_threshold, set_search_limit
+        from auth_context import (
+            set_score_threshold,
+            set_search_limit,
+            set_search_result_mode,
+        )
 
         set_search_limit(limit)
         set_score_threshold(score_threshold)
+        set_search_result_mode(result_mode)
 
         return await self.search_tool(query, embedding_model=embedding_model)

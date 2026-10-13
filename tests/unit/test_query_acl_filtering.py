@@ -174,6 +174,20 @@ def test_file_service_v2_requests_url_source_chunk_count_in_table_queries():
     assert "chunk_count" in terms_fields
 
 
+def test_file_service_v2_sorts_url_sources_by_their_aggregate_chunk_count():
+    from src.services.file_service_v2 import FileServiceV2
+
+    aggregation = FileServiceV2()._build_terms_aggregation_for_chunk_count(
+        query={"match_all": {}}, page_size=25, offset=0, sort_order="desc"
+    )
+    files = aggregation["aggs"]["files"]
+    script = files["aggs"]["sort_chunk_count"]["sum"]["script"]["source"]
+
+    assert files["terms"]["order"] == {"sort_chunk_count": "desc"}
+    assert "record_kind" in script
+    assert "chunk_count" in script
+
+
 def test_file_service_v2_groups_sources_by_document_id_not_display_name():
     from src.services.file_service_v2 import FileServiceV2
 

@@ -153,7 +153,16 @@ export const KnowledgeActionsDropdown = ({
 
   const deleteWebsite = async () => {
     if (!webSourceId) return;
-    await deleteWebsiteSourceMutation.mutateAsync({ sourceId: webSourceId });
+    try {
+      await deleteWebsiteSourceMutation.mutateAsync({ sourceId: webSourceId });
+      toast.success("Website source deleted");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not delete website source",
+      );
+    }
   };
 
   return (

@@ -43,6 +43,7 @@ class WebsiteSourceProcessor(TaskProcessor):
         document_service,
         models_service,
         page_id: str | None = None,
+        source_manifest: dict[str, Any] | None = None,
     ):
         super().__init__(document_service=document_service, models_service=models_service)
         self.source_id = source_id
@@ -51,12 +52,63 @@ class WebsiteSourceProcessor(TaskProcessor):
         self.owner_name = owner_name
         self.owner_email = owner_email
         self.page_id = page_id
+        self.source_manifest = dict(source_manifest) if source_manifest is not None else None
+        self._active_source: dict[str, Any] | None = None
 
     async def _source_is_active(self) -> dict[str, Any]:
         source = await get_source_manifest(self.source_id)
         if source is None or source.get("deleting"):
             raise ValueError("Website source no longer exists")
+        self._active_source = source
         return source
+
+    async def _finalize_unhandled_failure(
+        self,
+        reason: str,
+        upload_task: UploadTask,
+        file_task: FileTask,
+    ) -> None:
+        """Make a task failure retryable even when startup itself failed.
+
+        Normal crawl failures are finalised below. This covers failures before
+        that flow is established (manifest reads/writes and initial projection
+        writes), which TaskService cannot reconcile on its own.
+        """
+        source = await get_source_manifest(self.source_id)
+        if source is None:
+            source = self._active_source or self.source_manifest
+        if source is not None and not source.get("deleting"):
+            source_is_established = bool(source.get("last_successful_sync_at"))
+            source.update(
+                status="active" if source_is_established else "failed",
+                last_error=reason,
+                updated_at=datetime.now(UTC).isoformat(),
+            )
+            try:
+                pages = await list_page_manifests(source["id"])
+                await upsert_source_manifest(source, pages=pages)
+            except Exception:
+                # OpenSearch may be the reason this finalisation path ran. A
+                # later sync request detects the terminal task and recovers it.
+                pass
+
+        file_task.status, file_task.error, file_task.result, file_task.updated_at = (
+            TaskStatus.FAILED,
+            reason,
+            {"indexed": 0, "pages": 0},
+            time.time(),
+        )
+        upload_task.failed_files += 1
+
+    async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
+        try:
+            await self._process_item(upload_task, item, file_task)
+        except Exception as exc:
+            await self._finalize_unhandled_failure(
+                str(exc) or "Website crawl failed before it could start.",
+                upload_task,
+                file_task,
+            )
 
     @staticmethod
     def _new_page(source: dict[str, Any], page_id: str, canonical_url: str) -> dict[str, Any]:
@@ -77,7 +129,7 @@ class WebsiteSourceProcessor(TaskProcessor):
             "updated_at": now,
         }
 
-    async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
+    async def _process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         source = await self._source_is_active()
         target_page = (
             await get_page_manifest(source["id"], self.page_id)
@@ -229,7 +281,8 @@ class WebsiteSourceProcessor(TaskProcessor):
                 except FileNotFoundError:
                     pass
 
-        if target_page is None and source.get("resync_behavior") == "full" and result.complete:
+        crawl_authoritative = result.complete and not result.capped and not page_errors
+        if target_page is None and source.get("resync_behavior") == "full" and crawl_authoritative:
             for page in pages_by_url.values():
                 if (
                     page.get("suppressed_by_user")
@@ -248,6 +301,7 @@ class WebsiteSourceProcessor(TaskProcessor):
             or next(iter(page_errors), None)
             or "No indexable website pages were found."
         )
+        partial_failure = False
         try:
             source = await self._source_is_active()
         except ValueError:
@@ -255,6 +309,7 @@ class WebsiteSourceProcessor(TaskProcessor):
             succeeded = False
         else:
             succeeded = successful_pages > 0
+            partial_failure = succeeded and not crawl_authoritative
             if not succeeded and target_page is not None:
                 final_page = pages_by_url.get(str(target_page["canonical_url"]), target_page)
                 if final_page.get("status") == "processing":
@@ -266,9 +321,11 @@ class WebsiteSourceProcessor(TaskProcessor):
                     await upsert_page_manifest(final_page)
             source["status"] = "active" if succeeded or source_is_established else "failed"
             source["last_error"] = (
-                None if source_is_established else (None if succeeded else failure_reason)
+                failure_reason
+                if partial_failure
+                else (None if source_is_established else (None if succeeded else failure_reason))
             )
-            if succeeded:
+            if succeeded and crawl_authoritative:
                 source["last_successful_sync_at"] = datetime.now(UTC).isoformat()
             source["updated_at"] = datetime.now(UTC).isoformat()
 
@@ -277,11 +334,11 @@ class WebsiteSourceProcessor(TaskProcessor):
             else:
                 await upsert_source_manifest(source, pages=await list_page_manifests(source["id"]))
 
-        if not succeeded:
+        if not succeeded or partial_failure:
             file_task.status, file_task.error, file_task.result, file_task.updated_at = (
                 TaskStatus.FAILED,
                 failure_reason,
-                {"indexed": 0, "pages": 0},
+                {"indexed": indexed, "pages": successful_pages},
                 time.time(),
             )
             upload_task.failed_files += 1

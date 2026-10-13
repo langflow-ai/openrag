@@ -101,6 +101,7 @@ async def search(
                 filters=body.filters,
                 limit=body.limit,
                 score_threshold=body.scoreThreshold,
+                result_mode=body.resultMode,
             )
             if body.resultMode == "knowledge_sources":
                 result["results"] = [

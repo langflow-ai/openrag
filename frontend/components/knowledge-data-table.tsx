@@ -3,6 +3,7 @@
 import {
   type ColDef,
   type GetRowIdParams,
+  type PostSortRows,
   themeQuartz,
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
@@ -25,6 +26,7 @@ export interface KnowledgeDataTableProps<T> {
   onGridPreDestroyed?: () => void;
   onSelectionChanged?: () => void;
   onSortChanged?: () => void;
+  postSortRows?: PostSortRows<T>;
   emptyTitle?: string;
   emptyDescription?: string;
 }
@@ -47,6 +49,7 @@ export function KnowledgeDataTable<T>({
   onGridPreDestroyed,
   onSelectionChanged,
   onSortChanged,
+  postSortRows,
   emptyTitle = "No knowledge",
   emptyDescription = "Add files from local or your preferred cloud.",
 }: KnowledgeDataTableProps<T>) {
@@ -70,6 +73,7 @@ export function KnowledgeDataTable<T>({
         onGridPreDestroyed={onGridPreDestroyed}
         onSelectionChanged={onSelectionChanged}
         onSortChanged={onSortChanged}
+        postSortRows={postSortRows}
         {...(isCloudBrand ? { headerHeight: 64, rowHeight: 64 } : {})}
         noRowsOverlayComponent={() => (
           <div className="pb-[45px] text-center">
