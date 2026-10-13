@@ -39,6 +39,7 @@ class DeleteDocV1Body(BaseModel):
 
 
 async def ingest_endpoint(
+    request: Request,
     file: list[UploadFile] = File(...),
     session_id: str | None = Form(None),
     settings: str | None = Form(None),
@@ -50,6 +51,7 @@ async def ingest_endpoint(
     session_manager=Depends(get_session_manager),
     task_service=Depends(get_task_service),
     user: User = Depends(require_api_key_permission("knowledge:upload")),
+    rbac=Depends(get_rbac_service),
 ):
     """
     Ingest a document into the knowledge base.
@@ -63,6 +65,7 @@ async def ingest_endpoint(
     ingestion behavior, and the v1 SDK does not expose this option.
     """
     return await upload_ingest_router(
+        request=request,
         file=file,
         session_id=session_id,
         settings_json=settings,
@@ -78,6 +81,7 @@ async def ingest_endpoint(
         session_manager=session_manager,
         task_service=task_service,
         user=user,
+        rbac=rbac,
     )
 
 
