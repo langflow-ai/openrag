@@ -10,6 +10,7 @@ using FileServiceV2 (composite-aggregation cursor pagination). Pass `after_key`
 import json
 import re
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -182,3 +183,46 @@ async def search_files(
             {"error": "Failed to search files"},
             status_code=500,
         )
+
+
+async def upload_histogram(
+    start: str = Query(..., description="Window start (ISO 8601, inclusive)"),
+    end: str = Query(..., description="Window end (ISO 8601, inclusive)"),
+    tz: str = Query("UTC", description="IANA time zone that defines calendar days"),
+    connector_type: list[str] | None = Query(
+        None, description="Filter by connector type (repeatable)"
+    ),
+    mimetype: list[str] | None = Query(None, description="Filter by MIME type (repeatable)"),
+    owner: list[str] | None = Query(None, description="Filter by owner (repeatable)"),
+    data_sources: list[str] | None = Query(None, description="Filename whitelist (repeatable)"),
+    file_service=Depends(get_file_service_v2),
+    user: User = Depends(get_current_user),
+):
+    """Count distinct uploaded files per calendar day, plus the all-time total."""
+    if _parse_iso_timestamp(start, "start") > _parse_iso_timestamp(end, "end"):
+        raise HTTPException(status_code=422, detail="start must be earlier than or equal to end")
+    try:
+        ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, ValueError) as err:
+        raise HTTPException(status_code=422, detail="tz must be an IANA time zone") from err
+
+    try:
+        result = await file_service.upload_histogram(
+            user_id=user.user_id,
+            jwt_token=user.jwt_token,
+            start=start,
+            end=end,
+            time_zone=tz,
+            connector_type=connector_type,
+            mimetype=mimetype,
+            owner=owner,
+            data_sources=data_sources,
+        )
+        return JSONResponse(result)
+    except Exception as e:
+        logger.error("Failed to build upload histogram", error=str(e))
+        from utils.opensearch_utils import AUTH_ERROR_MESSAGE, is_opensearch_auth_error
+
+        if is_opensearch_auth_error(e):
+            return JSONResponse({"error": AUTH_ERROR_MESSAGE}, status_code=401)
+        return JSONResponse({"error": "Failed to build upload histogram"}, status_code=500)

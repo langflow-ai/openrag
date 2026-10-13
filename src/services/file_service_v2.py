@@ -151,6 +151,66 @@ class FileServiceV2:
             "after_key": next_after_key,
         }
 
+    async def upload_histogram(
+        self,
+        user_id: str,
+        jwt_token: str = None,
+        start: str = "",
+        end: str = "",
+        time_zone: str = "UTC",
+        connector_type: list[str] | None = None,
+        mimetype: list[str] | None = None,
+        owner: list[str] | None = None,
+        data_sources: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Distinct files per calendar day (in *time_zone*) within [start, end], plus the all-time total."""
+        opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+        query = self._build_filter_query(
+            user_id, connector_type, mimetype, owner, None, data_sources
+        )
+        # The window is a filter sub-agg rather than part of the query so the
+        # same request also yields the all-time total.
+        body = {
+            "size": 0,
+            "query": query,
+            "aggs": {
+                "total": {"cardinality": {"field": "filename", "precision_threshold": 3000}},
+                "window": {
+                    "filter": build_date_range_query("indexed_time", gte=start, lte=end),
+                    "aggs": {
+                        "days": {
+                            "date_histogram": {
+                                "field": "indexed_time",
+                                "calendar_interval": "day",
+                                "time_zone": time_zone,
+                                "format": "yyyy-MM-dd",
+                                "min_doc_count": 1,
+                            },
+                            "aggs": {
+                                "files": {
+                                    "cardinality": {
+                                        "field": "filename",
+                                        "precision_threshold": 3000,
+                                    }
+                                }
+                            },
+                        }
+                    },
+                },
+            },
+        }
+        result = await opensearch_client.search(index=get_index_name(), body=body)
+        aggs = result.get("aggregations", {})
+        buckets = aggs.get("window", {}).get("days", {}).get("buckets", [])
+        return {
+            "total": aggs.get("total", {}).get("value", 0),
+            "days": {
+                b["key_as_string"]: b.get("files", {}).get("value", 0)
+                for b in buckets
+                if b.get("key_as_string")
+            },
+        }
+
     async def _list_files_by_chunk_count(
         self,
         opensearch_client: Any,

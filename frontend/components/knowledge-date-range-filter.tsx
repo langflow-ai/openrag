@@ -1,8 +1,20 @@
 "use client";
 
+import {
+  addDays,
+  endOfMonth,
+  isAfter,
+  isSameDay,
+  min,
+  startOfDay,
+  startOfMonth,
+  subDays,
+  subMonths,
+} from "date-fns";
 import { CalendarIcon, X } from "lucide-react";
-import { useState } from "react";
-import type { DateRange } from "react-day-picker";
+import { useMemo, useState } from "react";
+import type { DateRange, DayContentProps } from "react-day-picker";
+import { useUploadHistogram } from "@/app/api/queries/useUploadHistogram";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -11,7 +23,55 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import {
+  toLocalDayEndISOString,
+  toLocalDayKey,
+  toLocalDayStartISOString,
+} from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
+
+type Range = { from: Date; to: Date };
+
+const EMPTY_DAYS: Record<string, number> = {};
+
+interface Preset {
+  id: string;
+  label: string;
+  range: (today: Date) => Range | null;
+}
+
+const PRESETS: Preset[] = [
+  { id: "any", label: "Any time", range: () => null },
+  { id: "today", label: "Today", range: (t) => ({ from: t, to: t }) },
+  {
+    id: "yesterday",
+    label: "Yesterday",
+    range: (t) => ({ from: subDays(t, 1), to: subDays(t, 1) }),
+  },
+  {
+    id: "last-7",
+    label: "Last 7 days",
+    range: (t) => ({ from: subDays(t, 6), to: t }),
+  },
+  {
+    id: "last-30",
+    label: "Last 30 days",
+    range: (t) => ({ from: subDays(t, 29), to: t }),
+  },
+  {
+    id: "this-month",
+    label: "This month",
+    range: (t) => ({ from: startOfMonth(t), to: t }),
+  },
+  {
+    id: "last-month",
+    label: "Last month",
+    range: (t) => {
+      const prev = subMonths(t, 1);
+      return { from: startOfMonth(prev), to: endOfMonth(prev) };
+    },
+  },
+];
 
 function formatDateLabel(date: Date): string {
   return date.toLocaleDateString(undefined, {
@@ -21,35 +81,116 @@ function formatDateLabel(date: Date): string {
   });
 }
 
+function formatShortLabel(date: Date, today: Date): string {
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(date.getFullYear() !== today.getFullYear() && { year: "numeric" }),
+  });
+}
+
+function filterValues(values?: string[]) {
+  const filtered = values?.filter((value) => value !== "*");
+  return filtered && filtered.length > 0 ? filtered : undefined;
+}
+
+function countInRange(days: Record<string, number>, { from, to }: Range) {
+  let total = 0;
+  for (let d = startOfDay(from); !isAfter(d, to); d = addDays(d, 1)) {
+    total += days[toLocalDayKey(d)] ?? 0;
+  }
+  return total;
+}
+
+function DensityMark({
+  count,
+  inverted,
+}: {
+  count: number;
+  inverted: boolean;
+}) {
+  if (count <= 0) return <span aria-hidden className="h-1" />;
+  return (
+    <span
+      aria-hidden
+      data-testid="upload-density"
+      data-density={count >= 5 ? "high" : count >= 2 ? "medium" : "low"}
+      className={cn(
+        "h-1 rounded-full",
+        count >= 5 ? "w-5" : count >= 2 ? "w-3" : "w-1",
+        inverted ? "bg-primary-foreground" : "bg-primary",
+      )}
+    />
+  );
+}
+
 export function KnowledgeDateRangeFilter() {
-  const { dateRange, setDateRange } = useKnowledgeFilter();
+  const { dateRange, setDateRange, parsedFilterData } = useKnowledgeFilter();
   const [open, setOpen] = useState(false);
   // Captured once on mount so server/client renders agree on the same Date.
-  const [today] = useState(() => new Date());
+  const [today] = useState(() => startOfDay(new Date()));
+  const [draft, setDraft] = useState<DateRange | undefined>();
+  const [month, setMonth] = useState<Date>(today);
 
-  const selectedRange: DateRange | undefined = dateRange
-    ? { from: dateRange.from, to: dateRange.to }
-    : undefined;
+  // Cover the shown month and every preset (the earliest starts last month).
+  const windowStart = min([
+    startOfMonth(month),
+    startOfMonth(subMonths(today, 1)),
+  ]);
+  const { data: histogram } = useUploadHistogram(
+    {
+      start: toLocalDayStartISOString(windowStart),
+      end: toLocalDayEndISOString(today),
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      connectorType: filterValues(parsedFilterData?.filters?.connector_types),
+      mimetype: filterValues(parsedFilterData?.filters?.document_types),
+      owner: filterValues(parsedFilterData?.filters?.owners),
+      dataSources: filterValues(parsedFilterData?.filters?.data_sources),
+    },
+    { enabled: open },
+  );
+  const days = histogram?.days ?? EMPTY_DAYS;
 
-  const handleSelect = (range: DateRange | undefined) => {
-    setDateRange(range ? { from: range.from, to: range.to } : null);
-    if (range?.from && range?.to) {
-      setOpen(false);
+  const handleOpenChange = (next: boolean) => {
+    if (next) {
+      setDraft(
+        dateRange?.from
+          ? { from: dateRange.from, to: dateRange.to }
+          : undefined,
+      );
+      setMonth(dateRange?.to ?? dateRange?.from ?? today);
     }
+    setOpen(next);
   };
 
-  const handlePreset = (days: number) => {
-    const to = new Date();
-    const from = new Date();
-    from.setDate(from.getDate() - days + 1);
-    setDateRange({ from, to });
-    setOpen(false);
+  const draftRange: Range | null = draft?.from
+    ? { from: draft.from, to: draft.to ?? draft.from }
+    : null;
+
+  const presetCount = (range: Range | null) =>
+    histogram
+      ? range
+        ? countInRange(days, range)
+        : histogram.total
+      : undefined;
+
+  const activePresetId = PRESETS.find((preset) => {
+    const range = preset.range(today);
+    if (!range || !draftRange) return !range && !draftRange;
+    return (
+      isSameDay(range.from, draftRange.from) &&
+      isSameDay(range.to, draftRange.to)
+    );
+  })?.id;
+
+  const handlePreset = (preset: Preset) => {
+    const range = preset.range(today);
+    setDraft(range ?? undefined);
+    if (range) setMonth(range.to);
   };
 
-  const handleThisMonth = () => {
-    const now = new Date();
-    const from = new Date(now.getFullYear(), now.getMonth(), 1);
-    setDateRange({ from, to: now });
+  const handleApply = () => {
+    setDateRange(draftRange);
     setOpen(false);
   };
 
@@ -58,15 +199,42 @@ export function KnowledgeDateRangeFilter() {
     setOpen(false);
   };
 
+  // Rebuilt only when the counts change, so day cells don't remount per render.
+  const DayContent = useMemo(
+    () =>
+      function DayContent({ date, activeModifiers }: DayContentProps) {
+        const isEnd =
+          Boolean(activeModifiers.range_start) ||
+          Boolean(activeModifiers.range_end);
+        return (
+          <span className="flex flex-col items-center gap-1">
+            <span data-day-number>{date.getDate()}</span>
+            <DensityMark
+              count={days[toLocalDayKey(date)] ?? 0}
+              inverted={isEnd}
+            />
+          </span>
+        );
+      },
+    [days],
+  );
+
   const label = dateRange?.from
     ? dateRange.to
       ? `${formatDateLabel(dateRange.from)} – ${formatDateLabel(dateRange.to)}`
       : formatDateLabel(dateRange.from)
     : null;
 
+  const footerCount = presetCount(draftRange);
+  const footerRange = draftRange
+    ? isSameDay(draftRange.from, draftRange.to)
+      ? formatShortLabel(draftRange.from, today)
+      : `${formatShortLabel(draftRange.from, today)} – ${formatShortLabel(draftRange.to, today)}`
+    : "Any time";
+
   return (
     <div className="flex h-full flex-shrink-0 items-stretch">
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
           <Button
             type="button"
@@ -84,48 +252,112 @@ export function KnowledgeDateRangeFilter() {
             </span>
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <div className="flex gap-1 p-2 border-b">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs"
-              onClick={() => handlePreset(7)}
-            >
-              Last 7 days
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs"
-              onClick={() => handlePreset(30)}
-            >
-              Last 30 days
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs"
-              onClick={handleThisMonth}
-            >
-              This month
-            </Button>
+        <PopoverContent
+          className="w-[min(52rem,calc(100vw-2rem))] overflow-hidden p-0"
+          align="end"
+          collisionPadding={16}
+        >
+          <div className="flex flex-col sm:flex-row">
+            <div className="border-b py-2 sm:w-60 sm:flex-shrink-0 sm:border-b-0 sm:border-r sm:py-4">
+              <p className="hidden px-4 pb-2 text-xs text-muted-foreground sm:block">
+                Quick ranges
+              </p>
+              {/* A scrolling row on narrow screens, a list beside the calendar otherwise. */}
+              <div className="flex gap-1 overflow-x-auto px-2 sm:flex-col sm:gap-0 sm:px-0">
+                {PRESETS.map((preset) => {
+                  const count = presetCount(preset.range(today));
+                  const active = preset.id === activePresetId;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => handlePreset(preset)}
+                      className={cn(
+                        "flex flex-shrink-0 items-center justify-between gap-4 whitespace-nowrap rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent sm:rounded-none sm:px-4 sm:py-2.5",
+                        active && "bg-accent font-medium text-foreground",
+                      )}
+                    >
+                      <span>{preset.label}</span>
+                      <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                        {count ?? ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex flex-1 flex-col items-center px-2 py-3 sm:px-4">
+              <Calendar
+                mode="range"
+                selected={draft}
+                onSelect={setDraft}
+                month={month}
+                onMonthChange={setMonth}
+                toMonth={today}
+                disabled={{ after: today }}
+                components={{ DayContent }}
+                classNames={{
+                  caption_label: "text-base font-semibold",
+                  head_cell:
+                    "w-10 text-xs font-normal text-muted-foreground sm:w-14",
+                  cell: cn(
+                    "relative h-11 w-10 p-0 text-center text-sm sm:h-12 sm:w-14",
+                    "[&:has([aria-selected])]:bg-accent",
+                    "first:[&:has([aria-selected])]:rounded-l-md",
+                    "last:[&:has([aria-selected])]:rounded-r-md",
+                    "focus-within:relative focus-within:z-20",
+                  ),
+                  day: "inline-flex h-11 w-10 items-center justify-center rounded-md p-0 font-normal hover:bg-accent/70 aria-selected:opacity-100 sm:h-12 sm:w-14",
+                }}
+              />
+              <div className="mt-2 flex w-full items-center gap-4 px-3 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1 w-1 rounded-full bg-primary" />1 upload
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1 w-3 rounded-full bg-primary" />
+                  2–4
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1 w-5 rounded-full bg-primary" />
+                  5+
+                </span>
+              </div>
+            </div>
           </div>
-          <Calendar
-            mode="range"
-            selected={selectedRange}
-            onSelect={handleSelect}
-            numberOfMonths={2}
-            defaultMonth={dateRange?.from ?? today}
-            disabled={{ after: today }}
-          />
-          {dateRange && (
-            <div className="border-t p-2 flex justify-end">
-              <Button variant="ghost" size="sm" onClick={handleClear}>
-                Clear
+          <div className="flex flex-col border-t sm:flex-row sm:items-stretch">
+            <p className="flex-1 px-4 py-3 text-sm" aria-live="polite">
+              {footerCount !== undefined && (
+                <>
+                  <span className="font-semibold">
+                    {footerCount} {footerCount === 1 ? "file" : "files"}
+                  </span>
+                  {" · "}
+                </>
+              )}
+              <span className="text-muted-foreground">{footerRange}</span>
+            </p>
+            <div className="flex border-t sm:border-t-0">
+              <Button
+                type="button"
+                variant="secondary"
+                ignoreTitleCase
+                className="h-auto flex-1 rounded-none px-6 py-3 sm:flex-none"
+                onClick={() => setOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                ignoreTitleCase
+                className="h-auto flex-1 rounded-none px-8 py-3 sm:flex-none"
+                onClick={handleApply}
+              >
+                Apply filter
               </Button>
             </div>
-          )}
+          </div>
         </PopoverContent>
       </Popover>
       {dateRange && (
