@@ -87,7 +87,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
       - name: Run pip-audit for Python Dependencies
         run: |
@@ -136,7 +136,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
       - name: Run Bandit for Python SAST
         run: |
@@ -176,7 +176,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
       - name: Download all scan artifacts
         uses: actions/download-artifact@v4
