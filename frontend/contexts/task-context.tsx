@@ -111,6 +111,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [files, setFiles] = useState<TaskFile[]>([]);
   const [hasUnreadFinishedTasks, setHasUnreadFinishedTasks] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const isMenuOpenRef = useRef(isMenuOpen);
+  isMenuOpenRef.current = isMenuOpen;
   const [isRecentTasksExpanded, setIsRecentTasksExpanded] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTaskTrigger, setSelectedTaskTrigger] = useState(0);
@@ -674,7 +676,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           currentTask,
         );
 
-        if (taskJustReachedTerminal && !isMenuOpen) {
+        if (taskJustReachedTerminal && !isMenuOpenRef.current) {
           setHasUnreadFinishedTasks(true);
         }
 
