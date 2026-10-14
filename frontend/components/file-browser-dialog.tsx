@@ -12,6 +12,7 @@ import {
   type IngestSettings,
   validateIngestSettingsOrToast,
 } from "@/components/cloud-picker/types";
+import { apiClient } from "@/lib/api-client";
 import { formatFileSize } from "@/lib/file-format";
 import { DuplicateHandlingDialog } from "./duplicate-handling-dialog";
 import { Badge } from "./ui/badge";
@@ -207,24 +208,16 @@ export function FileBrowserDialog({
 
     setIsCheckingDuplicates(true);
     try {
-      const checkResponse = await fetch(
-        `/api/connectors/${connectorType}/check-duplicates`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            connection_id: connectionId,
-            selected_files: filesPayload,
-          }),
-        },
+      const checkResponse = await apiClient.post(
+        `/connectors/${connectorType}/check-duplicates`,
+        { connection_id: connectionId, selected_files: filesPayload },
       );
 
-      if (!checkResponse.ok) {
+      if (checkResponse.status < 200 || checkResponse.status >= 300) {
         throw new Error(`Duplicate check failed: ${checkResponse.statusText}`);
       }
 
-      const checkData =
-        (await checkResponse.json()) as FileBrowserDuplicateCheckResponse;
+      const checkData = checkResponse.data as FileBrowserDuplicateCheckResponse;
       const duplicateNames = checkData.duplicate_names || [];
       const duplicateCount =
         typeof checkData.duplicate_count === "number"

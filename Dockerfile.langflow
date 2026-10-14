@@ -1,4 +1,36 @@
 # syntax=docker/dockerfile:1.4
+
+# -----------------------------------------------------------------------------
+# Stage: lxml-build
+# lxml's PyPI wheels statically bundle their own libxml2 (2.14.6 as of lxml
+# 6.1.3), which is vulnerable to CVE-2026-86140 (fixed upstream in 2.15.4).
+# Rebuild lxml from source so it links against RHEL's patched system libxml2
+# (2.12.5-10.el10_2.4) instead.
+#
+# TODO: Remove the CVE-2026-74860 / CVE-2026-86140 workarounds once the
+# langflowai/langflow base image ships both fixes. Check with:
+#   rpm -q libxml2   -> 2.12.5-10.el10_2.4 or later
+#   python -c "import lxml.etree as e; print(e.LIBXML_VERSION)"   -> (2, 15, 4) or later
+# Then delete: this lxml-build stage, the libxml2 update and libxslt install in
+# the runtime root step, and the lxml wheel swap after the pip install.
+# -----------------------------------------------------------------------------
+FROM langflowai/langflow:base-1.12.3 AS lxml-build
+
+USER root
+RUN microdnf install -y \
+    gcc \
+    libxml2-devel \
+    libxslt-devel \
+    python3.14-devel \
+    && microdnf clean all \
+    && rm -rf /var/cache/yum
+# Build the same lxml version the base image ships so only the linkage changes.
+RUN pip wheel --no-cache-dir --no-deps --no-binary lxml -w /wheels \
+    "lxml==$(pip show lxml | awk '/^Version:/ {print $2}')"
+
+# -----------------------------------------------------------------------------
+# Stage: runtime
+# -----------------------------------------------------------------------------
 FROM langflowai/langflow:base-1.12.3
 
 # Install uv, then pre-create the Langflow data directory as root.
@@ -8,7 +40,14 @@ RUN pip install --no-cache-dir --upgrade "pip>=26.1.2" \
     && pip install --no-cache-dir uv
 
 USER root
-RUN mkdir -p /app/langflow-data \
+# Upgrade libxml2 to patch CVE-2026-74860 and CVE-2026-86140 (fixed in
+# 2.12.5-10.el10_2.4) in the base image. libxslt is the runtime library for the
+# source-built lxml from the lxml-build stage. TODO: remove (see lxml-build).
+RUN microdnf install -y 'libxml2 >= 2.12.5-10.el10_2.4' \
+    && microdnf install -y libxslt \
+    && microdnf clean all \
+    && rm -rf /var/cache/yum \
+    && mkdir -p /app/langflow-data \
     && chmod 0777 /app/langflow-data
 USER 1000
 
@@ -30,6 +69,11 @@ RUN pip install --no-cache-dir \
     langfuse \
     "ibm-watsonx-ai>=1.3.1,<2.0.0" \
     "langchain-ibm~=1.1.0"
+
+# Swap in the source-built lxml last so no later install restores the bundled
+# wheel. TODO: remove (see lxml-build).
+COPY --from=lxml-build /wheels /tmp/lxml-wheels
+RUN pip install --no-cache-dir --no-deps --force-reinstall /tmp/lxml-wheels/lxml-*.whl
 
 COPY flows/ /app/flows/
 COPY custom_components/ /app/custom_components/

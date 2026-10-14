@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 export interface DeleteFilterRequest {
   id: string;
@@ -12,19 +13,18 @@ export interface DeleteFilterResponse {
 async function deleteFilter(
   data: DeleteFilterRequest,
 ): Promise<DeleteFilterResponse> {
-  const response = await fetch(`/api/knowledge-filter/${data.id}`, {
-    method: "DELETE",
-  });
+  const response = await apiClient.delete<DeleteFilterResponse>(
+    `/knowledge-filter/${data.id}`,
+  );
 
-  const json = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
+  if (response.status < 200 || response.status >= 300) {
     const errorMessage =
-      (json && (json.error as string)) || "Failed to delete knowledge filter";
+      (response.data as { error?: string }).error ||
+      "Failed to delete knowledge filter";
     throw new Error(errorMessage);
   }
 
-  return (json as DeleteFilterResponse) || { success: true };
+  return response.data || { success: true };
 }
 
 export const useDeleteFilter = () => {

@@ -37,9 +37,12 @@ export type KnownModelProvider = (typeof KNOWN_PROVIDERS)[number];
 export function requiresExplicitModelSelection(
   provider: ModelProvider | undefined,
 ): boolean {
-  // Azure lets customers name deployments independently of the underlying
-  // model family, so a catalogue row such as `gpt-4.1` is only a suggestion.
-  return provider === "azure";
+  // Both Azure providers let customers name deployments independently of the
+  // underlying model family, so a catalogue row such as `gpt-4.1` is only a
+  // suggestion. For Foundry this is stronger than a preference: its catalogue
+  // listing is of models available to deploy, not of models deployed, so
+  // auto-selecting from it picks something that usually is not callable.
+  return provider === "azure" || provider === "azure_ai";
 }
 
 // Preferred auto-select order for the LLM onboarding step. Only a preference:
