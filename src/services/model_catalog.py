@@ -34,8 +34,8 @@ from typing import Any
 from config.model_providers import ProviderEntry, visible_provider_entries
 from enhancements.providers.registry import (
     credential_field_overrides,
-    model_discovery_for,
     litellm_route_for,
+    model_discovery_for,
     route_aliases,
 )
 from enhancements.providers.registry import (
