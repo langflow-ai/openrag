@@ -1,5 +1,6 @@
 import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
 import type { Task } from "@/app/api/queries/useGetTasksQuery";
+import { apiClient } from "@/lib/api-client";
 
 const TASK_DETAIL_QUERY_KEY = ["tasks", "detail"] as const;
 
@@ -19,16 +20,16 @@ export function useGetTaskQuery(
       if (!taskId) {
         return null;
       }
-      const response = await fetch(
-        `/api/tasks/${encodeURIComponent(taskId)}/enhanced`,
+      const response = await apiClient.get<Task>(
+        `/tasks/${encodeURIComponent(taskId)}/enhanced`,
       );
       if (response.status === 404) {
         return null;
       }
-      if (!response.ok) {
+      if (response.status < 200 || response.status >= 300) {
         throw new Error("Failed to fetch task");
       }
-      return response.json() as Promise<Task>;
+      return response.data;
     },
     ...options,
     enabled: options?.enabled ?? !!taskId,

@@ -1,6 +1,8 @@
+import { HttpResponse, http } from "msw";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IngestSettings } from "@/components/cloud-picker/types";
+import { server } from "@/test-utils/msw/server";
 import {
   fireEvent,
   renderWithProviders,
@@ -57,7 +59,6 @@ describe("FileBrowserDialog ingest validation", () => {
   beforeEach(() => {
     mutateAsync.mockReset();
     vi.mocked(toast.error).mockClear();
-    global.fetch = vi.fn();
   });
 
   it("blocks ingest with a toast when chunk overlap is not below chunk size", () => {
@@ -69,7 +70,6 @@ describe("FileBrowserDialog ingest validation", () => {
     expect(toast.error).toHaveBeenCalledWith("Could not start ingest", {
       description: "Chunk overlap must be less than chunk size",
     });
-    expect(global.fetch).not.toHaveBeenCalled();
     expect(mutateAsync).not.toHaveBeenCalled();
   });
 });
@@ -94,7 +94,11 @@ describe("FileBrowserDialog duplicate-check failures", () => {
   }
 
   it("ingests nothing and says so when the check request rejects", async () => {
-    global.fetch = vi.fn().mockRejectedValue(new Error("network down"));
+    server.use(
+      http.post("/api/connectors/ibm_cos/check-duplicates", () =>
+        HttpResponse.error(),
+      ),
+    );
 
     ingest();
 
@@ -110,9 +114,12 @@ describe("FileBrowserDialog duplicate-check failures", () => {
   });
 
   it("ingests nothing and says so when the check returns an error status", async () => {
-    global.fetch = vi
-      .fn()
-      .mockResolvedValue({ ok: false, statusText: "Gateway Timeout" });
+    server.use(
+      http.post(
+        "/api/connectors/ibm_cos/check-duplicates",
+        () => new HttpResponse(null, { status: 504 }),
+      ),
+    );
 
     ingest();
 
@@ -121,10 +128,11 @@ describe("FileBrowserDialog duplicate-check failures", () => {
   });
 
   it("still ingests when the check succeeds and finds nothing", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ duplicate_names: [], duplicate_count: 0 }),
-    });
+    server.use(
+      http.post("/api/connectors/ibm_cos/check-duplicates", () =>
+        HttpResponse.json({ duplicate_names: [], duplicate_count: 0 }),
+      ),
+    );
 
     ingest();
 

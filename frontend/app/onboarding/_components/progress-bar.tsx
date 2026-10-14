@@ -17,6 +17,7 @@ export function ProgressBar({
 
   return (
     <div className="w-full flex flex-wrap items-center justify-center px-6 gap-4">
+      <div className="hidden sm:block sm:flex-1" />
       <div className="flex items-center gap-3 min-w-0">
         <div className="w-32 sm:w-48 h-1 bg-background dark:bg-muted rounded-full overflow-hidden">
           <div
@@ -32,25 +33,27 @@ export function ProgressBar({
           {currentStep + 1}/{totalSteps}
         </span>
       </div>
-      {currentStep > 1 && onSkip && (
-        <Button
-          variant="link"
-          data-testid="skip-overview-button"
-          size="sm"
-          onClick={() => {
-            trackButton({
-              CTA: "Skip Overview",
-              elementId: "skip-overview-button",
-              namespace: "onboarding",
-            });
-            onSkip?.();
-          }}
-          className="flex items-center gap-2 text-mmd !text-placeholder-foreground hover:!text-foreground hover:!no-underline"
-        >
-          Skip overview
-          <ArrowRight className="w-4 h-4" />
-        </Button>
-      )}
+      <div className="w-full sm:w-auto sm:flex-1 flex justify-center sm:justify-end">
+        {currentStep > 1 && onSkip && (
+          <Button
+            variant="link"
+            data-testid="skip-overview-button"
+            size="sm"
+            onClick={() => {
+              trackButton({
+                CTA: "Skip Overview",
+                elementId: "skip-overview-button",
+                namespace: "onboarding",
+              });
+              onSkip?.();
+            }}
+            className="flex items-center gap-2 text-mmd !text-placeholder-foreground hover:!text-foreground hover:!no-underline"
+          >
+            Skip overview
+            <ArrowRight className="w-4 h-4" />
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

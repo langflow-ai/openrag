@@ -26,6 +26,7 @@ def _make_processor(*, shared: bool, user_id: str = "user-1"):
         owner_name="Alice",
         owner_email="alice@example.com",
         shared=shared,
+        allow_anonymous_delete=True,
     )
 
 
@@ -234,6 +235,7 @@ async def test_the_gate_reports_the_two_skips_apart():
         replace=False,
         owner_user_id="user-1",
         claim_holder="task-1:only",
+        allow_anonymous_delete=True,
     )
 
     assert action == "skip"

@@ -131,25 +131,30 @@ class LangflowFileService:
         embedding_provider: str | None,
     ) -> int:
         """Generate one probe embedding so mapping dimensions match the provider."""
-        from services.models_service import ModelsService
 
         cache_key = f"{embedding_provider or ''}:{embedding_model}"
         cached = self._embedding_dimension_cache.get(cache_key)
         if cached:
             return cached
 
-        litellm_model_name = await ModelsService().get_litellm_model_name(
-            embedding_model,
-            provider=embedding_provider,
+        # Through the gateway, like ingestion: the probe decides the index
+        # mapping's vector width, so it has to reach the same endpoint the real
+        # embedding call will. The direct client resolved credentials from
+        # process-global environment instead of from config.
+        from services.llm_gateway import embeddings as gateway_embeddings
+        from services.llm_gateway import qualified_model_id
+
+        response = await gateway_embeddings(
+            {
+                "model": qualified_model_id(embedding_provider, embedding_model),
+                "input": ["dimension probe"],
+            }
         )
-        response = await clients.patched_embedding_client.embeddings.create(
-            model=litellm_model_name,
-            input=["dimension probe"],
-        )
-        if not response.data:
+        data = response.get("data") or []
+        if not data:
             raise RuntimeError("Embedding provider returned no data for dimension probe")
 
-        first = response.data[0]
+        first = data[0]
         embedding = first["embedding"] if isinstance(first, dict) else first.embedding
         dimensions = len(embedding)
         if dimensions <= 0:

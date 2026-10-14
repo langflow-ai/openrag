@@ -668,11 +668,17 @@ export class Knowledge {
     // Find the document row using reliable method
     const row = await this.findRowAcrossPages(fileName);
 
-    // Click on the document link
-    const fileLink = row.locator("span").filter({ hasText: fileName }).first();
+    // Click on the document link button
+    const fileButton = row
+      .getByRole("button", { name: fileName })
+      .or(row.locator("button").filter({ hasText: fileName }));
 
-    await expect(fileLink).toBeVisible({ timeout: 10000 });
-    await fileLink.click();
+    await expect(fileButton).toBeVisible({ timeout: 10000 });
+    await expect(fileButton).not.toHaveClass(/cursor-default/, {
+      timeout: 10000,
+    });
+    await fileButton.click();
+    await this.page.waitForURL(/\/knowledge\/chunks/, { timeout: 15000 });
   }
 
   async getFirstChunkText(): Promise<string> {
@@ -1093,7 +1099,7 @@ export class Knowledge {
           }
           return false;
         },
-        { timeout: 10000 },
+        { timeout: 15000 },
       )
       .toBe(true);
     // Get all chunks after search

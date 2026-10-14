@@ -1,3 +1,4 @@
+import axios from "axios";
 import { NextResponse } from "next/server";
 
 interface PodStatus {
@@ -18,17 +19,24 @@ async function checkPodLiveness(url: string, timeout = 3000): Promise<boolean> {
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
   try {
-    const response = await fetch(url, {
+    const response = await axios.get(url, {
       signal: controller.signal,
-      method: "GET",
+      timeout,
+      proxy: false,
+      responseType: "stream",
+      validateStatus: () => true,
     });
-
-    clearTimeout(timeoutId);
+    // Liveness depends only on the status line. Do not wait for a pod that
+    // keeps the response body open indefinitely.
+    if (response.data && typeof response.data.destroy === "function") {
+      response.data.destroy();
+    }
     // Pod is alive if it responds (any status code means it's running)
     return response.status < 500;
   } catch {
-    clearTimeout(timeoutId);
     return false;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

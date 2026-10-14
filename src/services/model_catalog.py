@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import datetime
 import json
+from collections.abc import Mapping
 from fnmatch import fnmatch
 from functools import lru_cache
 from typing import Any
@@ -33,6 +34,7 @@ from typing import Any
 from config.model_providers import ProviderEntry, visible_provider_entries
 from enhancements.providers.registry import (
     credential_field_overrides,
+    litellm_route_for,
     route_aliases,
 )
 from enhancements.providers.registry import (
@@ -107,9 +109,21 @@ PROVIDER_ROUTE_ALIASES: dict[str, str] = route_aliases()
 _CREDENTIAL_FIELD_OVERRIDES: dict[str, list[dict[str, Any]]] = credential_field_overrides()
 
 
-def litellm_provider_key(provider: str) -> str:
-    """The name LiteLLM routes `provider` under, which is usually itself."""
+def litellm_provider_key(provider: str, stored: Mapping[str, Any] | None = None) -> str:
+    """The name LiteLLM routes `provider` under, which is usually itself.
+
+    `stored` is the provider's untranslated credentials. Pass them whenever the
+    caller has them: a provider whose transport depends on how it was
+    configured — Azure AI Foundry, where the endpoint decides which LiteLLM
+    handler can build a correct URL — can only answer with them in hand.
+    Without them the static alias is used, which every enhancement keeps as its
+    safe default.
+    """
     key = (provider or "").strip().lower()
+    if stored:
+        dynamic = litellm_route_for(key, stored)
+        if dynamic:
+            return dynamic
     return PROVIDER_ROUTE_ALIASES.get(key, key)
 
 
@@ -226,10 +240,11 @@ def _model_entry(name: str, info: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
-def _excluded(name: str, patterns: tuple[str, ...]) -> bool:
-    """Whether a model id is one the config file keeps out of the pickers.
+def _matches(name: str, patterns: tuple[str, ...]) -> bool:
+    """Whether a model id matches a config pattern list.
 
-    Matched on the id as the picker shows it — `gpt-3.5-turbo`, not
+    Used for `exclude_models` (ids kept out of the pickers) and `vision_models`
+    (ids tagged as accepting images). Matched on the id as the picker shows it — `gpt-3.5-turbo`, not
     `openai/gpt-3.5-turbo` — because that is the name an operator reads off the
     screen when deciding what to suppress. `*` and `?` work, so a whole
     generation goes in one line.
@@ -254,6 +269,19 @@ def _declared_entries(names: tuple[str, ...], mode: str) -> list[dict[str, Any]]
     and the mode are known here — no pricing, no capability flags.
     """
     return [{"model": name, "mode": mode} for name in names]
+
+
+def _with_vision(entry: dict[str, Any]) -> dict[str, Any]:
+    """`entry` with the `vision` capability, for a config `vision_models:` match.
+
+    LiteLLM's table lags the providers: watsonx.ai serves Llama 4 Maverick and
+    Mistral Small 3.1 with image input, but the table flags neither, while
+    every watsonx id it does flag has been withdrawn.
+    """
+    capabilities = entry.get("capabilities") or []
+    if "vision" in capabilities:
+        return entry
+    return {**entry, "capabilities": [*capabilities, "vision"]}
 
 
 @lru_cache(maxsize=8)
@@ -305,7 +333,7 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
         bucket.setdefault(provider, []).append(_model_entry(name, info))
 
     entries = []
-    for key, display_name, declared_chat, declared_embed, excluded in providers:
+    for key, display_name, declared_chat, declared_embed, excluded, vision in providers:
         if not is_known_provider(key):
             # The catalogue would still render, but `split_model_id` cannot
             # recognise the prefix, so every id would be billed to the default
@@ -327,8 +355,11 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
         # Applied last, so `exclude_models` also wins over a `models:` row —
         # a deployment that suppresses an id means it, wherever the id came
         # from, and the alternative is two lines that quietly contradict.
-        chat = [entry for entry in chat if not _excluded(entry["model"], excluded)]
-        embed = [entry for entry in embed if not _excluded(entry["model"], excluded)]
+        chat = [entry for entry in chat if not _matches(entry["model"], excluded)]
+        embed = [entry for entry in embed if not _matches(entry["model"], excluded)]
+        chat = [
+            _with_vision(entry) if _matches(entry["model"], vision) else entry for entry in chat
+        ]
         entries.append(
             {
                 "key": key,
@@ -399,7 +430,7 @@ def hide_excluded_live_models(provider: str, payload: Any) -> Any:
         filtered[key] = [
             model
             for model in models
-            if not _excluded(str((model or {}).get("value", "")), patterns)
+            if not _matches(str((model or {}).get("value", "")), patterns)
             if isinstance(model, dict)
         ]
     return filtered
@@ -592,10 +623,14 @@ def public_model_id(provider: str, model: str) -> str:
     The tag uses `provider:model`, not `provider/model`: watsonx serves
     `openai/gpt-oss-120b`, so a slash-joined id is indistinguishable from that
     model's own name.
-    """
-    from services.llm_gateway import PROVIDER_SEPARATOR
 
-    return model if provider == "openai" else f"{provider}{PROVIDER_SEPARATOR}{model}"
+    Delegates the tagging itself, so the rules for what counts as an existing
+    tag — including the legacy `provider/` spelling — live in one place rather
+    than drifting between two modules that differ only in this OpenAI case.
+    """
+    from services.llm_gateway import qualified_model_id
+
+    return model if provider == "openai" else qualified_model_id(provider, model)
 
 
 def openai_models_list(today: datetime.date | None = None) -> dict[str, Any]:
