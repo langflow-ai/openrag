@@ -427,7 +427,7 @@ def discovered_model_payload(provider: str, listed: Any) -> dict[str, Any]:
         return [
             entry
             for entry in _declared_entries(tuple(str(name) for name in names), mode)
-            if not _excluded(entry["model"], excluded)
+            if not _matches(entry["model"], excluded)
         ]
 
     return {
