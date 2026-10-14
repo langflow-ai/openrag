@@ -154,7 +154,7 @@
         "data": {
           "sourceHandle": {
             "dataType": "ext:openrag:DoclingRemoteComponent@extra",
-            "id": "ext:openrag:DoclingRemoteComponent@extra-gS6vA",
+            "id": "ext:openrag:DoclingRemoteComponent@extra-D0Ohx",
             "name": "dataframe",
             "output_types": [
               "Table"
@@ -172,10 +172,10 @@
             "type": "other"
           }
         },
-        "id": "xy-edge__ext:openrag:DoclingRemoteComponent@extra-gS6vA{œdataTypeœ:œext:openrag:DoclingRemoteComponent@extraœ,œidœ:œext:openrag:DoclingRemoteComponent@extra-gS6vAœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}-ExportDoclingDocument-zZdRg{œfieldNameœ:œdata_inputsœ,œidœ:œExportDoclingDocument-zZdRgœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}",
+        "id": "xy-edge__ext:openrag:DoclingRemoteComponent@extra-D0Ohx{œdataTypeœ:œext:openrag:DoclingRemoteComponent@extraœ,œidœ:œext:openrag:DoclingRemoteComponent@extra-D0Ohxœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}-ExportDoclingDocument-zZdRg{œfieldNameœ:œdata_inputsœ,œidœ:œExportDoclingDocument-zZdRgœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}",
         "selected": false,
-        "source": "ext:openrag:DoclingRemoteComponent@extra-gS6vA",
-        "sourceHandle": "{œdataTypeœ:œext:openrag:DoclingRemoteComponent@extraœ,œidœ:œext:openrag:DoclingRemoteComponent@extra-gS6vAœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}",
+        "source": "ext:openrag:DoclingRemoteComponent@extra-D0Ohx",
+        "sourceHandle": "{œdataTypeœ:œext:openrag:DoclingRemoteComponent@extraœ,œidœ:œext:openrag:DoclingRemoteComponent@extra-D0Ohxœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}",
         "target": "ExportDoclingDocument-zZdRg",
         "targetHandle": "{œfieldNameœ:œdata_inputsœ,œidœ:œExportDoclingDocument-zZdRgœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}"
       }
@@ -1847,7 +1847,7 @@
           "x": 919.9633853631021,
           "y": 1830.0439761689088
         },
-        "selected": true,
+        "selected": false,
         "type": "genericNode"
       },
       {
@@ -4616,7 +4616,7 @@
       },
       {
         "data": {
-          "id": "ext:openrag:DoclingRemoteComponent@extra-gS6vA",
+          "id": "ext:openrag:DoclingRemoteComponent@extra-D0Ohx",
           "node": {
             "base_classes": [
               "Table"
@@ -4661,7 +4661,7 @@
                   },
                   {
                     "name": "docling_core",
-                    "version": "2.100.0"
+                    "version": "2.101.1"
                   },
                   {
                     "name": "lfx",
@@ -5099,23 +5099,23 @@
           "type": "ext:openrag:DoclingRemoteComponent@extra"
         },
         "dragging": false,
-        "id": "ext:openrag:DoclingRemoteComponent@extra-gS6vA",
+        "id": "ext:openrag:DoclingRemoteComponent@extra-D0Ohx",
         "measured": {
           "height": 52,
           "width": 192
         },
         "position": {
-          "x": 354.34712948869065,
-          "y": 1837.4508808825954
+          "x": 336.41994889913815,
+          "y": 1839.8142475712532
         },
-        "selected": false,
+        "selected": true,
         "type": "genericNode"
       }
     ],
     "viewport": {
-      "x": 25.033465899356997,
-      "y": -743.8698778062317,
-      "zoom": 0.6098435787058331
+      "x": 258.3401326013825,
+      "y": -495.66623379389716,
+      "zoom": 0.5499809967610423
     }
   },
   "description": "Load your data for chat context with Retrieval Augmented Generation.",
