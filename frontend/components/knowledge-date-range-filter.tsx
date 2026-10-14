@@ -22,7 +22,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { useAuth } from "@/contexts/auth-context";
+import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { isDateRangeFilterEnabled } from "@/lib/date-range-filter";
 import {
   toLocalDayEndISOString,
   toLocalDayKey,
@@ -125,6 +128,13 @@ function DensityMark({
 }
 
 export function KnowledgeDateRangeFilter() {
+  const { runMode } = useAuth();
+  const isCloudBrand = useIsCloudBrand();
+  if (!isDateRangeFilterEnabled(runMode, { isCloudBrand })) return null;
+  return <DateRangeFilterPopover />;
+}
+
+function DateRangeFilterPopover() {
   const { dateRange, setDateRange, parsedFilterData } = useKnowledgeFilter();
   const [open, setOpen] = useState(false);
   // Captured once on mount so server/client renders agree on the same Date.

@@ -4,6 +4,17 @@ import { renderWithProviders, screen } from "@/test-utils/render";
 import { KnowledgeDateRangeFilter } from "./knowledge-date-range-filter";
 
 const histogramParams = vi.fn();
+let mockRunMode: string | null = "oss";
+
+vi.mock("@/contexts/auth-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/contexts/auth-context")>()),
+  useAuth: () => ({ runMode: mockRunMode }),
+}));
+
+vi.mock("@/contexts/brand-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/contexts/brand-context")>()),
+  useIsCloudBrand: () => false,
+}));
 
 vi.mock("@/app/api/queries/useUploadHistogram", () => ({
   useUploadHistogram: (params: unknown, options: { enabled?: boolean }) => {
@@ -68,12 +79,22 @@ const short = (d: Date) =>
 describe("KnowledgeDateRangeFilter", () => {
   // Only Date is faked so act()/Radix timers keep running normally.
   beforeEach(() => {
+    mockRunMode = "oss";
     histogramParams.mockClear();
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(2024, 5, 20, 12));
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it.each(["saas", null])("is hidden when the run mode is %s", (runMode) => {
+    mockRunMode = runMode;
+    renderFilter();
+    expect(
+      screen.queryByRole("button", { name: /filter by date range/i }),
+    ).not.toBeInTheDocument();
+    expect(histogramParams).not.toHaveBeenCalled();
   });
 
   it("renders the trigger with the default label", () => {
