@@ -30,6 +30,19 @@ def _make_processor(*, shared: bool, user_id: str = "user-1"):
     )
 
 
+async def _reconcile(processor, shared: bool, *, file_is_shared: bool | None = None):
+    """Run the reconcile for report.pdf, with the index answering
+    ``file_is_shared`` to "is this file itself indexed as shared?"."""
+    processor._indexed_shared_state = AsyncMock(return_value=file_is_shared)
+    await processor._reconcile_shared_owner(
+        "report.pdf",
+        shared,
+        file_id="file-abc",
+        opensearch_client=AsyncMock(),
+        connector_type="ibm_cos",
+    )
+
+
 @pytest.fixture(autouse=True)
 def _restore_write_client():
     original = settings_module.clients.opensearch
@@ -43,7 +56,7 @@ async def test_reconcile_shared_true_omits_owner_via_script():
     settings_module.clients.opensearch = write_client
     processor = _make_processor(shared=True)
 
-    await processor._reconcile_shared_owner("report.pdf", True)
+    await _reconcile(processor, True)
 
     assert write_client.update_by_query.await_count >= 1
     call = write_client.update_by_query.await_args_list[0]
@@ -63,7 +76,7 @@ async def test_reconcile_shared_false_sets_owner_via_script():
     settings_module.clients.opensearch = write_client
     processor = _make_processor(shared=False)
 
-    await processor._reconcile_shared_owner("report.pdf", False)
+    await _reconcile(processor, False)
 
     call = write_client.update_by_query.await_args_list[0]
     params = call.kwargs["body"]["script"]["params"]
@@ -79,7 +92,7 @@ async def test_reconcile_shared_owner_noop_without_write_client():
     processor = _make_processor(shared=True)
 
     # Must not raise even though there's nothing to write to.
-    await processor._reconcile_shared_owner("report.pdf", True)
+    await _reconcile(processor, True)
 
 
 @pytest.mark.asyncio
@@ -90,7 +103,7 @@ async def test_reconcile_shared_owner_swallows_update_errors():
     processor = _make_processor(shared=True)
 
     # A failed reconciliation must not fail the (already-skipped) sync item.
-    await processor._reconcile_shared_owner("report.pdf", True)
+    await _reconcile(processor, True)
 
 
 @pytest.mark.asyncio
@@ -102,9 +115,8 @@ async def test_reconcile_without_permission_leaves_a_shared_namesake_alone():
     "mine OR ownerless" scope would hand a document visible to the whole
     instance to the syncing user — silently, and without the
     knowledge:delete:anonymous check that deliberate shared deletion goes
-    through. _indexed_shared_state cannot catch this: it keys on the connector
-    file id, and a collision comes from a document this connector never
-    ingested, so `shared` falls back to the sync's own private intent.
+    through. Without the permission the scope is the caller's own chunks,
+    whatever the index says about the file.
     """
     from utils.opensearch_queries import build_owned_filename_query
 
@@ -114,17 +126,20 @@ async def test_reconcile_without_permission_leaves_a_shared_namesake_alone():
     processor = _make_processor(shared=False)
     processor.allow_anonymous_delete = False
 
-    await processor._reconcile_shared_owner("report.pdf", False)
+    await _reconcile(processor, False, file_is_shared=True)
 
     query = write_client.update_by_query.await_args.kwargs["body"]["query"]
     assert query == build_owned_filename_query("report.pdf", "user-1")
+    # Not even asked: nothing it could answer would widen the scope.
+    processor._indexed_shared_state.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_reconcile_with_permission_keeps_the_wider_scope():
-    """Granted (and with RBAC unenforced, which resolves to granted), the
-    reconcile still reaches ownerless chunks — the behaviour a shared re-sync
-    relies on."""
+async def test_reconcile_of_the_files_own_shared_copy_keeps_the_wider_scope():
+    """Granted (and with RBAC unenforced, which resolves to granted), and with
+    this file itself indexed as shared, the reconcile reaches the ownerless
+    chunks. That is the share-all toggle being switched off for a file whose
+    content has not changed: the ownerless chunks are this file's own."""
     from utils.opensearch_queries import build_replace_filename_query
 
     write_client = AsyncMock()
@@ -133,18 +148,45 @@ async def test_reconcile_with_permission_keeps_the_wider_scope():
     processor = _make_processor(shared=False)
     processor.allow_anonymous_delete = True
 
-    await processor._reconcile_shared_owner("report.pdf", False)
+    await _reconcile(processor, False, file_is_shared=True)
 
     query = write_client.update_by_query.await_args.kwargs["body"]["query"]
     assert query == build_replace_filename_query("report.pdf", "user-1")
 
 
 @pytest.mark.asyncio
-async def test_reconcile_of_a_shared_file_keeps_the_wider_scope():
-    """A shared write cleared the permission upstream — connector_sync rejects a
-    shared sync without it — so resolving to shared keeps the wider scope even
-    when the flag is False."""
-    from utils.opensearch_queries import build_replace_filename_query
+@pytest.mark.parametrize("file_is_shared", [False, None], ids=["indexed-private", "not-indexed"])
+async def test_a_private_sync_cannot_claim_a_shared_namesake(file_is_shared):
+    """The permission alone used to be enough, and the script matches by
+    filename. So a private sync by someone holding it — an admin, or anyone at
+    all where RBAC is not enforced — wrote itself as owner onto a shared
+    document from another source that merely had the same name: no delete, no
+    prompt, and gone from everyone else's view.
+
+    What tells the two apart is the file id. A namesake is a document this
+    connector never ingested, so the index does not say this file is shared.
+    """
+    from utils.opensearch_queries import build_owned_filename_query
+
+    write_client = AsyncMock()
+    settings_module.clients.opensearch = write_client
+
+    processor = _make_processor(shared=False)
+    processor.allow_anonymous_delete = True
+
+    await _reconcile(processor, False, file_is_shared=file_is_shared)
+
+    body = write_client.update_by_query.await_args.kwargs["body"]
+    assert body["query"] == build_owned_filename_query("report.pdf", "user-1")
+    assert body["script"]["params"]["owner"] == "user-1"
+
+
+@pytest.mark.asyncio
+async def test_resolving_to_shared_does_not_stand_in_for_the_permission():
+    """``shared`` used to widen the scope on its own, on the reasoning that a
+    shared write had cleared the permission upstream. On the re-sync paths it
+    is inherited from the index, which nobody was authorized to decide."""
+    from utils.opensearch_queries import build_owned_filename_query
 
     write_client = AsyncMock()
     settings_module.clients.opensearch = write_client
@@ -152,10 +194,10 @@ async def test_reconcile_of_a_shared_file_keeps_the_wider_scope():
     processor = _make_processor(shared=True)
     processor.allow_anonymous_delete = False
 
-    await processor._reconcile_shared_owner("report.pdf", True)
+    await _reconcile(processor, True, file_is_shared=True)
 
     query = write_client.update_by_query.await_args.kwargs["body"]["query"]
-    assert query == build_replace_filename_query("report.pdf", "user-1")
+    assert query == build_owned_filename_query("report.pdf", "user-1")
 
 
 def _connector_processor_for(filename: str, *, indexed: bool):
@@ -205,6 +247,25 @@ async def test_losing_an_in_flight_claim_does_not_reconcile():
 
     assert file_task.status is TaskStatus.SKIPPED
     assert file_task.result["reason"] == "duplicate_filename"
+    processor._reconcile_shared_owner.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_refused_replacement_does_not_reconcile():
+    """A replace that deleted nothing means the document under this name is not
+    this caller's to replace. It is not this file's own either, so there is
+    nothing to bring in line — and reconciling would write owner fields onto a
+    document the caller was just told they may not touch."""
+    processor = _connector_processor_for("report.pdf", indexed=True)
+    processor.replace_duplicates = True
+    processor.delete_document_by_filename = AsyncMock(return_value=0)
+    upload_task = UploadTask(task_id="task-1", total_files=1)
+    file_task = FileTask(file_path="cos::b/report.pdf", filename="report.pdf")
+
+    await processor.process_item(upload_task, "cos::b/report.pdf", file_task)
+
+    assert file_task.status is TaskStatus.SKIPPED
+    assert "permission to replace" in file_task.result["warning"]
     processor._reconcile_shared_owner.assert_not_awaited()
 
 
