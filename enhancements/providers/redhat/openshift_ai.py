@@ -152,9 +152,11 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "tooltip": "How many embedding requests OpenRAG sends to the embedding endpoint at "
         "once; the rest wait in OpenRAG. One slot is kept for search and chat queries so "
         "they never wait behind ingestion. Leave blank for the default of 16, sized for a "
-        "GPU-served model. Lower it to 4 for a CPU-served model: it answers slowly, and "
-        "the endpoint's kube-rbac-proxy returns 502 once a queued request waits past its "
-        "upstream timeout (30s by default), which fails ingestion. 0 means no limit.",
+        "GPU-served model. A CPU-served model whose vLLM threads match its CPU limit "
+        "copes with 16; lower it to 4 if the endpoint takes more than about a second per "
+        "chunk: the endpoint's kube-rbac-proxy returns 502 once a queued request waits "
+        "past its upstream timeout (30s by default), which fails ingestion. 0 means no "
+        "limit.",
         "required": False,
         "field_type": "text",
         "options": None,
@@ -175,10 +177,13 @@ _LOCAL_ONLY_FIELDS = frozenset({"embedding_api_base", "embedding_max_concurrency
 #: long before the GPU does: granite-embedding-english-r2 on an H100 served
 #: about 200 calls/s at 16 in flight (p95 under 170ms) and topped out near 430
 #: calls/s at 64-128, with the GPU about 20% busy. 16 leaves that headroom to
-#: other OpenRAG instances sharing the endpoint. A CPU-served model is ~100x
-#: slower (about 2.7s per ~1000-character chunk on 5 cores), so 16 in flight
-#: queues calls past the 30s `kube-rbac-proxy` upstream timeout; CPU
-#: deployments set 4.
+#: other OpenRAG instances sharing the endpoint. On CPU, vLLM binds one OpenMP
+#: thread per *node* core whatever the pod's CPU limit, so a small limit spends
+#: most of its time throttled: 2 cores gave 1.65s per ~1000-character chunk and
+#: ~0.85 calls/s. With requests = limits = 6 and `VLLM_CPU_OMP_THREADS_BIND=0-5`
+#: the same model served 0.13s per chunk and ~10 calls/s, p95 2s at 16 in
+#: flight. Only an endpoint still slower than about a second per chunk needs 4,
+#: or 16 in flight queues calls past the 30s `kube-rbac-proxy` upstream timeout.
 DEFAULT_EMBEDDING_MAX_CONCURRENCY = 16
 
 #: LiteLLM kwargs that must not become request-body fields. `ssl_verify` is
