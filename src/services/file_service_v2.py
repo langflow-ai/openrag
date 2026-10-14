@@ -18,6 +18,7 @@ Sort-field notes
 """
 
 from typing import Any
+from urllib.parse import quote
 
 from config.settings import get_index_name
 from utils.logging_config import get_logger
@@ -287,14 +288,14 @@ class FileServiceV2:
                             {
                                 "wildcard": {
                                     "filename": {
-                                        "value": f"*{search.lower()}*",
+                                        "value": f"*{quote(search.lower())}*",
                                         "case_insensitive": True,
                                     }
                                 }
                             },
                             {
                                 "prefix": {
-                                    "filename": {"value": search.lower(), "case_insensitive": True}
+                                    "filename": {"value": quote(search.lower()), "case_insensitive": True}
                                 }
                             },
                         ],
