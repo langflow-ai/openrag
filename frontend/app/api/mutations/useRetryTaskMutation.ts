@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { taskDetailQueryKey } from "@/app/api/queries/useGetTaskQuery";
 import { TASKS_QUERY_KEY } from "@/app/api/queries/useGetTasksQuery";
+import { apiClient } from "@/lib/api-client";
 
 export interface RetryTaskRequest {
   taskId: string;
@@ -35,21 +36,13 @@ export interface RetryTaskResponse {
 async function retryTask(
   variables: RetryTaskRequest,
 ): Promise<RetryTaskResponse> {
-  const body = JSON.stringify(
+  const response = await apiClient.post<RetryTaskResponse>(
+    `/tasks/${variables.taskId}/retry`,
     variables.filePaths != null ? { file_paths: variables.filePaths } : {},
   );
+  const payload = response.data;
 
-  const response = await fetch(`/api/tasks/${variables.taskId}/retry`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body,
-  });
-
-  const payload = (await response
-    .json()
-    .catch(() => ({}))) as RetryTaskResponse;
-
-  if (!response.ok) {
+  if (response.status < 200 || response.status >= 300) {
     throw new Error(
       payload.message || payload.error || "Failed to retry task files",
     );

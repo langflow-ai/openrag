@@ -31,6 +31,7 @@ async def test_traditional_processor_settings_propagation():
         replace_duplicates=False,
         session_manager=mock_session_manager,
         settings=settings,
+        allow_anonymous_delete=True,
     )
 
     processor.check_filename_exists = AsyncMock(return_value=False)
@@ -78,6 +79,7 @@ async def test_traditional_processor_invalid_settings_fallback():
         replace_duplicates=False,
         session_manager=mock_session_manager,
         settings=settings,
+        allow_anonymous_delete=True,
     )
 
     processor.check_filename_exists = AsyncMock(return_value=False)
