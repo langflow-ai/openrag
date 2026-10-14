@@ -52,7 +52,12 @@ export function CancelIngestionButton({
             )}
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="left">Cancel this file</TooltipContent>
+        <TooltipContent
+          side="left"
+          className="border-[#393939] bg-[#393939] text-white"
+        >
+          Cancel this file
+        </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );
