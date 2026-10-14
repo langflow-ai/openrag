@@ -277,6 +277,8 @@ class FileServiceV2:
         owner: list[str] | None = None,
         after_key: dict | None = None,
         data_sources: list[str] | None = None,
+        created_after: str | None = None,
+        created_before: str | None = None,
     ) -> dict[str, Any]:
         """Search files by name with fuzzy/prefix matching."""
         return await self.list_files(
@@ -292,6 +294,8 @@ class FileServiceV2:
             search=query,
             after_key=after_key,
             data_sources=data_sources,
+            created_after=created_after,
+            created_before=created_before,
         )
 
     def _build_filter_query(

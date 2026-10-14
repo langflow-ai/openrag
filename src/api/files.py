@@ -30,6 +30,19 @@ _EXTENDED_ISO_RE = re.compile(
 )
 
 
+CREATED_AFTER_DESCRIPTION = (
+    "Inclusive lower bound on indexed_time (ISO 8601). "
+    "A value with no time is UTC midnight at the start of that day. "
+    "Documents with no indexed_time are excluded."
+)
+CREATED_BEFORE_DESCRIPTION = (
+    "Inclusive upper bound on indexed_time (ISO 8601). "
+    "A value with no time is UTC midnight at the start of that day, "
+    "so pass the next day to include the chosen day. "
+    "Documents with no indexed_time are excluded."
+)
+
+
 def _parse_iso_timestamp(value: str, param_name: str) -> datetime:
     """Parse an extended ISO 8601 timestamp, raising HTTP 422 when it is not one."""
     detail = f"{param_name} must be a valid ISO 8601 timestamp"
@@ -101,10 +114,8 @@ async def list_files(
     search: str | None = Query(None, description="Search filename"),
     after_key: str | None = Query(None, description="Composite pagination cursor (JSON-encoded)"),
     data_sources: list[str] | None = Query(None, description="Filename whitelist (repeatable)"),
-    created_after: str | None = Query(None, description="Filter files created after ISO timestamp"),
-    created_before: str | None = Query(
-        None, description="Filter files created before ISO timestamp"
-    ),
+    created_after: str | None = Query(None, description=CREATED_AFTER_DESCRIPTION),
+    created_before: str | None = Query(None, description=CREATED_BEFORE_DESCRIPTION),
     file_service=Depends(get_file_service_v2),
     user: User = Depends(get_current_user),
 ):
@@ -153,10 +164,13 @@ async def search_files(
     owner: list[str] | None = Query(None, description="Filter by owner (repeatable)"),
     after_key: str | None = Query(None, description="Composite pagination cursor (JSON-encoded)"),
     data_sources: list[str] | None = Query(None, description="Filename whitelist (repeatable)"),
+    created_after: str | None = Query(None, description=CREATED_AFTER_DESCRIPTION),
+    created_before: str | None = Query(None, description=CREATED_BEFORE_DESCRIPTION),
     file_service=Depends(get_file_service_v2),
     user: User = Depends(get_current_user),
 ):
     """Search files by name with fuzzy/partial matching (composite pagination)."""
+    _validate_date_range(created_after, created_before)
     parsed_after_key = _parse_after_key(after_key)
 
     try:
@@ -171,6 +185,8 @@ async def search_files(
             owner=owner,
             after_key=parsed_after_key,
             data_sources=data_sources,
+            created_after=created_after,
+            created_before=created_before,
         )
         return JSONResponse(result)
     except Exception as e:
