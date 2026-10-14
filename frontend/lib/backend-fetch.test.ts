@@ -1,8 +1,18 @@
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
-import { HttpResponse, http } from "msw";
-import { afterEach, beforeEach, describe, it, vi } from "vitest";
-import { server } from "../test-utils/msw/server";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 
 // Hoist mocks so they run before any imports.
 // node:fs — mock at file level so backend-fetch.ts's `import { readFileSync }`
@@ -110,31 +120,43 @@ describe("backendFetch — with custom CA", () => {
     vi.resetModules();
   });
 
-  it("uses undici.fetch with a custom dispatcher when CA path is set", async () => {
-    vi.stubEnv("OPENRAG_BACKEND_CA_CERT_PATH", "/certs/ca.crt");
+  it("routes requests through undici.fetch when a CA path is set", async () => {
+    // A real file is needed: spying on the `fs` namespace does not intercept
+    // backend-fetch's named `readFileSync` import. The Agent only parses the CA
+    // on a TLS connect, so a plain-HTTP loopback server avoids any handshake.
+    const dir = mkdtempSync(path.join(tmpdir(), "backend-fetch-"));
+    const caPath = path.join(dir, "ca.crt");
+    writeFileSync(caPath, "FAKE-CA-CERT");
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    vi.stubEnv("OPENRAG_BACKEND_CA_CERT_PATH", caPath);
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
 
-    // readFileSync must return something — the actual CA content doesn't matter
-    // because we're not doing a real TLS handshake.
-    vi.spyOn(fs, "readFileSync").mockReturnValue(
-      Buffer.from("FAKE-CA-CERT") as unknown as string,
+    // undici.fetch opens its own sockets, so MSW never sees this request.
+    const backend = createServer((_req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.end('{"ok":true}');
+    });
+    await new Promise<void>((resolve) =>
+      backend.listen(0, "127.0.0.1", resolve),
     );
-
-    // Register an MSW handler so the undici request is handled (not rejected).
-    // MSW patches Node's http/https stack, so it intercepts undici too.
-    server.use(
-      http.get("https://backend-svc/api/health", () =>
-        HttpResponse.json({ ok: true }),
-      ),
+    onTestFinished(
+      () => new Promise<void>((resolve) => backend.close(() => resolve())),
     );
+    const { port } = backend.address() as AddressInfo;
 
     const { backendFetch } = await import("./backend-fetch");
-    const res = await backendFetch("https://backend-svc/api/health", {
+    const res = await backendFetch(`http://127.0.0.1:${port}/api/health`, {
       method: "GET",
     });
 
-    // If _customFetch was used the request went through undici (which MSW
-    // intercepted and answered).  A successful response confirms the code path.
     assert.ok(res.ok, "response should be ok");
+    assert.deepEqual(await res.json(), { ok: true });
+    assert.ok(
+      infoSpy.mock.calls.some((args) =>
+        String(args[0]).includes("Custom CA loaded"),
+      ),
+      "should log that the custom CA was loaded",
+    );
   });
 
   it("falls back to globalThis.fetch when readFileSync throws", async () => {
