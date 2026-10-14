@@ -23,6 +23,7 @@ ModuleRegistry.registerModules([
   ColumnApiModule,
   PaginationModule,
   CellStyleModule,
+  RowStyleModule,
   QuickFilterModule,
   ClientSideRowModelModule,
   TextFilterModule,

@@ -11,6 +11,10 @@ import {
 } from "@/app/api/queries/useGetSearchQuery";
 import { HighlightedText } from "@/components/highlighted-text";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
+import {
+  RELEVANCE_PILL_STYLES,
+  WifiSignalIcon,
+} from "@/components/relevance-signal-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { trackButton } from "@/lib/analytics";
@@ -68,20 +72,6 @@ function chunkMatches(
   const tokens = needle.split(/\s+/).filter((t) => t.length > 0);
   return tokens.length > 1 && tokens.some((t) => text.includes(t));
 }
-
-const SCORE_TIER_CLASS: Record<RelevanceTier, string> = {
-  high: "border-emerald-500 text-emerald-700 bg-emerald-50 dark:border-emerald-400 dark:text-emerald-300 dark:bg-emerald-950/40",
-  medium:
-    "border-amber-500 text-amber-700 bg-amber-50 dark:border-amber-400 dark:text-amber-300 dark:bg-amber-950/40",
-  low: "border-slate-400 text-slate-600 bg-slate-50 dark:border-slate-500 dark:text-slate-400 dark:bg-slate-900/40",
-};
-
-const SEMANTIC_SCORE_TIER_CLASS: Record<RelevanceTier, string> = {
-  high: "border-indigo-500 text-indigo-700 bg-indigo-50 dark:border-indigo-400 dark:text-indigo-300 dark:bg-indigo-950/40",
-  medium:
-    "border-purple-500 text-purple-700 bg-purple-50 dark:border-purple-400 dark:text-purple-300 dark:bg-purple-950/40",
-  low: "border-violet-400 text-violet-700 bg-violet-50 dark:border-violet-500/40 dark:text-violet-300 dark:bg-violet-950/30",
-};
 
 function FileChunkCard({
   chunk,
@@ -157,33 +147,16 @@ function FileChunkCard({
           )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          {isSemanticMatch ? (
-            <Badge
-              variant="secondary"
+          {scoreTier && (
+            <div
               className={cn(
-                "text-xxs border shrink-0",
-                scoreTier
-                  ? SEMANTIC_SCORE_TIER_CLASS[scoreTier]
-                  : SEMANTIC_SCORE_TIER_CLASS["high"],
+                "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xxs font-medium shrink-0 transition-colors",
+                RELEVANCE_PILL_STYLES[scoreTier],
               )}
             >
-              Semantically relevant
-              {scoreLabel ? ` (${scoreLabel.replace(" relevance", "")})` : ""}
-            </Badge>
-          ) : (
-            scoreLabel && (
-              <Badge
-                variant="secondary"
-                className={cn(
-                  "shrink-0 text-xxs border",
-                  scoreTier
-                    ? SCORE_TIER_CLASS[scoreTier]
-                    : "bg-background text-foreground border-border",
-                )}
-              >
-                {scoreLabel}
-              </Badge>
-            )
+              <WifiSignalIcon tier={scoreTier} size={12} />
+              {scoreLabel && <span>{scoreLabel}</span>}
+            </div>
           )}
         </div>
       </div>
@@ -299,7 +272,7 @@ export function FileChunksPanel({
         rawScore > 0 && !hasHighlights && !isSearchFetching;
       return {
         tier,
-        label: `${Math.max(1, Math.round(norm * 100))}% relevance`,
+        label: `${Math.max(1, Math.round(norm * 100))}%`,
         isSemanticMatch,
       };
     };

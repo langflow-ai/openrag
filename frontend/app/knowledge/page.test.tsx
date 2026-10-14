@@ -21,6 +21,7 @@ import { render, screen } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import type { File } from "@/app/api/queries/useGetSearchQuery";
+import { getRelevanceReasoning } from "@/components/relevance-signal-icon";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { authPresets } from "@/test-utils/fixtures/auth";
 import { renderWithProviders, userEvent, waitFor } from "@/test-utils/render";
@@ -464,7 +465,7 @@ describe("RelevanceCellContent", () => {
     };
   }
 
-  it("renders 'High (91%)' badge for a high-tier file with maxScore 0.914", () => {
+  it("renders '91%' badge for a high-tier file with maxScore 0.914", () => {
     const { container } = render(
       <TooltipProvider>
         <RelevanceCellContent
@@ -477,10 +478,11 @@ describe("RelevanceCellContent", () => {
         />
       </TooltipProvider>,
     );
-    expect(container.textContent).toContain("High (91%)");
+    expect(container.textContent).toContain("91%");
+    expect(container.textContent).not.toContain("High");
   });
 
-  it("renders 'Medium (50%)' badge for a medium-tier file with maxScore 0.5", () => {
+  it("renders '50%' badge for a medium-tier file with maxScore 0.5", () => {
     const { container } = render(
       <TooltipProvider>
         <RelevanceCellContent
@@ -493,10 +495,11 @@ describe("RelevanceCellContent", () => {
         />
       </TooltipProvider>,
     );
-    expect(container.textContent).toContain("Medium (50%)");
+    expect(container.textContent).toContain("50%");
+    expect(container.textContent).not.toContain("Medium");
   });
 
-  it("renders 'Low (12%)' badge for a low-tier file with maxScore 0.123", () => {
+  it("renders '12%' badge for a low-tier file with maxScore 0.123", () => {
     const { container } = render(
       <TooltipProvider>
         <RelevanceCellContent
@@ -509,23 +512,8 @@ describe("RelevanceCellContent", () => {
         />
       </TooltipProvider>,
     );
-    expect(container.textContent).toContain("Low (12%)");
-  });
-
-  it("renders label without percentage when maxScore is absent", () => {
-    const { container } = render(
-      <TooltipProvider>
-        <RelevanceCellContent
-          data={makeFile({
-            relevanceTier: "high",
-            chunkTiers: { high: 1, medium: 0, low: 0 },
-            chunkCount: 1,
-          })}
-        />
-      </TooltipProvider>,
-    );
-    expect(container.textContent).toContain("High");
-    expect(container.textContent).not.toContain("%");
+    expect(container.textContent).toContain("12%");
+    expect(container.textContent).not.toContain("Low");
   });
 
   it("renders an em-dash when no relevanceTier is set", () => {
@@ -544,6 +532,34 @@ describe("RelevanceCellContent", () => {
       </TooltipProvider>,
     );
     expect(container.textContent).toContain("—");
+  });
+
+  it("calculates systematic reasoning factors with keyword and meaning breakdown", () => {
+    const file = makeFile({
+      relevanceTier: "high",
+      maxScore: 0.88,
+      chunks: [
+        {
+          filename: "test.pdf",
+          mimetype: "application/pdf",
+          page: 1,
+          text: "Sample text with keywords",
+          highlights: [
+            "<mark>keyword</mark> 1",
+            "<mark>keyword</mark> 2",
+            "<mark>keyword</mark> 3",
+          ],
+          score: 0.88,
+        },
+      ],
+      chunkCount: 1,
+    });
+    const breakdown = getRelevanceReasoning(file);
+    expect(breakdown.title).toBe("Why it's ranked High");
+    expect(breakdown.keywordMentionCount).toBe(3);
+    expect(breakdown.keywordTier).toBe("high");
+    expect(breakdown.meaningTier).toBe("high");
+    expect(breakdown.reasoning).toBeTruthy();
   });
 });
 

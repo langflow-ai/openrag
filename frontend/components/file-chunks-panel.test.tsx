@@ -367,11 +367,8 @@ describe("FileChunksPanel — hideIrrelevant", () => {
       ).toBeInTheDocument(),
     );
 
-    // Badge must say "Semantically relevant (100%)" — 100% because it's the only scored chunk.
-    expect(
-      screen.getByText("Semantically relevant (100%)"),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("100% relevance")).not.toBeInTheDocument();
+    // Unified badge displays the wifi signal icon with 100%.
+    expect(screen.getByText("100%")).toBeInTheDocument();
 
     // c2 was not in the global search — must not appear.
     expect(

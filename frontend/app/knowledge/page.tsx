@@ -40,6 +40,13 @@ import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-b
 import { KnowledgePaginationFooter } from "@/components/knowledge-pagination-footer";
 import { KnowledgeSearchBar } from "@/components/knowledge-search-bar";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
+import {
+  getRelevanceReasoning,
+  getScoreTier,
+  RELEVANCE_PILL_STYLES,
+  RELEVANCE_TEXT_COLORS,
+  WifiSignalIcon,
+} from "@/components/relevance-signal-icon";
 import { RequirePermission } from "@/components/require-permission";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
@@ -265,105 +272,107 @@ export function buildChunksUrl(
   return `/knowledge/chunks?${params.toString()}`;
 }
 
-const TIER_STYLES: Record<RelevanceTier, { label: string; className: string }> =
-  {
-    high: {
-      label: "High",
-      className:
-        "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-emerald-500 text-emerald-700 bg-emerald-50 dark:border-emerald-400 dark:text-emerald-300 dark:bg-emerald-950/40",
-    },
-    medium: {
-      label: "Medium",
-      className:
-        "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-amber-500 text-amber-700 bg-amber-50 dark:border-amber-400 dark:text-amber-300 dark:bg-amber-950/40",
-    },
-    low: {
-      label: "Low",
-      className:
-        "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-slate-400 text-slate-600 bg-slate-50 dark:border-slate-500 dark:text-slate-400 dark:bg-slate-900/40",
-    },
-  };
-
-const SEMANTIC_TIER_STYLES: Record<
-  RelevanceTier,
-  { label: string; className: string }
-> = {
-  high: {
-    label: "High",
-    className:
-      "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-indigo-500 text-indigo-700 bg-indigo-50 dark:border-indigo-400 dark:text-indigo-300 dark:bg-indigo-950/40",
-  },
-  medium: {
-    label: "Medium",
-    className:
-      "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-purple-500 text-purple-700 bg-purple-50 dark:border-purple-400 dark:text-purple-300 dark:bg-purple-950/40",
-  },
-  low: {
-    label: "Low",
-    className:
-      "text-xs font-medium border px-2 py-0.5 rounded cursor-default border-violet-400 text-violet-700 bg-violet-50 dark:border-violet-500/40 dark:text-violet-300 dark:bg-violet-950/30",
-  },
-};
-
 export function RelevanceCellContent({ data }: { data?: File }) {
   const tier = data?.relevanceTier;
   if (!tier) return <span className="text-muted-foreground text-xs">—</span>;
 
-  const isSemantic = data?.isSemanticMatch;
-  const chunkTiers = data?.chunkTiers ?? { high: 0, medium: 0, low: 0 };
-  const total = data?.chunkCount ?? 0;
-  const pct =
-    typeof data?.maxScore === "number" ? Math.round(data.maxScore * 100) : null;
-
-  const { label, className } = isSemantic
-    ? SEMANTIC_TIER_STYLES[tier]
-    : TIER_STYLES[tier];
-  const badgeLabel = pct !== null ? `${label} (${pct}%)` : label;
+  const breakdown = getRelevanceReasoning(data);
+  const pct = breakdown.topChunkScorePct;
+  const badgeLabel = pct !== null ? `${pct}%` : "";
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className={className}>{badgeLabel}</span>
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full border cursor-default transition-colors",
+            RELEVANCE_PILL_STYLES[tier],
+          )}
+        >
+          <WifiSignalIcon tier={tier} size={13} />
+          {badgeLabel && <span>{badgeLabel}</span>}
+        </span>
       </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-64 text-left space-y-1">
-        <p className="font-medium">
-          {isSemantic ? "Meaning match" : "Relevance"}
-        </p>
-        <p className="text-muted-foreground text-xs">
-          {isSemantic
-            ? "Matched by meaning, not keywords. % shows how closely this file's concept aligns with your query."
-            : "% ranks this file against all results — 100% is the best match returned."}
-        </p>
-        <p className="text-xs mt-1">Matched chunks: {total}</p>
-        <p className="text-xs flex gap-3">
-          <span
-            className={
-              isSemantic
-                ? "text-indigo-600 dark:text-indigo-400"
-                : "text-emerald-600 dark:text-emerald-400"
-            }
-          >
-            ● High: {chunkTiers.high}
-          </span>
-          <span
-            className={
-              isSemantic
-                ? "text-purple-600 dark:text-purple-400"
-                : "text-amber-600 dark:text-amber-400"
-            }
-          >
-            ● Med: {chunkTiers.medium}
-          </span>
-          <span
-            className={
-              isSemantic
-                ? "text-violet-600 dark:text-violet-400"
-                : "text-slate-500"
-            }
-          >
-            ● Low: {chunkTiers.low}
-          </span>
-        </p>
+      <TooltipContent
+        side="top"
+        className="max-w-72 text-left p-3 space-y-2.5 bg-popover text-popover-foreground border border-border shadow-md"
+      >
+        <div>
+          <p className="font-semibold text-xs text-popover-foreground flex items-center gap-1.5">
+            <WifiSignalIcon tier={tier} size={14} />
+            <span>
+              Why it's ranked{" "}
+              <span className={RELEVANCE_TEXT_COLORS[tier]}>
+                {breakdown.tierLabel}
+              </span>
+            </span>
+          </p>
+          <p className="text-muted-foreground text-xs mt-1 leading-relaxed">
+            {breakdown.reasoning}
+          </p>
+        </div>
+
+        <div className="rounded-md border border-border/80 bg-muted/80 p-2.5 text-xs space-y-2 dark:bg-muted/40">
+          {/* Keyword row — flush left labels and stacked wifi icons */}
+          <div className="grid grid-cols-[58px_16px_1fr] items-center gap-2">
+            <span className="text-muted-foreground font-medium">Keyword:</span>
+            <WifiSignalIcon tier={breakdown.keywordTier} size={13} />
+            <span className="text-foreground text-xxs font-normal">
+              {breakdown.keywordMentionCount > 0 ? (
+                <>
+                  Mentioned{" "}
+                  <span
+                    className={cn(
+                      "font-semibold",
+                      RELEVANCE_TEXT_COLORS[breakdown.keywordTier],
+                    )}
+                  >
+                    {breakdown.keywordMentionCount}
+                  </span>{" "}
+                  time{breakdown.keywordMentionCount !== 1 ? "s" : ""}
+                </>
+              ) : (
+                <span className={RELEVANCE_TEXT_COLORS.low}>
+                  0 direct matches
+                </span>
+              )}
+            </span>
+          </div>
+
+          {/* Meaning row — flush left labels and stacked wifi icons */}
+          <div className="grid grid-cols-[58px_16px_1fr] items-center gap-2">
+            <span className="text-muted-foreground font-medium">Meaning:</span>
+            <WifiSignalIcon tier={breakdown.meaningTier} size={13} />
+            <span className="text-foreground text-xxs font-normal">
+              <span
+                className={cn(
+                  "font-semibold",
+                  RELEVANCE_TEXT_COLORS[breakdown.meaningTier],
+                )}
+              >
+                {breakdown.meaningDetail}
+              </span>
+            </span>
+          </div>
+
+          {/* Top score & matched chunks metadata */}
+          <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-border/50 text-muted-foreground text-xxs">
+            <span>Matched chunks: {breakdown.matchedChunksCount}</span>
+            {pct !== null && (
+              <span>
+                Top score:{" "}
+                <span
+                  className={cn(
+                    "font-semibold",
+                    RELEVANCE_TEXT_COLORS[getScoreTier(pct)],
+                  )}
+                >
+                  {pct}%
+                </span>
+              </span>
+            )}
+          </div>
+        </div>
       </TooltipContent>
     </Tooltip>
   );

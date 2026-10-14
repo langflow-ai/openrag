@@ -783,8 +783,6 @@ describe("TaskProvider — source-deleted overlays", () => {
       files: {
         "doc.pdf": {
           status: "running",
-          progress: 50,
-          source_url: "doc.pdf",
           filename: "doc.pdf",
         },
       },
@@ -796,8 +794,6 @@ describe("TaskProvider — source-deleted overlays", () => {
       files: {
         "doc.pdf": {
           status: "completed",
-          progress: 100,
-          source_url: "doc.pdf",
           filename: "doc.pdf",
         },
       },
