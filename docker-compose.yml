@@ -27,7 +27,7 @@ services:
       - opensearch-data:/usr/share/opensearch/data
     stop_grace_period: 2m
     healthcheck:
-      test: ["CMD-SHELL", "curl -ku admin:$$OPENSEARCH_PASSWORD 'https://localhost:9200/_cluster/health' -s | grep -qE '\"status\":\"(green|yellow)\"'"]
+      test: ["CMD-SHELL", "curl -ku \"admin:$$OPENSEARCH_INITIAL_ADMIN_PASSWORD\" 'https://localhost:9200/_cluster/health' -s | grep -qE '\"status\":\"(green|yellow)\"'"]
       interval: 15s
       timeout: 10s
       retries: 20
