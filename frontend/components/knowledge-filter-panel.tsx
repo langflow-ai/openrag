@@ -323,7 +323,7 @@ export function KnowledgeFilterPanel() {
                 />
               </div>
             </div>
-            <div className="text-xs min-h-[1.25rem]">
+            <div className="text-xs min-h-5">
               {nameError ? (
                 <span className="text-destructive">{nameError}</span>
               ) : (
@@ -450,7 +450,7 @@ export function KnowledgeFilterPanel() {
                       );
                       setResultLimit(newLimit);
                     }}
-                    className="h-6 text-xs text-right px-2 bg-muted/30 !border-0 rounded ml-auto focus:ring-0 focus:outline-none"
+                    className="h-6 text-xs text-right px-2 bg-muted/30 border-0! rounded ml-auto focus:ring-0 focus:outline-hidden"
                     style={{ width: "70px" }}
                   />
                 </div>
@@ -479,7 +479,7 @@ export function KnowledgeFilterPanel() {
                     onChange={(e) =>
                       setScoreThreshold(parseFloat(e.target.value) || 0)
                     }
-                    className="h-6 text-xs text-right px-2 bg-muted/30 !border-0 rounded ml-auto focus:ring-0 focus:outline-none"
+                    className="h-6 text-xs text-right px-2 bg-muted/30 border-0! rounded ml-auto focus:ring-0 focus:outline-hidden"
                     style={{ width: "70px" }}
                   />
                 </div>

@@ -16,7 +16,7 @@ export default function Nudges({
   const isCloudBrand = useIsCloudBrand();
 
   return (
-    <div className="flex-shrink-0 w-full">
+    <div className="shrink-0 w-full">
       <AnimatePresence>
         {nudges.length > 0 && (
           <motion.div
@@ -39,7 +39,7 @@ export default function Nudges({
                     onboarding || isCloudBrand
                       ? "text-foreground"
                       : "text-placeholder-foreground hover:text-foreground",
-                    "ibm-chat-bubble bg-background border hover:bg-background/50 px-2 py-1.5 rounded-lg text-sm transition-colors max-w-full break-words text-left",
+                    "ibm-chat-bubble bg-background border hover:bg-background/50 px-2 py-1.5 rounded-lg text-sm transition-colors max-w-full wrap-break-word text-left",
                   )}
                 >
                   {suggestion}

@@ -98,7 +98,7 @@ export const KnowledgeSearchBar = () => {
           <div
             title={selectedFilter.name}
             className={cn(
-              "flex h-full flex-shrink-0 items-center gap-1.5 border-r border-border px-2 max-w-[200px]",
+              "flex h-full shrink-0 items-center gap-1.5 border-r border-border px-2 max-w-[200px]",
               filterAccentClasses[parsedFilterData?.color || "zinc"],
             )}
           >
@@ -108,7 +108,7 @@ export const KnowledgeSearchBar = () => {
             <button
               type="button"
               aria-label="Remove filter"
-              className="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center opacity-80 transition-opacity hover:opacity-100"
+              className="inline-flex h-4 w-4 shrink-0 items-center justify-center opacity-80 transition-opacity hover:opacity-100"
               onClick={() => setSelectedFilter(null)}
             >
               <X className="h-3.5 w-3.5" />
@@ -116,9 +116,9 @@ export const KnowledgeSearchBar = () => {
           </div>
         )}
 
-        <div className="flex h-full flex-shrink-0 items-center justify-center">
+        <div className="flex h-full shrink-0 items-center justify-center">
           <Search
-            className="h-4 w-4 m-4 text-[var(--icon-secondary)]"
+            className="h-4 w-4 m-4 text-(--icon-secondary)"
             strokeWidth={1.75}
           />
         </div>
@@ -133,14 +133,14 @@ export const KnowledgeSearchBar = () => {
             onChange={(e: ChangeEvent<HTMLInputElement>) =>
               setSearchQueryInput(e.target.value)
             }
-            className="h-full w-full bg-transparent text-sm text-foreground placeholder:text-[hsl(var(--placeholder))] focus:outline-none focus:ring-0"
+            className="h-full w-full bg-transparent text-sm text-foreground placeholder:text-[hsl(var(--placeholder))] focus:outline-hidden focus:ring-0"
           />
           {searchQueryInput && (
             <button
               type="button"
               aria-label="Clear search"
               onClick={handleReset}
-              className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <X className="h-4 w-4" />
             </button>
@@ -153,7 +153,7 @@ export const KnowledgeSearchBar = () => {
             )}
             type="submit"
           >
-            <ArrowRight className="h-4 w-4 text-[var(--icon-primary)]" />
+            <ArrowRight className="h-4 w-4 text-(--icon-primary)" />
           </Button>
         </div>
         <Button
@@ -164,11 +164,11 @@ export const KnowledgeSearchBar = () => {
             syncAllPreviewMutation.isPending
           }
           size="icon"
-          className="h-auto flex-shrink-0 rounded-none hover:bg-accent hover:text-foreground"
+          className="h-auto shrink-0 rounded-none hover:bg-accent hover:text-foreground"
           aria-label="Sync"
           onClick={handleOpenSyncDialog}
         >
-          <RefreshCw className="h-4 w-4 m-4 text-[var(--icon-primary)]" />
+          <RefreshCw className="h-4 w-4 m-4 text-(--icon-primary)" />
         </Button>
         <RequirePermission perm="config:write">
           <Button
@@ -180,7 +180,7 @@ export const KnowledgeSearchBar = () => {
                 ? "Refreshing docs..."
                 : "Fetch latest docs"
             }
-            className="h-auto flex-shrink-0 rounded-none px-3 text-sm hover:bg-accent hover:text-foreground gap-2"
+            className="h-auto shrink-0 rounded-none px-3 text-sm hover:bg-accent hover:text-foreground gap-2"
             onClick={async () => {
               try {
                 toast.info("Refreshing OpenRAG docs...");
@@ -195,7 +195,7 @@ export const KnowledgeSearchBar = () => {
               }
             }}
           >
-            <Download className="h-4 w-4 flex-shrink-0" />
+            <Download className="h-4 w-4 shrink-0" />
             <span className="hidden lg:inline">
               {refreshOpenragDocsMutation.isPending
                 ? "Refreshing docs..."

@@ -26,7 +26,7 @@ export function Message({
         }
       >
         <div className="flex-1 min-w-0">{children}</div>
-        {actions && <div className="flex-shrink-0 ml-2">{actions}</div>}
+        {actions && <div className="shrink-0 ml-2">{actions}</div>}
       </div>
     </div>
   );

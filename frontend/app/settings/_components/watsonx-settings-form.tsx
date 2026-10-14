@@ -80,7 +80,7 @@ export function WatsonxSettingsForm({
           />
         </LabelWrapper>
         {errors.endpoint && (
-          <p className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]">
+          <p className="text-sm text-destructive min-w-0 wrap-anywhere">
             {errors.endpoint.message}
           </p>
         )}
@@ -97,7 +97,7 @@ export function WatsonxSettingsForm({
               required: "Project ID is required",
             })}
             className={
-              errors.projectId || modelsError ? "!border-destructive" : ""
+              errors.projectId || modelsError ? "border-destructive!" : ""
             }
             id="project-id"
             type="text"
@@ -105,7 +105,7 @@ export function WatsonxSettingsForm({
           />
         </LabelWrapper>
         {errors.projectId && (
-          <p className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]">
+          <p className="text-sm text-destructive min-w-0 wrap-anywhere">
             {errors.projectId.message}
           </p>
         )}
@@ -122,7 +122,7 @@ export function WatsonxSettingsForm({
               required: "API key is required",
             })}
             className={
-              errors.apiKey || modelsError ? "!border-destructive" : ""
+              errors.apiKey || modelsError ? "border-destructive!" : ""
             }
             id="api-key"
             type="password"
@@ -131,7 +131,7 @@ export function WatsonxSettingsForm({
           />
         </LabelWrapper>
         {errors.apiKey && (
-          <p className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]">
+          <p className="text-sm text-destructive min-w-0 wrap-anywhere">
             {errors.apiKey.message}
           </p>
         )}
@@ -143,7 +143,7 @@ export function WatsonxSettingsForm({
         {modelsError && (
           <p
             data-testid="provider-connection-error"
-            className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]"
+            className="text-sm text-destructive min-w-0 wrap-anywhere"
           >
             {modelsError.message}
           </p>

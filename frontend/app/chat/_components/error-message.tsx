@@ -26,7 +26,7 @@ export function ErrorMessage({
     >
       <Message
         icon={
-          <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 select-none">
+          <div className="w-8 h-8 flex items-center justify-center shrink-0 select-none">
             <DogIcon
               className="h-6 w-6 transition-colors duration-300"
               disabled={false}
@@ -36,7 +36,7 @@ export function ErrorMessage({
       >
         <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4">
           <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+            <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
             <div className="flex-1">
               <p className="text-sm text-destructive font-medium mb-1">Error</p>
               <p className="text-sm text-muted-foreground">{content}</p>

@@ -217,7 +217,7 @@ function DoclingDocSkeleton({ expanded = false }: { expanded?: boolean }) {
       aria-busy="true"
       aria-label="Loading document layout"
     >
-      <div className="min-h-full rounded-lg border border-border/60 bg-background p-4 shadow-sm space-y-5">
+      <div className="min-h-full rounded-lg border border-border/60 bg-background p-4 shadow-xs space-y-5">
         <SkeletonChunk
           label="Header"
           lines={[
@@ -498,7 +498,7 @@ function DemoChunksList({
               </Badge>
             </div>
             {showContents ? (
-              <blockquote className="min-w-0 text-xs text-foreground leading-relaxed break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
+              <blockquote className="min-w-0 text-xs text-foreground leading-relaxed wrap-break-word wrap-anywhere whitespace-pre-wrap">
                 {chunk.text_preview}
               </blockquote>
             ) : (
@@ -703,7 +703,7 @@ function PreviewFileSelector({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="min-w-[260px] w-[var(--radix-popover-trigger-width)] p-0"
+        className="min-w-[260px] w-(--radix-popover-trigger-width) p-0"
         align="start"
       >
         <Command>
@@ -1167,7 +1167,7 @@ function IngestReviewToolbar({
             hideSubmit
             placeholder="Search chunks…"
             className="max-w-none w-full"
-            inputClassName="rounded-full !min-h-9"
+            inputClassName="rounded-full min-h-9!"
           />
         </div>
       ) : (
@@ -1439,7 +1439,7 @@ export function IngestReviewDialog({
           type="button"
           onClick={() => setExpanded((prev) => !prev)}
           aria-label={expanded ? "Shrink review" : "Expand review"}
-          className="absolute right-11 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          className="absolute right-11 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2"
         >
           {expanded ? (
             <Minimize2 className="h-4 w-4" />

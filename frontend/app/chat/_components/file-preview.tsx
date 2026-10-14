@@ -31,7 +31,7 @@ export const FilePreview = ({
   return (
     <div className="max-w-[250px] flex items-center gap-2 p-2 bg-muted rounded-lg">
       {/* File Image Preview */}
-      <div className="flex-shrink-0 w-8 h-8 bg-background rounded border border-input flex items-center justify-center overflow-hidden">
+      <div className="shrink-0 w-8 h-8 bg-background rounded border border-input flex items-center justify-center overflow-hidden">
         {isUploading ? (
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
         ) : getFilePreviewUrl(uploadedFile) ? (
@@ -65,7 +65,7 @@ export const FilePreview = ({
         variant="ghost"
         size="iconSm"
         onClick={onClear}
-        className="flex-shrink-0 h-8 w-8 p-0 rounded-md hover:bg-background/50"
+        className="shrink-0 h-8 w-8 p-0 rounded-md hover:bg-background/50"
       >
         <X className="h-4 w-4" />
       </Button>

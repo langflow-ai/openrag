@@ -89,7 +89,7 @@ export function AnimatedProviderSteps({
               />
             </div>
 
-            <span className="!text-mmd font-medium text-muted-foreground">
+            <span className="text-mmd! font-medium text-muted-foreground">
               {hasError ? "Error" : isDone ? "Done" : "Thinking"}
             </span>
           </div>

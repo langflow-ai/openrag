@@ -204,7 +204,7 @@ export function ComponentCard({ component }: { component: ComponentStatus }) {
               {status}
             </span>
             {version && (
-              <span className="text-[11px] text-zinc-500">• v{version}</span>
+              <span className="text-xxs text-zinc-500">• v{version}</span>
             )}
           </div>
           {message && (
@@ -214,7 +214,7 @@ export function ComponentCard({ component }: { component: ComponentStatus }) {
 
         <div className="flex items-center gap-2 shrink-0">
           {latency_ms != null && (
-            <span className="text-[11px] text-zinc-500 tabular-nums">
+            <span className="text-xxs text-zinc-500 tabular-nums">
               {latency_ms}ms
             </span>
           )}

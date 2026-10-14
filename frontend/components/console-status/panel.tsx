@@ -58,7 +58,7 @@ function SummaryCard({
   const { text } = statusTokens(state);
   return (
     <div className="flex-1 rounded-lg bg-zinc-800/60 border border-zinc-700/50 px-3 py-2.5">
-      <p className="text-[11px] font-medium text-zinc-400 uppercase tracking-wide">
+      <p className="text-xxs font-medium text-zinc-400 uppercase tracking-wide">
         {label}
       </p>
       <p className={cn("text-2xl font-semibold mt-0.5", text)}>{count}</p>
@@ -166,7 +166,7 @@ export function ConsoleStatusPanel({
             "fixed right-6 z-40",
             "w-[440px] flex flex-col",
             "bg-zinc-900 border border-zinc-700/70 rounded-2xl shadow-2xl overflow-hidden",
-            "outline-none",
+            "outline-hidden",
           )}
           style={{
             top: panelTop,

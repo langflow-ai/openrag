@@ -237,7 +237,7 @@ export function IBMOnboarding({
             <LabelInput
               label="watsonx API key"
               helperText="API key to access watsonx.ai"
-              className={showModelsError ? "!border-destructive" : ""}
+              className={showModelsError ? "border-destructive!" : ""}
               id="api-key"
               type="password"
               required

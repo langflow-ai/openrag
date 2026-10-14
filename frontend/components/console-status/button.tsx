@@ -32,7 +32,7 @@ export function ConsoleStatusButton({
         "relative flex items-center gap-2 rounded-lg transition-colors",
         isNarrow
           ? "h-8 w-8 justify-center hover:bg-muted"
-          : "px-3 py-2 bg-muted border border-border text-foreground text-sm font-medium hover:bg-muted/80 hover:border-muted-foreground/40 shadow-sm",
+          : "px-3 py-2 bg-muted border border-border text-foreground text-sm font-medium hover:bg-muted/80 hover:border-muted-foreground/40 shadow-xs",
         !isNarrow && isOpen && "bg-muted/80 border-muted-foreground/40",
       )}
     >

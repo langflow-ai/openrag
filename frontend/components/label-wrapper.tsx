@@ -43,7 +43,7 @@ export function LabelWrapper({
           htmlFor={id}
           className={cn(
             "font-medium flex items-center gap-1.5",
-            description ? "!text-sm" : "!text-mmd",
+            description ? "text-sm!" : "text-mmd!",
           )}
           data-disabled={disabled}
         >

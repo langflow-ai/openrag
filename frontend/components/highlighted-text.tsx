@@ -33,7 +33,7 @@ function parseFragment(fragment: string, keyPrefix: string): React.ReactNode {
       return (
         <mark
           key={key}
-          className="bg-yellow-200 dark:bg-yellow-800 text-foreground rounded-[2px] px-[1px] not-italic"
+          className="bg-yellow-200 dark:bg-yellow-800 text-foreground rounded-[2px] px-px not-italic"
         >
           {inner}
         </mark>

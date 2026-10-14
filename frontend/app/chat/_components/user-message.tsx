@@ -35,7 +35,7 @@ export function UserMessage({
     >
       <Message
         icon={
-          <Avatar className="w-8 h-8 rounded-lg flex-shrink-0 select-none">
+          <Avatar className="w-8 h-8 rounded-lg shrink-0 select-none">
             <AvatarImage
               draggable={false}
               src={user?.picture}
@@ -61,14 +61,14 @@ export function UserMessage({
         }
       >
         {files && (
-          <p className="text-muted-foreground flex items-center gap-2 font-normal text-mmd py-1.5 whitespace-pre-wrap break-words overflow-wrap-anywhere transition-colors duration-300">
+          <p className="text-muted-foreground flex items-center gap-2 font-normal text-mmd py-1.5 whitespace-pre-wrap wrap-break-word overflow-wrap-anywhere transition-colors duration-300">
             <FileText className="h-4 w-4" />
             {files}
           </p>
         )}
         <p
           className={cn(
-            "text-foreground text-sm py-1.5 whitespace-pre-wrap break-words overflow-wrap-anywhere transition-colors duration-300",
+            "text-foreground text-sm py-1.5 whitespace-pre-wrap wrap-break-word overflow-wrap-anywhere transition-colors duration-300",
             isCompleted ? "text-placeholder-foreground" : "text-foreground",
           )}
           data-testid="user-message"
