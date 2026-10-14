@@ -106,7 +106,7 @@ function pruneNonDeletableGridSelection(
 }
 
 // Function to get the appropriate icon for a connector type
-function getSourceIcon(connectorType?: string) {
+export function getSourceIcon(connectorType?: string) {
   if (connectorType) {
     const Icon = getConnectorDescriptor(connectorType)?.Icon;
     if (Icon) return <Icon className="h-4 w-4 text-foreground shrink-0" />;
