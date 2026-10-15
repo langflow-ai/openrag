@@ -152,6 +152,35 @@ class TestFoundryEndpointShapes:
             )
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "api_base",
+        [
+            "https://contoso.openai.azure.com/openai/deployments/gpt-4o",
+            # As pasted from the portal, with the call path and the version
+            # that makes it valid. Normalization strips both, so what reaches
+            # the classifier is the bare deployment URI either way.
+            "https://contoso.openai.azure.com/openai/deployments/gpt-4o/chat/completions"
+            "?api-version=2024-02-01",
+        ],
+    )
+    async def test_a_single_deployment_target_uri_is_refused(self, monkeypatch, api_base) -> None:
+        """It classifies, so the `unknown` check alone let it through.
+
+        The URI pins every call to the deployment baked into it, so the model
+        chosen in the picker would be ignored, and the `api-version` this API
+        dates itself with does not survive normalization — the URL built from
+        it is rejected upstream during ingestion. Refused here instead, where
+        it still reads as a configuration error.
+        """
+        with pytest.raises(DoclingServeError, match="single deployment's Target URI"):
+            await _options(
+                monkeypatch,
+                "azure_ai",
+                {"api_base": api_base, "api_key": SECRET, "api_version": "2024-02-01"},
+                "gpt-4o",
+            )
+
+    @pytest.mark.asyncio
     async def test_a_cleartext_endpoint_is_refused(self, monkeypatch) -> None:
         with pytest.raises(DoclingServeError, match="HTTPS"):
             await _options(
@@ -211,6 +240,13 @@ class TestTheCredentialDoesNotEscape:
             ),
             ("azure", {"api_base": "http://contoso.openai.azure.com", "api_key": SECRET}),
             ("azure_ai", {"api_base": "", "api_key": SECRET}),
+            (
+                "azure_ai",
+                {
+                    "api_base": "https://contoso.openai.azure.com/openai/deployments/gpt-4o",
+                    "api_key": SECRET,
+                },
+            ),
         ],
     )
     async def test_no_rejection_message_contains_the_key(

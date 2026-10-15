@@ -484,6 +484,20 @@ class DoclingService:
                         f"Docling VLM cannot use this Azure AI Foundry endpoint. "
                         f"{foundry.UNSUPPORTED_ENDPOINT_MESSAGE}"
                     )
+                if profile == "legacy_deployment_uri":
+                    # A per-deployment Target URI. The gateway still routes this
+                    # shape, for installs configured before it was refused at
+                    # save time, but VLM cannot use it: the URI pins the call to
+                    # the one deployment baked into it, so the model chosen in
+                    # the picker is silently ignored. The version this API dates
+                    # itself with is dropped by normalization too, so the URL
+                    # built from it would be rejected upstream regardless —
+                    # refused here, where it can still be read as a
+                    # configuration error rather than an ingestion failure.
+                    raise DoclingServeError(
+                        f"Docling VLM cannot use this Azure AI Foundry endpoint. "
+                        f"{foundry.DEPLOYMENT_URI_MESSAGE}"
+                    )
                 chat_base = endpoint
                 if profile == "legacy_models" and not endpoint.rstrip("/").endswith("/models"):
                     # The resource root on the legacy surface: inference hangs

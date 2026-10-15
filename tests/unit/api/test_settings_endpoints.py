@@ -140,6 +140,111 @@ def test_custom_provider_payload_keeps_legacy_openai_secret():
     assert payload["openai"].credential_values["organization"] == "org-1"
 
 
+async def _vlm_gate_response(config, provider: str):
+    """Run `update_settings` with VLM on, returning whatever the gate answers."""
+    from unittest.mock import patch
+
+    from api.settings.endpoints import update_settings
+
+    config.edited = True
+    body = SettingsUpdateBody(
+        vlm_enabled=True,
+        vlm_provider=provider,
+        vlm_model=f"{provider}/gpt-4.1",
+    )
+    models_service = MagicMock()
+    models_service.validate_model_configured = AsyncMock(return_value=True)
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.config_manager.save_config_file", return_value=True),
+        patch("api.settings.endpoints.clients.refresh_patched_client", new_callable=AsyncMock),
+    ):
+        return await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=models_service,
+            rbac=rbac,
+        )
+
+
+def _error_text(response) -> str:
+    import json
+
+    return json.loads(bytes(response.body).decode())["error"]
+
+
+@pytest.mark.asyncio
+async def test_update_settings_vlm_configured_without_a_key_says_so():
+    """A provider can be fully configured and still have no API key.
+
+    Azure OpenAI requires only `api_base`, so a service-principal or Entra
+    configuration is `configured` with no key at all. docling-serve calls the
+    model endpoint itself and only ever builds an API-key header, so VLM still
+    cannot run — but telling the operator the provider "is not configured"
+    sends them to re-enter credentials that are already valid. The two gates
+    are separate so the message can name the real limitation.
+    """
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.providers.set_credentials(
+        "azure",
+        {
+            "api_base": "https://example.openai.azure.com",
+            "tenant_id": "t",
+            "client_id": "c",
+            "client_secret": "s",
+        },
+        auth_method="service_principal",
+    )
+    assert config.providers.custom["azure"].configured, "precondition: configured without a key"
+
+    response = await _vlm_gate_response(config, "azure")
+
+    assert response.status_code == 400
+    message = _error_text(response)
+    assert "authenticates with an API key" in message
+    assert "is not configured" not in message
+
+
+@pytest.mark.asyncio
+async def test_update_settings_vlm_unconfigured_provider_says_not_configured():
+    """The other half of the split: nothing is set, so the first gate answers."""
+    from config.config_manager import OpenRAGConfig
+
+    response = await _vlm_gate_response(OpenRAGConfig.from_dict({}), "azure_ai")
+
+    assert response.status_code == 400
+    message = _error_text(response)
+    assert "is not configured" in message
+    assert "authenticates with an API key" not in message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["azure", "azure_ai"])
+async def test_update_settings_vlm_azure_without_an_endpoint_is_not_configured(provider):
+    """Both Azure providers need an endpoint, whatever `configured` claims.
+
+    A config can carry `configured: true` with no `api_base` — the flag is
+    read from the file rather than recomputed — and neither provider can be
+    called without one.
+    """
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict(
+        {"providers": {"custom": {provider: {"configured": True, "credentials": {"api_key": "k"}}}}}
+    )
+
+    response = await _vlm_gate_response(config, provider)
+
+    assert response.status_code == 400
+    assert "is not configured" in _error_text(response)
+
+
 @pytest.mark.asyncio
 async def test_update_settings_vlm_azure_configured():
     """Test that update_settings allows enabling VLM with azure when azure credentials are configured."""
