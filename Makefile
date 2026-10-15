@@ -17,7 +17,7 @@ IMG ?= ghcr.io/langflow-ai/openrag-operator:latest
 ENVTEST_K8S_VERSION = 1.33.0
 
 # Go 1.26.4 via gvm — set PATH and GOROOT so sub-shells pick the right toolchain.
-GVM_GO_VERSION   ?= go1.26.4
+GVM_GO_VERSION   ?= go1.27.2
 GVM_GO_ROOT      := $(HOME)/.gvm/gos/$(GVM_GO_VERSION)
 ifneq ($(wildcard $(GVM_GO_ROOT)/bin/go),)
   export GOROOT := $(GVM_GO_ROOT)
@@ -164,8 +164,8 @@ ENVTEST              ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT        ?= $(LOCALBIN)/golangci-lint
 
 KUSTOMIZE_VERSION          ?= v5.4.3
-CONTROLLER_TOOLS_VERSION   ?= v0.16.4
-ENVTEST_VERSION            ?= release-0.19
+CONTROLLER_TOOLS_VERSION   ?= v0.17.2
+ENVTEST_VERSION            ?= release-0.21
 GOLANGCI_LINT_VERSION      ?= v2.11.4
 
 .PHONY: deps
