@@ -102,6 +102,26 @@ describe("looksLikeProviderErrorContent", () => {
     );
   });
 
+  /** Recognize relayed SDK dictionaries as errors even without credential markers. */
+  it("detects an OpenAI SDK error printed as a Python dict", () => {
+    assert.equal(
+      looksLikeProviderErrorContent(
+        `Error code: 400 - {'error': {'message': "This model's maximum context length is 512 tokens.", 'code': 'context_length_exceeded'}}`,
+      ),
+      true,
+    );
+  });
+
+  /** Allow ordinary assistant replies to contain dictionary examples. */
+  it("does not flag a reply that shows a dict with no error key", () => {
+    assert.equal(
+      looksLikeProviderErrorContent(
+        "Send {'message': 'hello', 'user': 'ana'} as the request body.",
+      ),
+      false,
+    );
+  });
+
   it("flags the exact generic stream fallback message", () => {
     assert.equal(
       looksLikeProviderErrorContent(
@@ -196,6 +216,7 @@ describe("formatProviderErrorMessage", () => {
     "'intfloat/multilingual-e5-large': This model's maximum context length is 512 " +
     "tokens. However, you requested 548 tokens in the input for embedding generation.";
 
+  /** Preserve the provider's diagnosis through SDK and Langflow wrappers. */
   it("reads the message out of an OpenAI SDK error printed as a Python dict", () => {
     assert.equal(
       formatProviderErrorMessage(
@@ -211,6 +232,7 @@ describe("formatProviderErrorMessage", () => {
     );
   });
 
+  /** Restore escaped apostrophes without losing embedded double quotes. */
   it("unescapes a single-quoted Python message", () => {
     assert.equal(
       formatProviderErrorMessage(
@@ -220,6 +242,7 @@ describe("formatProviderErrorMessage", () => {
     );
   });
 
+  /** Keep an unreadable payload rather than reducing it to a bare status code. */
   it("keeps the whole string when the prefix is only a status code", () => {
     const raw = "Error code: 502 - {'error': <object at 0x1>}";
     assert.equal(
@@ -228,6 +251,7 @@ describe("formatProviderErrorMessage", () => {
     );
   });
 
+  /** Leave prose mentioning a message field intact when it is not an error object. */
   it("does not read a message out of prose that merely mentions one", () => {
     const raw = "The reply had 'message': 'hello' in it";
     assert.equal(formatProviderErrorMessage(raw), raw);

@@ -345,6 +345,7 @@ class TestInferFailureMetadata:
     def test_chunk_too_long_states_only_the_counts_the_provider_gave(
         self, task_service, error, size
     ):
+        """Report embedding overflow as actionable using only known token counts."""
         ft = _make_file_task(
             phase=IngestionPhase.LANGFLOW, docling_status=DoclingPhaseStatus.SUCCESS, error=error
         )

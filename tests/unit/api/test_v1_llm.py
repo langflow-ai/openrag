@@ -98,6 +98,7 @@ async def test_chat_completions_streams(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_chat_completions_maps_gateway_errors(monkeypatch):
+    """Return gateway failures without inventing a code for an unclassified error."""
     monkeypatch.setattr(
         v1_llm,
         "chat_completions",
@@ -139,6 +140,7 @@ async def test_embeddings_reports_an_over_length_input_as_a_coded_400(monkeypatc
 
 @pytest.mark.asyncio
 async def test_a_classified_upstream_failure_carries_its_code(monkeypatch):
+    """Preserve the classified upstream status and code in an embeddings response."""
     monkeypatch.setattr(
         v1_llm,
         "embeddings",

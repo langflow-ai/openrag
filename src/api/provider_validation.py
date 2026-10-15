@@ -309,6 +309,9 @@ def is_generic_upstream_error(text: str | BaseException | None) -> bool:
     return lowered in generics
 
 
+_ERROR_OBJECT_KEY_RE = re.compile(r"[\"'](?:error|errormessage|errorcode|errors)[\"']")
+
+
 def looks_like_provider_error_content(text: str | None) -> bool:
     """True when assistant text looks like a provider/auth failure rather than a normal reply."""
     if not text or not text.strip():
@@ -321,13 +324,9 @@ def looks_like_provider_error_content(text: str | None) -> bool:
     lowered = content.lower()
     if any(marker in lowered for marker in _PROVIDER_ERROR_CONTENT_MARKERS):
         return True
-    # Raw provider payloads often embed JSON error objects.
-    if "{" in content and (
-        '"error"' in lowered
-        or '"errormessage"' in lowered
-        or '"errorcode"' in lowered
-        or '"errors"' in lowered
-    ):
+    # Raw provider payloads often embed an error object: as JSON, or as the
+    # Python dict the OpenAI SDK prints (`Error code: 400 - {'error': {...}}`).
+    if "{" in content and _ERROR_OBJECT_KEY_RE.search(lowered):
         return True
     return False
 
