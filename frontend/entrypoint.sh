@@ -32,7 +32,11 @@ ESCAPED_TARGET_PATH="$(printf '%s' "$TARGET_PATH" | sed 's/[\\&|]/\\&/g')"
 # `basePath` is present in server output and browser chunks. `server.js` is
 # included for completeness when the standalone output changes between Next
 # versions. The image filesystem is writable by the runtime UID.
-find .next public server.js -type f 2>/dev/null \
-  -exec sed -i "s|${PLACEHOLDER}|${ESCAPED_TARGET_PATH}|g" {} +
+if ! find .next public server.js -type f 2>/dev/null \
+  -exec sed -i "s|${PLACEHOLDER}|${ESCAPED_TARGET_PATH}|g" {} +; then
+  echo "Unable to apply OPENRAG_FRONTEND_BASE_PATH: frontend assets are not writable." >&2
+  echo "Use a writable application filesystem, or mount a writable volume at /opt/app-root/src." >&2
+  exit 1
+fi
 
 exec "$@"
