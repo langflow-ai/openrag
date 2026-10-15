@@ -5,6 +5,7 @@ PLACEHOLDER="/NEXT_PUBLIC_BASE_PATH_PLACEHOLDER_a1b2c3d4"
 
 # OPENRAG_FRONTEND_BASE_PATH is the documented OpenRAG setting.
 TARGET_PATH="${OPENRAG_FRONTEND_BASE_PATH:-}"
+TARGET_PATH="$(printf '%s' "$TARGET_PATH" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 
 if [ "$TARGET_PATH" = "/" ]; then
   TARGET_PATH=""
@@ -26,7 +27,7 @@ fi
 echo "Replacing frontend base-path placeholder with: '${TARGET_PATH}'"
 
 # Escape replacement metacharacters while keeping '/' valid in the path.
-ESCAPED_TARGET_PATH="$(printf '%s' "$TARGET_PATH" | sed 's/[\\&|]/\\\\&/g')"
+ESCAPED_TARGET_PATH="$(printf '%s' "$TARGET_PATH" | sed 's/[\\&|]/\\&/g')"
 
 # `basePath` is present in server output and browser chunks. `server.js` is
 # included for completeness when the standalone output changes between Next

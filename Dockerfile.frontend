@@ -26,6 +26,10 @@ FROM registry.access.redhat.com/ubi10/nodejs-24-minimal AS builder
 WORKDIR /opt/app-root/src
 USER 0
 
+# Restrict the placeholder to container image builds. Local `npm run build`
+# continues to compile the configured base path directly.
+ENV OPENRAG_FRONTEND_RUNTIME_BASE_PATH=true
+
 COPY --from=deps /opt/app-root/src/node_modules ./node_modules
 COPY --from=deps /opt/app-root/src/stubs ./stubs
 COPY frontend/package*.json ./

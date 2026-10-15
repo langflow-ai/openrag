@@ -60,10 +60,12 @@ function getAllowedDevOrigins(): string[] {
 }
 
 const createNextConfig = (phase: string): NextConfig => {
+  const useRuntimeBasePathPlaceholder =
+    process.env.OPENRAG_FRONTEND_RUNTIME_BASE_PATH === "true";
   const frontendBasePath =
-    phase === PHASE_DEVELOPMENT_SERVER
-      ? normalizeFrontendBasePath(process.env.OPENRAG_FRONTEND_BASE_PATH)
-      : RUNTIME_BASE_PATH_PLACEHOLDER;
+    phase !== PHASE_DEVELOPMENT_SERVER && useRuntimeBasePathPlaceholder
+      ? RUNTIME_BASE_PATH_PLACEHOLDER
+      : normalizeFrontendBasePath(process.env.OPENRAG_FRONTEND_BASE_PATH);
 
   return {
     // `basePath` is compiled into the browser bundle. The same value is exposed
