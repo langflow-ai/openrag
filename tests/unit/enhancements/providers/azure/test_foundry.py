@@ -351,6 +351,20 @@ class TestCredentials:
         with pytest.raises(ValueError, match="credentials in the URL"):
             foundry.litellm_credentials({"api_base": api_base, "api_key": "k"})
 
+    def test_local_only_fields_never_reach_the_request_body(self) -> None:
+        """LiteLLM passes kwargs it does not recognise straight through."""
+        credentials = foundry.litellm_credentials(
+            {
+                "api_base": f"{RESOURCE}/openai/v1",
+                "api_key": "k",
+                "chat_deployments": "a, b",
+                "embedding_deployments": "c",
+                "vlm_deployments": "a",
+            }
+        )
+        for field in ("chat_deployments", "embedding_deployments", "vlm_deployments"):
+            assert field not in credentials
+
     @pytest.mark.parametrize("scheme", ["http", "ftp"])
     def test_a_cleartext_endpoint_is_refused(self, scheme) -> None:
         """Foundry is a public cloud service; there is no port-forward case.
@@ -363,6 +377,17 @@ class TestCredentials:
                 {"api_base": f"{scheme}://contoso.services.ai.azure.com/openai/v1", "api_key": "k"}
             )
 
+    def test_the_three_deployment_lists_are_independent(self) -> None:
+        """A flat list could not say which picker a name belongs in."""
+        stored = {
+            "chat_deployments": "chat-a, chat-b",
+            "embedding_deployments": "embed-a",
+            "vlm_deployments": "chat-a",
+        }
+        assert foundry.chat_deployments(stored) == ("chat-a", "chat-b")
+        assert foundry.embedding_deployments(stored) == ("embed-a",)
+        assert foundry.vlm_deployments(stored) == ("chat-a",)
+
 
 class TestCredentialForm:
     def test_every_secret_is_typed_so_it_is_encrypted_at_rest(self) -> None:
@@ -373,6 +398,20 @@ class TestCredentialForm:
         from services.model_catalog import secret_field_keys
 
         assert "api_key" in secret_field_keys("azure_ai")
+
+    def test_deployment_lists_are_configuration_not_credentials(self) -> None:
+        """`secret_field_keys` classifies by field type, not meaning.
+
+        A `textarea` would be encrypted at rest, leaving ciphertext in
+        config.yaml where plain configuration belongs. The form system has no
+        non-secret multiline type, so this is `text` until it does.
+        """
+        from services.model_catalog import credential_fields, secret_field_keys
+
+        fields = {f["key"]: f for f in credential_fields("azure_ai")}
+        for key in ("chat_deployments", "embedding_deployments", "vlm_deployments"):
+            assert key not in secret_field_keys("azure_ai"), key
+            assert fields[key]["field_type"] == "text", key
 
     def test_the_form_replaces_litellms_deployment_pinning_placeholder(self) -> None:
         """LiteLLM's own `api_base` placeholder is a per-deployment Target URI.
@@ -386,18 +425,25 @@ class TestCredentialForm:
         assert "/openai/v1" in (api_base["placeholder"] or "")
         assert "deployments/" not in (api_base["placeholder"] or "")
 
-    def test_the_form_asks_only_for_what_this_release_consumes(self) -> None:
-        """No field is offered that nothing reads.
+    def test_the_form_asks_for_each_kind_of_deployment_separately(self) -> None:
+        """A flat list cannot say which picker a name belongs in.
 
-        A deployment list belongs here eventually — the catalogue cannot know
-        names an operator chose — but the hook that would surface it does not
-        exist yet, and a form field that silently does nothing is worse than
-        its absence.
+        Foundry deployment names are operator-chosen — `vision-primary` and
+        `prod-embed` carry no machine-readable role — so the role has to be
+        stated rather than parsed out of the name.
         """
         from services.model_catalog import credential_fields
 
         keys = {field["key"] for field in credential_fields("azure_ai")}
-        assert keys == {"api_base", "api_key", "api_version"}
+        assert {
+            "api_base",
+            "api_key",
+            "api_version",
+            "chat_deployments",
+            "embedding_deployments",
+            "vlm_deployments",
+        } <= keys
+        assert "deployment_names" not in keys
 
 
 class TestModelsUrl:
