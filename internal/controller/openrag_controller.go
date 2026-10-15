@@ -923,6 +923,21 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 	if !metricsDisabled {
 		fePorts = append(fePorts, corev1.ContainerPort{Name: "metrics", ContainerPort: 9090})
 	}
+	frontendEnv := make([]corev1.EnvVar, 0, len(spec.Env)+2)
+	frontendEnv = append(frontendEnv,
+		corev1.EnvVar{Name: "OPENRAG_BACKEND_HOST", Value: getServiceName(o, "be")},
+		corev1.EnvVar{Name: "OPENRAG_FRONTEND_BASE_PATH", Value: spec.BasePath},
+	)
+	// BasePath owns this variable so a second value in Env cannot disagree with the probes.
+	for _, env := range spec.Env {
+		if env.Name != "OPENRAG_FRONTEND_BASE_PATH" {
+			frontendEnv = append(frontendEnv, env)
+		}
+	}
+	probePath := spec.BasePath
+	if probePath == "" {
+		probePath = "/"
+	}
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        instanceResourceName(o, "fe"),
@@ -960,13 +975,11 @@ func (r *OpenRAGReconciler) frontendDeployment(o *openragv1alpha1.OpenRAG, targe
 							Image:           spec.Image,
 							ImagePullPolicy: spec.ImagePullPolicy,
 							Ports:           fePorts,
-							Env: append([]corev1.EnvVar{
-								{Name: "OPENRAG_BACKEND_HOST", Value: getServiceName(o, "be")},
-							}, spec.Env...),
+							Env:             frontendEnv,
 							Resources:       spec.Resources,
 							SecurityContext: spec.SecurityContext,
-							LivenessProbe:   httpProbe("/", 3000, 30, 10),
-							ReadinessProbe:  httpProbe("/", 3000, 10, 5),
+							LivenessProbe:   httpProbe(probePath, 3000, 30, 10),
+							ReadinessProbe:  httpProbe(probePath, 3000, 10, 5),
 						},
 					}, spec.Sidecars...),
 				},

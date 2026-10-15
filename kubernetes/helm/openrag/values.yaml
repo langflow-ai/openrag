@@ -373,6 +373,19 @@ frontend:
     repository: langflowai/openrag-frontend
     tag: ""                               # Uses global.imageTag if empty
 
+  # URL prefix for the frontend (empty = root). Requires a frontend image with
+  # OPENRAG_FRONTEND_BASE_PATH runtime support. Use "/openrag" or nested
+  # "/workspace/openrag": slash-separated letters, digits, _ or -, no trailing /.
+  # Set ingress.hosts.frontend.paths to the same prefix with pathType: Prefix;
+  # do not configure an ingress rewrite/strip-prefix annotation.
+  basePath: ""
+
+  # Frontend-only overrides of global securityContext. The image owns writable
+  # Next.js files as 1001:0; other components keep the global UID/GID.
+  securityContext:
+    runAsUser: 1001
+    runAsGroup: 0
+
   # Can be multiple replicas (stateless)
   replicaCount: 2
 
@@ -522,6 +535,8 @@ ingress:
   hosts:
     frontend:
       host: ""                            # e.g., "openrag.example.com"
+      # For frontend.basePath: "/openrag", change the path below to /openrag.
+      # The ingress forwards the prefix unchanged; no rewrite annotation.
       paths:
         - path: /
           pathType: Prefix

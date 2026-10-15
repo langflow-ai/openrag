@@ -1,4 +1,8 @@
 {{- if .Values.frontend.enabled }}
+{{- $basePath := .Values.frontend.basePath | default "" | toString }}
+{{- if not (regexMatch "^$|^/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$" $basePath) }}
+{{- fail "frontend.basePath must be empty or an absolute path of slash-separated letters, digits, underscores or hyphens without a trailing slash (e.g. /openrag)" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -31,7 +35,7 @@ spec:
         - name: frontend
           image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag | default .Values.global.imageTag }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
-          {{- with .Values.securityContext }}
+          {{- with (mergeOverwrite (deepCopy .Values.securityContext) (.Values.frontend.securityContext | default dict)) }}
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -43,12 +47,14 @@ spec:
             # Backend connection (uses internal service name)
             - name: OPENRAG_BACKEND_HOST
               value: "{{ include "openrag.fullname" . }}-backend"
+            - name: OPENRAG_FRONTEND_BASE_PATH
+              value: {{ $basePath | quote }}
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
           {{- if .Values.frontend.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
-              path: /
+              path: {{ $basePath | default "/" | quote }}
               port: http
             initialDelaySeconds: {{ .Values.frontend.livenessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.frontend.livenessProbe.periodSeconds }}
@@ -58,7 +64,7 @@ spec:
           {{- if .Values.frontend.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
-              path: /
+              path: {{ $basePath | default "/" | quote }}
               port: http
             initialDelaySeconds: {{ .Values.frontend.readinessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.frontend.readinessProbe.periodSeconds }}

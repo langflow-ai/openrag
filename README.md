@@ -303,6 +303,7 @@ metadata:
 spec:
   frontend:
     image: langflowai/openrag-frontend:latest
+    # basePath: /openrag          # Optional; defaults to the root URL
   backend:
     image: langflowai/openrag-backend:latest
     envSecret: my-backend-env      # Secret with a ".env" key
@@ -325,6 +326,49 @@ spec:
 ```
 
 See [`config/samples/openrag_v1alpha1_openrag.yaml`](config/samples/openrag_v1alpha1_openrag.yaml) for a full annotated example.
+
+### Frontend URL prefixes
+
+For frontend images that support runtime `OPENRAG_FRONTEND_BASE_PATH` (the
+entrypoint-based image from OpenRAG PR #2505 or a newer compatible build), the
+Helm application chart accepts `frontend.basePath` and the operator CR accepts
+`spec.frontend.basePath`. Both default to `""` (root); for example:
+
+```yaml
+# kubernetes/helm/openrag values
+frontend:
+  basePath: /openrag
+ingress:
+  hosts:
+    frontend:
+      host: openrag.example.com
+      paths:
+        - path: /openrag
+          pathType: Prefix
+```
+
+Alternatively, set `spec.frontend.basePath: /openrag` on an operator-managed
+OpenRAG CR and configure the external frontend ingress to route `/openrag`
+with `Prefix` matching to the frontend Service. The operator does **not** create
+this ingress. In both modes the ingress must forward the original request path
+unchanged: do not strip `/openrag` or set a rewrite-target annotation. Use
+either an empty base path for `/`, or an absolute prefix starting with `/`
+whose slash-separated segments contain only letters, digits, `_`, and `-`.
+Do not use a trailing slash, including `/` as a base path (use an empty string for root);
+for example, `/openrag` or `/workspace/openrag` is accepted, while
+`/openrag/` is rejected. The probes target the prefix plus `/`. Keep backend
+ingress/API routing independent.
+
+The operator's `basePath` field owns `OPENRAG_FRONTEND_BASE_PATH` in the
+frontend container; do not also put that variable in `spec.frontend.env`.
+The runtime substitution happens in the image entrypoint, so custom commands
+that bypass the entrypoint, read-only image filesystems, or an overriding
+UID/GID that cannot write the image's `.next` files prevent it from working.
+The Helm frontend defaults to UID 1001/GID 0 to match the image's writable
+files (other components retain their global security context). Ensure the
+frontend image tag actually includes runtime base-path support before setting
+the prefix. With the default empty prefix, existing root-path routing remains
+unchanged.
 
 ## Release Process
 

@@ -22382,6 +22382,14 @@ spec:
                       (which do not talk to the Kubernetes API) and true for the backend pod.
                       Set explicitly to override the default.
                     type: boolean
+                  basePath:
+                    description: |-
+                      BasePath is the URL prefix served by the frontend image. Empty serves at /.
+                      Set the ingress path to the same prefix without rewriting it. This requires
+                      a frontend image with OPENRAG_FRONTEND_BASE_PATH runtime support; do not also
+                      set that variable through Env.
+                    pattern: ^$|^/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$
+                    type: string
                   command:
                     description: Command overrides the container's entrypoint.
                     items:

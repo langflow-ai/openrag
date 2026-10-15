@@ -949,6 +949,44 @@ func TestReconcile_FrontendEnvContainsBackendHost(t *testing.T) {
 	assert.Equal(t, instanceResourceName(cr, "be"), backendHost)
 }
 
+func TestReconcile_FrontendBasePathControlsRuntimeEnvAndProbes(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		basePath string
+		probe    string
+	}{
+		{name: "root", probe: "/"},
+		{name: "nested prefix", basePath: "/workspace/openrag", probe: "/workspace/openrag"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newScheme(t)
+			cr := minimalCR("my-openrag", "my-ns")
+			cr.Spec.Frontend.BasePath = tc.basePath
+			r, c := reconciler(s, cr)
+
+			reconcileOnce(t, r, cr)
+
+			d := &appsv1.Deployment{}
+			require.NoError(t, c.Get(context.Background(),
+				types.NamespacedName{Name: instanceResourceName(cr, "fe"), Namespace: "my-ns"}, d))
+			frontend := d.Spec.Template.Spec.Containers[0]
+			assert.Empty(t, frontend.Command, "the image entrypoint must perform the runtime substitution")
+			var basePathEnv []corev1.EnvVar
+			for _, env := range frontend.Env {
+				if env.Name == "OPENRAG_FRONTEND_BASE_PATH" {
+					basePathEnv = append(basePathEnv, env)
+				}
+			}
+			require.Len(t, basePathEnv, 1)
+			assert.Equal(t, tc.basePath, basePathEnv[0].Value)
+			require.NotNil(t, frontend.LivenessProbe.HTTPGet)
+			assert.Equal(t, tc.probe, frontend.LivenessProbe.HTTPGet.Path)
+			require.NotNil(t, frontend.ReadinessProbe.HTTPGet)
+			assert.Equal(t, tc.probe, frontend.ReadinessProbe.HTTPGet.Path)
+		})
+	}
+}
+
 func TestReconcile_BackendMountsOperatorManagedEnvSecret(t *testing.T) {
 	s := newScheme(t)
 	cr := minimalCR("my-openrag", "my-ns")

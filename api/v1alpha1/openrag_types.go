@@ -212,6 +212,14 @@ type ComponentSpec struct {
 // FrontendSpec configures the OpenRAG frontend (Next.js).
 type FrontendSpec struct {
 	ComponentSpec `json:",inline"`
+
+	// BasePath is the URL prefix served by the frontend image. Empty serves at /.
+	// Set the ingress path to the same prefix without rewriting it. This requires
+	// a frontend image with OPENRAG_FRONTEND_BASE_PATH runtime support; do not also
+	// set that variable through Env.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^$|^/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$`
+	BasePath string `json:"basePath,omitempty"`
 }
 
 // GoogleOAuthSpec holds Google OAuth2 client credentials.
