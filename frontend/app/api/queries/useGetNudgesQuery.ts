@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import axios from "axios";
 import { useChat } from "@/contexts/chat-context";
 import { apiClient } from "@/lib/api-client";
 import { useProviderHealthQuery } from "./useProviderHealthQuery";
@@ -83,7 +84,10 @@ export const useGetNudgesQuery = (
       return DEFAULT_NUDGES;
     } catch (error) {
       // Ignore abort errors - these are expected when requests are cancelled
-      if (error instanceof Error && error.name === "AbortError") {
+      if (
+        axios.isCancel(error) ||
+        (error instanceof Error && error.name === "AbortError")
+      ) {
         return DEFAULT_NUDGES;
       }
       console.error("Error getting nudges", error);
