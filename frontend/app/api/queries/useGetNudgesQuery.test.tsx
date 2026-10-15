@@ -8,8 +8,10 @@
  * falsy), so `useProviderHealthQuery` never fetches and `isLLMHealthy` stays
  * optimistically true without mocking /api/provider/health.
  */
+
+import axios from "axios";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { makeSettings } from "@/test-utils/fixtures/settings";
 import { server } from "@/test-utils/msw/server";
 import {
@@ -118,6 +120,29 @@ describe("useGetNudgesQuery", () => {
     expect(nudgeRequests).toBe(0);
     expect(result.current.data).toBeUndefined();
     expect(result.current.isLoading).toBe(false);
+  });
+
+  it("swallows an axios CanceledError and returns an empty list", async () => {
+    server.use(
+      http.post("/api/nudges", () => {
+        throw new axios.CanceledError("canceled");
+      }),
+    );
+
+    const consoleSpy = vi.spyOn(console, "error");
+
+    const { result } = renderHook(() => useGetNudgesQuery(), {
+      wrapper: createQueryWrapper({ providers: ["auth", "chat"] }),
+    });
+
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(result.current.isError).toBe(false);
+    expect(result.current.data).toEqual([]);
+    expect(consoleSpy).not.toHaveBeenCalledWith(
+      "Error getting nudges",
+      expect.any(Error),
+    );
+    consoleSpy.mockRestore();
   });
 
   it("cancel() drops the cached entry from the query client", async () => {
