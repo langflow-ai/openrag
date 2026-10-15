@@ -188,9 +188,7 @@ async def test_a_saved_token_never_goes_to_a_new_target(tmp_path, monkeypatch, c
         ("ssl_verify", {"ssl_verify": "/etc/pki/cluster-ca.crt"}),
     ],
 )
-async def test_clearing_a_saved_target_is_a_new_target(
-    tmp_path, monkeypatch, cleared, saved_extra
-):
+async def test_clearing_a_saved_target_is_a_new_target(tmp_path, monkeypatch, cleared, saved_extra):
     # Submit sends a cleared field as a removal, so discovery must not ask the
     # cluster with the stored value — nor send the saved token along with it.
     _offer_rhoai(tmp_path, monkeypatch)
