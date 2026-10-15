@@ -372,8 +372,15 @@ class TaskService:
         replace_duplicates: bool = False,
         settings: dict | None = None,
         preview_mode: bool = False,
+        *,
+        allow_anonymous_delete: bool,
     ) -> str:
-        """Create a new upload task for bulk file processing"""
+        """Create a new upload task for bulk file processing.
+
+        ``allow_anonymous_delete`` is the uploading user's resolved
+        ``knowledge:delete:anonymous`` and has no default; see
+        ``TaskProcessor.delete_document_by_filename``.
+        """
         # Use default DocumentFileProcessor with user context
         from models.processors import DocumentFileProcessor
 
@@ -388,6 +395,7 @@ class TaskService:
             replace_duplicates=replace_duplicates,
             session_manager=self.session_manager,
             settings=settings,
+            allow_anonymous_delete=allow_anonymous_delete,
         )
         return await self.create_custom_task(
             user_id,
@@ -416,8 +424,15 @@ class TaskService:
         existing_task_id: str = None,
         temp_file_paths: list | None = None,
         preview_mode: bool = False,
+        *,
+        allow_anonymous_delete: bool,
     ) -> str:
-        """Create a new upload task for Langflow file processing with upload and ingest"""
+        """Create a new upload task for Langflow file processing with upload and ingest.
+
+        ``allow_anonymous_delete`` is the uploading user's resolved
+        ``knowledge:delete:anonymous`` and has no default; see
+        ``TaskProcessor.delete_document_by_filename``.
+        """
         # Use LangflowFileProcessor with user context
         from models.processors import LangflowFileProcessor
 
@@ -435,6 +450,7 @@ class TaskService:
             connector_type=connector_type,
             docling_polling_service=self.docling_polling_service,
             preview_mode=preview_mode,
+            allow_anonymous_delete=allow_anonymous_delete,
         )
         return await self.create_custom_task(
             user_id,

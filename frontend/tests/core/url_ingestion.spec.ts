@@ -101,7 +101,7 @@ test("URL connector ingestion - Invalid URL handling @34581217", async ({
   );
 
   // Attempt to ingest invalid URL
-  const invalidUrl = "http://www.invalid-url.com";
+  const invalidUrl = "http://www.nonexistent-domain.invalid";
   logger.info(`  🌐 Ingesting invalid URL: ${invalidUrl}`);
   await chat.open();
   const { toolData, fullResponse } = await chat.ingestUrl(invalidUrl);

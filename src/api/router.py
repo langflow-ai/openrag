@@ -5,7 +5,7 @@ import mimetypes
 import os
 import tempfile
 
-from fastapi import Depends, File, Form, UploadFile
+from fastapi import Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from config.settings import get_openrag_config
@@ -13,8 +13,10 @@ from dependencies import (
     get_current_user,
     get_document_service,
     get_langflow_file_service,
+    get_rbac_service,
     get_session_manager,
     get_task_service,
+    has_effective_permission,
 )
 from session_manager import User
 from utils.ingest_preview_flag import is_ingest_preview_enabled
@@ -24,6 +26,7 @@ logger = get_logger(__name__)
 
 
 async def upload_ingest_router(
+    request: Request,
     file: list[UploadFile] = File(...),
     session_id: str | None = Form(None),
     settings_json: str | None = Form(None, alias="settings"),
@@ -36,6 +39,7 @@ async def upload_ingest_router(
     session_manager=Depends(get_session_manager),
     task_service=Depends(get_task_service),
     user: User = Depends(get_current_user),
+    rbac=Depends(get_rbac_service),
 ):
     """
     Router endpoint that automatically routes upload requests based on configuration.
@@ -54,6 +58,14 @@ async def upload_ingest_router(
         preview_mode=preview_mode,
     )
 
+    # Resolved here, where the request and the RBAC service are, and carried
+    # down to the processor. Overwriting a file whose name belongs to a shared
+    # (ownerless) document deletes that document for the whole instance, so it
+    # takes the same permission the explicit delete endpoints ask for.
+    allow_anonymous_delete = await has_effective_permission(
+        request, user, rbac, "knowledge:delete:anonymous"
+    )
+
     if disable_ingest_with_langflow:
         logger.debug("Routing to traditional OpenRAG upload via task service")
         return await _traditional_upload_ingest_task(
@@ -64,6 +76,7 @@ async def upload_ingest_router(
             session_manager=session_manager,
             task_service=task_service,
             user=user,
+            allow_anonymous_delete=allow_anonymous_delete,
             settings_json=settings_json,
         )
 
@@ -80,6 +93,7 @@ async def upload_ingest_router(
         session_manager=session_manager,
         task_service=task_service,
         user=user,
+        allow_anonymous_delete=allow_anonymous_delete,
     )
 
 
@@ -91,6 +105,7 @@ async def _traditional_upload_ingest_task(
     session_manager,
     task_service,
     user: User,
+    allow_anonymous_delete: bool,
     settings_json: str | None = None,
 ):
     """Task-based traditional upload and ingest for single/multiple files"""
@@ -153,6 +168,7 @@ async def _traditional_upload_ingest_task(
                 replace_duplicates=replace_duplicates,
                 settings=settings,
                 preview_mode=preview_mode,
+                allow_anonymous_delete=allow_anonymous_delete,
             )
 
             return JSONResponse(
@@ -197,6 +213,7 @@ async def _langflow_upload_ingest_task(
     session_manager,
     task_service,
     user: User,
+    allow_anonymous_delete: bool,
 ):
     """Task-based langflow upload and ingest for single/multiple files"""
     try:
@@ -265,6 +282,7 @@ async def _langflow_upload_ingest_task(
                 settings=settings,
                 replace_duplicates=replace_duplicates,
                 preview_mode=preview_mode,
+                allow_anonymous_delete=allow_anonymous_delete,
             )
 
             return JSONResponse(

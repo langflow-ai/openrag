@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { apiClient } from "@/lib/api-client";
 import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { useUpdateOnboardingStateMutation } from "./useUpdateOnboardingStateMutation";
 
@@ -39,16 +40,13 @@ interface OnboardingResponse {
 async function submitOnboarding(
   variables: OnboardingVariables,
 ): Promise<OnboardingResponse> {
-  const response = await fetch("/api/onboarding", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(variables),
-  });
+  const response = await apiClient.post<OnboardingResponse>(
+    "/onboarding",
+    variables,
+  );
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
+  if (response.status < 200 || response.status >= 300) {
+    const error = (response.data ?? {}) as unknown as Record<string, unknown>;
     const raw =
       error && typeof error === "object" && typeof error.error === "string"
         ? error.error
@@ -56,7 +54,7 @@ async function submitOnboarding(
     throw new Error(formatProviderErrorMessage(raw));
   }
 
-  return response.json();
+  return response.data;
 }
 
 export const useOnboardingMutation = (

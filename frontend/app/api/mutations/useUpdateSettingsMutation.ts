@@ -3,6 +3,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { useGetCurrentProviderModelsQuery } from "../queries/useGetModelsQuery";
 import type { Settings } from "../queries/useGetSettingsQuery";
@@ -107,20 +108,20 @@ export interface UpdateSettingsResponse {
 async function updateSettings(
   variables: UpdateSettingsRequest,
 ): Promise<UpdateSettingsResponse> {
-  const response = await fetch("/api/settings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(variables),
-  });
+  const response = await apiClient.post<UpdateSettingsResponse>(
+    "/settings",
+    variables,
+  );
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+  if (response.status < 200 || response.status >= 300) {
+    const errorData = (response.data ?? {}) as unknown as Record<
+      string,
+      unknown
+    >;
     throw new UpdateSettingsError(response.status, errorData);
   }
 
-  return response.json();
+  return response.data;
 }
 
 export const useUpdateSettingsMutation = (
