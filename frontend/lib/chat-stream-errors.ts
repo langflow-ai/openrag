@@ -169,12 +169,11 @@ export function looksLikeProviderErrorContent(text: string): boolean {
   ) {
     return true;
   }
+  // Either quote: the OpenAI SDK prints an error body as a Python dict,
+  // `Error code: 400 - {'error': {...}}`, not as JSON.
   if (
     trimmed.includes("{") &&
-    (lowered.includes('"error"') ||
-      lowered.includes('"errormessage"') ||
-      lowered.includes('"errorcode"') ||
-      lowered.includes('"errors"'))
+    /["'](?:error|errormessage|errorcode|errors)["']/.test(lowered)
   ) {
     return true;
   }

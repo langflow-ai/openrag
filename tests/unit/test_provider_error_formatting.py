@@ -98,6 +98,17 @@ def test_looks_like_provider_error_content():
     assert is_generic_upstream_error("An unknown error occurred.")
 
 
+def test_looks_like_provider_error_content_reads_the_sdk_python_dict():
+    """The OpenAI SDK prints the body as a Python dict, which is how Langflow relays it."""
+    assert looks_like_provider_error_content(
+        "Error code: 400 - {'error': {'message': \"This model's maximum context length is "
+        "512 tokens.\", 'code': 'context_length_exceeded'}}"
+    )
+    assert not looks_like_provider_error_content(
+        "Send {'message': 'hello', 'user': 'ana'} as the request body."
+    )
+
+
 def test_resolve_chat_stream_error_message_keeps_generic_without_probing():
     # Sync helper must not probe — that stays in the async path.
     assert (

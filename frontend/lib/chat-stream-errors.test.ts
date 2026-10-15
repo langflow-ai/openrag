@@ -102,6 +102,24 @@ describe("looksLikeProviderErrorContent", () => {
     );
   });
 
+  it("detects an OpenAI SDK error printed as a Python dict", () => {
+    assert.equal(
+      looksLikeProviderErrorContent(
+        `Error code: 400 - {'error': {'message': "This model's maximum context length is 512 tokens.", 'code': 'context_length_exceeded'}}`,
+      ),
+      true,
+    );
+  });
+
+  it("does not flag a reply that shows a dict with no error key", () => {
+    assert.equal(
+      looksLikeProviderErrorContent(
+        "Send {'message': 'hello', 'user': 'ana'} as the request body.",
+      ),
+      false,
+    );
+  });
+
   it("flags the exact generic stream fallback message", () => {
     assert.equal(
       looksLikeProviderErrorContent(
