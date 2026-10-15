@@ -1,4 +1,8 @@
 {{- if .Values.frontend.enabled }}
+{{- $frontendBasePath := .Values.frontend.basePath | trim | trimSuffix "/" }}
+{{- if and $frontendBasePath (not (hasPrefix "/" $frontendBasePath)) }}
+{{- $frontendBasePath = printf "/%s" $frontendBasePath }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -50,12 +54,19 @@ spec:
             # Backend connection (uses internal service name)
             - name: OPENRAG_BACKEND_HOST
               value: "{{ include "openrag.fullname" . }}-backend"
+            - name: OPENRAG_FRONTEND_BASE_PATH
+              value: {{ .Values.frontend.basePath | quote }}
+          volumeMounts:
+            # The entrypoint copies and patches generated assets here so the
+            # image itself remains usable with readOnlyRootFilesystem: true.
+            - name: frontend-runtime-assets
+              mountPath: /tmp
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
           {{- if .Values.frontend.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
-              path: /
+              path: {{ $frontendBasePath | default "/" | quote }}
               port: http
             initialDelaySeconds: {{ .Values.frontend.livenessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.frontend.livenessProbe.periodSeconds }}
@@ -65,7 +76,7 @@ spec:
           {{- if .Values.frontend.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
-              path: /
+              path: {{ $frontendBasePath | default "/" | quote }}
               port: http
             initialDelaySeconds: {{ .Values.frontend.readinessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.frontend.readinessProbe.periodSeconds }}
@@ -84,4 +95,7 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      volumes:
+        - name: frontend-runtime-assets
+          emptyDir: {}
 {{- end }}

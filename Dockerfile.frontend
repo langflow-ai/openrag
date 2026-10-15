@@ -26,8 +26,8 @@ FROM registry.access.redhat.com/ubi10/nodejs-24-minimal AS builder
 WORKDIR /opt/app-root/src
 USER 0
 
-# Restrict the placeholder to container image builds. Local `npm run build`
-# continues to compile the configured base path directly.
+# Restrict the placeholder to container image builds. The entrypoint replaces
+# it in a writable per-pod copy of the assets before starting the server.
 ENV OPENRAG_FRONTEND_RUNTIME_BASE_PATH=true
 
 COPY --from=deps /opt/app-root/src/node_modules ./node_modules
@@ -61,14 +61,6 @@ COPY --from=builder --chown=1001:0 /opt/app-root/src/.next/standalone ./
 COPY --from=builder --chown=1001:0 /opt/app-root/src/.next/static ./.next/static
 COPY --from=builder --chown=1001:0 /opt/app-root/src/public ./public
 COPY --chown=1001:0 frontend/entrypoint.sh ./entrypoint.sh
-
-# The Helm chart runs containers as UID/GID 1000 while the image defaults to
-# UID 1001. The entrypoint rewrites the generated Next.js assets at startup,
-# so both identities need write access to the application directory.
-RUN chown 1001:1000 . \
-    && chmod g=rwx . \
-    && chown -R 1001:1000 .next public server.js \
-    && chmod -R g=u .next public server.js
 
 EXPOSE 3000 9090
 USER 1001

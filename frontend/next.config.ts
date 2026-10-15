@@ -35,11 +35,8 @@ dotenv.config({
   path: path.resolve(process.cwd(), "..", process.env.ENV_FILE || ".env"),
 });
 
-// Next inlines `basePath` into browser bundles. Use a string that cannot occur
-// naturally in application assets for production builds; the container
-// entrypoint replaces it with OPENRAG_FRONTEND_BASE_PATH immediately before the
-// server starts. Keeping development dynamic avoids requiring an image build
-// just to run `next dev` under a path locally.
+// Next inlines `basePath` into browser bundles. Image builds use a placeholder
+// that the entrypoint replaces in a writable runtime copy of the assets.
 const RUNTIME_BASE_PATH_PLACEHOLDER =
   "/NEXT_PUBLIC_BASE_PATH_PLACEHOLDER_a1b2c3d4";
 
