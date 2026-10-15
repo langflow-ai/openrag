@@ -14,6 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const defaultLangfuseBaseURL = "https://cloud.langfuse.com"
+
 const (
 	LANGFLOW_ENV_PREFIX  = "OPTLF_"
 	OPENRAGBE_ENV_PREFIX = "OPTORBE_"
@@ -50,7 +52,6 @@ func NewEnvVarManager() *EnvVarManager {
 			"LANGFLOW_ALEMBIC_LOG_TO_STDOUT": "true",
 			"LANGFLOW_DEACTIVATE_TRACING":    "true",
 			"LANGFLOW_LOAD_FLOWS_PATH":       "/app/flows",
-			"LANGFUSE_HOST":                  "https://cloud.langfuse.com",
 			"LANGFLOW_KEY_RETRIES":           "15",
 			"LANGFLOW_KEY_RETRY_DELAY":       "2",
 
@@ -210,7 +211,22 @@ func NewEnvVarManager() *EnvVarManager {
 // 2. Medium priority: Operator env vars with OPTLF_ prefix
 // 3. Lowest priority: Hardcoded defaults
 func (m *EnvVarManager) GetLangflowEnvVars(ctx context.Context, c client.Client, namespace string, crEnvVars []corev1.EnvVar) (map[string]string, error) {
-	return m.mergeEnvVars(ctx, c, namespace, m.DefaultLangflowEnvVars, LANGFLOW_ENV_PREFIX, crEnvVars)
+	envVars, err := m.mergeEnvVars(ctx, c, namespace, m.DefaultLangflowEnvVars, LANGFLOW_ENV_PREFIX, crEnvVars)
+	if err != nil {
+		return nil, err
+	}
+
+	baseURL, hasBaseURL := envVars["LANGFUSE_BASE_URL"]
+	host, hasHost := envVars["LANGFUSE_HOST"]
+	if baseURL == "" {
+		if host != "" {
+			envVars["LANGFUSE_BASE_URL"] = host
+		} else if !hasBaseURL && !hasHost {
+			envVars["LANGFUSE_BASE_URL"] = defaultLangfuseBaseURL
+		}
+	}
+
+	return envVars, nil
 }
 
 // GetBackendEnvVars returns merged Backend env vars with three-level priority:
