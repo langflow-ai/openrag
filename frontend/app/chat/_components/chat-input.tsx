@@ -147,7 +147,6 @@ export function ChatInput({
       }
     } else {
       setIsFilterDropdownOpen(false);
-      setAnchorPosition(null);
     }
   };
 
