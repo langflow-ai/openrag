@@ -87,13 +87,21 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
 
       - name: Run pip-audit for Python Dependencies
         run: |
           mkdir -p reports
           pip install pip-audit
-          pip-audit --format json -o reports/pip-audit-python.json || true
+          uv export --frozen --no-hashes --no-emit-project -o "$RUNNER_TEMP/requirements.txt"
+          # pip-audit exits 1 both when it finds vulnerabilities and when it errors;
+          # only a completed run writes the report, so fail if it is missing.
+          pip-audit --no-deps --disable-pip -r "$RUNNER_TEMP/requirements.txt" \
+            --format json -o reports/pip-audit-python.json || true
+          test -s reports/pip-audit-python.json
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -136,7 +144,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
       - name: Run Bandit for Python SAST
         run: |
@@ -176,7 +184,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
       - name: Download all scan artifacts
         uses: actions/download-artifact@v4
