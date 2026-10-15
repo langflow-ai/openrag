@@ -108,6 +108,7 @@ describe("useFileScopedChunksQuery", () => {
     serveSearch([
       chunk({
         filename: "test.pdf",
+        chunk_id: "c1",
         text: "chunk with keyword",
         highlights: ["<mark>keyword</mark>"],
       }),
@@ -169,5 +170,117 @@ describe("useFileScopedChunksQuery", () => {
     await waitFor(() => expect(result.current.isFetching).toBe(false));
     // The query should have been trimmed (line 20-21 logic)
     expect(result.current.file?.filename).toBe("test.pdf");
+  });
+  it("returns only semantically matched chunks when searchQuery is active", async () => {
+    let callCount = 0;
+    server.use(
+      http.post("/api/search", async ({ request }) => {
+        const body = (await request.json()) as { query: string };
+        callCount++;
+        if (body.query === "*") {
+          // Wildcard: return all 3 chunks for the file.
+          return HttpResponse.json({
+            results: [
+              chunk({
+                filename: "test.pdf",
+                chunk_id: "c1",
+                text: "matched chunk one",
+              }),
+              chunk({
+                filename: "test.pdf",
+                chunk_id: "c2",
+                text: "unmatched chunk two",
+              }),
+              chunk({
+                filename: "test.pdf",
+                chunk_id: "c3",
+                text: "matched chunk three",
+              }),
+            ],
+            warnings: [],
+          });
+        }
+        // Highlight fetch: only c1 and c3 matched semantically.
+        return HttpResponse.json({
+          results: [
+            chunk({
+              filename: "test.pdf",
+              chunk_id: "c1",
+              text: "matched chunk one",
+              highlights: [],
+            }),
+            chunk({
+              filename: "test.pdf",
+              chunk_id: "c3",
+              text: "matched chunk three",
+              highlights: [],
+            }),
+          ],
+          warnings: [],
+        });
+      }),
+    );
+
+    const { result } = renderHook(
+      () => useFileScopedChunksQuery("test.pdf", "keyword"),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    // Only the 2 semantically matched chunks should be returned, not all 3.
+    expect(result.current.file?.chunks).toHaveLength(2);
+    const texts = result.current.file?.chunks?.map((c) => c.text);
+    expect(texts).toContain("matched chunk one");
+    expect(texts).toContain("matched chunk three");
+    expect(texts).not.toContain("unmatched chunk two");
+  });
+
+  it("excludes unidentified chunks (no chunk_id or id) when searchQuery is active", async () => {
+    server.use(
+      http.post("/api/search", async ({ request }) => {
+        const body = (await request.json()) as { query: string };
+        if (body.query === "*") {
+          return HttpResponse.json({
+            results: [
+              chunk({
+                filename: "test.pdf",
+                chunk_id: "c1",
+                text: "identified chunk",
+              }),
+              // chunk with no chunk_id and no id
+              {
+                filename: "test.pdf",
+                mimetype: "application/pdf",
+                page: 1,
+                text: "unidentified chunk",
+                score: 1,
+              },
+            ],
+            warnings: [],
+          });
+        }
+        return HttpResponse.json({
+          results: [
+            chunk({
+              filename: "test.pdf",
+              chunk_id: "c1",
+              text: "identified chunk",
+              highlights: [],
+            }),
+          ],
+          warnings: [],
+        });
+      }),
+    );
+
+    const { result } = renderHook(
+      () => useFileScopedChunksQuery("test.pdf", "keyword"),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    // The unidentified chunk must be excluded — it cannot be matched to a semantic result.
+    expect(result.current.file?.chunks).toHaveLength(1);
+    expect(result.current.file?.chunks?.[0]?.text).toBe("identified chunk");
   });
 });

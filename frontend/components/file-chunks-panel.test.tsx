@@ -94,7 +94,7 @@ describe("FileChunksPanel — highlight wiring", () => {
     expect(container.querySelector("mark")?.textContent).toBe("fox");
   });
 
-  it("preserves non-matching chunks when a searchQuery is provided", async () => {
+  it("shows only semantically matched chunks and highlights when searchQuery is provided", async () => {
     server.use(
       http.post("/api/search", async ({ request }) => {
         const body = (await request.json()) as { query: string };
@@ -107,6 +107,7 @@ describe("FileChunksPanel — highlight wiring", () => {
             warnings: [],
           });
         }
+        // Highlight fetch: only c1 matched semantically.
         return HttpResponse.json({
           results: [
             chunk({
@@ -125,8 +126,7 @@ describe("FileChunksPanel — highlight wiring", () => {
       { providers: ["auth", "knowledgeFilter"] },
     );
 
-    // Both chunks must appear — the panel must not drop non-matching chunks.
-    // Chunk 1 has highlights so we check for the text content (mark tag splits it)
+    // Only the matched chunk should appear — the unmatched one is filtered out.
     await waitFor(() =>
       expect(
         screen.getByText((content, element) => {
@@ -137,8 +137,41 @@ describe("FileChunksPanel — highlight wiring", () => {
         }),
       ).toBeInTheDocument(),
     );
-    expect(screen.getByText("Unrelated content here")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Unrelated content here"),
+    ).not.toBeInTheDocument();
     // Verify the highlight mark is rendered
     expect(container.querySelector("mark")?.textContent).toBe("fox");
+  });
+  it("filters chunks locally by keyword when no searchQuery is provided", async () => {
+    server.use(
+      http.post("/api/search", () =>
+        HttpResponse.json({
+          results: [
+            chunk({ chunk_id: "c1", text: "Matching content fox" }),
+            chunk({ chunk_id: "c2", text: "Unrelated content here" }),
+          ],
+          warnings: [],
+        }),
+      ),
+    );
+
+    renderWithProviders(
+      <FileChunksPanel
+        filename="doc.pdf"
+        filterQuery="fox"
+        onFilterQueryChange={() => {}}
+        hideSearch
+      />,
+      { providers: ["auth", "knowledgeFilter"] },
+    );
+
+    // Only the chunk containing "fox" should be visible.
+    await waitFor(() =>
+      expect(screen.getByText("Matching content fox")).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByText("Unrelated content here"),
+    ).not.toBeInTheDocument();
   });
 });
