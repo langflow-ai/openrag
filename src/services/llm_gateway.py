@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import functools
 import json
 import math
 import re
@@ -1896,6 +1895,7 @@ async def _embed_averaging_overflow(
     *,
     provider: str,
     model: str,
+    max_batch: int | None = None,
 ) -> dict[str, Any]:
     """Embed a batch the provider rejected as too long, still one vector per input.
 
@@ -1905,7 +1905,9 @@ async def _embed_averaging_overflow(
     of the text still contributes to the vector. The provider says only that
     something in the batch was too long, so the batch is halved until the
     offending input is alone. `send` raises `LlmContextLengthError` for a
-    rejection of that kind and `LlmGatewayError` for anything else.
+    rejection of that kind and `LlmGatewayError` for anything else. With
+    `max_batch`, no request carries more inputs than that, even when one input
+    is cut into more pieces.
     """
     envelope: dict[str, Any] = {}
     usage: dict[str, int | float] = {}
@@ -1913,6 +1915,11 @@ async def _embed_averaging_overflow(
     async def embed(
         batch: list[str], rounds: int, rejected: LlmContextLengthError | None = None
     ) -> list[list[float]]:
+        if rejected is None and max_batch and len(batch) > max_batch:
+            vectors: list[list[float]] = []
+            for start in range(0, len(batch), max_batch):
+                vectors += await embed(batch[start : start + max_batch], rounds)
+            return vectors
         if rejected is None:
             try:
                 payload = await send(batch)
@@ -1991,68 +1998,24 @@ async def embeddings(
     lane = _INTERACTIVE_LANE if interactive else _BULK_LANE
     embedding_input = _embedding_input(body.get("input"))
 
+    batch_size = _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE if provider == "watsonx_onprem" else None
+
     async def call_provider(inputs: Any) -> dict[str, Any]:
         import litellm
 
-        should_batch = (
-            provider == "watsonx_onprem"
-            and isinstance(inputs, list)
-            and len(inputs) > _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE
-            and not all(isinstance(item, int) for item in inputs)
-        )
-        if not should_batch:
-            async with _embedding_slot(limiter, provider, litellm_model, lane):
-                result = await with_stale_connection_retry(
-                    lambda: litellm.aembedding(
-                        model=litellm_model,
-                        input=inputs,
-                        **credentials,
-                        **runtime_kwargs,
-                    ),
-                    provider=provider,
+        async with _embedding_slot(limiter, provider, litellm_model, lane):
+            result = await with_stale_connection_retry(
+                lambda: litellm.aembedding(
                     model=litellm_model,
-                    kind="embedding",
-                )
-            response = _to_openai_dict(result)
-        else:
-            response = {}
-            data: list[dict[str, Any]] = []
-            usage: dict[str, int | float] = {}
-            for offset in range(
-                0,
-                len(inputs),
-                _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE,
-            ):
-                batch = inputs[offset : offset + _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE]
-                async with _embedding_slot(limiter, provider, litellm_model, lane):
-                    result = await with_stale_connection_retry(
-                        functools.partial(
-                            litellm.aembedding,
-                            model=litellm_model,
-                            input=batch,
-                            **credentials,
-                            **runtime_kwargs,
-                        ),
-                        provider=provider,
-                        model=litellm_model,
-                        kind="embedding",
-                    )
-                payload = _to_openai_dict(result)
-                if not response:
-                    response = {
-                        key: value for key, value in payload.items() if key not in {"data", "usage"}
-                    }
-                for position, item in enumerate(payload.get("data", [])):
-                    merged_item = dict(item)
-                    merged_item["index"] = offset + int(item.get("index", position))
-                    data.append(merged_item)
-                for key, value in payload.get("usage", {}).items():
-                    if isinstance(value, (int, float)):
-                        usage[key] = usage.get(key, 0) + value
-            response["data"] = data
-            if usage:
-                response["usage"] = usage
-        return response
+                    input=inputs,
+                    **credentials,
+                    **runtime_kwargs,
+                ),
+                provider=provider,
+                model=litellm_model,
+                kind="embedding",
+            )
+        return _to_openai_dict(result)
 
     async def send(inputs: Any) -> dict[str, Any]:
         try:
@@ -2069,15 +2032,52 @@ async def embeddings(
                 provider_error_log.record_failure(provider, "embedding", message)
             raise _upstream_gateway_error(message, detail, failure) from exc
 
-    try:
+    async def embed(inputs: Any) -> dict[str, Any]:
         try:
-            response = await send(embedding_input)
+            return await send(inputs)
         except LlmContextLengthError as overflow:
-            if embedding_overflow_policy() != "average" or not _is_text_list(embedding_input):
+            if embedding_overflow_policy() != "average" or not _is_text_list(inputs):
                 raise
-            response = await _embed_averaging_overflow(
-                send, embedding_input, overflow, provider=provider, model=litellm_model
+            return await _embed_averaging_overflow(
+                send,
+                inputs,
+                overflow,
+                provider=provider,
+                model=litellm_model,
+                max_batch=batch_size,
             )
+
+    should_batch = (
+        batch_size is not None
+        and isinstance(embedding_input, list)
+        and len(embedding_input) > batch_size
+        and not all(isinstance(item, int) for item in embedding_input)
+    )
+    try:
+        if not should_batch:
+            response = await embed(embedding_input)
+        else:
+            # Each batch recovers on its own, so an over-length input in a later
+            # batch does not send the earlier, already embedded ones again.
+            response = {}
+            data: list[dict[str, Any]] = []
+            usage: dict[str, int | float] = {}
+            for offset in range(0, len(embedding_input), batch_size):
+                payload = await embed(embedding_input[offset : offset + batch_size])
+                if not response:
+                    response = {
+                        key: value for key, value in payload.items() if key not in {"data", "usage"}
+                    }
+                for position, item in enumerate(payload.get("data", [])):
+                    merged_item = dict(item)
+                    merged_item["index"] = offset + int(item.get("index", position))
+                    data.append(merged_item)
+                for key, value in payload.get("usage", {}).items():
+                    if isinstance(value, (int, float)):
+                        usage[key] = usage.get(key, 0) + value
+            response["data"] = data
+            if usage:
+                response["usage"] = usage
     except LlmGatewayError as error:
         logger.error(
             "LLM embeddings failed", provider=provider, model=litellm_model, error=error.detail

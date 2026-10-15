@@ -2394,6 +2394,67 @@ class TestAnOverLengthEmbeddingInputIsAveraged:
         assert (raised.value.status_code, raised.value.code) == (502, "upstream_invalid_request")
         assert len(calls) == 1
 
+    def _onprem(self, monkeypatch, provider):
+        """`provider` behind watsonx on-prem, which takes at most 32 inputs a request."""
+        self._provider(monkeypatch, provider)
+        monkeypatch.setattr(
+            "services.llm_gateway._provider_runtime_kwargs", lambda provider, config: {}
+        )
+        return SimpleNamespace(
+            providers=ProvidersConfig(
+                openai=OpenAIConfig(),
+                anthropic=AnthropicConfig(),
+                watsonx=WatsonXConfig(),
+                ollama=OllamaConfig(),
+                custom={
+                    "watsonx_onprem": GenericProviderConfig(
+                        credentials={
+                            "api_base": "https://cpd.example.com",
+                            "username": "cpduser",
+                            "api_key": "secret",
+                        },
+                        configured=True,
+                    )
+                },
+            )
+        )
+
+    @pytest.mark.asyncio
+    async def test_an_overflow_in_a_later_batch_does_not_resend_the_earlier_ones(self, monkeypatch):
+        provider = _LimitedProvider(80)
+        config = self._onprem(monkeypatch, provider)
+        batch = [f"a{index}" for index in range(32)] + [_OVER_LIMIT]
+
+        result = await embeddings(
+            {"model": "watsonx_onprem:ibm/slate-30m-english-rtrvr", "input": batch},
+            config=config,
+        )
+
+        assert provider.calls == [
+            batch[:32],
+            [_OVER_LIMIT],
+            [_OVER_LIMIT[:50], _OVER_LIMIT[50:]],
+        ]
+        assert [item["index"] for item in result["data"]] == list(range(33))
+        assert result["data"][32]["embedding"] == pytest.approx([0.5**0.5, 0.5**0.5])
+        # The 32 that fitted were embedded and billed once.
+        assert result["usage"]["prompt_tokens"] == sum(len(text) for text in batch[:32]) + 100
+
+    @pytest.mark.asyncio
+    async def test_an_input_cut_into_many_pieces_keeps_to_the_batch_size(self, monkeypatch):
+        provider = _LimitedProvider(10)
+        config = self._onprem(monkeypatch, provider)
+        text = "ab " * 133 + "a"
+
+        result = await embeddings(
+            {"model": "watsonx_onprem:ibm/slate-30m-english-rtrvr", "input": [text]},
+            config=config,
+        )
+
+        # 400 tokens against 10 means 48 pieces: sent as 32 and 16, never as 48.
+        assert [len(call) for call in provider.calls] == [1, 32, 16]
+        assert len(result["data"]) == 1
+
 
 @pytest.mark.parametrize(
     ("value", "policy"),
