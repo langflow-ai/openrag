@@ -30,7 +30,8 @@ CONTAINER_RUNTIME := $(shell command -v docker >/dev/null 2>&1 && echo "docker" 
 strip_trailing_slashes = $(if $(filter %/,$(1)),$(call strip_trailing_slashes,$(patsubst %/,%,$(1))),$(1))
 FRONTEND_NORMALIZED_BASE_PATH := $(call strip_trailing_slashes,$(strip $(OPENRAG_FRONTEND_BASE_PATH)))
 FRONTEND_NORMALIZED_BASE_PATH := $(if $(FRONTEND_NORMALIZED_BASE_PATH),$(if $(filter /%,$(FRONTEND_NORMALIZED_BASE_PATH)),$(FRONTEND_NORMALIZED_BASE_PATH),/$(FRONTEND_NORMALIZED_BASE_PATH)))
-FRONTEND_LOCAL_URL := http://localhost:3000$(FRONTEND_NORMALIZED_BASE_PATH)
+FRONTEND_PORT ?= 3000
+FRONTEND_LOCAL_URL := http://localhost:$(FRONTEND_PORT)$(FRONTEND_NORMALIZED_BASE_PATH)
 
 # Host UID/GID — evaluated once at parse time and used in Docker-assisted chown commands
 # so that Alpine (running as root) can re-own volume directories back to the host user.
@@ -519,7 +520,7 @@ dev: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack w
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Frontend:$(NC)   $(FRONTEND_LOCAL_URL)"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
@@ -529,7 +530,7 @@ dev-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start full sta
 	$(COMPOSE_CMD) up -d $(SERVICES)
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Frontend:$(NC)   $(FRONTEND_LOCAL_URL)"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
@@ -541,7 +542,7 @@ dev-build: ensure-langflow-data ensure-backend-volumes check-env ## Start full s
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Frontend:$(NC)   $(FRONTEND_LOCAL_URL)"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
@@ -553,7 +554,7 @@ dev-build-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start fu
 	$(COMPOSE_CMD) up -d
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Frontend:$(NC)   $(FRONTEND_LOCAL_URL)"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
@@ -855,7 +856,7 @@ backend: ## Run backend locally
 	uv run python src/main.py
 
 frontend: ## Run frontend locally
-	@echo "$(YELLOW)Starting frontend locally...$(NC)"
+	@echo "$(YELLOW)Starting frontend locally at $(FRONTEND_LOCAL_URL)...$(NC)"
 	@if [ ! -d "frontend/node_modules" ]; then echo "$(YELLOW)Installing frontend dependencies first...$(NC)"; cd frontend && npm install; fi
 	@ARCH=$$(uname -m); \
 	export ENV_FILE="$(abspath $(ENV_FILE))"; \
