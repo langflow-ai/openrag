@@ -7,7 +7,9 @@ import json
 import pytest
 
 from api.provider_validation import (
+    context_window_token_counts,
     format_provider_error_message,
+    is_context_window_error,
     is_generic_upstream_error,
     is_provider_credential_error,
     looks_like_provider_error_content,
@@ -93,6 +95,17 @@ def test_looks_like_provider_error_content():
     )
     assert not looks_like_provider_error_content("OpenRAG is an open-source package.")
     assert is_generic_upstream_error("An unknown error occurred.")
+
+
+def test_looks_like_provider_error_content_reads_the_sdk_python_dict():
+    """The OpenAI SDK prints the body as a Python dict, which is how Langflow relays it."""
+    assert looks_like_provider_error_content(
+        "Error code: 400 - {'error': {'message': \"This model's maximum context length is "
+        "512 tokens.\", 'code': 'context_length_exceeded'}}"
+    )
+    assert not looks_like_provider_error_content(
+        "Send {'message': 'hello', 'user': 'ana'} as the request body."
+    )
 
 
 def test_resolve_chat_stream_error_message_keeps_generic_without_probing():
@@ -514,3 +527,139 @@ async def test_probe_checks_non_selected_providers_with_keys(monkeypatch):
     from api.provider_validation import probe_provider_credential_error
 
     assert await probe_provider_credential_error() == "Provided API key is Invalid."
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "This model's maximum context length is 32768 tokens. However, you requested 0 "
+        "output tokens and your prompt contains at least 32769 input tokens",
+        '{"error": {"code": "context_length_exceeded"}}',
+        "ContextWindowExceededError: litellm.ContextWindowExceededError: ...",
+        "prompt is too long: 210000 tokens > 200000 maximum",
+        # An oversized chunk sent for embedding (tracker issue 93001).
+        "This model's maximum context length is 512 tokens. However, you requested 548 "
+        "tokens in the input for embedding generation.",
+        # Wordings LiteLLM recognises without always raising its typed error.
+        "the request exceeds the available context size, try increasing it",
+        "Input tokens exceed the configured limit of 272000 tokens.",
+        "The input token count exceeds the maximum number of tokens allowed (1048575).",
+    ],
+)
+def test_is_context_window_error(text):
+    """Recognize the context-window error wordings used by supported providers."""
+    assert is_context_window_error(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        None,
+        "",
+        "Incorrect API key provided",
+        "The model `x` does not exist",
+        "rate limit",
+        # A limit on tokens per minute is the provider's, not this request's.
+        "Rate limit reached: limit 30000 tokens per min, requested 31000",
+    ],
+)
+def test_is_context_window_error_rejects_other_failures(text):
+    """Distinguish context-window overflow from credentials and rate-limit failures."""
+    assert not is_context_window_error(text)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # watsonx.ai / vLLM embeddings, as reported in tracker issue 93001.
+        (
+            "This model's maximum context length is 512 tokens. However, you requested 548 "
+            "tokens in the input for embedding generation.",
+            (512, 548),
+        ),
+        # vLLM chat also says "requested 0 output tokens": not the prompt's size.
+        (
+            "This model's maximum context length is 32768 tokens. However, you requested 0 "
+            "output tokens and your prompt contains at least 32769 input tokens",
+            (32768, 32769),
+        ),
+        (
+            "This model's maximum context length is 8192 tokens, however you requested 9000 "
+            "tokens (9000 in your prompt; 0 for the completion).",
+            (8192, 9000),
+        ),
+        (
+            "This model's maximum context length is 4097 tokens. However, your messages "
+            "resulted in 4275 tokens. Please reduce the length of the messages.",
+            (4097, 4275),
+        ),
+        ("prompt is too long: 210000 tokens > 200000 maximum", (200000, 210000)),
+        # Stated limit, unstated size: half an answer beats a guessed one.
+        ("This model's maximum context length is 512 tokens.", (512, None)),
+        ('{"error": {"code": "context_length_exceeded"}}', (None, None)),
+        (None, (None, None)),
+    ],
+)
+def test_context_window_token_counts(text, expected):
+    """Extract stated input limits and counts without mistaking output tokens for input."""
+    assert context_window_token_counts(text) == expected
+
+
+_EMBEDDING_OVERFLOW = (
+    "watsonx/intfloat/multilingual-e5-large: Invalid input argument for Model "
+    "'intfloat/multilingual-e5-large': This model's maximum context length is 512 tokens. "
+    "However, you requested 548 tokens in the input for embedding generation. Please reduce "
+    "the length of the input."
+)
+#: How the OpenAI SDK prints a gateway error: a Python dict, not JSON.
+_SDK_ERROR = (
+    f"Error code: 400 - {{'error': {{'message': \"{_EMBEDDING_OVERFLOW}\", "
+    "'type': 'invalid_request_error', 'code': 'context_length_exceeded'}}"
+)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        _SDK_ERROR,
+        "Error building Component OpenSearch (Multi-Model Multi-Embedding): \n\n" + _SDK_ERROR,
+        "Error code: 400 - " + json.dumps({"error": {"message": _EMBEDDING_OVERFLOW}}),
+        _EMBEDDING_OVERFLOW,
+    ],
+    ids=["sdk-dict", "langflow-wrapped", "json", "bare"],
+)
+def test_sanitize_keeps_the_providers_sentence_whatever_wraps_it(raw):
+    """The dict form used to collapse to "502 -", which is all the file's error showed."""
+    assert sanitize_provider_error_content(raw) == _EMBEDDING_OVERFLOW
+
+
+def test_sanitize_reads_a_python_dict_quoted_either_way():
+    """Preserve apostrophes and quotes when extracting an SDK dictionary message."""
+    raw = (
+        "Error code: 404 - {'error': {'message': 'The model `e5` doesn\\'t exist, "
+        "said \"the API\"', 'type': 'api_error'}}"
+    )
+    assert sanitize_provider_error_content(raw) == 'The model `e5` doesn\'t exist, said "the API"'
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "Error code: 502 - {'error': <Response [502]>}",
+        "502 - {not json",
+        "Error code: 502 - {'error': {'type': 'api_error'}}",
+    ],
+)
+def test_sanitize_never_passes_off_a_bare_status_code_as_the_message(raw):
+    """Use the fallback when an unreadable error body leaves only a status code."""
+    assert sanitize_provider_error_content(raw) == "An error occurred while generating a response."
+
+
+@pytest.mark.asyncio
+async def test_resolve_ingest_error_message_keeps_the_gateway_error_langflow_relayed():
+    """No probe is needed for it: the provider already said exactly what is wrong."""
+    from api.provider_validation import resolve_ingest_error_message
+
+    raw = "Error building Component OpenSearch (Multi-Model Multi-Embedding): \n\n" + _SDK_ERROR
+
+    assert await resolve_ingest_error_message(raw) == _EMBEDDING_OVERFLOW
