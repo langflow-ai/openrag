@@ -24,12 +24,12 @@ REPO ?= https://github.com/langflow-ai/langflow.git
 
 # Auto-detect container runtime: prefer docker, fall back to podman
 CONTAINER_RUNTIME := $(shell command -v docker >/dev/null 2>&1 && echo "docker" || echo "podman")
-# Next.js compiles `basePath` into the frontend bundle, so every direct
-# frontend image build and local URL must use its normalized form.
+# Next.js compiles `basePath` into the frontend bundle. Production images carry
+# a placeholder that their entrypoint replaces at startup; the normalized path
+# is still used for local health checks and URLs.
 strip_trailing_slashes = $(if $(filter %/,$(1)),$(call strip_trailing_slashes,$(patsubst %/,%,$(1))),$(1))
 FRONTEND_NORMALIZED_BASE_PATH := $(call strip_trailing_slashes,$(strip $(OPENRAG_FRONTEND_BASE_PATH)))
 FRONTEND_NORMALIZED_BASE_PATH := $(if $(FRONTEND_NORMALIZED_BASE_PATH),$(if $(filter /%,$(FRONTEND_NORMALIZED_BASE_PATH)),$(FRONTEND_NORMALIZED_BASE_PATH),/$(FRONTEND_NORMALIZED_BASE_PATH)))
-FRONTEND_BASE_PATH_BUILD_ARG := --build-arg OPENRAG_FRONTEND_BASE_PATH="$(FRONTEND_NORMALIZED_BASE_PATH)"
 FRONTEND_LOCAL_URL := http://localhost:3000$(FRONTEND_NORMALIZED_BASE_PATH)
 
 # Host UID/GID — evaluated once at parse time and used in Docker-assisted chown commands
@@ -942,7 +942,7 @@ build-be: ## Build backend Docker image
 
 build-fe: ## Build frontend Docker image
 	@echo "$(YELLOW)Building frontend image...$(NC)"
-	$(CONTAINER_RUNTIME) build $(FRONTEND_BASE_PATH_BUILD_ARG) -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
 	@echo "$(PURPLE)Frontend image built.$(NC)"
 
 build-lf: ## Build Langflow Docker image
@@ -1033,7 +1033,7 @@ ci-build-images: ## Build all OpenRAG images for CI artifact sharing
 	echo "$(YELLOW)Building all OpenRAG images with tag '$$IMAGE_TAG'...$(NC)"; \
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:$$IMAGE_TAG -f Dockerfile .; \
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:$$IMAGE_TAG -f Dockerfile.backend .; \
-	$(CONTAINER_RUNTIME) build $(FRONTEND_BASE_PATH_BUILD_ARG) -t langflowai/openrag-frontend:$$IMAGE_TAG -f Dockerfile.frontend .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:$$IMAGE_TAG -f Dockerfile.frontend .; \
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:$$IMAGE_TAG -f Dockerfile.langflow .; \
 	echo "$(GREEN)All images built successfully!$(NC)"
 
@@ -1191,7 +1191,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	echo "$(YELLOW)Building all images locally...$(NC)"; \
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:latest -f Dockerfile.backend .; \
-	$(CONTAINER_RUNTIME) build $(FRONTEND_BASE_PATH_BUILD_ARG) -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .; \
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .; \
 	echo "::endgroup::"; \
 	echo "::group::Start Infrastructure"; \

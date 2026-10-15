@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import type { NextConfig } from "next";
+import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 import path from "path";
 
 // Keep this config self-contained: next start evaluates next.config.ts from
@@ -34,9 +35,13 @@ dotenv.config({
   path: path.resolve(process.cwd(), "..", process.env.ENV_FILE || ".env"),
 });
 
-const frontendBasePath = normalizeFrontendBasePath(
-  process.env.OPENRAG_FRONTEND_BASE_PATH,
-);
+// Next inlines `basePath` into browser bundles. Use a string that cannot occur
+// naturally in application assets for production builds; the container
+// entrypoint replaces it with OPENRAG_FRONTEND_BASE_PATH immediately before the
+// server starts. Keeping development dynamic avoids requiring an image build
+// just to run `next dev` under a path locally.
+const RUNTIME_BASE_PATH_PLACEHOLDER =
+  "/NEXT_PUBLIC_BASE_PATH_PLACEHOLDER_a1b2c3d4";
 
 function getAllowedDevOrigins(): string[] {
   const allowedDevOrigins = process.env.NEXT_ALLOWED_DEV_ORIGINS;
@@ -54,37 +59,45 @@ function getAllowedDevOrigins(): string[] {
     .filter(Boolean);
 }
 
-const nextConfig: NextConfig = {
-  // `basePath` is compiled into the browser bundle. The same value is exposed
-  // below so the Axios API client calls /<basePath>/api rather than /api.
-  basePath: frontendBasePath,
-  env: {
-    NEXT_PUBLIC_OPENRAG_FRONTEND_BASE_PATH: frontendBasePath,
-  },
-  // Build/dev output directory. Overridable via NEXT_DIST_DIR so multiple
-  // `next dev` servers can run simultaneously from this same directory: Next.js
-  // 16 acquires a lock at `<distDir>/lock` keyed on the project dir + distDir
-  // (not the port), so a second instance must use a distinct distDir.
-  distDir: process.env.NEXT_DIST_DIR || ".next",
-  // Increase timeout for API routes
-  experimental: {
-    proxyTimeout: 300000, // 5 minutes
-  },
-  async rewrites() {
-    return [{ source: "/mcp/:path*", destination: "/api/mcp/:path*" }];
-  },
-  // Disable built-in image optimization so Next does not require the `sharp`
-  // native dependency (and its LGPL libvips binaries). The only <Image> usage
-  // is a 32px file-preview thumbnail, which does not benefit from optimization.
-  images: {
-    unoptimized: true,
-  },
-  // Ignore TypeScript errors during build
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  // Allow cross-origin requests in development
-  allowedDevOrigins: getAllowedDevOrigins(),
+const createNextConfig = (phase: string): NextConfig => {
+  const frontendBasePath =
+    phase === PHASE_DEVELOPMENT_SERVER
+      ? normalizeFrontendBasePath(process.env.OPENRAG_FRONTEND_BASE_PATH)
+      : RUNTIME_BASE_PATH_PLACEHOLDER;
+
+  return {
+    // `basePath` is compiled into the browser bundle. The same value is exposed
+    // below so the Axios API client calls /<basePath>/api rather than /api.
+    basePath: frontendBasePath,
+    env: {
+      NEXT_PUBLIC_OPENRAG_FRONTEND_BASE_PATH: frontendBasePath,
+    },
+    output: "standalone",
+    // Build/dev output directory. Overridable via NEXT_DIST_DIR so multiple
+    // `next dev` servers can run simultaneously from this same directory: Next.js
+    // 16 acquires a lock at `<distDir>/lock` keyed on the project dir + distDir
+    // (not the port), so a second instance must use a distinct distDir.
+    distDir: process.env.NEXT_DIST_DIR || ".next",
+    // Increase timeout for API routes
+    experimental: {
+      proxyTimeout: 300000, // 5 minutes
+    },
+    async rewrites() {
+      return [{ source: "/mcp/:path*", destination: "/api/mcp/:path*" }];
+    },
+    // Disable built-in image optimization so Next does not require the `sharp`
+    // native dependency (and its LGPL libvips binaries). The only <Image> usage
+    // is a 32px file-preview thumbnail, which does not benefit from optimization.
+    images: {
+      unoptimized: true,
+    },
+    // Ignore TypeScript errors during build
+    typescript: {
+      ignoreBuildErrors: true,
+    },
+    // Allow cross-origin requests in development
+    allowedDevOrigins: getAllowedDevOrigins(),
+  };
 };
 
-export default nextConfig;
+export default createNextConfig;
