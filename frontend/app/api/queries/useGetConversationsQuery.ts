@@ -58,6 +58,7 @@ export const useGetConversationsQuery = (
   const queryClient = useQueryClient();
   const { isOnboardingComplete } = useChat();
 
+  /** Fetches conversation history for the endpoint; silently returns [] on cancellation or error. */
   async function getConversations(context: {
     signal?: AbortSignal;
   }): Promise<ChatConversation[]> {

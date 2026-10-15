@@ -50,6 +50,7 @@ export const useGetNudgesQuery = (
     });
   }
 
+  /** Fetches nudges for the given chat; silently returns the default list on cancellation or error. */
   async function getNudges(context: {
     signal?: AbortSignal;
   }): Promise<Nudge[]> {

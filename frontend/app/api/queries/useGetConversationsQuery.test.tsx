@@ -1,6 +1,7 @@
 import axios from "axios";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
+import { apiClient } from "@/lib/api-client";
 import { server } from "@/test-utils/msw/server";
 import { createQueryWrapper, renderHook, waitFor } from "@/test-utils/render";
 import { useGetConversationsQuery } from "./useGetConversationsQuery";
@@ -58,12 +59,17 @@ describe("useGetConversationsQuery", () => {
   });
 
   it("swallows an axios CanceledError and returns an empty list", async () => {
-    server.use(
-      http.get("/api/chat/history", () => {
-        throw new axios.CanceledError("canceled");
-      }),
-    );
-
+    // Use mockImplementation with a URL check so the spy only rejects for the
+    // history endpoint — settings/auth GETs must still reach MSW.
+    const originalGet = apiClient.get.bind(apiClient);
+    const getSpy = vi
+      .spyOn(apiClient, "get")
+      .mockImplementation((url, config) => {
+        if (typeof url === "string" && url.includes("/history")) {
+          return Promise.reject(new axios.CanceledError("canceled"));
+        }
+        return originalGet(url as string, config);
+      });
     const consoleSpy = vi.spyOn(console, "error");
 
     const { result } = renderHook(() => useGetConversationsQuery("chat"), {
@@ -78,5 +84,6 @@ describe("useGetConversationsQuery", () => {
       expect.any(Error),
     );
     consoleSpy.mockRestore();
+    getSpy.mockRestore();
   });
 });

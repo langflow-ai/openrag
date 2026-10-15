@@ -12,6 +12,7 @@
 import axios from "axios";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
+import { apiClient } from "@/lib/api-client";
 import { makeSettings } from "@/test-utils/fixtures/settings";
 import { server } from "@/test-utils/msw/server";
 import {
@@ -123,12 +124,9 @@ describe("useGetNudgesQuery", () => {
   });
 
   it("swallows an axios CanceledError and returns an empty list", async () => {
-    server.use(
-      http.post("/api/nudges", () => {
-        throw new axios.CanceledError("canceled");
-      }),
+    vi.spyOn(apiClient, "post").mockRejectedValueOnce(
+      new axios.CanceledError("canceled"),
     );
-
     const consoleSpy = vi.spyOn(console, "error");
 
     const { result } = renderHook(() => useGetNudgesQuery(), {
