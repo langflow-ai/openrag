@@ -14,7 +14,7 @@ from api.provider_validation import (
 )
 from config.settings import get_openrag_config
 from dependencies import get_models_service, require_permission
-from services.model_catalog import hide_excluded_live_models
+from services.model_catalog import hide_excluded_live_models, secret_field_keys
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -60,8 +60,9 @@ class ModelDiscoveryBody(BaseModel):
     auth_method: str | None = None
 
 
-#: Fields that say *where* credentials are sent. When a form changes one, the
-#: stored values belong to a different host and must not travel with it.
+#: Fields that say *where* credentials are sent. When a form changes one —
+#: including clearing one that was saved — the stored values belong to a
+#: different host and must not travel with it.
 _CREDENTIAL_TARGET_FIELDS = ("api_base", "embedding_api_base", "ssl_verify")
 
 
@@ -86,6 +87,10 @@ def _draft_credentials(
     Only the fields the provider's form defines (for the chosen auth method,
     where it has several) are kept.
 
+    An empty value means what it means on Submit: for a secret, "keep the saved
+    one"; for any other field, "cleared" — so the stored value is not filled
+    back in, and clearing a saved endpoint or TLS setting counts as a change.
+
     Raises `InvalidAuthMethodError` when the provider rejects `auth_method`.
     """
     from enhancements.providers.registry import default_auth_method_for
@@ -108,15 +113,33 @@ def _draft_credentials(
             raise InvalidAuthMethodError(str(exc)) from exc
     else:
         allowed = {str(field["key"]) for field in enhancement.CREDENTIAL_FIELDS}
-    typed = {
-        name: str(value).strip()
-        for name, value in submitted.items()
-        if name in allowed and str(value).strip()
-    }
-    target_changed = any(
-        name in typed and typed[name] != stored.get(name) for name in _CREDENTIAL_TARGET_FIELDS
+    secrets = secret_field_keys(enhancement.PROVIDER_KEY)
+    typed: dict[str, str] = {}
+    cleared: set[str] = set()
+    for name, value in submitted.items():
+        if name not in allowed:
+            continue
+        text = str(value).strip()
+        if text:
+            typed[name] = text
+        elif name not in secrets:
+            cleared.add(name)
+    retargeted = sorted(
+        name
+        for name in _CREDENTIAL_TARGET_FIELDS
+        if (name in typed and typed[name] != stored.get(name))
+        or (name in cleared and stored.get(name))
     )
-    base = {} if target_changed else stored
+    if retargeted:
+        # Names only: the values are endpoints, CA paths and possibly secrets.
+        logger.info(
+            "Draft credentials point at a new target; stored credentials are not reused",
+            provider=enhancement.PROVIDER_KEY,
+            fields=retargeted,
+        )
+        base: Mapping[str, str] = {}
+    else:
+        base = {name: value for name, value in stored.items() if name not in cleared}
     return {name: value for name, value in {**base, **typed}.items() if name in allowed}
 
 

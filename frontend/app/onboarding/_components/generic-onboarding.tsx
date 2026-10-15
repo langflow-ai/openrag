@@ -24,13 +24,17 @@ import { WatsonxTlsSettings } from "@/components/models/watsonx-tls-settings";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { AdvancedOnboarding } from "./advanced";
 import { GenericProviderCredentialFields } from "./generic-provider-credential-fields";
-import { activeCredentialKeys } from "./generic-provider-credential-fields.helpers";
+import {
+  activeCredentialKeys,
+  clearedSavedCredentialKeys,
+} from "./generic-provider-credential-fields.helpers";
 import { useOnboardingModelDiscovery } from "./use-onboarding-model-discovery";
 
 /**
  * Fields that say *where* credentials are sent. Mirrors
- * `_CREDENTIAL_TARGET_FIELDS` in `src/api/models.py`: once a form changes one,
- * the backend drops every stored value, so a saved secret no longer counts.
+ * `_CREDENTIAL_TARGET_FIELDS` in `src/api/models.py`: once a form changes one —
+ * or clears one that was saved — the backend drops every stored value, so a
+ * saved secret no longer counts.
  */
 const CREDENTIAL_TARGET_FIELDS = [
   "api_base",
@@ -80,10 +84,11 @@ export function GenericOnboarding({
   const [credentials, setCredentials] =
     useState<Record<string, string>>(savedCredentials);
   // A saved secret belongs to the host it was saved for: once the endpoint or
-  // TLS setting is edited it is neither offered for reuse nor sent anywhere.
+  // TLS setting is edited — or a saved one cleared, which Submit sends as a
+  // removal — it is neither offered for reuse nor sent anywhere.
   const targetChanged = CREDENTIAL_TARGET_FIELDS.some((key) => {
     const typed = (credentials[key] ?? "").trim();
-    return typed !== "" && typed !== (savedCredentials[key] ?? "");
+    return typed !== (savedCredentials[key] ?? "");
   });
   const reusableSecrets = useMemo(
     () => (targetChanged ? new Set<string>() : savedSecrets),
@@ -107,7 +112,6 @@ export function GenericOnboarding({
     nextModel: string,
   ) => {
     const submitted: Record<string, string> = {};
-    const removals: string[] = [];
     const active = activeCredentialKeys(
       provider,
       azureAuthMethod,
@@ -116,12 +120,14 @@ export function GenericOnboarding({
     for (const [key, value] of Object.entries(nextCredentials)) {
       if (active && !active.has(key)) continue;
       const trimmed = (value ?? "").trim();
-      if (trimmed !== "") {
-        submitted[key] = trimmed;
-      } else if (!savedSecrets.has(key) && savedCredentials[key]) {
-        removals.push(key);
-      }
+      if (trimmed !== "") submitted[key] = trimmed;
     }
+    const removals = clearedSavedCredentialKeys(
+      nextCredentials,
+      savedCredentials,
+      savedSecrets,
+      active,
+    );
     setSettingsRef.current((prev) => {
       const providerCredentialRemovals = {
         ...prev.provider_credential_removals,
@@ -164,6 +170,11 @@ export function GenericOnboarding({
     });
   };
 
+  const activeKeys = activeCredentialKeys(
+    provider,
+    azureAuthMethod,
+    onPremAuthMethod,
+  );
   const {
     discovers,
     models,
@@ -175,10 +186,12 @@ export function GenericOnboarding({
     isEmbedding,
     fields,
     credentials,
-    activeKeys: activeCredentialKeys(
-      provider,
-      azureAuthMethod,
-      onPremAuthMethod,
+    activeKeys,
+    clearedKeys: clearedSavedCredentialKeys(
+      credentials,
+      savedCredentials,
+      savedSecrets,
+      activeKeys,
     ),
     savedSecrets: reusableSecrets,
     authMethod: provider === "watsonx_onprem" ? onPremAuthMethod : undefined,

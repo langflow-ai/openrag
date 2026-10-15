@@ -41,6 +41,7 @@ export function useOnboardingModelDiscovery({
   fields,
   credentials,
   activeKeys,
+  clearedKeys = [],
   savedSecrets,
   authMethod,
 }: {
@@ -51,6 +52,11 @@ export function useOnboardingModelDiscovery({
   credentials: Record<string, string>;
   /** The keys the chosen auth method uses, or null when every field applies. */
   activeKeys: Set<string> | null;
+  /**
+   * Saved non-secret fields the operator emptied. Sent as `""` so the backend
+   * does not fill the saved value back in — Submit removes them.
+   */
+  clearedKeys?: string[];
   savedSecrets: Set<string>;
   authMethod?: string;
 }): OnboardingModelDiscovery {
@@ -61,6 +67,7 @@ export function useOnboardingModelDiscovery({
     if (trimmed && (!activeKeys || activeKeys.has(key)))
       typedCredentials[key] = trimmed;
   }
+  for (const key of clearedKeys) typedCredentials[key] = "";
   // Debounced as a string: a fresh object each render would reset the timer.
   const discoveryKey = useDebouncedValue(JSON.stringify(typedCredentials), 500);
   const discoveryCredentials = useMemo(

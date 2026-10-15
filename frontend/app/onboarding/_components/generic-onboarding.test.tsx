@@ -565,6 +565,59 @@ describe("GenericOnboarding cluster model discovery", () => {
     );
   });
 
+  it("treats a cleared saved endpoint as a new target", async () => {
+    const requests: Array<{ credentials: Record<string, string> }> = [];
+    const { user, getSettings } = renderOnboarding(
+      "rhoai",
+      true,
+      {
+        custom: {
+          rhoai: {
+            credential_values: {
+              api_base: "https://chat.example.com/v1",
+              embedding_api_base: "https://embed.example.com/v1",
+            },
+            secret_fields: ["api_key"],
+          },
+        },
+      },
+      [discoverHandler(served, requests)],
+    );
+    await screen.findByText(
+      "Showing 1 embedding model served by the cluster.",
+      {},
+      DISCOVERY_TIMEOUT,
+    );
+
+    await user.clear(screen.getByLabelText(/Embedding endpoint/));
+
+    // Submit removes the endpoint, so embeddings go to the chat endpoint: the
+    // saved token no longer counts, and nothing is asked until it is retyped.
+    expect(getSettings().provider_credential_removals?.rhoai).toEqual([
+      "embedding_api_base",
+    ]);
+    expect(
+      screen.queryByText(
+        "A value is already saved. Leave this blank to keep it.",
+      ),
+    ).not.toBeInTheDocument();
+    const asked = requests.length;
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(requests.length).toBe(asked);
+
+    await user.type(screen.getByLabelText(/Token/), "sha256~new-token");
+    // Sent blank, so the backend does not fill the saved endpoint back in.
+    await waitFor(
+      () =>
+        expect(requests.at(-1)?.credentials).toEqual({
+          api_base: "https://chat.example.com/v1",
+          embedding_api_base: "",
+          api_key: "sha256~new-token",
+        }),
+      DISCOVERY_TIMEOUT,
+    );
+  });
+
   it("keeps the discovered model while the cluster is asked again", async () => {
     let calls = 0;
     let release: () => void = () => {};

@@ -72,3 +72,28 @@ export function activeCredentialKeys(
   }
   return null;
 }
+
+/**
+ * The keys the operator emptied that still hold a saved non-secret value.
+ *
+ * A secret is never shown, so a blank one means "keep the saved value". Any
+ * other field is shown pre-filled, so blanking it means "clear it": Submit
+ * sends these as removals, and model discovery sends them as `""` so the
+ * cluster is not asked at the endpoint the operator just removed.
+ */
+export function clearedSavedCredentialKeys(
+  credentials: Record<string, string>,
+  savedCredentials: Record<string, string>,
+  savedSecrets: Set<string>,
+  active: Set<string> | null,
+): string[] {
+  return Object.entries(credentials)
+    .filter(
+      ([key, value]) =>
+        (!active || active.has(key)) &&
+        (value ?? "").trim() === "" &&
+        !savedSecrets.has(key) &&
+        Boolean(savedCredentials[key]),
+    )
+    .map(([key]) => key);
+}

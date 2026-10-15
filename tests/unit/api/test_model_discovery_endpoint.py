@@ -181,6 +181,45 @@ async def test_a_saved_token_never_goes_to_a_new_target(tmp_path, monkeypatch, c
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "cleared, saved_extra",
+    [
+        ("embedding_api_base", {}),
+        ("ssl_verify", {"ssl_verify": "/etc/pki/cluster-ca.crt"}),
+    ],
+)
+async def test_clearing_a_saved_target_is_a_new_target(
+    tmp_path, monkeypatch, cleared, saved_extra
+):
+    # Submit sends a cleared field as a removal, so discovery must not ask the
+    # cluster with the stored value — nor send the saved token along with it.
+    _offer_rhoai(tmp_path, monkeypatch)
+    _saved(
+        monkeypatch,
+        api_base=CHAT_BASE,
+        embedding_api_base=EMBED_BASE,
+        api_key=SAVED_TOKEN,
+        **saved_extra,
+    )
+    seen = _listing(monkeypatch, rhoai.ClusterModels(chat=None, embedding=None))
+
+    await _discover(api_base=CHAT_BASE, api_key="", **{cleared: ""})
+
+    assert seen == {"api_base": CHAT_BASE}
+
+
+@pytest.mark.asyncio
+async def test_a_blank_target_that_was_never_saved_keeps_the_saved_token(tmp_path, monkeypatch):
+    _offer_rhoai(tmp_path, monkeypatch)
+    _saved(monkeypatch, api_base=CHAT_BASE, api_key=SAVED_TOKEN)
+    seen = _listing(monkeypatch, rhoai.ClusterModels(chat=None, embedding=None))
+
+    await _discover(api_base=CHAT_BASE, embedding_api_base="", ssl_verify="  ", api_key="")
+
+    assert seen == {"api_base": CHAT_BASE, "api_key": SAVED_TOKEN}
+
+
+@pytest.mark.asyncio
 async def test_fields_the_form_does_not_define_are_dropped(tmp_path, monkeypatch):
     _offer_rhoai(tmp_path, monkeypatch)
     _saved(monkeypatch)
