@@ -83,6 +83,9 @@ dependencies = [
 # be adopted explicitly, not resolved into an install.
 # src/main.py imports it defensively, so its absence downgrades to a warning.
 apm = ["instana>=3.17.0,<4"]
+tracing = [
+    "langfuse>=4.16,<5",
+]
 
 [dependency-groups]
 dev = [

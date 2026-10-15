@@ -198,6 +198,15 @@ func NewEnvVarManager() *EnvVarManager {
 			"INSTANA_TRACING_DISABLE": "logging",
 			"INSTANA_STACK_TRACE":     "error",
 			"INSTANA_SECRETS":         `regex:.*key.*,.*pass.*,.*secret.*,.*token.*,q\Z,search\Z,filename\Z`,
+
+			// Backend tracing to Langfuse (opt-in, default off). Enabling it
+			// also needs LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY (and
+			// LANGFUSE_HOST for self-hosted) on the backend via spec.env.
+			// Traces carry metadata only unless content capture is opted into,
+			// which in SaaS run mode takes the second flag as well.
+			"OPENRAG_TRACING_ENABLED":               "false",
+			"OPENRAG_TRACING_CAPTURE_CONTENT":       "false",
+			"OPENRAG_TRACING_ALLOW_CONTENT_IN_SAAS": "false",
 		},
 		DefaultOpenRagFEEnvVars: map[string]string{
 			// Frontend environment variables will be added here

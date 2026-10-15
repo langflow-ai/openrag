@@ -381,6 +381,15 @@ backend:
     enabled: false
     port: 8100
 
+  # Backend LLM tracing to Langfuse (opt-in, default off). Uses the keys and
+  # host under langflow.langfuse. Traces carry metadata only (model, provider,
+  # latency, tokens, errors) unless captureContent is set; in SaaS run mode
+  # allowContentInSaas must also be set.
+  tracing:
+    enabled: false
+    captureContent: false
+    allowContentInSaas: false
+
   # Instana APM (opt-in, default off).
   #
   # Requires an Instana agent already running in the cluster — install it
