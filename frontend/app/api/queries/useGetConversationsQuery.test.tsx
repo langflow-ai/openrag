@@ -49,13 +49,23 @@ describe("useGetConversationsQuery", () => {
       ),
     );
 
-    const { result } = renderHook(() => useGetConversationsQuery("chat"), {
-      wrapper: createQueryWrapper({ providers: ["auth", "chat"] }),
-    });
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(result.current.isError).toBe(false);
-    expect(result.current.data).toEqual([]);
+    try {
+      const { result } = renderHook(() => useGetConversationsQuery("chat"), {
+        wrapper: createQueryWrapper({ providers: ["auth", "chat"] }),
+      });
+
+      await waitFor(() => expect(result.current.data).toBeDefined());
+      expect(result.current.isError).toBe(false);
+      expect(result.current.data).toEqual([]);
+      // Unlike a cancellation, a real failure is still logged.
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to fetch conversations"),
+      );
+    } finally {
+      consoleSpy.mockRestore();
+    }
   });
 
   it("swallows an axios CanceledError and returns an empty list", async () => {

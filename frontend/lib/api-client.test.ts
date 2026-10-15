@@ -96,3 +96,24 @@ describe("apiClient", () => {
     expect(getUnauthorizedRedirectUrl("/\\evil.example/login")).toBe("/login");
   });
 });
+
+describe("isRequestCancelled", () => {
+  it("recognises Axios cancellations and native AbortErrors", async () => {
+    const axios = (await import("axios")).default;
+    const { isRequestCancelled } = await import("./api-client");
+
+    expect(isRequestCancelled(new axios.CanceledError("canceled"))).toBe(true);
+    // jsdom's DOMException isn't an `Error` in this realm, so use a plain one.
+    const abortError = new Error("aborted");
+    abortError.name = "AbortError";
+    expect(isRequestCancelled(abortError)).toBe(true);
+  });
+
+  it("does not treat other errors as cancellations", async () => {
+    const { isRequestCancelled } = await import("./api-client");
+
+    expect(isRequestCancelled(new Error("boom"))).toBe(false);
+    expect(isRequestCancelled("canceled")).toBe(false);
+    expect(isRequestCancelled(undefined)).toBe(false);
+  });
+});

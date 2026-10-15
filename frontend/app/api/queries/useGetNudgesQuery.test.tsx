@@ -124,9 +124,16 @@ describe("useGetNudgesQuery", () => {
   });
 
   it("swallows an axios CanceledError and returns an empty list", async () => {
+    // Reject only the nudges request so any other POSTs still reach MSW.
+    const originalPost = apiClient.post.bind(apiClient);
     const postSpy = vi
       .spyOn(apiClient, "post")
-      .mockRejectedValueOnce(new axios.CanceledError("canceled"));
+      .mockImplementation((url, data, config) => {
+        if (typeof url === "string" && url.startsWith("/nudges")) {
+          return Promise.reject(new axios.CanceledError("canceled"));
+        }
+        return originalPost(url, data, config);
+      });
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     try {
