@@ -124,23 +124,27 @@ describe("useGetNudgesQuery", () => {
   });
 
   it("swallows an axios CanceledError and returns an empty list", async () => {
-    vi.spyOn(apiClient, "post").mockRejectedValueOnce(
-      new axios.CanceledError("canceled"),
-    );
-    const consoleSpy = vi.spyOn(console, "error");
+    const postSpy = vi
+      .spyOn(apiClient, "post")
+      .mockRejectedValueOnce(new axios.CanceledError("canceled"));
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const { result } = renderHook(() => useGetNudgesQuery(), {
-      wrapper: createQueryWrapper({ providers: ["auth", "chat"] }),
-    });
+    try {
+      const { result } = renderHook(() => useGetNudgesQuery(), {
+        wrapper: createQueryWrapper({ providers: ["auth", "chat"] }),
+      });
 
-    await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(result.current.isError).toBe(false);
-    expect(result.current.data).toEqual([]);
-    expect(consoleSpy).not.toHaveBeenCalledWith(
-      "Error getting nudges",
-      expect.any(Error),
-    );
-    consoleSpy.mockRestore();
+      await waitFor(() => expect(result.current.data).toBeDefined());
+      expect(result.current.isError).toBe(false);
+      expect(result.current.data).toEqual([]);
+      expect(consoleSpy).not.toHaveBeenCalledWith(
+        "Error getting nudges",
+        expect.any(Error),
+      );
+    } finally {
+      consoleSpy.mockRestore();
+      postSpy.mockRestore();
+    }
   });
 
   it("cancel() drops the cached entry from the query client", async () => {

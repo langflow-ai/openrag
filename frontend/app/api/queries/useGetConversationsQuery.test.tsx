@@ -70,20 +70,23 @@ describe("useGetConversationsQuery", () => {
         }
         return originalGet(url as string, config);
       });
-    const consoleSpy = vi.spyOn(console, "error");
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const { result } = renderHook(() => useGetConversationsQuery("chat"), {
-      wrapper: createQueryWrapper({ providers: ["auth", "chat"] }),
-    });
+    try {
+      const { result } = renderHook(() => useGetConversationsQuery("chat"), {
+        wrapper: createQueryWrapper({ providers: ["auth", "chat"] }),
+      });
 
-    await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(result.current.isError).toBe(false);
-    expect(result.current.data).toEqual([]);
-    expect(consoleSpy).not.toHaveBeenCalledWith(
-      expect.stringContaining("conversations"),
-      expect.any(Error),
-    );
-    consoleSpy.mockRestore();
-    getSpy.mockRestore();
+      await waitFor(() => expect(result.current.data).toBeDefined());
+      expect(result.current.isError).toBe(false);
+      expect(result.current.data).toEqual([]);
+      expect(consoleSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("conversations"),
+        expect.any(Error),
+      );
+    } finally {
+      consoleSpy.mockRestore();
+      getSpy.mockRestore();
+    }
   });
 });
