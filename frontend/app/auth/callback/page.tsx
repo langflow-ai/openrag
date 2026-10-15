@@ -20,6 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useAuth } from "@/contexts/auth-context";
+import { apiClient } from "@/lib/api-client";
 import { decodeBase64 } from "@/lib/utils";
 
 // remove from localStorage any keys related to the OAuth flow
@@ -81,17 +82,13 @@ function AuthCallbackContent() {
       code: string;
       state: string;
     }) => {
-      const response = await fetch("/api/auth/callback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          connection_id: params.connectionId,
-          authorization_code: params.code,
-          state: params.state,
-        }),
+      const response = await apiClient.post("/auth/callback", {
+        connection_id: params.connectionId,
+        authorization_code: params.code,
+        state: params.state,
       });
-      const result = await response.json();
-      if (!response.ok) {
+      const result = response.data;
+      if (response.status < 200 || response.status >= 300) {
         throw new Error(result.error || "Authentication failed");
       }
       return result as { purpose?: string };

@@ -391,6 +391,19 @@ describe("IngestSettingsSection", () => {
         }),
       );
 
+      const input = await screen.findByRole("spinbutton", {
+        name: /chunk size/i,
+      });
+      expect(input).toHaveValue(500);
+
+      // The server-sync effect settles a tick after the value appears, so
+      // wait for it rather than asserting disabled against a transient render.
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: /save changes/i }),
+        ).toBeDisabled();
+      });
+
       server.use(
         http.post("/api/reset-flow/ingest", () => HttpResponse.json({})),
         http.post("/api/settings", () =>
@@ -411,19 +424,6 @@ describe("IngestSettingsSection", () => {
           ),
         ),
       );
-
-      const input = await screen.findByRole("spinbutton", {
-        name: /chunk size/i,
-      });
-      expect(input).toHaveValue(500);
-
-      // The server-sync effect settles a tick after the value appears, so
-      // wait for it rather than asserting disabled against a transient render.
-      await waitFor(() => {
-        expect(
-          screen.getByRole("button", { name: /save changes/i }),
-        ).toBeDisabled();
-      });
 
       await userEvent.click(
         await screen.findByRole("button", { name: /restore flow/i }),

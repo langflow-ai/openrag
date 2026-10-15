@@ -13,6 +13,8 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useUnsavedChangesGuard } from "@/contexts/unsaved-changes-context";
+import { apiClient } from "@/lib/api-client";
+import { withFrontendBasePath } from "@/lib/frontend-base-path";
 import { cn } from "@/lib/utils";
 import ThemeButtons from "./theme-switcher-buttons";
 
@@ -33,11 +35,11 @@ export function UserNav() {
   const performLogout = async () => {
     if (isCloudBrand) {
       try {
-        await fetch("/api/auth/logout", { method: "POST" });
+        await apiClient.post("/auth/logout");
       } catch {
         // Best-effort server cleanup; redirect regardless.
       }
-      window.location.href = "/logout";
+      window.location.href = withFrontendBasePath("/logout");
       return;
     }
     await logout();

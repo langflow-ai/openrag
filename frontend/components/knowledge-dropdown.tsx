@@ -43,6 +43,7 @@ import {
   trackProcessFailure,
   trackStartProcess,
 } from "@/lib/analytics";
+import { apiClient } from "@/lib/api-client";
 import {
   getConnectorDescriptor,
   getConnectorDescriptors,
@@ -164,14 +165,14 @@ export function KnowledgeDropdown() {
 
         // Check upload batch size and bucket connector availability in parallel
         const [uploadOptionsRes, ...bucketResponses] = await Promise.all([
-          fetch("/api/upload_options"),
+          apiClient.get("/upload_options"),
           ...bucketDescriptors.map((d) =>
-            fetch(`/api/connectors/${d.connectorType}/defaults`),
+            apiClient.get(`/connectors/${d.connectorType}/defaults`),
           ),
         ]);
 
-        if (uploadOptionsRes.ok) {
-          const uploadOptionsData = await uploadOptionsRes.json();
+        if (uploadOptionsRes.status >= 200 && uploadOptionsRes.status < 300) {
+          const uploadOptionsData = uploadOptionsRes.data;
           if (
             typeof uploadOptionsData.upload_batch_size === "number" &&
             uploadOptionsData.upload_batch_size > 0
@@ -184,8 +185,8 @@ export function KnowledgeDropdown() {
         await Promise.all(
           bucketResponses.map(async (res, i) => {
             const descriptor = bucketDescriptors[i];
-            if (!res.ok) return;
-            const data = await res.json();
+            if (res.status < 200 || res.status >= 300) return;
+            const data = res.data;
             // Generic predicate: connection_id set OR any *_set boolean is true.
             const anySetFlag = Object.entries(data).some(
               ([k, v]) => k.endsWith("_set") && v === true,
@@ -198,9 +199,9 @@ export function KnowledgeDropdown() {
         setBucketConnectorConfigured(configured);
 
         // Check cloud connectors
-        const connectorsRes = await fetch("/api/connectors");
-        if (connectorsRes.ok) {
-          const connectorsResult = await connectorsRes.json();
+        const connectorsRes = await apiClient.get("/connectors");
+        if (connectorsRes.status >= 200 && connectorsRes.status < 300) {
+          const connectorsResult = connectorsRes.data;
 
           // Bucket connector availability mirrors the backend `is_available()`
           // gate (IBM auth, or the dev flag for Azure Blob), so the dropdown
@@ -245,10 +246,12 @@ export function KnowledgeDropdown() {
           await Promise.all(
             availableTypes.map(async (type) => {
               try {
-                const statusRes = await fetch(`/api/connectors/${type}/status`);
-                if (!statusRes.ok) return;
+                const statusRes = await apiClient.get(
+                  `/connectors/${type}/status`,
+                );
+                if (statusRes.status < 200 || statusRes.status >= 300) return;
 
-                const statusData = await statusRes.json();
+                const statusData = statusRes.data;
                 const connections = statusData.connections || [];
                 const activeConnection = connections.find(
                   (conn: { is_active: boolean; connection_id: string }) =>
@@ -259,11 +262,11 @@ export function KnowledgeDropdown() {
                 connectorInfo[type].connected = true;
 
                 try {
-                  const tokenRes = await fetch(
-                    `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`,
+                  const tokenRes = await apiClient.get(
+                    `/connectors/${type}/token?connection_id=${activeConnection.connection_id}`,
                   );
-                  if (tokenRes.ok) {
-                    const tokenData = await tokenRes.json();
+                  if (tokenRes.status >= 200 && tokenRes.status < 300) {
+                    const tokenData = tokenRes.data;
                     if (tokenData.access_token) {
                       connectorInfo[type].hasToken = true;
                     }
@@ -743,15 +746,11 @@ export function KnowledgeDropdown() {
     });
 
     try {
-      const response = await fetch("/api/upload_path", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ path: folderPath }),
+      const response = await apiClient.post("/upload_path", {
+        path: folderPath,
       });
 
-      const result = await response.json();
+      const result = response.data;
 
       if (response.status === 201) {
         const taskId = result.task_id || result.id;
@@ -764,7 +763,7 @@ export function KnowledgeDropdown() {
         setFolderPath("");
         // Refetch tasks to show the new task
         refetchTasks();
-      } else if (response.ok) {
+      } else if (response.status >= 200 && response.status < 300) {
         setFolderPath("");
         // Refetch tasks even for direct uploads in case tasks were created
         refetchTasks();
