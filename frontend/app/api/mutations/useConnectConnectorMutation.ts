@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
+import { apiClient } from "@/lib/api-client";
+import { frontendUrl } from "@/lib/frontend-base-path";
 import { encodeBase64 } from "@/lib/utils";
 import type {
   Connector,
@@ -39,26 +41,20 @@ export const useConnectConnectorMutation = () => {
        * not persist a data-source connection on success. */
       purpose?: "data_source" | "test";
     }): Promise<ConnectResponse> => {
-      const response = await fetch("/api/auth/init", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          connector_type: connector.type,
-          purpose,
-          name: `${connector.name} Connection`,
-          redirect_uri: redirectUri,
-        }),
+      const response = await apiClient.post("/auth/init", {
+        connector_type: connector.type,
+        purpose,
+        name: `${connector.name} Connection`,
+        redirect_uri: redirectUri,
       });
 
-      if (!response.ok) {
-        const result = await response.json();
+      if (response.status < 200 || response.status >= 300) {
+        const result = response.data;
         throw new Error(
           result.error || `Failed to initiate connection for ${connector.name}`,
         );
       }
-      return response.json();
+      return response.data;
     },
     onMutate: async (): Promise<ConnectorsMutationContext> => {
       await queryClient.cancelQueries(connectorsQueryFilter);
@@ -84,7 +80,7 @@ export const useConnectConnectorMutation = () => {
 
         const state = isIbmAuthMode
           ? encodeBase64(
-              `id=${result.connection_id}&return=${window.location.origin}/auth/callback`,
+              `id=${result.connection_id}&return=${frontendUrl("/auth/callback")}`,
             )
           : result.connection_id;
 

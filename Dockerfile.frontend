@@ -26,6 +26,11 @@ FROM registry.access.redhat.com/ubi10/nodejs-24-minimal AS builder
 WORKDIR /opt/app-root/src
 USER 0
 
+# Next.js inlines basePath into browser bundles, so it has to be supplied when
+# this image is built rather than only at container runtime.
+ARG OPENRAG_FRONTEND_BASE_PATH
+ENV OPENRAG_FRONTEND_BASE_PATH=${OPENRAG_FRONTEND_BASE_PATH}
+
 COPY --from=deps /opt/app-root/src/node_modules ./node_modules
 COPY --from=deps /opt/app-root/src/stubs ./stubs
 COPY frontend/package*.json ./
@@ -42,11 +47,17 @@ FROM registry.access.redhat.com/ubi10/nodejs-24-minimal AS runtime
 WORKDIR /opt/app-root/src
 USER 0
 
+# Next.js evaluates next.config.ts again when `next start` launches. Keep the
+# same build-time base path available in the runtime stage so the server-side
+# config agrees with the paths compiled into `.next`.
+ARG OPENRAG_FRONTEND_BASE_PATH
+
 
 RUN microdnf update -y && microdnf clean all && rm -rf /var/cache/yum
 
 ENV NODE_ENV=production \
-    NEXT_TELEMETRY_DISABLED=1
+    NEXT_TELEMETRY_DISABLED=1 \
+    OPENRAG_FRONTEND_BASE_PATH=${OPENRAG_FRONTEND_BASE_PATH}
 
 # CWE-426 fix: explicitly set PATH so system-owned directories are always resolved
 # first. App venv dirs are appended last so they cannot shadow system binaries.
