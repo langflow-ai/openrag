@@ -35,6 +35,7 @@ def _openai_error(
     error_type: str = "invalid_request_error",
     code: str | None = None,
 ):
+    """Build an OpenAI error response, including a code only when supplied."""
     error = {"message": message, "type": error_type}
     if code:
         error["code"] = code
@@ -42,6 +43,7 @@ def _openai_error(
 
 
 def _gateway_error(exc: LlmGatewayError):
+    """Log internal gateway details and return the caller-safe error and code."""
     error_type = "invalid_request_error" if exc.status_code < 500 else "api_error"
     if exc.detail != exc.message:
         logger.error("LLM gateway error", status_code=exc.status_code, error=exc.detail)

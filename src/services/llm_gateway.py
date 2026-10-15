@@ -59,6 +59,7 @@ class LlmGatewayError(Exception):
         detail: str | None = None,
         code: str | None = None,
     ):
+        """Store caller-safe text, HTTP status, internal details, and an optional code."""
         super().__init__(message)
         self.message = message
         self.status_code = status_code
@@ -86,6 +87,7 @@ class LlmContextLengthError(LlmGatewayError):
         max_tokens: int | None = None,
         requested_tokens: int | None = None,
     ):
+        """Create a context-length 400 with the token counts the provider supplied."""
         super().__init__(message, 400, detail, code=CONTEXT_LENGTH_ERROR_CODE)
         self.max_tokens = max_tokens
         self.requested_tokens = requested_tokens
@@ -1686,6 +1688,11 @@ async def _stream_sse(
     model: str = "",
     credentials: Mapping[str, Any] | None = None,
 ) -> AsyncIterator[str]:
+    """Yield OpenAI SSE frames, repair tool calls, and report classified failures.
+
+    Context-window failures emit an error frame without affecting provider
+    health. Close the upstream stream and finish with a ``[DONE]`` frame.
+    """
     tally = _StreamTally()
     buffer = _ToolCallBuffer()
     template: dict[str, Any] = {}

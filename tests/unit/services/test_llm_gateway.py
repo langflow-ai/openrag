@@ -1912,6 +1912,7 @@ class TestRequestScopedFailuresStayOutOfTheBanner:
 
     @pytest.mark.asyncio
     async def test_a_context_window_overflow_is_not_recorded(self, monkeypatch):
+        """Report chat overflow as a coded 400 without recording a provider failure."""
         from services import llm_gateway, provider_error_log
 
         class ContextWindowExceededError(Exception):
@@ -1958,6 +1959,7 @@ class TestRequestScopedFailuresStayOutOfTheBanner:
 
     @pytest.mark.asyncio
     async def test_a_mid_stream_overflow_is_reported_but_not_recorded(self):
+        """Emit a context-length SSE error without adding a provider health failure."""
         from services import llm_gateway, provider_error_log
 
         overflow = self._OVERFLOW
@@ -1996,6 +1998,7 @@ class TestAnOverLengthEmbeddingInput:
 
     @pytest.fixture(autouse=True)
     def _clean(self):
+        """Clear provider failures before and after each embedding overflow test."""
         from services import provider_error_log
 
         provider_error_log.clear()
@@ -2003,13 +2006,17 @@ class TestAnOverLengthEmbeddingInput:
         provider_error_log.clear()
 
     def _raise(self, monkeypatch, exc: BaseException):
+        """Make the embedding provider raise the supplied exception."""
+
         async def _boom(**_kwargs):
+            """Simulate a failed upstream embedding call."""
             raise exc
 
         monkeypatch.setattr("litellm.aembedding", _boom)
 
     @pytest.mark.asyncio
     async def test_it_is_a_400_carrying_the_openai_code_and_the_providers_words(self, monkeypatch):
+        """Keep the provider's message and token counts in a typed context-length 400."""
         self._raise(monkeypatch, _FakeLiteLLMError(_EMBEDDING_OVERFLOW, status_code=400))
 
         with pytest.raises(LlmContextLengthError) as raised:
@@ -2023,6 +2030,7 @@ class TestAnOverLengthEmbeddingInput:
 
     @pytest.mark.asyncio
     async def test_it_is_not_recorded_against_the_provider(self, monkeypatch):
+        """Keep an oversized embedding input out of provider health failures."""
         from services import provider_error_log
 
         self._raise(monkeypatch, _FakeLiteLLMError(_EMBEDDING_OVERFLOW, status_code=400))
@@ -2034,6 +2042,7 @@ class TestAnOverLengthEmbeddingInput:
 
     @pytest.mark.asyncio
     async def test_it_does_not_erase_a_real_failure(self, monkeypatch):
+        """Preserve an earlier provider failure when an embedding input is too long."""
         from services import provider_error_log
 
         provider_error_log.record_failure("watsonx", "embedding", "earlier real failure")
@@ -2046,6 +2055,7 @@ class TestAnOverLengthEmbeddingInput:
 
     @pytest.mark.asyncio
     async def test_an_overflow_without_counts_still_raises_the_typed_error(self, monkeypatch):
+        """Classify overflow without guessing token counts the provider omitted."""
         self._raise(monkeypatch, RuntimeError('{"error": {"code": "context_length_exceeded"}}'))
 
         with pytest.raises(LlmContextLengthError) as raised:
@@ -2055,6 +2065,7 @@ class TestAnOverLengthEmbeddingInput:
 
     @pytest.mark.asyncio
     async def test_other_embedding_failures_are_still_recorded(self, monkeypatch):
+        """Keep non-context embedding failures as provider failures with a 502 status."""
         from services import provider_error_log
 
         self._raise(
@@ -2093,7 +2104,10 @@ class TestAnOverLengthEmbeddingInput:
 async def test_embeddings_names_an_upstream_failure_and_keeps_its_status(
     monkeypatch, upstream_status, upstream_text, status_code, code
 ):
+    """Map upstream embedding failures to the expected HTTP status and OpenAI code."""
+
     async def boom(**kwargs):
+        """Raise an embedding failure with the parameterized upstream status."""
         raise _FakeLiteLLMError(upstream_text, status_code=upstream_status)
 
     monkeypatch.setattr("litellm.aembedding", boom)
@@ -2131,6 +2145,7 @@ class APIConnectionError(Exception):
     ],
 )
 def test_a_failure_with_no_useful_status_is_named_from_what_raised_it(exc, expected):
+    """Classify transport failures using exception ancestry and text as well as status."""
     from services.llm_gateway import _classify_upstream_failure
 
     failure = _classify_upstream_failure(f"{type(exc).__name__}: {exc}", exc)

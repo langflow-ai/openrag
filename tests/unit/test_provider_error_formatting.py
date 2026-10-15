@@ -548,6 +548,7 @@ async def test_probe_checks_non_selected_providers_with_keys(monkeypatch):
     ],
 )
 def test_is_context_window_error(text):
+    """Recognize the context-window error wordings used by supported providers."""
     assert is_context_window_error(text)
 
 
@@ -564,6 +565,7 @@ def test_is_context_window_error(text):
     ],
 )
 def test_is_context_window_error_rejects_other_failures(text):
+    """Distinguish context-window overflow from credentials and rate-limit failures."""
     assert not is_context_window_error(text)
 
 
@@ -600,6 +602,7 @@ def test_is_context_window_error_rejects_other_failures(text):
     ],
 )
 def test_context_window_token_counts(text, expected):
+    """Extract stated input limits and counts without mistaking output tokens for input."""
     assert context_window_token_counts(text) == expected
 
 
@@ -632,6 +635,7 @@ def test_sanitize_keeps_the_providers_sentence_whatever_wraps_it(raw):
 
 
 def test_sanitize_reads_a_python_dict_quoted_either_way():
+    """Preserve apostrophes and quotes when extracting an SDK dictionary message."""
     raw = (
         "Error code: 404 - {'error': {'message': 'The model `e5` doesn\\'t exist, "
         "said \"the API\"', 'type': 'api_error'}}"
@@ -648,6 +652,7 @@ def test_sanitize_reads_a_python_dict_quoted_either_way():
     ],
 )
 def test_sanitize_never_passes_off_a_bare_status_code_as_the_message(raw):
+    """Use the fallback when an unreadable error body leaves only a status code."""
     assert sanitize_provider_error_content(raw) == "An error occurred while generating a response."
 
 

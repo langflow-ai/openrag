@@ -356,6 +356,7 @@ describe("useChatStreaming", () => {
       expect(returned?.content).not.toContain("{");
     });
 
+    /** Surface the relayed provider diagnosis as a chat error instead of assistant text. */
     it("treats a gateway error relayed as a Python dict as one", async () => {
       serveStream([
         textChunk(

@@ -28,12 +28,14 @@ function stripErrorLabelPrefixes(text: string): string {
 const PYTHON_DICT_MESSAGE =
   /^\s*\{[\s\S]*?'message':\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/;
 
+/** Extract a nonempty SDK dictionary message and unescape its quotes and backslashes. */
 function tryParsePythonDictMessage(text: string): string | null {
   const match = PYTHON_DICT_MESSAGE.exec(text);
   const message = (match?.[1] ?? match?.[2])?.replace(/\\(['"\\])/g, "$1");
   return message?.trim() ? message : null;
 }
 
+/** Read a provider message from JSON, falling back to the SDK's Python dictionary form. */
 function tryParseJsonMessage(text: string): string | null {
   try {
     const data = JSON.parse(text) as Record<string, unknown>;
@@ -75,6 +77,7 @@ function tryParseJsonMessage(text: string): string | null {
   return null;
 }
 
+/** Return the first balanced object, ignoring braces inside either style of quoted string. */
 function extractBalancedJsonObject(text: string): string | null {
   const start = text.indexOf("{");
   if (start < 0) {
@@ -201,6 +204,7 @@ function humanizeProviderErrorMessage(message: string): string {
  */
 const SYNTACTIC_FRAGMENT_TAIL = /[([{'"`,=:]$/;
 
+/** Require a letter and a complete ending before using a prefix as an error message. */
 function isReadablePrefix(prefix: string): boolean {
   return /\p{L}/u.test(prefix) && !SYNTACTIC_FRAGMENT_TAIL.test(prefix);
 }
