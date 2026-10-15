@@ -5,7 +5,7 @@ import {
 } from "@tanstack/react-query";
 import type { EndpointType } from "@/contexts/chat-context";
 import { useChat } from "@/contexts/chat-context";
-import { apiClient } from "@/lib/api-client";
+import { apiClient, isRequestCancelled } from "@/lib/api-client";
 
 export interface RawConversation {
   response_id: string;
@@ -57,6 +57,7 @@ export const useGetConversationsQuery = (
   const queryClient = useQueryClient();
   const { isOnboardingComplete } = useChat();
 
+  /** Fetches conversation history for the endpoint; silently returns [] on cancellation or error. */
   async function getConversations(context: {
     signal?: AbortSignal;
   }): Promise<ChatConversation[]> {
@@ -96,7 +97,7 @@ export const useGetConversationsQuery = (
       return conversations;
     } catch (error) {
       // Ignore abort errors - these are expected when requests are cancelled
-      if (error instanceof Error && error.name === "AbortError") {
+      if (isRequestCancelled(error)) {
         return [];
       }
       console.error(`Failed to fetch ${endpoint} conversations:`, error);
