@@ -100,6 +100,62 @@ describe("useOnboardingMutation", () => {
     await waitFor(() => expect(catalogFetchCount).toBe(2));
   });
 
+  it("refetches the catalogue when its first load was still in flight during onboarding", async () => {
+    let catalogFetchCount = 0;
+    let releaseFirstLoad: () => void = () => {};
+    const firstLoadHeld = new Promise<void>((resolve) => {
+      releaseFirstLoad = resolve;
+    });
+    server.use(
+      http.post("/api/onboarding", () =>
+        HttpResponse.json({ message: "done", edited: true }),
+      ),
+      http.get("/api/models/catalog", async () => {
+        catalogFetchCount += 1;
+        // The first load started before onboarding saved the credentials.
+        if (catalogFetchCount === 1) {
+          await firstLoadHeld;
+          return HttpResponse.json({ providers: [] });
+        }
+        return HttpResponse.json({
+          providers: [
+            {
+              key: "rhoai",
+              name: "Red Hat OpenShift AI",
+              credential_fields: [],
+              model_placeholder: null,
+              models: [{ model: "gpt-oss-120b", mode: "chat" }],
+              embedding_models: [],
+            },
+          ],
+        });
+      }),
+    );
+
+    const { result } = renderHook(
+      () => ({
+        catalog: useGetModelCatalogQuery(),
+        mutation: useOnboardingMutation(),
+      }),
+      { wrapper: createQueryWrapper() },
+    );
+
+    try {
+      await waitFor(() => expect(catalogFetchCount).toBe(1));
+
+      act(() => result.current.mutation.mutate({ llm_provider: "rhoai" }));
+
+      await waitFor(() => expect(result.current.mutation.isSuccess).toBe(true));
+      await waitFor(() => expect(catalogFetchCount).toBe(2));
+    } finally {
+      releaseFirstLoad();
+    }
+
+    await waitFor(() =>
+      expect(result.current.catalog.data?.providers[0]?.key).toBe("rhoai"),
+    );
+  });
+
   it("succeeds without waiting for the catalogue refresh to finish", async () => {
     let catalogFetchCount = 0;
     let releaseCatalog: () => void = () => {};

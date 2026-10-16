@@ -6,6 +6,7 @@ import {
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api-client";
 import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
+import { refreshModelCatalog } from "../queries/useGetModelsQuery";
 import { useUpdateOnboardingStateMutation } from "./useUpdateOnboardingStateMutation";
 
 export interface OnboardingVariables {
@@ -92,12 +93,8 @@ export const useOnboardingMutation = (
       // credentials, which onboarding has just written. Not awaited: the
       // catalogue route lists every cluster provider live, and the mutation
       // stays pending until onSettled resolves, which would stall the
-      // embedding step's progress behind a slow cluster. invalidateQueries
-      // swallows refetch errors, so this cannot reject unhandled.
-      queryClient.invalidateQueries({
-        queryKey: ["models", "catalog"],
-        exact: true,
-      });
+      // embedding step's progress behind a slow cluster.
+      refreshModelCatalog(queryClient);
       await options?.onSettled?.(
         data,
         error,

@@ -1,4 +1,5 @@
 import {
+  type QueryClient,
   type UseQueryOptions,
   useQuery,
   useQueryClient,
@@ -311,9 +312,38 @@ export interface ModelCatalogResponse {
   providers: CatalogProvider[];
 }
 
+const MODEL_CATALOG_QUERY_FILTERS = {
+  queryKey: ["models", "catalog"],
+  exact: true,
+} as const;
+
+/**
+ * Refetch the catalogue after a save that can change it — a cluster-hosted
+ * provider is listed with its *saved* credentials. Fire-and-forget, so the
+ * caller's mutation never waits on a slow cluster listing.
+ *
+ * Cancelling first matters: while the catalogue's first load is in flight
+ * (no data yet), invalidateQueries joins that pre-save request instead of
+ * starting a new one, and staleTime: Infinity would then keep its result for
+ * the tab's lifetime. Cancelling reverts the query to its pre-fetch state, so
+ * the invalidation is guaranteed a post-save fetch.
+ */
+export const refreshModelCatalog = (queryClient: QueryClient): void => {
+  void queryClient
+    .cancelQueries(MODEL_CATALOG_QUERY_FILTERS)
+    .then(() => queryClient.invalidateQueries(MODEL_CATALOG_QUERY_FILTERS))
+    .catch((error: unknown) => {
+      // Both calls swallow fetch errors themselves; this guards the chain.
+      console.warn(
+        `Failed to refresh the model catalogue after saving. Error: ${error}.`,
+      );
+    });
+};
+
 /**
  * LiteLLM's bundled model list, grouped by provider. Static for the tab's
- * lifetime — same as openrag-next's `/agent/model-catalog` fetch.
+ * lifetime — same as openrag-next's `/agent/model-catalog` fetch — except
+ * where a save refreshes it through `refreshModelCatalog`.
  */
 export const useGetModelCatalogQuery = (
   options?: Omit<UseQueryOptions<ModelCatalogResponse>, "queryKey" | "queryFn">,
@@ -322,7 +352,7 @@ export const useGetModelCatalogQuery = (
 
   return useQuery(
     {
-      queryKey: ["models", "catalog"] as const,
+      queryKey: MODEL_CATALOG_QUERY_FILTERS.queryKey,
       queryFn: async (): Promise<ModelCatalogResponse> => {
         const response =
           await apiClient.get<ModelCatalogResponse>("/models/catalog");
