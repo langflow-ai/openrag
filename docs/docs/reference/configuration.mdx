@@ -244,6 +244,7 @@ For Langflow flow IDs and Langflow timeout settings, see [Langflow settings](#la
 | `HOST_DOCKER_INTERNAL` | `host.docker.internal` | Host address for accessing services running on the host machine from within Docker containers. This is used to connect to the local Docling Serve instance started by OpenRAG. If your system uses a different hostname for this purpose, set this variable accordingly. |
 | `INGESTION_TIMEOUT` | `3600` | Document ingestion timeout limit in seconds for each file. Increase this value if you experience timeouts when ingesting very large documents. Must be greater than or equal to [`LANGFLOW_TIMEOUT`](#langflow-settings).  |
 | `UPLOAD_BATCH_SIZE` | `25` | When ingesting folders, set the maximum number of files to ingest per batch. Each batch is an [ingestion task](/ingestion#monitor-ingestion). Increase this value to ingest more files per batch. If this value is too high, performance issues can occur. |
+| `OPENRAG_MAX_UPLOAD_MB` | `100` | Largest accepted upload, in mebibytes. A larger file is refused while the upload is in progress. This does not raise the body limit on the proxy in front of Docling Serve. A `proxy-body-size` annotation on the OpenRAG ingress does not change that proxy. Raise the Docling proxy's `client_max_body_size`, or set this variable to that proxy's real limit. |
 
 ## Langflow settings {#langflow-settings}
 

@@ -1250,6 +1250,19 @@ class TaskService:
                 "actionable_by": "USER_ACTIONABLE",
             }
 
+        from utils.upload_limits import is_upload_size_error, upload_size_user_message
+
+        # A size refusal is stored while docling_status is still PENDING, because
+        # the proxy rejects the body before a Docling task exists. Later branches
+        # would drop that text.
+        if is_upload_size_error(error):
+            return {
+                "component": "docling",
+                "failure_phase": "parsing",
+                "user_facing_message": upload_size_user_message(error),
+                "actionable_by": "USER_ACTIONABLE",
+            }
+
         # Before the substring heuristics below, which would otherwise read this
         # as a plain duplicate: the file was never ingested, and retrying is
         # exactly the right move.
