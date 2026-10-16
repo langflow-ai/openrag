@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "node build.js",
-    "start": "next start",
+    "start": "node server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -67,6 +67,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
     "tailwindcss-animate": "^1.0.7",
+    "undici": "8.11.2",
     "use-stick-to-bottom": "^1.1.6",
     "winston": "^3.19.0",
     "zustand": "^5.0.8"
