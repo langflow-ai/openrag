@@ -250,3 +250,89 @@ After running, **restart the backend** and reload the app.
 This script does **not** delete ingested documents, knowledge filters, Langflow
 flows, or conversations. For a full teardown, use the authenticated API endpoint
 `POST /settings/rollback-onboarding` instead.
+
+## Azure AI Foundry live validation (`validate_azure_foundry_live.py`)
+
+The matrix that must pass against a **real** Azure AI Foundry resource before
+`azure_ai` is made visible in any run mode. The provider stays hidden while it
+runs: credentials come from the environment and the config object is built in
+memory, so nothing reads `model_providers.yaml` or the saved configuration.
+
+Every check goes through OpenRAG's own code — the provider enhancement, the
+LLM gateway, the Docling option builder — rather than reimplementing the
+requests. A script that built its own URLs would prove Azure works, not that
+OpenRAG calls it correctly, which is the question the flip depends on.
+
+```bash
+export AZURE_AI_API_BASE="https://<resource>.services.ai.azure.com/openai/v1"
+export AZURE_AI_API_KEY="<key>"
+export AZURE_AI_CHAT_DEPLOYMENT="<chat deployment>"
+export AZURE_AI_EMBEDDING_DEPLOYMENT="<embedding deployment>"
+
+# Optional; each unlocks more of the matrix.
+export AZURE_AI_PROJECT_API_BASE="https://<r>.services.ai.azure.com/api/projects/<p>/openai/v1"
+export AZURE_AI_LEGACY_API_BASE="https://<resource>.services.ai.azure.com/models"
+export AZURE_AI_VLM_DEPLOYMENT="<vision-capable deployment>"
+
+uv run python scripts/validate_azure_foundry_live.py
+```
+
+Exit status is non-zero if any **blocker** fails *or is skipped* — an
+unexercised blocker leaves the matrix incomplete, which is not a pass.
+
+| # | Check | |
+|---|---|---|
+| 1 | Save-time validation, valid credentials | blocker |
+| 2 | Invalid API key is rejected | blocker |
+| 3 | Chat | blocker |
+| 4 | Streaming | blocker |
+| 5 | Tool calling | blocker |
+| 6 | Embeddings | blocker |
+| 7 | Unknown deployment fails cleanly | blocker |
+| 8 | `/openai/v1` routing | blocker |
+| 9 | `/api/projects/<project>/openai/v1` routing | blocker when configured |
+| 10 | Docling VLM picture description | blocker |
+| 11 | No credential in errors or logs | blocker |
+| 12 | Legacy `/models` `api-key` vs `Bearer` | advisory |
+| 13 | Cost attribution | advisory |
+
+**The 403 question.** `foundry.lightweight_health_check` raises
+`PermissionError` for a 403 on the deployment listing, on the reasoning that
+listing can need a permission inference does not. The product does not act on
+that distinction: `api/settings/endpoints.py` catches `Exception` around
+provider validation and returns HTTP 400, so the provider cannot be saved
+either way. A 403 on a valid credential is therefore reported as
+**inconclusive and blocking**, not as a pass. Set
+`AZURE_AI_LISTING_DENIED_API_KEY` to capture what such a credential actually
+returns; the decision — require listing permission, or make a specific denial
+non-blocking — needs that response alongside the invalid-key response, and is
+only safe if the two are reliably distinguishable.
+
+Checks 3–7 run once per configured endpoint.
+
+Cost is advisory by design: OpenRAG does not consume cost data today, and the
+OpenAI-compatible transport's loss of LiteLLM's `azure_ai/*` price rows is
+documented in `enhancements/providers/azure/foundry.py`. Check 12 is advisory
+because the shipped health check sends both header styles; its answer only
+decides whether that can later be simplified.
+
+The API key is never printed. The run captures root logging, stdout, stderr
+and every recorded exception, and check 11 scans all of it. When a leak is
+found the captured material is **not** reproduced — only the fact and the
+number of matching fragments — and every printed line is redacted regardless,
+since several checks quote an upstream response body.
+
+Checks that pass by observing a rejection assert the *category* of failure:
+the invalid-key check passes only on a credential rejection, and the
+unknown-deployment check only on a not-found through the gateway's own error
+contract. Neither accepts a DNS, TLS, timeout or 5xx failure, which would
+otherwise let an unreachable endpoint look like a successful rejection.
+
+**Two things the script cannot cover**, both needed before the flip:
+
+- Check 10 issues the exact URL, headers and params OpenRAG hands
+  docling-serve, but does not run docling-serve. Do one real ingest of an
+  image-bearing document through the running stack with picture descriptions
+  enabled.
+- Nothing here exercises the settings UI. Save the provider once through
+  **Settings > Providers** to confirm the form and its validation behave.
