@@ -107,6 +107,7 @@ endef
        instana-agent-up instana-agent-down \
        shell-backend shell-frontend install \
        test test-unit test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
+       eval-validate eval-run eval-baseline eval-compare \
        ci-build-images ci-save-images \
        backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
@@ -337,6 +338,14 @@ help_test: ## Show testing commands
 	@echo "$(PURPLE)SDK Tests:$(NC)"
 	@echo "  $(PURPLE)make test-sdk$(NC)        - Run SDK integration tests"
 	@echo "                         (requires running OpenRAG at localhost:3000)"
+	@echo ''
+	@echo "$(PURPLE)Retrieval Evaluation:$(NC)"
+	@echo "  $(PURPLE)make eval-validate$(NC)   - Check the eval corpus and questions (no stack needed)"
+	@echo "  $(PURPLE)make eval-run$(NC)        - Score search quality (requires running OpenRAG and OPENRAG_API_KEY)"
+	@echo "                         (BASELINE=results/baseline.json to compare with an earlier run)"
+	@echo "  $(PURPLE)make eval-baseline$(NC)   - Run the eval and save it as results/baseline.json"
+	@echo "  $(PURPLE)make eval-compare$(NC)    - Compare two results files offline"
+	@echo "                         (BASELINE=... CURRENT=..., default baseline vs latest run)"
 	@echo ''
 	@echo "$(PURPLE)Diagnostic Tests:$(NC)"
 	@echo "  $(PURPLE)make test-os-jwt$(NC)     - Test JWT authentication against OpenSearch"
@@ -1325,6 +1334,24 @@ test-sdk: ## Run SDK integration tests (requires running OpenRAG at localhost:30
 	@echo "$(PURPLE)Running TypeScript SDK tests...$(NC)"
 	cd sdks/typescript && npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test
 	@echo "$(PURPLE)SDK tests complete.$(NC)"
+
+EVAL_DIR := scripts/eval/retrieval
+# Paths below are relative to EVAL_DIR. EVAL_ARGS passes extra options to run_eval.py,
+# e.g. EVAL_ARGS="--keep-documents --fetch-limit 100".
+CURRENT ?= results/results.json
+
+eval-validate: ## Check the retrieval eval corpus and questions (no stack needed)
+	cd $(EVAL_DIR) && uv run run_eval.py run --validate-only $(EVAL_ARGS)
+
+eval-run: ## Run the retrieval eval (requires running OpenRAG and OPENRAG_API_KEY); BASELINE=file to compare
+	cd $(EVAL_DIR) && uv run run_eval.py run $(if $(BASELINE),--baseline $(BASELINE)) $(EVAL_ARGS)
+
+eval-baseline: ## Run the retrieval eval and save it as results/baseline.json
+	cd $(EVAL_DIR) && uv run run_eval.py run $(EVAL_ARGS) && cp results/results.json results/baseline.json
+	@echo "$(PURPLE)Saved $(EVAL_DIR)/results/baseline.json$(NC)"
+
+eval-compare: ## Compare two retrieval eval results files offline (BASELINE=..., CURRENT=...)
+	cd $(EVAL_DIR) && uv run run_eval.py compare $(or $(BASELINE),results/baseline.json) $(CURRENT)
 
 lint: ## Run linting checks
 	@echo "$(YELLOW)Running linting checks...$(NC)"

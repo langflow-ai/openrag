@@ -32,6 +32,21 @@ uv run run_eval.py run --baseline results/baseline.json
 cat results/summary.md
 ```
 
+The same steps are available as `make` targets from the repository root.
+Paths are relative to this directory.
+
+| `make` target | Same as |
+|---|---|
+| `make eval-validate` | `uv run run_eval.py run --validate-only` |
+| `make eval-run` | `uv run run_eval.py run` |
+| `make eval-run BASELINE=results/baseline.json` | `uv run run_eval.py run --baseline results/baseline.json` |
+| `make eval-baseline` | `uv run run_eval.py run`, then copy the results to `results/baseline.json` |
+| `make eval-compare` | `uv run run_eval.py compare results/baseline.json results/results.json` |
+| `make eval-compare BASELINE=a.json CURRENT=b.json` | `uv run run_eval.py compare a.json b.json` |
+
+Pass any other option with `EVAL_ARGS`, for example
+`make eval-run EVAL_ARGS="--keep-documents --fetch-limit 100"`.
+
 The rest of this file explains each step.
 
 ## What is here
