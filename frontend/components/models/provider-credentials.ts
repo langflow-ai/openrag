@@ -103,13 +103,18 @@ export function activeCredentialKeys(
  * Fields that say *where* credentials are sent. Mirrors
  * `CREDENTIAL_TARGET_FIELDS` in `src/config/config_manager.py`: once a form
  * changes one — or clears one that was saved — the backend refuses to reuse a
- * stored secret, for model discovery and for Submit alike.
+ * stored secret, for model discovery and for Submit alike. Onboarding and the
+ * Settings provider dialog both apply this rule.
  */
 export const CREDENTIAL_TARGET_FIELDS = [
   "api_base",
   "embedding_api_base",
   "ssl_verify",
 ] as const;
+
+/** Shown under a saved secret that must be typed again after a target change. */
+export const SECRET_REENTRY_HINT =
+  "The endpoint or TLS setting changed, so the saved value is not sent to it. Enter it again.";
 
 /** Whether the form points the credentials somewhere other than the saved target. */
 export function credentialTargetChanged(

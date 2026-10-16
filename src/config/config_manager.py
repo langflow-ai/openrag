@@ -144,7 +144,8 @@ def _sanitize_for_log(value: object) -> str:
 #: Fields that say *where* credentials are sent. When a save changes one —
 #: including clearing one that was stored — the stored secrets belong to a
 #: different host and must not travel with it. Mirrored by
-#: `CREDENTIAL_TARGET_FIELDS` in the frontend's generic onboarding.
+#: `CREDENTIAL_TARGET_FIELDS` in `frontend/components/models/provider-credentials.ts`
+#: (shared by onboarding and the Settings provider dialog).
 CREDENTIAL_TARGET_FIELDS = ("api_base", "embedding_api_base", "ssl_verify")
 
 #: Providers with a bespoke settings and onboarding form, outside the

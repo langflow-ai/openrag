@@ -5,7 +5,7 @@ import {
   clearedSavedCredentialKeys,
   credentialTargetChanged,
   secretsToReenter,
-} from "./generic-provider-credential-fields.helpers";
+} from "./provider-credentials";
 
 describe("authMethodCredentialKeys", () => {
   it.each([

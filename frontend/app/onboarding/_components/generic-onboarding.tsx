@@ -16,6 +16,12 @@ import {
   getProviderChrome,
   requiresExplicitModelSelection,
 } from "@/components/models/model-helpers";
+import {
+  activeCredentialKeys,
+  authMethodCredentialKeys,
+  clearedSavedCredentialKeys,
+  credentialTargetChanged,
+} from "@/components/models/provider-credentials";
 import { WatsonxSpaceSelect } from "@/components/models/watsonx-space-select";
 import { WatsonxTlsSettings } from "@/components/models/watsonx-tls-settings";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
@@ -24,12 +30,6 @@ import {
   GenericCredentialInput,
   GenericProviderCredentialFields,
 } from "./generic-provider-credential-fields";
-import {
-  activeCredentialKeys,
-  authMethodCredentialKeys,
-  clearedSavedCredentialKeys,
-  credentialTargetChanged,
-} from "./generic-provider-credential-fields.helpers";
 import { useOnboardingCompletionBlocker } from "./use-onboarding-completion-blocker";
 import { useOnboardingModelDiscovery } from "./use-onboarding-model-discovery";
 import { useOnboardingModelSelection } from "./use-onboarding-model-selection";

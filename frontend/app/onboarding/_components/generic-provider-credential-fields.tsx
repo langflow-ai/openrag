@@ -2,16 +2,17 @@ import type { ReactNode } from "react";
 import { LabelInput } from "@/components/label-input";
 import type { CatalogCredentialField } from "@/components/models/catalog-models";
 import {
+  AZURE_AUTH_GROUPS,
+  fieldsForKeys,
+  ON_PREM_AUTH_GROUPS,
+  SECRET_REENTRY_HINT,
+} from "@/components/models/provider-credentials";
+import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import {
-  AZURE_AUTH_GROUPS,
-  fieldsForKeys,
-  ON_PREM_AUTH_GROUPS,
-} from "./generic-provider-credential-fields.helpers";
 
 export function GenericProviderCredentialFields({
   provider,
@@ -152,10 +153,7 @@ export function GenericCredentialInput({
         </p>
       )}
       {needsReentry && (
-        <p className="text-mmd text-muted-foreground">
-          The endpoint or TLS setting changed, so the saved value is not sent to
-          it. Enter it again.
-        </p>
+        <p className="text-mmd text-muted-foreground">{SECRET_REENTRY_HINT}</p>
       )}
     </div>
   );

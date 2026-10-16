@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { CatalogCredentialField } from "@/components/models/catalog-models";
-import { secretsToReenter } from "./generic-provider-credential-fields.helpers";
+import { secretsToReenter } from "@/components/models/provider-credentials";
 
 /**
  * The saved secrets that must be typed again before Submit, reported to the
