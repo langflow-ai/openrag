@@ -772,6 +772,53 @@ describe("GenericOnboarding cluster model discovery", () => {
     );
   });
 
+  it("selects the configured fallback while saved credentials are first checked", async () => {
+    let asked = false;
+    let release: () => void = () => {};
+    const { getSettings } = renderOnboarding(
+      "rhoai",
+      false,
+      {
+        custom: {
+          rhoai: {
+            credential_values: { api_base: "https://chat.example.com/v1" },
+            secret_fields: ["api_key"],
+          },
+        },
+      },
+      [
+        http.post("/api/models/rhoai/discover", async () => {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+            asked = true;
+          });
+          return served();
+        }),
+      ],
+    );
+
+    await screen.findByText(
+      "Checking which models the cluster serves…",
+      {},
+      DISCOVERY_TIMEOUT,
+    );
+    // Saved credentials make the first render already in flight; a slow
+    // cluster must not leave Submit without a model meanwhile.
+    await waitFor(() =>
+      expect(getSettings().llm_model).toBe("granite-3.3-2b-instruct"),
+    );
+
+    // Release only once the handler has installed its resolver.
+    await waitFor(() => expect(asked).toBe(true), DISCOVERY_TIMEOUT);
+    release();
+    await screen.findByText(
+      "Showing 1 language model served by the cluster.",
+      {},
+      DISCOVERY_TIMEOUT,
+    );
+    await waitFor(() => expect(getSettings().llm_model).toBe("gpt-oss-120b"));
+  });
+
   describe("with no configured fallback", () => {
     const noFallbackCatalog = {
       ...catalog,

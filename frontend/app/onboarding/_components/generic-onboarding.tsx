@@ -225,13 +225,16 @@ export function GenericOnboarding({
     : (models[0]?.value ?? "");
   // While the cluster is asked again the list briefly falls back to the
   // configured rows: keep the last settled default rather than flick to one of
-  // those and back.
+  // those and back. With nothing to keep, follow the list: saved credentials
+  // start discovery as soon as the catalogue loads, and a slow cluster must
+  // not leave Submit without a model meanwhile.
   const [settledDefault, setSettledDefault] = useState("");
   if (!discoveryInFlight && settledDefault !== defaultModel) {
     setSettledDefault(defaultModel);
   }
   const model =
-    pickedModel ?? (discoveryInFlight ? settledDefault : defaultModel);
+    pickedModel ??
+    (discoveryInFlight && settledDefault ? settledDefault : defaultModel);
 
   const syncModel = useEffectEvent((nextModel: string) => {
     syncParentSettings(credentials, nextModel);
