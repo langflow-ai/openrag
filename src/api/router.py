@@ -21,6 +21,7 @@ from dependencies import (
 from session_manager import User
 from utils.ingest_preview_flag import is_ingest_preview_enabled
 from utils.logging_config import get_logger
+from utils.upload_limits import UploadTooLarge, read_upload_within_limit
 
 logger = get_logger(__name__)
 
@@ -130,7 +131,7 @@ async def _traditional_upload_ingest_task(
 
         try:
             for upload_file in upload_files:
-                content = await upload_file.read()
+                content = await read_upload_within_limit(upload_file)
                 original_filenames.append(upload_file.filename)
                 # Generate unique temp file with the original extension to assist docling/format detection
                 suffix = os.path.splitext(upload_file.filename)[1] if upload_file.filename else ""
@@ -190,6 +191,8 @@ async def _traditional_upload_ingest_task(
                 safe_unlink(temp_path)
             raise
 
+    except UploadTooLarge as e:
+        return JSONResponse({"error": str(e)}, status_code=413)
     except Exception as e:
         logger.error("Task-based traditional upload_ingest failed", error=str(e))
         import traceback
@@ -245,7 +248,7 @@ async def _langflow_upload_ingest_task(
 
         try:
             for upload_file in upload_files:
-                content = await upload_file.read()
+                content = await read_upload_within_limit(upload_file)
                 original_filenames.append(upload_file.filename)
                 # Generate unique temp file with the original extension to assist docling/format detection
                 suffix = os.path.splitext(upload_file.filename)[1] if upload_file.filename else ""
@@ -304,6 +307,8 @@ async def _langflow_upload_ingest_task(
                 safe_unlink(temp_path)
             raise
 
+    except UploadTooLarge as e:
+        return JSONResponse({"error": str(e)}, status_code=413)
     except Exception as e:
         logger.error("Task-based langflow upload_ingest failed", error=str(e))
         import traceback

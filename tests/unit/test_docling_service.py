@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from services.docling_service import DoclingServeError, DoclingService
+from services.docling_service import DoclingPayloadTooLarge, DoclingServeError, DoclingService
+from utils.upload_limits import UploadTooLarge
 
 # Shape of a /v1/result body for a password-protected PDF: the task ran to
 # completion, but the conversion failed and no document was exported.
@@ -217,6 +218,46 @@ async def test_upload_http_error(docling_service, mock_httpx_client):
 
         with pytest.raises(httpx.HTTPStatusError):
             await docling_service.upload_to_docling_direct_async("test.pdf", b"data")
+
+
+@pytest.mark.asyncio
+async def test_upload_refuses_before_posting_when_over_the_limit(
+    docling_service, mock_httpx_client, monkeypatch
+):
+    monkeypatch.setattr("config.settings.OPENRAG_MAX_UPLOAD_MB", 1)
+
+    with pytest.raises(UploadTooLarge, match="big.pdf"):
+        await docling_service.upload_to_docling_direct_async("big.pdf", b"x" * (1024 * 1024 + 1))
+
+    mock_httpx_client.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_upload_maps_docling_proxy_413(docling_service, mock_httpx_client):
+    """A 413 from the proxy becomes a message that names the file and the fix."""
+    mock_httpx_client.post.return_value = _make_response(413)
+
+    with patch("services.docling_service.get_openrag_config") as mock_get_config:
+        mock_config = MagicMock()
+        mock_config.knowledge.table_structure = False
+        mock_config.knowledge.ocr = False
+        mock_config.knowledge.picture_descriptions = False
+        mock_config.knowledge.vlm_enabled = False
+        mock_get_config.return_value = mock_config
+
+        with (
+            patch("services.docling_service.logger") as mock_logger,
+            pytest.raises(DoclingPayloadTooLarge, match="report.pdf") as exc_info,
+        ):
+            await docling_service.upload_to_docling_direct_async("report.pdf", b"data")
+
+    message = str(exc_info.value)
+    assert "OPENRAG_MAX_UPLOAD_MB" in message
+    assert "http://docling:8000" not in message
+    assert "client_max_body_size" not in message
+    logged = mock_logger.error.call_args.kwargs["error"]
+    assert "http://docling:8000/v1/convert/file/async" in logged
+    assert "client_max_body_size" in logged
 
 
 # ── Configuration Logic ─────────────────────────────────────────────

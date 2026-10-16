@@ -28,7 +28,7 @@ import {
   handleInputKeyDown,
   type ImeCompositionState,
 } from "@/lib/ime-composition";
-import { uploadFileForContext } from "@/lib/upload-utils";
+import { uploadFailureText, uploadFileForContext } from "@/lib/upload-utils";
 import { resolveDisplayName } from "@/lib/user";
 import { cn } from "@/lib/utils";
 import { useGetConversationsQuery } from "../api/queries/useGetConversationsQuery";
@@ -343,7 +343,7 @@ function ChatPage() {
       setChatError(true);
       const errorMessage: Message = {
         role: "assistant",
-        content: `❌ Failed to process document. Please try again.`,
+        content: `❌ ${uploadFailureText(error)}`,
         timestamp: new Date(),
         error: true,
       };

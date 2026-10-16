@@ -54,9 +54,13 @@ import {
   type PreviewDialogState,
 } from "@/lib/ingest-preview";
 import {
+  countSentDuplicates,
   duplicateCheck,
+  folderUploadSuccessText,
+  packUploadBatches,
   uploadFiles,
   uploadFile as uploadFileUtil,
+  uploadTooLargeMessage,
 } from "@/lib/upload-utils";
 import { cn } from "@/lib/utils";
 
@@ -118,6 +122,7 @@ export function KnowledgeDropdown() {
   const [showFolderDialog, setShowFolderDialog] = useState(false);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [uploadBatchSize, setUploadBatchSize] = useState(25);
+  const maxUploadBytesRef = useRef(100 * 1024 * 1024);
   const [folderPath, setFolderPath] = useState("");
   const [folderLoading, setFolderLoading] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
@@ -178,6 +183,13 @@ export function KnowledgeDropdown() {
             uploadOptionsData.upload_batch_size > 0
           ) {
             setUploadBatchSize(uploadOptionsData.upload_batch_size);
+          }
+          if (
+            typeof uploadOptionsData.max_upload_mb === "number" &&
+            uploadOptionsData.max_upload_mb > 0
+          ) {
+            maxUploadBytesRef.current =
+              uploadOptionsData.max_upload_mb * 1024 * 1024;
           }
         }
 
@@ -442,21 +454,40 @@ export function KnowledgeDropdown() {
   const uploadFolderBatches = async (
     filesToUpload: File[],
     replace: boolean,
-  ) => {
+  ): Promise<{
+    sentCount: number;
+    sentNames: string[];
+    oversizedCount: number;
+  }> => {
+    const maxUploadBytes = maxUploadBytesRef.current;
+    const { batches, oversized } = packUploadBatches(
+      filesToUpload,
+      uploadBatchSize,
+      maxUploadBytes,
+    );
+    for (const file of oversized) {
+      toast.error("File too large", {
+        description: uploadTooLargeMessage(
+          file.name,
+          file.size,
+          maxUploadBytes,
+        ),
+      });
+    }
+    const filesToSend = batches.flat();
+    if (filesToSend.length === 0) {
+      return { sentCount: 0, sentNames: [], oversizedCount: oversized.length };
+    }
+
     trackStartProcess({
       processType: "Ingestion",
       process: "Document Upload",
       category: "Knowledge",
       source: "folder",
-      total_files: filesToUpload.length,
+      total_files: filesToSend.length,
     });
 
-    openPreviewForFiles(filesToUpload, `${filesToUpload.length} files`);
-
-    const batches: File[][] = [];
-    for (let i = 0; i < filesToUpload.length; i += uploadBatchSize) {
-      batches.push(filesToUpload.slice(i, i + uploadBatchSize));
-    }
+    openPreviewForFiles(filesToSend, `${filesToSend.length} files`);
 
     const taskIdsByBatch: (string | undefined)[] = [];
     const failedBatchIndexes: number[] = [];
@@ -487,8 +518,8 @@ export function KnowledgeDropdown() {
             attachPreviewTaskIds(
               taskIdsByBatch.filter((id): id is string => id !== undefined),
               {
-                files: filesToUpload,
-                filename: `${filesToUpload.length} files`,
+                files: filesToSend,
+                filename: `${filesToSend.length} files`,
               },
             );
             refetchTasks();
@@ -530,6 +561,12 @@ export function KnowledgeDropdown() {
         `${failedBatchIndexes.length} of ${batches.length} batch upload(s) failed`,
       );
     }
+
+    return {
+      sentCount: filesToSend.length,
+      sentNames: filesToSend.map((file) => file.name),
+      oversizedCount: oversized.length,
+    };
   };
 
   const handleOverwriteFile = async () => {
@@ -538,14 +575,20 @@ export function KnowledgeDropdown() {
       const { allFiles, duplicateNames, unsupportedCount } =
         pendingFolderUpload;
       try {
-        await uploadFolderBatches(allFiles, true);
-        const unsupportedMessage =
-          unsupportedCount > 0
-            ? `, skipped ${unsupportedCount} unsupported`
-            : "";
-        toast.success(
-          `Processed ${allFiles.length} file(s), including ${duplicateNames.length} overwrite(s)${unsupportedMessage}`,
+        const result = await uploadFolderBatches(allFiles, true);
+        const overwriteCount = countSentDuplicates(
+          result.sentNames,
+          duplicateNames,
         );
+        const success = folderUploadSuccessText(
+          result.sentCount,
+          result.oversizedCount,
+          `Processed ${result.sentCount} file(s), including ${overwriteCount} overwrite(s)`,
+          unsupportedCount > 0
+            ? [`skipped ${unsupportedCount} unsupported`]
+            : [],
+        );
+        if (success) toast.success(success);
       } catch (error) {
         toast.error("Folder upload incomplete", {
           description: error instanceof Error ? error.message : "Unknown error",
@@ -592,7 +635,7 @@ export function KnowledgeDropdown() {
           pendingFolderUpload;
         if (nonDuplicateFiles.length > 0) {
           try {
-            await uploadFolderBatches(nonDuplicateFiles, false);
+            const result = await uploadFolderBatches(nonDuplicateFiles, false);
             const extraParts: string[] = [];
             if (duplicateNames.length > 0) {
               extraParts.push(`skipped ${duplicateNames.length} duplicate(s)`);
@@ -600,11 +643,13 @@ export function KnowledgeDropdown() {
             if (unsupportedCount > 0) {
               extraParts.push(`skipped ${unsupportedCount} unsupported`);
             }
-            const suffix =
-              extraParts.length > 0 ? `, ${extraParts.join(", ")}` : "";
-            toast.success(
-              `Processed ${nonDuplicateFiles.length} file(s)${suffix}`,
+            const success = folderUploadSuccessText(
+              result.sentCount,
+              result.oversizedCount,
+              `Processed ${result.sentCount} file(s)`,
+              extraParts,
             );
+            if (success) toast.success(success);
           } catch (error) {
             toast.error("Folder upload incomplete", {
               description:
@@ -714,12 +759,14 @@ export function KnowledgeDropdown() {
         return;
       }
 
-      await uploadFolderBatches(nonDuplicateFiles, false);
-      const unsupportedMessage =
-        unsupportedCount > 0 ? `, skipped ${unsupportedCount} unsupported` : "";
-      toast.success(
-        `Successfully processed ${nonDuplicateFiles.length} file(s)${unsupportedMessage}`,
+      const result = await uploadFolderBatches(nonDuplicateFiles, false);
+      const success = folderUploadSuccessText(
+        result.sentCount,
+        result.oversizedCount,
+        `Successfully processed ${result.sentCount} file(s)`,
+        unsupportedCount > 0 ? [`skipped ${unsupportedCount} unsupported`] : [],
       );
+      if (success) toast.success(success);
     } catch (error) {
       console.error("Folder upload error:", error);
       toast.error("Folder upload failed", {
