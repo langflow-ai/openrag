@@ -261,7 +261,7 @@ stringData:
     LANGFUSE_PUBLIC_KEY={{ .Values.langflow.langfuse.publicKey | quote }}
     {{- end }}
     {{- if .Values.langflow.langfuse.host }}
-    LANGFUSE_HOST={{ .Values.langflow.langfuse.host | quote }}
+    LANGFUSE_BASE_URL={{ .Values.langflow.langfuse.host | quote }}
     {{- end }}
     {{- end }}
 

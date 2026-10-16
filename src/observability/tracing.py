@@ -4,7 +4,7 @@ Every model call the backend makes goes through LiteLLM in
 ``services/llm_gateway.py`` — including the embedding and chat calls Langflow
 proxies to ``/v1/*`` — so tracing hooks in once, as LiteLLM's ``langfuse_otel``
 callback, rather than at each call site. That callback builds its own private
-OpenTelemetry provider exporting OTLP to ``$LANGFUSE_HOST/api/public/otel`` and
+OpenTelemetry provider exporting OTLP to ``$LANGFUSE_BASE_URL/api/public/otel`` and
 does not replace the global provider, and it parents each call under whatever
 OTel span is active, so ingest and search spans opened around gateway calls
 nest them automatically.
@@ -19,6 +19,11 @@ mode that takes a second flag. Decision record:
 """
 
 import os
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
+from types import MappingProxyType
+from typing import Any
 
 from config.settings import (
     is_tracing_capture_content_flag_enabled,
@@ -27,7 +32,7 @@ from config.settings import (
     langfuse_keys_configured,
 )
 from utils.logging_config import get_logger
-from utils.run_mode_utils import is_run_mode_saas
+from utils.run_mode_utils import get_run_mode, is_run_mode_saas
 
 logger = get_logger(__name__)
 
@@ -38,10 +43,19 @@ _LITELLM_REQUEST_SPAN_ENV_VAR = "USE_OTEL_LITELLM_REQUEST_SPAN"
 # OpenTelemetry SDK setting, read when a TracerProvider is constructed.
 _OTEL_SAMPLER_ENV_VAR = "OTEL_TRACES_SAMPLER"
 
-# Langflow and the Langfuse SDK treat an empty LANGFUSE_HOST as Langfuse Cloud
-# EU; LiteLLM's langfuse_otel treats it as Cloud US. Pin the backend to the same
-# default so its traces land in the same project as Langflow's.
+# With no host set, the Langfuse SDK defaults to Langfuse Cloud EU while
+# LiteLLM's langfuse_otel defaults to Cloud US; follow the SDK. (Langflow
+# disables its tracing when no host is set.)
 _LANGFUSE_DEFAULT_HOST = "https://cloud.langfuse.com"
+
+# Set by configure_tracing(); gates the per-call metadata below so a backend
+# running untraced passes LiteLLM exactly what it did before tracing existed.
+_enabled = False
+
+# Who a gateway call is for, set by the caller around it (see llm_call_context).
+_call_context: ContextVar[Mapping[str, Any]] = ContextVar(
+    "openrag_llm_call_context", default=MappingProxyType({})
+)
 
 
 def content_capture_enabled() -> bool:
@@ -95,8 +109,15 @@ def configure_tracing() -> bool:
     # silently drop every LLM span. Record unconditionally; the spans still join
     # the request's trace id. Read when each provider is built, i.e. after this.
     os.environ.setdefault(_OTEL_SAMPLER_ENV_VAR, "always_on")
-    if not (os.environ.get("LANGFUSE_OTEL_HOST") or os.environ.get("LANGFUSE_HOST")):
-        os.environ["LANGFUSE_HOST"] = _LANGFUSE_DEFAULT_HOST
+    # LiteLLM reads only LANGFUSE_OTEL_HOST / LANGFUSE_HOST. Hand it the host
+    # with Langflow's precedence: LANGFUSE_BASE_URL (the name Langfuse's setup
+    # steps use) first, then the older LANGFUSE_HOST.
+    if not os.environ.get("LANGFUSE_OTEL_HOST"):
+        os.environ["LANGFUSE_HOST"] = (
+            os.environ.get("LANGFUSE_BASE_URL")
+            or os.environ.get("LANGFUSE_HOST")
+            or _LANGFUSE_DEFAULT_HOST
+        )
 
     capture = content_capture_enabled()
     # Read by LiteLLM on every request: forces its OTel logger to NO_CONTENT,
@@ -105,5 +126,87 @@ def configure_tracing() -> bool:
     if TRACING_CALLBACK not in litellm.callbacks:
         litellm.callbacks.append(TRACING_CALLBACK)
 
+    global _enabled
+    _enabled = True
     logger.info("Backend tracing enabled", backend="langfuse", capture_content=capture)
     return True
+
+
+@contextmanager
+def llm_call_context(
+    *,
+    source: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    purpose: str | None = None,
+    attributes: Mapping[str, Any] | None = None,
+) -> Iterator[None]:
+    """Describe the gateway calls made inside this block to the trace.
+
+    ``source`` is who asked (``langflow`` or the default ``openrag``),
+    ``user_id`` and ``session_id`` become Langfuse's user and session, and
+    ``purpose`` overrides the call site's own (e.g. ``dimension_probe``).
+    ``attributes`` are extra ``openrag.*`` trace metadata. Blocks nest: inner
+    values win, and leaving a block restores the outer ones.
+    """
+    fields = dict(_call_context.get())
+    for key, value in (
+        ("source", source),
+        ("user_id", user_id),
+        ("session_id", session_id),
+        ("purpose", purpose),
+    ):
+        if value is not None:
+            fields[key] = value
+    if attributes:
+        fields["attributes"] = {**fields.get("attributes", {}), **attributes}
+    token = _call_context.set(MappingProxyType(fields))
+    try:
+        yield
+    finally:
+        _call_context.reset(token)
+
+
+def gateway_trace_kwargs(
+    kind: str, purpose: str, *, provider: str | None = None, **sizes: Any
+) -> dict[str, Any]:
+    """LiteLLM kwargs that label one gateway call in Langfuse; ``{}`` when untraced.
+
+    ``kind`` is ``embedding`` or ``chat``; ``purpose`` is what the call is for
+    (``ingest``, ``query``, ``completion``, ...) unless the call context
+    overrides it. ``provider`` is OpenRAG's provider id, which can differ from
+    LiteLLM's route (``watsonx_onprem``, custom providers). ``sizes`` are counts recorded as ``openrag.<kind>.<name>``;
+    None values are left out. Never pass content here: this metadata is sent
+    whatever the content-capture setting.
+
+    LiteLLM's ``langfuse_otel`` maps ``generation_name`` to the observation
+    name, ``trace_user_id`` / ``session_id`` to Langfuse's user and session,
+    and ``trace_metadata`` keys to metadata; it drops other keys. LiteLLM
+    consumes ``metadata`` itself and never sends it to the provider.
+    """
+    if not _enabled:
+        return {}
+    context = _call_context.get()
+    purpose = context.get("purpose") or purpose
+    source = context.get("source") or "openrag"
+    trace_metadata: dict[str, Any] = {
+        "openrag.source": source,
+        "openrag.purpose": purpose,
+        "openrag.run_mode": get_run_mode(),
+        **context.get("attributes", {}),
+    }
+    if provider:
+        trace_metadata["openrag.provider"] = provider
+    trace_metadata.update(
+        {f"openrag.{kind}.{name}": value for name, value in sizes.items() if value is not None}
+    )
+    metadata: dict[str, Any] = {
+        "generation_name": f"{kind}.{purpose}",
+        "tags": [f"source:{source}", f"purpose:{purpose}"],
+        "trace_metadata": trace_metadata,
+    }
+    if context.get("user_id"):
+        metadata["trace_user_id"] = context["user_id"]
+    if context.get("session_id"):
+        metadata["session_id"] = context["session_id"]
+    return {"metadata": metadata}

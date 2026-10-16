@@ -932,6 +932,7 @@ async def _test_litellm_provider(
     """Validate arbitrary providers through the same LiteLLM adapter used at runtime."""
     import litellm
 
+    from observability.tracing import gateway_trace_kwargs
     from services.llm_gateway import LlmGatewayError, with_stale_connection_retry
     from services.model_catalog import litellm_provider_key
 
@@ -960,6 +961,7 @@ async def _test_litellm_provider(
                 input=["OpenRAG provider validation"],
                 **credentials,
                 **(runtime_kwargs or {}),
+                **gateway_trace_kwargs("embedding", "provider_check", provider=provider),
             ),
             provider=provider,
             model=litellm_model,
@@ -973,6 +975,7 @@ async def _test_litellm_provider(
             max_tokens=4,
             **credentials,
             **(runtime_kwargs or {}),
+            **gateway_trace_kwargs("chat", "provider_check", provider=provider),
         ),
         provider=provider,
         model=litellm_model,

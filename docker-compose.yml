@@ -148,6 +148,7 @@ services:
       - OPENRAG_TRACING_ALLOW_CONTENT_IN_SAAS=${OPENRAG_TRACING_ALLOW_CONTENT_IN_SAAS:-false}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-}
       # Instana APM (opt-in, default off — see the INSTANA_* block in .env.example).
       # The agent runs on the HOST (`make instana-agent-up`, host networking), so a
@@ -237,6 +238,7 @@ services:
       - LANGFLOW_COMPONENTS_INDEX_PATH=/app/flows/component_index.json
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-}
       - LANGFLOW_DEACTIVATE_TRACING
       # Hop token is injected per Langflow run. Seed a non-empty placeholder

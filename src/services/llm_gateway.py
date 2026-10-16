@@ -17,6 +17,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from typing import Any, Literal
 from uuid import uuid4
 
+from observability.tracing import gateway_trace_kwargs
 from services import provider_error_log
 from services.model_catalog import is_known_provider, litellm_provider_key
 from utils.logging_config import get_logger
@@ -1297,6 +1298,14 @@ async def chat_completions(
                 **credentials,
                 **runtime_kwargs,
                 **kwargs,
+                **gateway_trace_kwargs(
+                    "chat",
+                    "completion",
+                    provider=provider,
+                    messages=len(messages) if isinstance(messages, list) else None,
+                    tools=len(body["tools"]) if isinstance(body.get("tools"), list) else None,
+                    stream=stream,
+                ),
             ),
             provider=provider,
             model=litellm_model,
@@ -1725,6 +1734,19 @@ def _embedding_input(value: Any) -> Any:
     return [value] if isinstance(value, str) else value
 
 
+def _embedding_trace_sizes(embedding_input: Any) -> dict[str, int | None]:
+    """How many inputs and how much text, for the trace; never the text itself."""
+    if not isinstance(embedding_input, list) or not embedding_input:
+        return {}
+    if all(isinstance(item, int) for item in embedding_input):
+        return {"inputs": 1}  # one pre-tokenised input
+    all_text = all(isinstance(item, str) for item in embedding_input)
+    return {
+        "inputs": len(embedding_input),
+        "input_chars": sum(map(len, embedding_input)) if all_text else None,
+    }
+
+
 async def embeddings(
     body: Mapping[str, Any], *, config=None, interactive: bool = False
 ) -> dict[str, Any]:
@@ -1741,6 +1763,7 @@ async def embeddings(
     runtime_kwargs = _provider_runtime_kwargs(provider, cfg)
     limiter = _embedding_limiter(provider, cfg)
     lane = _INTERACTIVE_LANE if interactive else _BULK_LANE
+    purpose = "query" if interactive else "ingest"
     embedding_input = _embedding_input(body.get("input"))
     should_batch = (
         provider == "watsonx_onprem"
@@ -1759,6 +1782,12 @@ async def embeddings(
                         input=embedding_input,
                         **credentials,
                         **runtime_kwargs,
+                        **gateway_trace_kwargs(
+                            "embedding",
+                            purpose,
+                            provider=provider,
+                            **_embedding_trace_sizes(embedding_input),
+                        ),
                     ),
                     provider=provider,
                     model=litellm_model,
@@ -1769,6 +1798,7 @@ async def embeddings(
             response = {}
             data: list[dict[str, Any]] = []
             usage: dict[str, int | float] = {}
+            sub_batches = -(-len(embedding_input) // _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE)
             for offset in range(
                 0,
                 len(embedding_input),
@@ -1783,6 +1813,14 @@ async def embeddings(
                             input=batch,
                             **credentials,
                             **runtime_kwargs,
+                            **gateway_trace_kwargs(
+                                "embedding",
+                                purpose,
+                                provider=provider,
+                                sub_batch=offset // _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE + 1,
+                                sub_batches=sub_batches,
+                                **_embedding_trace_sizes(batch),
+                            ),
                         ),
                         provider=provider,
                         model=litellm_model,

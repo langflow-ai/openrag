@@ -19,6 +19,7 @@ _TRACING_ENV = (
     "LANGFUSE_PUBLIC_KEY",
     "LANGFUSE_SECRET_KEY",
     "LANGFUSE_HOST",
+    "LANGFUSE_BASE_URL",
     "LANGFUSE_OTEL_HOST",
     "USE_OTEL_LITELLM_REQUEST_SPAN",
     "OTEL_TRACES_SAMPLER",
@@ -47,6 +48,7 @@ def _isolated_tracing(monkeypatch):
     ):
         monkeypatch.setattr(litellm, name, [])
     monkeypatch.setattr(litellm, "turn_off_message_logging", False)
+    monkeypatch.setattr(tracing, "_enabled", False)
 
 
 @pytest.fixture
@@ -179,6 +181,32 @@ def test_explicit_host_is_respected(monkeypatch, keys):
 
     config = LangfuseOtelLogger.get_langfuse_otel_config()
     assert config.endpoint == "http://langfuse.internal:3000/api/public/otel"
+
+
+def test_base_url_is_used_as_the_host(monkeypatch, keys):
+    """Langfuse's setup snippets name the host LANGFUSE_BASE_URL; LiteLLM reads LANGFUSE_HOST."""
+    from litellm.integrations.langfuse.langfuse_otel import LangfuseOtelLogger
+
+    monkeypatch.setenv("OPENRAG_TRACING_ENABLED", "true")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://us.cloud.langfuse.com")
+
+    configure_tracing()
+
+    config = LangfuseOtelLogger.get_langfuse_otel_config()
+    assert config.endpoint == "https://us.cloud.langfuse.com/api/public/otel"
+
+
+def test_base_url_wins_over_host_like_langflow(monkeypatch, keys):
+    from litellm.integrations.langfuse.langfuse_otel import LangfuseOtelLogger
+
+    monkeypatch.setenv("OPENRAG_TRACING_ENABLED", "true")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://us.cloud.langfuse.com")
+    monkeypatch.setenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+
+    configure_tracing()
+
+    config = LangfuseOtelLogger.get_langfuse_otel_config()
+    assert config.endpoint == "https://us.cloud.langfuse.com/api/public/otel"
 
 
 def test_missing_tracing_extra_warns_and_stays_off(monkeypatch, keys):

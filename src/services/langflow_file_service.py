@@ -141,15 +141,17 @@ class LangflowFileService:
         # mapping's vector width, so it has to reach the same endpoint the real
         # embedding call will. The direct client resolved credentials from
         # process-global environment instead of from config.
+        from observability.tracing import llm_call_context
         from services.llm_gateway import embeddings as gateway_embeddings
         from services.llm_gateway import qualified_model_id
 
-        response = await gateway_embeddings(
-            {
-                "model": qualified_model_id(embedding_provider, embedding_model),
-                "input": ["dimension probe"],
-            }
-        )
+        with llm_call_context(purpose="dimension_probe"):
+            response = await gateway_embeddings(
+                {
+                    "model": qualified_model_id(embedding_provider, embedding_model),
+                    "input": ["dimension probe"],
+                }
+            )
         data = response.get("data") or []
         if not data:
             raise RuntimeError("Embedding provider returned no data for dimension probe")

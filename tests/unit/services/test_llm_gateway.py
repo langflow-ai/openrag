@@ -2129,3 +2129,152 @@ class TestToolsBesideReasoningEffort:
             )
 
         assert len(calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Tracing metadata: what each call tells Langfuse (only when tracing is on)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def tracing_on(monkeypatch):
+    from observability import tracing
+
+    monkeypatch.setattr(tracing, "_enabled", True)
+
+
+def _capture_embedding(monkeypatch) -> list[dict]:
+    calls: list[dict] = []
+
+    async def fake_aembedding(**kwargs):
+        calls.append(kwargs)
+        return {
+            "object": "list",
+            "data": [{"embedding": [0.1], "index": i} for i in range(len(kwargs["input"]))],
+        }
+
+    monkeypatch.setattr("litellm.aembedding", fake_aembedding)
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_embeddings_send_no_tracing_metadata_when_tracing_is_off(monkeypatch):
+    from observability import tracing
+
+    monkeypatch.setattr(tracing, "_enabled", False)
+    calls = _capture_embedding(monkeypatch)
+
+    await embeddings({"model": "text-embedding-3-small", "input": ["hello"]}, config=_config())
+
+    assert "metadata" not in calls[0]
+
+
+@pytest.mark.asyncio
+async def test_bulk_embeddings_are_traced_as_ingest_with_sizes(monkeypatch, tracing_on):
+    calls = _capture_embedding(monkeypatch)
+
+    await embeddings(
+        {"model": "text-embedding-3-small", "input": ["hello", "world!"]}, config=_config()
+    )
+
+    metadata = calls[0]["metadata"]
+    assert metadata["generation_name"] == "embedding.ingest"
+    assert metadata["trace_metadata"]["openrag.provider"] == "openai"
+    assert metadata["trace_metadata"]["openrag.embedding.inputs"] == 2
+    assert metadata["trace_metadata"]["openrag.embedding.input_chars"] == 11
+
+
+@pytest.mark.asyncio
+async def test_interactive_embeddings_are_traced_as_query(monkeypatch, tracing_on):
+    calls = _capture_embedding(monkeypatch)
+
+    await embeddings(
+        {"model": "text-embedding-3-small", "input": "what is openrag"},
+        config=_config(),
+        interactive=True,
+    )
+
+    metadata = calls[0]["metadata"]
+    assert metadata["generation_name"] == "embedding.query"
+    assert metadata["trace_metadata"]["openrag.embedding.inputs"] == 1
+    assert metadata["trace_metadata"]["openrag.embedding.input_chars"] == 15
+
+
+@pytest.mark.asyncio
+async def test_embedding_trace_metadata_never_carries_the_input_text(monkeypatch, tracing_on):
+    calls = _capture_embedding(monkeypatch)
+
+    await embeddings(
+        {"model": "text-embedding-3-small", "input": ["secret chunk text"]}, config=_config()
+    )
+
+    assert "secret chunk text" not in json.dumps(calls[0]["metadata"])
+
+
+@pytest.mark.asyncio
+async def test_onprem_sub_batches_are_numbered_in_trace_metadata(monkeypatch, tracing_on):
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        custom={
+            "watsonx_onprem": GenericProviderConfig(
+                credentials={
+                    "api_base": "https://cpd.example.com",
+                    "username": "cpduser",
+                    "api_key": "secret",
+                },
+                configured=True,
+            )
+        },
+    )
+    calls = _capture_embedding(monkeypatch)
+    monkeypatch.setattr(
+        "services.llm_gateway._provider_runtime_kwargs",
+        lambda provider, config: {},
+    )
+
+    await embeddings(
+        {
+            "model": "watsonx_onprem:ibm/slate-30m-english-rtrvr",
+            "input": [f"chunk-{index}" for index in range(70)],
+        },
+        config=SimpleNamespace(providers=providers),
+    )
+
+    traced = [call["metadata"]["trace_metadata"] for call in calls]
+    assert [t["openrag.embedding.inputs"] for t in traced] == [32, 32, 6]
+    assert [t["openrag.embedding.sub_batch"] for t in traced] == [1, 2, 3]
+    assert {t["openrag.embedding.sub_batches"] for t in traced} == {3}
+
+
+@pytest.mark.asyncio
+async def test_chat_completions_are_traced_with_request_shape(monkeypatch, tracing_on):
+    captured = {}
+
+    async def fake_acompletion(**kwargs):
+        captured.update(kwargs)
+        return {"choices": [{"message": {"role": "assistant", "content": "hi"}}]}
+
+    monkeypatch.setattr("litellm.acompletion", fake_acompletion)
+
+    await chat_completions(
+        {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "system", "content": "be brief"},
+                {"role": "user", "content": "hello"},
+            ],
+            "tools": [{"type": "function", "function": {"name": "search", "parameters": {}}}],
+        },
+        config=_config(),
+    )
+
+    metadata = captured["metadata"]
+    assert metadata["generation_name"] == "chat.completion"
+    assert metadata["trace_metadata"]["openrag.provider"] == "openai"
+    assert metadata["trace_metadata"]["openrag.chat.messages"] == 2
+    assert metadata["trace_metadata"]["openrag.chat.tools"] == 1
+    assert metadata["trace_metadata"]["openrag.chat.stream"] is False
+    assert "hello" not in json.dumps(metadata)
