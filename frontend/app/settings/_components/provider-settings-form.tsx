@@ -130,7 +130,7 @@ export function ProviderSettingsForm({
               {...register(`credentials.${field.key}`, {
                 required: required ? `${field.label} is required` : false,
               })}
-              className={error ? "!border-destructive" : ""}
+              className={error ? "border-destructive!" : ""}
               id={`provider-field-${field.key}`}
               placeholder={
                 hasSaved ? "•••••••••" : (field.placeholder ?? undefined)
@@ -141,7 +141,7 @@ export function ProviderSettingsForm({
               {...register(`credentials.${field.key}`, {
                 required: required ? `${field.label} is required` : false,
               })}
-              className={error ? "!border-destructive" : ""}
+              className={error ? "border-destructive!" : ""}
               id={`provider-field-${field.key}`}
               type={field.field_type === "password" ? "password" : "text"}
               autoComplete={
@@ -161,7 +161,7 @@ export function ProviderSettingsForm({
         {error && (
           <p
             data-testid="provider-connection-error"
-            className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]"
+            className="text-sm text-destructive min-w-0 wrap-anywhere"
           >
             {error}
           </p>
@@ -273,7 +273,7 @@ export function ProviderSettingsForm({
       {saveError && (
         <p
           data-testid="provider-connection-error"
-          className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]"
+          className="text-sm text-destructive min-w-0 wrap-anywhere"
         >
           {saveError}
         </p>

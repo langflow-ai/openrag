@@ -205,7 +205,7 @@ export function AssistantMessage({
           icon={
             <div
               className={cn(
-                "w-8 h-8 flex items-center justify-center flex-shrink-0 select-none",
+                "w-8 h-8 flex items-center justify-center shrink-0 select-none",
                 isInitialGreeting && "mt-4",
               )}
             >

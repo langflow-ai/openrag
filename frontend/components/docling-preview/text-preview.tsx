@@ -25,7 +25,7 @@ function ParsedBlock({
   children: ReactNode;
 }) {
   return (
-    <div className="relative rounded-md border-2 border-dashed border-blue-600/70 bg-blue-600/[0.12] px-3 pt-4 pb-2 dark:border-blue-500 dark:bg-blue-500/15">
+    <div className="relative rounded-md border-2 border-dashed border-blue-600/70 bg-blue-600/12 px-3 pt-4 pb-2 dark:border-blue-500 dark:bg-blue-500/15">
       <span className="absolute -top-2 left-2 rounded px-1 py-px text-xxs font-medium uppercase leading-none tracking-wide bg-blue-600 text-white dark:bg-blue-500">
         {label}
       </span>
@@ -188,7 +188,7 @@ export function DoclingTextPreview({
 
   return (
     <div
-      className="space-y-3 rounded-md border border-border/40 bg-white p-4 shadow-sm dark:bg-slate-900"
+      className="space-y-3 rounded-md border border-border/40 bg-white p-4 shadow-xs dark:bg-slate-900"
       data-testid="docling-text-preview"
     >
       {groups.map((group) => {
@@ -200,7 +200,7 @@ export function DoclingTextPreview({
           <div
             key={key}
             ref={key === firstChunkKey ? chunkFrameRef : undefined}
-            className="relative space-y-3 rounded-md border-2 border-dashed border-blue-700 bg-blue-700/[0.06] p-3 pt-5 dark:border-blue-400"
+            className="relative space-y-3 rounded-md border-2 border-dashed border-blue-700 bg-blue-700/6 p-3 pt-5 dark:border-blue-400"
             data-testid="docling-text-chunk-frame"
           >
             <span className="absolute -top-2.5 left-2 rounded px-1.5 py-0.5 text-xxs font-medium uppercase leading-none tracking-wide bg-blue-700 text-white dark:bg-blue-400">
