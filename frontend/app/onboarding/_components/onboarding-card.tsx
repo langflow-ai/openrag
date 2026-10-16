@@ -20,6 +20,7 @@ import {
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import { useDoclingHealth } from "@/components/docling-health-banner";
+import { providerDiscoversModels } from "@/components/models/catalog-models";
 import {
   EMBEDDING_PROVIDER_ORDER,
   getProviderChrome,
@@ -66,7 +67,9 @@ const STEP_LIST = [
 ];
 
 // Providers whose model inventory is read live from the running service, so an
-// empty catalogue list says nothing about what they can serve.
+// empty catalogue list says nothing about what they can serve. Provider
+// enhancements that list their models from typed credentials
+// (`discovers_models`) are in the same position until onboarding asks them.
 const LIVE_MODEL_PROVIDERS = new Set(["ollama", "watsonx"]);
 
 const EMBEDDING_STEP_LIST = [
@@ -120,13 +123,18 @@ const OnboardingCard = ({
   // The embedding step must not offer a provider that serves no embedding
   // models — Anthropic being the standing example. The catalogue answers that
   // for every provider except the two whose inventory comes from the running
-  // server rather than LiteLLM's bundled list.
+  // server rather than LiteLLM's bundled list, and those that discover their
+  // models from the credentials typed here — for them an empty list means "not
+  // asked yet", and hiding the tab would leave nowhere to type them.
   const tabProviders = useMemo(() => {
     if (!isEmbedding) {
       return providerKeys;
     }
     return providerKeys.filter((providerKey) => {
-      if (LIVE_MODEL_PROVIDERS.has(providerKey)) {
+      if (
+        LIVE_MODEL_PROVIDERS.has(providerKey) ||
+        providerDiscoversModels(catalog, providerKey)
+      ) {
         return true;
       }
       const entry = catalog?.providers?.find(
