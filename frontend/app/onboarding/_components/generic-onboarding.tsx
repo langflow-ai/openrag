@@ -27,20 +27,10 @@ import { GenericProviderCredentialFields } from "./generic-provider-credential-f
 import {
   activeCredentialKeys,
   clearedSavedCredentialKeys,
+  credentialTargetChanged,
+  secretsToReenter,
 } from "./generic-provider-credential-fields.helpers";
 import { useOnboardingModelDiscovery } from "./use-onboarding-model-discovery";
-
-/**
- * Fields that say *where* credentials are sent. Mirrors
- * `_CREDENTIAL_TARGET_FIELDS` in `src/api/models.py`: once a form changes one —
- * or clears one that was saved — the backend drops every stored value, so a
- * saved secret no longer counts.
- */
-const CREDENTIAL_TARGET_FIELDS = [
-  "api_base",
-  "embedding_api_base",
-  "ssl_verify",
-];
 
 /**
  * Onboarding step for a provider with no hand-built component.
@@ -50,6 +40,9 @@ const CREDENTIAL_TARGET_FIELDS = [
  * `config/model_providers.yaml` gets a working onboarding tab with no frontend
  * change. Credentials are submitted through the generic `provider_credentials`
  * payload the onboarding endpoint already accepts.
+ *
+ * `onCompletionBlockerChange` reports why Submit must wait (a saved secret to
+ * re-enter for a changed endpoint), or `null` once nothing blocks it.
  */
 export function GenericOnboarding({
   provider,
@@ -57,12 +50,14 @@ export function GenericOnboarding({
   setSettings,
   isEmbedding = false,
   providers,
+  onCompletionBlockerChange,
 }: {
   provider: string;
   displayName?: string;
   setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
   isEmbedding?: boolean;
   providers?: SavedProvidersSnapshot;
+  onCompletionBlockerChange?: (blocker: string | null) => void;
 }) {
   const { data: catalog } = useGetModelCatalogQuery();
   const chrome = getProviderChrome(provider, displayName);
@@ -85,11 +80,9 @@ export function GenericOnboarding({
     useState<Record<string, string>>(savedCredentials);
   // A saved secret belongs to the host it was saved for: once the endpoint or
   // TLS setting is edited — or a saved one cleared, which Submit sends as a
-  // removal — it is neither offered for reuse nor sent anywhere.
-  const targetChanged = CREDENTIAL_TARGET_FIELDS.some((key) => {
-    const typed = (credentials[key] ?? "").trim();
-    return typed !== (savedCredentials[key] ?? "");
-  });
+  // removal — it is neither offered for reuse nor sent anywhere, and the
+  // backend refuses a Submit that leaves it blank.
+  const targetChanged = credentialTargetChanged(credentials, savedCredentials);
   const reusableSecrets = useMemo(
     () => (targetChanged ? new Set<string>() : savedSecrets),
     [targetChanged, savedSecrets],
@@ -175,6 +168,29 @@ export function GenericOnboarding({
     azureAuthMethod,
     onPremAuthMethod,
   );
+
+  const reenterKeys = secretsToReenter(
+    credentials,
+    savedSecrets,
+    activeKeys,
+    targetChanged,
+  );
+  const reenterLabels = reenterKeys.map(
+    (key) => fields.find((field) => field.key === key)?.label ?? key,
+  );
+  // A string, so the effect below re-runs only when the reason changes.
+  const completionBlocker =
+    reenterLabels.length > 0
+      ? `Enter ${reenterLabels.join(", ")} again: the endpoint or TLS setting changed.`
+      : null;
+  const onCompletionBlockerChangeRef = useRef(onCompletionBlockerChange);
+  onCompletionBlockerChangeRef.current = onCompletionBlockerChange;
+  useEffect(() => {
+    onCompletionBlockerChangeRef.current?.(completionBlocker);
+  }, [completionBlocker]);
+  // A tab that is switched away from must not keep blocking the next one.
+  useEffect(() => () => onCompletionBlockerChangeRef.current?.(null), []);
+
   const {
     discovers,
     models,
@@ -325,6 +341,12 @@ export function GenericOnboarding({
         {hasSaved && (
           <p className="text-mmd text-muted-foreground">
             A value is already saved. Leave this blank to keep it.
+          </p>
+        )}
+        {reenterKeys.includes(field.key) && (
+          <p className="text-mmd text-muted-foreground">
+            The endpoint or TLS setting changed, so the saved value is not sent
+            to it. Enter it again.
           </p>
         )}
       </div>

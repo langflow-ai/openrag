@@ -128,13 +128,17 @@ function renderOnboarding(
       isEmbedding ? settings.embedding_model : settings.llm_model,
     );
   };
+  let blocker: string | null = null;
   const user = userEvent.setup();
-  renderWithProviders(
+  const view = renderWithProviders(
     <GenericOnboarding
       provider={provider}
       isEmbedding={isEmbedding}
       setSettings={setSettings}
       providers={savedProviders}
+      onCompletionBlockerChange={(next) => {
+        blocker = next;
+      }}
     />,
     {
       providers: ["tooltip"],
@@ -154,7 +158,13 @@ function renderOnboarding(
       ],
     },
   );
-  return { user, getSettings: () => settings, modelHistory };
+  return {
+    user,
+    getSettings: () => settings,
+    getBlocker: () => blocker,
+    unmount: view.unmount,
+    modelHistory,
+  };
 }
 
 describe("GenericOnboarding model selection", () => {
@@ -563,6 +573,94 @@ describe("GenericOnboarding cluster model discovery", () => {
         }),
       DISCOVERY_TIMEOUT,
     );
+  });
+
+  describe("Submit gate for a changed target", () => {
+    const savedToken: SavedProvidersSnapshot = {
+      custom: {
+        rhoai: {
+          credential_values: { api_base: "https://chat.example.com/v1" },
+          secret_fields: ["api_key"],
+        },
+      },
+    };
+    const blockerText =
+      "Enter Token again: the endpoint or TLS setting changed.";
+    const hintText =
+      "The endpoint or TLS setting changed, so the saved value is not sent to it. Enter it again.";
+
+    it("does not block while the saved endpoint is kept", async () => {
+      const { getBlocker } = renderOnboarding("rhoai", false, savedToken);
+      await screen.findByLabelText(/Chat endpoint/);
+
+      expect(getBlocker()).toBeNull();
+      expect(screen.queryByText(hintText)).not.toBeInTheDocument();
+    });
+
+    it("blocks until the saved token is typed again", async () => {
+      const { user, getBlocker } = renderOnboarding("rhoai", false, savedToken);
+      const endpoint = await screen.findByLabelText(/Chat endpoint/);
+
+      await user.clear(endpoint);
+      await user.type(endpoint, "https://other.example.com/v1");
+
+      expect(getBlocker()).toBe(blockerText);
+      expect(screen.getByText(hintText)).toBeInTheDocument();
+
+      await user.type(screen.getByLabelText(/Token/), "sha256~new-token");
+
+      expect(getBlocker()).toBeNull();
+      expect(screen.queryByText(hintText)).not.toBeInTheDocument();
+    });
+
+    it("unblocks when the saved endpoint is restored", async () => {
+      const { user, getBlocker } = renderOnboarding("rhoai", false, savedToken);
+      const endpoint = await screen.findByLabelText(/Chat endpoint/);
+
+      await user.type(endpoint, "x");
+      expect(getBlocker()).toBe(blockerText);
+
+      await user.type(endpoint, "{Backspace}");
+      expect(getBlocker()).toBeNull();
+    });
+
+    it("stops blocking once the tab is left", async () => {
+      const { user, getBlocker, unmount } = renderOnboarding(
+        "rhoai",
+        false,
+        savedToken,
+      );
+      await user.type(await screen.findByLabelText(/Chat endpoint/), "x");
+      expect(getBlocker()).toBe(blockerText);
+
+      unmount();
+
+      expect(getBlocker()).toBeNull();
+    });
+
+    it("ignores a saved secret the chosen auth method does not use", async () => {
+      const { user, getBlocker } = renderOnboarding("watsonx_onprem", false, {
+        custom: {
+          watsonx_onprem: {
+            auth_method: "username_api_key",
+            credential_values: {
+              api_base: "https://cpd.example.com",
+              username: "cpd-user",
+            },
+            secret_fields: ["api_key", "zen_api_key"],
+          },
+        },
+      });
+      const endpoint = await screen.findByLabelText(/Cluster URL/);
+
+      await user.clear(endpoint);
+      await user.type(endpoint, "https://other-cpd.example.com");
+
+      // Only the username + API key method is active, so only its key counts.
+      expect(getBlocker()).toBe(
+        "Enter API key again: the endpoint or TLS setting changed.",
+      );
+    });
   });
 
   it("treats a cleared saved endpoint as a new target", async () => {

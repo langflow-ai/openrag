@@ -1,3 +1,5 @@
+import pytest
+
 from config.config_manager import OpenRAGConfig
 
 
@@ -390,13 +392,20 @@ def test_pending_stored_credentials_overlays_the_submission_on_the_stored_form(
     config = ConfigManager(config_file=tmp_path / "config.yaml").load_config()
 
     pending = config.providers.pending_stored_credentials(
-        "rhoai", {"embedding_api_base": " https://new-embed.svc:8443/v1 ", "ssl_verify": "  "}
+        "rhoai",
+        {
+            "embedding_api_base": " https://new-embed.svc:8443/v1 ",
+            # A changed endpoint needs the token re-entered (see the
+            # credential-target tests below).
+            "api_key": "sha256~new-token",
+            "ssl_verify": "  ",
+        },
     )
 
     assert pending == {
         "api_base": "https://chat.svc:8443/v1",
         "embedding_api_base": "https://new-embed.svc:8443/v1",
-        "api_key": "sha256~token",
+        "api_key": "sha256~new-token",
     }
     # Pending, not saved.
     assert config.providers.stored_credentials("rhoai")["embedding_api_base"] == (
@@ -456,3 +465,194 @@ def test_the_settings_save_and_the_env_seed_agree_on_configured(monkeypatch, tmp
 
     assert seeded.providers.custom["rhoai"].configured is False
     assert saved.providers.custom["rhoai"].configured is False
+
+
+# --- Credential targets ------------------------------------------------------
+#
+# A secret is never echoed to a form, so a blank secret means "keep the saved
+# one". That is only safe while the credentials still go where they went when it
+# was saved: once `api_base`, `embedding_api_base` or `ssl_verify` changes, a
+# kept token would be sent to the new host. The save, and the pre-save probe,
+# refuse instead.
+
+_RHOAI_SAVED = {
+    "api_base": "https://chat.host-a:8443/v1",
+    "embedding_api_base": "https://embed.host-a:8443/v1",
+    "api_key": "sha256~host-a-token",
+    "ssl_verify": "true",
+}
+
+
+def _rhoai_config() -> OpenRAGConfig:
+    config = OpenRAGConfig.from_dict({})
+    config.providers.set_credentials("rhoai", dict(_RHOAI_SAVED))
+    return config
+
+
+@pytest.mark.parametrize(
+    ("submitted", "remove"),
+    [
+        ({"api_base": "https://chat.host-b:8443/v1"}, set()),
+        ({"embedding_api_base": "https://embed.host-b:8443/v1"}, set()),
+        ({"ssl_verify": "false"}, set()),
+        ({}, {"ssl_verify"}),
+    ],
+    ids=["api_base", "embedding_api_base", "ssl_verify", "ssl_verify-cleared"],
+)
+def test_a_changed_target_without_the_secret_is_refused_and_nothing_changes(submitted, remove):
+    from config.config_manager import CredentialTargetChangedError
+
+    config = _rhoai_config()
+
+    with pytest.raises(CredentialTargetChangedError) as exc_info:
+        config.providers.set_credentials("rhoai", submitted, remove=remove)
+
+    assert exc_info.value.fields == ("api_key",)
+    # Client-safe: names the form label, never a value.
+    assert "ServiceAccount token" in str(exc_info.value)
+    assert "host-a-token" not in str(exc_info.value)
+    assert config.providers.stored_credentials("rhoai") == _RHOAI_SAVED
+    assert config.providers.custom["rhoai"].configured is True
+
+
+def test_the_same_target_keeps_the_saved_secret():
+    config = _rhoai_config()
+
+    config.providers.set_credentials(
+        "rhoai",
+        {
+            # Resubmitted unchanged (the form pre-fills non-secrets) — not a change.
+            "api_base": " https://chat.host-a:8443/v1 ",
+            "embedding_max_concurrency": "4",
+        },
+    )
+
+    assert config.providers.stored_credentials("rhoai")["api_key"] == "sha256~host-a-token"
+
+
+def test_a_changed_target_with_the_secret_re_entered_is_saved():
+    config = _rhoai_config()
+
+    config.providers.set_credentials(
+        "rhoai",
+        {"api_base": "https://chat.host-b:8443/v1", "api_key": "sha256~host-b-token"},
+    )
+
+    stored = config.providers.stored_credentials("rhoai")
+    assert stored["api_base"] == "https://chat.host-b:8443/v1"
+    assert stored["api_key"] == "sha256~host-b-token"
+
+
+def test_a_changed_target_with_the_secret_removed_is_saved_unconfigured():
+    """Removing the secret is the other explicit answer: nothing is reused."""
+    config = _rhoai_config()
+
+    config.providers.set_credentials(
+        "rhoai", {"api_base": "https://chat.host-b:8443/v1"}, remove={"api_key"}
+    )
+
+    assert "api_key" not in config.providers.stored_credentials("rhoai")
+    assert config.providers.custom["rhoai"].configured is False
+
+
+@pytest.mark.parametrize("kind", ["chat", "embedding"])
+def test_the_pre_save_probe_never_gets_the_stale_secret(kind):
+    """Validation runs before the write, so it must refuse on the same terms —
+    otherwise the probe itself sends host A's token to host B."""
+    from config.config_manager import CredentialTargetChangedError
+
+    config = _rhoai_config()
+    submitted = {"api_base": "https://chat.host-b:8443/v1"}
+
+    with pytest.raises(CredentialTargetChangedError):
+        config.providers.pending_stored_credentials("rhoai", submitted)
+    with pytest.raises(CredentialTargetChangedError):
+        config.providers.pending_credentials("rhoai", submitted, kind=kind)
+
+
+def test_a_generic_provider_probe_is_refused_too():
+    """Azure is not an enhancement: its call kwargs are its stored form."""
+    from config.config_manager import CredentialTargetChangedError
+
+    config = OpenRAGConfig.from_dict({})
+    config.providers.set_credentials(
+        "azure",
+        {"api_base": "https://a.openai.azure.com", "api_key": "azure-key"},
+        auth_method="api_key",
+    )
+
+    with pytest.raises(CredentialTargetChangedError):
+        config.providers.pending_credentials(
+            "azure", {"api_base": "https://b.openai.azure.com"}, auth_method="api_key"
+        )
+    with pytest.raises(CredentialTargetChangedError):
+        config.providers.set_credentials(
+            "azure", {"api_base": "https://b.openai.azure.com"}, auth_method="api_key"
+        )
+    assert config.providers.stored_credentials("azure")["api_base"] == (
+        "https://a.openai.azure.com"
+    )
+
+
+def test_switching_auth_method_with_a_new_target_drops_the_inactive_secret():
+    """The old method's secret is not reused (it is out of scope for the new
+    method) and must not reach the probe either."""
+    config = OpenRAGConfig.from_dict({})
+    config.providers.set_credentials(
+        "azure",
+        {"api_base": "https://a.openai.azure.com", "api_key": "azure-key"},
+        auth_method="api_key",
+    )
+    submitted = {"api_base": "https://b.openai.azure.com", "azure_ad_token": "entra-token"}
+
+    probe = config.providers.pending_credentials("azure", submitted, auth_method="entra_token")
+    config.providers.set_credentials("azure", submitted, auth_method="entra_token")
+
+    assert "api_key" not in probe
+    assert config.providers.stored_credentials("azure") == submitted
+
+
+def test_first_class_providers_are_exempt():
+    """An IBM Cloud API key is valid in every watsonx.ai region, so switching
+    region with the saved key is legitimate; the bespoke forms never promise
+    otherwise."""
+    config = OpenRAGConfig.from_dict({})
+    config.providers.set_credentials(
+        "watsonx",
+        {"api_base": "https://us-south.ml.cloud.ibm.com", "api_key": "ibm-key"},
+    )
+
+    config.providers.set_credentials("watsonx", {"api_base": "https://eu-de.ml.cloud.ibm.com"})
+
+    assert config.providers.credential_values("watsonx")["api_key"] == "ibm-key"
+
+
+def test_an_unreadable_form_spec_fails_closed(monkeypatch):
+    """Without the spec every stored non-target field may be a secret."""
+    import services.model_catalog as model_catalog
+    from config.config_manager import CredentialTargetChangedError
+
+    config = _rhoai_config()
+
+    def _broken(_provider):
+        raise RuntimeError("catalogue unavailable")
+
+    monkeypatch.setattr(model_catalog, "credential_fields", _broken)
+
+    with pytest.raises(CredentialTargetChangedError) as exc_info:
+        config.providers.set_credentials("rhoai", {"api_base": "https://chat.host-b:8443/v1"})
+    assert exc_info.value.fields == ("api_key",)
+
+
+def test_discovery_and_save_share_one_target_rule():
+    """`_draft_credentials` (model discovery) reuses the save's rule, so the
+    UI's discovery never offers a secret the save then refuses."""
+    from config.config_manager import retargeted_credential_fields
+
+    stored = {"api_base": "https://a", "ssl_verify": "true"}
+
+    assert retargeted_credential_fields(stored, {"api_base": "https://a"}, set()) == []
+    assert retargeted_credential_fields(stored, {"api_base": "https://b"}, set()) == ["api_base"]
+    assert retargeted_credential_fields(stored, {}, {"ssl_verify"}) == ["ssl_verify"]
+    # Clearing something that was never stored is not a change.
+    assert retargeted_credential_fields(stored, {}, {"embedding_api_base"}) == []

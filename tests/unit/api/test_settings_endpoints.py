@@ -966,3 +966,92 @@ async def test_non_provider_settings_save_keeps_recorded_failures():
         assert provider_error_log.latest_failure("rhoai", "chat") == "still failing"
     finally:
         provider_error_log.clear()
+
+
+def _config_with_saved_rhoai_token():
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    config.providers.set_credentials(
+        "rhoai",
+        {
+            "api_base": "https://chat.host-a:8443/v1",
+            "api_key": "sha256~host-a-token",
+        },
+    )
+    return config
+
+
+@pytest.mark.asyncio
+async def test_update_settings_refuses_a_new_endpoint_without_the_token_before_probing():
+    """A blank secret means "keep the saved one" — but not for a new host. The
+    pre-save probe would otherwise send host A's token to host B."""
+    from api.settings.endpoints import update_settings
+
+    config = _config_with_saved_rhoai_token()
+    body = SettingsUpdateBody(
+        provider_credentials={"rhoai": {"api_base": "https://chat.host-b:8443/v1"}}
+    )
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.validate_provider_setup", new_callable=AsyncMock) as validate,
+        patch("api.settings.endpoints.config_manager.save_config_file") as save,
+    ):
+        response = await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    assert response.status_code == 400
+    assert "Enter ServiceAccount token again" in _error_text(response)
+    validate.assert_not_awaited()
+    save.assert_not_called()
+    assert config.providers.stored_credentials("rhoai")["api_base"] == (
+        "https://chat.host-a:8443/v1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_onboarding_refuses_a_new_endpoint_without_the_token_before_probing():
+    from api.settings.endpoints import onboarding
+
+    config = _config_with_saved_rhoai_token()
+    body = OnboardingBody(
+        llm_provider="rhoai",
+        llm_model="granite-chat",
+        provider_credentials={"rhoai": {"api_base": "https://chat.host-b:8443/v1"}},
+    )
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.TelemetryClient.send_event",
+            new_callable=AsyncMock,
+        ),
+        patch("api.settings.endpoints.validate_provider_setup", new_callable=AsyncMock) as validate,
+    ):
+        response = await onboarding(
+            body=body,
+            flows_service=MagicMock(),
+            session_manager=AsyncMock(),
+            document_service=MagicMock(),
+            models_service=MagicMock(),
+            task_service=MagicMock(),
+            langflow_file_service=MagicMock(),
+            knowledge_filter_service=MagicMock(),
+            user=MagicMock(spec=User),
+        )
+
+    assert response.status_code == 400
+    assert "Enter ServiceAccount token again" in _error_text(response)
+    validate.assert_not_awaited()
+    assert config.providers.stored_credentials("rhoai")["api_base"] == (
+        "https://chat.host-a:8443/v1"
+    )

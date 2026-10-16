@@ -12,6 +12,7 @@ from api.provider_validation import (
     is_provider_credential_error,
     sanitize_provider_error_content,
 )
+from config.config_manager import retargeted_credential_fields
 from config.settings import get_openrag_config
 from dependencies import get_models_service, require_permission
 from services.model_catalog import hide_excluded_live_models, secret_field_keys
@@ -58,12 +59,6 @@ class WatsonxOnPremSpacesBody(BaseModel):
 class ModelDiscoveryBody(BaseModel):
     credentials: dict[str, str] = Field(default_factory=dict)
     auth_method: str | None = None
-
-
-#: Fields that say *where* credentials are sent. When a form changes one —
-#: including clearing one that was saved — the stored values belong to a
-#: different host and must not travel with it.
-_CREDENTIAL_TARGET_FIELDS = ("api_base", "embedding_api_base", "ssl_verify")
 
 
 class InvalidAuthMethodError(ValueError):
@@ -124,12 +119,9 @@ def _draft_credentials(
             typed[name] = text
         elif name not in secrets:
             cleared.add(name)
-    retargeted = sorted(
-        name
-        for name in _CREDENTIAL_TARGET_FIELDS
-        if (name in typed and typed[name] != stored.get(name))
-        or (name in cleared and stored.get(name))
-    )
+    # The same rule a save enforces (`set_credentials`), so discovery never
+    # reuses a secret that Submit would then refuse to.
+    retargeted = retargeted_credential_fields(stored, typed, cleared)
     if retargeted:
         # Names only: the values are endpoints, CA paths and possibly secrets.
         logger.info(

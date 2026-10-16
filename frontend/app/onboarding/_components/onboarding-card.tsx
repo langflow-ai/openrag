@@ -201,6 +201,29 @@ const OnboardingCard = ({
     }
   }
 
+  // Why Submit must wait, per provider tab — a generic provider whose endpoint
+  // changed needs its saved secret typed again. Keyed by provider so a tab
+  // reporting late can never block another one.
+  const [credentialBlockers, setCredentialBlockers] = useState<
+    Record<string, string>
+  >({});
+  const handleCompletionBlockerChange = (
+    provider: string,
+    blocker: string | null,
+  ) => {
+    setCredentialBlockers((prev) => {
+      if ((prev[provider] ?? null) === blocker) return prev;
+      const next = { ...prev };
+      if (blocker) {
+        next[provider] = blocker;
+      } else {
+        delete next[provider];
+      }
+      return next;
+    });
+  };
+  const credentialBlocker = credentialBlockers[modelProvider] ?? null;
+
   const handleSetModelProvider = (provider: string) => {
     setModelProvider(provider);
     setSettings({
@@ -520,6 +543,12 @@ const OnboardingCard = ({
       toast.error("Please complete all required fields");
       return;
     }
+    // The button is disabled too; this keeps a stale secret from ever being
+    // submitted for a changed endpoint, which the backend would refuse.
+    if (credentialBlocker) {
+      toast.error(credentialBlocker);
+      return;
+    }
 
     // Clear any previous error
     setError(null);
@@ -595,6 +624,7 @@ const OnboardingCard = ({
     isEmbedding,
     llmModel: settings.llm_model ?? "",
     embeddingModel: settings.embedding_model ?? "",
+    credentialBlocker,
   });
 
   return (
@@ -765,6 +795,9 @@ const OnboardingCard = ({
                         setSettings={setSettings}
                         isEmbedding={isEmbedding}
                         providers={currentSettings?.providers}
+                        onCompletionBlockerChange={(blocker) =>
+                          handleCompletionBlockerChange(providerKey, blocker)
+                        }
                       />
                     )}
                   </TabsContent>
@@ -789,7 +822,8 @@ const OnboardingCard = ({
                   <TooltipContent>
                     {isLoadingModels
                       ? "Loading models..."
-                      : "Please fill in all required fields"}
+                      : (credentialBlocker ??
+                        "Please fill in all required fields")}
                   </TooltipContent>
                 )}
               </Tooltip>

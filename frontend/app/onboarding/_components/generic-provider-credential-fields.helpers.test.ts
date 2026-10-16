@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { clearedSavedCredentialKeys } from "./generic-provider-credential-fields.helpers";
+import {
+  clearedSavedCredentialKeys,
+  credentialTargetChanged,
+  secretsToReenter,
+} from "./generic-provider-credential-fields.helpers";
 
 describe("clearedSavedCredentialKeys", () => {
   const saved = {
@@ -49,5 +53,74 @@ describe("clearedSavedCredentialKeys", () => {
         new Set(["api_base", "zen_api_key"]),
       ),
     ).toEqual(["api_base"]);
+  });
+});
+
+describe("credentialTargetChanged", () => {
+  const saved = {
+    api_base: "https://chat.example.com/v1",
+    ssl_verify: "true",
+    username: "cpd-user",
+  };
+
+  it("is false while every target field matches what was saved", () => {
+    expect(
+      credentialTargetChanged(
+        { api_base: " https://chat.example.com/v1 ", ssl_verify: "true" },
+        saved,
+      ),
+    ).toBe(false);
+  });
+
+  it("ignores fields that are not targets", () => {
+    expect(
+      credentialTargetChanged(
+        { ...saved, username: "someone-else", api_key: "typed" },
+        saved,
+      ),
+    ).toBe(false);
+  });
+
+  it.each([
+    ["a new endpoint", { ...saved, api_base: "https://other.example.com/v1" }],
+    ["a new TLS setting", { ...saved, ssl_verify: "false" }],
+    ["a cleared endpoint", { ...saved, api_base: "" }],
+    [
+      "a newly set embedding endpoint",
+      { ...saved, embedding_api_base: "https://embed.example.com/v1" },
+    ],
+  ])("is true for %s", (_name, credentials) => {
+    expect(credentialTargetChanged(credentials, saved)).toBe(true);
+  });
+});
+
+describe("secretsToReenter", () => {
+  const savedSecrets = new Set(["api_key", "zen_api_key"]);
+
+  it("lists nothing while the target is unchanged", () => {
+    expect(secretsToReenter({}, savedSecrets, null, false)).toEqual([]);
+  });
+
+  it("lists every blank saved secret once the target changed", () => {
+    expect(
+      secretsToReenter({ api_key: "  " }, savedSecrets, null, true),
+    ).toEqual(["api_key", "zen_api_key"]);
+  });
+
+  it("leaves out a secret that was typed again", () => {
+    expect(
+      secretsToReenter({ api_key: "new" }, savedSecrets, null, true),
+    ).toEqual(["zen_api_key"]);
+  });
+
+  it("leaves out secrets the chosen auth method does not use", () => {
+    expect(
+      secretsToReenter(
+        {},
+        savedSecrets,
+        new Set(["api_base", "username", "api_key"]),
+        true,
+      ),
+    ).toEqual(["api_key"]);
   });
 });

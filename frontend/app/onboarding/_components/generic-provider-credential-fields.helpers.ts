@@ -74,6 +74,50 @@ export function activeCredentialKeys(
 }
 
 /**
+ * Fields that say *where* credentials are sent. Mirrors
+ * `CREDENTIAL_TARGET_FIELDS` in `src/config/config_manager.py`: once a form
+ * changes one — or clears one that was saved — the backend refuses to reuse a
+ * stored secret, for model discovery and for Submit alike.
+ */
+export const CREDENTIAL_TARGET_FIELDS = [
+  "api_base",
+  "embedding_api_base",
+  "ssl_verify",
+] as const;
+
+/** Whether the form points the credentials somewhere other than the saved target. */
+export function credentialTargetChanged(
+  credentials: Record<string, string>,
+  savedCredentials: Record<string, string>,
+): boolean {
+  return CREDENTIAL_TARGET_FIELDS.some(
+    (key) =>
+      (credentials[key] ?? "").trim() !== (savedCredentials[key] ?? "").trim(),
+  );
+}
+
+/**
+ * Saved secrets the operator has to type again before Submit.
+ *
+ * A blank secret normally means "keep the saved one", but the backend refuses
+ * that once the target changed (it would send the token to a host it was not
+ * saved for). Only secrets the chosen auth method uses count: the backend
+ * drops the other method's values on save anyway.
+ */
+export function secretsToReenter(
+  credentials: Record<string, string>,
+  savedSecrets: Set<string>,
+  active: Set<string> | null,
+  targetChanged: boolean,
+): string[] {
+  if (!targetChanged) return [];
+  return [...savedSecrets].filter(
+    (key) =>
+      (!active || active.has(key)) && (credentials[key] ?? "").trim() === "",
+  );
+}
+
+/**
  * The keys the operator emptied that still hold a saved non-secret value.
  *
  * A secret is never shown, so a blank one means "keep the saved value". Any

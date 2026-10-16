@@ -141,6 +141,168 @@ def _sanitize_for_log(value: object) -> str:
     return re.sub(r"[\r\n\t]", "_", str(value))
 
 
+#: Fields that say *where* credentials are sent. When a save changes one —
+#: including clearing one that was stored — the stored secrets belong to a
+#: different host and must not travel with it. Mirrored by
+#: `CREDENTIAL_TARGET_FIELDS` in the frontend's generic onboarding.
+CREDENTIAL_TARGET_FIELDS = ("api_base", "embedding_api_base", "ssl_verify")
+
+#: Providers with a bespoke settings and onboarding form, outside the
+#: credential-target rule: their forms never promise that a saved key is
+#: withheld from a new endpoint, and an IBM Cloud API key is valid in every
+#: watsonx.ai region, so switching region with the saved key is legitimate.
+_FIRST_CLASS_PROVIDERS = frozenset({"openai", "anthropic", "watsonx", "ollama"})
+
+_AZURE_AUTH_METHOD_FIELDS: dict[str, frozenset[str]] = {
+    "api_key": frozenset({"api_key"}),
+    "entra_token": frozenset({"azure_ad_token"}),
+    "service_principal": frozenset({"tenant_id", "client_id", "client_secret"}),
+}
+_AZURE_SHARED_FIELDS = frozenset({"api_base", "api_version", "base_model"})
+
+
+class CredentialTargetChangedError(ValueError):
+    """A save points a provider at a new target without re-entering its secrets.
+
+    The message is client-safe: it names form labels, never values.
+    """
+
+    def __init__(self, provider: str, fields: Sequence[str], labels: Sequence[str]) -> None:
+        self.provider = provider
+        self.fields = tuple(fields)
+        named = ", ".join(labels)
+        super().__init__(
+            f"The endpoint or TLS setting changed, so the saved {named} is not sent to it. "
+            f"Enter {named} again."
+        )
+
+
+def retargeted_credential_fields(
+    stored: Mapping[str, Any], submitted: Mapping[str, str], cleared: set[str] | frozenset[str]
+) -> list[str]:
+    """The target fields a pending update changes, sorted.
+
+    `submitted` holds the non-blank values the request carries; `cleared` the
+    fields it removes. A field counts as changed when a submitted value differs
+    from the stored one, or when a stored value is cleared.
+    """
+    return sorted(
+        name
+        for name in CREDENTIAL_TARGET_FIELDS
+        if (name in submitted and submitted[name] != str(stored.get(name) or "").strip())
+        or (name in cleared and str(stored.get(name) or "").strip())
+    )
+
+
+def _credentials_for_auth_method(
+    provider: str, credentials: Mapping[str, str], auth_method: str | None
+) -> dict[str, str]:
+    """`credentials` narrowed to the fields `auth_method` uses.
+
+    Credentials for another authentication method must not leak into LiteLLM's
+    call kwargs after the user switches methods. Only Azure and watsonx.ai
+    on-prem offer several methods; every other provider is returned unchanged,
+    as is any provider when no method is given.
+
+    Raises `ValueError` for a method the provider does not offer.
+    """
+    if not auth_method:
+        return dict(credentials)
+    if provider == "azure":
+        active = _AZURE_AUTH_METHOD_FIELDS.get(auth_method)
+        if active is None:
+            raise ValueError(f"Unknown Azure authentication method: {auth_method}")
+        return {
+            name: value
+            for name, value in credentials.items()
+            if name in _AZURE_SHARED_FIELDS or name in active
+        }
+    if provider == "watsonx_onprem":
+        from enhancements.providers.watsonx.onprem import (
+            credential_fields_for_auth_method,
+        )
+
+        allowed = credential_fields_for_auth_method(auth_method)
+        return {name: value for name, value in credentials.items() if name in allowed}
+    return dict(credentials)
+
+
+def _ensure_secrets_follow_target(
+    provider: str,
+    stored: Mapping[str, Any],
+    submitted: Mapping[str, str],
+    cleared: set[str],
+) -> None:
+    """Refuse an update that would send a stored secret to a new target.
+
+    A secret is never echoed back to a form, so a blank secret means "keep the
+    saved one" — which is only safe while the credentials still go where they
+    went when it was saved. Once a target field changes, every stored secret
+    must be entered again (or explicitly removed). Raising rather than quietly
+    dropping it keeps a pre-save probe from being sent without the secret and
+    the operator from saving a provider that silently stops working.
+
+    Called before anything is mutated, so a refused update leaves the config
+    untouched. Providers in `_FIRST_CLASS_PROVIDERS` are exempt.
+
+    Raises `CredentialTargetChangedError`.
+    """
+    if provider in _FIRST_CLASS_PROVIDERS:
+        return
+    retargeted = retargeted_credential_fields(stored, submitted, cleared)
+    if not retargeted:
+        return
+    logger.info(
+        "Checking stored secrets against a changed credential target...",
+        provider=provider,
+        fields=retargeted,
+    )
+    try:
+        from services.model_catalog import credential_fields
+
+        spec = credential_fields(provider)
+        secrets = {
+            str(field["key"])
+            for field in spec
+            if field.get("field_type") in {"password", "textarea", "upload"}
+        }
+        labels = {str(field["key"]): str(field.get("label") or field["key"]) for field in spec}
+    except Exception as error:
+        # Fail closed: without the form spec any stored field may be a secret.
+        logger.warning(
+            "Could not read the credential form spec; treating every stored "
+            "non-target field as a secret",
+            provider=provider,
+            error=str(error),
+        )
+        secrets = {name for name in stored if name not in CREDENTIAL_TARGET_FIELDS}
+        labels = {}
+    stale = sorted(
+        name
+        for name in stored
+        if name in secrets
+        and str(stored.get(name) or "").strip()
+        and name not in submitted
+        and name not in cleared
+    )
+    if not stale:
+        logger.info(
+            "Successfully checked stored secrets against the changed credential "
+            "target. Every secret was re-entered or removed.",
+            provider=provider,
+            fields=retargeted,
+        )
+        return
+    # Names only: the values are endpoints, CA paths and secrets.
+    logger.warning(
+        "Refusing to reuse stored secrets for a changed credential target",
+        provider=provider,
+        fields=retargeted,
+        secrets=stale,
+    )
+    raise CredentialTargetChangedError(provider, stale, [labels.get(name, name) for name in stale])
+
+
 class ProviderConfig(Protocol):
     """Structural type shared by every provider config dataclass.
 
@@ -239,7 +401,15 @@ class ProvidersConfig:
         auth_method: str | None = None,
         remove: set[str] | None = None,
     ) -> None:
-        """Upsert credentials and apply explicitly requested field removals."""
+        """Upsert credentials and apply explicitly requested field removals.
+
+        A blank or omitted field keeps its stored value — except a secret
+        when the update changes a credential target (`CREDENTIAL_TARGET_FIELDS`):
+        then every stored secret must be re-entered or removed, and the update
+        is refused with `CredentialTargetChangedError` before anything changes.
+
+        Raises `ValueError` (including `CredentialTargetChangedError`).
+        """
         key = provider.strip().lower()
         clean = {
             str(name): str(value).strip()
@@ -253,33 +423,12 @@ class ProvidersConfig:
             # separate operation so an empty password cannot erase a secret.
             return
         previous = self.custom.get(key, GenericProviderConfig())
-        if key == "azure" and auth_method:
-            methods = {
-                "api_key": {"api_key"},
-                "entra_token": {"azure_ad_token"},
-                "service_principal": {"tenant_id", "client_id", "client_secret"},
-            }
-            active = methods.get(auth_method)
-            if active is None:
-                raise ValueError(f"Unknown Azure authentication method: {auth_method}")
-            shared = {"api_base", "api_version", "base_model"}
-            # Credentials for another authentication method must not leak into
-            # LiteLLM's call kwargs after the user switches methods.
-            previous.credentials = {
-                name: value
-                for name, value in previous.credentials.items()
-                if name in shared or name in active
-            }
-            previous.auth_method = auth_method
-        if key == "watsonx_onprem" and auth_method:
-            from enhancements.providers.watsonx.onprem import (
-                credential_fields_for_auth_method,
-            )
-
-            allowed = credential_fields_for_auth_method(auth_method)
-            previous.credentials = {
-                name: value for name, value in previous.credentials.items() if name in allowed
-            }
+        # Both checks run before `previous` (the live entry) is touched, so a
+        # refused update leaves the config exactly as it was.
+        kept = _credentials_for_auth_method(key, previous.credentials, auth_method)
+        _ensure_secrets_follow_target(key, kept, clean, removals)
+        previous.credentials = kept
+        if auth_method and key in {"azure", "watsonx_onprem"}:
             previous.auth_method = auth_method
         for name in removals:
             previous.credentials.pop(name, None)
@@ -329,12 +478,24 @@ class ProvidersConfig:
         submitted: dict[str, str] | None = None,
         *,
         remove: set[str] | None = None,
+        auth_method: str | None = None,
     ) -> dict[str, str]:
-        """`stored_credentials()` as it would read after one pending update."""
-        pending = self.stored_credentials(provider)
-        for name in remove or set():
+        """`stored_credentials()` as it would read after one pending update.
+
+        Applies the same rules `set_credentials()` will — the auth-method
+        narrowing and the credential-target check — so a pre-save probe never
+        sends a stored secret to a target the save would refuse it for.
+
+        Raises `ValueError` (including `CredentialTargetChangedError`).
+        """
+        key = provider.strip().lower()
+        clean = _clean_submitted(submitted)
+        removals = set(remove or set())
+        pending = _credentials_for_auth_method(key, self.stored_credentials(key), auth_method)
+        _ensure_secrets_follow_target(key, pending, clean, removals)
+        for name in removals:
             pending.pop(name, None)
-        pending.update(_clean_submitted(submitted))
+        pending.update(clean)
         return pending
 
     def pending_credentials(
@@ -344,6 +505,7 @@ class ProvidersConfig:
         *,
         kind: str = "chat",
         remove: set[str] | None = None,
+        auth_method: str | None = None,
     ) -> dict[str, Any]:
         """LiteLLM kwargs for `provider` as it would be once `submitted` is saved.
 
@@ -357,6 +519,9 @@ class ProvidersConfig:
 
         `kind` selects which endpoint a multi-endpoint provider is validated
         against, so the pre-save probe hits the same one the real call will.
+
+        Raises `ValueError` (including `CredentialTargetChangedError`) on the
+        same terms as `set_credentials()`.
         """
         from enhancements.providers.registry import credentials_for
         from enhancements.providers.registry import get as get_provider_enhancement
@@ -365,9 +530,16 @@ class ProvidersConfig:
         clean = _clean_submitted(submitted)
         enhancement = get_provider_enhancement(key)
         if enhancement:
-            stored = self.pending_stored_credentials(key, clean, remove=remove)
+            stored = self.pending_stored_credentials(
+                key, clean, remove=remove, auth_method=auth_method
+            )
             return credentials_for(enhancement, stored, kind)
         values = self.credential_values(key, kind=kind)
+        if key not in _FIRST_CLASS_PROVIDERS:
+            # A generic provider's call kwargs are its stored form, so the save's
+            # narrowing and target check apply to them directly.
+            values = _credentials_for_auth_method(key, values, auth_method)
+            _ensure_secrets_follow_target(key, values, clean, set(remove or set()))
         for name in remove or set():
             values.pop(name, None)
         values.update(clean)
