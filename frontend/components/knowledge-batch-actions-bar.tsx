@@ -25,7 +25,7 @@ export const KnowledgeBatchActionsBar = ({
         type="button"
         aria-label="Cancel selection"
         onClick={onCancel}
-        className="flex h-full w-12 flex-shrink-0 items-center justify-center border-r border-primary-foreground/20 transition-colors hover:bg-primary-foreground/10"
+        className="flex h-full w-12 shrink-0 items-center justify-center border-r border-primary-foreground/20 transition-colors hover:bg-primary-foreground/10"
       >
         <X className="h-4 w-4" />
       </button>

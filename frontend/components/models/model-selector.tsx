@@ -297,7 +297,7 @@ export function ModelSelector({
           aria-controls={listboxId}
           className={cn(
             "w-full gap-2 justify-between font-normal text-sm",
-            hasError && "!border-destructive",
+            hasError && "border-destructive!",
             className,
           )}
         >
@@ -323,7 +323,7 @@ export function ModelSelector({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="p-0 w-[var(--radix-popover-trigger-width)]"
+        className="p-0 w-(--radix-popover-trigger-width)"
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <Command shouldFilter={false}>

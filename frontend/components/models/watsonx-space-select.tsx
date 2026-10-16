@@ -214,7 +214,7 @@ export function WatsonxSpaceSelect({
                 <ChevronsUpDown className="opacity-50" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+            <PopoverContent className="w-(--radix-popover-trigger-width) p-0">
               <Command>
                 <CommandInput
                   placeholder="Search or enter a deployment space ID…"

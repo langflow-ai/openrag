@@ -652,7 +652,7 @@ const OnboardingCard = ({
                                 "data-[state=active]:border-destructive",
                               // Fixed 3-up basis so every card is the same width
                               // (like a grid) while flex still fills the row.
-                              "min-w-52 grow-0 basis-[calc((100%_-_1.5rem)/3)]",
+                              "min-w-52 grow-0 basis-[calc((100%-1.5rem)/3)]",
                             )}
                           >
                             <TabTrigger
