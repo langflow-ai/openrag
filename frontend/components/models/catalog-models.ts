@@ -332,6 +332,21 @@ export function embeddingStepProviders(
 }
 
 /**
+ * Whether this provider's models are its own deployments.
+ *
+ * The catalogue states it, so it is true from the moment the provider loads —
+ * unlike "has a deployment field been filled in", which is only true after
+ * the operator has already done the thing we are trying to prompt them to do.
+ */
+export function providerOwnsInventory(
+  catalog: ModelCatalogResponse | undefined,
+  provider: string,
+): boolean {
+  const entry = catalog?.providers?.find((item) => item.key === provider);
+  return entry?.inventory_source === "configured";
+}
+
+/**
  * Which credential field holds the deployments a picker of `kind` draws from.
  *
  * Vision is an annotation on a chat deployment rather than a list of its own,

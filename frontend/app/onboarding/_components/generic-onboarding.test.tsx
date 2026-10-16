@@ -306,6 +306,41 @@ describe("GenericOnboarding model selection", () => {
   });
 });
 
+describe("guidance for a provider that owns its inventory", () => {
+  it("asks for deployment names before any have been entered", async () => {
+    // The first thing an operator sees on this step. Keyed off whether a
+    // deployment field had been filled in, it read "pick a different
+    // provider" until they typed the first name — advice against doing the
+    // very thing the step exists for.
+    renderOnboarding("azure_ai");
+
+    expect(
+      await screen.findByText(/list your chat deployment names above/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/pick a different provider/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("still says so for the embedding step", async () => {
+    renderOnboarding("azure_ai", true);
+
+    expect(
+      await screen.findByText(/list your embedding deployment names above/i),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the catalogue message for a provider that does not own its inventory", async () => {
+    // watsonx_onprem publishes no embedding models, and no amount of typing
+    // in its form would produce any — "pick a different provider" is right.
+    renderOnboarding("watsonx_onprem", true);
+
+    expect(
+      await screen.findByText(/pick a different provider/i),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("the deployment list and the selected model stay in step", () => {
   /**
    * For a provider whose catalogue *is* its deployment list the two can

@@ -13,6 +13,7 @@ import {
   onboardingCredentialFields,
   pendingDeploymentOptions,
   providerCatalogOptions,
+  providerOwnsInventory,
   type SavedProvidersSnapshot,
   savedCredentialValuesForProvider,
   savedSecretFieldsForProvider,
@@ -350,12 +351,15 @@ export function GenericOnboarding({
           onOnPremAuthMethodChange={handleOnPremAuthMethodChange}
           renderField={renderField}
         />
+        {/*
+          Which message applies is a property of the *provider*, not of how
+          far the operator has got. Keying off whether a deployment field had
+          been filled in meant a provider that owns its inventory was told to
+          "pick a different provider" until the first name was typed — which
+          is the one moment the guidance below is needed.
+        */}
         {models.length === 0 &&
-          (pendingDeploymentOptions(
-            credentials,
-            provider,
-            isEmbedding ? "embedding" : "language",
-          ) !== null ? (
+          (providerOwnsInventory(catalog, provider) ? (
             <p className="text-mmd text-muted-foreground">
               List your {isEmbedding ? "embedding" : "chat"} deployment names
               above to choose one here. {chrome.name} deployment names are
