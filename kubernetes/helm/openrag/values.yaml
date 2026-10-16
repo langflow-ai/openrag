@@ -28,6 +28,7 @@ global:
     username: "admin"                     # OpenSearch username
     password: ""                          # OpenSearch password (stored in secret)
     indexName: "documents"                # OpenSearch index name
+    sslAssertHostname: false               # Enforce the TLS certificate hostname/SAN match
 
   docling:
     host: docling-serve.docling.svc.cluster.local

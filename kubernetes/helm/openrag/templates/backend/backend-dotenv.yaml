@@ -77,6 +77,7 @@ stringData:
     {{- end }}
     OPENSEARCH_HOST={{ include "openrag.opensearch.host" . | quote }}
     OPENSEARCH_PORT={{ .Values.global.opensearch.port | quote }}
+    OPENSEARCH_SSL_ASSERT_HOSTNAME={{ ternary "true" "false" .Values.global.opensearch.sslAssertHostname | quote }}
     {{- if .Values.global.opensearch.username }}
     OPENSEARCH_USERNAME={{ .Values.global.opensearch.username | quote }}
     {{- end }}
