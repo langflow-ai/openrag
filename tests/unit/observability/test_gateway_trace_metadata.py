@@ -9,7 +9,7 @@ metadata (other keys are dropped). Verified against Langfuse Cloud.
 import pytest
 
 from observability import tracing
-from observability.tracing import gateway_trace_kwargs, llm_call_context
+from observability.tracing import gateway_trace_kwargs, trace_context
 
 
 @pytest.fixture
@@ -55,7 +55,7 @@ def test_none_sizes_are_left_out(enabled):
 
 
 def test_call_context_sets_source_user_and_session(enabled):
-    with llm_call_context(source="langflow", user_id="user-1", session_id="run-1"):
+    with trace_context(source="langflow", user_id="user-1", session_id="run-1"):
         metadata = gateway_trace_kwargs("embedding", "ingest")["metadata"]
 
     assert metadata["trace_metadata"]["openrag.source"] == "langflow"
@@ -65,22 +65,22 @@ def test_call_context_sets_source_user_and_session(enabled):
 
 
 def test_call_context_purpose_overrides_the_callers_default(enabled):
-    with llm_call_context(purpose="dimension_probe"):
+    with trace_context(purpose="dimension_probe"):
         metadata = gateway_trace_kwargs("embedding", "ingest")["metadata"]
 
     assert metadata["generation_name"] == "embedding.dimension_probe"
 
 
 def test_call_context_attributes_are_added(enabled):
-    with llm_call_context(attributes={"openrag.langflow_run_purpose": "chat"}):
+    with trace_context(attributes={"openrag.langflow_run_purpose": "chat"}):
         metadata = gateway_trace_kwargs("chat", "completion")["metadata"]
 
     assert metadata["trace_metadata"]["openrag.langflow_run_purpose"] == "chat"
 
 
 def test_call_context_nests_and_restores(enabled):
-    with llm_call_context(source="langflow", user_id="user-1"):
-        with llm_call_context(purpose="query"):
+    with trace_context(source="langflow", user_id="user-1"):
+        with trace_context(purpose="query"):
             inner = gateway_trace_kwargs("embedding", "ingest")["metadata"]
         outer = gateway_trace_kwargs("embedding", "ingest")["metadata"]
     after = gateway_trace_kwargs("embedding", "ingest")["metadata"]
@@ -93,7 +93,7 @@ def test_call_context_nests_and_restores(enabled):
 
 
 def test_empty_user_and_session_are_left_out(enabled):
-    with llm_call_context(user_id="", session_id=None):
+    with trace_context(user_id="", session_id=None):
         metadata = gateway_trace_kwargs("embedding", "ingest")["metadata"]
 
     assert "trace_user_id" not in metadata

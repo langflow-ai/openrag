@@ -10,7 +10,7 @@ from fastapi import Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from dependencies import require_llm_proxy_any_permission, require_llm_proxy_permission
-from observability.tracing import llm_call_context
+from observability.tracing import trace_context
 from services.langflow_llm_token_service import HOP_PURPOSE_CHAT
 from services.llm_gateway import LlmGatewayError, chat_completions, embeddings
 from services.model_catalog import (
@@ -111,9 +111,9 @@ def _trace_caller(request: Request, user: User):
     """Label the gateway calls this request makes: Langflow run or API caller."""
     run_id = getattr(request.state, "llm_hop_run_id", None)
     if not run_id:
-        return llm_call_context(source="api", user_id=user.user_id)
+        return trace_context(source="api", user_id=user.user_id)
     hop_purpose = getattr(request.state, "llm_hop_purpose", None)
-    return llm_call_context(
+    return trace_context(
         source="langflow",
         user_id=user.user_id,
         session_id=run_id,

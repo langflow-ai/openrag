@@ -8,7 +8,7 @@ Langfuse — so the gate and the redaction switch are pinned here.
 
 import pytest
 
-from observability import tracing
+from observability import spans, tracing
 from observability.tracing import TRACING_CALLBACK, configure_tracing, content_capture_enabled
 
 _TRACING_ENV = (
@@ -49,6 +49,9 @@ def _isolated_tracing(monkeypatch):
         monkeypatch.setattr(litellm, name, [])
     monkeypatch.setattr(litellm, "turn_off_message_logging", False)
     monkeypatch.setattr(tracing, "_enabled", False)
+    # configure_tracing() builds a real Langfuse client for our spans; never
+    # leave one behind for later tests to export through.
+    monkeypatch.setattr(spans, "_client", None)
 
 
 @pytest.fixture

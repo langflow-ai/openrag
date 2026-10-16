@@ -52,9 +52,10 @@ _LANGFUSE_DEFAULT_HOST = "https://cloud.langfuse.com"
 # running untraced passes LiteLLM exactly what it did before tracing existed.
 _enabled = False
 
-# Who a gateway call is for, set by the caller around it (see llm_call_context).
+# Who the work in progress is for (see trace_context): read by gateway calls
+# and by the ingest/search traces in observability.spans.
 _call_context: ContextVar[Mapping[str, Any]] = ContextVar(
-    "openrag_llm_call_context", default=MappingProxyType({})
+    "openrag_trace_context", default=MappingProxyType({})
 )
 
 
@@ -126,6 +127,10 @@ def configure_tracing() -> bool:
     if TRACING_CALLBACK not in litellm.callbacks:
         litellm.callbacks.append(TRACING_CALLBACK)
 
+    from observability.spans import init_span_client
+
+    init_span_client()
+
     global _enabled
     _enabled = True
     logger.info("Backend tracing enabled", backend="langfuse", capture_content=capture)
@@ -133,7 +138,7 @@ def configure_tracing() -> bool:
 
 
 @contextmanager
-def llm_call_context(
+def trace_context(
     *,
     source: str | None = None,
     user_id: str | None = None,
@@ -141,7 +146,7 @@ def llm_call_context(
     purpose: str | None = None,
     attributes: Mapping[str, Any] | None = None,
 ) -> Iterator[None]:
-    """Describe the gateway calls made inside this block to the trace.
+    """Describe the work inside this block to its traces: gateway calls and roots.
 
     ``source`` is who asked (``langflow`` or the default ``openrag``),
     ``user_id`` and ``session_id`` become Langfuse's user and session, and
@@ -165,6 +170,11 @@ def llm_call_context(
         yield
     finally:
         _call_context.reset(token)
+
+
+def current_trace_context() -> Mapping[str, Any]:
+    """The fields set by the enclosing ``trace_context`` blocks (read-only)."""
+    return _call_context.get()
 
 
 def gateway_trace_kwargs(
