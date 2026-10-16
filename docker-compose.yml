@@ -72,6 +72,7 @@ services:
       - OPENSEARCH_PORT=${OPENSEARCH_INTERNAL_PORT:-9200}
       - OPENSEARCH_USERNAME=${OPENSEARCH_USERNAME:-admin}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+      - OPENSEARCH_SSL_ASSERT_HOSTNAME=${OPENSEARCH_SSL_ASSERT_HOSTNAME:-false}
       # Single-node compose clusters don't meet the multi-node readiness counts,
       # so default the node-count check off here (override to re-enable).
       - OPENSEARCH_NODE_COUNT_CHECK_ENABLED=${OPENSEARCH_NODE_COUNT_CHECK_ENABLED:-false}
@@ -268,6 +269,7 @@ services:
       - OPENSEARCH_PORT=${OPENSEARCH_INTERNAL_PORT:-9200}
       - OPENSEARCH_URL=https://${OPENSEARCH_HOST:-opensearch}:${OPENSEARCH_INTERNAL_PORT:-9200}
       - OPENSEARCH_INDEX_NAME=${OPENSEARCH_INDEX_NAME:-documents}
+      - OPENSEARCH_SSL_ASSERT_HOSTNAME=${OPENSEARCH_SSL_ASSERT_HOSTNAME:-false}
       - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://host.docker.internal:5001}
       - DOCLING_SERVE_VERIFY_SSL=${DOCLING_SERVE_VERIFY_SSL:-true}
       - DOCLING_TASK_ID=None

@@ -80,6 +80,15 @@ if _openrag_os_verify_env is None:
 else:
     OPENSEARCH_VERIFY_CERTS = _openrag_os_verify_env.lower() in ("true", "1", "yes")
 
+# Hostname validation is independent from CA validation. Keep it disabled by
+# default for existing deployments whose OpenSearch endpoint name differs from
+# the certificate's SAN; operators can enable it explicitly when they match.
+OPENSEARCH_SSL_ASSERT_HOSTNAME = os.getenv("OPENSEARCH_SSL_ASSERT_HOSTNAME", "false").strip().lower() in (
+    "true",
+    "1",
+    "yes",
+)
+
 # Validate TLS configuration at import time so misconfigurations surface on startup.
 if OPENSEARCH_CA_CERTS and not os.path.isfile(OPENSEARCH_CA_CERTS):
     raise RuntimeError(f"OPENSEARCH_CA_CERTS path does not exist: {OPENSEARCH_CA_CERTS!r}")
@@ -2097,7 +2106,7 @@ class AppClients:
             use_ssl=True,
             verify_certs=OPENSEARCH_VERIFY_CERTS,
             ca_certs=OPENSEARCH_CA_CERTS,
-            ssl_assert_hostname=False,
+            ssl_assert_hostname=OPENSEARCH_SSL_ASSERT_HOSTNAME,
             headers=headers,
             http_compress=True,
             timeout=30,  # 30 second timeout
@@ -2115,7 +2124,7 @@ class AppClients:
             use_ssl=True,
             verify_certs=OPENSEARCH_VERIFY_CERTS,
             ca_certs=OPENSEARCH_CA_CERTS,
-            ssl_assert_hostname=False,
+            ssl_assert_hostname=OPENSEARCH_SSL_ASSERT_HOSTNAME,
             http_auth=(username, password),
             http_compress=True,
             timeout=30,

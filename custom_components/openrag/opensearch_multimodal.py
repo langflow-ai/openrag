@@ -1292,6 +1292,11 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         logger.debug("[OpenSearchMultimodel] Building OpenSearch client")
         auth_kwargs = self._build_auth_kwargs()
         ca_certs = os.getenv("OPENSEARCH_CA_CERTS", "").strip()
+        ssl_assert_hostname = os.getenv("OPENSEARCH_SSL_ASSERT_HOSTNAME", "false").strip().lower() in (
+            "true",
+            "1",
+            "yes",
+        )
         tls_kwargs: dict[str, Any] = {"verify_certs": self.verify_certs}
         # A mounted custom CA is an explicit request to validate the OpenSearch
         # certificate. Keep the "None" sentinel consistent with Docling Serve.
@@ -1301,7 +1306,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             hosts=[self.opensearch_url],
             use_ssl=self.use_ssl,
             **tls_kwargs,
-            ssl_assert_hostname=False,
+            ssl_assert_hostname=ssl_assert_hostname,
             ssl_show_warn=False,
             timeout=self._parse_int_param("request_timeout", REQUEST_TIMEOUT),
             max_retries=self._parse_int_param("max_retries", MAX_RETRIES),

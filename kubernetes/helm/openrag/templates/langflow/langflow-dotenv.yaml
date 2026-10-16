@@ -117,6 +117,7 @@ stringData:
     OPENSEARCH_PORT={{ include "openrag.langflow.opensearch.port" . | quote }}
     OPENSEARCH_URL={{ include "openrag.langflow.opensearch.url" . | quote }}
     OPENSEARCH_INDEX_NAME={{ .Values.global.opensearch.indexName | quote }}
+    OPENSEARCH_SSL_ASSERT_HOSTNAME={{ ternary "true" "false" .Values.global.opensearch.sslAssertHostname | quote }}
     {{- if .Values.global.opensearch.password }}
     OPENSEARCH_PASSWORD={{ .Values.global.opensearch.password | quote }}
     {{- end }}
