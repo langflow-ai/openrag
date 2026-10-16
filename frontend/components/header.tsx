@@ -20,7 +20,7 @@ import { useProviderHealth } from "./provider-health-banner";
 
 export function Header() {
   const isCloudBrand = useIsCloudBrand();
-  const { tasks } = useTask();
+  const { tasks, hasUnreadFinishedTasks } = useTask();
   const activeTaskCount = tasks.filter(
     (t) =>
       t.status === "pending" ||
@@ -144,11 +144,19 @@ export function Header() {
                 {activeTaskCount > 99 ? "99+" : activeTaskCount}
               </span>
             )}
-            {activeTaskCount === 0 && failedTaskCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex min-w-[16px] h-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground">
-                {failedTaskCount > 99 ? "99+" : failedTaskCount}
-              </span>
+            {activeTaskCount === 0 && hasUnreadFinishedTasks && (
+              <span
+                data-testid="task-notification-dot"
+                className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background"
+              />
             )}
+            {activeTaskCount === 0 &&
+              !hasUnreadFinishedTasks &&
+              failedTaskCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex min-w-[16px] h-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground">
+                  {failedTaskCount > 99 ? "99+" : failedTaskCount}
+                </span>
+              )}
           </button>
 
           {/* Separator */}

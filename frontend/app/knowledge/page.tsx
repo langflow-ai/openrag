@@ -26,6 +26,7 @@ import { isFileCancelled } from "@/lib/task-error-display";
 import {
   EMPTY_SEARCH_RESULT,
   type File,
+  type RelevanceTier,
   type SearchResult,
   useGetSearchQuery,
 } from "../api/queries/useGetSearchQuery";
@@ -39,6 +40,13 @@ import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-b
 import { KnowledgePaginationFooter } from "@/components/knowledge-pagination-footer";
 import { KnowledgeSearchBar } from "@/components/knowledge-search-bar";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
+import {
+  getRelevanceReasoning,
+  getScoreTier,
+  RELEVANCE_PILL_STYLES,
+  RELEVANCE_TEXT_COLORS,
+  WifiSignalIcon,
+} from "@/components/relevance-signal-icon";
 import { RequirePermission } from "@/components/require-permission";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
@@ -48,7 +56,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
-import { formatFileSize } from "@/lib/file-format";
+import { formatFileSize, getFileTypeLabel } from "@/lib/file-format";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import {
   buildKnowledgeTableRows,
@@ -213,10 +221,6 @@ export function getOwnerLabel(file?: File): string {
   return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
 }
 
-export function formatAvgScoreLabel(value: unknown): string {
-  return typeof value === "number" ? value.toFixed(2) : "-";
-}
-
 export function formatChunkCountLabel(chunkCount?: number): string {
   return chunkCount?.toString() ?? "-";
 }
@@ -233,7 +237,7 @@ export function formatSizeLabel(value: unknown): string {
   return value ? formatFileSize(value as number) : "-";
 }
 
-/** Always returns 0 — passed to ag-grid columns whose ordering is server-side. */
+/** No-op comparator for columns sorted server-side. */
 export function serverSideComparator(): number {
   return 0;
 }
@@ -245,11 +249,11 @@ export function compareStatusRank(
   return getStatusSortRank(valueA) - getStatusSortRank(valueB);
 }
 
-export function compareAvgScore(
+export function compareRelevance(
   valueA: number | undefined,
   valueB: number | undefined,
 ): number {
-  return (valueA || 0) - (valueB || 0);
+  return (valueA ?? 0) - (valueB ?? 0);
 }
 
 export function getFileStatus(status?: File["status"]): string {
@@ -268,20 +272,107 @@ export function buildChunksUrl(
   return `/knowledge/chunks?${params.toString()}`;
 }
 
-const AVG_SCORE_TOOLTIP =
-  "Average relevance score across the matched chunks of this file. Higher means a stronger match — sort by this column to rank results by relevance.";
+export function RelevanceCellContent({ data }: { data?: File }) {
+  const tier = data?.relevanceTier;
+  if (!tier) return <span className="text-muted-foreground text-xs">—</span>;
 
-export function AvgScoreCellContent({ value }: { value: unknown }) {
-  const label = formatAvgScoreLabel(value);
+  const breakdown = getRelevanceReasoning(data);
+  const pct = breakdown.topChunkScorePct;
+  const badgeLabel = pct !== null ? `${pct}%` : "";
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded cursor-default">
-          {label}
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full border cursor-default transition-colors",
+            RELEVANCE_PILL_STYLES[tier],
+          )}
+        >
+          <WifiSignalIcon tier={tier} size={13} />
+          {badgeLabel && <span>{badgeLabel}</span>}
         </span>
       </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-56 text-center">
-        {AVG_SCORE_TOOLTIP}
+      <TooltipContent
+        side="top"
+        className="max-w-72 text-left p-3 space-y-2.5 bg-popover text-popover-foreground border border-border shadow-md"
+      >
+        <div>
+          <p className="font-semibold text-xs text-popover-foreground flex items-center gap-1.5">
+            <WifiSignalIcon tier={tier} size={14} />
+            <span>
+              Why it's ranked{" "}
+              <span className={RELEVANCE_TEXT_COLORS[tier]}>
+                {breakdown.tierLabel}
+              </span>
+            </span>
+          </p>
+          <p className="text-muted-foreground text-xs mt-1 leading-relaxed">
+            {breakdown.reasoning}
+          </p>
+        </div>
+
+        <div className="rounded-md border border-border/80 bg-muted/80 p-2.5 text-xs space-y-2 dark:bg-muted/40">
+          {/* Keyword row — flush left labels and stacked wifi icons */}
+          <div className="grid grid-cols-[58px_16px_1fr] items-center gap-2">
+            <span className="text-muted-foreground font-medium">Keyword:</span>
+            <WifiSignalIcon tier={breakdown.keywordTier} size={13} />
+            <span className="text-foreground text-xxs font-normal">
+              {breakdown.keywordMentionCount > 0 ? (
+                <>
+                  Mentioned{" "}
+                  <span
+                    className={cn(
+                      "font-semibold",
+                      RELEVANCE_TEXT_COLORS[breakdown.keywordTier],
+                    )}
+                  >
+                    {breakdown.keywordMentionCount}
+                  </span>{" "}
+                  time{breakdown.keywordMentionCount !== 1 ? "s" : ""}
+                </>
+              ) : (
+                <span className={RELEVANCE_TEXT_COLORS.low}>
+                  0 direct matches
+                </span>
+              )}
+            </span>
+          </div>
+
+          {/* Meaning row — flush left labels and stacked wifi icons */}
+          <div className="grid grid-cols-[58px_16px_1fr] items-center gap-2">
+            <span className="text-muted-foreground font-medium">Meaning:</span>
+            <WifiSignalIcon tier={breakdown.meaningTier} size={13} />
+            <span className="text-foreground text-xxs font-normal">
+              <span
+                className={cn(
+                  "font-semibold",
+                  RELEVANCE_TEXT_COLORS[breakdown.meaningTier],
+                )}
+              >
+                {breakdown.meaningDetail}
+              </span>
+            </span>
+          </div>
+
+          {/* Top score & matched chunks metadata */}
+          <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-border/50 text-muted-foreground text-xxs">
+            <span>Matched chunks: {breakdown.matchedChunksCount}</span>
+            {pct !== null && (
+              <span>
+                Top score:{" "}
+                <span
+                  className={cn(
+                    "font-semibold",
+                    RELEVANCE_TEXT_COLORS[getScoreTier(pct)],
+                  )}
+                >
+                  {pct}%
+                </span>
+              </span>
+            )}
+          </div>
+        </div>
       </TooltipContent>
     </Tooltip>
   );
@@ -738,7 +829,7 @@ function SearchPage() {
   const fileResults = buildKnowledgeTableRows(
     effectiveData,
     taskFiles,
-    Boolean(selectedFilter),
+    Boolean(selectedFilter) || !isWildcardQuery,
   );
 
   const serverTotal = isWildcardQuery
@@ -847,20 +938,14 @@ function SearchPage() {
           isOpenragDocsRow(data) && hasOpenragRefreshCue;
         return (
           <div className="flex items-center overflow-hidden w-full min-w-0 h-full">
-            <div
-              className={`transition-opacity duration-200 ${
-                isActive ? "w-0" : "w-7"
-              }`}
-            ></div>
             <button
               type="button"
               className={cn(
                 "flex items-center gap-2 text-left flex-1 overflow-hidden transition-colors",
-                isActive
-                  ? isCloudBrand
-                    ? "cursor-pointer hover:text-primary"
-                    : "cursor-pointer hover:text-blue-600"
-                  : "cursor-default",
+                "[.ag-row-processing_&]:pl-7",
+                isCloudBrand
+                  ? "cursor-pointer hover:text-primary [.ag-row-processing_&]:cursor-default [.ag-row-processing_&]:hover:text-foreground"
+                  : "cursor-pointer hover:text-blue-600 [.ag-row-processing_&]:cursor-default [.ag-row-processing_&]:hover:text-foreground",
               )}
               onClick={() => {
                 if (!isActive) return;
@@ -917,6 +1002,8 @@ function SearchPage() {
     ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
     cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
     sortable: true,
+    valueFormatter: (params: ValueFormatterParams<File>) =>
+      getFileTypeLabel(params.value),
   };
 
   const colOwner: ColDef<File> = {
@@ -945,15 +1032,15 @@ function SearchPage() {
       formatChunkCountLabel(params.data?.chunkCount),
   };
 
-  const colAvgScore: ColDef<File> = {
-    field: "avgScore",
-    headerName: "Avg score",
+  const colRelevance: ColDef<File> = {
+    field: "maxScore",
+    headerName: "Relevance",
     hide: isWildcardQuery,
     ...(isCloudBrand ? { flex: 1, minWidth: 120 } : { width: 120 }),
     sortable: true,
-    comparator: compareAvgScore,
-    cellRenderer: ({ value }: CustomCellRendererProps<File>) => (
-      <AvgScoreCellContent value={value} />
+    comparator: compareRelevance,
+    cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
+      <RelevanceCellContent data={data} />
     ),
   };
 
@@ -1023,14 +1110,14 @@ function SearchPage() {
 
   // ── Layout-aware column sets ─────────────────────────────────────────────
   const columnDefs: ColDef<File>[] = isNarrow
-    ? [colSource, colChunks, colAvgScore, colStatus, colActions]
+    ? [colSource, colChunks, colRelevance, colStatus, colActions]
     : [
         colSource,
         colSize,
         colType,
         colOwner,
         colChunks,
-        colAvgScore,
+        colRelevance,
         colStatus,
         colActions,
       ];
@@ -1314,6 +1401,9 @@ function SearchPage() {
               theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
               rowData={gridRows}
               rowSelection="multiple"
+              rowClassRules={{
+                "ag-row-processing": (p) => p.data?.status === "processing",
+              }}
               getRowId={(params: GetRowIdParams<File>) =>
                 getFileIdentity(params.data)
               }
@@ -1350,6 +1440,9 @@ function SearchPage() {
               rowSelection="multiple"
               rowMultiSelectWithClick={false}
               suppressRowClickSelection={true}
+              rowClassRules={{
+                "ag-row-processing": (p) => p.data?.status === "processing",
+              }}
               getRowId={(params: GetRowIdParams<File>) =>
                 getFileIdentity(params.data)
               }

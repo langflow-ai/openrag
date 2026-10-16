@@ -252,6 +252,28 @@ describe("buildKnowledgeTableRows", () => {
       expect(rows[0].embedding_dimensions).toBe(1024);
     });
 
+    it("hides unmatched overlays for non-wildcard searches", () => {
+      // When the caller passes hasActiveFilter=true (non-wildcard or filtered),
+      // overlays that did not appear in the backend results must not be appended.
+      const rows = buildKnowledgeTableRows(
+        [searchFile({ filename: "result.pdf" })],
+        [taskFile({ filename: "unrelated.pdf", status: "active" })],
+        true, // non-wildcard query treated the same as hasActiveFilter
+      );
+      expect(rows.map((r) => r.filename)).toEqual(["result.pdf"]);
+    });
+
+    it("still overlays status onto backend-matched rows for non-wildcard searches", () => {
+      // Matching rows should still get status promoted even in non-wildcard mode.
+      const rows = buildKnowledgeTableRows(
+        [searchFile({ filename: "result.pdf", status: "active" })],
+        [taskFile({ filename: "result.pdf", status: "processing" })],
+        true,
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].status).toBe("processing");
+    });
+
     it("hides unindexed processing rows while a filter is active (#1282)", () => {
       const rows = buildKnowledgeTableRows(
         [searchFile({ filename: "indexed.pdf" })],
