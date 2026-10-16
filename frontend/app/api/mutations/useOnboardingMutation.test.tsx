@@ -134,7 +134,7 @@ describe("useOnboardingMutation", () => {
       act(() => result.current.mutation.mutate({ llm_provider: "rhoai" }));
 
       await waitFor(() => expect(result.current.mutation.isSuccess).toBe(true));
-      expect(catalogFetchCount).toBe(2);
+      await waitFor(() => expect(catalogFetchCount).toBe(2));
       expect(result.current.catalog.isFetching).toBe(true);
     } finally {
       releaseCatalog();
