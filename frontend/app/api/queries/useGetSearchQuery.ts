@@ -18,6 +18,8 @@ export interface SearchPayload {
     owners?: string[];
     connector_types?: string[];
   };
+  created_after?: string;
+  created_before?: string;
 }
 
 export interface ChunkResult {
@@ -46,6 +48,7 @@ export interface ChunkResult {
   index?: number;
   allowed_users?: string[];
   allowed_groups?: string[];
+  indexed_time?: string;
 }
 
 export interface File {
@@ -82,6 +85,7 @@ export interface File {
   chunks?: ChunkResult[];
   allowed_users?: string[];
   allowed_groups?: string[];
+  indexed_time?: string;
 }
 
 // Non-fatal signal from the backend — e.g. an embedding provider was removed
@@ -124,6 +128,7 @@ export const useGetSearchQuery = (
     UseQueryOptions<SearchResult, Error, SearchResult, unknown[]>,
     "queryKey" | "queryFn"
   >,
+  dateRange?: { createdAfter?: string; createdBefore?: string },
 ) => {
   const queryClient = useQueryClient();
 
@@ -161,6 +166,12 @@ export const useGetSearchQuery = (
         searchPayload.filters =
           buildSearchPayloadFilters(queryData.filters) ?? undefined;
       }
+      if (dateRange?.createdAfter) {
+        searchPayload.created_after = dateRange.createdAfter;
+      }
+      if (dateRange?.createdBefore) {
+        searchPayload.created_before = dateRange.createdBefore;
+      }
 
       const response = await apiClient.post(`/search`, searchPayload);
 
@@ -193,6 +204,7 @@ export const useGetSearchQuery = (
           embedding_dimensions?: number;
           allowed_users?: string[];
           allowed_groups?: string[];
+          indexed_time?: string;
         }
       >();
 
@@ -233,6 +245,7 @@ export const useGetSearchQuery = (
             embedding_dimensions: chunk.embedding_dimensions,
             allowed_users: chunk.allowed_users || [],
             allowed_groups: chunk.allowed_groups || [],
+            indexed_time: chunk.indexed_time,
           });
         }
       });
@@ -253,6 +266,7 @@ export const useGetSearchQuery = (
         chunks: file.chunks,
         allowed_users: file.allowed_users || [],
         allowed_groups: file.allowed_groups || [],
+        indexed_time: file.indexed_time,
       }));
 
       const warnings: SearchWarning[] = Array.isArray(data.warnings)
@@ -272,7 +286,7 @@ export const useGetSearchQuery = (
 
   return useQuery(
     {
-      queryKey: ["search", queryData, query],
+      queryKey: ["search", queryData, query, dateRange],
       placeholderData: (prev) => prev,
       staleTime: 0,
       queryFn: getFiles,

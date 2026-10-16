@@ -56,6 +56,9 @@ interface KnowledgeFilterContextType {
   /** Filenames checked in the knowledge table; seeds data_sources on create. */
   selectedSources: string[];
   setSelectedSources: (sources: string[]) => void;
+  /** Ephemeral date-range filter for the file grid; never persisted to Knowledge Filters. */
+  dateRange: { from?: Date; to?: Date } | null;
+  setDateRange: (range: { from?: Date; to?: Date } | null) => void;
 }
 
 const KnowledgeFilterContext = createContext<
@@ -90,6 +93,9 @@ export function KnowledgeFilterProvider({
   const [createMode, setCreateMode] = useState(false);
   const [queryOverride, setQueryOverride] = useState("");
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
+  const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date } | null>(
+    null,
+  );
 
   const setSelectedFilter = (filter: KnowledgeFilter | null) => {
     setSelectedFilterState(filter);
@@ -202,6 +208,8 @@ export function KnowledgeFilterProvider({
     setQueryOverride,
     selectedSources,
     setSelectedSources,
+    dateRange,
+    setDateRange,
   };
 
   return (

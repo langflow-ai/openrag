@@ -23,6 +23,7 @@ from utils.embedding_fields import (
     get_embedding_space_id,
 )
 from utils.logging_config import get_logger
+from utils.opensearch_queries import build_date_range_query
 
 logger = get_logger(__name__)
 
@@ -345,6 +346,14 @@ class SearchService:
                             # Multiple values filter
                             filter_clauses.append({"terms": {field_name: values}})
 
+                date_range_clause = build_date_range_query(
+                    "indexed_time",
+                    gte=filters.get("created_after") or None,
+                    lte=filters.get("created_before") or None,
+                )
+                if date_range_clause is not None:
+                    filter_clauses.append(date_range_clause)
+
             try:
                 seen_spaces: set[str] = set()
                 for legacy in (False, True):
@@ -527,6 +536,14 @@ class SearchService:
                             # Multiple values filter
                             filter_clauses.append({"terms": {field_name: values}})
 
+                date_range_clause = build_date_range_query(
+                    "indexed_time",
+                    gte=filters.get("created_after") or None,
+                    lte=filters.get("created_before") or None,
+                )
+                if date_range_clause is not None:
+                    filter_clauses.append(date_range_clause)
+
         # Build query body
         if is_wildcard_match_all:
             # Match all documents; still allow filters to narrow scope
@@ -640,6 +657,7 @@ class SearchService:
                 "allowed_users",
                 "allowed_groups",
                 "allowed_principal_labels",
+                "indexed_time",
             ],
             "size": limit,
         }
@@ -800,6 +818,7 @@ class SearchService:
                     "allowed_users": source.get("allowed_users", []),
                     "allowed_groups": source.get("allowed_groups", []),
                     "allowed_principal_labels": source.get("allowed_principal_labels", []),
+                    "indexed_time": source.get("indexed_time"),
                 }
             )
 
