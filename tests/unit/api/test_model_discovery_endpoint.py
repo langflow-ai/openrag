@@ -39,7 +39,9 @@ def _fresh_provider_config():
     model_providers.reload()
 
 
-def _offer_rhoai(tmp_path, monkeypatch, *, visible: bool = True, exclude: str = "") -> None:
+def _offer_rhoai(
+    tmp_path, monkeypatch, *, visible: bool = True, exclude: str = "", vision: str = ""
+) -> None:
     config = tmp_path / "model_providers.yaml"
     config.write_text(
         "providers:\n"
@@ -49,6 +51,7 @@ def _offer_rhoai(tmp_path, monkeypatch, *, visible: bool = True, exclude: str = 
         f"      oss: {'true' if visible else 'false'}\n"
         "    models:\n      - granite-3.3-2b-instruct\n"
         + (f"    exclude_models:\n      - '{exclude}'\n" if exclude else "")
+        + (f"    vision_models:\n      - '{vision}'\n" if vision else "")
         + "  - name: openai\n"
         "    display_name: OpenAI\n"
         "    modes:\n"
@@ -214,6 +217,55 @@ async def test_excluded_models_stay_excluded(tmp_path, monkeypatch):
     body = json.loads((await _discover(api_base=CHAT_BASE, api_key="t")).body)
 
     assert [row["model"] for row in body["models"]] == ["gpt-oss-120b"]
+
+
+@pytest.mark.asyncio
+async def test_vision_models_tag_discovered_chat_rows(tmp_path, monkeypatch):
+    """`vision_models` reaches discovery too, and never an embedding row."""
+    _offer_rhoai(tmp_path, monkeypatch, vision="*-vision-*")
+    _saved(monkeypatch)
+    _listing(
+        monkeypatch,
+        rhoai.ClusterModels(
+            chat=("granite-vision-3.3-2b", "gpt-oss-120b"),
+            embedding=("granite-vision-embedding",),
+        ),
+    )
+
+    body = json.loads((await _discover(api_base=CHAT_BASE, api_key="t")).body)
+
+    capabilities = {row["model"]: row.get("capabilities") for row in body["models"]}
+    assert capabilities == {"granite-vision-3.3-2b": ["vision"], "gpt-oss-120b": None}
+    assert "capabilities" not in body["embedding_models"][0]
+
+
+@pytest.mark.asyncio
+async def test_discovered_rows_match_the_catalogue_for_the_same_listing(tmp_path, monkeypatch):
+    """One id reads the same before its credentials are saved as after.
+
+    Discovery answers for the unsaved form and the catalogue for the saved
+    one; if a config rule reached only one of them, a model would change
+    capabilities — or reappear — the moment onboarding was submitted.
+    """
+    _offer_rhoai(tmp_path, monkeypatch, exclude="internal-*", vision="*-vision-*")
+    _saved(monkeypatch)
+    listed = rhoai.ClusterModels(
+        chat=("gpt-oss-120b", "granite-vision-3.3-2b", "internal-draft"),
+        embedding=("granite-embedding-english-r2", "internal-embed"),
+    )
+    _listing(monkeypatch, listed)
+    monkeypatch.setattr(rhoai, "cached_models", lambda: listed)
+
+    body = json.loads((await _discover(api_base=CHAT_BASE, api_key="t")).body)
+    catalogued = next(
+        entry for entry in model_catalog.catalog()["providers"] if entry["key"] == "rhoai"
+    )
+
+    def _by_model(rows):
+        return sorted(rows, key=lambda row: row["model"])
+
+    assert _by_model(body["models"]) == _by_model(catalogued["models"])
+    assert _by_model(body["embedding_models"]) == _by_model(catalogued["embedding_models"])
 
 
 @pytest.mark.asyncio
