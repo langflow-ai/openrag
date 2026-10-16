@@ -89,3 +89,11 @@ async def test_read_upload_stops_after_the_chunk_that_crosses_the_limit(monkeypa
         await read_upload_within_limit(upload)
 
     assert upload.reads == 2
+
+
+@pytest.mark.asyncio
+async def test_read_upload_treats_a_short_chunk_as_the_end_of_the_body():
+    upload = _ChunkedUpload([b"small", b"not-read"])
+
+    assert await read_upload_within_limit(upload) == b"small"
+    assert upload.reads == 1

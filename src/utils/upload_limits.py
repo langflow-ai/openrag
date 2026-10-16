@@ -99,6 +99,10 @@ async def read_upload_within_limit(upload_file, filename: str | None = None) -> 
         size += len(chunk)
         ensure_within_upload_limit(name, size)
         chunks.append(chunk)
+        # A short read is the end of the body. Stopping here also keeps a
+        # caller that returns the same bytes on every read from looping.
+        if len(chunk) < _READ_CHUNK:
+            break
     return b"".join(chunks)
 
 

@@ -156,6 +156,18 @@ describe("uploadFileForContext", () => {
     ).rejects.not.toThrow(/<html>/);
   });
 
+  it("reads an error field from a JSON failure body", async () => {
+    server.use(
+      http.post(UPLOAD_CONTEXT, () =>
+        HttpResponse.json({ error: "disk full" }, { status: 500 }),
+      ),
+    );
+
+    await expect(uploadFileForContext(txt(), "/chat", null)).rejects.toThrow(
+      "disk full",
+    );
+  });
+
   it("surfaces the server's error body, falling back to a default", async () => {
     server.use(
       http.post(UPLOAD_CONTEXT, () =>
@@ -309,6 +321,21 @@ describe("uploadFiles", () => {
     await expect(uploadFile(big)).rejects.toThrow(/big\.pdf/);
     await expect(uploadFile(big)).rejects.toThrow("OPENRAG_MAX_UPLOAD_MB");
     expect(posted).toBe(false);
+  });
+
+  it("falls back to 100 MB when the options payload has no limit", async () => {
+    resetUploadLimitCache();
+    server.use(
+      http.get("/api/upload_options", () =>
+        HttpResponse.json({ upload_batch_size: 25 }),
+      ),
+    );
+    const overDefault = new File([new Uint8Array(1)], "huge.pdf");
+    Object.defineProperty(overDefault, "size", {
+      value: 100 * 1024 * 1024 + 1,
+    });
+
+    await expect(uploadFile(overDefault)).rejects.toThrow(/huge\.pdf/);
   });
 
   it("uses the default limit when the limit lookup fails", async () => {
