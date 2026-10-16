@@ -1030,6 +1030,163 @@ describe("GenericOnboarding cluster model discovery", () => {
         api_key: "cpd-api-key",
       });
     });
+
+    describe("when the auth method is switched", () => {
+      // The Zen API key method's own field, which the shared catalogue above
+      // leaves out.
+      const withZenKeyField = {
+        ...discoveringOnPrem,
+        providers: discoveringOnPrem.providers.map((entry) =>
+          entry.key === "watsonx_onprem"
+            ? {
+                ...entry,
+                credential_fields: [
+                  ...entry.credential_fields,
+                  {
+                    key: "zen_api_key",
+                    label: "Zen API key",
+                    required: false,
+                    field_type: "password",
+                  },
+                ],
+              }
+            : entry,
+        ),
+      };
+      const savedZenKey: SavedProvidersSnapshot = {
+        custom: {
+          watsonx_onprem: {
+            auth_method: "zen_api_key",
+            credential_values: { api_base: "https://cpd.example.com" },
+            secret_fields: ["zen_api_key"],
+          },
+        },
+      };
+      const servedStatus = "Showing 1 language model served by the cluster.";
+      // Longer than the typing debounce, so a late second request would land.
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 800));
+      type OnPremRequest = {
+        credentials: Record<string, string>;
+        auth_method?: string;
+        kind?: string;
+      };
+
+      it("asks once, with only the new method's fields", async () => {
+        const requests: OnPremRequest[] = [];
+        const { user } = renderOnboarding(
+          "watsonx_onprem",
+          false,
+          {
+            custom: {
+              watsonx_onprem: {
+                auth_method: "username_api_key",
+                credential_values: {
+                  api_base: "https://cpd.example.com",
+                  username: "cpd-user",
+                },
+                secret_fields: ["api_key", "zen_api_key"],
+              },
+            },
+          },
+          [onPremDiscoverHandler(requests)],
+          withZenKeyField,
+        );
+        await screen.findByText(servedStatus, {}, DISCOVERY_TIMEOUT);
+        expect(requests.at(-1)).toMatchObject({
+          credentials: {
+            api_base: "https://cpd.example.com",
+            username: "cpd-user",
+          },
+          auth_method: "username_api_key",
+        });
+        const asked = requests.length;
+
+        await user.click(screen.getByRole("button", { name: /Zen API key/ }));
+        await settle();
+
+        // The saved Zen key makes the method ready at once; the username
+        // typed for the other method must not ride along under its name.
+        expect(requests.slice(asked)).toEqual([
+          {
+            credentials: { api_base: "https://cpd.example.com" },
+            auth_method: "zen_api_key",
+            kind: "chat",
+          },
+        ]);
+        expect(screen.getByText(servedStatus)).toBeInTheDocument();
+      });
+
+      it("does not re-ask with the other method's fields when switching back", async () => {
+        const requests: OnPremRequest[] = [];
+        const { user } = renderOnboarding(
+          "watsonx_onprem",
+          false,
+          savedZenKey,
+          [onPremDiscoverHandler(requests)],
+          withZenKeyField,
+        );
+        await screen.findByText(servedStatus, {}, DISCOVERY_TIMEOUT);
+
+        await user.click(
+          screen.getByRole("button", { name: /Username \+ API key/ }),
+        );
+        await user.type(screen.getByLabelText("Username"), "cpd-user");
+        await user.type(screen.getByLabelText(/^API key/), "cpd-api-key");
+        await waitFor(
+          () => expect(requests.at(-1)?.auth_method).toBe("username_api_key"),
+          DISCOVERY_TIMEOUT,
+        );
+        await screen.findByText(servedStatus, {}, DISCOVERY_TIMEOUT);
+        await settle();
+        const asked = requests.length;
+
+        await user.click(screen.getByRole("button", { name: /Zen API key/ }));
+        await settle();
+
+        // Asked with the Zen key on mount, so the answer is cached: nothing
+        // goes out, rather than the typed username + API key under its name.
+        expect(requests.slice(asked)).toEqual([]);
+        expect(screen.getByText(servedStatus)).toBeInTheDocument();
+      });
+
+      it("keeps the discovered model when switching to a method already typed", async () => {
+        const requests: OnPremRequest[] = [];
+        const { user, getSettings, modelHistory } = renderOnboarding(
+          "watsonx_onprem",
+          false,
+          savedZenKey,
+          [onPremDiscoverHandler(requests)],
+          withZenKeyField,
+        );
+        await screen.findByText(servedStatus, {}, DISCOVERY_TIMEOUT);
+
+        await user.click(
+          screen.getByRole("button", { name: /Username \+ API key/ }),
+        );
+        await user.type(screen.getByLabelText("Username"), "cpd-user");
+        await user.type(screen.getByLabelText(/^API key/), "cpd-api-key");
+        await waitFor(
+          () => expect(requests.at(-1)?.auth_method).toBe("username_api_key"),
+          DISCOVERY_TIMEOUT,
+        );
+        await user.click(screen.getByRole("button", { name: /Zen API key/ }));
+        await settle();
+        expect(getSettings().llm_model).toBe("ibm/granite-4-h-small");
+        const switchedAt = modelHistory.length;
+
+        await user.click(
+          screen.getByRole("button", { name: /Username \+ API key/ }),
+        );
+        await settle();
+
+        // The typed username already counts for the method switched to, so
+        // the picker must not fall back to the configured model meanwhile.
+        expect(modelHistory.slice(switchedAt)).not.toContain(
+          "ibm/granite-3-8b-instruct",
+        );
+        expect(getSettings().llm_model).toBe("ibm/granite-4-h-small");
+      });
+    });
   });
 
   it("never asks a provider that cannot list its models", async () => {

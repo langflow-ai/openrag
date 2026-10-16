@@ -60,8 +60,9 @@ export function useOnboardingModelDiscovery({
    */
   requiredKeys?: readonly string[];
   /**
-   * Saved non-secret fields the operator emptied. Sent as `""` so the backend
-   * does not fill the saved value back in — Submit removes them.
+   * Saved non-secret fields the operator emptied, for every auth method. Sent
+   * as `""` so the backend does not fill the saved value back in — Submit
+   * removes them. Only the chosen method's keys are sent.
    */
   clearedKeys?: string[];
   savedSecrets: Set<string>;
@@ -71,16 +72,22 @@ export function useOnboardingModelDiscovery({
   const typedCredentials: Record<string, string> = {};
   for (const [key, value] of Object.entries(credentials)) {
     const trimmed = (value ?? "").trim();
-    if (trimmed && (!activeKeys || activeKeys.has(key)))
-      typedCredentials[key] = trimmed;
+    if (trimmed) typedCredentials[key] = trimmed;
   }
   for (const key of clearedKeys) typedCredentials[key] = "";
+  // Only typing is debounced. The auth method is a discrete choice, so its
+  // keys are applied after the debounce: a switch asks once, at once, with
+  // the new method's fields — never the old method's fields under the new
+  // method's name, which would be a second, wasted request.
   // Debounced as a string: a fresh object each render would reset the timer.
-  const discoveryKey = useDebouncedValue(JSON.stringify(typedCredentials), 500);
-  const discoveryCredentials = useMemo(
-    () => JSON.parse(discoveryKey) as Record<string, string>,
-    [discoveryKey],
-  );
+  const typedKey = useDebouncedValue(JSON.stringify(typedCredentials), 500);
+  const discoveryCredentials = useMemo(() => {
+    const typed = JSON.parse(typedKey) as Record<string, string>;
+    if (!activeKeys) return typed;
+    return Object.fromEntries(
+      Object.entries(typed).filter(([key]) => activeKeys.has(key)),
+    );
+  }, [typedKey, activeKeys]);
   const hasValue = (key: string) =>
     Boolean(discoveryCredentials[key]) || savedSecrets.has(key);
   const activeFields = fields.filter(

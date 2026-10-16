@@ -164,10 +164,11 @@ export function GenericOnboarding({
     });
   };
 
-  const activeKeys = activeCredentialKeys(
-    provider,
-    azureAuthMethod,
-    onPremAuthMethod,
+  // Memoised: model discovery filters by this set, and a fresh one each render
+  // would redo that work every render.
+  const activeKeys = useMemo(
+    () => activeCredentialKeys(provider, azureAuthMethod, onPremAuthMethod),
+    [provider, azureAuthMethod, onPremAuthMethod],
   );
 
   const reenterKeys = secretsToReenter(
@@ -209,11 +210,13 @@ export function GenericOnboarding({
       azureAuthMethod,
       onPremAuthMethod,
     ),
+    // Every method's, unfiltered: discovery applies the chosen method's keys
+    // after debouncing what was typed, so a method switch is not debounced.
     clearedKeys: clearedSavedCredentialKeys(
       credentials,
       savedCredentials,
       savedSecrets,
-      activeKeys,
+      null,
     ),
     savedSecrets: reusableSecrets,
     authMethod: provider === "watsonx_onprem" ? onPremAuthMethod : undefined,
