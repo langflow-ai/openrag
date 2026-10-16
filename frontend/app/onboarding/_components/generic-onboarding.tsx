@@ -1,14 +1,11 @@
 import {
   type Dispatch,
   type SetStateAction,
-  useEffect,
-  useEffectEvent,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
-import { LabelInput } from "@/components/label-input";
 import {
   onboardingCredentialFields,
   type SavedProvidersSnapshot,
@@ -23,15 +20,19 @@ import { WatsonxSpaceSelect } from "@/components/models/watsonx-space-select";
 import { WatsonxTlsSettings } from "@/components/models/watsonx-tls-settings";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { AdvancedOnboarding } from "./advanced";
-import { GenericProviderCredentialFields } from "./generic-provider-credential-fields";
+import {
+  GenericCredentialInput,
+  GenericProviderCredentialFields,
+} from "./generic-provider-credential-fields";
 import {
   activeCredentialKeys,
   authMethodCredentialKeys,
   clearedSavedCredentialKeys,
   credentialTargetChanged,
-  secretsToReenter,
 } from "./generic-provider-credential-fields.helpers";
+import { useOnboardingCompletionBlocker } from "./use-onboarding-completion-blocker";
 import { useOnboardingModelDiscovery } from "./use-onboarding-model-discovery";
+import { useOnboardingModelSelection } from "./use-onboarding-model-selection";
 
 /**
  * Onboarding step for a provider with no hand-built component.
@@ -171,27 +172,14 @@ export function GenericOnboarding({
     [provider, azureAuthMethod, onPremAuthMethod],
   );
 
-  const reenterKeys = secretsToReenter(
+  const reenterKeys = useOnboardingCompletionBlocker({
     credentials,
     savedSecrets,
     activeKeys,
     targetChanged,
-  );
-  const reenterLabels = reenterKeys.map(
-    (key) => fields.find((field) => field.key === key)?.label ?? key,
-  );
-  // A string, so the effect below re-runs only when the reason changes.
-  const completionBlocker =
-    reenterLabels.length > 0
-      ? `Enter ${reenterLabels.join(", ")} again: the endpoint or TLS setting changed.`
-      : null;
-  const onCompletionBlockerChangeRef = useRef(onCompletionBlockerChange);
-  onCompletionBlockerChangeRef.current = onCompletionBlockerChange;
-  useEffect(() => {
-    onCompletionBlockerChangeRef.current?.(completionBlocker);
-  }, [completionBlocker]);
-  // A tab that is switched away from must not keep blocking the next one.
-  useEffect(() => () => onCompletionBlockerChangeRef.current?.(null), []);
+    fields,
+    onCompletionBlockerChange,
+  });
 
   const {
     discovers,
@@ -222,40 +210,12 @@ export function GenericOnboarding({
     authMethod: provider === "watsonx_onprem" ? onPremAuthMethod : undefined,
   });
 
-  // Only the user's own pick is state; otherwise the model follows the list.
-  // Azure's catalogue lists model families, not this customer's deployments,
-  // so it requires an explicit choice. Other providers default to the
-  // highest-ranked model, which tracks the list as discovery replaces the
-  // configured fallback — a model the cluster does not serve never stays
-  // selected — while a pick is kept even when the cluster does not list it.
-  const [pickedModel, setPickedModel] = useState<string | null>(null);
-  const defaultModel = requiresExplicitModelSelection(provider)
-    ? ""
-    : (models[0]?.value ?? "");
-  // While the cluster is asked again the list briefly falls back to the
-  // configured rows: keep the last settled default rather than flick to one of
-  // those and back. With nothing to keep, follow the list: saved credentials
-  // start discovery as soon as the catalogue loads, and a slow cluster must
-  // not leave Submit without a model meanwhile.
-  const [settledDefault, setSettledDefault] = useState("");
-  if (!discoveryInFlight && settledDefault !== defaultModel) {
-    setSettledDefault(defaultModel);
-  }
-  const model =
-    pickedModel ??
-    (discoveryInFlight && settledDefault ? settledDefault : defaultModel);
-
-  const syncModel = useEffectEvent((nextModel: string) => {
-    syncParentSettings(credentials, nextModel);
+  const { model, pickModel } = useOnboardingModelSelection({
+    provider,
+    models,
+    inFlight: discoveryInFlight,
+    onModelChange: (nextModel) => syncParentSettings(credentials, nextModel),
   });
-  // Mirror every change, including an automatic choice the list no longer
-  // offers; mount stays a no-op so an empty model isn't written up front.
-  const syncedModelRef = useRef("");
-  useEffect(() => {
-    if (model === syncedModelRef.current) return;
-    syncedModelRef.current = model;
-    syncModel(model);
-  }, [model]);
 
   const handleCredentialChange = (fieldKey: string, newValue: string) => {
     const nextCredentials = { ...credentials, [fieldKey]: newValue };
@@ -263,31 +223,18 @@ export function GenericOnboarding({
     syncParentSettings(nextCredentials, model);
   };
 
-  const handleModelChange = (newModel: string) => {
-    setPickedModel(newModel);
-  };
-
-  const handleAzureAuthMethodChange = (method: string) => {
-    setAzureAuthMethod(method);
+  const handleAuthMethodChange = (
+    target: "azure" | "watsonx_onprem",
+    method: string,
+  ) => {
+    const isAzure = target === "azure";
+    (isAzure ? setAzureAuthMethod : setOnPremAuthMethod)(method);
     // The closure still holds the previous method during this event; submit
     // just the new method's fields explicitly so inactive values stay local.
-    const active = activeCredentialKeys("azure", method, onPremAuthMethod);
-    const selected = Object.fromEntries(
-      Object.entries(credentials).filter(([key]) => active?.has(key)),
-    );
-    setSettings((prev) => ({
-      ...prev,
-      provider_credentials: { ...prev.provider_credentials, azure: selected },
-      provider_auth_methods: { ...prev.provider_auth_methods, azure: method },
-    }));
-  };
-
-  const handleOnPremAuthMethodChange = (method: string) => {
-    setOnPremAuthMethod(method);
     const active = activeCredentialKeys(
-      "watsonx_onprem",
-      azureAuthMethod,
-      method,
+      target,
+      isAzure ? method : azureAuthMethod,
+      isAzure ? onPremAuthMethod : method,
     );
     const selected = Object.fromEntries(
       Object.entries(credentials).filter(([key]) => active?.has(key)),
@@ -296,11 +243,11 @@ export function GenericOnboarding({
       ...prev,
       provider_credentials: {
         ...prev.provider_credentials,
-        watsonx_onprem: selected,
+        [target]: selected,
       },
       provider_auth_methods: {
         ...prev.provider_auth_methods,
-        watsonx_onprem: method,
+        [target]: method,
       },
     }));
   };
@@ -333,35 +280,16 @@ export function GenericOnboarding({
       );
     }
 
-    const isSecret =
-      field.field_type === "password" || field.field_type === "textarea";
-    const hasSaved = isSecret && reusableSecrets.has(field.key);
     return (
-      <div key={field.key} className="space-y-1">
-        <LabelInput
-          label={field.label}
-          helperText={field.tooltip ?? ""}
-          id={`onboarding-${provider}-${field.key}`}
-          type={field.field_type === "password" ? "password" : "text"}
-          required={field.required && !hasSaved}
-          placeholder={
-            hasSaved ? "•••••••••" : (field.placeholder ?? undefined)
-          }
-          value={credentials[field.key] ?? ""}
-          onChange={(e) => handleCredentialChange(field.key, e.target.value)}
-        />
-        {hasSaved && (
-          <p className="text-mmd text-muted-foreground">
-            A value is already saved. Leave this blank to keep it.
-          </p>
-        )}
-        {reenterKeys.includes(field.key) && (
-          <p className="text-mmd text-muted-foreground">
-            The endpoint or TLS setting changed, so the saved value is not sent
-            to it. Enter it again.
-          </p>
-        )}
-      </div>
+      <GenericCredentialInput
+        key={field.key}
+        field={field}
+        id={`onboarding-${provider}-${field.key}`}
+        value={credentials[field.key] ?? ""}
+        hasSavedSecret={reusableSecrets.has(field.key)}
+        needsReentry={reenterKeys.includes(field.key)}
+        onChange={(value) => handleCredentialChange(field.key, value)}
+      />
     );
   };
 
@@ -373,8 +301,12 @@ export function GenericOnboarding({
           fields={fields}
           azureAuthMethod={azureAuthMethod}
           onPremAuthMethod={onPremAuthMethod}
-          onAzureAuthMethodChange={handleAzureAuthMethodChange}
-          onOnPremAuthMethodChange={handleOnPremAuthMethodChange}
+          onAzureAuthMethodChange={(method) =>
+            handleAuthMethodChange("azure", method)
+          }
+          onOnPremAuthMethodChange={(method) =>
+            handleAuthMethodChange("watsonx_onprem", method)
+          }
           renderField={renderField}
         />
         {discoveryStatus && (
@@ -400,8 +332,8 @@ export function GenericOnboarding({
         embeddingModels={isEmbedding ? models : undefined}
         languageModel={isEmbedding ? undefined : model}
         embeddingModel={isEmbedding ? model : undefined}
-        setLanguageModel={isEmbedding ? undefined : handleModelChange}
-        setEmbeddingModel={isEmbedding ? handleModelChange : undefined}
+        setLanguageModel={isEmbedding ? undefined : pickModel}
+        setEmbeddingModel={isEmbedding ? pickModel : undefined}
       />
     </>
   );
