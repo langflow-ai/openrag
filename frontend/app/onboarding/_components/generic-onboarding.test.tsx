@@ -33,6 +33,23 @@ const catalog = {
       ],
     },
     {
+      // Owns its inventory: the catalogue publishes only saved deployments,
+      // so before onboarding saves anything there is nothing here at all.
+      key: "azure_ai",
+      name: "Azure AI Foundry",
+      inventory_source: "configured",
+      credential_fields: [
+        {
+          key: "chat_deployments",
+          label: "Chat deployments",
+          required: false,
+          field_type: "text",
+        },
+      ],
+      models: [],
+      embedding_models: [],
+    },
+    {
       key: "watsonx_onprem",
       name: "IBM watsonx.ai",
       credential_fields: [
@@ -286,5 +303,70 @@ describe("GenericOnboarding model selection", () => {
       await screen.findByRole("option", { name: "text-embedding-3-large" }),
     );
     expect(getSettings().embedding_model).toBe("text-embedding-3-large");
+  });
+});
+
+describe("the deployment list and the selected model stay in step", () => {
+  /**
+   * For a provider whose catalogue *is* its deployment list the two can
+   * drift. Selecting a typed name used to set only `llm_model`, so the name
+   * never joined `chat_deployments`: onboarding validation still passed
+   * against the real deployment, and the saved model was then absent from
+   * the catalogue it is supposed to come from. Removing a listed name left
+   * the stale selection behind the same way.
+   */
+
+  async function pickModel(
+    user: ReturnType<typeof userEvent.setup>,
+    name: string,
+  ) {
+    await user.click(
+      await screen.findByRole("combobox", { name: "Language model" }),
+    );
+    const search = await screen.findByPlaceholderText(/deployment name/i);
+    await user.clear(search);
+    await user.type(search, name);
+    await user.click(await screen.findByRole("option", { name }));
+  }
+
+  it("adds a typed name to the deployment field it should have come from", async () => {
+    const { user, getSettings } = renderOnboarding("azure_ai");
+    const field = await screen.findByLabelText("Chat deployments");
+    await user.type(field, "dep-a");
+
+    await pickModel(user, "typed-not-listed");
+
+    expect(field).toHaveValue("dep-a, typed-not-listed");
+    expect(getSettings().llm_model).toBe("typed-not-listed");
+    expect(getSettings().provider_credentials?.azure_ai?.chat_deployments).toBe(
+      "dep-a, typed-not-listed",
+    );
+  });
+
+  it("does not list a name twice when it is already there", async () => {
+    const { user, getSettings } = renderOnboarding("azure_ai");
+    const field = await screen.findByLabelText("Chat deployments");
+    await user.type(field, "dep-a");
+
+    await pickModel(user, "dep-a");
+
+    expect(field).toHaveValue("dep-a");
+    expect(getSettings().llm_model).toBe("dep-a");
+  });
+
+  it("clears the selection when its deployment is removed from the list", async () => {
+    const { user, getSettings } = renderOnboarding("azure_ai");
+    const field = await screen.findByLabelText("Chat deployments");
+    await user.type(field, "dep-a, dep-b");
+
+    await pickModel(user, "dep-b");
+    expect(getSettings().llm_model).toBe("dep-b");
+
+    // The operator deletes it again. The deployment list is the catalogue
+    // here, so the model no longer exists and must not stay selected.
+    await user.clear(field);
+    await user.type(field, "dep-a");
+
+    expect(getSettings().llm_model).toBe("");
   });
 });

@@ -84,6 +84,7 @@ import base64
 import contextlib
 import json
 import logging
+import math
 import os
 import re
 import struct
@@ -94,6 +95,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
@@ -139,6 +141,23 @@ class Matrix:
         self.captured_text.append(text)
 
 
+def _unusable_chat_reply(text: str) -> str:
+    """Why `text` is not a usable completion, or "" if it is."""
+    return "" if text.strip() else "the completion succeeded with empty content"
+
+
+def _unusable_embedding(vector: Any) -> str:
+    """Why `vector` cannot be used as an embedding, or "" if it can."""
+    if not isinstance(vector, list) or not vector:
+        return "the call succeeded but returned an empty embedding"
+    for value in vector:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return f"the embedding contains a non-numeric value ({type(value).__name__})"
+        if not math.isfinite(value):
+            return "the embedding contains a non-finite value (nan or inf)"
+    return ""
+
+
 def _describe_exception(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}"
 
@@ -154,6 +173,29 @@ def _set_real_secrets(*secrets: str) -> None:
     # Short values are not redacted: a two-character "secret" would blank out
     # unrelated text and make the output useless.
     _REAL_SECRETS = tuple(dict.fromkeys(s for s in secrets if s and len(s) >= 8))
+
+
+def _safe_endpoint(api_base: str) -> str:
+    """An endpoint with anything secret-bearing taken off, safe to display.
+
+    `_redact` only knows the credentials this run was handed, so it cannot
+    help with a secret carried *inside* the endpoint: `user:password@` in the
+    netloc, or a SAS token in the query. The provider module refuses or strips
+    both, but that happens after the operator has already seen this line.
+    """
+    parts = urlsplit(api_base or "")
+    if not parts.scheme or not parts.netloc:
+        return api_base or ""
+    host = parts.hostname or ""
+    if parts.port:
+        host = f"{host}:{parts.port}"
+    cleaned = urlunsplit((parts.scheme, host, parts.path, "", ""))
+    dropped = []
+    if parts.username or parts.password:
+        dropped.append("userinfo")
+    if parts.query:
+        dropped.append("query")
+    return f"{cleaned} (dropped: {', '.join(dropped)})" if dropped else cleaned
 
 
 def _redact(text: str) -> str:
@@ -376,8 +418,19 @@ async def _run_endpoint_matrix(
             },
             config=config,
         )
-        text = response["choices"][0]["message"].get("content") or ""
-        matrix.record(3, f"[{label}] chat", BLOCKER, "pass", f"reply={text.strip()[:40]!r}")
+        text = (response["choices"][0]["message"].get("content") or "").strip()
+        # A completion that succeeds and says nothing is not a working
+        # deployment. Recorded as a pass it made the release matrix green
+        # without usable inference, which is the one thing a blocker here
+        # exists to rule out.
+        problem = _unusable_chat_reply(text)
+        matrix.record(
+            3,
+            f"[{label}] chat",
+            BLOCKER,
+            "fail" if problem else "pass",
+            problem or f"reply={text[:40]!r}",
+        )
     except Exception as exc:
         matrix.record(3, f"[{label}] chat", BLOCKER, "fail", _describe_exception(exc))
 
@@ -531,7 +584,18 @@ async def _run_endpoint_matrix(
             config=config,
         )
         vector = response["data"][0]["embedding"]
-        matrix.record(6, f"[{label}] embeddings", BLOCKER, "pass", f"{len(vector)} dimensions")
+        # Same reasoning as the chat check: an empty vector recorded
+        # "0 dimensions" and passed. The finiteness test matters too — a
+        # vector of NaN has the right length and is useless for retrieval,
+        # and OpenSearch rejects it at index time rather than here.
+        problem = _unusable_embedding(vector)
+        matrix.record(
+            6,
+            f"[{label}] embeddings",
+            BLOCKER,
+            "fail" if problem else "pass",
+            problem or f"{len(vector)} dimensions",
+        )
     except Exception as exc:
         matrix.record(6, f"[{label}] embeddings", BLOCKER, "fail", _describe_exception(exc))
 
@@ -1082,6 +1146,24 @@ class _SinkHandler(logging.Handler):
             self._sink.append(f"<unformattable log record from {record.name}>")
 
 
+def _console_handlers() -> list[logging.StreamHandler]:
+    """Every StreamHandler currently attached anywhere in the logging tree.
+
+    Walked rather than taken from the root logger alone: the handlers that
+    matter here are attached to named library loggers, not to root.
+    """
+    seen: list[logging.StreamHandler] = []
+    loggers: list[Any] = [logging.getLogger()]
+    loggers.extend(
+        obj for obj in logging.root.manager.loggerDict.values() if isinstance(obj, logging.Logger)
+    )
+    for logger_obj in loggers:
+        for candidate in getattr(logger_obj, "handlers", []):
+            if isinstance(candidate, logging.StreamHandler) and candidate not in seen:
+                seen.append(candidate)
+    return seen
+
+
 @contextlib.contextmanager
 def _capturing(sink: list[str]):
     """Capture root logging, stdout, stderr and OpenRAG's structlog loggers.
@@ -1110,11 +1192,31 @@ def _capturing(sink: list[str]):
     root.setLevel(logging.DEBUG)
 
     real_stdout, real_stderr = sys.stdout, sys.stderr
-    sys.stdout = _Tee(real_stdout, sink)
-    sys.stderr = _Tee(real_stderr, sink)
+    tee_stdout = _Tee(real_stdout, sink)
+    tee_stderr = _Tee(real_stderr, sink)
+    sys.stdout = tee_stdout
+    sys.stderr = tee_stderr
+
+    # Swapping `sys.stderr` is not enough on its own. A StreamHandler attached
+    # before this block holds the stream *object* it was given, so it keeps
+    # writing to the real terminal no matter what `sys.stderr` now names —
+    # litellm attaches three such handlers at import, and litellm is the
+    # library most likely to log a request detail carrying a credential. Point
+    # them at the redacting stream for the duration and put them back after.
+    redirected: list[tuple[logging.StreamHandler, Any]] = []
+    for existing in _console_handlers():
+        if existing.stream is real_stdout:
+            redirected.append((existing, existing.stream))
+            existing.setStream(tee_stdout)
+        elif existing.stream is real_stderr:
+            redirected.append((existing, existing.stream))
+            existing.setStream(tee_stderr)
+
     try:
         yield
     finally:
+        for existing, original_stream in redirected:
+            existing.setStream(original_stream)
         sys.stdout, sys.stderr = real_stdout, real_stderr
         root.removeHandler(handler)
         root.setLevel(previous_level)
@@ -1179,7 +1281,7 @@ async def _main() -> int:
 
 async def _run_all_checks(matrix: Matrix, settings: dict[str, str], endpoints) -> None:
     for label, api_base, number, expected_profile in endpoints:
-        print(f"\n--- {label}: {api_base} ---", flush=True)
+        print(f"\n--- {label}: {_safe_endpoint(api_base)} ---", flush=True)
         await _run_endpoint_matrix(
             matrix,
             label,

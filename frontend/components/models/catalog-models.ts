@@ -266,7 +266,13 @@ export function groupedCatalogOptions(
       continue;
     }
     const modelOptions = sortedProviderOptions(provider, kind);
-    if (modelOptions.length === 0 && !options?.includeEmpty) {
+    // An empty group is normally noise, but not for a provider that owns its
+    // inventory: there, empty means "no deployments named yet" rather than
+    // "nothing to offer". Dropping it sent a typed Azure deployment into
+    // whichever populated provider happened to be listed next, which is a
+    // silently wrong provider rather than a missing row.
+    const ownsInventory = provider.inventory_source === "configured";
+    if (modelOptions.length === 0 && !options?.includeEmpty && !ownsInventory) {
       continue;
     }
     groups.push({
@@ -323,6 +329,16 @@ export function embeddingStepProviders(
     }
     return (entry.embedding_models ?? []).length > 0;
   });
+}
+
+/**
+ * Which credential field holds the deployments a picker of `kind` draws from.
+ *
+ * Vision is an annotation on a chat deployment rather than a list of its own,
+ * so it reads from the same field.
+ */
+export function deploymentFieldForKind(kind: CatalogModelKind): string {
+  return kind === "embedding" ? "embedding_deployments" : "chat_deployments";
 }
 
 /**

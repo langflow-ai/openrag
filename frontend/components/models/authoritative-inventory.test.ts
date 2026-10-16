@@ -107,6 +107,70 @@ describe("an authoritative provider with nothing configured", () => {
   });
 });
 
+describe("an empty configured inventory survives beside a populated provider", () => {
+  /**
+   * Settings does not pass `includeEmpty`, so an empty group was dropped. With
+   * `azure_ai` empty and another provider populated, a typed Azure deployment
+   * was then offered under *that* provider — a silently wrong provider rather
+   * than a missing row, which is the worse of the two failures.
+   */
+  const MIXED = {
+    providers: [
+      {
+        key: "azure_ai",
+        name: "Azure AI Foundry",
+        inventory_source: "configured",
+        models: [],
+        embedding_models: [],
+        credential_fields: [],
+      },
+      {
+        key: "openai",
+        name: "OpenAI",
+        models: [{ model: "gpt-4.1", mode: "chat" }],
+        embedding_models: [
+          { model: "text-embedding-3-small", mode: "embedding" },
+        ],
+        credential_fields: [],
+      },
+    ],
+  } as never;
+
+  const BOTH = { azure_ai: true, openai: true };
+
+  it("keeps the empty Azure group without the caller opting in", () => {
+    const groups = groupedCatalogOptions(MIXED, BOTH, "language");
+    assert.deepEqual(
+      groups.map((group) => group.key),
+      ["azure_ai", "openai"],
+    );
+    assert.deepEqual(groups[0].options, []);
+  });
+
+  it("keeps it for the embedding picker too", () => {
+    const groups = groupedCatalogOptions(MIXED, BOTH, "embedding");
+    assert.ok(groups.some((group) => group.key === "azure_ai"));
+  });
+
+  it("still drops an empty group from a provider that does not own its inventory", () => {
+    const CATALOGUE_BACKED = {
+      providers: [
+        {
+          key: "openai",
+          name: "OpenAI",
+          models: [],
+          embedding_models: [],
+          credential_fields: [],
+        },
+      ],
+    } as never;
+    assert.deepEqual(
+      groupedCatalogOptions(CATALOGUE_BACKED, { openai: true }, "language"),
+      [],
+    );
+  });
+});
+
 describe("onboarding, before anything is saved", () => {
   /**
    * The catalogue publishes a deployment-based provider's models from *saved*

@@ -9,6 +9,7 @@ import {
 import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { LabelInput } from "@/components/label-input";
 import {
+  deploymentFieldForKind,
   onboardingCredentialFields,
   pendingDeploymentOptions,
   providerCatalogOptions,
@@ -193,11 +194,48 @@ export function GenericOnboarding({
   const handleCredentialChange = (fieldKey: string, newValue: string) => {
     const nextCredentials = { ...credentials, [fieldKey]: newValue };
     setCredentials(nextCredentials);
-    syncParentSettings(nextCredentials, model);
+
+    // The deployment list *is* the catalogue for these providers, so a model
+    // that has just been removed from it no longer exists. Leaving it
+    // selected would save a model the catalogue cannot show, and onboarding
+    // validation would still pass because the deployment is real upstream.
+    const kind = isEmbedding ? "embedding" : "language";
+    let nextModel = model;
+    if (model && fieldKey === deploymentFieldForKind(kind)) {
+      const listed = pendingDeploymentOptions(nextCredentials, provider, kind);
+      if (listed !== null && !listed.some((option) => option.value === model)) {
+        nextModel = "";
+        setModel("");
+      }
+    }
+    syncParentSettings(nextCredentials, nextModel);
   };
 
   const handleModelChange = (newModel: string) => {
     setModel(newModel);
+
+    // The picker still accepts a name that was typed rather than chosen. For
+    // a provider that owns its inventory, that name has to join the list as
+    // well: the saved model would otherwise be absent from the catalogue it
+    // is supposed to come from. Adding it here keeps the two in step without
+    // making the operator type the same name twice.
+    const kind = isEmbedding ? "embedding" : "language";
+    const listed = pendingDeploymentOptions(credentials, provider, kind);
+    if (
+      newModel &&
+      listed !== null &&
+      !listed.some((option) => option.value === newModel)
+    ) {
+      const fieldKey = deploymentFieldForKind(kind);
+      const current = (credentials[fieldKey] ?? "").trim();
+      const nextCredentials = {
+        ...credentials,
+        [fieldKey]: current ? `${current}, ${newModel}` : newModel,
+      };
+      setCredentials(nextCredentials);
+      syncParentSettings(nextCredentials, newModel);
+      return;
+    }
     syncParentSettings(credentials, newModel);
   };
 

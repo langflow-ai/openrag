@@ -304,6 +304,107 @@ class TestTheRoutingCheckCanFail:
         assert "UnsupportedEndpointError" in matrix.checks[0].detail
 
 
+class TestBlockersRejectUnusableSuccesses:
+    """A 200 is not the same as a working deployment.
+
+    Both of these recorded a pass on a successful-but-empty response, which
+    made the release matrix green without usable inference — the one outcome
+    a blocker here has to rule out.
+    """
+
+    @pytest.mark.parametrize("text", ["", "   ", "\n"])
+    def test_an_empty_completion_is_not_a_pass(self, harness, text) -> None:
+        assert harness._unusable_chat_reply(text)
+
+    def test_a_real_completion_passes(self, harness) -> None:
+        assert harness._unusable_chat_reply("OK") == ""
+
+    @pytest.mark.parametrize(
+        "vector",
+        [
+            [],
+            None,
+            "not-a-vector",
+            [0.1, float("nan")],
+            [float("inf"), 0.2],
+            [0.1, "0.2"],
+            [0.1, True],
+        ],
+    )
+    def test_an_unusable_vector_is_not_a_pass(self, harness, vector) -> None:
+        """Length alone is not enough: a vector of NaN has the right shape and
+        is useless for retrieval, and OpenSearch rejects it at index time
+        rather than here."""
+        assert harness._unusable_embedding(vector)
+
+    def test_a_real_vector_passes(self, harness) -> None:
+        assert harness._unusable_embedding([0.1, -0.2, 3]) == ""
+
+
+class TestTheEndpointIsNeverPrintedRaw:
+    """`_redact` only knows the credentials this run was handed.
+
+    A secret carried *inside* the endpoint is invisible to it, and the
+    provider module strips or refuses one only after this line is on screen.
+    """
+
+    def test_userinfo_and_query_are_removed(self, harness) -> None:
+        shown = harness._safe_endpoint(
+            "https://operator:s3cr3t@contoso.services.ai.azure.com/openai/v1?sig=abc123"
+        )
+        assert "s3cr3t" not in shown
+        assert "operator" not in shown
+        assert "abc123" not in shown
+        assert "sig" not in shown
+        assert shown.startswith("https://contoso.services.ai.azure.com/openai/v1")
+        assert "userinfo" in shown and "query" in shown
+
+    def test_an_ordinary_endpoint_is_left_alone(self, harness) -> None:
+        plain = "https://contoso.services.ai.azure.com/openai/v1"
+        assert harness._safe_endpoint(plain) == plain
+
+    def test_a_non_url_is_passed_through(self, harness) -> None:
+        assert harness._safe_endpoint("not-a-url") == "not-a-url"
+
+
+class TestPreboundLogHandlersCannotLeak:
+    """Replacing `sys.stderr` does not retarget a handler that already holds it.
+
+    litellm attaches three such handlers at import, and it is the library most
+    likely to log a request detail carrying a credential — so without this the
+    harness's central promise, that nothing reaches a terminal unredacted,
+    does not hold for the most likely source.
+    """
+
+    def test_a_handler_bound_before_the_block_is_redirected(self, harness, monkeypatch) -> None:
+        import logging
+
+        # The handler must hold the *same object* `sys.stderr` names when
+        # `_capturing` is entered — that is the situation litellm creates at
+        # import, and the one swapping `sys.stderr` fails to cover. A handler
+        # pointed somewhere else entirely is a log file, not a terminal, and
+        # is deliberately left alone.
+        terminal = io.StringIO()
+        monkeypatch.setattr(sys, "stderr", terminal)
+        logger = logging.getLogger("test.prebound.handler")
+        logger.propagate = False
+        handler = logging.StreamHandler(terminal)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+
+        harness._set_real_secrets(REAL_KEY)
+        sink: list[str] = []
+        try:
+            with harness._capturing(sink):
+                logger.info("leaking %s now", REAL_KEY)
+        finally:
+            logger.removeHandler(handler)
+
+        assert REAL_KEY not in terminal.getvalue(), "the secret reached the real stream"
+        assert handler.stream is terminal, "the handler's stream was not restored"
+        assert any(REAL_KEY in entry for entry in sink), "detection still needs the original"
+
+
 class TestImageFixture:
     def test_the_probe_image_is_large_enough_to_be_accepted(self, harness) -> None:
         """A 1x1 PNG is valid but some vision deployments reject it on size,
