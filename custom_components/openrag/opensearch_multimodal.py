@@ -1292,7 +1292,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         logger.debug("[OpenSearchMultimodel] Building OpenSearch client")
         auth_kwargs = self._build_auth_kwargs()
         ca_certs = os.getenv("OPENSEARCH_CA_CERTS", "").strip()
-        ssl_assert_hostname = os.getenv("OPENSEARCH_SSL_ASSERT_HOSTNAME", "false").strip().lower() in (
+        ssl_assert_hostname = os.getenv(
+            "OPENSEARCH_SSL_ASSERT_HOSTNAME", "false"
+        ).strip().lower() in (
             "true",
             "1",
             "yes",

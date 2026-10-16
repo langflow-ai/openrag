@@ -83,7 +83,9 @@ else:
 # Hostname validation is independent from CA validation. Keep it disabled by
 # default for existing deployments whose OpenSearch endpoint name differs from
 # the certificate's SAN; operators can enable it explicitly when they match.
-OPENSEARCH_SSL_ASSERT_HOSTNAME = os.getenv("OPENSEARCH_SSL_ASSERT_HOSTNAME", "false").strip().lower() in (
+OPENSEARCH_SSL_ASSERT_HOSTNAME = os.getenv(
+    "OPENSEARCH_SSL_ASSERT_HOSTNAME", "false"
+).strip().lower() in (
     "true",
     "1",
     "yes",
