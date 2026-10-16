@@ -9,8 +9,11 @@ import {
 import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { LabelInput } from "@/components/label-input";
 import {
+  deploymentFieldForKind,
   onboardingCredentialFields,
+  pendingDeploymentOptions,
   providerCatalogOptions,
+  providerOwnsInventory,
   type SavedProvidersSnapshot,
   savedCredentialValuesForProvider,
   savedSecretFieldsForProvider,
@@ -155,15 +158,19 @@ export function GenericOnboarding({
     });
   };
 
-  const models = useMemo(
-    () =>
-      providerCatalogOptions(
-        catalog,
-        provider,
-        isEmbedding ? "embedding" : "language",
-      ),
-    [catalog, provider, isEmbedding],
-  );
+  const models = useMemo(() => {
+    const kind = isEmbedding ? "embedding" : "language";
+    // A provider whose models are its own deployments publishes them from
+    // saved configuration, and during onboarding nothing is saved yet — so
+    // the names in the form are the only ones that exist. Without this the
+    // picker is empty while the operator is looking at the list it should
+    // contain, and they are pushed into entering the same name twice.
+    const pending = pendingDeploymentOptions(credentials, provider, kind);
+    if (pending !== null) {
+      return pending;
+    }
+    return providerCatalogOptions(catalog, provider, kind);
+  }, [catalog, provider, isEmbedding, credentials]);
 
   // Azure's catalogue lists model families, not this customer's deployments,
   // so require an explicit choice. Other providers still default to the
@@ -188,11 +195,48 @@ export function GenericOnboarding({
   const handleCredentialChange = (fieldKey: string, newValue: string) => {
     const nextCredentials = { ...credentials, [fieldKey]: newValue };
     setCredentials(nextCredentials);
-    syncParentSettings(nextCredentials, model);
+
+    // The deployment list *is* the catalogue for these providers, so a model
+    // that has just been removed from it no longer exists. Leaving it
+    // selected would save a model the catalogue cannot show, and onboarding
+    // validation would still pass because the deployment is real upstream.
+    const kind = isEmbedding ? "embedding" : "language";
+    let nextModel = model;
+    if (model && fieldKey === deploymentFieldForKind(kind)) {
+      const listed = pendingDeploymentOptions(nextCredentials, provider, kind);
+      if (listed !== null && !listed.some((option) => option.value === model)) {
+        nextModel = "";
+        setModel("");
+      }
+    }
+    syncParentSettings(nextCredentials, nextModel);
   };
 
   const handleModelChange = (newModel: string) => {
     setModel(newModel);
+
+    // The picker still accepts a name that was typed rather than chosen. For
+    // a provider that owns its inventory, that name has to join the list as
+    // well: the saved model would otherwise be absent from the catalogue it
+    // is supposed to come from. Adding it here keeps the two in step without
+    // making the operator type the same name twice.
+    const kind = isEmbedding ? "embedding" : "language";
+    const listed = pendingDeploymentOptions(credentials, provider, kind);
+    if (
+      newModel &&
+      listed !== null &&
+      !listed.some((option) => option.value === newModel)
+    ) {
+      const fieldKey = deploymentFieldForKind(kind);
+      const current = (credentials[fieldKey] ?? "").trim();
+      const nextCredentials = {
+        ...credentials,
+        [fieldKey]: current ? `${current}, ${newModel}` : newModel,
+      };
+      setCredentials(nextCredentials);
+      syncParentSettings(nextCredentials, newModel);
+      return;
+    }
     syncParentSettings(credentials, newModel);
   };
 
@@ -307,12 +351,28 @@ export function GenericOnboarding({
           onOnPremAuthMethodChange={handleOnPremAuthMethodChange}
           renderField={renderField}
         />
-        {models.length === 0 && (
-          <p className="text-mmd text-muted-foreground">
-            {chrome.name} publishes no {isEmbedding ? "embedding" : "language"}{" "}
-            models in the catalogue. Pick a different provider for this step.
-          </p>
-        )}
+        {/*
+          Which message applies is a property of the *provider*, not of how
+          far the operator has got. Keying off whether a deployment field had
+          been filled in meant a provider that owns its inventory was told to
+          "pick a different provider" until the first name was typed — which
+          is the one moment the guidance below is needed.
+        */}
+        {models.length === 0 &&
+          (providerOwnsInventory(catalog, provider) ? (
+            <p className="text-mmd text-muted-foreground">
+              List your {isEmbedding ? "embedding" : "chat"} deployment names
+              above to choose one here. {chrome.name} deployment names are
+              chosen when the deployment is created, so only you can say what
+              they are.
+            </p>
+          ) : (
+            <p className="text-mmd text-muted-foreground">
+              {chrome.name} publishes no{" "}
+              {isEmbedding ? "embedding" : "language"} models in the catalogue.
+              Pick a different provider for this step.
+            </p>
+          ))}
       </div>
       <AdvancedOnboarding
         icon={<Logo className="w-4 h-4" />}

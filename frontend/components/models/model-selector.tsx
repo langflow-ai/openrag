@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { CapabilityStrip } from "./capability-strip";
+import { emptyGroupMessage } from "./model-helpers";
 import { MODELS_PER_PROVIDER } from "./model-info";
 import type {
   GroupedModelOption,
@@ -297,7 +298,7 @@ export function ModelSelector({
           aria-controls={listboxId}
           className={cn(
             "w-full gap-2 justify-between font-normal text-sm",
-            hasError && "border-destructive!",
+            hasError && "!border-destructive",
             className,
           )}
         >
@@ -323,7 +324,7 @@ export function ModelSelector({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="p-0 w-(--radix-popover-trigger-width)"
+        className="p-0 w-[var(--radix-popover-trigger-width)]"
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <Command shouldFilter={false}>
@@ -388,7 +389,7 @@ export function ModelSelector({
                           disabled
                           className="text-muted-foreground ml-6"
                         >
-                          No models available. Search to enter a custom model.
+                          {emptyGroupMessage(groupProvider)}
                         </CommandItem>
                       ) : (
                         group.options.map((option) => {
