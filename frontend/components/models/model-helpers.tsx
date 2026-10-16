@@ -48,6 +48,25 @@ export function requiresExplicitModelSelection(
 // Preferred auto-select order for the LLM onboarding step. Only a preference:
 // providers this run mode hides are dropped, and anything the API returns that
 // is not listed here is appended in API order.
+/**
+ * What to say when a provider contributes no models.
+ *
+ * A provider whose models are its own deployments can be fully configured and
+ * still list nothing, because the deployment names have not been entered —
+ * "no models available" alone reads as a fault. Azure AI Foundry is one: its
+ * catalogue lists models available to deploy rather than models deployed, so
+ * the configured names are the only record of what can be called.
+ *
+ * Lives here rather than beside the picker that renders it: a component file
+ * that also exports a non-component cannot keep its state across a Fast
+ * Refresh, so the whole page reloads on every edit.
+ */
+export function emptyGroupMessage(provider?: string): string {
+  return requiresExplicitModelSelection(provider as ModelProvider | undefined)
+    ? "No deployments listed. Add your deployment names in this provider's settings, or search to enter one."
+    : "No models available. Search to enter a custom model.";
+}
+
 export const LLM_PROVIDER_ORDER: ModelProvider[] = [
   "anthropic",
   "openai",

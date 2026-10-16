@@ -206,11 +206,102 @@ class TestFailureCategories:
             "Access denied due to invalid subscription key",
             "401 Unauthorized",
             "Incorrect API key provided",
+            "HTTP 401",
+            "status_code: 401",
         ],
     )
     def test_credential_rejections_are_identified_as_such(self, harness, text) -> None:
         assert harness._looks_like_credential_failure(text)
         assert not harness._looks_like_connectivity_failure(text)
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "request id 8a401b2c",
+            "completed in 401 ms",
+            "prompt_tokens: 401",
+        ],
+    )
+    def test_an_incidental_401_is_not_mistaken_for_a_rejection(self, harness, text) -> None:
+        """Same reasoning as the 404 case above.
+
+        Check 2 runs this classifier over 300 characters of response body, so
+        a request id carrying those three digits would otherwise let a
+        non-credential rejection pass as a credential one.
+        """
+        assert not harness._looks_like_credential_failure(text)
+
+
+class TestTheRoutingCheckCanFail:
+    """A blocker that always passes is not a check.
+
+    Both paths below return before any network call, which is what makes them
+    testable without a live resource.
+    """
+
+    @pytest.fixture
+    def settings(self):
+        return {
+            "api_key": REAL_KEY,
+            "chat_deployment": "chat-dep",
+            "embedding_deployment": "embed-dep",
+        }
+
+    @pytest.mark.asyncio
+    async def test_the_wrong_surface_is_reported_rather_than_passed(
+        self, harness, settings, monkeypatch
+    ) -> None:
+        """A legacy `/models` URL in AZURE_AI_API_BASE used to satisfy the
+        `/openai/v1` blocker, which is the one thing the matrix exists to
+        prove."""
+        from enhancements.providers.azure import foundry
+
+        monkeypatch.setattr(foundry, "endpoint_profile", lambda _b: "legacy_models")
+        monkeypatch.setattr(foundry, "litellm_route", lambda _s: "azure_ai")
+
+        matrix = harness.Matrix()
+        await harness._run_endpoint_matrix(
+            matrix,
+            "resource v1",
+            "https://contoso.services.ai.azure.com/models",
+            settings,
+            base_number=8,
+            expected_profile="resource_openai_v1",
+        )
+
+        assert [c.status for c in matrix.checks] == ["fail"]
+        assert "expected resource_openai_v1" in matrix.checks[0].detail
+
+    @pytest.mark.asyncio
+    async def test_an_unclassifiable_endpoint_does_not_abort_the_run(
+        self, harness, settings, monkeypatch
+    ) -> None:
+        """`litellm_route` refuses what it cannot classify, by design.
+
+        Uncaught, that exception escaped `_run_all_checks` and the report was
+        never printed — a traceback instead of the matrix, which is the least
+        useful thing a release gate can hand an operator.
+        """
+        from enhancements.providers.azure import foundry
+
+        def _refuse(_stored):
+            raise foundry.UnsupportedEndpointError(foundry.UNSUPPORTED_ENDPOINT_MESSAGE)
+
+        monkeypatch.setattr(foundry, "endpoint_profile", lambda _b: "unknown")
+        monkeypatch.setattr(foundry, "litellm_route", _refuse)
+
+        matrix = harness.Matrix()
+        await harness._run_endpoint_matrix(
+            matrix,
+            "resource v1",
+            "https://contoso.services.ai.azure.com/anthropic/v1",
+            settings,
+            base_number=8,
+            expected_profile="resource_openai_v1",
+        )
+
+        assert [c.status for c in matrix.checks] == ["fail"]
+        assert "UnsupportedEndpointError" in matrix.checks[0].detail
 
 
 class TestImageFixture:

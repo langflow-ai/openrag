@@ -93,6 +93,7 @@ import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
@@ -214,6 +215,16 @@ _HTTP_404_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+#: And a bare "401" is not one either, for the same reason: check 2 runs this
+#: classifier over 300 characters of response body, where a request id like
+#: `8a401b2c` would otherwise read as a rejected credential and let a
+#: non-credential failure pass. The real status is already covered by the
+#: `status == 401` test at the call site.
+_HTTP_401_PATTERN = re.compile(
+    r"(?:http[/ ]?[\d.]*\s*|status(?:_?code)?\s*[:=]\s*|code\s*[:=]\s*)401\b",
+    re.IGNORECASE,
+)
+
 
 def _looks_like_connectivity_failure(text: str) -> bool:
     lowered = (text or "").lower()
@@ -236,10 +247,11 @@ def _looks_like_credential_failure(text: str) -> bool:
         return True
     # Azure's own vocabulary for a rejected key, which the shared marker list
     # does not have to know about.
+    if _HTTP_401_PATTERN.search(lowered):
+        return True
     return any(
         marker in lowered
         for marker in (
-            "401",
             "unauthorized",
             "access denied due to invalid subscription key",
             "invalid subscription key",
@@ -296,6 +308,7 @@ async def _run_endpoint_matrix(
     settings: dict[str, str],
     *,
     base_number: int,
+    expected_profile: str | None = None,
 ) -> None:
     """Save check, chat, streaming, tools, embeddings and a bad deployment."""
     from enhancements.providers.azure import foundry
@@ -306,15 +319,40 @@ async def _run_endpoint_matrix(
     embedding_model = settings["embedding_deployment"]
     config = _build_config(api_base, api_key, chat_model, embedding_model)
 
+    # Classification is a blocker in its own right, so it has to be able to
+    # *fail*. Recording an unconditional pass meant a legacy `/models`
+    # endpoint pasted into AZURE_AI_API_BASE still satisfied the `/openai/v1`
+    # check, which is the one thing this matrix exists to prove.
     profile = foundry.endpoint_profile(api_base)
-    route = foundry.litellm_route({"api_base": api_base})
+    try:
+        route = foundry.litellm_route({"api_base": api_base})
+    except Exception as exc:
+        # `litellm_route` refuses an endpoint it cannot classify, by design.
+        # Uncaught it would abort the whole run before `_print_report`, so the
+        # operator would get a traceback instead of the matrix — the least
+        # useful outcome for a release gate.
+        matrix.record(
+            base_number,
+            f"[{label}] endpoint classified and routed",
+            BLOCKER,
+            "fail",
+            f"profile={profile} route=<unresolved> {_describe_exception(exc)}",
+        )
+        return
+
+    mismatch = expected_profile is not None and profile != expected_profile
     matrix.record(
         base_number,
         f"[{label}] endpoint classified and routed",
         BLOCKER,
-        "pass",
-        f"profile={profile} route={route}",
+        "fail" if mismatch else "pass",
+        f"profile={profile} route={route}"
+        + (f" (expected {expected_profile})" if mismatch else ""),
     )
+    if mismatch:
+        # Everything after this would be measuring a different surface than
+        # the one this block of the matrix claims to cover.
+        return
 
     # 1. Save-time validation with valid credentials. Delegated to the
     # credential-semantics probe so the raw response is on record, not just
@@ -1055,10 +1093,14 @@ def _capturing(sink: list[str]):
     from enhancements.providers.azure import foundry
     from services import docling_service, llm_gateway
 
-    modules = (foundry, llm_gateway, docling_service)
+    # Annotated `Any` so the swap below type-checks. These are module objects,
+    # which mypy otherwise infers as `Module | Any` and then rejects assigning
+    # to; `setattr` silences that but trips ruff's B010, so the type is widened
+    # once here instead of suppressing a linter at each line.
+    modules: tuple[Any, ...] = (foundry, llm_gateway, docling_service)
     original_loggers = [module.logger for module in modules]
     for module in modules:
-        module.logger = _Recorder(sink)  # type: ignore[attr-defined]
+        module.logger = _Recorder(sink)
 
     root = logging.getLogger()
     handler = _SinkHandler(sink)
@@ -1068,8 +1110,8 @@ def _capturing(sink: list[str]):
     root.setLevel(logging.DEBUG)
 
     real_stdout, real_stderr = sys.stdout, sys.stderr
-    sys.stdout = _Tee(real_stdout, sink)  # type: ignore[assignment]
-    sys.stderr = _Tee(real_stderr, sink)  # type: ignore[assignment]
+    sys.stdout = _Tee(real_stdout, sink)
+    sys.stderr = _Tee(real_stderr, sink)
     try:
         yield
     finally:
@@ -1077,7 +1119,7 @@ def _capturing(sink: list[str]):
         root.removeHandler(handler)
         root.setLevel(previous_level)
         for module, logger in zip(modules, original_loggers, strict=True):
-            module.logger = logger  # type: ignore[attr-defined]
+            module.logger = logger
 
 
 # --------------------------------------------------------------------------
@@ -1116,11 +1158,17 @@ async def _main() -> int:
     _set_real_secrets(settings["api_key"], settings.get("listing_denied_api_key", ""))
     matrix = Matrix()
 
-    endpoints: list[tuple[str, str, int]] = [("resource v1", settings["api_base"], 8)]
+    # The profile each endpoint variable is *supposed* to name. Checked rather
+    # than assumed: the three are set by hand, and pasting the wrong surface
+    # into one of them would otherwise be reported as a pass for the surface
+    # it was not.
+    endpoints: list[tuple[str, str, int, str]] = [
+        ("resource v1", settings["api_base"], 8, "resource_openai_v1")
+    ]
     if settings.get("project_api_base"):
-        endpoints.append(("project v1", settings["project_api_base"], 9))
+        endpoints.append(("project v1", settings["project_api_base"], 9, "project_openai_v1"))
     if settings.get("legacy_api_base"):
-        endpoints.append(("legacy /models", settings["legacy_api_base"], 14))
+        endpoints.append(("legacy /models", settings["legacy_api_base"], 14, "legacy_models"))
 
     with _capturing(matrix.captured_text):
         await _run_all_checks(matrix, settings, endpoints)
@@ -1130,9 +1178,16 @@ async def _main() -> int:
 
 
 async def _run_all_checks(matrix: Matrix, settings: dict[str, str], endpoints) -> None:
-    for label, api_base, number in endpoints:
+    for label, api_base, number, expected_profile in endpoints:
         print(f"\n--- {label}: {api_base} ---", flush=True)
-        await _run_endpoint_matrix(matrix, label, api_base, settings, base_number=number)
+        await _run_endpoint_matrix(
+            matrix,
+            label,
+            api_base,
+            settings,
+            base_number=number,
+            expected_profile=expected_profile,
+        )
 
     if not settings.get("project_api_base"):
         matrix.record(

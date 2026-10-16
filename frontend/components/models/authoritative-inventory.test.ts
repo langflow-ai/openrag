@@ -15,7 +15,7 @@ import {
   groupedCatalogOptions,
   pendingDeploymentOptions,
 } from "./catalog-models";
-import { emptyGroupMessage } from "./model-selector";
+import { emptyGroupMessage } from "./model-helpers";
 
 /** Exactly what the backend publishes for a configured Foundry provider. */
 const CATALOG = {
