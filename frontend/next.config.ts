@@ -16,9 +16,9 @@ function normalizeFrontendBasePath(value?: string): string {
 
   if (
     !normalized ||
-    normalized.includes("?") ||
-    normalized.includes("#") ||
-    normalized.includes("://")
+    !/^[A-Za-z0-9/._~-]+$/.test(normalized) ||
+    normalized.includes("//") ||
+    /\/\.{1,2}(\/|$)/.test(normalized)
   ) {
     throw new Error(
       "OPENRAG_FRONTEND_BASE_PATH must be a path such as /openrag-fe",

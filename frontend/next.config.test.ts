@@ -10,6 +10,26 @@ describe("next configuration base path", () => {
     vi.unstubAllEnvs();
   });
 
+  it.each([
+    ["", ""],
+    ["/", ""],
+    [" openrag-fe/ ", "/openrag-fe"],
+  ])("normalizes production base path %j to %j", (path, expected) => {
+    vi.stubEnv("OPENRAG_FRONTEND_BASE_PATH", path);
+    vi.stubEnv("OPENRAG_FRONTEND_RUNTIME_BASE_PATH", "");
+
+    expect(createNextConfig(PHASE_PRODUCTION_BUILD).basePath).toBe(expected);
+  });
+
+  it("rejects paths that would route differently in the browser", () => {
+    vi.stubEnv("OPENRAG_FRONTEND_BASE_PATH", "/a/../b");
+    vi.stubEnv("OPENRAG_FRONTEND_RUNTIME_BASE_PATH", "");
+
+    expect(() => createNextConfig(PHASE_PRODUCTION_BUILD)).toThrow(
+      "OPENRAG_FRONTEND_BASE_PATH",
+    );
+  });
+
   it("uses the configured path for a local production build", () => {
     vi.stubEnv("OPENRAG_FRONTEND_BASE_PATH", "/openrag-fe");
     vi.stubEnv("OPENRAG_FRONTEND_RUNTIME_BASE_PATH", "");
