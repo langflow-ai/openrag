@@ -135,6 +135,7 @@ from collections.abc import Mapping
 from typing import Any, Literal
 from urllib.parse import SplitResult, urlsplit, urlunsplit
 
+from enhancements.providers.contracts import CatalogEntry
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -154,6 +155,22 @@ LITELLM_PROVIDER = "azure_ai"
 
 #: The transport for the OpenAI-compatible surface. See the module docstring.
 OPENAI_COMPATIBLE_ROUTE = "hosted_vllm"
+
+#: This provider's configured deployments are the whole of its catalogue;
+#: LiteLLM's `azure_ai` rows are not offered alongside them.
+#:
+#: Live validation settled why. `GET /openai/v1/models` returned 462 models all
+#: marked `succeeded`, and two of four sampled were not deployed — the listing
+#: is of models available to deploy, not deployed. LiteLLM's table is the same
+#: kind of thing: a price list, not an inventory. Offering either would put
+#: hundreds of options in the pickers that fail when called.
+AUTHORITATIVE_INVENTORY = True
+
+#: Endpoint forms accepted for a *new* configuration in the first release.
+#: Everything else still routes — see `litellm_route` — so an existing
+#: configuration keeps working and the rest can be admitted by adding to this
+#: set once each has been validated against a resource that serves it.
+FIRST_RELEASE_PROFILES: frozenset[str] = frozenset({"resource_openai_v1"})
 
 #: The two kinds of call the gateway makes. Foundry serves both from one
 #: endpoint, so `kind` changes nothing here; it is accepted to match the
@@ -202,6 +219,18 @@ DEPLOYMENT_URI_MESSAGE = (
 )
 
 
+#: Refused for a *new* configuration in the first release, although the
+#: transport for it is implemented and unit-tested. Only the resource
+#: `/openai/v1` form has been validated end to end against a live resource, and
+#: a first public release should offer what has been observed working rather
+#: than what the code appears capable of.
+FIRST_RELEASE_ENDPOINT_MESSAGE = (
+    "This release supports the resource endpoint ending in /openai/v1. The "
+    "project (.../api/projects/<project>/openai/v1) and /models endpoints are not "
+    "yet offered. Use the endpoint shown on your resource's Overview page."
+)
+
+
 class UnsupportedEndpointError(ValueError):
     """The endpoint is not a Foundry surface this provider can address.
 
@@ -234,6 +263,11 @@ _FOUNDRY_HOST_SUFFIX = ".services.ai.azure.com"
 #: "Target URI" box. They name one call, not the base, and LiteLLM appends its
 #: own — so `.../chat/completions` becomes `.../chat/completions/chat/completions`.
 _CALL_SUFFIXES = ("/chat/completions", "/embeddings", "/responses")
+
+#: Fields the operator fills in that are not LiteLLM kwargs. Forwarding one
+#: would land it in the request body, since LiteLLM passes kwargs it does not
+#: recognise straight through.
+_LOCAL_ONLY_FIELDS = frozenset({"chat_deployments", "embedding_deployments", "vlm_deployments"})
 
 
 CREDENTIAL_FIELDS: list[dict[str, Any]] = [
@@ -272,6 +306,51 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
             "Only for the older /models endpoint, which dates its API. Leave blank "
             "for /openai/v1, which is versionless — sending one there is at best "
             "ignored."
+        ),
+        "required": False,
+        "field_type": "text",
+        "options": None,
+        "default_value": None,
+    },
+    {
+        "key": "chat_deployments",
+        "label": "Chat deployments",
+        "placeholder": "prod-chat-east, prod-chat-west",
+        "tooltip": (
+            "Comma-separated names of your deployed chat models. Foundry deployment "
+            "names are chosen by whoever created them, and the model catalogue lists "
+            "models available to deploy rather than models you have deployed — so "
+            "this list is the only thing that can say what is callable. Only these "
+            "appear in the language-model picker."
+        ),
+        "required": False,
+        "field_type": "text",
+        "options": None,
+        "default_value": None,
+    },
+    {
+        "key": "embedding_deployments",
+        "label": "Embedding deployments",
+        "placeholder": "prod-embed-3-large",
+        "tooltip": (
+            "Comma-separated names of your deployed embedding models. Only these "
+            "appear in the embedding picker."
+        ),
+        "required": False,
+        "field_type": "text",
+        "options": None,
+        "default_value": None,
+    },
+    {
+        "key": "vlm_deployments",
+        "label": "Vision-capable deployments",
+        "placeholder": "prod-chat-east",
+        "tooltip": (
+            "Which of your chat deployments can read images. Each name must also be "
+            "listed under Chat deployments; this marks those entries as vision-capable "
+            "so they appear in the image-description picker. Nothing about a "
+            "deployment's name reveals whether it supports vision, so it has to be "
+            "stated here."
         ),
         "required": False,
         "field_type": "text",
@@ -485,6 +564,83 @@ def _reject_userinfo(api_base: str) -> None:
         )
 
 
+def _names(stored: Mapping[str, Any] | None, field: str) -> tuple[str, ...]:
+    """One deployment list, in order, de-duplicated.
+
+    Separated by commas or newlines, because the control is a single-line text
+    box and a pasted list arrives either way. Whitespace *inside* a name is
+    kept: a Foundry deployment name cannot contain a space, so splitting on one
+    would silently turn a typo into two plausible-looking names rather than let
+    the single wrong one fail where the operator can see it.
+    """
+    raw = _clean((stored or {}).get(field)).replace(",", "\n")
+    seen: dict[str, None] = {}
+    for line in raw.split("\n"):
+        name = line.strip()
+        if name:
+            seen.setdefault(name, None)
+    return tuple(seen)
+
+
+def chat_deployments(stored: Mapping[str, Any] | None) -> tuple[str, ...]:
+    return _names(stored, "chat_deployments")
+
+
+def embedding_deployments(stored: Mapping[str, Any] | None) -> tuple[str, ...]:
+    return _names(stored, "embedding_deployments")
+
+
+def vlm_deployments(stored: Mapping[str, Any] | None) -> tuple[str, ...]:
+    """Chat deployments that can read images.
+
+    Not an inventory of its own: see `configured_inventory`.
+    """
+    return _names(stored, "vlm_deployments")
+
+
+def unlisted_vlm_deployments(stored: Mapping[str, Any] | None) -> tuple[str, ...]:
+    """Vision names that are not also chat deployments.
+
+    Non-empty means the configuration cannot be satisfied: vision is an
+    annotation on a chat deployment, so a name here that is not there would
+    silently do nothing.
+    """
+    chat = set(chat_deployments(stored))
+    return tuple(name for name in vlm_deployments(stored) if name not in chat)
+
+
+def configured_inventory(stored: Mapping[str, Any] | None) -> tuple[CatalogEntry, ...]:
+    """Every model this configuration makes selectable, and nothing else.
+
+    The complete answer for `azure_ai`: LiteLLM's rows for this provider are
+    not merged in, because they are a price list rather than a record of what
+    this resource has deployed.
+
+    Capabilities carry only what configuration stated. Nothing is looked up by
+    name — a deployment called `gpt-4.1-nano` is an operator's alias and is no
+    evidence about the model behind it, so attaching that model's context
+    window, pricing or tool support would be a guess shown to the user as fact.
+
+    Vision is an annotation, not a second inventory: a name in
+    `vlm_deployments` adds `vision` to the matching chat entry. One that is not
+    also a chat deployment adds nothing, and is rejected at save time rather
+    than silently dropped here — see `unlisted_vlm_deployments`.
+    """
+    vision = set(vlm_deployments(stored))
+    entries = [
+        CatalogEntry(
+            model=name,
+            mode="chat",
+            capabilities=("vision",) if name in vision else (),
+        )
+        for name in chat_deployments(stored)
+    ]
+    entries.extend(
+        CatalogEntry(model=name, mode="embedding") for name in embedding_deployments(stored)
+    )
+    return tuple(entries)
+
+
 def litellm_credentials(stored: Mapping[str, Any], *, kind: CallKind = "chat") -> dict[str, Any]:
     """LiteLLM kwargs for a Foundry call.
 
@@ -498,7 +654,9 @@ def litellm_credentials(stored: Mapping[str, Any], *, kind: CallKind = "chat") -
     _reject_userinfo(api_base)
 
     credentials: dict[str, Any] = {
-        name: value for name, value in stored.items() if name not in {"api_base", "api_version"}
+        name: value
+        for name, value in stored.items()
+        if name not in _LOCAL_ONLY_FIELDS and name not in {"api_base", "api_version"}
     }
     if api_base:
         credentials["api_base"] = api_base
@@ -578,6 +736,20 @@ async def lightweight_health_check(credentials: Mapping[str, Any]) -> None:
         # Still routable, so an install already configured this way keeps
         # working — but it must not be saved again in that shape.
         raise UnsupportedEndpointError(DEPLOYMENT_URI_MESSAGE)
+    if profile not in FIRST_RELEASE_PROFILES:
+        raise UnsupportedEndpointError(FIRST_RELEASE_ENDPOINT_MESSAGE)
+
+    # Vision is an annotation on a chat deployment. A name listed only as a
+    # vision deployment would mark nothing, so say so rather than drop it.
+    unlisted = unlisted_vlm_deployments(credentials)
+    if unlisted:
+        raise ValueError(
+            "These vision-capable deployments are not listed under Chat deployments: "
+            + ", ".join(unlisted)
+            + ". Add them there as well — marking a deployment vision-capable adds "
+            "that capability to a chat deployment rather than creating one."
+        )
+
     headers = health_headers(credentials)
     if not headers:
         raise ValueError("An Azure AI Foundry API key is required")

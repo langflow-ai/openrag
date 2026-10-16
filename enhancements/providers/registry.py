@@ -14,6 +14,7 @@ from types import ModuleType
 from typing import Any, Literal
 
 from enhancements.providers.azure import foundry
+from enhancements.providers.contracts import CatalogEntry
 from enhancements.providers.redhat import openshift_ai
 from enhancements.providers.watsonx import onprem
 
@@ -68,6 +69,47 @@ def litellm_route_for(provider: str, stored: Mapping[str, Any] | None) -> str | 
     # that into a wrong request rather than a clear error — the caller decides
     # how to surface it.
     return resolve(stored or {}) or None
+
+
+def authoritative_inventory_keys() -> frozenset[str]:
+    """Providers whose configured inventory *replaces* LiteLLM's table.
+
+    Declared rather than inferred from whether `configured_inventory` returned
+    anything, so "this provider owns its list" is a statement in the module
+    rather than a side effect of a return value — and so an empty inventory
+    stays distinguishable from an absent one.
+
+    Azure AI Foundry is one because its listing endpoint is a catalogue of
+    models available to deploy, not of models deployed: offering those rows
+    would put hundreds of uncallable options in the pickers.
+    """
+    return frozenset(
+        key
+        for key, enhancement in _ENHANCEMENTS.items()
+        if getattr(enhancement, "AUTHORITATIVE_INVENTORY", False)
+    )
+
+
+def configured_inventory(
+    provider: str, stored: Mapping[str, Any] | None
+) -> tuple[CatalogEntry, ...] | None:
+    """The complete selectable inventory `provider` declares for `stored`.
+
+    `None` when the provider does not own its inventory, which leaves the
+    catalogue on its normal path. An empty tuple is a real answer: the provider
+    owns the list and the operator has configured nothing.
+
+    Synchronous and side-effect free. This is configuration being read, not
+    discovery — unlike `fetch_models`, which exists for providers that have to
+    ask a cluster what it is running.
+    """
+    enhancement = get(provider)
+    if enhancement is None or not getattr(enhancement, "AUTHORITATIVE_INVENTORY", False):
+        return None
+    build = getattr(enhancement, "configured_inventory", None)
+    if build is None:
+        return None
+    return tuple(build(stored or {}))
 
 
 def credential_field_overrides() -> dict[str, list[dict[str, object]]]:
