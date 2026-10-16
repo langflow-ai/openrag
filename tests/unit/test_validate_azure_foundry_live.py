@@ -206,11 +206,203 @@ class TestFailureCategories:
             "Access denied due to invalid subscription key",
             "401 Unauthorized",
             "Incorrect API key provided",
+            "HTTP 401",
+            "status_code: 401",
         ],
     )
     def test_credential_rejections_are_identified_as_such(self, harness, text) -> None:
         assert harness._looks_like_credential_failure(text)
         assert not harness._looks_like_connectivity_failure(text)
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "request id 8a401b2c",
+            "completed in 401 ms",
+            "prompt_tokens: 401",
+        ],
+    )
+    def test_an_incidental_401_is_not_mistaken_for_a_rejection(self, harness, text) -> None:
+        """Same reasoning as the 404 case above.
+
+        Check 2 runs this classifier over 300 characters of response body, so
+        a request id carrying those three digits would otherwise let a
+        non-credential rejection pass as a credential one.
+        """
+        assert not harness._looks_like_credential_failure(text)
+
+
+class TestTheRoutingCheckCanFail:
+    """A blocker that always passes is not a check.
+
+    Both paths below return before any network call, which is what makes them
+    testable without a live resource.
+    """
+
+    @pytest.fixture
+    def settings(self):
+        return {
+            "api_key": REAL_KEY,
+            "chat_deployment": "chat-dep",
+            "embedding_deployment": "embed-dep",
+        }
+
+    @pytest.mark.asyncio
+    async def test_the_wrong_surface_is_reported_rather_than_passed(
+        self, harness, settings, monkeypatch
+    ) -> None:
+        """A legacy `/models` URL in AZURE_AI_API_BASE used to satisfy the
+        `/openai/v1` blocker, which is the one thing the matrix exists to
+        prove."""
+        from enhancements.providers.azure import foundry
+
+        monkeypatch.setattr(foundry, "endpoint_profile", lambda _b: "legacy_models")
+        monkeypatch.setattr(foundry, "litellm_route", lambda _s: "azure_ai")
+
+        matrix = harness.Matrix()
+        await harness._run_endpoint_matrix(
+            matrix,
+            "resource v1",
+            "https://contoso.services.ai.azure.com/models",
+            settings,
+            base_number=8,
+            expected_profile="resource_openai_v1",
+        )
+
+        assert [c.status for c in matrix.checks] == ["fail"]
+        assert "expected resource_openai_v1" in matrix.checks[0].detail
+
+    @pytest.mark.asyncio
+    async def test_an_unclassifiable_endpoint_does_not_abort_the_run(
+        self, harness, settings, monkeypatch
+    ) -> None:
+        """`litellm_route` refuses what it cannot classify, by design.
+
+        Uncaught, that exception escaped `_run_all_checks` and the report was
+        never printed — a traceback instead of the matrix, which is the least
+        useful thing a release gate can hand an operator.
+        """
+        from enhancements.providers.azure import foundry
+
+        def _refuse(_stored):
+            raise foundry.UnsupportedEndpointError(foundry.UNSUPPORTED_ENDPOINT_MESSAGE)
+
+        monkeypatch.setattr(foundry, "endpoint_profile", lambda _b: "unknown")
+        monkeypatch.setattr(foundry, "litellm_route", _refuse)
+
+        matrix = harness.Matrix()
+        await harness._run_endpoint_matrix(
+            matrix,
+            "resource v1",
+            "https://contoso.services.ai.azure.com/anthropic/v1",
+            settings,
+            base_number=8,
+            expected_profile="resource_openai_v1",
+        )
+
+        assert [c.status for c in matrix.checks] == ["fail"]
+        assert "UnsupportedEndpointError" in matrix.checks[0].detail
+
+
+class TestBlockersRejectUnusableSuccesses:
+    """A 200 is not the same as a working deployment.
+
+    Both of these recorded a pass on a successful-but-empty response, which
+    made the release matrix green without usable inference — the one outcome
+    a blocker here has to rule out.
+    """
+
+    @pytest.mark.parametrize("text", ["", "   ", "\n"])
+    def test_an_empty_completion_is_not_a_pass(self, harness, text) -> None:
+        assert harness._unusable_chat_reply(text)
+
+    def test_a_real_completion_passes(self, harness) -> None:
+        assert harness._unusable_chat_reply("OK") == ""
+
+    @pytest.mark.parametrize(
+        "vector",
+        [
+            [],
+            None,
+            "not-a-vector",
+            [0.1, float("nan")],
+            [float("inf"), 0.2],
+            [0.1, "0.2"],
+            [0.1, True],
+        ],
+    )
+    def test_an_unusable_vector_is_not_a_pass(self, harness, vector) -> None:
+        """Length alone is not enough: a vector of NaN has the right shape and
+        is useless for retrieval, and OpenSearch rejects it at index time
+        rather than here."""
+        assert harness._unusable_embedding(vector)
+
+    def test_a_real_vector_passes(self, harness) -> None:
+        assert harness._unusable_embedding([0.1, -0.2, 3]) == ""
+
+
+class TestTheEndpointIsNeverPrintedRaw:
+    """`_redact` only knows the credentials this run was handed.
+
+    A secret carried *inside* the endpoint is invisible to it, and the
+    provider module strips or refuses one only after this line is on screen.
+    """
+
+    def test_userinfo_and_query_are_removed(self, harness) -> None:
+        shown = harness._safe_endpoint(
+            "https://operator:s3cr3t@contoso.services.ai.azure.com/openai/v1?sig=abc123"
+        )
+        assert "s3cr3t" not in shown
+        assert "operator" not in shown
+        assert "abc123" not in shown
+        assert "sig" not in shown
+        assert shown.startswith("https://contoso.services.ai.azure.com/openai/v1")
+        assert "userinfo" in shown and "query" in shown
+
+    def test_an_ordinary_endpoint_is_left_alone(self, harness) -> None:
+        plain = "https://contoso.services.ai.azure.com/openai/v1"
+        assert harness._safe_endpoint(plain) == plain
+
+    def test_a_non_url_is_passed_through(self, harness) -> None:
+        assert harness._safe_endpoint("not-a-url") == "not-a-url"
+
+
+class TestPreboundLogHandlersCannotLeak:
+    """Replacing `sys.stderr` does not retarget a handler that already holds it.
+
+    litellm attaches three such handlers at import, and it is the library most
+    likely to log a request detail carrying a credential — so without this the
+    harness's central promise, that nothing reaches a terminal unredacted,
+    does not hold for the most likely source.
+    """
+
+    def test_a_handler_bound_before_the_block_is_redirected(self, harness, monkeypatch) -> None:
+        import logging
+
+        # The handler must hold the *same object* `sys.stderr` names when
+        # `_capturing` is entered — that is the situation litellm creates at
+        # import, and the one swapping `sys.stderr` fails to cover. A handler
+        # pointed somewhere else entirely is a log file, not a terminal, and
+        # is deliberately left alone.
+        terminal = io.StringIO()
+        monkeypatch.setattr(sys, "stderr", terminal)
+        logger = logging.getLogger("test.prebound.handler")
+        logger.propagate = False
+        handler = logging.StreamHandler(terminal)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+
+        harness._set_real_secrets(REAL_KEY)
+        sink: list[str] = []
+        try:
+            with harness._capturing(sink):
+                logger.info("leaking %s now", REAL_KEY)
+        finally:
+            logger.removeHandler(handler)
+
+        assert REAL_KEY not in terminal.getvalue(), "the secret reached the real stream"
+        assert handler.stream is terminal, "the handler's stream was not restored"
+        assert any(REAL_KEY in entry for entry in sink), "detection still needs the original"
 
 
 class TestImageFixture:
