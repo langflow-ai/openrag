@@ -8,7 +8,7 @@ A delivery succeeds when your endpoint answers with any status code from 200 to 
 
 Everything else is a failure: a 3xx redirect, a 4xx or 5xx status, a timeout, a refused connection, a TLS error or a DNS failure. Relaywise does not follow redirects.
 
-## The default retry schedule 
+## The default retry schedule
 
 Each event gets up to 8 delivery attempts. The first attempt is made as soon as the event is accepted. If it fails, the waits before the following attempts are:
 
