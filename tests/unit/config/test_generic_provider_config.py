@@ -594,6 +594,77 @@ def test_a_generic_provider_probe_is_refused_too():
     )
 
 
+_AZURE_TARGET_CASES = [
+    pytest.param(
+        "azure",
+        "service_principal",
+        {
+            "api_base": "https://a.openai.azure.com",
+            "api_version": "2024-10-21",
+            "tenant_id": "tenant-a",
+            "client_id": "client-a",
+            "client_secret": "sp-secret-a",
+        },
+        "client_secret",
+        "Client Secret",
+        id="azure-service_principal",
+    ),
+    pytest.param(
+        "azure_ai",
+        None,
+        {
+            "api_base": "https://a.services.ai.azure.com",
+            "api_key": "foundry-key-a",
+            "api_version": "2024-05-01-preview",
+        },
+        "api_key",
+        "API key",
+        id="azure_ai",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("provider", "auth_method", "saved", "secret", "label"), _AZURE_TARGET_CASES
+)
+def test_an_azure_retarget_asks_only_for_the_secret(provider, auth_method, saved, secret, label):
+    """A service principal's secret goes only to Entra ID, but the token LiteLLM
+    gets for it is tenant-wide and would be sent to the new `api_base` — so it is
+    in scope like any other secret. Only the secret is asked for again, never the
+    tenant or client id."""
+    from config.config_manager import CredentialTargetChangedError
+
+    config = OpenRAGConfig.from_dict({})
+    config.providers.set_credentials(provider, dict(saved), auth_method=auth_method)
+    submitted = {"api_base": saved["api_base"].replace("https://a.", "https://b.")}
+
+    with pytest.raises(CredentialTargetChangedError) as exc_info:
+        config.providers.set_credentials(provider, submitted, auth_method=auth_method)
+
+    assert exc_info.value.fields == (secret,)
+    assert label in str(exc_info.value)
+    assert saved[secret] not in str(exc_info.value)
+    assert config.providers.stored_credentials(provider) == saved
+
+
+@pytest.mark.parametrize(
+    ("provider", "auth_method", "saved", "secret", "label"), _AZURE_TARGET_CASES
+)
+def test_an_azure_retarget_with_the_secret_re_entered_is_saved(
+    provider, auth_method, saved, secret, label
+):
+    config = OpenRAGConfig.from_dict({})
+    config.providers.set_credentials(provider, dict(saved), auth_method=auth_method)
+    submitted = {
+        "api_base": saved["api_base"].replace("https://a.", "https://b."),
+        secret: "secret-b",
+    }
+
+    config.providers.set_credentials(provider, submitted, auth_method=auth_method)
+
+    assert config.providers.stored_credentials(provider) == {**saved, **submitted}
+
+
 def test_switching_auth_method_with_a_new_target_drops_the_inactive_secret():
     """The old method's secret is not reused (it is out of scope for the new
     method) and must not reach the probe either."""
@@ -613,9 +684,9 @@ def test_switching_auth_method_with_a_new_target_drops_the_inactive_secret():
 
 
 def test_first_class_providers_are_exempt():
-    """An IBM Cloud API key is valid in every watsonx.ai region, so switching
-    region with the saved key is legitimate; the bespoke forms never promise
-    otherwise."""
+    """The bespoke forms take no free-text target — watsonx.ai offers only IBM's
+    region hosts — and never promise that a saved key is withheld, so switching
+    region keeps the saved key."""
     config = OpenRAGConfig.from_dict({})
     config.providers.set_credentials(
         "watsonx",

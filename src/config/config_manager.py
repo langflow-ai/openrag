@@ -149,9 +149,12 @@ def _sanitize_for_log(value: object) -> str:
 CREDENTIAL_TARGET_FIELDS = ("api_base", "embedding_api_base", "ssl_verify")
 
 #: Providers with a bespoke settings and onboarding form, outside the
-#: credential-target rule: their forms never promise that a saved key is
-#: withheld from a new endpoint, and an IBM Cloud API key is valid in every
-#: watsonx.ai region, so switching region with the saved key is legitimate.
+#: credential-target rule. Their forms never promise that a saved key is
+#: withheld from a new endpoint, and none takes a free-text target: watsonx.ai
+#: offers only IBM's region hosts. A credential that is valid tenant- or
+#: account-wide (an IBM Cloud API key, an Azure service principal) is not on
+#: its own a reason to exempt a provider: what matters is whether the derived
+#: token can be sent to an arbitrary host.
 _FIRST_CLASS_PROVIDERS = frozenset({"openai", "anthropic", "watsonx", "ollama"})
 
 _AZURE_AUTH_METHOD_FIELDS: dict[str, frozenset[str]] = {
