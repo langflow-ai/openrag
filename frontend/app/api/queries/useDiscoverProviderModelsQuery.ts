@@ -11,6 +11,12 @@ export interface DiscoverProviderModelsParams {
   provider: string;
   credentials: Record<string, string>;
   authMethod?: string;
+  /**
+   * The one picker the caller shows. A provider with an endpoint per kind
+   * then asks only that one, so an unreachable embedding endpoint cannot
+   * stall the language step. Omitted, both are asked.
+   */
+  kind?: "chat" | "embedding";
 }
 
 /**
@@ -30,7 +36,7 @@ export const useDiscoverProviderModelsQuery = (
   options?: Omit<UseQueryOptions<DiscoveredModels>, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
-  const { provider, credentials, authMethod } = params;
+  const { provider, credentials, authMethod, kind } = params;
 
   return useQuery(
     {
@@ -39,6 +45,7 @@ export const useDiscoverProviderModelsQuery = (
         provider,
         credentials,
         authMethod ?? null,
+        kind ?? null,
       ] as const,
       queryFn: async ({ signal }): Promise<DiscoveredModels> => {
         const response = await fetch(
@@ -49,6 +56,7 @@ export const useDiscoverProviderModelsQuery = (
             body: JSON.stringify({
               credentials,
               ...(authMethod ? { auth_method: authMethod } : {}),
+              ...(kind ? { kind } : {}),
             }),
             signal,
           },

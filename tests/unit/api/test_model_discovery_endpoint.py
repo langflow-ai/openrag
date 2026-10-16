@@ -10,6 +10,7 @@ import json
 from types import SimpleNamespace
 from typing import Any
 
+import pydantic
 import pytest
 from fastapi import params as fastapi_params
 
@@ -118,6 +119,75 @@ async def test_the_cluster_listing_reaches_both_pickers(tmp_path, monkeypatch):
         "models": [{"model": "gpt-oss-120b", "mode": "chat"}],
         "embedding_models": [{"model": "granite-embedding-english-r2", "mode": "embedding"}],
     }
+
+
+def _kind_aware_listing(monkeypatch, result: Any) -> list[Any]:
+    """A lister that declares `kind`, recording what each call passed (or `"omitted"`)."""
+    kinds: list[Any] = []
+
+    async def _list(credentials, *, kind="omitted"):
+        kinds.append(kind)
+        return result
+
+    monkeypatch.setattr(rhoai, "list_cluster_models", _list)
+    return kinds
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["chat", "embedding"])
+async def test_the_picker_kind_reaches_a_lister_that_takes_it(tmp_path, monkeypatch, kind):
+    """Each onboarding step asks for its own picker, so a dead embedding
+    endpoint cannot stall the language step."""
+    _offer_rhoai(tmp_path, monkeypatch)
+    _saved(monkeypatch)
+    kinds = _kind_aware_listing(monkeypatch, rhoai.ClusterModels(chat=None, embedding=None))
+
+    response = await models_api.discover_provider_models(
+        "rhoai",
+        body=models_api.ModelDiscoveryBody(
+            credentials={"api_base": CHAT_BASE, "api_key": "t"}, kind=kind
+        ),
+        user=SimpleNamespace(),
+    )
+
+    assert response.status_code == 200
+    assert kinds == [kind]
+
+
+@pytest.mark.asyncio
+async def test_without_a_kind_the_lister_is_asked_for_both(tmp_path, monkeypatch):
+    """An older client that sends no kind keeps the both-pickers behaviour."""
+    _offer_rhoai(tmp_path, monkeypatch)
+    _saved(monkeypatch)
+    kinds = _kind_aware_listing(monkeypatch, rhoai.ClusterModels(chat=None, embedding=None))
+
+    await _discover(api_base=CHAT_BASE, api_key="t")
+
+    assert kinds == ["omitted"]
+
+
+@pytest.mark.asyncio
+async def test_a_lister_without_a_kind_is_called_without_one(tmp_path, monkeypatch):
+    """A single-endpoint provider lists everything at once and takes no kind."""
+    _offer_rhoai(tmp_path, monkeypatch)
+    _saved(monkeypatch)
+    seen = _listing(monkeypatch, rhoai.ClusterModels(chat=("gpt-oss-120b",), embedding=None))
+
+    response = await models_api.discover_provider_models(
+        "rhoai",
+        body=models_api.ModelDiscoveryBody(
+            credentials={"api_base": CHAT_BASE, "api_key": "t"}, kind="embedding"
+        ),
+        user=SimpleNamespace(),
+    )
+
+    assert response.status_code == 200
+    assert seen == {"api_base": CHAT_BASE, "api_key": "t"}
+
+
+def test_an_unknown_kind_is_rejected():
+    with pytest.raises(pydantic.ValidationError):
+        models_api.ModelDiscoveryBody(kind="rerank")
 
 
 @pytest.mark.asyncio

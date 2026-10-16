@@ -347,14 +347,17 @@ describe("GenericOnboarding cluster model discovery", () => {
   // Debounce (500 ms) plus the request.
   const DISCOVERY_TIMEOUT = { timeout: 3000 };
 
+  type DiscoverRequest = {
+    credentials: Record<string, string>;
+    kind?: string;
+  };
+
   function discoverHandler(
     response: () => Response,
-    requests: Array<{ credentials: Record<string, string> }> = [],
+    requests: DiscoverRequest[] = [],
   ) {
     return http.post("/api/models/rhoai/discover", async ({ request }) => {
-      requests.push(
-        (await request.json()) as { credentials: Record<string, string> },
-      );
+      requests.push((await request.json()) as DiscoverRequest);
       return response();
     });
   }
@@ -374,7 +377,7 @@ describe("GenericOnboarding cluster model discovery", () => {
   }
 
   it("offers the models the cluster serves instead of the configured fallback", async () => {
-    const requests: Array<{ credentials: Record<string, string> }> = [];
+    const requests: DiscoverRequest[] = [];
     const { user, getSettings } = renderOnboarding("rhoai", false, undefined, [
       discoverHandler(served, requests),
     ]);
@@ -397,6 +400,9 @@ describe("GenericOnboarding cluster model discovery", () => {
       api_base: "https://chat.example.com/v1",
       api_key: "sha256~token",
     });
+    // Only the chat endpoint is asked, so a dead embedding endpoint can't
+    // stall this step.
+    expect(requests.at(-1)?.kind).toBe("chat");
 
     await user.click(screen.getByRole("combobox", { name: "Language model" }));
     expect(
@@ -408,8 +414,9 @@ describe("GenericOnboarding cluster model discovery", () => {
   });
 
   it("uses the embedding endpoint's listing for the embedding picker", async () => {
+    const requests: DiscoverRequest[] = [];
     const { user, getSettings } = renderOnboarding("rhoai", true, undefined, [
-      discoverHandler(served),
+      discoverHandler(served, requests),
     ]);
 
     await typeCredentials(user);
@@ -420,6 +427,7 @@ describe("GenericOnboarding cluster model discovery", () => {
       DISCOVERY_TIMEOUT,
     );
     expect(getSettings().embedding_model).toBe("nomic-embed-text");
+    expect(requests.at(-1)?.kind).toBe("embedding");
   });
 
   it("keeps a model the user chose even when the cluster does not list it", async () => {

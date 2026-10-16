@@ -94,7 +94,12 @@ export function useOnboardingModelDiscovery({
       .every((field) => hasValue(field.key)) &&
     requiredKeys.every(hasValue);
   const discovery = useDiscoverProviderModelsQuery(
-    { provider, credentials: discoveryCredentials, authMethod },
+    {
+      provider,
+      credentials: discoveryCredentials,
+      authMethod,
+      kind: isEmbedding ? "embedding" : "chat",
+    },
     { enabled: ready },
   );
   const discovered = ready ? discovery.data : undefined;

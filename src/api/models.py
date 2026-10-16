@@ -1,7 +1,7 @@
 import re
 from collections.abc import Mapping
 from types import ModuleType
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from fastapi import Depends
@@ -59,6 +59,8 @@ class WatsonxOnPremSpacesBody(BaseModel):
 class ModelDiscoveryBody(BaseModel):
     credentials: dict[str, str] = Field(default_factory=dict)
     auth_method: str | None = None
+    #: The one picker the caller shows; None lists both.
+    kind: Literal["chat", "embedding"] | None = None
 
 
 class InvalidAuthMethodError(ValueError):
@@ -362,10 +364,15 @@ async def discover_provider_models(
     credentials, and a vLLM `--served-model-name` can be anything, so without it
     the picker offers the configured fallback rather than what is deployed.
 
-    Each half is null when that endpoint could not be listed, and the caller
-    keeps the catalogue's rows for it.
+    `kind` names the one picker the caller shows (each onboarding step shows
+    one), so a provider with a separate endpoint per kind asks only that one: an
+    unreachable embedding endpoint cannot stall the language step. Omitted, both
+    are asked.
+
+    Each half is null when that endpoint could not be listed or was not asked,
+    and the caller keeps the catalogue's rows for it.
     """
-    from enhancements.providers.registry import model_discovery_for
+    from enhancements.providers.registry import list_cluster_models_for, model_discovery_for
     from services.model_catalog import discovered_model_payload, supported_provider_keys
 
     key = (provider or "").strip().lower()
@@ -376,20 +383,27 @@ async def discover_provider_models(
             status_code=404,
         )
     request = body or ModelDiscoveryBody()
+    kind_label = request.kind or "both"
+    logger.info("Discovering provider models", provider=key, kind=kind_label)
     try:
         credentials = _draft_credentials(enhancement, request.credentials, request.auth_method)
-        listed = await enhancement.list_cluster_models(credentials)
+        listed = await list_cluster_models_for(enhancement, credentials, kind=request.kind)
         return JSONResponse(
             discovered_model_payload(key, listed),
             headers={"Cache-Control": "no-store"},
         )
     except InvalidAuthMethodError as exc:
         logger.warning(
-            "Model discovery named an unknown auth method", provider=key, detail=str(exc)
+            "Model discovery named an unknown auth method",
+            provider=key,
+            kind=kind_label,
+            detail=str(exc),
         )
         return JSONResponse({"error": _INVALID_AUTH_METHOD_ERROR}, status_code=400)
     except Exception as exc:
-        logger.error("Failed to discover provider models", provider=key, exc_info=exc)
+        logger.error(
+            "Failed to discover provider models", provider=key, kind=kind_label, exc_info=exc
+        )
         return JSONResponse(
             {"error": "Unable to list models from the provider."},
             status_code=500,

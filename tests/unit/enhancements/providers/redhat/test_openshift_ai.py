@@ -932,6 +932,76 @@ async def test_draft_discovery_leaves_a_failed_half_unknown(monkeypatch) -> None
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kind, asked, expected",
+    [
+        ("chat", CHAT_BASE, rhoai.ClusterModels(chat=(CHAT_MODEL,), embedding=None)),
+        ("embedding", EMBED_BASE, rhoai.ClusterModels(chat=None, embedding=(EMBED_MODEL,))),
+    ],
+)
+async def test_draft_discovery_for_one_picker_asks_only_its_endpoint(
+    monkeypatch, kind, asked, expected
+) -> None:
+    """Each onboarding step shows one picker; the other endpoint is not its concern."""
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning(
+            {
+                f"{CHAT_BASE}/models": _Response(200, _models_body(CHAT_MODEL)),
+                f"{EMBED_BASE}/models": _Response(200, _models_body(EMBED_MODEL)),
+            },
+            seen,
+        ),
+    )
+
+    models = await rhoai.list_cluster_models(_stored(), kind=kind)
+
+    assert models == expected
+    assert seen["urls"] == [f"{asked}/models"]
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_embedding_endpoint_does_not_hold_up_the_chat_picker(
+    monkeypatch,
+) -> None:
+    """The review case: chat answers at once, so its step must not wait out the
+    embedding endpoint's retries."""
+
+    async def _hang_on_embedding(method, url, *, client, **kwargs):
+        if url.startswith(EMBED_BASE):
+            raise AssertionError("the embedding endpoint should not be asked")
+        return await client.request(method, url, **kwargs)
+
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning({f"{CHAT_BASE}/models": _Response(200, _models_body(CHAT_MODEL))}),
+    )
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _hang_on_embedding)
+
+    models = await rhoai.list_cluster_models(_stored(), kind="chat")
+
+    assert models == rhoai.ClusterModels(chat=(CHAT_MODEL,), embedding=None)
+
+
+@pytest.mark.asyncio
+async def test_draft_discovery_for_one_picker_on_a_shared_endpoint_fills_both(
+    monkeypatch,
+) -> None:
+    """One endpoint serves both, so asking it for one picker answers the other too."""
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning({f"{CHAT_BASE}/models": _Response(200, _models_body("solo"))}, seen),
+    )
+
+    models = await rhoai.list_cluster_models(_stored(embedding_api_base=None), kind="embedding")
+
+    assert models == rhoai.ClusterModels(chat=("solo",), embedding=("solo",))
+    assert seen["urls"] == [f"{CHAT_BASE}/models"]
+
+
+@pytest.mark.asyncio
 async def test_draft_discovery_never_touches_the_catalogue_cache(monkeypatch) -> None:
     """`cached_models()` feeds every picker, so a draft cluster's listing must not
     replace the saved cluster's — nor be dropped by it."""

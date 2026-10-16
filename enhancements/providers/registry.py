@@ -98,6 +98,25 @@ def model_discovery_for(provider: str) -> ModuleType | None:
     return enhancement
 
 
+async def list_cluster_models_for(
+    enhancement: ModuleType,
+    credentials: Mapping[str, Any],
+    *,
+    kind: CallKind | None = None,
+) -> Any:
+    """Call the module's `list_cluster_models`, narrowed to one picker if it can be.
+
+    `kind` follows the same rule as in `credentials_for`: it is passed only to a
+    module whose hook declares it. Red Hat OpenShift AI lists chat and embedding
+    models from two endpoints and uses it to ask only the one a picker needs; a
+    single-endpoint provider (watsonx.ai on-prem) lists everything at once and
+    is called without it. None asks for both pickers.
+    """
+    if kind is not None and _hook_accepts_kind(enhancement, "list_cluster_models"):
+        return await enhancement.list_cluster_models(credentials, kind=kind)
+    return await enhancement.list_cluster_models(credentials)
+
+
 def live_models_for(provider: str, kind: CallKind) -> tuple[str, ...] | None:
     """What `provider` last said it serves for `kind`, if it can say at all.
 
@@ -250,20 +269,25 @@ def _accepts_kind(enhancement: ModuleType) -> bool:
     Cached per module: the answer is fixed for the life of the process, and
     this sits on the path of every gateway request.
     """
+    return _hook_accepts_kind(enhancement, "litellm_credentials")
+
+
+def _hook_accepts_kind(enhancement: ModuleType, hook: str) -> bool:
+    """Whether the module's `hook` takes a `kind` keyword."""
     try:
-        return "kind" in inspect.signature(enhancement.litellm_credentials).parameters
+        return "kind" in inspect.signature(getattr(enhancement, hook)).parameters
     except (TypeError, ValueError):
         # A C-implemented or otherwise unintrospectable callable. Assume the
         # base contract rather than risk a TypeError on a real call.
-        _log_signature_fallback(getattr(enhancement, "__name__", str(enhancement)))
+        _log_signature_fallback(getattr(enhancement, "__name__", str(enhancement)), hook)
         return False
 
 
-def _log_signature_fallback(module_name: str) -> None:
+def _log_signature_fallback(module_name: str, hook: str) -> None:
     from utils.logging_config import get_logger
 
     get_logger(__name__).debug(
-        "Could not inspect a provider enhancement's credential translation; "
-        "calling it without a call kind",
+        "Could not inspect a provider enhancement hook; calling it without a call kind",
         module=module_name,
+        hook=hook,
     )

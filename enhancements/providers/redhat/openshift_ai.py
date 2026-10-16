@@ -807,7 +807,9 @@ async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
     return result
 
 
-async def list_cluster_models(credentials: Mapping[str, Any]) -> ClusterModels:
+async def list_cluster_models(
+    credentials: Mapping[str, Any], *, kind: CallKind | None = None
+) -> ClusterModels:
     """Ask each endpoint what it serves, without touching the catalogue's cache.
 
     For credentials that have not been saved yet — the onboarding form asking
@@ -815,6 +817,11 @@ async def list_cluster_models(credentials: Mapping[str, Any]) -> ClusterModels:
     cannot be used for that: its cache is keyed on one set of credentials, and
     `cached_models()` hands whatever it holds to the catalogue, so a draft
     listing would replace the saved cluster's models in every picker.
+
+    `kind` asks only the endpoint behind that picker; None asks both. Each
+    onboarding step shows one picker, so an unreachable embedding endpoint must
+    not hold up the language step for its whole retry window. A half that was
+    not asked is None, like one that failed.
 
     A half is None when its endpoint could not be asked or listed nothing
     usable, so the caller falls back to the configured list for that half.
@@ -824,20 +831,46 @@ async def list_cluster_models(credentials: Mapping[str, Any]) -> ClusterModels:
     rather than a minute.
     """
     values = _values(credentials)
-    chat_base, _ = endpoints(values)
+    chat_base, embedding_base = endpoints(values)
     api_key = values.get("api_key", "")
     if not chat_base or not api_key:
         return ClusterModels(chat=None, embedding=None)
 
+    halves: tuple[CallKind, ...] = _HALVES if kind is None else (kind,)
+    logger.info(
+        "Listing draft models on OpenShift AI",
+        kind=kind or "both",
+        shared_endpoint=chat_base == embedding_base,
+    )
     try:
-        listed = await _list_halves(values, max_retries=DISCOVERY_MAX_RETRIES)
+        listed = await _list_halves(values, halves=halves, max_retries=DISCOVERY_MAX_RETRIES)
     except Exception as error:
-        logger.warning("Could not list models on OpenShift AI", error=str(error))
+        logger.warning(
+            "Could not list models on OpenShift AI", kind=kind or "both", error=str(error)
+        )
         return ClusterModels(chat=None, embedding=None)
 
-    # An empty listing is far more likely one we could not interpret than an
-    # endpoint serving nothing, so it falls back like a failure does.
-    return ClusterModels(chat=listed["chat"] or None, embedding=listed["embedding"] or None)
+    # `_list_halves()` returns only the halves it asked (both, for a shared
+    # endpoint), so read with `.get()`. An empty listing is far more likely one
+    # we could not interpret than an endpoint serving nothing, so it falls back
+    # like a failure does.
+    result = ClusterModels(
+        chat=listed.get("chat") or None, embedding=listed.get("embedding") or None
+    )
+
+    def _summary(half: CallKind) -> int | str:
+        if half not in listed:
+            return "not asked"
+        models = getattr(result, half)
+        return len(models) if models is not None else "fallback"
+
+    logger.info(
+        "Listed draft models on OpenShift AI",
+        kind=kind or "both",
+        chat=_summary("chat"),
+        embedding=_summary("embedding"),
+    )
+    return result
 
 
 # --------------------------------------------------------------------------
