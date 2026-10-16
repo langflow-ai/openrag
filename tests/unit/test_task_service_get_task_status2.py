@@ -57,6 +57,28 @@ def _store_task(task_service: TaskService, user_id: str, upload_task: UploadTask
 
 
 class TestInferFailureMetadata:
+    def test_upload_size_error_while_docling_is_still_pending(self, task_service):
+        message = (
+            '"report.pdf" (1.9 MB) was rejected by '
+            "https://docling-serve:5001/v1/convert/file/async with HTTP 413. "
+            "Raise that limit (nginx: client_max_body_size), or set "
+            "OPENRAG_MAX_UPLOAD_MB to the proxy's real limit."
+        )
+        ft = _make_file_task(
+            phase=IngestionPhase.DOCLING,
+            docling_status=DoclingPhaseStatus.PENDING,
+            error=f"Docling upload failed: {message}",
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "docling"
+        assert meta["failure_phase"] == "parsing"
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert meta["user_facing_message"].startswith('"report.pdf" is 1.9 MB.')
+        assert "OPENRAG_MAX_UPLOAD_MB" in meta["user_facing_message"]
+        assert "docling-serve" not in meta["user_facing_message"]
+        assert "client_max_body_size" not in meta["user_facing_message"]
+
     def test_docling_failed_status(self, task_service):
         ft = _make_file_task(docling_status=DoclingPhaseStatus.FAILED)
         meta = task_service._infer_failure_metadata(ft)
