@@ -9,6 +9,7 @@ from agentd.tool_decorator import tool
 
 from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
+from config.search_constants import DEFAULT_SEARCH_SCORE_THRESHOLD
 from config.settings import get_embedding_model, get_index_name, get_openrag_config
 from services.llm_gateway import LlmGatewayError
 from services.llm_gateway import embeddings as gateway_embeddings
@@ -587,6 +588,7 @@ class SearchService:
                             "fields": ["text^2", "filename^1.5"],
                             "type": "best_fields",
                             "operator": "or",
+                            "minimum_should_match": "2<75%",
                             "fuzziness": "AUTO:4,7",
                             "boost": 0.3 if knn_queries else 1.0,
                         }
@@ -662,8 +664,11 @@ class SearchService:
             }
 
         # Add score threshold only for hybrid (not meaningful for match_all)
-        if not is_wildcard_match_all and score_threshold > 0:
-            search_body["min_score"] = score_threshold
+        effective_score_threshold = (
+            score_threshold if score_threshold > 0 else DEFAULT_SEARCH_SCORE_THRESHOLD
+        )
+        if not is_wildcard_match_all and effective_score_threshold > 0:
+            search_body["min_score"] = effective_score_threshold
 
         # Prepare fallback search body without num_candidates for clusters that don't support it.
         # Only relevant when we actually dispatched KNN queries.

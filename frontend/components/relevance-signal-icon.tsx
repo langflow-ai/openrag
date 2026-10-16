@@ -1,4 +1,8 @@
-import type { File, RelevanceTier } from "@/app/api/queries/useGetSearchQuery";
+import type {
+  ChunkResult,
+  File,
+  RelevanceTier,
+} from "@/app/api/queries/useGetSearchQuery";
 import { cn } from "@/lib/utils";
 
 export interface RelevanceBreakdown {
@@ -134,6 +138,130 @@ export function getRelevanceReasoning(data?: File): RelevanceBreakdown {
     meaningDetail,
     matchedChunksCount,
     topChunkScorePct,
+  };
+}
+
+export interface ChunkRelevanceBreakdown {
+  tier: RelevanceTier;
+  tierLabel: string;
+  title: string;
+  reasoning: string;
+  keywordTier: RelevanceTier;
+  keywordDetail: string;
+  keywordMentionCount: number;
+  meaningTier: RelevanceTier;
+  meaningDetail: string;
+  chunkScorePct: number | null;
+}
+
+/**
+ * Deterministic breakdown explaining a single chunk's relevance ranking factors
+ * (semantic meaning score vs. exact keyword matches).
+ */
+export function getChunkRelevanceReasoning(
+  chunk: ChunkResult,
+  scoreTier?: RelevanceTier,
+  scoreLabel?: string,
+  isSemanticMatch?: boolean,
+): ChunkRelevanceBreakdown {
+  const highlights = chunk.highlights ?? [];
+  const keywordMentionCount = highlights.reduce(
+    (total, h) => total + (h.match(/<mark>/g)?.length ?? 0),
+    0,
+  );
+
+  const keywordTier: RelevanceTier =
+    keywordMentionCount >= 3
+      ? "high"
+      : keywordMentionCount >= 1
+        ? "medium"
+        : "low";
+
+  let chunkScorePct: number | null = null;
+  if (scoreLabel && scoreLabel.endsWith("%")) {
+    const parsed = Number.parseInt(scoreLabel, 10);
+    if (!Number.isNaN(parsed)) {
+      chunkScorePct = parsed;
+    }
+  }
+  if (chunkScorePct === null) {
+    if (typeof chunk.normalizedScore === "number") {
+      chunkScorePct = Math.round(chunk.normalizedScore * 100);
+    } else if (typeof chunk.score === "number" && chunk.score > 0) {
+      chunkScorePct = Math.round(chunk.score * 100);
+    }
+  }
+
+  const tier: RelevanceTier =
+    scoreTier ?? (chunkScorePct !== null ? getScoreTier(chunkScorePct) : "low");
+  const tierLabel =
+    tier === "high" ? "High" : tier === "medium" ? "Medium" : "Low";
+  const title = `Why it's ranked ${tierLabel}`;
+
+  const meaningTier: RelevanceTier =
+    chunkScorePct !== null
+      ? chunkScorePct >= 65
+        ? "high"
+        : chunkScorePct >= 35
+          ? "medium"
+          : "low"
+      : tier;
+
+  const meaningDetail =
+    meaningTier === "high"
+      ? "Strong"
+      : meaningTier === "medium"
+        ? "Moderate"
+        : "Weak";
+
+  let reasoning = "";
+  if (tier === "high") {
+    if (isSemanticMatch || keywordMentionCount === 0) {
+      reasoning =
+        "Matched by meaning rather than exact words — this passage directly discusses the concept.";
+    } else if (keywordMentionCount >= 3) {
+      reasoning =
+        "Your search terms appear prominently in this section with strong conceptual relevance.";
+    } else {
+      reasoning =
+        "Strong overall match — discusses this topic directly and includes your search terms.";
+    }
+  } else if (tier === "medium") {
+    if (isSemanticMatch || keywordMentionCount === 0) {
+      reasoning =
+        "Related topic — discusses concepts relevant to your search, but uses different wording.";
+    } else if (keywordMentionCount > 0) {
+      reasoning =
+        "Contains your search terms with moderate semantic overlap in this section.";
+    } else {
+      reasoning = "Moderate overlap with your search query in this section.";
+    }
+  } else {
+    if (keywordMentionCount === 0) {
+      reasoning =
+        "Weak connection — minor conceptual overlap with your search topic.";
+    } else {
+      reasoning =
+        "Contains minor keyword mentions, but low overall relevance to your search query.";
+    }
+  }
+
+  const keywordDetail =
+    keywordMentionCount > 0
+      ? `Mentioned ${keywordMentionCount} time${keywordMentionCount !== 1 ? "s" : ""}`
+      : "0 direct matches (concept match)";
+
+  return {
+    tier,
+    tierLabel,
+    title,
+    reasoning,
+    keywordTier,
+    keywordDetail,
+    keywordMentionCount,
+    meaningTier,
+    meaningDetail,
+    chunkScorePct,
   };
 }
 

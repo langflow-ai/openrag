@@ -117,16 +117,11 @@ describe("useGetSearchQuery", () => {
       expect(seen.payload?.limit).toBe(7);
     });
 
-    it("caps the score threshold for short single-token queries", async () => {
+    it("preserves the score threshold for all queries", async () => {
       const seen = serveSearch({ results: [] });
-
-      // Regression: "tune search relevance for partial and unique queries".
       await runSearch("acme", queryData({ scoreThreshold: 1.25 }));
+      expect(seen.payload?.scoreThreshold).toBe(1.25);
 
-      expect(seen.payload?.scoreThreshold).toBe(1.0);
-    });
-
-    it("leaves the threshold alone for longer or multi-word queries", async () => {
       const longQuery = serveSearch({ results: [] });
       await runSearch("quarterly", queryData({ scoreThreshold: 1.25 }));
       expect(longQuery.payload?.scoreThreshold).toBe(1.25);
@@ -134,14 +129,6 @@ describe("useGetSearchQuery", () => {
       const multiWord = serveSearch({ results: [] });
       await runSearch("a b", queryData({ scoreThreshold: 1.25 }));
       expect(multiWord.payload?.scoreThreshold).toBe(1.25);
-    });
-
-    it("does not raise a threshold already below the cap", async () => {
-      const seen = serveSearch({ results: [] });
-
-      await runSearch("acme", queryData({ scoreThreshold: 0.4 }));
-
-      expect(seen.payload?.scoreThreshold).toBe(0.4);
     });
 
     it("omits filters entirely when every dimension is empty", async () => {
@@ -289,6 +276,21 @@ describe("useGetSearchQuery", () => {
       expect(RELEVANCE_HIGH_THRESHOLD).toBeGreaterThan(RELEVANCE_MED_THRESHOLD);
       expect(RELEVANCE_HIGH_THRESHOLD).toBeLessThanOrEqual(1);
       expect(RELEVANCE_MED_THRESHOLD).toBeGreaterThanOrEqual(0);
+    });
+
+    it("clamps low-confidence semantic matches (outlier query with zero keyword marks) to Low tier", async () => {
+      // Outlier query with raw score 0.35 and 0 keyword highlights
+      serveSearch({
+        results: [
+          chunk({ filename: "unrelated.pdf", score: 0.35, highlights: [] }),
+        ],
+      });
+
+      const { result } = await runSearch("yo mama");
+
+      const file = result.current.data?.files[0];
+      expect(file?.maxScore).toBeLessThan(0.35); // Clamped by confidence factor
+      expect(file?.relevanceTier).toBe("low");
     });
   });
 

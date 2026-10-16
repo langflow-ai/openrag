@@ -94,16 +94,27 @@ export function useFileScopedChunksQuery(
         | undefined;
       const keyQueryString = (cacheKey as unknown[])[2] as string | undefined;
 
-      const isWildcard =
-        !keyQueryString ||
-        keyQueryString.trim() === "" ||
-        keyQueryString.trim() === "*";
+      const effectiveQuery = (
+        keyQueryString ||
+        keyQueryData?.query ||
+        ""
+      ).trim();
+
+      const isWildcard = !effectiveQuery || effectiveQuery === "*";
       if (isWildcard) continue;
 
       const isFileScoped =
         Array.isArray(keyQueryData?.filters?.data_sources) &&
         keyQueryData!.filters!.data_sources!.length > 0;
       if (isFileScoped) continue;
+
+      if (
+        isRealQuery &&
+        searchQuery &&
+        effectiveQuery.toLowerCase() !== searchQuery.trim().toLowerCase()
+      ) {
+        continue;
+      }
 
       const match = result?.files?.find((f) => f.filename === filename);
       if (match) {

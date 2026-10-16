@@ -12,11 +12,20 @@ import {
 import { HighlightedText } from "@/components/highlighted-text";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 import {
+  getChunkRelevanceReasoning,
+  getScoreTier,
   RELEVANCE_PILL_STYLES,
+  RELEVANCE_TEXT_COLORS,
   WifiSignalIcon,
 } from "@/components/relevance-signal-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { trackButton } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 
@@ -147,17 +156,129 @@ function FileChunkCard({
           )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          {scoreTier && (
-            <div
-              className={cn(
-                "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xxs font-medium shrink-0 transition-colors",
-                RELEVANCE_PILL_STYLES[scoreTier],
-              )}
-            >
-              <WifiSignalIcon tier={scoreTier} size={12} />
-              {scoreLabel && <span>{scoreLabel}</span>}
-            </div>
-          )}
+          {scoreTier &&
+            (() => {
+              const breakdown = getChunkRelevanceReasoning(
+                chunk,
+                scoreTier,
+                scoreLabel,
+                isSemanticMatch,
+              );
+              return (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      onClick={(e) => e.stopPropagation()}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xxs font-medium shrink-0 cursor-default transition-colors",
+                        RELEVANCE_PILL_STYLES[scoreTier],
+                      )}
+                    >
+                      <WifiSignalIcon tier={scoreTier} size={12} />
+                      {scoreLabel && <span>{scoreLabel}</span>}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="top"
+                    className="max-w-72 text-left p-3 space-y-2.5 bg-popover text-popover-foreground border border-border shadow-md"
+                  >
+                    <div>
+                      <p className="font-semibold text-xs text-popover-foreground flex items-center gap-1.5">
+                        <WifiSignalIcon tier={scoreTier} size={14} />
+                        <span>
+                          Why it's ranked{" "}
+                          <span className={RELEVANCE_TEXT_COLORS[scoreTier]}>
+                            {breakdown.tierLabel}
+                          </span>
+                        </span>
+                      </p>
+                      <p className="text-muted-foreground text-xs mt-1 leading-relaxed">
+                        {breakdown.reasoning}
+                      </p>
+                    </div>
+
+                    <div className="rounded-md border border-border/80 bg-muted/80 p-2.5 text-xs space-y-2 dark:bg-muted/40">
+                      {/* Keyword row — flush left labels and stacked wifi icons */}
+                      <div className="grid grid-cols-[58px_16px_1fr] items-center gap-2">
+                        <span className="text-muted-foreground font-medium">
+                          Keyword:
+                        </span>
+                        <WifiSignalIcon
+                          tier={breakdown.keywordTier}
+                          size={13}
+                        />
+                        <span className="text-foreground text-xxs font-normal">
+                          {breakdown.keywordMentionCount > 0 ? (
+                            <>
+                              Mentioned{" "}
+                              <span
+                                className={cn(
+                                  "font-semibold",
+                                  RELEVANCE_TEXT_COLORS[breakdown.keywordTier],
+                                )}
+                              >
+                                {breakdown.keywordMentionCount}
+                              </span>{" "}
+                              time
+                              {breakdown.keywordMentionCount !== 1 ? "s" : ""}
+                            </>
+                          ) : (
+                            <span className={RELEVANCE_TEXT_COLORS.low}>
+                              0 direct matches
+                            </span>
+                          )}
+                        </span>
+                      </div>
+
+                      {/* Meaning row — flush left labels and stacked wifi icons */}
+                      <div className="grid grid-cols-[58px_16px_1fr] items-center gap-2">
+                        <span className="text-muted-foreground font-medium">
+                          Meaning:
+                        </span>
+                        <WifiSignalIcon
+                          tier={breakdown.meaningTier}
+                          size={13}
+                        />
+                        <span className="text-foreground text-xxs font-normal">
+                          <span
+                            className={cn(
+                              "font-semibold",
+                              RELEVANCE_TEXT_COLORS[breakdown.meaningTier],
+                            )}
+                          >
+                            {breakdown.meaningDetail}
+                          </span>
+                        </span>
+                      </div>
+
+                      {/* Chunk score metadata */}
+                      <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-border/50 text-muted-foreground text-xxs">
+                        <span>
+                          {chunk.page != null
+                            ? `Page ${chunk.page}`
+                            : `Chunk #${chunk.index ?? listIndex}`}
+                        </span>
+                        {breakdown.chunkScorePct !== null && (
+                          <span>
+                            Chunk score:{" "}
+                            <span
+                              className={cn(
+                                "font-semibold",
+                                RELEVANCE_TEXT_COLORS[
+                                  getScoreTier(breakdown.chunkScorePct)
+                                ],
+                              )}
+                            >
+                              {breakdown.chunkScorePct}%
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })()}
         </div>
       </div>
       {showContents ? (
@@ -248,7 +369,7 @@ export function FileChunksPanel({
         };
       }
       const hasGlobalNorm =
-        typeof chunk.normalizedScore === "number" && chunk.normalizedScore > 0;
+        typeof chunk.normalizedScore === "number" && chunk.normalizedScore >= 0;
       const norm = hasGlobalNorm
         ? chunk.normalizedScore!
         : spread > 0
@@ -373,139 +494,143 @@ export function FileChunksPanel({
   const emptyHeight = compact ? "h-40" : "h-64";
 
   return (
-    <div
-      className={cn(
-        "flex min-h-0 flex-col gap-3",
-        fillHeight && "h-full",
-        className,
-      )}
-      data-testid="file-chunks-panel"
-    >
-      {!hideSearch && (
-        <div className="flex items-center gap-2">
-          <KnowledgeSearchInput
-            value={localQuery}
-            onSearch={setLocalQuery}
-            onClear={() => setLocalQuery("")}
-            hideFilterChip
-            placeholder="Search chunks…"
-          />
-          {isSearchFetching && (
-            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
-          )}
-        </div>
-      )}
-
-      {hideIrrelevant && isSearchActive && totalLowCount > 0 && (
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 rounded-md border border-border/50 bg-muted/60 px-3 py-2 text-xs text-muted-foreground hover:bg-muted transition-colors"
-          onClick={() => setShowingAll((prev) => !prev)}
-        >
-          {showingAll ? (
-            <Eye className="h-3.5 w-3.5 shrink-0" />
-          ) : (
-            <EyeOff className="h-3.5 w-3.5 shrink-0" />
-          )}
-          <span className="flex-1 text-left">
-            {showingAll
-              ? "Showing all chunks including low-relevance"
-              : (() => {
-                  // When every scored chunk is low, the best one is still shown —
-                  // so only (totalLowCount - 1) are actually hidden.
-                  const allLow = totalLowCount === scoredChunks.length;
-                  const hiddenCount = allLow
-                    ? totalLowCount - 1
-                    : totalLowCount;
-                  if (hiddenCount === 0)
-                    return "Showing best result (low relevance)";
-                  return `${hiddenCount} low-relevance chunk${hiddenCount !== 1 ? "s" : ""} hidden`;
-                })()}
-          </span>
-          <span className="flex items-center gap-1 font-medium text-foreground">
-            {showingAll ? (
-              <>
-                <EyeOff className="h-3 w-3" />
-                Hide low-relevance
-              </>
-            ) : (
-              <>
-                <Eye className="h-3 w-3" />
-                Show all
-              </>
+    <TooltipProvider>
+      <div
+        className={cn(
+          "flex min-h-0 flex-col gap-3",
+          fillHeight && "h-full",
+          className,
+        )}
+        data-testid="file-chunks-panel"
+      >
+        {!hideSearch && (
+          <div className="flex items-center gap-2">
+            <KnowledgeSearchInput
+              value={localQuery}
+              onSearch={setLocalQuery}
+              onClear={() => setLocalQuery("")}
+              hideFilterChip
+              placeholder="Search chunks…"
+            />
+            {isSearchFetching && (
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
             )}
-          </span>
-        </button>
-      )}
+          </div>
+        )}
 
-      {isFetching ? (
-        <div
-          className={cn(
-            "flex items-center justify-center text-muted-foreground",
-            emptyHeight,
-          )}
-        >
-          <div className="text-center">
-            <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin opacity-50" />
-            <p className={cn(compact ? "text-sm" : "text-lg")}>
-              Loading chunks…
-            </p>
+        {hideIrrelevant && isSearchActive && totalLowCount > 0 && (
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-md border border-border/50 bg-muted/60 px-3 py-2 text-xs text-muted-foreground hover:bg-muted transition-colors"
+            onClick={() => setShowingAll((prev) => !prev)}
+          >
+            {showingAll ? (
+              <Eye className="h-3.5 w-3.5 shrink-0" />
+            ) : (
+              <EyeOff className="h-3.5 w-3.5 shrink-0" />
+            )}
+            <span className="flex-1 text-left">
+              {showingAll
+                ? "Showing all chunks including low-relevance"
+                : (() => {
+                    // When every scored chunk is low, the best one is still shown —
+                    // so only (totalLowCount - 1) are actually hidden.
+                    const allLow = totalLowCount === scoredChunks.length;
+                    const hiddenCount = allLow
+                      ? totalLowCount - 1
+                      : totalLowCount;
+                    if (hiddenCount === 0)
+                      return "Showing best result (low relevance)";
+                    return `${hiddenCount} low-relevance chunk${hiddenCount !== 1 ? "s" : ""} hidden`;
+                  })()}
+            </span>
+            <span className="flex items-center gap-1 font-medium text-foreground">
+              {showingAll ? (
+                <>
+                  <EyeOff className="h-3 w-3" />
+                  Hide low-relevance
+                </>
+              ) : (
+                <>
+                  <Eye className="h-3 w-3" />
+                  Show all
+                </>
+              )}
+            </span>
+          </button>
+        )}
+
+        {isFetching ? (
+          <div
+            className={cn(
+              "flex items-center justify-center text-muted-foreground",
+              emptyHeight,
+            )}
+          >
+            <div className="text-center">
+              <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin opacity-50" />
+              <p className={cn(compact ? "text-sm" : "text-lg")}>
+                Loading chunks…
+              </p>
+            </div>
           </div>
-        </div>
-      ) : chunks.length === 0 ? (
-        <div
-          className={cn(
-            "flex items-center justify-center text-muted-foreground",
-            emptyHeight,
-          )}
-        >
-          <div className="text-center">
-            <p className={cn("font-semibold", compact ? "text-sm" : "text-xl")}>
-              No knowledge
-            </p>
-            <p className="mt-1 text-sm text-secondary-foreground">
-              {needle
-                ? "No chunks match your search."
-                : "Chunks will appear here once the file is indexed."}
-            </p>
+        ) : chunks.length === 0 ? (
+          <div
+            className={cn(
+              "flex items-center justify-center text-muted-foreground",
+              emptyHeight,
+            )}
+          >
+            <div className="text-center">
+              <p
+                className={cn("font-semibold", compact ? "text-sm" : "text-xl")}
+              >
+                No knowledge
+              </p>
+              <p className="mt-1 text-sm text-secondary-foreground">
+                {needle
+                  ? "No chunks match your search."
+                  : "Chunks will appear here once the file is indexed."}
+              </p>
+            </div>
           </div>
-        </div>
-      ) : (
-        <div
-          className={cn(
-            "space-y-3 overflow-auto",
-            fillHeight ? "min-h-0 flex-1" : compact ? "max-h-72" : "pb-6",
-          )}
-        >
-          {chunks.map((chunk) => {
-            const chunkKey = chunk.index ?? 0;
-            const selected =
-              selectedChunkIndex != null
-                ? chunk.index === selectedChunkIndex
-                : selectedPage != null && chunk.page === selectedPage;
-            return (
-              <FileChunkCard
-                key={`${chunk.filename}-${chunkKey}`}
-                chunk={chunk}
-                listIndex={chunkKey}
-                compact={compact}
-                showContents={showContents}
-                selected={selected}
-                interactive={Boolean(onChunkSelect)}
-                copied={copiedIndex === chunkKey}
-                scoreTier={chunkScoreInfo(chunk)?.tier}
-                scoreLabel={chunkScoreInfo(chunk)?.label}
-                isSemanticMatch={chunkScoreInfo(chunk)?.isSemanticMatch}
-                searchQuery={searchQuery}
-                onCopy={handleCopy}
-                onSelect={
-                  onChunkSelect ? () => onChunkSelect(chunk) : undefined
-                }
-              />
-            );
-          })}
-        </div>
-      )}
-    </div>
+        ) : (
+          <div
+            className={cn(
+              "space-y-3 overflow-auto",
+              fillHeight ? "min-h-0 flex-1" : compact ? "max-h-72" : "pb-6",
+            )}
+          >
+            {chunks.map((chunk) => {
+              const chunkKey = chunk.index ?? 0;
+              const selected =
+                selectedChunkIndex != null
+                  ? chunk.index === selectedChunkIndex
+                  : selectedPage != null && chunk.page === selectedPage;
+              return (
+                <FileChunkCard
+                  key={`${chunk.filename}-${chunkKey}`}
+                  chunk={chunk}
+                  listIndex={chunkKey}
+                  compact={compact}
+                  showContents={showContents}
+                  selected={selected}
+                  interactive={Boolean(onChunkSelect)}
+                  copied={copiedIndex === chunkKey}
+                  scoreTier={chunkScoreInfo(chunk)?.tier}
+                  scoreLabel={chunkScoreInfo(chunk)?.label}
+                  isSemanticMatch={chunkScoreInfo(chunk)?.isSemanticMatch}
+                  searchQuery={searchQuery}
+                  onCopy={handleCopy}
+                  onSelect={
+                    onChunkSelect ? () => onChunkSelect(chunk) : undefined
+                  }
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </TooltipProvider>
   );
 }

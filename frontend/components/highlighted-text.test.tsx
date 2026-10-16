@@ -135,7 +135,7 @@ describe("HighlightedText", () => {
     const mark = container.querySelector("mark");
     expect(mark).toBeInTheDocument();
     expect(mark?.textContent).toContain("Table structure extraction");
-    expect(mark?.className).toContain("bg-indigo-100");
+    expect(mark?.className).toContain("bg-emerald-100");
   });
 
   it("skips markdown table formatting dividers and highlights substantive body text", () => {

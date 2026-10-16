@@ -1,11 +1,11 @@
 type SemanticTier = "high" | "medium" | "low";
 
-// indigo / purple / violet — mirrors badge colours in file-chunks-panel and page.
+// emerald / amber / slate — mirrors green (strong), yellow (medium), and grey (weak).
 const SEMANTIC_MARK_CLASS: Record<SemanticTier, string> = {
-  high: "bg-indigo-100 dark:bg-indigo-950/70 text-indigo-900 dark:text-indigo-100 border-b-[3px] border-indigo-500 dark:border-indigo-400 rounded-[2px] px-[2px] font-medium not-italic",
+  high: "bg-emerald-100 dark:bg-emerald-950/70 text-emerald-900 dark:text-emerald-100 border-b-[3px] border-emerald-500 dark:border-emerald-400 rounded-[2px] px-[2px] font-medium not-italic",
   medium:
-    "bg-purple-100 dark:bg-purple-950/60 text-purple-900 dark:text-purple-100 border-b-2 border-purple-500 dark:border-purple-400 rounded-[2px] px-[2px] not-italic",
-  low: "bg-violet-50 dark:bg-violet-950/40 text-violet-800 dark:text-violet-200 border-b border-violet-400 dark:border-violet-500 rounded-[2px] px-[2px] not-italic",
+    "bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-100 border-b-2 border-amber-500 dark:border-amber-400 rounded-[2px] px-[2px] not-italic",
+  low: "bg-slate-100 dark:bg-slate-900/60 text-slate-800 dark:text-slate-200 border-b border-slate-400 dark:border-slate-500 rounded-[2px] px-[2px] not-italic",
 };
 
 interface HighlightedTextProps {

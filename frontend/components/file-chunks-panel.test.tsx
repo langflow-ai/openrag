@@ -375,4 +375,49 @@ describe("FileChunksPanel — hideIrrelevant", () => {
       screen.queryByText("Quantum computing qubits and superposition"),
     ).not.toBeInTheDocument();
   });
+
+  it("renders a breakdown tooltip with keyword and meaning indicators on chunk score badge hover", async () => {
+    const user = userEvent.setup();
+    const c1 = chunk({
+      chunk_id: "c1",
+      text: "The quick brown fox jumps over the lazy dog",
+      score: 1.0,
+      highlights: [
+        "The quick <mark>fox</mark> jumps over the lazy <mark>fox</mark>",
+      ],
+    });
+    const qc = createTestQueryClient();
+    seedGlobalSearch(qc, "fox", [c1]);
+
+    server.use(
+      http.post("/api/search", async ({ request }) => {
+        const body = (await request.json()) as { query: string };
+        if (body.query === "*") {
+          return HttpResponse.json({ results: [c1], warnings: [] });
+        }
+        return HttpResponse.json({ results: [c1], warnings: [] });
+      }),
+    );
+
+    renderWithProviders(
+      <FileChunksPanel filename="doc.pdf" searchQuery="fox" />,
+      {
+        providers: ["auth", "knowledgeFilter"],
+        auth: authPresets.admin,
+        queryClient: qc,
+      },
+    );
+
+    const badge = await screen.findByText("100%");
+    expect(badge).toBeInTheDocument();
+
+    await user.hover(badge);
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Why it's ranked/i)[0]).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Keyword:")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Meaning:")[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/Mentioned/i)[0]).toBeInTheDocument();
+  });
 });
