@@ -122,7 +122,7 @@ export function KnowledgeDropdown() {
   const [showFolderDialog, setShowFolderDialog] = useState(false);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [uploadBatchSize, setUploadBatchSize] = useState(25);
-  const [maxUploadBytes, setMaxUploadBytes] = useState(100 * 1024 * 1024);
+  const maxUploadBytesRef = useRef(100 * 1024 * 1024);
   const [folderPath, setFolderPath] = useState("");
   const [folderLoading, setFolderLoading] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
@@ -188,7 +188,8 @@ export function KnowledgeDropdown() {
             typeof uploadOptionsData.max_upload_mb === "number" &&
             uploadOptionsData.max_upload_mb > 0
           ) {
-            setMaxUploadBytes(uploadOptionsData.max_upload_mb * 1024 * 1024);
+            maxUploadBytesRef.current =
+              uploadOptionsData.max_upload_mb * 1024 * 1024;
           }
         }
 
@@ -458,6 +459,7 @@ export function KnowledgeDropdown() {
     sentNames: string[];
     oversizedCount: number;
   }> => {
+    const maxUploadBytes = maxUploadBytesRef.current;
     const { batches, oversized } = packUploadBatches(
       filesToUpload,
       uploadBatchSize,
