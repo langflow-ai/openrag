@@ -134,6 +134,7 @@ def test_build_client_uses_custom_ca_and_enables_certificate_verification(
 
     assert captured["verify_certs"] is True
     assert captured["ca_certs"] == "/app/certs/opensearch-ca/ca.crt"
+    assert captured["ssl_assert_hostname"] is False
 
 
 def test_detection_separates_provider_qualified_and_legacy_spaces(

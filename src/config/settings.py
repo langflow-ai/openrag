@@ -2097,6 +2097,7 @@ class AppClients:
             use_ssl=True,
             verify_certs=OPENSEARCH_VERIFY_CERTS,
             ca_certs=OPENSEARCH_CA_CERTS,
+            ssl_assert_hostname=False,
             headers=headers,
             http_compress=True,
             timeout=30,  # 30 second timeout
@@ -2114,6 +2115,7 @@ class AppClients:
             use_ssl=True,
             verify_certs=OPENSEARCH_VERIFY_CERTS,
             ca_certs=OPENSEARCH_CA_CERTS,
+            ssl_assert_hostname=False,
             http_auth=(username, password),
             http_compress=True,
             timeout=30,

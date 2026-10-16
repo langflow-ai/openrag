@@ -9,6 +9,24 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 
+@pytest.mark.parametrize(
+    ("method", "args"),
+    [
+        ("create_opensearch_client_from_jwt", ("user-jwt",)),
+        ("create_basic_opensearch_client", ("admin", "secret")),
+    ],
+)
+def test_opensearch_clients_disable_hostname_assertion(monkeypatch, method, args):
+    from config import settings
+
+    captured = {}
+    monkeypatch.setattr(settings, "AsyncOpenSearch", lambda **kwargs: captured.update(kwargs))
+
+    getattr(settings.clients, method)(*args)
+
+    assert captured["ssl_assert_hostname"] is False
+
+
 def test_saas_uses_service_token(monkeypatch):
     from config import settings
     from utils import run_mode_utils
