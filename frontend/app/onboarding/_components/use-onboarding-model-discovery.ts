@@ -41,6 +41,7 @@ export function useOnboardingModelDiscovery({
   fields,
   credentials,
   activeKeys,
+  requiredKeys = [],
   clearedKeys = [],
   savedSecrets,
   authMethod,
@@ -52,6 +53,12 @@ export function useOnboardingModelDiscovery({
   credentials: Record<string, string>;
   /** The keys the chosen auth method uses, or null when every field applies. */
   activeKeys: Set<string> | null;
+  /**
+   * Keys the chosen auth method needs filled even though the catalogue marks
+   * them optional. Without one the backend has nothing to authenticate with
+   * and answers without asking the cluster, which would read as a failure.
+   */
+  requiredKeys?: readonly string[];
   /**
    * Saved non-secret fields the operator emptied. Sent as `""` so the backend
    * does not fill the saved value back in — Submit removes them.
@@ -84,7 +91,8 @@ export function useOnboardingModelDiscovery({
     activeFields.every((field) => !field.required || hasValue(field.key)) &&
     activeFields
       .filter((field) => field.field_type === "password")
-      .every((field) => hasValue(field.key));
+      .every((field) => hasValue(field.key)) &&
+    requiredKeys.every(hasValue);
   const discovery = useDiscoverProviderModelsQuery(
     { provider, credentials: discoveryCredentials, authMethod },
     { enabled: ready },

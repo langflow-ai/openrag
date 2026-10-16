@@ -117,7 +117,7 @@ function renderOnboarding(
   isEmbedding = false,
   savedProviders?: SavedProvidersSnapshot,
   extraHandlers: RequestHandler[] = [],
-  catalogResponse: typeof catalog = catalog,
+  catalogResponse: { providers: object[] } = catalog,
 ) {
   let settings: OnboardingVariables = {};
   // Every model the parent was handed, in order.
@@ -930,6 +930,98 @@ describe("GenericOnboarding cluster model discovery", () => {
     expect(
       await screen.findByText(/publishes no embedding models in the catalogue/),
     ).toBeInTheDocument();
+  });
+
+  describe("for watsonx.ai on-prem's username + API key method", () => {
+    // As the backend declares it: `username` is optional, because the Zen API
+    // key method does not use it.
+    const discoveringOnPrem = {
+      ...catalog,
+      providers: catalog.providers.map((entry) =>
+        entry.key === "watsonx_onprem"
+          ? {
+              ...entry,
+              discovers_models: true,
+              credential_fields: entry.credential_fields.map((field) =>
+                field.key === "username"
+                  ? { ...field, required: false }
+                  : field,
+              ),
+            }
+          : entry,
+      ),
+    };
+
+    function onPremDiscoverHandler(
+      requests: Array<{ credentials: Record<string, string> }>,
+    ) {
+      return http.post(
+        "/api/models/watsonx_onprem/discover",
+        async ({ request }) => {
+          requests.push(
+            (await request.json()) as { credentials: Record<string, string> },
+          );
+          return HttpResponse.json({
+            models: [{ model: "ibm/granite-4-h-small", mode: "chat" }],
+            embedding_models: [],
+          });
+        },
+      );
+    }
+
+    it("does not ask the cluster without a username", async () => {
+      const requests: Array<{ credentials: Record<string, string> }> = [];
+      const { user } = renderOnboarding(
+        "watsonx_onprem",
+        false,
+        undefined,
+        [onPremDiscoverHandler(requests)],
+        discoveringOnPrem,
+      );
+
+      await user.type(
+        await screen.findByLabelText(/Cluster URL/),
+        "https://cpd.example.com",
+      );
+      await user.type(screen.getByLabelText(/^API key/), "cpd-api-key");
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
+      expect(requests).toHaveLength(0);
+      expect(
+        screen.queryByText(/Couldn't list language models from the cluster/),
+      ).not.toBeInTheDocument();
+    });
+
+    it("asks the cluster once the username is filled", async () => {
+      const requests: Array<{ credentials: Record<string, string> }> = [];
+      const { user } = renderOnboarding(
+        "watsonx_onprem",
+        false,
+        undefined,
+        [onPremDiscoverHandler(requests)],
+        discoveringOnPrem,
+      );
+
+      await user.type(
+        await screen.findByLabelText(/Cluster URL/),
+        "https://cpd.example.com",
+      );
+      await user.type(screen.getByLabelText(/^API key/), "cpd-api-key");
+      await user.type(screen.getByLabelText("Username"), "cpd-user");
+
+      expect(
+        await screen.findByText(
+          "Showing 1 language model served by the cluster.",
+          {},
+          DISCOVERY_TIMEOUT,
+        ),
+      ).toBeInTheDocument();
+      expect(requests.at(-1)?.credentials).toEqual({
+        api_base: "https://cpd.example.com",
+        username: "cpd-user",
+        api_key: "cpd-api-key",
+      });
+    });
   });
 
   it("never asks a provider that cannot list its models", async () => {

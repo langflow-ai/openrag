@@ -1,9 +1,68 @@
 import { describe, expect, it } from "vitest";
 import {
+  activeCredentialKeys,
+  authMethodCredentialKeys,
   clearedSavedCredentialKeys,
   credentialTargetChanged,
   secretsToReenter,
 } from "./generic-provider-credential-fields.helpers";
+
+describe("authMethodCredentialKeys", () => {
+  it.each([
+    ["watsonx_onprem", "username_api_key", ["username", "api_key"]],
+    ["watsonx_onprem", "zen_api_key", ["zen_api_key"]],
+    // Anything else is the method the form offers first.
+    ["watsonx_onprem", "unknown", ["username", "api_key"]],
+  ])("lists every key of %s's %s method", (provider, method, expected) => {
+    expect(authMethodCredentialKeys(provider, "api_key", method)).toEqual(
+      expected,
+    );
+  });
+
+  it.each([
+    ["api_key", ["api_key"]],
+    ["service_principal", ["tenant_id", "client_id", "client_secret"]],
+    ["unknown", []],
+  ])("lists every key of Azure's %s method", (method, expected) => {
+    expect(
+      authMethodCredentialKeys("azure", method, "username_api_key"),
+    ).toEqual(expected);
+  });
+
+  it("is empty for a provider with no auth-method choice", () => {
+    expect(
+      authMethodCredentialKeys("rhoai", "api_key", "username_api_key"),
+    ).toEqual([]);
+  });
+});
+
+describe("activeCredentialKeys", () => {
+  it("adds the chosen on-prem method's keys to the shared fields", () => {
+    expect(
+      activeCredentialKeys("watsonx_onprem", "api_key", "zen_api_key"),
+    ).toEqual(
+      new Set([
+        "api_base",
+        "space_id",
+        "project_id",
+        "ssl_verify",
+        "zen_api_key",
+      ]),
+    );
+  });
+
+  it("adds the chosen Azure method's keys to the endpoint fields", () => {
+    expect(
+      activeCredentialKeys("azure", "entra_token", "username_api_key"),
+    ).toEqual(new Set(["api_base", "api_version", "azure_ad_token"]));
+  });
+
+  it("is null for a provider with no auth-method choice", () => {
+    expect(
+      activeCredentialKeys("rhoai", "api_key", "username_api_key"),
+    ).toBeNull();
+  });
+});
 
 describe("clearedSavedCredentialKeys", () => {
   const saved = {

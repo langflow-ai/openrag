@@ -42,6 +42,37 @@ const ON_PREM_SHARED_FIELDS = [
 ];
 
 /**
+ * The keys of the chosen auth method itself — every one of them, since a
+ * method authenticates only once all of its fields are filled. A catalogue
+ * field's `required` flag cannot say this: `username` is needed for the
+ * username + API key method and meaningless for a Zen API key. Shared fields
+ * (endpoint, TLS) are not included; they keep their own `required` flag.
+ *
+ * Empty when the provider has no auth-method choice.
+ */
+export function authMethodCredentialKeys(
+  provider: string,
+  azureAuthMethod: string,
+  onPremAuthMethod: string,
+): readonly string[] {
+  if (provider === "azure") {
+    return (
+      AZURE_AUTH_GROUPS.find((group) => group.key === azureAuthMethod)
+        ?.fields ?? []
+    );
+  }
+  if (provider === "watsonx_onprem") {
+    // Anything but a Zen API key is the username + API key pair, the method
+    // the form offers first.
+    return (
+      ON_PREM_AUTH_GROUPS.find((group) => group.key === onPremAuthMethod) ??
+      ON_PREM_AUTH_GROUPS[0]
+    ).fields;
+  }
+  return [];
+}
+
+/**
  * The credential keys the chosen auth method actually uses, or `null` when the
  * provider has no auth-method choice and every field applies.
  *
@@ -54,21 +85,16 @@ export function activeCredentialKeys(
   azureAuthMethod: string,
   onPremAuthMethod: string,
 ): Set<string> | null {
+  const methodKeys = authMethodCredentialKeys(
+    provider,
+    azureAuthMethod,
+    onPremAuthMethod,
+  );
   if (provider === "azure") {
-    return new Set([
-      "api_base",
-      "api_version",
-      ...(AZURE_AUTH_GROUPS.find((group) => group.key === azureAuthMethod)
-        ?.fields ?? []),
-    ]);
+    return new Set(["api_base", "api_version", ...methodKeys]);
   }
   if (provider === "watsonx_onprem") {
-    return new Set([
-      ...ON_PREM_SHARED_FIELDS,
-      ...(onPremAuthMethod === "zen_api_key"
-        ? ["zen_api_key"]
-        : ["username", "api_key"]),
-    ]);
+    return new Set([...ON_PREM_SHARED_FIELDS, ...methodKeys]);
   }
   return null;
 }

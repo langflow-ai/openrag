@@ -764,6 +764,13 @@ async def list_cluster_models(credentials: Mapping[str, Any]) -> ClusterModels |
     api_base = (values.get("api_base") or "").strip()
     header = auth_header(credentials)
     if not api_base or not header:
+        # Debug, not warning: onboarding reaches this on purpose while the
+        # form is still being filled. Presence flags only — never values.
+        logger.debug(
+            "Not listing models on the watsonx.ai cluster: draft credentials are incomplete",
+            has_cluster_url=bool(api_base),
+            has_credentials=bool(header),
+        )
         return None
 
     headers = {"Authorization": header, "Accept": "application/json"}

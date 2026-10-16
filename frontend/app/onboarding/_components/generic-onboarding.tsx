@@ -26,6 +26,7 @@ import { AdvancedOnboarding } from "./advanced";
 import { GenericProviderCredentialFields } from "./generic-provider-credential-fields";
 import {
   activeCredentialKeys,
+  authMethodCredentialKeys,
   clearedSavedCredentialKeys,
   credentialTargetChanged,
   secretsToReenter,
@@ -203,6 +204,11 @@ export function GenericOnboarding({
     fields,
     credentials,
     activeKeys,
+    requiredKeys: authMethodCredentialKeys(
+      provider,
+      azureAuthMethod,
+      onPremAuthMethod,
+    ),
     clearedKeys: clearedSavedCredentialKeys(
       credentials,
       savedCredentials,
