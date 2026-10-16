@@ -100,6 +100,49 @@ describe("useOnboardingMutation", () => {
     await waitFor(() => expect(catalogFetchCount).toBe(2));
   });
 
+  it("succeeds without waiting for the catalogue refresh to finish", async () => {
+    let catalogFetchCount = 0;
+    let releaseCatalog: () => void = () => {};
+    const catalogHeld = new Promise<void>((resolve) => {
+      releaseCatalog = resolve;
+    });
+    server.use(
+      http.post("/api/onboarding", () =>
+        HttpResponse.json({ message: "done", edited: true }),
+      ),
+      http.get("/api/models/catalog", async () => {
+        catalogFetchCount += 1;
+        // The refresh after onboarding stands in for a slow cluster listing.
+        if (catalogFetchCount > 1) {
+          await catalogHeld;
+        }
+        return HttpResponse.json({ providers: [] });
+      }),
+    );
+
+    const { result } = renderHook(
+      () => ({
+        catalog: useGetModelCatalogQuery(),
+        mutation: useOnboardingMutation(),
+      }),
+      { wrapper: createQueryWrapper() },
+    );
+
+    try {
+      await waitFor(() => expect(result.current.catalog.isSuccess).toBe(true));
+
+      act(() => result.current.mutation.mutate({ llm_provider: "rhoai" }));
+
+      await waitFor(() => expect(result.current.mutation.isSuccess).toBe(true));
+      expect(catalogFetchCount).toBe(2);
+      expect(result.current.catalog.isFetching).toBe(true);
+    } finally {
+      releaseCatalog();
+    }
+
+    await waitFor(() => expect(result.current.catalog.isFetching).toBe(false));
+  });
+
   it("explains when watsonx.ai on-prem reduces the ingestion chunk size", async () => {
     server.use(
       http.post("/api/onboarding", () =>

@@ -89,8 +89,12 @@ export const useOnboardingMutation = (
       // Invalidate settings query to refetch updated onboarding state
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
       // The catalogue lists a cluster-hosted provider with its saved
-      // credentials, which onboarding has just written.
-      await queryClient.invalidateQueries({
+      // credentials, which onboarding has just written. Not awaited: the
+      // catalogue route lists every cluster provider live, and the mutation
+      // stays pending until onSettled resolves, which would stall the
+      // embedding step's progress behind a slow cluster. invalidateQueries
+      // swallows refetch errors, so this cannot reject unhandled.
+      queryClient.invalidateQueries({
         queryKey: ["models", "catalog"],
         exact: true,
       });
