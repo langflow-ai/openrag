@@ -8,6 +8,32 @@ chunking or embeddings to see which questions got better and which got worse.
 
 It measures retrieval only. It does not judge chat answers.
 
+## Quick start
+
+Run these from this directory against a running stack. You need an API key
+from **Settings → API Keys**.
+
+```bash
+cd scripts/eval/retrieval
+export OPENRAG_URL=http://localhost:3000
+export OPENRAG_API_KEY=orag_your_api_key
+
+# Check the corpus and questions. Needs no stack.
+uv run run_eval.py run --validate-only
+
+# Run every question and keep the results as a baseline.
+uv run run_eval.py run
+cp results/results.json results/baseline.json
+
+# After a change to search, chunking or embeddings, run again and compare.
+uv run run_eval.py run --baseline results/baseline.json
+
+# Read the summary of the latest run.
+cat results/summary.md
+```
+
+The rest of this file explains each step.
+
 ## What is here
 
 | Path | Purpose |
