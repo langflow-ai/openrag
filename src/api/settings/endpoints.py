@@ -984,11 +984,19 @@ async def update_settings(
         # Update provider-specific settings
         provider_updated = False
         for provider in provider_update_keys:
+            removals = removals_by_provider.get(provider, set())
+            auth_method = auth_methods_by_provider.get(provider)
+            logger.info(
+                "Saving provider credentials",
+                provider=provider,
+                auth_method=auth_method,
+                removed=sorted(removals),
+            )
             working_config.providers.set_credentials(
                 provider,
                 submitted_credentials.get(provider, {}),
-                auth_method=(body.provider_auth_methods or {}).get(provider),
-                remove=removals_by_provider.get(provider, set()),
+                auth_method=auth_method,
+                remove=removals,
             )
             config_updated = True
             provider_updated = True
@@ -1371,13 +1379,25 @@ async def onboarding(
             _provider_key(name): set(fields)
             for name, fields in (body.provider_credential_removals or {}).items()
         }
+        auth_methods_by_provider = {
+            _provider_key(name): method
+            for name, method in (body.provider_auth_methods or {}).items()
+        }
         for provider in set(submitted_credentials) | set(removals_by_provider):
+            removals = removals_by_provider.get(provider, set())
+            auth_method = auth_methods_by_provider.get(provider)
+            logger.info(
+                "Saving provider credentials during onboarding",
+                provider=provider,
+                auth_method=auth_method,
+                removed=sorted(removals),
+            )
             try:
                 current_config.providers.set_credentials(
                     provider,
                     submitted_credentials.get(provider, {}),
-                    auth_method=(body.provider_auth_methods or {}).get(provider),
-                    remove=removals_by_provider.get(provider, set()),
+                    auth_method=auth_method,
+                    remove=removals,
                 )
             except CredentialTargetChangedError as e:
                 # Refused before the validation probe below could send the

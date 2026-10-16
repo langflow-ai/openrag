@@ -410,6 +410,56 @@ async def test_update_settings_rejects_invalid_azure_foundry_key_before_saving()
 
 
 @pytest.mark.asyncio
+async def test_update_settings_saves_the_auth_method_it_validated_for_a_mixed_case_key():
+    """The save must narrow by the same normalized key the probe used.
+
+    Regression: the save read `provider_auth_methods` by the lowercased
+    provider key, so `{"Azure": ...}` validated the new method but saved with
+    none — keeping the old method's secret and the old `auth_method`.
+    """
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    config.providers.set_credentials(
+        "azure",
+        {"api_key": "old-key", "api_base": "https://example.openai.azure.com"},
+        auth_method="api_key",
+    )
+    body = SettingsUpdateBody(
+        provider_credentials={"Azure": {"azure_ad_token": "new-token"}},
+        provider_auth_methods={"Azure": "entra_token"},
+    )
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.validate_provider_setup", new_callable=AsyncMock) as validate,
+        patch("api.settings.endpoints.config_manager.save_config_file", return_value=True) as save,
+        patch("api.settings.endpoints.clients.refresh_patched_client", new_callable=AsyncMock),
+    ):
+        response = await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    assert getattr(response, "status_code", 200) == 200
+    assert "api_key" not in validate.await_args.kwargs["credentials"]
+    save.assert_called_once()
+    saved = save.call_args[0][0].providers
+    assert saved.custom["azure"].auth_method == "entra_token"
+    assert saved.stored_credentials("azure") == {
+        "api_base": "https://example.openai.azure.com",
+        "azure_ad_token": "new-token",
+    }
+
+
+@pytest.mark.asyncio
 async def test_update_settings_validates_enhancement_credentials_before_saving():
     """A credential-only save runs a provider enhancement's model-free check.
 
@@ -815,6 +865,61 @@ async def test_onboarding_embedding_validation_receives_onprem_tls_policy():
 
     assert response.status_code == 400
     assert validate.await_args.kwargs["stored_credentials"]["ssl_verify"] == "false"
+
+
+@pytest.mark.asyncio
+async def test_onboarding_narrows_credentials_by_auth_method_for_a_mixed_case_key():
+    """Onboarding must find `provider_auth_methods` under the normalized key.
+
+    Regression: a raw-key lookup gave `set_credentials` no method for
+    `{"WatsonX_OnPrem": ...}`, so the previous method's secrets were kept and
+    reached the validation probe.
+    """
+    from api.settings.endpoints import onboarding
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.providers.set_credentials(
+        "watsonx_onprem",
+        {"api_base": "https://cpd.example.com", "username": "cpd-user", "api_key": "old"},
+        auth_method="username_api_key",
+    )
+    body = OnboardingBody(
+        llm_provider="watsonx_onprem",
+        llm_model="ibm/granite-3-3-8b-instruct",
+        provider_credentials={"WatsonX_OnPrem": {"zen_api_key": "zen-key"}},
+        provider_auth_methods={"WatsonX_OnPrem": "zen_api_key"},
+    )
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.TelemetryClient.send_event",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.validate_provider_setup",
+            new_callable=AsyncMock,
+            side_effect=Exception("stop after validation arguments are captured"),
+        ) as validate,
+    ):
+        response = await onboarding(
+            body=body,
+            flows_service=MagicMock(),
+            session_manager=AsyncMock(),
+            document_service=MagicMock(),
+            models_service=MagicMock(),
+            task_service=MagicMock(),
+            langflow_file_service=MagicMock(),
+            knowledge_filter_service=MagicMock(),
+            user=MagicMock(spec=User),
+        )
+
+    assert response.status_code == 400
+    assert validate.await_args.kwargs["stored_credentials"] == {
+        "api_base": "https://cpd.example.com",
+        "zen_api_key": "zen-key",
+    }
 
 
 @pytest.mark.asyncio
