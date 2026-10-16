@@ -140,9 +140,9 @@ providers:
   # is not `openai_like` (that key silently drops the per-provider TLS setting a
   # cluster CA needs).
   #
-  # Off in every mode as shipped. It needs two endpoint URLs and a cluster token
-  # that only the deployment knows, so it is enabled per deployment with
-  # OPENRAG_MODEL_PROVIDERS_CONFIG rather than offered to everyone.
+  # On in on_prem only as shipped: the cluster is the customer's own, and its two
+  # endpoint URLs and token are entered in Settings. Elsewhere it is enabled per
+  # deployment with OPENRAG_MODEL_PROVIDERS_CONFIG rather than offered to everyone.
   #
   # No `models:` / `embedding_models:` rows are shipped. Model ids are the
   # InferenceServices' `--served-model-name` values, which only the deployment
@@ -159,7 +159,7 @@ providers:
     display_name: Red Hat OpenShift AI
     modes:
       oss: false
-      on_prem: false
+      on_prem: true
       saas: false
 
   - name: anthropic

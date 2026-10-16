@@ -1541,15 +1541,18 @@ async def test_missing_credentials_say_what_is_missing(monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("run_mode", ["oss", "on_prem", "saas"])
-def test_it_is_hidden_everywhere_as_shipped(monkeypatch, run_mode) -> None:
-    """Its endpoints and token are deployment-specific, so it is turned on with
+@pytest.mark.parametrize(
+    ("run_mode", "visible"), [("oss", False), ("on_prem", True), ("saas", False)]
+)
+def test_it_is_offered_only_on_prem_as_shipped(monkeypatch, run_mode, visible) -> None:
+    """It runs inside the customer's own OpenShift cluster, so it is offered in
+    on-prem deployments only; elsewhere it is turned on with
     OPENRAG_MODEL_PROVIDERS_CONFIG rather than offered to everyone."""
     monkeypatch.delenv("OPENRAG_MODEL_PROVIDERS_CONFIG", raising=False)
     monkeypatch.setenv("OPENRAG_RUN_MODE", run_mode)
     model_providers.reload()
 
-    assert PROVIDER not in model_providers.visible_provider_keys()
+    assert (PROVIDER in model_providers.visible_provider_keys()) is visible
 
 
 def test_a_deployment_can_offer_it_with_a_config_override(tmp_path, monkeypatch) -> None:
