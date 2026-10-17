@@ -12,6 +12,22 @@ export interface CloudFile {
   webUrl?: string;
   downloadUrl?: string;
 }
+/** Backend-supplied hierarchy node; ids are opaque and must be sent unchanged on sync. */
+export interface ConnectorPickerNode {
+  id: string;
+  parent_id: string | null;
+  kind: "file" | "folder";
+  name: string;
+  size?: number;
+  modified_time?: string;
+  is_ingested?: boolean;
+  is_stale?: boolean;
+}
+
+export interface ConnectorPickerPage {
+  nodes: ConnectorPickerNode[];
+  next_cursor: string | null;
+}
 
 export type CloudProvider = "google_drive" | "onedrive" | "sharepoint";
 

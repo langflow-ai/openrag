@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import tempfile
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -12,9 +13,23 @@ import aiofiles
 from utils.logging_config import get_logger
 
 from .base import BaseConnector
-from .registry import get_all_secret_keys, get_connector_class, get_connector_classes
+from .registry import (
+    get_all_secret_keys,
+    get_connector_class,
+    get_connector_classes,
+    get_plugin_connector_class,
+    plugin_config_fields,
+)
 
 logger = get_logger(__name__)
+
+
+def _plugin_secret_keys(cls: type[BaseConnector] | None) -> set[str]:
+    if cls is None:
+        return set()
+    return set(cls.SECRET_CONFIG_KEYS) | {
+        field["name"] for field in plugin_config_fields(cls) if field["type"] == "secret"
+    }
 
 
 @dataclass
@@ -103,24 +118,47 @@ class ConnectionManager:
         needs_encryption_upgrade = False
         decryption_failed = False
         secret_keys = get_all_secret_keys()
+        # Plugin keys are resolved per connection below: one wheel's field names
+        # must never change how another provider's config is persisted.
 
         if self.connections_file.exists():
             async with aiofiles.open(self.connections_file) as f:
                 data = json.loads(await f.read())
 
             for conn_data in data.get("connections", []):
+                plugin_cls = get_plugin_connector_class(conn_data.get("connector_type"))
+                plugin_keys = _plugin_secret_keys(plugin_cls)
+                # A disabled plugin has no available schema. Keep its ciphertext
+                # opaque so an unrelated save cannot write decrypted unknown keys.
+                unknown_connector = (
+                    plugin_cls is None
+                    and get_connector_class(conn_data.get("connector_type")) is None
+                )
                 # Decrypt sensitive fields
                 if "config" in conn_data and isinstance(conn_data["config"], dict):
                     for k, v in conn_data["config"].items():
-                        if isinstance(v, dict) and v.get("algorithm") == "AES-256-GCM":
+                        if (
+                            not unknown_connector
+                            and isinstance(v, dict)
+                            and v.get("algorithm") == "AES-256-GCM"
+                        ):
                             try:
                                 tenant = conn_data.get("user_id") or "openrag"
                                 conn_data["config"][k] = decrypt_secret(
                                     v, expected_tenant_id=tenant
                                 )
                             except ValueError as e:
+                                if plugin_cls and k in plugin_keys:
+                                    raise RuntimeError(
+                                        f"Cannot decrypt plugin connection {conn_data.get('connection_id')}"
+                                    ) from e
                                 logger.error(f"Failed to decrypt connection secret {k}: {e}")
                                 decryption_failed = True
+                        elif plugin_cls is not None and k in plugin_keys and v:
+                            raise RuntimeError(
+                                f"Plugin connection {conn_data.get('connection_id')} has an unencrypted secret; "
+                                "refusing to load it"
+                            )
                         elif k in secret_keys and isinstance(v, str) and v:
                             if get_master_secret() is not None:
                                 needs_encryption_upgrade = True
@@ -156,18 +194,35 @@ class ConnectionManager:
         from utils.encryption import encrypt_secret
 
         secret_keys = get_all_secret_keys()
+        # Keep plugin secret declarations scoped to their own connection type.
 
         data = {"connections": []}
 
         for config in self.connections.values():
+            plugin_cls = get_plugin_connector_class(config.connector_type)
+            plugin_keys = _plugin_secret_keys(plugin_cls)
             conn_data = asdict(config)
 
             # Encrypt sensitive fields in config
             if "config" in conn_data and isinstance(conn_data["config"], dict):
                 for k, v in conn_data["config"].items():
-                    if k in secret_keys and isinstance(v, str):
+                    if (k in secret_keys or k in plugin_keys) and isinstance(v, str):
                         tenant_id = conn_data.get("user_id") or "openrag"
                         conn_data["config"][k] = encrypt_secret(v, tenant_id=tenant_id)
+                        if (
+                            plugin_cls is not None
+                            and k in plugin_keys
+                            and v
+                            and not (
+                                isinstance(conn_data["config"][k], dict)
+                                and conn_data["config"][k].get("algorithm") == "AES-256-GCM"
+                            )
+                        ):
+                            raise RuntimeError(
+                                "Plugin secret encryption failed; check OPENRAG_ENCRYPTION_KEY"
+                            )
+                    elif plugin_cls is not None and k in plugin_keys and v:
+                        raise RuntimeError("Plugin secret must be a nonempty string")
 
             # Convert datetime objects to strings
             if conn_data.get("created_at"):
@@ -176,8 +231,19 @@ class ConnectionManager:
                 conn_data["last_sync"] = conn_data["last_sync"].isoformat()
             data["connections"].append(conn_data)
 
-        async with aiofiles.open(self.connections_file, "w") as f:
-            await f.write(json.dumps(data, indent=2))
+        # A fresh 0600 file avoids exposing credentials through a permissive
+        # legacy connections.json mode; replace only after all encryption succeeds.
+        fd, temporary_path = tempfile.mkstemp(
+            prefix=".connections-", dir=self.connections_file.parent
+        )
+        os.close(fd)
+        try:
+            async with aiofiles.open(temporary_path, "w") as f:
+                await f.write(json.dumps(data, indent=2))
+            os.replace(temporary_path, self.connections_file)
+        finally:
+            if os.path.exists(temporary_path):
+                os.unlink(temporary_path)
 
     async def _get_existing_connection(
         self, connector_type: str, user_id: str | None = None
@@ -469,15 +535,24 @@ class ConnectionManager:
         OAuth connectors default to "env credentials present OR user has a saved
         connection"; bucket-kind connectors gate on their own feature flag.
         """
+        from utils.run_mode_utils import is_run_mode_saas
+
         result: dict[str, dict[str, Any]] = {}
         for cls in get_connector_classes():
-            result[cls.CONNECTOR_TYPE] = {
+            plugin = get_plugin_connector_class(cls.CONNECTOR_TYPE) is not None
+            if plugin and is_run_mode_saas():
+                continue  # Workspace approval for third-party code is not supported in SaaS.
+            metadata = {
                 "name": cls.CONNECTOR_NAME,
                 "description": cls.CONNECTOR_DESCRIPTION,
                 "icon": cls.CONNECTOR_ICON,
-                "available": cls.is_available(self, user_id),
+                "available": True if plugin else cls.is_available(self, user_id),
                 "kind": cls.CONNECTOR_KIND,
             }
+            if plugin:
+                metadata["config_fields"] = plugin_config_fields(cls)
+                metadata["browse_capability"] = cls.BROWSE_CAPABILITY
+            result[cls.CONNECTOR_TYPE] = metadata
         return result
 
     def get_auth_user_principals(self, user: Any) -> list[str]:
@@ -536,6 +611,10 @@ class ConnectionManager:
             cls = get_connector_class(config.connector_type)
             if cls is None:
                 raise ValueError(f"Unknown connector type: {config.connector_type}")
+            if get_plugin_connector_class(config.connector_type) is not None:
+                if not config.user_id:
+                    raise ValueError("Plugin connection requires an owner")
+                return cls({**config.config, "user_id": config.user_id})
             return cls(config.config)
         except Exception as e:
             logger.error(f"Failed to create {config.connector_type} connector: {e}")
