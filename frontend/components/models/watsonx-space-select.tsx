@@ -118,15 +118,21 @@ export function WatsonxSpaceSelect({
 
     const timeout = window.setTimeout(async () => {
       try {
-        const submittedCredentials = Object.fromEntries(
-          Object.entries({
-            api_base: apiBase,
-            username,
-            api_key: apiKey,
-            zen_api_key: zenApiKey,
-            ssl_verify: sslVerify,
-          }).filter(([, credentialValue]) => credentialValue !== ""),
-        );
+        // A blank ssl_verify still goes out: if one was saved, the operator
+        // cleared it (Submit removes it), and the backend must not list spaces
+        // with the saved CA — or the saved key. Blank secrets mean "keep the
+        // saved one" and are left out as before.
+        const submittedCredentials = {
+          ...Object.fromEntries(
+            Object.entries({
+              api_base: apiBase,
+              username,
+              api_key: apiKey,
+              zen_api_key: zenApiKey,
+            }).filter(([, credentialValue]) => credentialValue !== ""),
+          ),
+          ssl_verify: sslVerify,
+        };
         const response = await apiClient.post(
           "/models/watsonx_onprem/spaces",
           {

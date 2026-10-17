@@ -10,6 +10,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test-utils/msw/server";
 import { createQueryWrapper } from "@/test-utils/render";
+import { useGetModelCatalogQuery } from "../queries/useGetModelsQuery";
 import {
   isEmbeddingProviderInUseError,
   useUpdateSettingsMutation,
@@ -48,6 +49,132 @@ describe("useUpdateSettingsMutation", () => {
     expect(capturedBody).toEqual({ llm_model: "gpt-5.4" });
     // invalidateQueries refetches the mounted useGetSettingsQuery observer.
     await waitFor(() => expect(settingsFetchCount).toBe(2));
+  });
+
+  it("refreshes the model catalogue so pickers see a re-configured cluster's models", async () => {
+    // Settings → Providers saves credentials only; the Agent and Ingestion
+    // pickers read the catalogue, which lists a cluster with saved credentials.
+    let catalogFetchCount = 0;
+    server.use(
+      http.get("/api/settings", () => HttpResponse.json({})),
+      http.post("/api/settings", () =>
+        HttpResponse.json({ message: "saved", settings: {} }),
+      ),
+      http.post("/api/models/openai", () =>
+        HttpResponse.json({ language_models: [], embedding_models: [] }),
+      ),
+      http.get("/api/models/catalog", () => {
+        catalogFetchCount += 1;
+        const model =
+          catalogFetchCount === 1 ? "granite-3.3-2b-instruct" : "gpt-oss-120b";
+        return HttpResponse.json({
+          providers: [
+            {
+              key: "rhoai",
+              name: "Red Hat OpenShift AI",
+              credential_fields: [],
+              model_placeholder: null,
+              models: [{ model, mode: "chat" }],
+              embedding_models: [],
+            },
+          ],
+        });
+      }),
+    );
+
+    const { result } = renderHook(
+      () => ({
+        catalog: useGetModelCatalogQuery(),
+        mutation: useUpdateSettingsMutation(),
+      }),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() =>
+      expect(result.current.catalog.data?.providers[0].models[0].model).toBe(
+        "granite-3.3-2b-instruct",
+      ),
+    );
+
+    act(() =>
+      result.current.mutation.mutate({
+        provider_credentials: { rhoai: { api_key: "token" } },
+      }),
+    );
+
+    await waitFor(() =>
+      expect(result.current.catalog.data?.providers[0].models[0].model).toBe(
+        "gpt-oss-120b",
+      ),
+    );
+  });
+
+  it("refetches the catalogue when its first load was still in flight during the save", async () => {
+    let catalogFetchCount = 0;
+    let releaseFirstLoad: () => void = () => {};
+    const firstLoadHeld = new Promise<void>((resolve) => {
+      releaseFirstLoad = resolve;
+    });
+    const catalogWith = (model: string) => ({
+      providers: [
+        {
+          key: "rhoai",
+          name: "Red Hat OpenShift AI",
+          credential_fields: [],
+          model_placeholder: null,
+          models: [{ model, mode: "chat" }],
+          embedding_models: [],
+        },
+      ],
+    });
+    server.use(
+      http.get("/api/settings", () => HttpResponse.json({})),
+      http.post("/api/settings", () =>
+        HttpResponse.json({ message: "saved", settings: {} }),
+      ),
+      http.post("/api/models/openai", () =>
+        HttpResponse.json({ language_models: [], embedding_models: [] }),
+      ),
+      http.get("/api/models/catalog", async () => {
+        catalogFetchCount += 1;
+        // The first load started before the save, so it lists the old models.
+        if (catalogFetchCount === 1) {
+          await firstLoadHeld;
+          return HttpResponse.json(catalogWith("granite-3.3-2b-instruct"));
+        }
+        return HttpResponse.json(catalogWith("gpt-oss-120b"));
+      }),
+    );
+
+    const { result } = renderHook(
+      () => ({
+        catalog: useGetModelCatalogQuery(),
+        mutation: useUpdateSettingsMutation(),
+      }),
+      { wrapper: createQueryWrapper() },
+    );
+
+    try {
+      await waitFor(() => expect(catalogFetchCount).toBe(1));
+
+      act(() =>
+        result.current.mutation.mutate({
+          provider_credentials: { rhoai: { api_key: "token" } },
+        }),
+      );
+
+      await waitFor(() => expect(result.current.mutation.isSuccess).toBe(true));
+      await waitFor(() => expect(catalogFetchCount).toBe(2));
+    } finally {
+      releaseFirstLoad();
+    }
+
+    await waitFor(() =>
+      expect(result.current.catalog.data?.providers[0].models[0].model).toBe(
+        "gpt-oss-120b",
+      ),
+    );
+    expect(result.current.catalog.isFetching).toBe(false);
   });
 
   it("calls the caller's onSuccess in addition to the hook's own side effects", async () => {

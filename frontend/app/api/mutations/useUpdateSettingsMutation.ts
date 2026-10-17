@@ -5,7 +5,10 @@ import {
 } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
-import { useGetCurrentProviderModelsQuery } from "../queries/useGetModelsQuery";
+import {
+  refreshModelCatalog,
+  useGetCurrentProviderModelsQuery,
+} from "../queries/useGetModelsQuery";
 import type { Settings } from "../queries/useGetSettingsQuery";
 
 export interface UpdateSettingsRequest {
@@ -139,6 +142,9 @@ export const useUpdateSettingsMutation = (
       queryClient.invalidateQueries({
         queryKey: ["settings"],
       });
+      // A cluster-hosted provider's models are listed with its *saved*
+      // credentials, so a save can change what the catalogue offers.
+      refreshModelCatalog(queryClient);
       refetchModels(); // Refetch models for the settings page
       options?.onSuccess?.(...args);
     },

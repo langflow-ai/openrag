@@ -106,6 +106,9 @@ describe("ProviderSettingsDialog watsonx.ai on-prem TLS", () => {
     await user.click(
       screen.getByRole("switch", { name: "Verify TLS certificates" }),
     );
+    // A changed TLS setting is a new credential target: the saved key is not
+    // reused, so it has to be typed again.
+    await user.type(screen.getByLabelText(/^API key/), "new-key");
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
@@ -114,6 +117,7 @@ describe("ProviderSettingsDialog watsonx.ai on-prem TLS", () => {
           watsonx_onprem: {
             api_base: "https://cpd.example.com",
             username: "cpd-user",
+            api_key: "new-key",
             ssl_verify: "false",
           },
         },
@@ -271,5 +275,256 @@ describe("ProviderSettingsDialog watsonx.ai on-prem TLS", () => {
         "space-prod",
       );
     });
+  });
+});
+
+const SAVED_HINT = "A value is already saved. Leave this blank to keep it.";
+const REENTRY_HINT =
+  "The endpoint or TLS setting changed, so the saved value is not sent to it. Enter it again.";
+
+const azureCatalog = {
+  providers: [
+    {
+      key: "azure",
+      name: "Azure OpenAI",
+      credential_fields: [
+        {
+          key: "api_base",
+          label: "Endpoint",
+          required: true,
+          field_type: "text",
+        },
+        {
+          key: "api_key",
+          label: "API key",
+          required: false,
+          field_type: "password",
+        },
+        {
+          key: "azure_ad_token",
+          label: "Access token",
+          required: false,
+          field_type: "password",
+        },
+        {
+          key: "api_version",
+          label: "API version",
+          required: false,
+          field_type: "text",
+        },
+      ],
+      models: [],
+      embedding_models: [],
+    },
+  ],
+};
+
+function renderDialog({
+  provider,
+  providerCatalog,
+  credentialValues,
+  secretFields,
+  authMethod,
+}: {
+  provider: string;
+  providerCatalog: typeof catalog;
+  credentialValues: Record<string, string>;
+  secretFields: string[];
+  authMethod: string;
+}) {
+  const result: {
+    submitted?: UpdateSettingsRequest;
+    discoveryRequests: number;
+  } = { discoveryRequests: 0 };
+  const settings = makeSettings({
+    providers: {
+      custom: {
+        [provider]: {
+          configured: true,
+          auth_method: authMethod,
+          credential_values: credentialValues,
+          secret_fields: secretFields,
+        },
+      },
+    },
+  });
+
+  renderWithProviders(
+    <ProviderSettingsDialog
+      provider={provider}
+      displayName={provider}
+      open
+      setOpen={() => {}}
+    />,
+    {
+      providers: ["auth", "tooltip"],
+      handlers: [
+        http.get("/api/settings", () => HttpResponse.json(settings)),
+        http.get("/api/models/catalog", () =>
+          HttpResponse.json(providerCatalog),
+        ),
+        http.post("/api/models/watsonx_onprem/spaces", () => {
+          result.discoveryRequests += 1;
+          return HttpResponse.json({ spaces: [] });
+        }),
+        http.post("/api/settings", async ({ request }) => {
+          result.submitted = (await request.json()) as UpdateSettingsRequest;
+          return HttpResponse.json({ message: "saved", settings });
+        }),
+        http.post("/api/models/openai", () =>
+          HttpResponse.json({ models: [], embedding_models: [] }),
+        ),
+      ],
+    },
+  );
+  return result;
+}
+
+const onPremSaved = {
+  provider: "watsonx_onprem",
+  providerCatalog: catalog,
+  credentialValues: {
+    api_base: "https://cpd.example.com",
+    username: "cpd-user",
+    ssl_verify: "true",
+  },
+  secretFields: ["api_key"],
+  authMethod: "username_api_key",
+};
+
+describe("ProviderSettingsDialog credential target changes", () => {
+  it("offers to keep a saved secret while the target is unchanged", async () => {
+    renderDialog(onPremSaved);
+
+    expect(await screen.findByText(SAVED_HINT)).toBeInTheDocument();
+    expect(screen.queryByText(REENTRY_HINT)).not.toBeInTheDocument();
+  });
+
+  it("requires the saved secret again once the endpoint changes", async () => {
+    const result = renderDialog(onPremSaved);
+    const user = userEvent.setup();
+
+    const endpoint = await screen.findByLabelText(/^Cluster URL/);
+    await screen.findByText(SAVED_HINT);
+    await user.clear(endpoint);
+    await user.type(endpoint, "https://other.example.com");
+
+    expect(screen.queryByText(SAVED_HINT)).not.toBeInTheDocument();
+    expect(screen.getByText(REENTRY_HINT)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("API key is required")).toBeInTheDocument();
+    expect(result.submitted).toBeUndefined();
+  });
+
+  it("saves the new endpoint once the secret is typed again", async () => {
+    const result = renderDialog(onPremSaved);
+    const user = userEvent.setup();
+
+    const endpoint = await screen.findByLabelText(/^Cluster URL/);
+    await screen.findByText(SAVED_HINT);
+    await user.clear(endpoint);
+    await user.type(endpoint, "https://other.example.com");
+    await user.type(screen.getByLabelText(/^API key/), "new-key");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(result.submitted?.provider_credentials?.watsonx_onprem).toEqual({
+        api_base: "https://other.example.com",
+        username: "cpd-user",
+        api_key: "new-key",
+        ssl_verify: "true",
+      });
+    });
+  });
+
+  it("treats a cleared endpoint as a target change", async () => {
+    const result = renderDialog(onPremSaved);
+    const user = userEvent.setup();
+
+    const endpoint = await screen.findByLabelText(/^Cluster URL/);
+    await screen.findByText(SAVED_HINT);
+    await user.clear(endpoint);
+
+    expect(screen.getByText(REENTRY_HINT)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("API key is required")).toBeInTheDocument();
+    expect(result.submitted).toBeUndefined();
+  });
+
+  it("does not list deployment spaces with a key saved for another endpoint", async () => {
+    const result = renderDialog(onPremSaved);
+    const user = userEvent.setup();
+
+    const endpoint = await screen.findByLabelText(/^Cluster URL/);
+    await user.click(screen.getByRole("button", { name: "Advanced settings" }));
+    const spaceSelect = screen.getByRole("combobox", {
+      name: "Deployment space ID",
+    });
+    await waitFor(() => expect(spaceSelect).not.toBeDisabled());
+    const requestsBeforeEdit = result.discoveryRequests;
+
+    await user.clear(endpoint);
+    await user.type(endpoint, "https://other.example.com");
+
+    await waitFor(() => expect(spaceSelect).toBeDisabled());
+    expect(result.discoveryRequests).toBe(requestsBeforeEdit);
+  });
+
+  it("does not demand a saved secret of an auth method that is not chosen", async () => {
+    const result = renderDialog({
+      provider: "azure",
+      providerCatalog: azureCatalog,
+      credentialValues: { api_base: "https://old.openai.azure.com" },
+      secretFields: ["api_key"],
+      authMethod: "api_key",
+    });
+    const user = userEvent.setup();
+
+    const endpoint = await screen.findByLabelText(/^Endpoint/);
+    await screen.findByText(SAVED_HINT);
+    await user.click(
+      screen.getByRole("button", { name: "Microsoft Entra access token" }),
+    );
+    await user.clear(endpoint);
+    await user.type(endpoint, "https://new.openai.azure.com");
+    await user.type(screen.getByLabelText(/^Access token/), "entra-token");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(result.submitted).toEqual({
+        provider_credentials: {
+          azure: {
+            api_base: "https://new.openai.azure.com",
+            azure_ad_token: "entra-token",
+          },
+        },
+        provider_auth_methods: { azure: "entra_token" },
+      });
+    });
+  });
+
+  it("requires the chosen auth method's saved secret after the endpoint changes", async () => {
+    const result = renderDialog({
+      provider: "azure",
+      providerCatalog: azureCatalog,
+      credentialValues: { api_base: "https://old.openai.azure.com" },
+      secretFields: ["api_key"],
+      authMethod: "api_key",
+    });
+    const user = userEvent.setup();
+
+    const endpoint = await screen.findByLabelText(/^Endpoint/);
+    await screen.findByText(SAVED_HINT);
+    await user.clear(endpoint);
+    await user.type(endpoint, "https://new.openai.azure.com");
+
+    expect(screen.getByText(REENTRY_HINT)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("API key is required")).toBeInTheDocument();
+    expect(result.submitted).toBeUndefined();
   });
 });
