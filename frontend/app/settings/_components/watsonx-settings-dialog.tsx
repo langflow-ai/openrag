@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   type AffectedEmbeddingModel,
   isEmbeddingProviderInUseError,
+  isEmbeddingUsageUnknownError,
   useUpdateSettingsMutation,
 } from "@/app/api/mutations/useUpdateSettingsMutation";
 import { useGetIBMModelsQuery } from "@/app/api/queries/useGetModelsQuery";
@@ -46,6 +47,7 @@ const WatsonxSettingsDialog = ({
   const [affectedModels, setAffectedModels] = useState<
     AffectedEmbeddingModel[] | undefined
   >(undefined);
+  const [embeddingUsageUnknown, setEmbeddingUsageUnknown] = useState(false);
   const router = useRouter();
 
   const { data: settings = {} } = useGetSettingsQuery({
@@ -121,11 +123,16 @@ const WatsonxSettingsDialog = ({
       toast.success("IBM watsonx.ai configuration removed");
       setShowRemoveConfirm(false);
       setAffectedModels(undefined);
+      setEmbeddingUsageUnknown(false);
       setOpen(false);
     },
     onError: (err) => {
       if (isEmbeddingProviderInUseError(err)) {
+        setEmbeddingUsageUnknown(false);
         setAffectedModels(err.affectedModels);
+      } else if (isEmbeddingUsageUnknownError(err)) {
+        setAffectedModels(undefined);
+        setEmbeddingUsageUnknown(true);
       }
     },
   });
@@ -168,6 +175,7 @@ const WatsonxSettingsDialog = ({
       onOpenChange={(o) => {
         setShowRemoveConfirm(false);
         setAffectedModels(undefined);
+        setEmbeddingUsageUnknown(false);
         setOpen(o);
       }}
     >
@@ -205,7 +213,8 @@ const WatsonxSettingsDialog = ({
                 </motion.div>
               )}
               {removeMutation.isError &&
-                !isEmbeddingProviderInUseError(removeMutation.error) && (
+                !isEmbeddingProviderInUseError(removeMutation.error) &&
+                !isEmbeddingUsageUnknownError(removeMutation.error) && (
                   <motion.div
                     key="remove-error"
                     initial={{ opacity: 0, y: 10 }}
@@ -224,11 +233,12 @@ const WatsonxSettingsDialog = ({
               onCancelRemove={() => {
                 setShowRemoveConfirm(false);
                 setAffectedModels(undefined);
+                setEmbeddingUsageUnknown(false);
               }}
               onConfirmRemove={() =>
                 removeMutation.mutate({
                   remove_watsonx_config: true,
-                  force_remove: !!affectedModels,
+                  force_remove: !!affectedModels || embeddingUsageUnknown,
                 })
               }
               isRemovePending={removeMutation.isPending}
@@ -241,6 +251,7 @@ const WatsonxSettingsDialog = ({
               isSavePending={settingsMutation.isPending}
               isValidating={isValidating}
               affectedModels={affectedModels}
+              embeddingUsageUnknown={embeddingUsageUnknown}
             />
           </form>
         </FormProvider>

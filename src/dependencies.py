@@ -87,6 +87,7 @@ __all__ = [
     "require_llm_proxy_any_permission",
     "require_llm_proxy_permission",
     "get_models_service",
+    "get_provider_removal_service",
     "get_monitor_service",
     "get_optional_user",
     "get_rbac_service",
@@ -180,6 +181,10 @@ def get_langflow_llm_token_service(services: dict = Depends(get_services)):
 
 def get_models_service(services: dict = Depends(get_services)):
     return services["models_service"]
+
+
+def get_provider_removal_service(services: dict = Depends(get_services)):
+    return services["provider_removal_service"]
 
 
 def get_api_key_service(services: dict = Depends(get_services)):
