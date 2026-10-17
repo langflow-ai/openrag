@@ -569,7 +569,11 @@ def resolve_call(
         # them. Surfaced here rather than routed on a guess, which would reach
         # the wrong handler and fail as an opaque upstream error.
         raise LlmGatewayError(str(exc), 400) from exc
-    litellm_model = f"{route}/{name}" if route != "openai" else name
+    # Always qualify with the provider, including "openai": litellm only infers
+    # one from a bare model name via its static catalogue, so a self-hosted
+    # OpenAI-compatible gateway serving e.g. "gpt-oss-120b" would otherwise have
+    # no provider to route on even though api_base/api_key are passed correctly.
+    litellm_model = f"{route}/{name}"
     _warn_on_unexpected_route(provider, litellm_model, route)
     return litellm_model, provider, credentials
 

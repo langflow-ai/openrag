@@ -58,9 +58,15 @@ _OPENAI_NON_CHAT_PREFIXES = (
 _OPENAI_REASONING_MODEL_RE = re.compile(r"^o\d")
 
 
-def is_openai_embedding_model(model_id: str) -> bool:
-    """True if the OpenAI model ID is an embedding model."""
-    return OPENAI_EMBEDDING_MODEL_PREFIX in model_id or "text-similarity-" in model_id
+def is_openai_embedding_model(model_id: str, *, relaxed: bool = False) -> bool:
+    """True if the OpenAI model ID is an embedding model.
+
+    ``relaxed`` widens the match for self-hosted/gateway inventories (custom
+    ``base_url``) whose model IDs don't follow OpenAI's own naming scheme.
+    """
+    if OPENAI_EMBEDDING_MODEL_PREFIX in model_id or "text-similarity-" in model_id:
+        return True
+    return relaxed and "embed" in model_id.lower()
 
 
 def is_openai_non_chat_model(model_id: str) -> bool:
@@ -75,15 +81,24 @@ def is_openai_non_chat_model(model_id: str) -> bool:
     return any(lower.startswith(prefix) for prefix in _OPENAI_NON_CHAT_PREFIXES)
 
 
-def is_openai_language_model(model_id: str) -> bool:
+def is_openai_language_model(model_id: str, *, relaxed: bool = False) -> bool:
     """True if the OpenAI model ID is usable as a chat/agent language model.
 
     Classifies the live /v1/models inventory: embeddings and non-chat junk are
     excluded; gpt-*, chatgpt-*, ft:gpt-* fine-tunes, and o<digit>* reasoning
     models are included so new chat families appear without a curated allowlist.
+
+    ``relaxed`` is for a custom ``base_url`` (a self-hosted or gateway
+    endpoint): its model IDs won't match OpenAI's own naming scheme, so any
+    ID that isn't recognized as an embedding or known non-chat product is
+    treated as a language model instead of being silently dropped.
     """
-    if not model_id or is_openai_embedding_model(model_id) or is_openai_non_chat_model(model_id):
+    if not model_id or is_openai_embedding_model(
+        model_id, relaxed=relaxed
+    ) or is_openai_non_chat_model(model_id):
         return False
+    if relaxed:
+        return True
     if model_id.startswith(("gpt-", "chatgpt-", "ft:gpt-")):
         return True
     return bool(_OPENAI_REASONING_MODEL_RE.match(model_id))
@@ -164,7 +179,9 @@ class ModelsService:
                 if config.providers.openai.api_key:
                     try:
                         res = await self.get_openai_models(
-                            config.providers.openai.api_key, update_index=False
+                            config.providers.openai.api_key,
+                            base_url=config.providers.openai.base_url or None,
+                            update_index=False,
                         )
                         self.add_models(res, "openai", new_registry)
                     except Exception as e:
@@ -326,7 +343,7 @@ class ModelsService:
         return False
 
     async def get_openai_models(
-        self, api_key: str, update_index: bool = True
+        self, api_key: str, base_url: str = None, update_index: bool = True
     ) -> dict[str, list[dict[str, str]]]:
         """Fetch available models from OpenAI API with lightweight validation"""
         try:
@@ -334,11 +351,14 @@ class ModelsService:
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             }
+            # Optional override to list models from a self-hosted OpenAI-compatible
+            # gateway instead of api.openai.com.
+            models_url = f"{(base_url or 'https://api.openai.com/v1').rstrip('/')}/models"
 
             # Lightweight validation: check if API key is valid with retry logic
             response = await _http_request_with_retry(
                 "GET",
-                "https://api.openai.com/v1/models",
+                models_url,
                 headers=headers,
                 timeout=30.0,
             )
@@ -346,6 +366,12 @@ class ModelsService:
             if response.status_code == 200:
                 data = response.json()
                 models = data.get("data", [])
+
+                # A custom base_url means this is a self-hosted/gateway
+                # inventory, not the real OpenAI catalog, so relax the
+                # naming-based classification instead of dropping every
+                # non-matching model ID.
+                relaxed = bool(base_url)
 
                 # Classify live inventory into embedding vs chat; drop non-chat junk.
                 language_models = []
@@ -356,7 +382,7 @@ class ModelsService:
                     if not model_id:
                         continue
 
-                    if is_openai_embedding_model(model_id):
+                    if is_openai_embedding_model(model_id, relaxed=relaxed):
                         embedding_models.append(
                             {
                                 "value": model_id,
@@ -364,7 +390,7 @@ class ModelsService:
                                 "default": False,
                             }
                         )
-                    elif is_openai_language_model(model_id):
+                    elif is_openai_language_model(model_id, relaxed=relaxed):
                         language_models.append(
                             {
                                 "value": model_id,
