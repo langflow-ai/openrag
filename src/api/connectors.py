@@ -1,6 +1,7 @@
 import copy
 from datetime import UTC, datetime
 from typing import Any, NamedTuple
+from urllib.parse import quote
 
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -3129,7 +3130,7 @@ async def browse_connection_files(
 
         # Filter by filename search if provided
         if search:
-            search_lower = search.lower()
+            search_lower = quote(search.lower())
             remote_files = [f for f in remote_files if search_lower in f.get("name", "").lower()]
 
         # Get already-ingested file IDs from OpenSearch
