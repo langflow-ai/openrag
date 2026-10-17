@@ -198,13 +198,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-      args:
-        OPENRAG_FRONTEND_BASE_PATH: ${OPENRAG_FRONTEND_BASE_PATH:-}
     container_name: ${COMPOSE_PROJECT_NAME:-openrag}-frontend
     depends_on:
       - openrag-backend
     environment:
       - OPENRAG_BACKEND_HOST=openrag-backend
+      - OPENRAG_FRONTEND_BASE_PATH=${OPENRAG_FRONTEND_BASE_PATH:-}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
 
