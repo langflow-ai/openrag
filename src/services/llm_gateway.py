@@ -280,8 +280,14 @@ def provider_credentials(
     return credentials
 
 
-def _provider_runtime_kwargs(provider: str, config=None) -> dict[str, Any]:
-    """Non-serializable transport kwargs for the immediate LiteLLM invocation."""
+async def _provider_runtime_kwargs(
+    provider: str, config=None, kind: provider_error_log.CallKind = "chat"
+) -> dict[str, Any]:
+    """Non-serializable transport kwargs for the immediate LiteLLM invocation.
+
+    The hook runs in a worker thread: building a cloud signer can do blocking
+    network round trips that must not stall the event loop.
+    """
     cfg = config or _get_config()
     prov = cfg.providers
     if not hasattr(prov, "credential_values"):
@@ -291,14 +297,26 @@ def _provider_runtime_kwargs(provider: str, config=None) -> dict[str, Any]:
 
     key = (provider or "").strip().lower()
     enhancement = get(key)
-    if enhancement is None:
+    if enhancement is None or not callable(getattr(enhancement, "litellm_runtime_kwargs", None)):
         return {}
     stored = (
         prov.stored_credentials(key)
         if hasattr(prov, "stored_credentials")
         else prov.credential_values(key)
     )
-    return runtime_kwargs_for(enhancement, stored)
+    try:
+        return await asyncio.to_thread(runtime_kwargs_for, enhancement, stored)
+    except ValueError as exc:
+        # An enhancement's own curated, secret-free text (e.g. "no cloud
+        # identity is available here"): the operator can act on it.
+        message = str(exc)
+        provider_error_log.record_failure(key, kind, message)
+        raise LlmGatewayError(message, 503) from exc
+    except Exception as exc:
+        detail = _redact(f"{type(exc).__name__}: {exc}", stored)
+        logger.error("Provider runtime setup failed", provider=key, error=detail)
+        provider_error_log.record_failure(key, kind, _UPSTREAM_FAILURE_MESSAGE)
+        raise LlmGatewayError(_UPSTREAM_FAILURE_MESSAGE, 503, detail=detail) from exc
 
 
 #: Lanes of a provider's embedding limit. `interactive` is query embedding —
@@ -1369,7 +1387,7 @@ async def chat_completions(
     """OpenAI `POST /v1/chat/completions`. Streams SSE lines when `stream` is true."""
     cfg = config or _get_config()
     litellm_model, provider, credentials = resolve_call(body.get("model"), kind="chat", config=cfg)
-    runtime_kwargs = _provider_runtime_kwargs(provider, cfg)
+    runtime_kwargs = await _provider_runtime_kwargs(provider, cfg)
     kwargs = {key: body[key] for key in _LITELLM_FORWARDED_PARAMS if key in body}
     stream = bool(body.get("stream"))
     if litellm_model in _TOOLS_NEED_REASONING_OFF:
@@ -1817,7 +1835,9 @@ def _log_stream_shape(tally: _StreamTally, provider: str, model: str) -> None:
         logger.debug("Could not summarise stream shape", exc_info=True)
 
 
-_WATSONX_ONPREM_EMBEDDING_BATCH_SIZE = 32
+#: Most inputs a provider takes in one embeddings call; larger requests are
+#: split. OCI rejects more than 96 client-side, Bedrock Cohere server-side.
+_EMBEDDING_MAX_INPUTS_PER_CALL = {"watsonx_onprem": 32, "oci": 96, "bedrock": 96}
 
 
 def _embedding_input(value: Any) -> Any:
@@ -1981,6 +2001,34 @@ async def _embed_averaging_overflow(
     return response
 
 
+#: Routes whose Cohere embed models take an asymmetric `input_type`. LiteLLM
+#: sends `search_document` when it is missing (Bedrock, Cohere) or omits it
+#: (OCI), so a query embedded without it silently loses retrieval quality.
+#: Not every route: Azure AI's inference API uses other values for the same key.
+_COHERE_INPUT_TYPE_ROUTES = frozenset({"bedrock", "oci", "cohere"})
+_COHERE_INPUT_TYPES = frozenset({"search_query", "search_document", "classification", "clustering"})
+
+
+def _embedding_input_type(
+    litellm_model: str, body: Mapping[str, Any], interactive: bool
+) -> dict[str, str]:
+    route = litellm_model.partition("/")[0]
+    if route not in _COHERE_INPUT_TYPE_ROUTES or "cohere" not in litellm_model.lower():
+        return {}
+    explicit = body.get("input_type")
+    if not isinstance(explicit, str) or explicit not in _COHERE_INPUT_TYPES:
+        explicit = "search_query" if interactive else "search_document"
+    return {"input_type": explicit}
+
+
+def max_embedding_input_tokens(model: str) -> int | None:
+    """LiteLLM's per-input token limit for a `provider:model` id, if it knows one."""
+    provider, name = split_model_id(model)
+    route = litellm_provider_key(provider) if provider else ""
+    limit = _model_info(f"{route}/{name}" if route else name).get("max_input_tokens")
+    return limit if isinstance(limit, int) and limit > 0 else None
+
+
 async def embeddings(
     body: Mapping[str, Any], *, config=None, interactive: bool = False
 ) -> dict[str, Any]:
@@ -2000,12 +2048,13 @@ async def embeddings(
     litellm_model, provider, credentials = resolve_call(
         body.get("model"), kind="embedding", config=cfg
     )
-    runtime_kwargs = _provider_runtime_kwargs(provider, cfg)
+    runtime_kwargs = await _provider_runtime_kwargs(provider, cfg, "embedding")
+    extra = _embedding_input_type(litellm_model, body, interactive)
     limiter = _embedding_limiter(provider, cfg)
     lane = _INTERACTIVE_LANE if interactive else _BULK_LANE
     embedding_input = _embedding_input(body.get("input"))
 
-    batch_size = _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE if provider == "watsonx_onprem" else None
+    batch_size = _EMBEDDING_MAX_INPUTS_PER_CALL.get(provider)
 
     async def call_provider(inputs: Any) -> dict[str, Any]:
         import litellm
@@ -2017,6 +2066,7 @@ async def embeddings(
                     input=inputs,
                     **credentials,
                     **runtime_kwargs,
+                    **extra,
                 ),
                 provider=provider,
                 model=litellm_model,
