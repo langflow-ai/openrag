@@ -4,6 +4,7 @@ import pytest
 
 from utils.upload_limits import (
     docling_payload_too_large_message,
+    docling_rejected_size_message,
     is_upload_size_error,
     read_upload_within_limit,
     upload_size_user_message,
@@ -49,7 +50,8 @@ def test_upload_size_user_message_hides_the_docling_endpoint(monkeypatch):
 
     message = upload_size_user_message(f"Docling upload failed: {operator}")
 
-    assert message == upload_too_large_message("report.pdf", 2 * 1024 * 1024, 1)
+    assert message == docling_rejected_size_message("report.pdf", "2.0 MB", 1)
+    assert "document-processing service" in message
     assert "docling-serve" not in message
     assert "client_max_body_size" not in message
 

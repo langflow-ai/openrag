@@ -577,9 +577,10 @@ class DoclingService:
         """
         from utils.upload_limits import (
             docling_payload_too_large_message,
+            docling_rejected_size_message,
             ensure_within_upload_limit,
+            format_byte_size,
             max_upload_mb,
-            upload_too_large_message,
         )
 
         ensure_within_upload_limit(filename, len(file_content))
@@ -630,7 +631,9 @@ class DoclingService:
             if response.status_code == 413:
                 size_bytes = len(file_content)
                 raise DoclingPayloadTooLarge(
-                    upload_too_large_message(filename, size_bytes, max_upload_mb()),
+                    docling_rejected_size_message(
+                        filename, format_byte_size(size_bytes), max_upload_mb()
+                    ),
                     operator_detail=docling_payload_too_large_message(
                         filename, size_bytes, endpoint
                     ),

@@ -57,6 +57,7 @@ import {
   countSentDuplicates,
   duplicateCheck,
   folderUploadSuccessText,
+  getMaxUploadBytes,
   packUploadBatches,
   uploadFiles,
   uploadFile as uploadFileUtil,
@@ -122,7 +123,6 @@ export function KnowledgeDropdown() {
   const [showFolderDialog, setShowFolderDialog] = useState(false);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [uploadBatchSize, setUploadBatchSize] = useState(25);
-  const maxUploadBytesRef = useRef(100 * 1024 * 1024);
   const [folderPath, setFolderPath] = useState("");
   const [folderLoading, setFolderLoading] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
@@ -168,9 +168,6 @@ export function KnowledgeDropdown() {
           (d) => d.kind === "bucket",
         );
 
-        // Apply the upload limit on its own. A failed bucket-connector
-        // lookup must not discard a valid max_upload_mb. A missing or
-        // invalid options payload leaves the 100 MB default in place.
         try {
           const uploadOptionsRes = await apiClient.get("/upload_options");
           if (uploadOptionsRes.status >= 200 && uploadOptionsRes.status < 300) {
@@ -180,13 +177,6 @@ export function KnowledgeDropdown() {
               uploadOptionsData.upload_batch_size > 0
             ) {
               setUploadBatchSize(uploadOptionsData.upload_batch_size);
-            }
-            if (
-              typeof uploadOptionsData.max_upload_mb === "number" &&
-              uploadOptionsData.max_upload_mb > 0
-            ) {
-              maxUploadBytesRef.current =
-                uploadOptionsData.max_upload_mb * 1024 * 1024;
             }
           }
         } catch (err) {
@@ -465,7 +455,7 @@ export function KnowledgeDropdown() {
     sentNames: string[];
     oversizedCount: number;
   }> => {
-    const maxUploadBytes = maxUploadBytesRef.current;
+    const maxUploadBytes = await getMaxUploadBytes();
     const { batches, oversized } = packUploadBatches(
       filesToUpload,
       uploadBatchSize,

@@ -1,9 +1,9 @@
 """Upload size limit shared by the API, Docling submission, and task errors.
 
 The proxy in front of Docling Serve rejects the request body (often at 1 MB).
-OpenRAG refuses a larger file at upload time, and turns a 413 from that proxy
-into the same kind of message. URL ingest does not post a file body and does
-not use this limit.
+OpenRAG refuses a larger file at upload time. A 413 from that proxy uses a
+separate message that still carries the limit marker. URL ingest does not post
+a file body and does not use this limit.
 """
 
 from __future__ import annotations
@@ -62,6 +62,19 @@ def upload_too_large_message(filename: str, size_bytes: int, limit_mb: int) -> s
     )
 
 
+def docling_rejected_size_message(filename: str, size_label: str, limit_mb: int) -> str:
+    """User-facing line when the document-processing service rejects the file.
+
+    Distinct from ``upload_too_large_message``, which is OpenRAG refusing the
+    upload. The marker keeps task classification on the size-error path.
+    """
+    return (
+        f'"{filename}" is {size_label}. '
+        "The document-processing service rejected the file because of its size. "
+        f"The upload limit is {limit_mb} MB ({_MARKER})."
+    )
+
+
 def docling_payload_too_large_message(filename: str, size_bytes: int, endpoint: str) -> str:
     return (
         f'"{filename}" ({format_byte_size(size_bytes)}) was rejected by {endpoint} '
@@ -116,7 +129,6 @@ def upload_size_user_message(error: str) -> str:
     match = _PROXY_REJECTION.match(text)
     if match is None:
         return text
-    return (
-        f'"{match.group("filename")}" is {match.group("size")}. '
-        f"The upload limit is {max_upload_mb()} MB ({_MARKER})."
+    return docling_rejected_size_message(
+        match.group("filename"), match.group("size"), max_upload_mb()
     )

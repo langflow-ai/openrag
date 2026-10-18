@@ -252,6 +252,7 @@ async def test_upload_maps_docling_proxy_413(docling_service, mock_httpx_client)
             await docling_service.upload_to_docling_direct_async("report.pdf", b"data")
 
     message = str(exc_info.value)
+    assert "document-processing service" in message
     assert "OPENRAG_MAX_UPLOAD_MB" in message
     assert "http://docling:8000" not in message
     assert "client_max_body_size" not in message
