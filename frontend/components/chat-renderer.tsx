@@ -39,6 +39,13 @@ import {
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
+// Stable fallback while the conversations query has no data (it stays
+// disabled until onboarding is complete). A fresh `[]` each render changes the
+// `conversations` dependency of Navigation's auto-load effect every time, and
+// that effect writes chat context state, so the two re-render each other
+// until React throws "Maximum update depth exceeded" (#2416).
+const NO_CONVERSATIONS: ChatConversation[] = [];
+
 export function ChatRenderer({
   settings,
   children,
@@ -164,10 +171,16 @@ export function ChatRenderer({
 
   // Only fetch conversations on chat page
   const isOnChatPage = pathname === "/" || pathname === "/chat";
-  const { data: conversations = [], isLoading: isConversationsLoading } =
-    useGetConversationsQuery(endpoint, refreshTrigger + refreshTriggerSilent, {
+  const {
+    data: conversations = NO_CONVERSATIONS,
+    isLoading: isConversationsLoading,
+  } = useGetConversationsQuery(
+    endpoint,
+    refreshTrigger + refreshTriggerSilent,
+    {
       enabled: isOnChatPage && (isAuthenticated || isNoAuthMode),
-    }) as { data: ChatConversation[]; isLoading: boolean };
+    },
+  ) as { data: ChatConversation[]; isLoading: boolean };
 
   const handleNewConversation = () => {
     refreshConversations();
