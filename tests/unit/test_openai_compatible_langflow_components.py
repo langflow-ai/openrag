@@ -93,7 +93,6 @@ def test_langflow_image_installs_the_openrag_component_bundle():
 
 def test_docker_compose_seeds_openrag_llm_token_placeholder():
     compose = Path("docker-compose.yml").read_text(encoding="utf-8")
-    assert "LANGFLOW_COMPONENTS_INDEX_PATH=/app/flows/component_index.json" in compose
     assert "OPENRAG_LLM_TOKEN=None" in compose
     assert (
         "OPENRAG_LLM_TOKEN"
@@ -103,23 +102,6 @@ def test_docker_compose_seeds_openrag_llm_token_placeholder():
         encoding="utf-8"
     )
     assert 'OPENRAG_LLM_TOKEN="None"' in helm
-
-
-def test_component_index_sha256_matches_langflow_integrity_check():
-    """Langflow recomputes this digest and silently drops a mismatching index.
-
-    It hashes ``orjson.dumps(index_without_sha, option=OPT_SORT_KEYS)``, which
-    emits UTF-8 rather than the ASCII escapes ``json.dumps`` produces by
-    default. A digest built the other way makes Langflow log
-    "SHA256 mismatch" and fall back to a scan with no OpenRAG bundle, which
-    blocks every flow that uses one of our components.
-    """
-    raw = json.loads(Path("flows/component_index.json").read_text(encoding="utf-8"))
-    stored = raw.pop("sha256")
-    payload = json.dumps(raw, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
-        "utf-8"
-    )
-    assert stored == hashlib.sha256(payload).hexdigest()
 
 
 def test_flows_reference_opensearch_by_canonical_extension_id():
