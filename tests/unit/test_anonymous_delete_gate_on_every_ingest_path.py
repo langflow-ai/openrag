@@ -25,6 +25,7 @@ from fastapi.testclient import TestClient
 
 from connectors.service import ConnectorService
 from models.processors import (
+    DUPLICATE_NOT_REPLACEABLE_WARNING,
     ConnectorFileProcessor,
     DocumentFileProcessor,
     LangflowFileProcessor,
@@ -167,6 +168,9 @@ async def test_overwrite_without_the_permission_leaves_the_shared_document_alone
     # a duplicate the uploader may not overwrite.
     assert file_task.status == TaskStatus.SKIPPED
     assert file_task.result["reason"] == "duplicate_filename"
+    # ...and is told so. "A file with this name already exists" says nothing to
+    # someone who has just chosen Overwrite.
+    assert file_task.result["warning"] == DUPLICATE_NOT_REPLACEABLE_WARNING
 
 
 @pytest.mark.asyncio

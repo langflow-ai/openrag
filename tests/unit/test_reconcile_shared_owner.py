@@ -209,6 +209,25 @@ async def test_losing_an_in_flight_claim_does_not_reconcile():
 
 
 @pytest.mark.asyncio
+async def test_a_refused_replacement_does_not_reconcile():
+    """A replace that deleted nothing means the document under this name is not
+    this caller's to replace. It is not this file's own either, so there is
+    nothing to bring in line — and reconciling would write owner fields onto a
+    document the caller was just told they may not touch."""
+    processor = _connector_processor_for("report.pdf", indexed=True)
+    processor.replace_duplicates = True
+    processor.delete_document_by_filename = AsyncMock(return_value=0)
+    upload_task = UploadTask(task_id="task-1", total_files=1)
+    file_task = FileTask(file_path="cos::b/report.pdf", filename="report.pdf")
+
+    await processor.process_item(upload_task, "cos::b/report.pdf", file_task)
+
+    assert file_task.status is TaskStatus.SKIPPED
+    assert "permission to replace" in file_task.result["warning"]
+    processor._reconcile_shared_owner.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_a_real_duplicate_still_reconciles():
     """The document indexed under this name IS this file's own, so the owner
     fields still get brought in line with the connector's current setting."""

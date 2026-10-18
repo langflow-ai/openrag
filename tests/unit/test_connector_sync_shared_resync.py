@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from connectors.base import ConnectorDocument, DocumentACL
-from models.processors import ConnectorFileProcessor
+from models.processors import DUPLICATE_NOT_REPLACEABLE_WARNING, ConnectorFileProcessor
 from models.tasks import FileTask, TaskStatus, UploadTask
 
 COS_FILE_ID = "my-bucket::reports/q3.pdf"
@@ -209,10 +209,40 @@ async def test_resync_without_the_permission_leaves_a_shared_file_alone(
     mock_process.assert_not_awaited()
     assert file_task.status == TaskStatus.SKIPPED
     assert file_task.result["reason"] == "duplicate_filename"
-    # ...and it is still shared afterwards: the owner fields reconciled on the
-    # way out are the shared ones, not this user's.
-    script = backend_write_client.update_by_query.await_args.kwargs["body"]["script"]
-    assert script["params"]["shared"] is True
+    # ...and it is still shared afterwards, because nothing touched it: a
+    # refusal issues no update to the document it refused either.
+    backend_write_client.update_by_query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_refused_overwrite_says_it_was_refused(monkeypatch, backend_write_client):
+    """Share-all off, Overwrite confirmed, by someone who may not replace the
+    shared document the name belongs to.
+
+    The file is skipped either way; what matters here is the warning. It used
+    to be the ordinary duplicate's "A file with this name already exists",
+    which reads as a failure to someone who was just asked whether to overwrite
+    and said yes.
+    """
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_processor(shared=False, allow_anonymous_delete=False)
+    _wire(processor, _make_document(), indexed_owner=None)
+
+    file_task, upload_task, mock_process = await _run(processor)
+
+    backend_write_client.delete.assert_not_awaited()
+    mock_process.assert_not_awaited()
+    assert file_task.status == TaskStatus.SKIPPED
+    assert file_task.result == {
+        "status": "skipped",
+        "reason": "duplicate_filename",
+        "warning": DUPLICATE_NOT_REPLACEABLE_WARNING,
+    }
+    # Still a skip, not a failure: the task reports a warning, as before.
+    assert upload_task.successful_files == 1
+    assert upload_task.failed_files == 0
+    # "You don't have permission to replace it" has to mean nothing was written.
+    backend_write_client.update_by_query.assert_not_awaited()
 
 
 @pytest.mark.asyncio
