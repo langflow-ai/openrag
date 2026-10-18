@@ -1,16 +1,13 @@
 import {
   type Dispatch,
   type SetStateAction,
-  useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
-import { LabelInput } from "@/components/label-input";
 import {
   onboardingCredentialFields,
-  providerCatalogOptions,
   type SavedProvidersSnapshot,
   savedCredentialValuesForProvider,
   savedSecretFieldsForProvider,
@@ -19,12 +16,23 @@ import {
   getProviderChrome,
   requiresExplicitModelSelection,
 } from "@/components/models/model-helpers";
+import {
+  activeCredentialKeys,
+  authMethodCredentialKeys,
+  clearedSavedCredentialKeys,
+  credentialTargetChanged,
+} from "@/components/models/provider-credentials";
 import { WatsonxSpaceSelect } from "@/components/models/watsonx-space-select";
 import { WatsonxTlsSettings } from "@/components/models/watsonx-tls-settings";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { AdvancedOnboarding } from "./advanced";
-import { GenericProviderCredentialFields } from "./generic-provider-credential-fields";
-import { AZURE_AUTH_GROUPS } from "./generic-provider-credential-fields.helpers";
+import {
+  GenericCredentialInput,
+  GenericProviderCredentialFields,
+} from "./generic-provider-credential-fields";
+import { useOnboardingCompletionBlocker } from "./use-onboarding-completion-blocker";
+import { useOnboardingModelDiscovery } from "./use-onboarding-model-discovery";
+import { useOnboardingModelSelection } from "./use-onboarding-model-selection";
 
 /**
  * Onboarding step for a provider with no hand-built component.
@@ -34,6 +42,9 @@ import { AZURE_AUTH_GROUPS } from "./generic-provider-credential-fields.helpers"
  * `config/model_providers.yaml` gets a working onboarding tab with no frontend
  * change. Credentials are submitted through the generic `provider_credentials`
  * payload the onboarding endpoint already accepts.
+ *
+ * `onCompletionBlockerChange` reports why Submit must wait (a saved secret to
+ * re-enter for a changed endpoint), or `null` once nothing blocks it.
  */
 export function GenericOnboarding({
   provider,
@@ -41,12 +52,14 @@ export function GenericOnboarding({
   setSettings,
   isEmbedding = false,
   providers,
+  onCompletionBlockerChange,
 }: {
   provider: string;
   displayName?: string;
   setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
   isEmbedding?: boolean;
   providers?: SavedProvidersSnapshot;
+  onCompletionBlockerChange?: (blocker: string | null) => void;
 }) {
   const { data: catalog } = useGetModelCatalogQuery();
   const chrome = getProviderChrome(provider, displayName);
@@ -67,7 +80,15 @@ export function GenericOnboarding({
 
   const [credentials, setCredentials] =
     useState<Record<string, string>>(savedCredentials);
-  const [model, setModel] = useState("");
+  // A saved secret belongs to the host it was saved for: once the endpoint or
+  // TLS setting is edited — or a saved one cleared, which Submit sends as a
+  // removal — it is neither offered for reuse nor sent anywhere, and the
+  // backend refuses a Submit that leaves it blank.
+  const targetChanged = credentialTargetChanged(credentials, savedCredentials);
+  const reusableSecrets = useMemo(
+    () => (targetChanged ? new Set<string>() : savedSecrets),
+    [targetChanged, savedSecrets],
+  );
   const [azureAuthMethod, setAzureAuthMethod] = useState(
     providers?.custom?.[provider]?.auth_method ?? "api_key",
   );
@@ -86,33 +107,22 @@ export function GenericOnboarding({
     nextModel: string,
   ) => {
     const submitted: Record<string, string> = {};
-    const removals: string[] = [];
-    const activeAzureFields = new Set([
-      "api_base",
-      "api_version",
-      ...(AZURE_AUTH_GROUPS.find((group) => group.key === azureAuthMethod)
-        ?.fields ?? []),
-    ]);
-    const activeOnPremFields = new Set([
-      "api_base",
-      "space_id",
-      "project_id",
-      "ssl_verify",
-      ...(onPremAuthMethod === "zen_api_key"
-        ? ["zen_api_key"]
-        : ["username", "api_key"]),
-    ]);
+    const active = activeCredentialKeys(
+      provider,
+      azureAuthMethod,
+      onPremAuthMethod,
+    );
     for (const [key, value] of Object.entries(nextCredentials)) {
-      if (provider === "azure" && !activeAzureFields.has(key)) continue;
-      if (provider === "watsonx_onprem" && !activeOnPremFields.has(key))
-        continue;
+      if (active && !active.has(key)) continue;
       const trimmed = (value ?? "").trim();
-      if (trimmed !== "") {
-        submitted[key] = trimmed;
-      } else if (!savedSecrets.has(key) && savedCredentials[key]) {
-        removals.push(key);
-      }
+      if (trimmed !== "") submitted[key] = trimmed;
     }
+    const removals = clearedSavedCredentialKeys(
+      nextCredentials,
+      savedCredentials,
+      savedSecrets,
+      active,
+    );
     setSettingsRef.current((prev) => {
       const providerCredentialRemovals = {
         ...prev.provider_credential_removals,
@@ -155,35 +165,57 @@ export function GenericOnboarding({
     });
   };
 
-  const models = useMemo(
-    () =>
-      providerCatalogOptions(
-        catalog,
-        provider,
-        isEmbedding ? "embedding" : "language",
-      ),
-    [catalog, provider, isEmbedding],
+  // Memoised: model discovery filters by this set, and a fresh one each render
+  // would redo that work every render.
+  const activeKeys = useMemo(
+    () => activeCredentialKeys(provider, azureAuthMethod, onPremAuthMethod),
+    [provider, azureAuthMethod, onPremAuthMethod],
   );
 
-  // Azure's catalogue lists model families, not this customer's deployments,
-  // so require an explicit choice. Other providers still default to the
-  // highest-ranked model when the catalogue loads or provider changes.
-  const defaultedModelRef = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    if (
-      requiresExplicitModelSelection(provider) ||
-      model ||
-      models.length === 0
-    )
-      return;
-    const defaultModel = models[0].value;
-    // Only set once per provider so switching back doesn't re-default.
-    if (defaultedModelRef.current === `${provider}:${defaultModel}`) return;
-    defaultedModelRef.current = `${provider}:${defaultModel}`;
-    setModel(defaultModel);
-    syncParentSettings(credentials, defaultModel);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [models, model, provider]);
+  const reenterKeys = useOnboardingCompletionBlocker({
+    credentials,
+    savedSecrets,
+    activeKeys,
+    targetChanged,
+    fields,
+    onCompletionBlockerChange,
+  });
+
+  const {
+    discovers,
+    models,
+    status: discoveryStatus,
+    inFlight: discoveryInFlight,
+  } = useOnboardingModelDiscovery({
+    catalog,
+    provider,
+    isEmbedding,
+    fields,
+    credentials,
+    activeKeys,
+    requiredKeys: authMethodCredentialKeys(
+      provider,
+      azureAuthMethod,
+      onPremAuthMethod,
+    ),
+    // Every method's, unfiltered: discovery applies the chosen method's keys
+    // after debouncing what was typed, so a method switch is not debounced.
+    clearedKeys: clearedSavedCredentialKeys(
+      credentials,
+      savedCredentials,
+      savedSecrets,
+      null,
+    ),
+    savedSecrets: reusableSecrets,
+    authMethod: provider === "watsonx_onprem" ? onPremAuthMethod : undefined,
+  });
+
+  const { model, pickModel } = useOnboardingModelSelection({
+    provider,
+    models,
+    inFlight: discoveryInFlight,
+    onModelChange: (nextModel) => syncParentSettings(credentials, nextModel),
+  });
 
   const handleCredentialChange = (fieldKey: string, newValue: string) => {
     const nextCredentials = { ...credentials, [fieldKey]: newValue };
@@ -191,52 +223,31 @@ export function GenericOnboarding({
     syncParentSettings(nextCredentials, model);
   };
 
-  const handleModelChange = (newModel: string) => {
-    setModel(newModel);
-    syncParentSettings(credentials, newModel);
-  };
-
-  const handleAzureAuthMethodChange = (method: string) => {
-    setAzureAuthMethod(method);
+  const handleAuthMethodChange = (
+    target: "azure" | "watsonx_onprem",
+    method: string,
+  ) => {
+    const isAzure = target === "azure";
+    (isAzure ? setAzureAuthMethod : setOnPremAuthMethod)(method);
     // The closure still holds the previous method during this event; submit
     // just the new method's fields explicitly so inactive values stay local.
-    const active = new Set([
-      "api_base",
-      "api_version",
-      ...(AZURE_AUTH_GROUPS.find((group) => group.key === method)?.fields ??
-        []),
-    ]);
-    const selected = Object.fromEntries(
-      Object.entries(credentials).filter(([key]) => active.has(key)),
+    const active = activeCredentialKeys(
+      target,
+      isAzure ? method : azureAuthMethod,
+      isAzure ? onPremAuthMethod : method,
     );
-    setSettings((prev) => ({
-      ...prev,
-      provider_credentials: { ...prev.provider_credentials, azure: selected },
-      provider_auth_methods: { ...prev.provider_auth_methods, azure: method },
-    }));
-  };
-
-  const handleOnPremAuthMethodChange = (method: string) => {
-    setOnPremAuthMethod(method);
-    const active = new Set([
-      "api_base",
-      "space_id",
-      "project_id",
-      "ssl_verify",
-      ...(method === "zen_api_key" ? ["zen_api_key"] : ["username", "api_key"]),
-    ]);
     const selected = Object.fromEntries(
-      Object.entries(credentials).filter(([key]) => active.has(key)),
+      Object.entries(credentials).filter(([key]) => active?.has(key)),
     );
     setSettings((prev) => ({
       ...prev,
       provider_credentials: {
         ...prev.provider_credentials,
-        watsonx_onprem: selected,
+        [target]: selected,
       },
       provider_auth_methods: {
         ...prev.provider_auth_methods,
-        watsonx_onprem: method,
+        [target]: method,
       },
     }));
   };
@@ -249,8 +260,8 @@ export function GenericOnboarding({
           idPrefix={`onboarding-${provider}`}
           credentials={credentials}
           authMethod={onPremAuthMethod}
-          hasSavedApiKey={savedSecrets.has("api_key")}
-          hasSavedZenApiKey={savedSecrets.has("zen_api_key")}
+          hasSavedApiKey={reusableSecrets.has("api_key")}
+          hasSavedZenApiKey={reusableSecrets.has("zen_api_key")}
           value={credentials.space_id}
           onValueChange={(value) => handleCredentialChange("space_id", value)}
           helperText={field.tooltip ?? undefined}
@@ -269,29 +280,16 @@ export function GenericOnboarding({
       );
     }
 
-    const isSecret =
-      field.field_type === "password" || field.field_type === "textarea";
-    const hasSaved = isSecret && savedSecrets.has(field.key);
     return (
-      <div key={field.key} className="space-y-1">
-        <LabelInput
-          label={field.label}
-          helperText={field.tooltip ?? ""}
-          id={`onboarding-${provider}-${field.key}`}
-          type={field.field_type === "password" ? "password" : "text"}
-          required={field.required && !hasSaved}
-          placeholder={
-            hasSaved ? "•••••••••" : (field.placeholder ?? undefined)
-          }
-          value={credentials[field.key] ?? ""}
-          onChange={(e) => handleCredentialChange(field.key, e.target.value)}
-        />
-        {hasSaved && (
-          <p className="text-mmd text-muted-foreground">
-            A value is already saved. Leave this blank to keep it.
-          </p>
-        )}
-      </div>
+      <GenericCredentialInput
+        key={field.key}
+        field={field}
+        id={`onboarding-${provider}-${field.key}`}
+        value={credentials[field.key] ?? ""}
+        hasSavedSecret={reusableSecrets.has(field.key)}
+        needsReentry={reenterKeys.includes(field.key)}
+        onChange={(value) => handleCredentialChange(field.key, value)}
+      />
     );
   };
 
@@ -303,11 +301,20 @@ export function GenericOnboarding({
           fields={fields}
           azureAuthMethod={azureAuthMethod}
           onPremAuthMethod={onPremAuthMethod}
-          onAzureAuthMethodChange={handleAzureAuthMethodChange}
-          onOnPremAuthMethodChange={handleOnPremAuthMethodChange}
+          onAzureAuthMethodChange={(method) =>
+            handleAuthMethodChange("azure", method)
+          }
+          onOnPremAuthMethodChange={(method) =>
+            handleAuthMethodChange("watsonx_onprem", method)
+          }
           renderField={renderField}
         />
-        {models.length === 0 && (
+        {discoveryStatus && (
+          <p className="text-mmd text-muted-foreground" role="status">
+            {discoveryStatus}
+          </p>
+        )}
+        {models.length === 0 && !discovers && (
           <p className="text-mmd text-muted-foreground">
             {chrome.name} publishes no {isEmbedding ? "embedding" : "language"}{" "}
             models in the catalogue. Pick a different provider for this step.
@@ -325,8 +332,8 @@ export function GenericOnboarding({
         embeddingModels={isEmbedding ? models : undefined}
         languageModel={isEmbedding ? undefined : model}
         embeddingModel={isEmbedding ? model : undefined}
-        setLanguageModel={isEmbedding ? undefined : handleModelChange}
-        setEmbeddingModel={isEmbedding ? handleModelChange : undefined}
+        setLanguageModel={isEmbedding ? undefined : pickModel}
+        setEmbeddingModel={isEmbedding ? pickModel : undefined}
       />
     </>
   );

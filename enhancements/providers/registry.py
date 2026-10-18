@@ -84,6 +84,39 @@ def enhancements() -> tuple[ModuleType, ...]:
     return tuple(_ENHANCEMENTS.values())
 
 
+def model_discovery_for(provider: str) -> ModuleType | None:
+    """The enhancement that can list `provider`'s models from unsaved credentials.
+
+    The optional `list_cluster_models(credentials)` member of the contract: the
+    same listing `fetch_models()` caches, without the cache, for a form that is
+    asking what a cluster serves before anything is saved. None when the
+    provider has no enhancement or the enhancement cannot list its own models.
+    """
+    enhancement = get(provider)
+    if enhancement is None or not callable(getattr(enhancement, "list_cluster_models", None)):
+        return None
+    return enhancement
+
+
+async def list_cluster_models_for(
+    enhancement: ModuleType,
+    credentials: Mapping[str, Any],
+    *,
+    kind: CallKind | None = None,
+) -> Any:
+    """Call the module's `list_cluster_models`, narrowed to one picker if it can be.
+
+    `kind` follows the same rule as in `credentials_for`: it is passed only to a
+    module whose hook declares it. Red Hat OpenShift AI lists chat and embedding
+    models from two endpoints and uses it to ask only the one a picker needs; a
+    single-endpoint provider (watsonx.ai on-prem) lists everything at once and
+    is called without it. None asks for both pickers.
+    """
+    if kind is not None and _hook_accepts_kind(enhancement, "list_cluster_models"):
+        return await enhancement.list_cluster_models(credentials, kind=kind)
+    return await enhancement.list_cluster_models(credentials)
+
+
 def live_models_for(provider: str, kind: CallKind) -> tuple[str, ...] | None:
     """What `provider` last said it serves for `kind`, if it can say at all.
 
@@ -187,6 +220,25 @@ def embedding_concurrency_for(
     return limit
 
 
+def default_auth_method_for(provider: str, stored: Mapping[str, Any] | None) -> str | None:
+    """The authentication method to assume for `provider` when none was chosen.
+
+    The optional `default_auth_method(stored)` member of the enhancement
+    contract, for a provider whose form offers several methods. None when the
+    provider has no such hook, the hook fails (logged and ignored), or it
+    returns anything but a non-empty string.
+    """
+    hook = getattr(get(provider), "default_auth_method", None)
+    if not callable(hook):
+        return None
+    try:
+        method = hook(stored or {})
+    except Exception as exc:
+        _log_hook_failure(provider, "default_auth_method", exc)
+        return None
+    return method if isinstance(method, str) and method else None
+
+
 def _log_hook_failure(provider: str, hook: str, exc: Exception) -> None:
     from utils.logging_config import get_logger
 
@@ -217,20 +269,25 @@ def _accepts_kind(enhancement: ModuleType) -> bool:
     Cached per module: the answer is fixed for the life of the process, and
     this sits on the path of every gateway request.
     """
+    return _hook_accepts_kind(enhancement, "litellm_credentials")
+
+
+def _hook_accepts_kind(enhancement: ModuleType, hook: str) -> bool:
+    """Whether the module's `hook` takes a `kind` keyword."""
     try:
-        return "kind" in inspect.signature(enhancement.litellm_credentials).parameters
+        return "kind" in inspect.signature(getattr(enhancement, hook)).parameters
     except (TypeError, ValueError):
         # A C-implemented or otherwise unintrospectable callable. Assume the
         # base contract rather than risk a TypeError on a real call.
-        _log_signature_fallback(getattr(enhancement, "__name__", str(enhancement)))
+        _log_signature_fallback(getattr(enhancement, "__name__", str(enhancement)), hook)
         return False
 
 
-def _log_signature_fallback(module_name: str) -> None:
+def _log_signature_fallback(module_name: str, hook: str) -> None:
     from utils.logging_config import get_logger
 
     get_logger(__name__).debug(
-        "Could not inspect a provider enhancement's credential translation; "
-        "calling it without a call kind",
+        "Could not inspect a provider enhancement hook; calling it without a call kind",
         module=module_name,
+        hook=hook,
     )

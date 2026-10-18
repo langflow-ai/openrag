@@ -671,6 +671,38 @@ def test_auth_method_changes_preserve_the_tls_policy() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    "stored, expected",
+    [
+        ({"zen_api_key": "cHJlOmVuY29kZWQ="}, "zen_api_key"),
+        ({"username": "cpduser", "api_key": "APIKEY"}, "username_api_key"),
+        # A blank Zen key is not a Zen key.
+        ({"zen_api_key": "  ", "username": "cpduser"}, "username_api_key"),
+        ({}, "username_api_key"),
+        (None, "username_api_key"),
+    ],
+)
+def test_the_default_auth_method_follows_the_saved_secret(stored, expected) -> None:
+    assert watsonx_onprem.default_auth_method(stored) == expected
+
+
+def test_the_registry_exposes_the_default_auth_method(monkeypatch) -> None:
+    from enhancements.providers import registry
+
+    assert (
+        registry.default_auth_method_for(PROVIDER, {"zen_api_key": "cHJlOmVuY29kZWQ="})
+        == "zen_api_key"
+    )
+    # No hook: nothing to assume.
+    assert registry.default_auth_method_for("openai", {}) is None
+
+    def broken(stored):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(watsonx_onprem, "default_auth_method", broken)
+    assert registry.default_auth_method_for(PROVIDER, {}) is None
+
+
 def test_cleared_optional_credential_is_removed() -> None:
     providers = _providers(
         api_base="https://cpd.example.com",
@@ -980,6 +1012,49 @@ async def test_an_empty_listing_is_treated_as_a_bad_filter_not_an_empty_cluster(
         is None
     )
     assert watsonx_onprem.cached_models() is None
+
+
+@pytest.mark.asyncio
+async def test_draft_discovery_lists_without_caching(monkeypatch, _forget_cluster_models) -> None:
+    """Onboarding lists a cluster before its credentials are saved; that answer
+    must not reach the catalogue through `cached_models()`."""
+
+    class _Client:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url, headers=None, params=None):
+            return _specs_response(CLUSTER_RESOURCES)
+
+    monkeypatch.setattr("httpx.AsyncClient", _Client)
+    credentials = {"api_base": "https://cpd.example.com", "username": "u", "api_key": "k"}
+
+    models = await watsonx_onprem.list_cluster_models(credentials)
+
+    assert models.chat == ("openai/gpt-oss-120b",)
+    assert models.embedding == ("ibm/slate-30m-english-rtrvr",)
+    assert watsonx_onprem.cached_models() is None
+
+    await watsonx_onprem.fetch_models(credentials)
+    assert watsonx_onprem.cached_models() == models
+
+
+@pytest.mark.asyncio
+async def test_draft_discovery_with_incomplete_credentials_makes_no_request(
+    monkeypatch,
+) -> None:
+    def _explode(**kwargs):
+        raise AssertionError("no HTTP call should be made")
+
+    monkeypatch.setattr("httpx.AsyncClient", _explode)
+
+    assert await watsonx_onprem.list_cluster_models({"api_base": "https://cpd.example.com"}) is None
 
 
 @pytest.mark.asyncio
