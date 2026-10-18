@@ -18,6 +18,7 @@ on:
       - 'custom_components/**'
       - 'flows/**'
       - 'config/**'
+      - 'docker-compose*.yml'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/test-backend.yml'
