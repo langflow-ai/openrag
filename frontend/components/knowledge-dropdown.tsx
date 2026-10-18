@@ -168,30 +168,36 @@ export function KnowledgeDropdown() {
           (d) => d.kind === "bucket",
         );
 
-        // Check upload batch size and bucket connector availability in parallel
-        const [uploadOptionsRes, ...bucketResponses] = await Promise.all([
-          apiClient.get("/upload_options"),
-          ...bucketDescriptors.map((d) =>
+        // Apply the upload limit on its own. A failed bucket-connector
+        // lookup must not discard a valid max_upload_mb. A missing or
+        // invalid options payload leaves the 100 MB default in place.
+        try {
+          const uploadOptionsRes = await apiClient.get("/upload_options");
+          if (uploadOptionsRes.status >= 200 && uploadOptionsRes.status < 300) {
+            const uploadOptionsData = uploadOptionsRes.data;
+            if (
+              typeof uploadOptionsData.upload_batch_size === "number" &&
+              uploadOptionsData.upload_batch_size > 0
+            ) {
+              setUploadBatchSize(uploadOptionsData.upload_batch_size);
+            }
+            if (
+              typeof uploadOptionsData.max_upload_mb === "number" &&
+              uploadOptionsData.max_upload_mb > 0
+            ) {
+              maxUploadBytesRef.current =
+                uploadOptionsData.max_upload_mb * 1024 * 1024;
+            }
+          }
+        } catch (err) {
+          console.error("Failed to load upload options", err);
+        }
+
+        const bucketResponses = await Promise.all(
+          bucketDescriptors.map((d) =>
             apiClient.get(`/connectors/${d.connectorType}/defaults`),
           ),
-        ]);
-
-        if (uploadOptionsRes.status >= 200 && uploadOptionsRes.status < 300) {
-          const uploadOptionsData = uploadOptionsRes.data;
-          if (
-            typeof uploadOptionsData.upload_batch_size === "number" &&
-            uploadOptionsData.upload_batch_size > 0
-          ) {
-            setUploadBatchSize(uploadOptionsData.upload_batch_size);
-          }
-          if (
-            typeof uploadOptionsData.max_upload_mb === "number" &&
-            uploadOptionsData.max_upload_mb > 0
-          ) {
-            maxUploadBytesRef.current =
-              uploadOptionsData.max_upload_mb * 1024 * 1024;
-          }
-        }
+        );
 
         const configured: Record<string, boolean> = {};
         await Promise.all(

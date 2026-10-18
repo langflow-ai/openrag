@@ -12,7 +12,11 @@ function sizedPdf(name: string, size: number) {
   return new File([new Uint8Array(size)], name, { type: "application/pdf" });
 }
 
-function handlers(maxUploadMb: number, onOptions: () => void) {
+function handlers(
+  maxUploadMb: number,
+  onOptions: () => void,
+  defaults: () => Response = () => HttpResponse.json({}),
+) {
   return [
     http.get("/api/upload_options", () => {
       onOptions();
@@ -22,7 +26,7 @@ function handlers(maxUploadMb: number, onOptions: () => void) {
       });
     }),
     http.get("/api/connectors", () => HttpResponse.json({ connectors: {} })),
-    http.get("/api/connectors/:type/defaults", () => HttpResponse.json({})),
+    http.get("/api/connectors/:type/defaults", () => defaults()),
     http.get("/api/documents/check-filename", () =>
       HttpResponse.json({ exists: false }),
     ),
@@ -87,6 +91,41 @@ describe("KnowledgeDropdown folder upload limit", () => {
 
   it("does not report success when every file is over the limit", async () => {
     await chooseFolder([sizedPdf("huge.pdf", 2 * 1024 * 1024)]);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        "File too large",
+        expect.objectContaining({
+          description: expect.stringContaining("huge.pdf"),
+        }),
+      );
+    });
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("keeps the configured limit when a connector lookup fails", async () => {
+    let optionsLoaded = false;
+    renderWithProviders(<KnowledgeDropdown />, {
+      providers: ["brand", "task"],
+      auth: authPresets.rbacDisabled,
+      handlers: handlers(
+        1,
+        () => {
+          optionsLoaded = true;
+        },
+        () => HttpResponse.error(),
+      ),
+    });
+
+    await screen.findByRole("button", { name: /add knowledge/i });
+    await waitFor(() => expect(optionsLoaded).toBe(true));
+    const folderInput = document.querySelector(
+      "input[webkitdirectory]",
+    ) as HTMLInputElement | null;
+    if (!folderInput) throw new Error("folder input missing");
+    await userEvent.upload(folderInput, [
+      sizedPdf("huge.pdf", 2 * 1024 * 1024),
+    ]);
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
