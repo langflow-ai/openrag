@@ -57,9 +57,13 @@ export async function getMaxUploadBytes(): Promise<number> {
         ) {
           return mb * 1024 * 1024;
         }
+        maxUploadBytesRequest = null;
         return DEFAULT_MAX_UPLOAD_BYTES;
       })
-      .catch(() => DEFAULT_MAX_UPLOAD_BYTES);
+      .catch(() => {
+        maxUploadBytesRequest = null;
+        return DEFAULT_MAX_UPLOAD_BYTES;
+      });
   }
   return maxUploadBytesRequest;
 }

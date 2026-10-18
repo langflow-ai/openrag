@@ -10,6 +10,7 @@ import {
   countSentDuplicates,
   duplicateCheck,
   folderUploadSuccessText,
+  getMaxUploadBytes,
   packUploadBatches,
   resetUploadLimitCache,
   uploadFailureText,
@@ -360,6 +361,33 @@ describe("uploadFiles", () => {
     });
     await expect(uploadFile(overDefault)).rejects.toThrow(/huge\.pdf/);
     expect(posted).toBe(false);
+  });
+
+  it("retries the limit lookup after a fallback", async () => {
+    resetUploadLimitCache();
+    server.use(http.get("/api/upload_options", () => HttpResponse.error()));
+    await expect(getMaxUploadBytes()).resolves.toBe(100 * 1024 * 1024);
+
+    server.use(
+      http.get("/api/upload_options", () =>
+        HttpResponse.json({ upload_batch_size: 25 }, { status: 500 }),
+      ),
+    );
+    await expect(getMaxUploadBytes()).resolves.toBe(100 * 1024 * 1024);
+
+    server.use(
+      http.get("/api/upload_options", () =>
+        HttpResponse.json({ max_upload_mb: 1 }),
+      ),
+    );
+    await expect(getMaxUploadBytes()).resolves.toBe(1024 * 1024);
+
+    server.use(
+      http.get("/api/upload_options", () =>
+        HttpResponse.json({ max_upload_mb: 5 }),
+      ),
+    );
+    await expect(getMaxUploadBytes()).resolves.toBe(1024 * 1024);
   });
 
   it("throws when a successful response carries no task id", async () => {
