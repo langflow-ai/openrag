@@ -57,7 +57,9 @@ async def upload_user_file(
         return JSONResponse(result, status_code=201)
     except UploadTooLarge as e:
         logger.warning("Upload rejected: file too large", error_type=type(e).__name__)
-        return JSONResponse({"error": "Uploaded file exceeds the allowed size limit."}, status_code=413)
+        return JSONResponse(
+            {"error": "Uploaded file exceeds the allowed size limit."}, status_code=413
+        )
     except Exception as e:
         logger.error("upload_user_file endpoint failed", error_type=type(e).__name__, error=str(e))
         import traceback
@@ -188,7 +190,9 @@ async def upload_and_ingest_user_file(
 
     except UploadTooLarge as e:
         logger.warning("Upload rejected: file too large", error=str(e))
-        return JSONResponse({"error": "Uploaded file exceeds the allowed size limit."}, status_code=413)
+        return JSONResponse(
+            {"error": "Uploaded file exceeds the allowed size limit."}, status_code=413
+        )
     except Exception as e:
         logger.error("upload_and_ingest_user_file endpoint failed", error=str(e))
         return JSONResponse({"error": str(e)}, status_code=500)
