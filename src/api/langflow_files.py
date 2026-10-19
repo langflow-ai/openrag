@@ -56,13 +56,14 @@ async def upload_user_file(
         logger.debug("Upload successful", result=result)
         return JSONResponse(result, status_code=201)
     except UploadTooLarge as e:
-        return JSONResponse({"error": str(e)}, status_code=413)
+        logger.warning("Upload rejected: file too large", error_type=type(e).__name__)
+        return JSONResponse({"error": "Uploaded file exceeds the allowed size limit."}, status_code=413)
     except Exception as e:
         logger.error("upload_user_file endpoint failed", error_type=type(e).__name__, error=str(e))
         import traceback
 
         logger.error("Full traceback", traceback=traceback.format_exc())
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse({"error": "An internal error occurred."}, status_code=500)
 
 
 async def run_ingestion(
@@ -113,7 +114,8 @@ async def run_ingestion(
         )
         return JSONResponse(result)
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.error("run_ingestion endpoint failed", error_type=type(e).__name__, error=str(e))
+        return JSONResponse({"error": "An internal error occurred."}, status_code=500)
 
 
 async def upload_and_ingest_user_file(
