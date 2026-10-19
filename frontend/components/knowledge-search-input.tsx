@@ -1,10 +1,16 @@
 import { ArrowRight, Search, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { type ChangeEvent, type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { trackButton } from "@/lib/analytics";
+import { buildChunksUrl } from "@/lib/chunks-url";
 import { cn } from "@/lib/utils";
 import { filterAccentClasses } from "./knowledge-filter-panel";
+import {
+  SearchSuggestionsPopover,
+  useSearchSuggestionsBox,
+} from "./search-suggestions";
 
 export type KnowledgeSearchInputProps = {
   /** Controlled value — when set with onSearch, skips global queryOverride. */
@@ -40,6 +46,7 @@ export function KnowledgeSearchInput({
   inputClassName,
 }: KnowledgeSearchInputProps = {}) {
   const controlled = onSearch != null;
+  const router = useRouter();
   const {
     selectedFilter,
     setSelectedFilter,
@@ -68,8 +75,22 @@ export function KnowledgeSearchInput({
     }
   };
 
+  // Suggestions are for the knowledge page's commit-on-submit search. Controlled
+  // inputs (file-scoped panels) already filter live as you type.
+  const suggestions = useSearchSuggestionsBox({
+    query: inputValue,
+    filters: parsedFilterData?.filters,
+    enabled: !controlled,
+    onPickSuggestion: (text) => {
+      setDraft(text);
+      commitSearch(text);
+    },
+    onPickFile: (filename) => router.push(buildChunksUrl(filename, inputValue)),
+  });
+
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    suggestions.dismiss();
     commitSearch(inputValue);
   };
 
@@ -93,73 +114,77 @@ export function KnowledgeSearchInput({
       )}
       onSubmit={handleSubmit}
     >
-      <div
-        className={cn(
-          "primary-input group/input min-h-10 flex! w-full items-center flex-nowrap focus-within:border-foreground transition-colors p-[0.3rem]!",
-          inputClassName,
-        )}
-      >
-        {!hideFilterChip && selectedFilter?.name && (
-          <div
-            title={selectedFilter.name}
-            className={`flex items-center gap-1 h-full px-1.5 py-0.5 mr-1 rounded max-w-[25%] ${
-              filterAccentClasses[parsedFilterData?.color || "zinc"]
-            }`}
-          >
-            <span className="truncate text-xs font-medium">
-              {selectedFilter.name}
-            </span>
-            <X
-              aria-label="Remove filter"
-              className="h-4 w-4 shrink-0 cursor-pointer"
-              onClick={() => setSelectedFilter(null)}
-            />
-          </div>
-        )}
-        <Search
-          className="h-4 w-4 ml-1 shrink-0 text-placeholder-foreground"
-          strokeWidth={1.5}
-        />
-        <input
-          className="bg-transparent w-full h-full ml-2 focus:outline-hidden focus-visible:outline-hidden font-mono placeholder:font-mono"
-          name="search-query"
-          id="search-query"
-          type="text"
-          placeholder={placeholder ?? "Search your documents..."}
-          value={inputValue}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => {
-            const next = e.target.value;
-            if (controlled) {
-              // File-scoped panels filter as you type / paste.
-              onSearch(next);
-            } else {
-              setDraft(next);
-            }
-          }}
-        />
-        {showClear && (
-          <Button
-            variant="ghost"
-            className="h-full rounded-sm px-1.5! py-0!"
-            type="button"
-            onClick={handleClear}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
-        {!hideSubmit && (
-          <Button
-            variant="ghost"
-            className={cn(
-              "h-full rounded-sm px-1.5! py-0! hidden group-focus-within/input:block",
-              inputValue && "block",
-            )}
-            type="submit"
-          >
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        )}
-      </div>
+      <SearchSuggestionsPopover box={suggestions} query={inputValue}>
+        <div
+          {...suggestions.anchorProps}
+          className={cn(
+            "primary-input group/input min-h-10 flex! w-full items-center flex-nowrap focus-within:border-foreground transition-colors p-[0.3rem]!",
+            inputClassName,
+          )}
+        >
+          {!hideFilterChip && selectedFilter?.name && (
+            <div
+              title={selectedFilter.name}
+              className={`flex items-center gap-1 h-full px-1.5 py-0.5 mr-1 rounded max-w-[25%] ${
+                filterAccentClasses[parsedFilterData?.color || "zinc"]
+              }`}
+            >
+              <span className="truncate text-xs font-medium">
+                {selectedFilter.name}
+              </span>
+              <X
+                aria-label="Remove filter"
+                className="h-4 w-4 shrink-0 cursor-pointer"
+                onClick={() => setSelectedFilter(null)}
+              />
+            </div>
+          )}
+          <Search
+            className="h-4 w-4 ml-1 shrink-0 text-placeholder-foreground"
+            strokeWidth={1.5}
+          />
+          <input
+            {...(controlled ? {} : suggestions.inputProps)}
+            className="bg-transparent w-full h-full ml-2 focus:outline-hidden focus-visible:outline-hidden font-mono placeholder:font-mono"
+            name="search-query"
+            id="search-query"
+            type="text"
+            placeholder={placeholder ?? "Search your documents..."}
+            value={inputValue}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => {
+              const next = e.target.value;
+              if (controlled) {
+                // File-scoped panels filter as you type / paste.
+                onSearch(next);
+              } else {
+                setDraft(next);
+              }
+            }}
+          />
+          {showClear && (
+            <Button
+              variant="ghost"
+              className="h-full rounded-sm px-1.5! py-0!"
+              type="button"
+              onClick={handleClear}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+          {!hideSubmit && (
+            <Button
+              variant="ghost"
+              className={cn(
+                "h-full rounded-sm px-1.5! py-0! hidden group-focus-within/input:block",
+                inputValue && "block",
+              )}
+              type="submit"
+            >
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </SearchSuggestionsPopover>
     </form>
   );
 }
