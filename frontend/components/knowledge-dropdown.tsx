@@ -461,17 +461,39 @@ export function KnowledgeDropdown() {
       uploadBatchSize,
       maxUploadBytes,
     );
-    for (const file of oversized) {
-      toast.error("File too large", {
-        description: uploadTooLargeMessage(
-          file.name,
-          file.size,
-          maxUploadBytes,
-        ),
-      });
+    if (oversized.length > 0) {
+      toast.error(
+        oversized.length === 1
+          ? "1 file is over the upload limit"
+          : `${oversized.length} files are over the upload limit`,
+        {
+          description: oversized
+            .map((file) =>
+              uploadTooLargeMessage(file.name, file.size, maxUploadBytes),
+            )
+            .join("\n"),
+          duration: Number.POSITIVE_INFINITY,
+          closeButton: true,
+          classNames: { description: "whitespace-pre-line" },
+        },
+      );
     }
     const filesToSend = batches.flat();
     if (filesToSend.length === 0) {
+      if (oversized.length > 0) {
+        try {
+          const recorded = await uploadFiles([], false, false, {
+            rejectedFiles: oversized,
+          });
+          addTask(recorded.taskId, { source: "folder" });
+          refetchTasks();
+        } catch (error) {
+          console.error(
+            "[Folder Upload] Could not record skipped files:",
+            error,
+          );
+        }
+      }
       return { sentCount: 0, sentNames: [], oversizedCount: oversized.length };
     }
 
@@ -487,61 +509,69 @@ export function KnowledgeDropdown() {
 
     const taskIdsByBatch: (string | undefined)[] = [];
     const failedBatchIndexes: number[] = [];
-    // Cap parallel batch uploads so large folders don't open every request at once.
-    const batchConcurrency = Math.min(2, batches.length);
-    let nextBatchIndex = 0;
+    // Later batches join this task, so a folder that has to be split to stay
+    // under the request size still shows as one operation.
+    let sharedTaskId: string | undefined;
     // Set by any worker that gets previewMode=true; checked once after all
     // batches finish so a concurrent false cannot close a successful open.
     let previewModeConfirmed = false;
 
-    const runNextBatch = async () => {
-      while (nextBatchIndex < batches.length) {
-        const batchIndex = nextBatchIndex;
-        nextBatchIndex += 1;
-        const batch = batches[batchIndex];
-        if (!batch) continue;
+    const sendBatch = async (batchIndex: number, attachRejected: boolean) => {
+      const batch = batches[batchIndex];
+      if (!batch) return;
 
-        try {
-          const result = await uploadFiles(
-            batch,
-            replace,
-            ingestPreviewEnabled,
+      try {
+        const result = await uploadFiles(batch, replace, ingestPreviewEnabled, {
+          existingTaskId: batchIndex === 0 ? undefined : sharedTaskId,
+          rejectedFiles: attachRejected ? oversized : undefined,
+        });
+        if (batchIndex === 0) sharedTaskId = result.taskId;
+        addTask(result.taskId, { source: "folder" });
+        if (result.previewMode) {
+          previewModeConfirmed = true;
+          taskIdsByBatch[batchIndex] = result.taskId;
+          attachPreviewTaskIds(
+            taskIdsByBatch.filter((id): id is string => id !== undefined),
+            {
+              files: filesToSend,
+              filename: `${filesToSend.length} files`,
+            },
           );
-          addTask(result.taskId, { source: "folder" });
-          if (result.previewMode) {
-            previewModeConfirmed = true;
-            taskIdsByBatch[batchIndex] = result.taskId;
-            attachPreviewTaskIds(
-              taskIdsByBatch.filter((id): id is string => id !== undefined),
-              {
-                files: filesToSend,
-                filename: `${filesToSend.length} files`,
-              },
-            );
-            refetchTasks();
-          }
-        } catch (error) {
-          failedBatchIndexes.push(batchIndex);
-          trackProcessFailure({
-            processType: "Ingestion",
-            process: "Document Upload",
-            category: "Knowledge",
-            source: "folder",
-            resultValue:
-              error instanceof Error ? error.message : "Unknown error",
-          });
-          console.error("[Folder Upload] Batch upload failed:", error);
-          toast.error("Batch upload failed", {
-            description:
-              error instanceof Error ? error.message : "Unknown error",
-          });
+          refetchTasks();
         }
+      } catch (error) {
+        failedBatchIndexes.push(batchIndex);
+        trackProcessFailure({
+          processType: "Ingestion",
+          process: "Document Upload",
+          category: "Knowledge",
+          source: "folder",
+          resultValue: error instanceof Error ? error.message : "Unknown error",
+        });
+        console.error("[Folder Upload] Batch upload failed:", error);
+        toast.error("Batch upload failed", {
+          description: error instanceof Error ? error.message : "Unknown error",
+        });
       }
     };
 
-    await Promise.all(
-      Array.from({ length: batchConcurrency }, () => runNextBatch()),
-    );
+    await sendBatch(0, true);
+    const remaining = batches.length - 1;
+    if (remaining > 0) {
+      // Cap parallel batch uploads so large folders don't open every request at once.
+      const batchConcurrency = Math.min(2, remaining);
+      let nextBatchIndex = 1;
+      const runNextBatch = async () => {
+        while (nextBatchIndex < batches.length) {
+          const batchIndex = nextBatchIndex;
+          nextBatchIndex += 1;
+          await sendBatch(batchIndex, false);
+        }
+      };
+      await Promise.all(
+        Array.from({ length: batchConcurrency }, () => runNextBatch()),
+      );
+    }
 
     // Close the optimistic open only after all workers finish. Doing this
     // inside a worker races: a late previewMode=false can wipe a sibling's

@@ -250,8 +250,14 @@ export async function uploadFiles(
   files: File[],
   replace = false,
   preview = false,
+  options?: {
+    existingTaskId?: string;
+    rejectedFiles?: File[];
+  },
 ): Promise<{ taskId: string; fileCount: number; previewMode: boolean }> {
-  await assertFilesWithinUploadLimit(files);
+  if (files.length > 0) {
+    await assertFilesWithinUploadLimit(files);
+  }
 
   const formData = new FormData();
   for (const file of files) {
@@ -260,6 +266,20 @@ export async function uploadFiles(
   formData.append("replace_duplicates", replace.toString());
   if (preview) {
     formData.append("preview", "true");
+  }
+  if (options?.existingTaskId) {
+    formData.append("existing_task_id", options.existingTaskId);
+  }
+  if (options?.rejectedFiles && options.rejectedFiles.length > 0) {
+    formData.append(
+      "rejected_files",
+      JSON.stringify(
+        options.rejectedFiles.map((file) => ({
+          filename: file.name,
+          size: file.size,
+        })),
+      ),
+    );
   }
 
   const uploadResponse = await apiClient.post(

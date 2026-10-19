@@ -916,3 +916,37 @@ class TestGetTaskStatus2OpenSearchFailure:
         # ...but the raw error stays on the entry, which is the only way to
         # diagnose which OpenSearch operation actually failed.
         assert file_entry["error"].startswith("ConflictError(409, '{")
+
+
+class TestRejectedUploads:
+    def test_files_over_the_limit_stay_on_a_task(self, task_service):
+        task_id = task_service.record_rejected_uploads(
+            "user1",
+            [("huge.pdf", 5 * 1024 * 1024), ("big.pdf", 9 * 1024 * 1024)],
+        )
+
+        status = task_service.get_task_status2("user1", task_id)
+
+        assert status["status"] == "completed"
+        assert status["total_files"] == 2
+        assert status["failed_files"] == 2
+        assert status["successful_files"] == 0
+        names = {entry["filename"] for entry in status["files"].values()}
+        assert names == {"huge.pdf", "big.pdf"}
+        for entry in status["files"].values():
+            assert entry["status"] == "failed"
+            assert entry["actionable_by"] == "USER_ACTIONABLE"
+            assert "OPENRAG_MAX_UPLOAD_MB" in entry["user_facing_message"]
+
+    def test_later_rejections_join_the_same_task(self, task_service):
+        task_id = task_service.record_rejected_uploads("user1", [("huge.pdf", 5 * 1024 * 1024)])
+        task_service.record_rejected_uploads(
+            "user1",
+            [("big.pdf", 9 * 1024 * 1024)],
+            task_id=task_id,
+        )
+
+        status = task_service.get_task_status2("user1", task_id)
+
+        assert status["failed_files"] == 2
+        assert len(status["files"]) == 2
