@@ -242,12 +242,8 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "label": "Endpoint",
         "placeholder": "https://<resource>.services.ai.azure.com/",
         "tooltip": (
-            "Copy the resource endpoint from Azure's Keys and Endpoint page, for example "
-            "https://<resource>.services.ai.azure.com/. A resource root or /models base "
-            "uses the legacy inference API; /openai/v1 uses the OpenAI-compatible API. "
-            "Keep the endpoint that works for your deployment. Do not use a per-deployment "
-            "Target URI (.../openai/deployments/<name>/chat/completions), which pins "
-            "every selected model to one deployment."
+            "Copy the resource endpoint from Azure's Keys and Endpoint page. "
+            "Do not use a deployment-specific Target URI."
         ),
         "required": True,
         "field_type": "text",
