@@ -693,7 +693,7 @@ class OneDriveConnector(BaseConnector):
                             created_time=datetime.now(),
                             metadata={"onedrive_path": "", "size": 0},
                         )
-                raise ValueError(f"File not found: {file_id}")
+                raise FileNotFoundError(f"File not found: {file_id}")
 
             download_url = file_metadata.get("download_url")
             if download_url:
