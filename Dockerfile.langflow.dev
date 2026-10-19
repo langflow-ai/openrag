@@ -74,5 +74,8 @@ ENV LANGFLOW_DISABLE_TRACK_APIKEY_USAGE=true
 # first. App venv and ubi python dirs are appended last so they cannot shadow system binaries.
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/app/.venv/bin:/opt/app-root/bin:/opt/app-root/src/bin:/opt/app-root/src/.local/bin
 
+COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
+
 # Start the backend server
+ENTRYPOINT ["langflow-entrypoint"]
 CMD ["uv", "run", "langflow", "run", "--host", "0.0.0.0", "--port", "7860"]
