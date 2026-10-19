@@ -7,7 +7,7 @@
 <script>!function(){function e(){if(void 0!==window.truste&&window.truste.cma){var e=window.truste.cma.callApi("getConsent",window.location.href)||{},n=1===e[2],t=1===e[3];gtag("consent","update",{ad_storage:n?"granted":"denied",ad_user_data:n?"granted":"denied",ad_personalization:n?"granted":"denied",analytics_storage:t?"granted":"denied"})}}window.addEventListener&&(window.addEventListener("cm_data_subject_consent_changed",e),window.addEventListener("cm_consent_preferences_set",e)),"complete"===document.readyState?e():window.addEventListener("load",e)}()</script>
 <script>window._ibmAnalytics={settings:{name:"DataStax",tealiumProfileName:"ibm-subsidiary"},trustarc:{privacyPolicyLink:"https://ibm.com/privacy"}},window.digitalData={page:{pageInfo:{ibm:{siteId:"IBM_DataStax"}},category:{primaryCategory:"PC230"}}}</script>
 <script src="//1.www.s81c.com/common/stats/ibm-common.js" async="true"></script><link rel="stylesheet" href="/assets/css/styles.d0904ab7.css">
-<script src="/assets/js/runtime~main.d6e33c56.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.17749914.js" defer="defer"></script>
 <script src="/assets/js/main.2aaa3184.js" defer="defer"></script>
 </head>
 <body>
@@ -103,6 +103,16 @@ catalogue — otherwise an id hidden in Settings would reappear in onboarding.</
 today — are entered in <strong>Settings</strong> through a form built from the provider&#x27;s own
 credential fields. Configuring one needs no code change beyond its row in this
 file.</p>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="azure-ai-foundry-health">Azure AI Foundry health checks<a href="#azure-ai-foundry-health" class="hash-link" aria-label="Direct link to Azure AI Foundry health checks" title="Direct link to Azure AI Foundry health checks" translate="no">​</a></h4>
+<p>For <code>azure_ai</code>, a resource endpoint such as
+<code>https://&lt;resource&gt;.services.ai.azure.com/</code> or its <code>/models</code> form uses the
+legacy Foundry inference route. Keep that endpoint if inference is already
+working; the periodic health check uses the resource&#x27;s separate
+<code>/openai/v1/models</code> listing, not <code>GET /models</code>.</p>
+<p>Explicit <code>/openai/v1</code> endpoints, including project-scoped endpoints, keep their
+configured prefix when listing models. These lightweight checks do not run
+inference or consume model tokens, and a successful listing does not prove that
+a particular deployment supports chat or tool calling.</p>
 <h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="custom-openai-compatible-provider">Add a custom OpenAI-compatible provider<a href="#custom-openai-compatible-provider" class="hash-link" aria-label="Direct link to Add a custom OpenAI-compatible provider" title="Direct link to Add a custom OpenAI-compatible provider" translate="no">​</a></h4>
 <p>To offer a self-hosted OpenAI-compatible endpoint — vLLM, LM Studio, or an
 internal gateway — add a row that declares the model ids it serves. The public
