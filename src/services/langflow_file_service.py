@@ -1032,6 +1032,9 @@ class LangflowFileService:
                 "DoclingService is not configured. Ensure DOCLING_SERVE_URL is set "
                 "and the service was injected correctly."
             )
+        from services.docling_service import DoclingPayloadTooLarge
+        from utils.upload_limits import UploadTooLarge
+
         try:
             task_id = await self.docling_service.upload_to_docling_direct_async(
                 filename,
@@ -1052,6 +1055,8 @@ class LangflowFileService:
                 "[LF] Docling submission failed",
                 extra={"error": str(e), "filename": filename},
             )
+            if isinstance(e, (UploadTooLarge, DoclingPayloadTooLarge)):
+                raise
             raise Exception(f"Docling upload failed: {str(e)}") from e
 
     async def upload_and_ingest_file(

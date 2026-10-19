@@ -48,6 +48,9 @@ stringData:
     {{- if .Values.backend.uploadBatchSize }}
     UPLOAD_BATCH_SIZE={{ .Values.backend.uploadBatchSize }}
     {{- end }}
+    {{- if .Values.backend.maxUploadMb }}
+    OPENRAG_MAX_UPLOAD_MB={{ .Values.backend.maxUploadMb }}
+    {{- end }}
 
     # Langflow url
     LANGFLOW_URL={{ include "openrag.langflow.url" . | quote }}

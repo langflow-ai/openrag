@@ -57,6 +57,30 @@ def _store_task(task_service: TaskService, user_id: str, upload_task: UploadTask
 
 
 class TestInferFailureMetadata:
+    def test_upload_size_error_while_docling_is_still_pending(self, task_service):
+        message = (
+            '"report.pdf" (1.9 MB) was rejected by '
+            "https://docling-serve:5001/v1/convert/file/async with HTTP 413. "
+            "Raise that limit (nginx: client_max_body_size), or set "
+            "OPENRAG_MAX_UPLOAD_MB to the proxy's real limit."
+        )
+        ft = _make_file_task(
+            phase=IngestionPhase.DOCLING,
+            docling_status=DoclingPhaseStatus.PENDING,
+            error=f"Docling upload failed: {message}",
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "docling"
+        assert meta["failure_phase"] == "parsing"
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert meta["user_facing_message"].startswith('"report.pdf" is 1.9 MB.')
+        assert "document-processing service" in meta["user_facing_message"]
+        assert "within the configured upload limit" in meta["user_facing_message"]
+        assert "OPENRAG_MAX_UPLOAD_MB" in meta["user_facing_message"]
+        assert "docling-serve" not in meta["user_facing_message"]
+        assert "client_max_body_size" not in meta["user_facing_message"]
+
     def test_docling_failed_status(self, task_service):
         ft = _make_file_task(docling_status=DoclingPhaseStatus.FAILED)
         meta = task_service._infer_failure_metadata(ft)
@@ -892,3 +916,37 @@ class TestGetTaskStatus2OpenSearchFailure:
         # ...but the raw error stays on the entry, which is the only way to
         # diagnose which OpenSearch operation actually failed.
         assert file_entry["error"].startswith("ConflictError(409, '{")
+
+
+class TestRejectedUploads:
+    def test_files_over_the_limit_stay_on_a_task(self, task_service):
+        task_id = task_service.record_rejected_uploads(
+            "user1",
+            [("huge.pdf", 5 * 1024 * 1024), ("big.pdf", 9 * 1024 * 1024)],
+        )
+
+        status = task_service.get_task_status2("user1", task_id)
+
+        assert status["status"] == "completed"
+        assert status["total_files"] == 2
+        assert status["failed_files"] == 2
+        assert status["successful_files"] == 0
+        names = {entry["filename"] for entry in status["files"].values()}
+        assert names == {"huge.pdf", "big.pdf"}
+        for entry in status["files"].values():
+            assert entry["status"] == "failed"
+            assert entry["actionable_by"] == "USER_ACTIONABLE"
+            assert "OPENRAG_MAX_UPLOAD_MB" in entry["user_facing_message"]
+
+    def test_later_rejections_join_the_same_task(self, task_service):
+        task_id = task_service.record_rejected_uploads("user1", [("huge.pdf", 5 * 1024 * 1024)])
+        task_service.record_rejected_uploads(
+            "user1",
+            [("big.pdf", 9 * 1024 * 1024)],
+            task_id=task_id,
+        )
+
+        status = task_service.get_task_status2("user1", task_id)
+
+        assert status["failed_files"] == 2
+        assert len(status["files"]) == 2
