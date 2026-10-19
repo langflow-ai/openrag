@@ -26,6 +26,7 @@ import { isFileCancelled } from "@/lib/task-error-display";
 import {
   EMPTY_SEARCH_RESULT,
   type File,
+  RELEVANCE_HIDE_THRESHOLD,
   type RelevanceTier,
   type SearchResult,
   useGetSearchQuery,
@@ -40,6 +41,7 @@ import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-b
 import { KnowledgePaginationFooter } from "@/components/knowledge-pagination-footer";
 import { KnowledgeSearchBar } from "@/components/knowledge-search-bar";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
+import { LowRelevanceBanner } from "@/components/low-relevance-banner";
 import {
   getRelevanceReasoning,
   getScoreTier,
@@ -138,6 +140,13 @@ const AG_FIELD_TO_SORT_BY: Record<string, string> = {
   chunkCount: "chunk_count",
   status: "status",
 };
+
+export function isLowRelevanceFile(file: File): boolean {
+  return (
+    typeof file.maxScore === "number" &&
+    file.maxScore < RELEVANCE_HIDE_THRESHOLD
+  );
+}
 
 function listFilesFilterValues(values?: string[]) {
   const filtered = values?.filter((value) => value !== "*");
@@ -541,6 +550,7 @@ function SearchPage() {
     null,
   );
 
+  const [showLowRelevance, setShowLowRelevance] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [currentPageSize, setCurrentPageSize] = useState(25);
 
@@ -745,8 +755,13 @@ function SearchPage() {
     enabled: !isWildcardQuery,
   });
 
-  const { files: searchFiles, warnings: searchWarnings } =
+  const { files: allSearchFiles, warnings: searchWarnings } =
     searchData as SearchResult;
+
+  const lowRelevanceCount = allSearchFiles.filter(isLowRelevanceFile).length;
+  const searchFiles = showLowRelevance
+    ? allSearchFiles
+    : allSearchFiles.filter((file) => !isLowRelevanceFile(file));
 
   const isLoading = isWildcardQuery ? isListFilesLoading : isSearchLoading;
 
@@ -839,6 +854,7 @@ function SearchPage() {
   useEffect(() => {
     cursorCacheRef.current = new Map();
     setCurrentPage(1);
+    setShowLowRelevance(false);
   }, [effectiveSearchText, filterPageResetKey]);
 
   // when the server responds with an after_key for page N, cache it as the cursor for page N+1
@@ -1462,6 +1478,15 @@ function SearchPage() {
               )}
             />
           </div>
+        )}
+
+        {!isWildcardQuery && lowRelevanceCount > 0 && (
+          <LowRelevanceBanner
+            showingAll={showLowRelevance}
+            shownMessage="Showing files including those below 10% relevance"
+            hiddenMessage={`${lowRelevanceCount} file${lowRelevanceCount !== 1 ? "s" : ""} below 10% relevance hidden`}
+            onToggle={() => setShowLowRelevance((prev) => !prev)}
+          />
         )}
 
         <KnowledgePaginationFooter

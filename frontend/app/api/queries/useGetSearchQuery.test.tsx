@@ -277,21 +277,6 @@ describe("useGetSearchQuery", () => {
       expect(RELEVANCE_HIGH_THRESHOLD).toBeLessThanOrEqual(1);
       expect(RELEVANCE_MED_THRESHOLD).toBeGreaterThanOrEqual(0);
     });
-
-    it("clamps low-confidence semantic matches (outlier query with zero keyword marks) to Low tier", async () => {
-      // Outlier query with raw score 0.35 and 0 keyword highlights
-      serveSearch({
-        results: [
-          chunk({ filename: "unrelated.pdf", score: 0.35, highlights: [] }),
-        ],
-      });
-
-      const { result } = await runSearch("yo mama");
-
-      const file = result.current.data?.files[0];
-      expect(file?.maxScore).toBeLessThan(0.35); // Clamped by confidence factor
-      expect(file?.relevanceTier).toBe("low");
-    });
   });
 
   describe("grouping chunks (continued)", () => {

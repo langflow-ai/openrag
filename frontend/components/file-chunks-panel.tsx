@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Copy, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Check, Copy, Loader2 } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useFileScopedChunksQuery } from "@/app/api/queries/useFileScopedChunksQuery";
 import {
@@ -11,6 +11,7 @@ import {
 } from "@/app/api/queries/useGetSearchQuery";
 import { HighlightedText } from "@/components/highlighted-text";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
+import { LowRelevanceBanner } from "@/components/low-relevance-banner";
 import {
   getChunkRelevanceReasoning,
   getScoreTier,
@@ -519,45 +520,18 @@ export function FileChunksPanel({
         )}
 
         {hideIrrelevant && isSearchActive && totalLowCount > 0 && (
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 rounded-md border border-border/50 bg-muted/60 px-3 py-2 text-xs text-muted-foreground hover:bg-muted transition-colors"
-            onClick={() => setShowingAll((prev) => !prev)}
-          >
-            {showingAll ? (
-              <Eye className="h-3.5 w-3.5 shrink-0" />
-            ) : (
-              <EyeOff className="h-3.5 w-3.5 shrink-0" />
-            )}
-            <span className="flex-1 text-left">
-              {showingAll
-                ? "Showing all chunks including low-relevance"
-                : (() => {
-                    // When every scored chunk is low, the best one is still shown —
-                    // so only (totalLowCount - 1) are actually hidden.
-                    const allLow = totalLowCount === scoredChunks.length;
-                    const hiddenCount = allLow
-                      ? totalLowCount - 1
-                      : totalLowCount;
-                    if (hiddenCount === 0)
-                      return "Showing best result (low relevance)";
-                    return `${hiddenCount} low-relevance chunk${hiddenCount !== 1 ? "s" : ""} hidden`;
-                  })()}
-            </span>
-            <span className="flex items-center gap-1 font-medium text-foreground">
-              {showingAll ? (
-                <>
-                  <EyeOff className="h-3 w-3" />
-                  Hide low-relevance
-                </>
-              ) : (
-                <>
-                  <Eye className="h-3 w-3" />
-                  Show all
-                </>
-              )}
-            </span>
-          </button>
+          <LowRelevanceBanner
+            showingAll={showingAll}
+            shownMessage="Showing all chunks including low-relevance"
+            hiddenMessage={(() => {
+              const allLow = totalLowCount === scoredChunks.length;
+              const hiddenCount = allLow ? totalLowCount - 1 : totalLowCount;
+              if (hiddenCount === 0)
+                return "Showing best result (low relevance)";
+              return `${hiddenCount} low-relevance chunk${hiddenCount !== 1 ? "s" : ""} hidden`;
+            })()}
+            onToggle={() => setShowingAll((prev) => !prev)}
+          />
         )}
 
         {isFetching ? (

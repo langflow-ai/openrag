@@ -113,6 +113,7 @@ const EMPTY_SEARCH_RESULT: SearchResult = { files: [], warnings: [] };
 export { EMPTY_SEARCH_RESULT };
 
 /** Min-max normalised score thresholds for bucketing chunks into High / Medium / Low tiers. */
+export const RELEVANCE_HIDE_THRESHOLD = 0.1;
 export const RELEVANCE_HIGH_THRESHOLD = 0.65;
 export const RELEVANCE_MED_THRESHOLD = 0.35;
 
@@ -245,34 +246,8 @@ export const useGetSearchQuery = (
       const globalMax = Math.max(...rawScores);
       const scoreSpread = globalMax - globalMin;
 
-      // Confidence-weighted normalization:
-      // When all results are purely semantic with zero keyword matches and low raw scores,
-      // scale down the confidence factor so outlier queries (e.g. nonsense words) don't inflate to 100%.
-      const anyHasKeywordHighlights = allChunks.some(
-        (c) =>
-          Array.isArray(c.highlights) &&
-          c.highlights.length > 0 &&
-          c.highlights.some((h) => h.includes("<mark>")),
-      );
-
-      const SEMANTIC_CONFIDENCE_CEILING = 0.55;
-      const SEMANTIC_CONFIDENCE_FLOOR = 0.3;
-      const confidenceFactor =
-        anyHasKeywordHighlights || globalMax >= SEMANTIC_CONFIDENCE_CEILING
-          ? 1.0
-          : Math.max(
-              0.15,
-              Math.min(
-                1.0,
-                (globalMax - SEMANTIC_CONFIDENCE_FLOOR) /
-                  (SEMANTIC_CONFIDENCE_CEILING - SEMANTIC_CONFIDENCE_FLOOR),
-              ),
-            );
-
-      const normalise = (raw: number): number => {
-        const baseNorm = scoreSpread > 0 ? (raw - globalMin) / scoreSpread : 1;
-        return baseNorm * confidenceFactor;
-      };
+      const normalise = (raw: number): number =>
+        scoreSpread > 0 ? (raw - globalMin) / scoreSpread : 1;
 
       const toTier = (norm: number): RelevanceTier =>
         norm >= RELEVANCE_HIGH_THRESHOLD

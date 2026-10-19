@@ -21,7 +21,10 @@
 import { render, screen } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
-import type { File } from "@/app/api/queries/useGetSearchQuery";
+import {
+  type File,
+  RELEVANCE_HIDE_THRESHOLD,
+} from "@/app/api/queries/useGetSearchQuery";
 import { getRelevanceReasoning } from "@/components/relevance-signal-icon";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { authPresets } from "@/test-utils/fixtures/auth";
@@ -38,6 +41,7 @@ import ProtectedSearchPage, {
   getSkippedWarningText,
   getSourceIcon,
   getStatusSortRank,
+  isLowRelevanceFile,
   isSkippedStatus,
   RelevanceCellContent,
   resolveActionsVariant,
@@ -606,6 +610,32 @@ describe("RelevanceCellContent", () => {
   });
 });
 
+describe("isLowRelevanceFile", () => {
+  const file = (maxScore?: number) => ({ filename: "a.pdf", maxScore }) as File;
+
+  it("is true below the hide threshold", () => {
+    expect(isLowRelevanceFile(file(0))).toBe(true);
+    expect(isLowRelevanceFile(file(0.01))).toBe(true);
+    expect(isLowRelevanceFile(file(RELEVANCE_HIDE_THRESHOLD - 0.001))).toBe(
+      true,
+    );
+  });
+
+  it("is false at or above the hide threshold", () => {
+    expect(isLowRelevanceFile(file(RELEVANCE_HIDE_THRESHOLD))).toBe(false);
+    expect(isLowRelevanceFile(file(0.5))).toBe(false);
+    expect(isLowRelevanceFile(file(1))).toBe(false);
+  });
+
+  it("is false when the file has no score", () => {
+    expect(isLowRelevanceFile(file(undefined))).toBe(false);
+  });
+
+  it("uses a 10% cutoff", () => {
+    expect(RELEVANCE_HIDE_THRESHOLD).toBe(0.1);
+  });
+});
+
 describe("SearchPage — column-definition smoke-test", () => {
   /**
    * Rendering the page (even with no data) exercises the body of SearchPage,
@@ -651,5 +681,87 @@ describe("SearchPage — column-definition smoke-test", () => {
         screen.queryByRole("heading", { name: /knowledge/i }),
       ).not.toBeNull(),
     );
+  });
+});
+
+describe("SearchPage — low-relevance banner", () => {
+  const searchChunk = (filename: string, score: number) => ({
+    filename,
+    mimetype: "application/pdf",
+    page: 1,
+    text: `text of ${filename}`,
+    score,
+  });
+
+  async function renderAndSearch(results: ReturnType<typeof searchChunk>[]) {
+    setMockLocation({ pathname: "/knowledge" });
+
+    renderWithProviders(<ProtectedSearchPage />, {
+      providers: "all",
+      auth: authPresets.admin,
+      handlers: [
+        http.get("/api/files", () =>
+          HttpResponse.json({
+            files: [],
+            total: 0,
+            is_approximate: false,
+            page: 1,
+            page_size: 20,
+            after_key: null,
+          }),
+        ),
+        http.post("/api/search", () =>
+          HttpResponse.json({ results, warnings: [] }),
+        ),
+        http.get("/api/upload_options", () => HttpResponse.json({})),
+        http.get("/api/connectors", () =>
+          HttpResponse.json({ connectors: [] }),
+        ),
+        http.get("/api/connectors/:name/defaults", () => HttpResponse.json({})),
+      ],
+    });
+
+    const input = await screen.findByPlaceholderText(
+      "Search your documents...",
+    );
+    await userEvent.type(input, "term{Enter}");
+  }
+
+  it("hides files below 10% by default and reveals them from the banner", async () => {
+    // Normalised: best.pdf = 1.0, middle.pdf = 0.5, worst.pdf = 0.0
+    await renderAndSearch([
+      searchChunk("best.pdf", 4),
+      searchChunk("middle.pdf", 3),
+      searchChunk("worst.pdf", 2),
+    ]);
+
+    const banner = await screen.findByText("1 file below 10% relevance hidden");
+    expect(banner).toBeInTheDocument();
+    expect(screen.queryByText("worst.pdf")).not.toBeInTheDocument();
+
+    await userEvent.click(banner);
+
+    expect(
+      await screen.findByText(
+        "Showing files including those below 10% relevance",
+      ),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("worst.pdf")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Hide low-relevance"));
+
+    expect(
+      await screen.findByText("1 file below 10% relevance hidden"),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText("worst.pdf")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("does not render the banner when no file is below 10%", async () => {
+    await renderAndSearch([searchChunk("only.pdf", 4)]);
+
+    expect(await screen.findByText("only.pdf")).toBeInTheDocument();
+    expect(screen.queryByText(/below 10% relevance/)).not.toBeInTheDocument();
   });
 });

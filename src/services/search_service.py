@@ -37,6 +37,64 @@ EMBEDDING_SPACE_PAGE_SIZE = 100
 _global_search_service = None
 
 
+_STOPWORDS = frozenset(
+    "a an and are as at be but by for from if in into is it of on or so that the "
+    "their then there these this to was were what when where which who why will with".split()
+)
+
+
+def _keyword_query(query: str) -> str:
+    """Drop filler words from the keyword leg of a multi-word query.
+
+    The semantic leg still embeds the full query. A filler word counts as a
+    keyword match (and gets highlighted) only when it is the whole query, or
+    when it sits inside a phrase matched by the phrase clause.
+    """
+    tokens = query.split()
+    if len(tokens) < 2:
+        return query
+    kept = [t for t in tokens if t.lower().strip(".,;:!?\"'()[]") not in _STOPWORDS]
+    return " ".join(kept) if kept else query
+
+
+_KEYBOARD_ROWS = ("qwertyuiop", "asdfghjkl", "zxcvbnm")
+
+
+def _is_noise_token(token: str) -> bool:
+    """Return True for tokens that are clearly keyboard mash, not language.
+
+    Deliberately conservative: only repeated characters, keyboard-row runs,
+    long vowel-less words and very long consonant runs. Vowel-poor real terms
+    ("https", "pgsql", "rhythms", "strengths") and invented-but-pronounceable
+    words must pass.
+    """
+    token = token.lower()
+    if not token.isalpha() or not token.isascii():
+        return False
+    length = len(token)
+    if length >= 2 and len(set(token)) == 1:
+        return True
+    if length >= 5 and any(token in row for row in _KEYBOARD_ROWS):
+        return True
+    if length >= 6 and not re.search(r"[aeiouy]", token):
+        return True
+    return (
+        length >= 8
+        and re.search(r"[^aeiouy]{5,}", token) is not None
+        and re.search(r"ngths|lfths|ghts|ngst", token) is None
+    )
+
+
+def _is_noise_query(query: str) -> bool:
+    """Return True when every token of the query is keyboard mash.
+
+    Such queries get no semantic (kNN) leg: an embedding model always returns
+    nearest neighbours, so gibberish would otherwise match arbitrary chunks.
+    """
+    tokens = re.findall(r"\w+", query, flags=re.UNICODE)
+    return bool(tokens) and all(_is_noise_token(t) for t in tokens)
+
+
 def _is_exact_token_query(query: str) -> bool:
     """Return True for code/token-like queries (identifiers, versions, SKUs)
     that warrant exact-file narrowing; ordinary prose returns False."""
@@ -416,6 +474,10 @@ class SearchService:
                         )
                     ]
 
+            if _is_noise_query(query):
+                logger.info("Skipping semantic search for noise query")
+                available_spaces = []
+
             # Parallelize embedding generation for all models
             async def embed_with_space(
                 space: EmbeddingSpace,
@@ -584,7 +646,7 @@ class SearchService:
                 [
                     {
                         "multi_match": {
-                            "query": query,
+                            "query": _keyword_query(query),
                             "fields": ["text^2", "filename^1.5"],
                             "type": "best_fields",
                             "operator": "or",
