@@ -211,6 +211,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.langflow
+      args:
+        LANGFLOW_ROOT_PATH: ${LANGFLOW_ROOT_PATH:-}
     container_name: ${COMPOSE_PROJECT_NAME:-openrag}-langflow
     ports:
       - "${LANGFLOW_PORT:-7860}:7860"

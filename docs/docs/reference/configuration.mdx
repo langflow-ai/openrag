@@ -367,6 +367,59 @@ Configure general system components, session management, and logging.
 
 The frontend base path accepts an optional leading slash and removes trailing slashes. It may contain only letters, digits, `/`, `.`, `_`, `~`, and `-`; double slashes and `.` or `..` segments are invalid. The container startup script updates a temporary copy of Next.js standalone output and browser assets, leaving the image files unchanged. Keep `/tmp` writable, or set `OPENRAG_FRONTEND_RUNTIME_DIR` to a writable directory outside the application source. Read-only root filesystems and custom runtime UIDs are supported when that runtime directory is writable.
 
+### Langflow behind a URL prefix
+
+Langflow's frontend uses build-time constants. Unlike `OPENRAG_FRONTEND_BASE_PATH`,
+`LANGFLOW_ROOT_PATH` requires an image rebuild; setting it only on a running
+prebuilt container does not move the UI.
+
+Set these values in `.env`:
+
+```bash
+LANGFLOW_ROOT_PATH=/langflow
+LANGFLOW_PUBLIC_URL=https://example.com/langflow/
+```
+
+Use an absolute prefix without a trailing slash, empty segments, or dot segments.
+Leave `LANGFLOW_ROOT_PATH` empty for root hosting. Build and recreate the services:
+
+```bash
+docker compose build langflow
+docker compose up -d --no-deps --force-recreate langflow openrag-backend
+```
+
+Both Langflow Dockerfiles configure the frontend basename, v1/v2 API URLs, and
+health URL before building. The image also sets the backend's ASGI root path to
+the same value. Do not override that environment variable at runtime with a
+different prefix. The development Compose override inherits the build argument.
+Keep OpenRAG's internal `LANGFLOW_URL=http://langflow:7860` unchanged; only
+`LANGFLOW_PUBLIC_URL` uses the externally visible prefix.
+
+Configure the reverse proxy to strip `/langflow/` before forwarding:
+
+```nginx
+location = /langflow {
+    return 308 /langflow/;
+}
+
+location /langflow/ {
+    proxy_pass http://127.0.0.1:7860/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Prefix /langflow;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_buffering off;
+}
+```
+
+The trailing slash on `proxy_pass` is required to strip the prefix. Verify login,
+direct-page refreshes, flow streaming, and WebSockets through the public URL
+before deploying. For Helm deployments, use the image built with the required
+prefix and configure the ingress rewrite separately.
+
 ## Observability and APM settings {#observability-and-apm-settings}
 
 Instrument OpenRAG Backend with [IBM Instana](https://www.ibm.com/products/instana) for application performance monitoring and distributed tracing.

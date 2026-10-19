@@ -1,5 +1,19 @@
 # syntax=docker/dockerfile:1.4
 
+# Build the UI from the same release as the backend; root_path alone does not
+# change the prebuilt image's browser routes or asset URLs.
+FROM node:22-bookworm-slim AS langflow-frontend
+ARG LANGFLOW_ROOT_PATH=
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 --branch v1.12.3 https://github.com/langflow-ai/langflow.git /langflow
+WORKDIR /langflow/src/frontend
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+RUN npm ci --maxsockets 1
+COPY scripts/configure_langflow_base_path.mjs /tmp/configure_langflow_base_path.mjs
+RUN node /tmp/configure_langflow_base_path.mjs src/customization/config-constants.ts "$LANGFLOW_ROOT_PATH" \
+    && NODE_OPTIONS=--max_old_space_size=4096 npm run build
+
 # -----------------------------------------------------------------------------
 # Stage: lxml-build
 # lxml's PyPI wheels statically bundle their own libxml2 (2.14.6 as of lxml
@@ -32,6 +46,12 @@ RUN pip wheel --no-cache-dir --no-deps --no-binary lxml -w /wheels \
 # Stage: runtime
 # -----------------------------------------------------------------------------
 FROM langflowai/langflow:base-1.12.3
+
+ARG LANGFLOW_ROOT_PATH=
+ENV LANGFLOW_ROOT_PATH=${LANGFLOW_ROOT_PATH}
+# Use an explicit frontend path rather than depending on site-packages layout.
+COPY --from=langflow-frontend /langflow/src/frontend/build /app/openrag-langflow-frontend
+ENV LANGFLOW_FRONTEND_PATH=/app/openrag-langflow-frontend
 
 # Install uv, then pre-create the Langflow data directory as root.
 # Langflow 1.12's base image runs as uid=1000, but /app itself is not writable.
@@ -83,7 +103,7 @@ COPY custom_components/ /app/custom_components/
 COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
 COPY scripts/patch_langflow_openrag_bundle.py /tmp/patch_langflow_openrag_bundle.py
 USER root
-RUN python3 /tmp/patch_langflow_openrag_bundle.py
+RUN python3 /tmp/patch_langflow_openrag_bundle.py /app/openrag-langflow-frontend
 ENV LANGFLOW_SSRF_ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal
 ENV LANGFLOW_LOG_TRACE_LOCALS=false
 ENV LANGFLOW_LOG_FORMAT=key_value

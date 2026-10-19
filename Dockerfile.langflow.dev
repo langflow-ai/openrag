@@ -11,6 +11,8 @@ ENV RUSTFLAGS="--cfg reqwest_unstable"
 # Accept build arguments for git repository and branch
 ARG GIT_REPO=https://github.com/langflow-ai/langflow.git
 ARG GIT_BRANCH=main
+ARG LANGFLOW_ROOT_PATH=
+ENV LANGFLOW_ROOT_PATH=${LANGFLOW_ROOT_PATH}
 
 WORKDIR /app
 
@@ -43,6 +45,8 @@ RUN uv sync --frozen --no-install-project --no-editable --extra postgresql
 # Build frontend (split into steps to reduce peak memory usage)
 WORKDIR /app/src/frontend
 ENV PUPPETEER_SKIP_DOWNLOAD=true
+COPY scripts/configure_langflow_base_path.mjs /tmp/configure_langflow_base_path.mjs
+RUN node /tmp/configure_langflow_base_path.mjs src/customization/config-constants.ts "$LANGFLOW_ROOT_PATH"
 # Install dependencies first
 RUN npm ci --maxsockets 1
 # Build with reduced memory - 4GB should be safer for most systems
