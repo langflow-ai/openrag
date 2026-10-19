@@ -31,7 +31,7 @@ func TestFrontendBasePathHelmRouting(t *testing.T) {
 				"--set-string", "ingress.hosts.frontend.paths[0].path=" + tc.ingressPath,
 			}
 			if tc.basePath != "" {
-				args = append(args, "--set-string", "frontend.basePath=" + tc.basePath)
+				args = append(args, "--set-string", "frontend.basePath="+tc.basePath)
 			}
 			cmd := exec.Command("helm", args...)
 			output, err := cmd.CombinedOutput()
