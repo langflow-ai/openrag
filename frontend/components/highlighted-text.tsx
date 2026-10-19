@@ -39,7 +39,7 @@ function parseFragment(
           className={
             semanticTier
               ? SEMANTIC_MARK_CLASS[semanticTier]
-              : "bg-yellow-200 dark:bg-yellow-800 text-foreground rounded-[2px] px-[1px] not-italic"
+              : "bg-yellow-200 dark:bg-yellow-800 text-foreground rounded-[2px] px-px not-italic"
           }
         >
           {inner}

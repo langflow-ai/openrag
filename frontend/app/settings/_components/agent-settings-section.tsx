@@ -363,7 +363,7 @@ export function AgentSettingsSection() {
         </div>
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-4">
-            <Label htmlFor="system-prompt" className="font-medium !text-mmd">
+            <Label htmlFor="system-prompt" className="font-medium text-mmd!">
               Agent instructions
             </Label>
             <span
@@ -390,7 +390,7 @@ export function AgentSettingsSection() {
             className={cn(
               "resize-y",
               systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS &&
-                "!border-destructive focus:border-destructive",
+                "border-destructive! focus:border-destructive",
             )}
           />
         </div>

@@ -114,21 +114,19 @@ function pruneNonDeletableGridSelection(
 }
 
 // Function to get the appropriate icon for a connector type
-function getSourceIcon(connectorType?: string) {
+export function getSourceIcon(connectorType?: string) {
   if (connectorType) {
     const Icon = getConnectorDescriptor(connectorType)?.Icon;
-    if (Icon) return <Icon className="h-4 w-4 text-foreground flex-shrink-0" />;
+    if (Icon) return <Icon className="h-4 w-4 text-foreground shrink-0" />;
   }
   switch (connectorType) {
     case "openrag_docs":
     case "url":
-      return <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />;
+      return <Globe className="h-4 w-4 text-muted-foreground shrink-0" />;
     case "s3":
-      return <Cloud className="h-4 w-4 text-foreground flex-shrink-0" />;
+      return <Cloud className="h-4 w-4 text-foreground shrink-0" />;
     default:
-      return (
-        <FileIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-      );
+      return <FileIcon className="h-4 w-4 text-muted-foreground shrink-0" />;
   }
 }
 
@@ -209,7 +207,7 @@ export function SkippedStatusCell({ warning }: { warning?: string }) {
       <TooltipContent
         side="top"
         align="end"
-        className="max-w-80 whitespace-pre-wrap break-words"
+        className="max-w-80 whitespace-pre-wrap wrap-break-word"
       >
         {warningText}
       </TooltipContent>
@@ -459,7 +457,7 @@ export function StatusCellContent({
         <TooltipContent
           side="top"
           align="end"
-          className="max-w-80 whitespace-pre-wrap break-words"
+          className="max-w-80 whitespace-pre-wrap wrap-break-word"
         >
           {data.error}
         </TooltipContent>
@@ -1277,7 +1275,7 @@ function SearchPage() {
           </div>
         ) : (
           /* Search Input Area */
-          <div className="flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
+          <div className="flex items-center shrink-0 flex-wrap-reverse gap-3 mb-6">
             {!isNarrow && (
               <KnowledgeSearchInput placeholder="Search your documents..." />
             )}
@@ -1285,7 +1283,7 @@ function SearchPage() {
             <Button
               type="button"
               variant="outline"
-              className="rounded-lg flex-shrink-0"
+              className="rounded-lg shrink-0"
               disabled={
                 syncAllConnectorsMutation.isPending ||
                 syncAllPreviewMutation.isPending
@@ -1309,7 +1307,7 @@ function SearchPage() {
               <Button
                 type="button"
                 variant="outline"
-                className="rounded-lg flex-shrink-0"
+                className="rounded-lg shrink-0"
                 disabled={refreshOpenragDocsMutation.isPending}
                 onClick={async () => {
                   trackButton({
@@ -1342,7 +1340,7 @@ function SearchPage() {
               <Button
                 type="button"
                 variant="destructive"
-                className="rounded-lg flex-shrink-0"
+                className="rounded-lg shrink-0"
                 onClick={() => setShowBulkDeleteDialog(true)}
               >
                 Delete

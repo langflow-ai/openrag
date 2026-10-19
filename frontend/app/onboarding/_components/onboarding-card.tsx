@@ -20,6 +20,7 @@ import {
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import { useDoclingHealth } from "@/components/docling-health-banner";
+import { providerDiscoversModels } from "@/components/models/catalog-models";
 import {
   EMBEDDING_PROVIDER_ORDER,
   getProviderChrome,
@@ -66,7 +67,9 @@ const STEP_LIST = [
 ];
 
 // Providers whose model inventory is read live from the running service, so an
-// empty catalogue list says nothing about what they can serve.
+// empty catalogue list says nothing about what they can serve. Provider
+// enhancements that list their models from typed credentials
+// (`discovers_models`) are in the same position until onboarding asks them.
 const LIVE_MODEL_PROVIDERS = new Set(["ollama", "watsonx"]);
 
 const EMBEDDING_STEP_LIST = [
@@ -120,13 +123,18 @@ const OnboardingCard = ({
   // The embedding step must not offer a provider that serves no embedding
   // models — Anthropic being the standing example. The catalogue answers that
   // for every provider except the two whose inventory comes from the running
-  // server rather than LiteLLM's bundled list.
+  // server rather than LiteLLM's bundled list, and those that discover their
+  // models from the credentials typed here — for them an empty list means "not
+  // asked yet", and hiding the tab would leave nowhere to type them.
   const tabProviders = useMemo(() => {
     if (!isEmbedding) {
       return providerKeys;
     }
     return providerKeys.filter((providerKey) => {
-      if (LIVE_MODEL_PROVIDERS.has(providerKey)) {
+      if (
+        LIVE_MODEL_PROVIDERS.has(providerKey) ||
+        providerDiscoversModels(catalog, providerKey)
+      ) {
         return true;
       }
       const entry = catalog?.providers?.find(
@@ -200,6 +208,29 @@ const OnboardingCard = ({
       }
     }
   }
+
+  // Why Submit must wait, per provider tab — a generic provider whose endpoint
+  // changed needs its saved secret typed again. Keyed by provider so a tab
+  // reporting late can never block another one.
+  const [credentialBlockers, setCredentialBlockers] = useState<
+    Record<string, string>
+  >({});
+  const handleCompletionBlockerChange = (
+    provider: string,
+    blocker: string | null,
+  ) => {
+    setCredentialBlockers((prev) => {
+      if ((prev[provider] ?? null) === blocker) return prev;
+      const next = { ...prev };
+      if (blocker) {
+        next[provider] = blocker;
+      } else {
+        delete next[provider];
+      }
+      return next;
+    });
+  };
+  const credentialBlocker = credentialBlockers[modelProvider] ?? null;
 
   const handleSetModelProvider = (provider: string) => {
     setModelProvider(provider);
@@ -520,6 +551,12 @@ const OnboardingCard = ({
       toast.error("Please complete all required fields");
       return;
     }
+    // The button is disabled too; this keeps a stale secret from ever being
+    // submitted for a changed endpoint, which the backend would refuse.
+    if (credentialBlocker) {
+      toast.error(credentialBlocker);
+      return;
+    }
 
     // Clear any previous error
     setError(null);
@@ -595,6 +632,7 @@ const OnboardingCard = ({
     isEmbedding,
     llmModel: settings.llm_model ?? "",
     embeddingModel: settings.embedding_model ?? "",
+    credentialBlocker,
   });
 
   return (
@@ -652,7 +690,7 @@ const OnboardingCard = ({
                                 "data-[state=active]:border-destructive",
                               // Fixed 3-up basis so every card is the same width
                               // (like a grid) while flex still fills the row.
-                              "min-w-52 grow-0 basis-[calc((100%_-_1.5rem)/3)]",
+                              "min-w-52 grow-0 basis-[calc((100%-1.5rem)/3)]",
                             )}
                           >
                             <TabTrigger
@@ -765,6 +803,9 @@ const OnboardingCard = ({
                         setSettings={setSettings}
                         isEmbedding={isEmbedding}
                         providers={currentSettings?.providers}
+                        onCompletionBlockerChange={(blocker) =>
+                          handleCompletionBlockerChange(providerKey, blocker)
+                        }
                       />
                     )}
                   </TabsContent>
@@ -789,7 +830,8 @@ const OnboardingCard = ({
                   <TooltipContent>
                     {isLoadingModels
                       ? "Loading models..."
-                      : "Please fill in all required fields"}
+                      : (credentialBlocker ??
+                        "Please fill in all required fields")}
                   </TooltipContent>
                 )}
               </Tooltip>

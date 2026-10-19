@@ -864,13 +864,13 @@ export function KnowledgeDropdown() {
       <div className="flex h-12 pointer-events-none">
         <Button
           variant="outline"
-          className="h-12 px-6 rounded-l-lg rounded-r-none border-r-0 text-[var(--icon-disabled)] cursor-not-allowed"
+          className="h-12 px-6 rounded-l-lg rounded-r-none border-r-0 text-(--icon-disabled) cursor-not-allowed"
         >
           <span>Add {isCloudBrand ? `knowledge` : `Knowledge`}</span>
         </Button>
         <Button
           variant="outline"
-          className="h-12 w-12 flex-shrink-0 rounded-r-lg rounded-l-none border-l border-border text-[var(--icon-disabled)] cursor-not-allowed"
+          className="h-12 w-12 shrink-0 rounded-r-lg rounded-l-none border-l border-border text-(--icon-disabled) cursor-not-allowed"
           aria-label="Open add knowledge menu"
         >
           <ChevronDown className="h-5 w-5" />
@@ -913,7 +913,7 @@ export function KnowledgeDropdown() {
                 variant="default"
                 size="icon"
                 disabled={isLoading}
-                className="h-12 w-12 flex-shrink-0 border-l border-placeholder bg-blue-600 text-primary-foreground hover:bg-blue-700"
+                className="h-12 w-12 shrink-0 border-l border-placeholder bg-blue-600 text-primary-foreground hover:bg-blue-700"
                 aria-label="Open add knowledge menu"
               >
                 {!isLoading && (
