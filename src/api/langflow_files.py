@@ -16,7 +16,7 @@ from dependencies import (
 from session_manager import User
 from utils.file_utils import langflow_safe_filename_and_mimetype
 from utils.logging_config import get_logger
-from utils.upload_limits import UploadTooLarge, read_upload_within_limit
+from utils.upload_limits import UploadTooLarge, read_upload_within_limit, upload_too_large_message
 
 logger = get_logger(__name__)
 
@@ -56,10 +56,9 @@ async def upload_user_file(
         logger.debug("Upload successful", result=result)
         return JSONResponse(result, status_code=201)
     except UploadTooLarge as e:
+        message = upload_too_large_message(e.filename, e.size_bytes, e.limit_mb)
         logger.warning("Upload rejected: file too large", error_type=type(e).__name__)
-        return JSONResponse(
-            {"error": "Uploaded file exceeds the allowed size limit."}, status_code=413
-        )
+        return JSONResponse({"error": message}, status_code=413)
     except Exception as e:
         logger.error("upload_user_file endpoint failed", error_type=type(e).__name__, error=str(e))
         import traceback
@@ -189,10 +188,9 @@ async def upload_and_ingest_user_file(
             raise
 
     except UploadTooLarge as e:
-        logger.warning("Upload rejected: file too large", error=str(e))
-        return JSONResponse(
-            {"error": "Uploaded file exceeds the allowed size limit."}, status_code=413
-        )
+        message = upload_too_large_message(e.filename, e.size_bytes, e.limit_mb)
+        logger.warning("Upload rejected: file too large", error=message)
+        return JSONResponse({"error": message}, status_code=413)
     except Exception as e:
         logger.error("upload_and_ingest_user_file endpoint failed", error=str(e))
         return JSONResponse({"error": str(e)}, status_code=500)
