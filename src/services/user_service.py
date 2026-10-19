@@ -303,6 +303,13 @@ async def _assign_default_role_if_missing(
     audit_repo: AuditRepo,
     user_id: str,
 ) -> None:
+    """Repair a user row that ended up with no role assignment.
+
+    ``ensure_user_row``'s early-return branches (existing-row fast path,
+    legacy-merge, IntegrityError race recovery) historically left some rows
+    roleless when a concurrent caller raced the role INSERT. Idempotent:
+    no-ops once a role exists.
+    """
     roles = await role_repo.list_user_roles(user_id)
     if roles:
         return
