@@ -1,9 +1,11 @@
 """Upload size limit shared by the API, Docling submission, and task errors.
 
 The proxy in front of Docling Serve rejects the request body (often at 1 MB).
-OpenRAG refuses a larger file at upload time. A 413 from that proxy uses a
-separate message that still carries the limit marker. URL ingest does not post
-a file body and does not use this limit.
+OpenRAG refuses a larger file before a task is created and again before the
+file is posted to Docling. The HTTP body is already received by then; a reverse
+proxy in front of OpenRAG is what caps it while it arrives. A 413 from the
+Docling proxy uses a separate message that still carries the limit marker.
+URL ingest does not post a file body and does not use this limit.
 """
 
 from __future__ import annotations
@@ -14,8 +16,8 @@ _MIB = 1024 * 1024
 _READ_CHUNK = 1 << 20
 _MARKER = "OPENRAG_MAX_UPLOAD_MB"
 _UNITS = ("B", "KB", "MB", "GB", "TB")
-# Operator text stored before a Docling task exists: filename, size, then the
-# internal endpoint. The task UI must not show that endpoint.
+# Backstop. Callers store the user line, not this operator shape. If a task
+# error still has "was rejected by <endpoint>", hide that endpoint.
 _PROXY_REJECTION = re.compile(r'^"(?P<filename>.*)" \((?P<size>[^)]+)\) was rejected by \S+')
 
 
@@ -65,13 +67,17 @@ def upload_too_large_message(filename: str, size_bytes: int, limit_mb: int) -> s
 def docling_rejected_size_message(filename: str, size_label: str, limit_mb: int) -> str:
     """User-facing line when the document-processing service rejects the file.
 
-    Distinct from ``upload_too_large_message``, which is OpenRAG refusing the
-    upload. The marker keeps task classification on the size-error path.
+    The file is already within ``OPENRAG_MAX_UPLOAD_MB``; a proxy in front of
+    that service rejected it. Distinct from ``upload_too_large_message``. The
+    marker keeps task classification on the size-error path. The nginx remedy
+    stays in the operator log, not here.
     """
     return (
         f'"{filename}" is {size_label}. '
         "The document-processing service rejected the file because of its size. "
-        f"The upload limit is {limit_mb} MB ({_MARKER})."
+        f"This file is within the configured upload limit ({limit_mb} MB, {_MARKER}). "
+        "A proxy in front of that service is enforcing a smaller limit. "
+        f"Ask an administrator to raise it, or set {_MARKER} to that proxy's limit."
     )
 
 
@@ -92,11 +98,11 @@ def ensure_within_upload_limit(filename: str | None, size_bytes: int) -> None:
 
 
 async def read_upload_within_limit(upload_file, filename: str | None = None) -> bytes:
-    """Read an upload, stopping once it crosses OPENRAG_MAX_UPLOAD_MB.
+    """Copy an upload into memory only when it is within OPENRAG_MAX_UPLOAD_MB.
 
-    A known part size is checked before any bytes are copied into memory.
-    Otherwise the body is read in 1 MiB chunks and the rest is left unread
-    after the limit is crossed.
+    Starlette has already received the multipart part. A known size is rejected
+    before those bytes are copied into memory. When the size is missing, the
+    part is read in 1 MiB chunks and copying stops once the limit is crossed.
     """
     name = filename if filename is not None else getattr(upload_file, "filename", None)
     known_size = getattr(upload_file, "size", None)

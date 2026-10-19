@@ -76,6 +76,7 @@ class TestInferFailureMetadata:
         assert meta["actionable_by"] == "USER_ACTIONABLE"
         assert meta["user_facing_message"].startswith('"report.pdf" is 1.9 MB.')
         assert "document-processing service" in meta["user_facing_message"]
+        assert "within the configured upload limit" in meta["user_facing_message"]
         assert "OPENRAG_MAX_UPLOAD_MB" in meta["user_facing_message"]
         assert "docling-serve" not in meta["user_facing_message"]
         assert "client_max_body_size" not in meta["user_facing_message"]

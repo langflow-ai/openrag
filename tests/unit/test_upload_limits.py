@@ -52,6 +52,7 @@ def test_upload_size_user_message_hides_the_docling_endpoint(monkeypatch):
 
     assert message == docling_rejected_size_message("report.pdf", "2.0 MB", 1)
     assert "document-processing service" in message
+    assert "within the configured upload limit" in message
     assert "docling-serve" not in message
     assert "client_max_body_size" not in message
 
