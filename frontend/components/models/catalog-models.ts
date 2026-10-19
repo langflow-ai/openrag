@@ -39,6 +39,7 @@ interface CatalogProvider {
   models?: CatalogModel[];
   embedding_models?: CatalogModel[];
   credential_fields?: CatalogCredentialField[];
+  discovers_models?: boolean;
 }
 
 interface ModelCatalogResponse {
@@ -280,6 +281,60 @@ export function providerCatalogOptions(
 ): CatalogSelectOption[] {
   const entry = catalog?.providers?.find((item) => item.key === provider);
   return entry ? sortedProviderOptions(entry, kind) : [];
+}
+
+/**
+ * What a cluster said it serves, per picker. A half is `null` when that
+ * endpoint could not be listed, and the catalogue's rows stay for it.
+ */
+export interface DiscoveredCatalogModels {
+  models: CatalogModel[] | null;
+  embedding_models: CatalogModel[] | null;
+}
+
+/**
+ * The catalogue with `provider`'s models replaced by what its cluster serves.
+ *
+ * Replaced rather than merged: the catalogue's rows for a cluster-hosted
+ * provider are only the configured fallback, and a model the cluster does not
+ * serve must not sit in the picker waiting to be chosen — the same rule the
+ * backend applies once credentials are saved.
+ */
+export function withDiscoveredModels(
+  catalog: ModelCatalogResponse | undefined,
+  provider: string,
+  discovered: DiscoveredCatalogModels | undefined,
+): ModelCatalogResponse | undefined {
+  if (!catalog || !discovered) {
+    return catalog;
+  }
+  const { models, embedding_models } = discovered;
+  if (models === null && embedding_models === null) {
+    return catalog;
+  }
+  return {
+    ...catalog,
+    providers: catalog.providers.map((entry) =>
+      entry.key === provider
+        ? {
+            ...entry,
+            models: models ?? entry.models,
+            embedding_models: embedding_models ?? entry.embedding_models,
+          }
+        : entry,
+    ),
+  };
+}
+
+/** Whether the backend can list `provider`'s models from unsaved credentials. */
+export function providerDiscoversModels(
+  catalog: ModelCatalogResponse | undefined,
+  provider: string,
+): boolean {
+  return (
+    catalog?.providers?.find((entry) => entry.key === provider)
+      ?.discovers_models === true
+  );
 }
 
 /**

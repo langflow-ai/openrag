@@ -1237,7 +1237,7 @@ export default function ProtectedChatPage() {
           "flex w-full h-full overflow-hidden",
           isCloudBrand && "ibm-chat-page",
           isCloudBrand &&
-            "bg-[var(--chat-surface-bg)] [background-image:linear-gradient(0deg,var(--chat-surface-gradient),transparent_280px)]",
+            "bg-(--chat-surface-bg) bg-[linear-gradient(0deg,var(--chat-surface-gradient),transparent_280px)]",
         )}
       >
         <StickToBottom

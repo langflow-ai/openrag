@@ -116,7 +116,7 @@ export function OpenAIOnboarding({
             <LabelInput
               label="OpenAI API key"
               helperText="The API key for your OpenAI account."
-              className={showModelsError ? "!border-destructive" : ""}
+              className={showModelsError ? "border-destructive!" : ""}
               id="api-key"
               type="password"
               required

@@ -19,6 +19,11 @@ import {
   type ModelProvider,
 } from "@/components/models/model-helpers";
 import {
+  activeCredentialKeys,
+  credentialTargetChanged,
+  secretsToReenter,
+} from "@/components/models/provider-credentials";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -43,6 +48,10 @@ const EMPTY_FIELDS: CatalogCredentialField[] = [];
  * Most generic providers have no credential-only check on save; they are
  * validated when a model is selected in Agent or Ingestion settings. Azure
  * OpenAI is an exception: the backend probes its key before persisting it.
+ *
+ * A saved secret belongs to the endpoint and TLS setting it was saved for:
+ * once either is edited (or a saved one cleared), the backend refuses to reuse
+ * it, so the form stops offering "leave blank to keep" and requires it again.
  */
 const ProviderSettingsDialog = ({
   provider,
@@ -118,6 +127,27 @@ const ProviderSettingsDialog = ({
 
   const { handleSubmit } = methods;
 
+  // Merged over the saved values so a target field the catalogue form does not
+  // render reads as unchanged rather than cleared.
+  const watchedCredentials = methods.watch("credentials") ?? {};
+  const savedCredentialValues = saved?.credential_values ?? {};
+  const targetChanged = credentialTargetChanged(
+    { ...savedCredentialValues, ...watchedCredentials },
+    savedCredentialValues,
+  );
+  const activeKeys = activeCredentialKeys(
+    provider,
+    azureAuthMethod,
+    onPremAuthMethod,
+  );
+  const reenterSecretFields = secretsToReenter(
+    watchedCredentials,
+    new Set(savedSecretFields),
+    activeKeys,
+    targetChanged,
+  );
+  const reusableSecretFields = targetChanged ? [] : savedSecretFields;
+
   const settingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
       toast.message(`${chrome.name} successfully configured`, {
@@ -154,32 +184,10 @@ const ProviderSettingsDialog = ({
     // "leave unchanged". Empty non-secret fields explicitly remove saved data.
     const credentials: Record<string, string> = {};
     const removals: string[] = [];
-    const azureAuthFields: Record<string, Set<string>> = {
-      api_key: new Set(["api_key"]),
-      entra_token: new Set(["azure_ad_token"]),
-      service_principal: new Set(["tenant_id", "client_id", "client_secret"]),
-    };
-    const allowedAzureFields = new Set([
-      "api_base",
-      "api_version",
-      ...(azureAuthFields[azureAuthMethod] ?? []),
-    ]);
-    const allowedOnPremFields = new Set([
-      "api_base",
-      "space_id",
-      "project_id",
-      "ssl_verify",
-      ...(onPremAuthMethod === "zen_api_key"
-        ? ["zen_api_key"]
-        : ["username", "api_key"]),
-    ]);
+    // Values typed for another auth method stay in the form but are not sent.
     const fieldsByKey = new Map(fields.map((field) => [field.key, field]));
     for (const [key, value] of Object.entries(data.credentials ?? {})) {
-      if (provider === "azure" && !allowedAzureFields.has(key)) {
-        continue;
-      }
-      if (provider === "watsonx_onprem" && !allowedOnPremFields.has(key))
-        continue;
+      if (activeKeys && !activeKeys.has(key)) continue;
       const trimmed = (value ?? "").trim();
       if (trimmed !== "") {
         credentials[key] = trimmed;
@@ -245,7 +253,8 @@ const ProviderSettingsDialog = ({
                 provider={provider}
                 providerName={chrome.name}
                 fields={fields}
-                savedSecretFields={savedSecretFields}
+                savedSecretFields={reusableSecretFields}
+                reenterSecretFields={reenterSecretFields}
                 saveError={methods.formState.errors.root?.message}
                 azureAuthMethod={azureAuthMethod}
                 onAzureAuthMethodChange={setAzureAuthMethod}
@@ -264,7 +273,7 @@ const ProviderSettingsDialog = ({
                     >
                       <p
                         data-testid="provider-connection-error"
-                        className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]"
+                        className="rounded-lg border border-destructive p-4 min-w-0 wrap-anywhere"
                       >
                         {settingsMutation.error?.message}
                       </p>
@@ -278,7 +287,7 @@ const ProviderSettingsDialog = ({
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
                       >
-                        <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
+                        <p className="rounded-lg border border-destructive p-4 min-w-0 wrap-anywhere">
                           {removeMutation.error?.message}
                         </p>
                       </m.div>
