@@ -240,14 +240,14 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
     {
         "key": "api_base",
         "label": "Endpoint",
-        "placeholder": "https://<resource>.services.ai.azure.com/openai/v1",
+        "placeholder": "https://<resource>.services.ai.azure.com/",
         "tooltip": (
-            "The resource endpoint, not a per-deployment Target URI. Copy the "
-            "'Azure AI Foundry' endpoint from your resource's Overview page and keep "
-            "the /openai/v1 suffix. A Target URI that names one deployment "
-            "(.../openai/deployments/<name>/chat/completions) pins every model you "
-            "select to that one deployment. The older /models endpoint is still "
-            "accepted for deployments already using it."
+            "Copy the resource endpoint from Azure's Keys and Endpoint page, for example "
+            "https://<resource>.services.ai.azure.com/. A resource root or /models base "
+            "uses the legacy inference API; /openai/v1 uses the OpenAI-compatible API. "
+            "Keep the endpoint that works for your deployment. Do not use a per-deployment "
+            "Target URI (.../openai/deployments/<name>/chat/completions), which pins "
+            "every selected model to one deployment."
         ),
         "required": True,
         "field_type": "text",
@@ -269,9 +269,8 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "label": "API version",
         "placeholder": "2024-05-01-preview",
         "tooltip": (
-            "Only for the older /models endpoint, which dates its API. Leave blank "
-            "for /openai/v1, which is versionless — sending one there is at best "
-            "ignored."
+            "For a resource root or /models endpoint, enter the API version used by "
+            "your deployment. Leave blank for /openai/v1, which is versionless."
         ),
         "required": False,
         "field_type": "text",
@@ -514,9 +513,8 @@ def litellm_credentials(stored: Mapping[str, Any], *, kind: CallKind = "chat") -
 
 
 #: Read-only listing used to check credentials. It needs no deployment and
-#: bills nothing, which is what makes it a check the provider can pass before
-#: anything has been selected in Settings. Both surfaces expose it directly
-#: under the endpoint.
+#: bills nothing. Even a resource using the legacy `/models` inference surface
+#: lists models through `/openai/v1/models`, not `GET /models`.
 MODELS_PATH = "/models"
 
 #: A human is waiting on the pre-save check, so it fails fast.
@@ -526,15 +524,15 @@ HEALTH_TIMEOUT_SECONDS = 15.0
 def models_url(api_base: str) -> str:
     """The deployment/model listing URL for an endpoint.
 
-    On the v1 surface this is `…/openai/v1/models`. On the legacy route the
-    endpoint *is* `…/models`, and the listing hangs off the resource root
-    instead, so the suffix is not doubled.
+    Both a resource root and its legacy `/models` inference base use the
+    resource's `/openai/v1/models` listing. Explicit v1 bases retain their
+    path, including a project prefix when present.
     """
     base = normalized_api_base(api_base)
     if endpoint_profile(base) == "legacy_models":
-        return (
-            base if base.rstrip("/").endswith(MODELS_PATH) else f"{base.rstrip('/')}{MODELS_PATH}"
-        )
+        if base.lower().endswith(MODELS_PATH):
+            base = base[: -len(MODELS_PATH)]
+        base = f"{base}{_V1_SUFFIX}"
     return f"{base.rstrip('/')}{MODELS_PATH}"
 
 

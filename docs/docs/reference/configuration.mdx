@@ -190,6 +190,19 @@ today — are entered in **Settings** through a form built from the provider's o
 credential fields. Configuring one needs no code change beyond its row in this
 file.
 
+#### Azure AI Foundry health checks {#azure-ai-foundry-health}
+
+For `azure_ai`, a resource endpoint such as
+`https://<resource>.services.ai.azure.com/` or its `/models` form uses the
+legacy Foundry inference route. Keep that endpoint if inference is already
+working; the periodic health check uses the resource's separate
+`/openai/v1/models` listing, not `GET /models`.
+
+Explicit `/openai/v1` endpoints, including project-scoped endpoints, keep their
+configured prefix when listing models. These lightweight checks do not run
+inference or consume model tokens, and a successful listing does not prove that
+a particular deployment supports chat or tool calling.
+
 #### Add a custom OpenAI-compatible provider {#custom-openai-compatible-provider}
 
 To offer a self-hosted OpenAI-compatible endpoint — vLLM, LM Studio, or an
