@@ -12,6 +12,10 @@ from __future__ import annotations
 
 import re
 
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 _MIB = 1024 * 1024
 _READ_CHUNK = 1 << 20
 _MARKER = "OPENRAG_MAX_UPLOAD_MB"
@@ -29,6 +33,29 @@ class UploadTooLarge(Exception):
         self.size_bytes = size_bytes
         self.limit_mb = limit_mb
         super().__init__(upload_too_large_message(filename, size_bytes, limit_mb))
+
+
+def max_upload_mb_from_env(raw: str | None, *, default: int = 100) -> int:
+    """Read OPENRAG_MAX_UPLOAD_MB. Unset stays at the default with no log.
+
+    A value that is set but not a positive integer is logged and replaced with
+    the default. Using 0 or a negative number as the limit would reject every
+    non-empty file.
+    """
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        value = None
+    if value is None or value < 1:
+        logger.warning(
+            "OPENRAG_MAX_UPLOAD_MB is not a positive integer; using the default",
+            value=raw,
+            default=default,
+        )
+        return default
+    return value
 
 
 def max_upload_mb() -> int:

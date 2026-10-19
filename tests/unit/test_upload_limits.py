@@ -2,14 +2,56 @@
 
 import pytest
 
+from utils import upload_limits
 from utils.upload_limits import (
     docling_payload_too_large_message,
     docling_rejected_size_message,
     is_upload_size_error,
+    max_upload_mb_from_env,
     read_upload_within_limit,
     upload_size_user_message,
     upload_too_large_message,
 )
+
+
+class _Warnings:
+    def __init__(self):
+        self.records: list[tuple[str, dict]] = []
+
+    def warning(self, message, **fields):
+        self.records.append((message, fields))
+
+    def __getattr__(self, _name):
+        return lambda *args, **kwargs: None
+
+
+def test_unset_upload_limit_stays_at_the_default_without_a_warning(monkeypatch):
+    recorder = _Warnings()
+    monkeypatch.setattr(upload_limits, "logger", recorder)
+
+    assert max_upload_mb_from_env(None) == 100
+    assert max_upload_mb_from_env("") == 100
+    assert max_upload_mb_from_env("   ") == 100
+    assert recorder.records == []
+
+
+def test_bad_upload_limit_is_logged_and_replaced_with_the_default(monkeypatch):
+    recorder = _Warnings()
+    monkeypatch.setattr(upload_limits, "logger", recorder)
+
+    for raw in ("100MB", "1.5", "0", "-1"):
+        assert max_upload_mb_from_env(raw) == 100
+
+    assert [fields["value"] for _, fields in recorder.records] == ["100MB", "1.5", "0", "-1"]
+
+
+def test_a_positive_upload_limit_is_kept(monkeypatch):
+    recorder = _Warnings()
+    monkeypatch.setattr(upload_limits, "logger", recorder)
+
+    assert max_upload_mb_from_env("1") == 1
+    assert max_upload_mb_from_env(" 100 ") == 100
+    assert recorder.records == []
 
 
 def test_upload_too_large_message_names_the_file_and_its_size():

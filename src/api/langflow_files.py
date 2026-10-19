@@ -16,6 +16,7 @@ from dependencies import (
 from session_manager import User
 from utils.file_utils import langflow_safe_filename_and_mimetype
 from utils.logging_config import get_logger
+from utils.upload_limits import UploadTooLarge, read_upload_within_limit
 
 logger = get_logger(__name__)
 
@@ -43,7 +44,7 @@ async def upload_user_file(
         logger.debug("upload_user_file endpoint called")
         logger.debug("Processing file", filename=file.filename, size=file.size)
 
-        content = await file.read()
+        content = await read_upload_within_limit(file)
         # Langflow's docling chokes on text/plain — rename .txt -> .md.
         upload_filename, upload_mimetype = langflow_safe_filename_and_mimetype(
             file.filename, file.content_type
@@ -54,6 +55,8 @@ async def upload_user_file(
         result = await langflow_file_service.upload_user_file(file_tuple, user.jwt_token)
         logger.debug("Upload successful", result=result)
         return JSONResponse(result, status_code=201)
+    except UploadTooLarge as e:
+        return JSONResponse({"error": str(e)}, status_code=413)
     except Exception as e:
         logger.error("upload_user_file endpoint failed", error_type=type(e).__name__, error=str(e))
         import traceback
@@ -141,7 +144,7 @@ async def upload_and_ingest_user_file(
                 return JSONResponse({"error": f"Invalid tweaks JSON: {e}"}, status_code=400)
 
         jwt_token = user.jwt_token
-        content = await file.read()
+        content = await read_upload_within_limit(file)
 
         temp_dir = tempfile.gettempdir()
         safe_filename = file.filename.replace(" ", "_").replace("/", "_")
@@ -181,6 +184,8 @@ async def upload_and_ingest_user_file(
             safe_unlink(temp_path)
             raise
 
+    except UploadTooLarge as e:
+        return JSONResponse({"error": str(e)}, status_code=413)
     except Exception as e:
         logger.error("upload_and_ingest_user_file endpoint failed", error=str(e))
         return JSONResponse({"error": str(e)}, status_code=500)
