@@ -348,6 +348,7 @@ function ChatPage() {
         error: true,
       };
       setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
+      return { type: "failed" as const };
     } finally {
       setIsUploading(false);
       setLoading(false);
@@ -862,6 +863,14 @@ function ChatPage() {
     if (uploadedFile) {
       const uploadResult = await handleFileUpload(uploadedFile);
       setUploadedFile(null);
+
+      if (
+        uploadResult &&
+        typeof uploadResult === "object" &&
+        uploadResult.type === "failed"
+      ) {
+        return;
+      }
 
       if (uploadResult && typeof uploadResult === "object") {
         // File is being processed asynchronously — don't send the message yet.
