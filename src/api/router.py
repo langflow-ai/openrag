@@ -26,13 +26,18 @@ from utils.upload_limits import UploadTooLarge, read_upload_within_limit
 logger = get_logger(__name__)
 
 
+def _form_str(value) -> str | None:
+    """A real form string. A direct call leaves FastAPI's Form default in place."""
+    return value if isinstance(value, str) else None
+
+
 def _rejected_uploads(raw: str | None) -> list[tuple[str, int]]:
     """Files the client kept out of the body because they exceed the limit."""
-    if not raw:
+    if not isinstance(raw, str) or not raw:
         return []
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
         return []
     if not isinstance(data, list):
         return []
@@ -105,6 +110,7 @@ async def upload_ingest_router(
         request, user, rbac, "knowledge:delete:anonymous"
     )
     upload_files = file or []
+    existing_task_id = _form_str(existing_task_id)
     rejections = _rejected_uploads(rejected_files)
 
     if disable_ingest_with_langflow:
