@@ -251,6 +251,23 @@ stringData:
     {{- end }}
     SESSION_SECRET={{ $sessionSecret | quote }}
 
+    # Backend LLM tracing to Langfuse. Reuses the Langflow Langfuse keys so
+    # backend and Langflow traces land in the same project.
+    OPENRAG_TRACING_ENABLED={{ ternary "true" "false" .Values.backend.tracing.enabled }}
+    {{- if .Values.backend.tracing.enabled }}
+    OPENRAG_TRACING_CAPTURE_CONTENT={{ ternary "true" "false" .Values.backend.tracing.captureContent }}
+    OPENRAG_TRACING_ALLOW_CONTENT_IN_SAAS={{ ternary "true" "false" .Values.backend.tracing.allowContentInSaas }}
+    {{- if .Values.langflow.langfuse.secretKey }}
+    LANGFUSE_SECRET_KEY={{ .Values.langflow.langfuse.secretKey | quote }}
+    {{- end }}
+    {{- if .Values.langflow.langfuse.publicKey }}
+    LANGFUSE_PUBLIC_KEY={{ .Values.langflow.langfuse.publicKey | quote }}
+    {{- end }}
+    {{- if .Values.langflow.langfuse.host }}
+    LANGFUSE_BASE_URL={{ .Values.langflow.langfuse.host | quote }}
+    {{- end }}
+    {{- end }}
+
     # Instana APM
     # INSTANA_AGENT_HOST is deliberately absent: it is the pod's own node IP,
     # which this file cannot know at render time. The backend Deployment injects

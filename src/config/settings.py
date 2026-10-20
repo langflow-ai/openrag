@@ -395,6 +395,58 @@ def is_ingest_preview_flag_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def is_tracing_flag_enabled() -> bool:
+    """Opt-in flag for backend LLM/ingest/search tracing to Langfuse.
+
+    Default off. Gates registration of the LiteLLM ``langfuse_otel`` callback in
+    ``observability.tracing``; see that module for the content-capture policy.
+    """
+    raw = os.getenv("OPENRAG_TRACING_ENABLED", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_tracing_capture_content_flag_enabled() -> bool:
+    """Opt-in to put prompts, completions, chunk text, queries and filenames in traces.
+
+    Default off (metadata only). In SaaS run mode this alone is not enough;
+    ``OPENRAG_TRACING_ALLOW_CONTENT_IN_SAAS`` must also be set.
+    """
+    raw = os.getenv("OPENRAG_TRACING_CAPTURE_CONTENT", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_tracing_content_allowed_in_saas() -> bool:
+    """Second key required for trace content capture in SaaS run mode. Default off."""
+    raw = os.getenv("OPENRAG_TRACING_ALLOW_CONTENT_IN_SAAS", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def langfuse_keys_configured() -> bool:
+    """Whether both Langfuse API keys are set (shared with the Langflow container)."""
+    return bool(
+        os.getenv("LANGFUSE_PUBLIC_KEY", "").strip()
+        and os.getenv("LANGFUSE_SECRET_KEY", "").strip()
+    )
+
+
+# With no host set, the Langfuse SDK defaults to Langfuse Cloud EU while
+# LiteLLM's langfuse_otel defaults to Cloud US; follow the SDK.
+LANGFUSE_DEFAULT_HOST = "https://cloud.langfuse.com"
+
+
+def get_langfuse_host() -> str:
+    """Langfuse URL for backend tracing, shared by LiteLLM's exporter and our spans.
+
+    ``LANGFUSE_BASE_URL`` (the name Langfuse's setup steps use) first, then the
+    older ``LANGFUSE_HOST`` — Langflow's precedence — else Langfuse Cloud EU.
+    """
+    return (
+        os.getenv("LANGFUSE_BASE_URL", "").strip()
+        or os.getenv("LANGFUSE_HOST", "").strip()
+        or LANGFUSE_DEFAULT_HOST
+    )
+
+
 def is_workspace_oauth_overrides_enabled() -> bool:
     """Feature flag for workspace-level OAuth connector credential overrides.
 

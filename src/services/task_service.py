@@ -16,6 +16,7 @@ from models.tasks import (
     TaskStatus,
     UploadTask,
 )
+from observability.tracing import trace_context
 from session_manager import AnonymousUser
 from utils.filename_claims import (
     INFLIGHT_CLAIM_WINNER_FAILED_ERROR,
@@ -850,10 +851,15 @@ class TaskService:
 
                     try:
                         # Add timeout protection to prevent indefinite hangs
-                        await self._process_with_timeout(
-                            processor.process_item(upload_task, item, file_task),
-                            timeout_seconds=self.ingestion_timeout,
-                        )
+                        # Traces opened for this file (and its model calls)
+                        # carry the task; an upload's files share a session.
+                        with trace_context(
+                            session_id=task_id, attributes={"openrag.task_id": task_id}
+                        ):
+                            await self._process_with_timeout(
+                                processor.process_item(upload_task, item, file_task),
+                                timeout_seconds=self.ingestion_timeout,
+                            )
 
                         logger.info(
                             "File processing task succeeded",
