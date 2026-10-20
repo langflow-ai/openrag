@@ -136,6 +136,7 @@ func NewEnvVarManager() *EnvVarManager {
 			"DISABLE_INGEST_WITH_LANGFLOW": "false",
 			"INGESTION_TIMEOUT":            "3600",
 			"UPLOAD_BATCH_SIZE":            "25",
+			"OPENRAG_MAX_UPLOAD_MB":        "100",
 			"MAX_WORKERS":                  "4",
 
 			// Segment analytics (default empty, set via CR or operator env)

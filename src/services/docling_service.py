@@ -53,6 +53,18 @@ class DoclingTransientError(DoclingServeError):
     """Raised for errors that may resolve on retry (network failures, 5xx)."""
 
 
+class DoclingPayloadTooLarge(DoclingServeError):
+    """The proxy in front of docling-serve rejected the file body (HTTP 413).
+
+    ``str(self)`` is the line shown to users. ``operator_detail`` keeps the
+    internal endpoint for logs.
+    """
+
+    def __init__(self, message: str, *, operator_detail: str | None = None):
+        super().__init__(message)
+        self.operator_detail = operator_detail
+
+
 class DoclingTaskState(StrEnum):
     """Result of a single status check against Docling Serve."""
 
@@ -563,6 +575,17 @@ class DoclingService:
         """
         Upload a file to Docling Serve asynchronously using direct multipart/form-data upload.
         """
+        from utils.upload_limits import (
+            docling_payload_too_large_message,
+            docling_rejected_size_message,
+            ensure_within_upload_limit,
+            format_byte_size,
+            max_upload_mb,
+        )
+
+        ensure_within_upload_limit(filename, len(file_content))
+        endpoint = f"{self.docling_url}/v1/convert/file/async"
+
         options = await self._build_docling_options_async(
             ocr_override=ocr,
             picture_descriptions_override=picture_descriptions,
@@ -592,24 +615,38 @@ class DoclingService:
             if should_close:
                 async with client:
                     response = await client.post(
-                        f"{self.docling_url}/v1/convert/file/async",
+                        endpoint,
                         files=files,
                         data=data,
                         headers=headers,
                     )
             else:
                 response = await client.post(
-                    f"{self.docling_url}/v1/convert/file/async",
+                    endpoint,
                     files=files,
                     data=data,
                     headers=headers,
                 )
 
+            if response.status_code == 413:
+                size_bytes = len(file_content)
+                raise DoclingPayloadTooLarge(
+                    docling_rejected_size_message(
+                        filename, format_byte_size(size_bytes), max_upload_mb()
+                    ),
+                    operator_detail=docling_payload_too_large_message(
+                        filename, size_bytes, endpoint
+                    ),
+                )
             response.raise_for_status()
             task = response.json()
             return task["task_id"]
         except Exception as e:
-            logger.error("Docling upload failed", filename=filename, error=str(e))
+            logger.error(
+                "Docling upload failed",
+                filename=filename,
+                error=getattr(e, "operator_detail", None) or str(e),
+            )
             raise
 
     async def get_docling_result_async(
