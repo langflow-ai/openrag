@@ -281,3 +281,31 @@ async def test_api_key_calls_are_traced_as_api_without_a_session(monkeypatch, tr
     assert seen["trace_user_id"] == "u1"
     assert "session_id" not in seen
     assert "openrag.langflow_run_purpose" not in seen["trace_metadata"]
+
+
+@pytest.mark.asyncio
+async def test_api_key_embedding_calls_get_their_own_purpose(monkeypatch, tracing_on):
+    """Not every non-interactive embedding is ingestion: an API caller's is labelled as such."""
+    fake, seen = _metadata_seen_by_gateway("embedding")
+    monkeypatch.setattr(v1_llm, "embeddings", fake)
+    request = MagicMock()
+    request.json = AsyncMock(return_value={"model": "text-embedding-3-small", "input": ["x"]})
+    request.state = SimpleNamespace()
+
+    await v1_llm.embeddings_endpoint(request, user=_user())
+
+    assert seen["generation_name"] == "embedding.api"
+    assert seen["trace_metadata"]["openrag.purpose"] == "api"
+
+
+@pytest.mark.asyncio
+async def test_langflow_ingest_embedding_calls_stay_ingest(monkeypatch, tracing_on):
+    fake, seen = _metadata_seen_by_gateway("embedding")
+    monkeypatch.setattr(v1_llm, "embeddings", fake)
+    request = MagicMock()
+    request.json = AsyncMock(return_value={"model": "text-embedding-3-small", "input": ["x"]})
+    request.state = SimpleNamespace(llm_hop_purpose="ingest", llm_hop_run_id="run-1")
+
+    await v1_llm.embeddings_endpoint(request, user=_user())
+
+    assert seen["generation_name"] == "embedding.ingest"

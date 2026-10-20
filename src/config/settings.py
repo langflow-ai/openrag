@@ -428,6 +428,24 @@ def langfuse_keys_configured() -> bool:
     )
 
 
+# With no host set, the Langfuse SDK defaults to Langfuse Cloud EU while
+# LiteLLM's langfuse_otel defaults to Cloud US; follow the SDK.
+LANGFUSE_DEFAULT_HOST = "https://cloud.langfuse.com"
+
+
+def get_langfuse_host() -> str:
+    """Langfuse URL for backend tracing, shared by LiteLLM's exporter and our spans.
+
+    ``LANGFUSE_BASE_URL`` (the name Langfuse's setup steps use) first, then the
+    older ``LANGFUSE_HOST`` — Langflow's precedence — else Langfuse Cloud EU.
+    """
+    return (
+        os.getenv("LANGFUSE_BASE_URL", "").strip()
+        or os.getenv("LANGFUSE_HOST", "").strip()
+        or LANGFUSE_DEFAULT_HOST
+    )
+
+
 def is_workspace_oauth_overrides_enabled() -> bool:
     """Feature flag for workspace-level OAuth connector credential overrides.
 

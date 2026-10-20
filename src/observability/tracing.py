@@ -26,6 +26,7 @@ from types import MappingProxyType
 from typing import Any
 
 from config.settings import (
+    get_langfuse_host,
     is_tracing_capture_content_flag_enabled,
     is_tracing_content_allowed_in_saas,
     is_tracing_flag_enabled,
@@ -42,11 +43,6 @@ TRACING_CALLBACK = "langfuse_otel"
 _LITELLM_REQUEST_SPAN_ENV_VAR = "USE_OTEL_LITELLM_REQUEST_SPAN"
 # OpenTelemetry SDK setting, read when a TracerProvider is constructed.
 _OTEL_SAMPLER_ENV_VAR = "OTEL_TRACES_SAMPLER"
-
-# With no host set, the Langfuse SDK defaults to Langfuse Cloud EU while
-# LiteLLM's langfuse_otel defaults to Cloud US; follow the SDK. (Langflow
-# disables its tracing when no host is set.)
-_LANGFUSE_DEFAULT_HOST = "https://cloud.langfuse.com"
 
 # Set by configure_tracing(); gates the per-call metadata below so a backend
 # running untraced passes LiteLLM exactly what it did before tracing existed.
@@ -110,15 +106,11 @@ def configure_tracing() -> bool:
     # silently drop every LLM span. Record unconditionally; the spans still join
     # the request's trace id. Read when each provider is built, i.e. after this.
     os.environ.setdefault(_OTEL_SAMPLER_ENV_VAR, "always_on")
-    # LiteLLM reads only LANGFUSE_OTEL_HOST / LANGFUSE_HOST. Hand it the host
-    # with Langflow's precedence: LANGFUSE_BASE_URL (the name Langfuse's setup
-    # steps use) first, then the older LANGFUSE_HOST.
+    # LiteLLM reads its host only from LANGFUSE_OTEL_HOST / LANGFUSE_HOST, so
+    # hand it the one our spans use too (LANGFUSE_OTEL_HOST, LiteLLM's own
+    # override, still wins for LiteLLM).
     if not os.environ.get("LANGFUSE_OTEL_HOST"):
-        os.environ["LANGFUSE_HOST"] = (
-            os.environ.get("LANGFUSE_BASE_URL")
-            or os.environ.get("LANGFUSE_HOST")
-            or _LANGFUSE_DEFAULT_HOST
-        )
+        os.environ["LANGFUSE_HOST"] = get_langfuse_host()
 
     capture = content_capture_enabled()
     # Read by LiteLLM on every request: forces its OTel logger to NO_CONTENT,

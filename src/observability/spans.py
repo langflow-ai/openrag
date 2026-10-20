@@ -19,6 +19,7 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from typing import Any
 
+from config.settings import get_langfuse_host
 from observability.tracing import content_capture_enabled, current_trace_context, trace_context
 from utils.run_mode_utils import get_run_mode
 
@@ -36,8 +37,6 @@ def init_span_client(*, span_exporter: Any = None) -> None:
 
     ``span_exporter`` replaces the OTLP export to Langfuse (tests).
     """
-    import os
-
     from langfuse import Langfuse
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
@@ -45,7 +44,7 @@ def init_span_client(*, span_exporter: Any = None) -> None:
 
     global _client
     _client = Langfuse(
-        base_url=os.environ.get("LANGFUSE_HOST"),
+        base_url=get_langfuse_host(),
         tracer_provider=TracerProvider(
             # Not parent-based: a background ingest runs inside the request's
             # (possibly unsampled Instana) context. Roots detach from it anyway.

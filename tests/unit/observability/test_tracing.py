@@ -387,3 +387,45 @@ async def test_failed_call_is_traced_with_the_error(traced):
     (span,) = await _drain(exporter, 1)
     assert span.status.status_code is StatusCode.ERROR
     assert "error.type" in span.attributes
+
+
+@pytest.mark.parametrize(
+    ("env", "expected"),
+    [
+        ({}, "https://cloud.langfuse.com"),
+        ({"LANGFUSE_HOST": "http://old:3000"}, "http://old:3000"),
+        ({"LANGFUSE_BASE_URL": "https://us.cloud.langfuse.com"}, "https://us.cloud.langfuse.com"),
+        (
+            {
+                "LANGFUSE_BASE_URL": "https://us.cloud.langfuse.com",
+                "LANGFUSE_HOST": "http://old:3000",
+            },
+            "https://us.cloud.langfuse.com",
+        ),
+    ],
+)
+def test_langfuse_host_precedence(monkeypatch, env, expected):
+    from config.settings import get_langfuse_host
+
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    assert get_langfuse_host() == expected
+
+
+def test_span_client_resolves_the_host_itself(monkeypatch, keys):
+    """Our spans and LiteLLM's must export to the same Langfuse, whatever ran first."""
+    import langfuse
+
+    captured = {}
+
+    class _FakeLangfuse:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(langfuse, "Langfuse", _FakeLangfuse)
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://us.cloud.langfuse.com")
+
+    spans.init_span_client()
+
+    assert captured["base_url"] == "https://us.cloud.langfuse.com"

@@ -107,11 +107,15 @@ async def _read_json_body(request: Request) -> dict[str, Any] | JSONResponse:
     return body
 
 
-def _trace_caller(request: Request, user: User):
-    """Label the gateway calls this request makes: Langflow run or API caller."""
+def _trace_caller(request: Request, user: User, *, api_purpose: str | None = None):
+    """Label the gateway calls this request makes: Langflow run or API caller.
+
+    ``api_purpose`` overrides the gateway's purpose for API callers only;
+    Langflow runs keep the gateway's (their hop token says chat or ingest).
+    """
     run_id = getattr(request.state, "llm_hop_run_id", None)
     if not run_id:
-        return trace_context(source="api", user_id=user.user_id)
+        return trace_context(source="api", user_id=user.user_id, purpose=api_purpose)
     hop_purpose = getattr(request.state, "llm_hop_purpose", None)
     return trace_context(
         source="langflow",
@@ -161,7 +165,9 @@ async def embeddings_endpoint(
     # behind a bulk ingest at a concurrency-limited provider.
     interactive = getattr(request.state, "llm_hop_purpose", None) == HOP_PURPOSE_CHAT
     try:
-        with _trace_caller(request, user):
+        # A non-interactive call here isn't necessarily ingestion: the gateway
+        # would label an API caller's embeddings `ingest`.
+        with _trace_caller(request, user, api_purpose="api"):
             result = await embeddings(body, interactive=interactive)
     except LlmGatewayError as exc:
         return _gateway_error(exc)
