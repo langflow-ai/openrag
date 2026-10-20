@@ -14,7 +14,7 @@
 # Then delete: this lxml-build stage, the libxml2 update and libxslt install in
 # the runtime root step, and the lxml wheel swap after the pip install.
 # -----------------------------------------------------------------------------
-FROM langflowai/langflow:base-1.12.3 AS lxml-build
+FROM langflowai/langflow:base-1.12.7 AS lxml-build
 
 USER root
 RUN microdnf install -y \
@@ -31,7 +31,7 @@ RUN pip wheel --no-cache-dir --no-deps --no-binary lxml -w /wheels \
 # -----------------------------------------------------------------------------
 # Stage: runtime
 # -----------------------------------------------------------------------------
-FROM langflowai/langflow:base-1.12.3
+FROM langflowai/langflow:base-1.12.7
 
 # Install uv, then pre-create the Langflow data directory as root.
 # Langflow 1.12's base image runs as uid=1000, but /app itself is not writable.
