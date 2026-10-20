@@ -8,9 +8,11 @@ routes by model prefix / configured provider. Callers never see upstream keys.
 from __future__ import annotations
 
 import json
+import math
 import re
-from collections.abc import AsyncIterator, Mapping
-from typing import Any, Literal
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from itertools import pairwise
+from typing import Any, Literal, NamedTuple
 
 from services import provider_error_log
 from services.model_catalog import is_known_provider, litellm_provider_key
@@ -43,14 +45,49 @@ class LlmGatewayError(Exception):
 
     `message` is safe to return to the caller. `detail` carries the internal
     text (upstream exception type and body) and is for logs only — returning it
-    is stack-trace exposure (CodeQL py/stack-trace-exposure).
+    is stack-trace exposure (CodeQL py/stack-trace-exposure). `code` is the
+    OpenAI `error.code` for the failure, when it has been classified.
     """
 
-    def __init__(self, message: str, status_code: int = 400, detail: str | None = None):
+    def __init__(
+        self,
+        message: str,
+        status_code: int = 400,
+        detail: str | None = None,
+        code: str | None = None,
+    ):
+        """Store caller-safe text, HTTP status, internal details, and an optional code."""
         super().__init__(message)
         self.message = message
         self.status_code = status_code
         self.detail = detail or message
+        self.code = code
+
+
+CONTEXT_LENGTH_ERROR_CODE = "context_length_exceeded"
+
+
+class LlmContextLengthError(LlmGatewayError):
+    """The input does not fit the model's context window.
+
+    The provider is serving and a shorter input succeeds, so a caller that can
+    shorten or split what it sent catches this instead of the base class.
+    `max_tokens` and `requested_tokens` are None when the provider's error did
+    not state them.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        detail: str | None = None,
+        *,
+        max_tokens: int | None = None,
+        requested_tokens: int | None = None,
+    ):
+        """Create a context-length 400 with the token counts the provider supplied."""
+        super().__init__(message, 400, detail, code=CONTEXT_LENGTH_ERROR_CODE)
+        self.max_tokens = max_tokens
+        self.requested_tokens = requested_tokens
 
 
 def _get_config():
@@ -420,16 +457,10 @@ def _provider_error_text(detail: str, exc: BaseException | None) -> str | None:
 
 #: Upstream statuses worth passing through: a client can act on these itself.
 #: Everything else becomes 502 — an upstream 401/403 must not read as an OpenRAG
-#: auth failure, and an upstream 400 must not read as a bad request to us.
+#: auth failure, and an upstream 400 must not read as a bad request to us. The
+#: one exception is an input that overflows the context window, which *is* a bad
+#: request to us; see `_classify_upstream_failure`.
 _PASSTHROUGH_UPSTREAM_STATUSES = frozenset({408, 429, 503, 504})
-
-
-def _upstream_status_code(exc: BaseException) -> int:
-    """HTTP status for a failed upstream call, from the provider's own where useful."""
-    status = getattr(exc, "status_code", None)
-    if isinstance(status, int) and status in _PASSTHROUGH_UPSTREAM_STATUSES:
-        return status
-    return 502
 
 
 def _upstream_client_message(
@@ -466,6 +497,95 @@ def _upstream_client_message(
     # lgtm[py/stack-trace-exposure] — provider error text only; traceback frames,
     # file paths and private hosts are removed by _sanitise_upstream_detail.
     return f"{label}: {upstream}"
+
+
+def _is_request_scoped_failure(detail: str, exc: BaseException | None) -> bool:
+    """True when the failure belongs to this request, not to the provider.
+
+    A prompt that overflows the context window fails because of what this one
+    call carried; the next, shorter one succeeds. Recording it in
+    `provider_error_log` would latch the health banner against a provider that
+    is serving fine — and on a provider whose probe cannot clear it, until the
+    entry goes stale. The caller still gets the error.
+    """
+    from api.provider_validation import is_context_window_error
+
+    if exc is not None and any(
+        cls.__name__ == "ContextWindowExceededError" for cls in type(exc).__mro__
+    ):
+        return True
+    return is_context_window_error(detail)
+
+
+#: Exception classes, anywhere in the MRO, that mean the provider was never
+#: reached. LiteLLM gives its own APIConnectionError a 500, so on the status
+#: alone it would read as the provider failing.
+_UNREACHABLE_EXCEPTION_NAMES = frozenset(
+    {"APIConnectionError", "ConnectionError", "ConnectError", "ClientConnectionError"}
+)
+
+
+class _UpstreamFailure(NamedTuple):
+    """How one failed upstream call is reported to the caller and to the banner."""
+
+    code: str
+    status_code: int
+    counts_against_provider: bool
+
+
+def _classify_upstream_failure(detail: str, exc: BaseException | None) -> _UpstreamFailure:
+    """Name a failed upstream call: its `error.code`, its HTTP status, its blame.
+
+    The status keeps the passthrough rule above. The code says what the status
+    cannot: a 502 covers a rejected key, a model that does not exist and a
+    provider that is down, and a client deciding whether to retry needs to know
+    which. Only an input that overflows the context window is the caller's own
+    doing, so only that becomes a 400 and stays out of the provider's health.
+    """
+    from api.provider_validation import is_provider_credential_error, is_provider_tls_error
+
+    if _is_request_scoped_failure(detail, exc):
+        return _UpstreamFailure(CONTEXT_LENGTH_ERROR_CODE, 400, counts_against_provider=False)
+
+    status = getattr(exc, "status_code", None)
+    if not isinstance(status, int):
+        status = None
+    # Same precedence as `_upstream_client_message`, so the code and the text
+    # never describe two different failures.
+    if is_provider_tls_error(detail):
+        code = "upstream_unreachable"
+    elif status in (401, 403) or is_provider_credential_error(detail):
+        code = "upstream_auth_error"
+    elif status == 429:
+        code = "rate_limit_exceeded"
+    elif status in (408, 504):
+        code = "upstream_timeout"
+    elif exc is not None and any(
+        cls.__name__ in _UNREACHABLE_EXCEPTION_NAMES for cls in type(exc).__mro__
+    ):
+        code = "upstream_unreachable"
+    elif status in (500, 502, 503):
+        code = "upstream_unavailable"
+    elif status is not None and 400 <= status < 500:
+        code = "upstream_invalid_request"
+    else:
+        code = "upstream_error"
+    http_status = status if status in _PASSTHROUGH_UPSTREAM_STATUSES else 502
+    return _UpstreamFailure(code, http_status, counts_against_provider=True)
+
+
+def _upstream_gateway_error(
+    message: str, detail: str, failure: _UpstreamFailure
+) -> LlmGatewayError:
+    """The exception a classified upstream failure is raised as."""
+    if failure.code == CONTEXT_LENGTH_ERROR_CODE:
+        from api.provider_validation import context_window_token_counts
+
+        max_tokens, requested_tokens = context_window_token_counts(detail)
+        return LlmContextLengthError(
+            message, detail, max_tokens=max_tokens, requested_tokens=requested_tokens
+        )
+    return LlmGatewayError(message, failure.status_code, detail=detail, code=failure.code)
 
 
 def _redact(message: str, credentials: Mapping[str, Any]) -> str:
@@ -716,12 +836,10 @@ async def chat_completions(
         # The health banner otherwise reports whatever its own probe hit, which
         # is a different request and so often a different error. Hand it the
         # text this caller is being shown.
-        provider_error_log.record_failure(provider, "chat", message)
-        raise LlmGatewayError(
-            message,
-            _upstream_status_code(exc),
-            detail=detail,
-        ) from exc
+        failure = _classify_upstream_failure(detail, exc)
+        if failure.counts_against_provider:
+            provider_error_log.record_failure(provider, "chat", message)
+        raise _upstream_gateway_error(message, detail, failure) from exc
 
     if stream:
         # A stream can still fail mid-flight, so _stream_sse clears the record
@@ -885,7 +1003,7 @@ def _empty_stream_message(provider: str, model: str, finish_reason: str | None) 
     )
 
 
-def _error_frame(message: str, provider: str, model: str) -> str:
+def _error_frame(message: str, provider: str, model: str, code: str = "upstream_error") -> str:
     """SSE frame an OpenAI client turns back into a raised APIError."""
     return (
         "data: "
@@ -894,7 +1012,7 @@ def _error_frame(message: str, provider: str, model: str) -> str:
                 "error": {
                     "message": message,
                     "type": "api_error",
-                    "code": "upstream_error",
+                    "code": code,
                     "provider": provider,
                     "model": model,
                 }
@@ -919,6 +1037,11 @@ async def _stream_sse(
     model: str = "",
     credentials: Mapping[str, Any] | None = None,
 ) -> AsyncIterator[str]:
+    """Yield OpenAI SSE frames, repair tool calls, and report classified failures.
+
+    Context-window failures emit an error frame without affecting provider
+    health. Close the upstream stream and finish with a ``[DONE]`` frame.
+    """
     tally = _StreamTally()
     buffer = _ToolCallBuffer()
     template: dict[str, Any] = {}
@@ -1007,8 +1130,10 @@ async def _stream_sse(
         tally.error = detail
         logger.error("LLM chat stream failed", provider=provider, model=model, error=detail)
         message = _upstream_client_message(detail, provider, model, exc)
-        provider_error_log.record_failure(provider, "chat", message)
-        yield _error_frame(message, provider, model)
+        failure = _classify_upstream_failure(detail, exc)
+        if failure.counts_against_provider:
+            provider_error_log.record_failure(provider, "chat", message)
+        yield _error_frame(message, provider, model, failure.code)
     finally:
         close = getattr(stream, "aclose", None) or getattr(stream, "close", None)
         if close is not None:
@@ -1056,48 +1181,230 @@ def _embedding_input(value: Any) -> Any:
     return [value] if isinstance(value, str) else value
 
 
+#: How many times one input is cut smaller before the gateway gives up on it.
+_MAX_OVERFLOW_SPLIT_ROUNDS = 3
+#: Pieces are sized under the proportion the provider reported: tokens are not
+#: spread evenly through a text, and a cut may land a little short of its mark.
+_OVERFLOW_HEADROOM = 0.85
+
+
+def _is_text_list(value: Any) -> bool:
+    """Whether `value` is a batch of strings, the only input that can be cut into pieces."""
+    return isinstance(value, list) and bool(value) and all(isinstance(item, str) for item in value)
+
+
+def _split_into_pieces(
+    text: str, max_tokens: int | None, requested_tokens: int | None
+) -> list[str]:
+    """Cut `text` into equal pieces expected to fit the model, at whitespace where it can.
+
+    The provider's own counts say how far over the input was, so the number of
+    pieces follows that proportion; with no counts, the text is halved. Equal
+    pieces rather than "as much as fits, then the rest": a short tail would
+    carry little context of its own into the average.
+    """
+    count = 2
+    if max_tokens and requested_tokens and requested_tokens > max_tokens:
+        count = max(2, math.ceil(requested_tokens / (max_tokens * _OVERFLOW_HEADROOM)))
+    size = len(text) / count
+    slack = int(size // 10)
+    cuts = [0]
+    for number in range(1, count):
+        ideal = round(number * size)
+        earliest = max(ideal - slack, cuts[-1] + 1)
+        cuts.append(
+            next((at for at in range(ideal, earliest - 1, -1) if text[at - 1].isspace()), ideal)
+        )
+    cuts.append(len(text))
+    return [piece for start, end in pairwise(cuts) if (piece := text[start:end]).strip()]
+
+
+def _weighted_mean_vector(vectors: list[list[float]], weights: list[int]) -> list[float]:
+    """The mean of `vectors` weighted by `weights`, at the length the model's vectors have.
+
+    A plain mean of vectors that point different ways is shorter than any of
+    them, which would understate the chunk wherever the index compares raw
+    lengths (l2, inner product). Scaling it back to the pieces' weighted mean
+    length keeps it comparable to every other vector from the same model: unit
+    length when the model normalises its output, its usual magnitude when not.
+    """
+    total = sum(weights)
+    mean = [
+        sum(vector[axis] * weight for vector, weight in zip(vectors, weights, strict=True)) / total
+        for axis in range(len(vectors[0]))
+    ]
+    length = math.hypot(*mean)
+    if not length:
+        return mean
+    target = (
+        sum(math.hypot(*vector) * weight for vector, weight in zip(vectors, weights, strict=True))
+        / total
+    )
+    return [value * target / length for value in mean]
+
+
+async def _embed_averaging_overflow(
+    send: Callable[[list[str]], Awaitable[dict[str, Any]]],
+    texts: list[str],
+    overflow: LlmContextLengthError,
+    *,
+    provider: str,
+    model: str,
+    max_batch: int | None = None,
+) -> dict[str, Any]:
+    """Embed a batch the provider rejected as too long, still one vector per input.
+
+    An embeddings call owes its caller exactly one vector per input, so an
+    over-length input cannot become several chunks here. It is embedded in
+    pieces and the piece vectors are averaged by length instead, so every part
+    of the text still contributes to the vector. The provider says only that
+    something in the batch was too long, so the batch is halved until the
+    offending input is alone. `send` raises `LlmContextLengthError` for a
+    rejection of that kind and `LlmGatewayError` for anything else. With
+    `max_batch`, no request carries more inputs than that, even when one input
+    is cut into more pieces.
+    """
+    envelope: dict[str, Any] = {}
+    usage: dict[str, int | float] = {}
+
+    async def embed(
+        batch: list[str], rounds: int, rejected: LlmContextLengthError | None = None
+    ) -> list[list[float]]:
+        if rejected is None and max_batch and len(batch) > max_batch:
+            vectors: list[list[float]] = []
+            for start in range(0, len(batch), max_batch):
+                vectors += await embed(batch[start : start + max_batch], rounds)
+            return vectors
+        if rejected is None:
+            try:
+                payload = await send(batch)
+            except LlmContextLengthError as error:
+                rejected = error
+            else:
+                if not envelope:
+                    envelope.update(
+                        {
+                            key: value
+                            for key, value in payload.items()
+                            if key not in {"data", "usage"}
+                        }
+                    )
+                for key, value in (payload.get("usage") or {}).items():
+                    if isinstance(value, (int, float)):
+                        usage[key] = usage.get(key, 0) + value
+                items = sorted(payload.get("data", []), key=lambda item: item.get("index", 0))
+                return [item["embedding"] for item in items]
+        if len(batch) > 1:
+            middle = len(batch) // 2
+            return await embed(batch[:middle], rounds) + await embed(batch[middle:], rounds)
+        return [await average(batch[0], rounds, rejected)]
+
+    async def average(text: str, rounds: int, rejected: LlmContextLengthError) -> list[float]:
+        pieces = _split_into_pieces(text, rejected.max_tokens, rejected.requested_tokens)
+        if rounds >= _MAX_OVERFLOW_SPLIT_ROUNDS or len(pieces) < 2:
+            raise rejected
+        vectors = await embed(pieces, rounds + 1)
+        # Sizes only: the text itself is the customer's document.
+        logger.warning(
+            "Embedding input exceeded the model's limit; embedded in pieces and averaged",
+            provider=provider,
+            model=model,
+            max_tokens=rejected.max_tokens,
+            requested_tokens=rejected.requested_tokens,
+            chars=len(text),
+            pieces=len(pieces),
+        )
+        return _weighted_mean_vector(vectors, [len(piece) for piece in pieces])
+
+    vectors = await embed(texts, 0, overflow)
+    response = {
+        **envelope,
+        "data": [
+            {"object": "embedding", "index": index, "embedding": vector}
+            for index, vector in enumerate(vectors)
+        ],
+    }
+    if usage:
+        response["usage"] = usage
+    return response
+
+
 async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
-    """OpenAI `POST /v1/embeddings`."""
+    """OpenAI `POST /v1/embeddings`.
+
+    An input the model rejects as too long is embedded in pieces and averaged
+    rather than failed, unless `OPENRAG_EMBEDDING_OVERFLOW_POLICY=error`; see
+    `_embed_averaging_overflow`.
+    """
+    from config.settings import embedding_overflow_policy
+
     cfg = config or _get_config()
     litellm_model, provider, credentials = resolve_call(
         body.get("model"), kind="embedding", config=cfg
     )
     runtime_kwargs = _provider_runtime_kwargs(provider, cfg)
     embedding_input = _embedding_input(body.get("input"))
+
+    batch_size = _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE if provider == "watsonx_onprem" else None
+
+    async def call_provider(inputs: Any) -> dict[str, Any]:
+        import litellm
+
+        result = await litellm.aembedding(
+            model=litellm_model,
+            input=inputs,
+            **credentials,
+            **runtime_kwargs,
+        )
+        return _to_openai_dict(result)
+
+    async def send(inputs: Any) -> dict[str, Any]:
+        try:
+            return await call_provider(inputs)
+        except LlmGatewayError:
+            raise
+        except Exception as exc:
+            detail = _redact(f"{type(exc).__name__}: {exc}", credentials)
+            message = _upstream_client_message(detail, provider, litellm_model, exc)
+            # An over-length input is one chunk's problem. Recording it latched the
+            # banner against a provider that was embedding every other chunk fine.
+            failure = _classify_upstream_failure(detail, exc)
+            if failure.counts_against_provider:
+                provider_error_log.record_failure(provider, "embedding", message)
+            raise _upstream_gateway_error(message, detail, failure) from exc
+
+    async def embed(inputs: Any) -> dict[str, Any]:
+        try:
+            return await send(inputs)
+        except LlmContextLengthError as overflow:
+            if embedding_overflow_policy() != "average" or not _is_text_list(inputs):
+                raise
+            return await _embed_averaging_overflow(
+                send,
+                inputs,
+                overflow,
+                provider=provider,
+                model=litellm_model,
+                max_batch=batch_size,
+            )
+
     should_batch = (
-        provider == "watsonx_onprem"
+        batch_size is not None
         and isinstance(embedding_input, list)
-        and len(embedding_input) > _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE
+        and len(embedding_input) > batch_size
         and not all(isinstance(item, int) for item in embedding_input)
     )
     try:
-        import litellm
-
         if not should_batch:
-            result = await litellm.aembedding(
-                model=litellm_model,
-                input=embedding_input,
-                **credentials,
-                **runtime_kwargs,
-            )
-            response = _to_openai_dict(result)
+            response = await embed(embedding_input)
         else:
+            # Each batch recovers on its own, so an over-length input in a later
+            # batch does not send the earlier, already embedded ones again.
             response = {}
             data: list[dict[str, Any]] = []
             usage: dict[str, int | float] = {}
-            for offset in range(
-                0,
-                len(embedding_input),
-                _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE,
-            ):
-                batch = embedding_input[offset : offset + _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE]
-                result = await litellm.aembedding(
-                    model=litellm_model,
-                    input=batch,
-                    **credentials,
-                    **runtime_kwargs,
-                )
-                payload = _to_openai_dict(result)
+            for offset in range(0, len(embedding_input), batch_size):
+                payload = await embed(embedding_input[offset : offset + batch_size])
                 if not response:
                     response = {
                         key: value for key, value in payload.items() if key not in {"data", "usage"}
@@ -1112,17 +1419,10 @@ async def embeddings(body: Mapping[str, Any], *, config=None) -> dict[str, Any]:
             response["data"] = data
             if usage:
                 response["usage"] = usage
-    except LlmGatewayError:
+    except LlmGatewayError as error:
+        logger.error(
+            "LLM embeddings failed", provider=provider, model=litellm_model, error=error.detail
+        )
         raise
-    except Exception as exc:
-        detail = _redact(f"{type(exc).__name__}: {exc}", credentials)
-        logger.error("LLM embeddings failed", provider=provider, model=litellm_model, error=detail)
-        message = _upstream_client_message(detail, provider, litellm_model, exc)
-        provider_error_log.record_failure(provider, "embedding", message)
-        raise LlmGatewayError(
-            message,
-            _upstream_status_code(exc),
-            detail=detail,
-        ) from exc
     provider_error_log.record_success(provider, "embedding")
     return response
