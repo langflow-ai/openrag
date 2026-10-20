@@ -1,9 +1,10 @@
 import { act, fireEvent } from "@testing-library/react";
+import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, screen } from "@/test-utils/render";
+import { renderWithProviders, screen, waitFor } from "@/test-utils/render";
 import { KnowledgeDateRangeFilter } from "./knowledge-date-range-filter";
 
-const histogramParams = vi.fn();
+let histogramRequests: URL[] = [];
 let mockRunMode: string | null = "oss";
 
 vi.mock("@/contexts/auth-context", async (importOriginal) => ({
@@ -16,22 +17,21 @@ vi.mock("@/contexts/brand-context", async (importOriginal) => ({
   useIsCloudBrand: () => false,
 }));
 
-vi.mock("@/app/api/queries/useUploadHistogram", () => ({
-  useUploadHistogram: (params: unknown, options: { enabled?: boolean }) => {
-    histogramParams(params, options);
-    return {
-      data: {
-        total: 10,
-        days: {
-          "2024-06-20": 1,
-          "2024-06-19": 3,
-          "2024-06-10": 6,
-          "2024-05-15": 2,
-        },
+const histogramHandler = http.get(
+  "/api/files/upload-histogram",
+  ({ request }) => {
+    histogramRequests.push(new URL(request.url));
+    return HttpResponse.json({
+      total: 10,
+      days: {
+        "2024-06-20": 1,
+        "2024-06-19": 3,
+        "2024-06-10": 6,
+        "2024-05-15": 2,
       },
-    };
+    });
   },
-}));
+);
 
 // Radix Popover ignores userEvent pointer sequences in JSDOM; fireEvent.click opens it.
 async function click(el: HTMLElement) {
@@ -43,11 +43,17 @@ async function click(el: HTMLElement) {
 function renderFilter() {
   renderWithProviders(<KnowledgeDateRangeFilter />, {
     providers: ["knowledgeFilter"],
+    handlers: [histogramHandler],
   });
 }
 
 async function openPopover() {
   await click(screen.getByRole("button", { name: /date range/i }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /any time/i })).toHaveTextContent(
+      "10",
+    ),
+  );
 }
 
 function preset(name: RegExp) {
@@ -80,7 +86,7 @@ describe("KnowledgeDateRangeFilter", () => {
   // Only Date is faked so act()/Radix timers keep running normally.
   beforeEach(() => {
     mockRunMode = "oss";
-    histogramParams.mockClear();
+    histogramRequests = [];
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(2024, 5, 20, 12));
   });
@@ -94,7 +100,7 @@ describe("KnowledgeDateRangeFilter", () => {
     expect(
       screen.queryByRole("button", { name: /filter by date range/i }),
     ).not.toBeInTheDocument();
-    expect(histogramParams).not.toHaveBeenCalled();
+    expect(histogramRequests).toHaveLength(0);
   });
 
   it("renders the trigger with the default label", () => {
@@ -107,15 +113,10 @@ describe("KnowledgeDateRangeFilter", () => {
 
   it("only fetches upload counts while the popover is open", async () => {
     renderFilter();
-    expect(histogramParams).toHaveBeenLastCalledWith(
-      expect.anything(),
-      expect.objectContaining({ enabled: false }),
-    );
+    expect(histogramRequests).toHaveLength(0);
     await openPopover();
-    expect(histogramParams).toHaveBeenLastCalledWith(
-      expect.objectContaining({ tz: expect.any(String) }),
-      expect.objectContaining({ enabled: true }),
-    );
+    expect(histogramRequests.length).toBeGreaterThan(0);
+    expect(histogramRequests[0].searchParams.get("tz")).toBeTruthy();
   });
 
   it("lists quick ranges with their upload counts", async () => {
