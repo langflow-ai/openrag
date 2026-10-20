@@ -142,7 +142,10 @@ def test_gateway_calls_inside_a_root_carry_its_user_session_and_attributes(finis
 
 
 def test_set_records_openrag_metadata_and_merges(finished):
-    with trace_root("ingest.file", attributes={}), trace_span("ingest.resplit", chunk_size=1000) as span:
+    with (
+        trace_root("ingest.file", attributes={}),
+        trace_span("ingest.resplit", chunk_size=1000) as span,
+    ):
         span.set(chunks_in=4)
         span.set(chunks_out=9, skipped=None)
 

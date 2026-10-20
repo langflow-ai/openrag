@@ -112,12 +112,19 @@ def configure_tracing() -> bool:
     if not os.environ.get("LANGFUSE_OTEL_HOST"):
         os.environ["LANGFUSE_HOST"] = get_langfuse_host()
 
+    from litellm.integrations.langfuse.langfuse_otel import LangfuseOtelLogger
+
+    from observability import litellm_langfuse
+
     capture = content_capture_enabled()
     # Read by LiteLLM on every request: forces its OTel logger to NO_CONTENT,
     # so prompts, completions and embedding inputs never leave the process.
     litellm.turn_off_message_logging = not capture
-    if TRACING_CALLBACK not in litellm.callbacks:
-        litellm.callbacks.append(TRACING_CALLBACK)
+    # A logger instance rather than the "langfuse_otel" string: that flag
+    # doesn't cover failures, whose provider error text the logger built here
+    # drops when capture is off.
+    if not any(isinstance(cb, LangfuseOtelLogger) for cb in litellm.callbacks):
+        litellm.callbacks.append(litellm_langfuse.build_langfuse_logger(capture_content=capture))
 
     from observability.spans import init_span_client
 

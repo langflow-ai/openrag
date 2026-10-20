@@ -54,6 +54,14 @@ def _isolated_tracing(monkeypatch):
     monkeypatch.setattr(spans, "_client", None)
 
 
+def _langfuse_loggers() -> list:
+    """The Langfuse OTel loggers registered on LiteLLM."""
+    import litellm
+    from litellm.integrations.langfuse.langfuse_otel import LangfuseOtelLogger
+
+    return [cb for cb in litellm.callbacks if isinstance(cb, LangfuseOtelLogger)]
+
+
 @pytest.fixture
 def keys(monkeypatch):
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
@@ -65,6 +73,7 @@ def test_disabled_by_default_registers_no_callback(keys):
 
     assert configure_tracing() is False
     assert TRACING_CALLBACK not in litellm.callbacks
+    assert _langfuse_loggers() == []
 
 
 @pytest.mark.parametrize("value", ["false", "0", "", "no"])
@@ -75,6 +84,7 @@ def test_falsy_flag_registers_no_callback(monkeypatch, keys, value):
 
     assert configure_tracing() is False
     assert TRACING_CALLBACK not in litellm.callbacks
+    assert _langfuse_loggers() == []
 
 
 def test_enabled_without_keys_warns_and_stays_off(monkeypatch, caplog):
@@ -86,28 +96,30 @@ def test_enabled_without_keys_warns_and_stays_off(monkeypatch, caplog):
 
     assert configure_tracing() is False
     assert TRACING_CALLBACK not in litellm.callbacks
+    assert _langfuse_loggers() == []
     assert any("LANGFUSE_PUBLIC_KEY" in w for w in warnings)
 
 
 def test_enabled_with_keys_registers_langfuse_otel_callback(monkeypatch, keys):
-    import litellm
 
     monkeypatch.setenv("OPENRAG_TRACING_ENABLED", "true")
 
     assert configure_tracing() is True
-    assert TRACING_CALLBACK in litellm.callbacks
+    (logger,) = _langfuse_loggers()
+    # Registered as LiteLLM's langfuse_otel, which keeps it off the global provider.
+    assert logger.callback_name == TRACING_CALLBACK
+    assert logger._skip_set_global() is True
 
 
 def test_registration_is_idempotent(monkeypatch, keys):
     """Startup can run more than once in a process (tests, reloads)."""
-    import litellm
 
     monkeypatch.setenv("OPENRAG_TRACING_ENABLED", "true")
 
     configure_tracing()
     configure_tracing()
 
-    assert litellm.callbacks.count(TRACING_CALLBACK) == 1
+    assert len(_langfuse_loggers()) == 1
 
 
 def test_enabled_redacts_message_content_by_default(monkeypatch, keys):
@@ -231,6 +243,7 @@ def test_missing_tracing_extra_warns_and_stays_off(monkeypatch, keys):
 
     assert configure_tracing() is False
     assert TRACING_CALLBACK not in litellm.callbacks
+    assert _langfuse_loggers() == []
     assert any("--extra tracing" in w for w in warnings)
 
 
@@ -248,18 +261,24 @@ def traced(monkeypatch, keys):
     """Configure tracing, then swap the OTLP-exporting callback for an in-memory one."""
     import litellm
     from litellm.integrations.langfuse.langfuse_otel import LangfuseOtelLogger
-    from litellm.integrations.opentelemetry import OpenTelemetryConfig
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from observability import litellm_langfuse
 
     monkeypatch.setenv("OPENRAG_TRACING_ENABLED", "true")
 
     def _configure():
-        assert configure_tracing() is True
         exporter = InMemorySpanExporter()
-        logger = LangfuseOtelLogger(
-            config=OpenTelemetryConfig(exporter=exporter), callback_name=TRACING_CALLBACK
+        # configure_tracing() builds its LiteLLM logger through this; hand it
+        # an in-memory exporter instead of OTLP to Langfuse.
+        real_build = litellm_langfuse.build_langfuse_logger
+        monkeypatch.setattr(
+            litellm_langfuse,
+            "build_langfuse_logger",
+            lambda **kwargs: real_build(**kwargs, exporter=exporter),
         )
-        litellm.callbacks = [logger if cb == TRACING_CALLBACK else cb for cb in litellm.callbacks]
+        assert configure_tracing() is True
+        assert any(isinstance(cb, LangfuseOtelLogger) for cb in litellm.callbacks)
         return exporter
 
     return _configure
@@ -285,7 +304,11 @@ async def _drain(exporter, expected: int):
 
 
 def _span_text(span) -> str:
-    return repr(dict(span.attributes)) + repr([dict(e.attributes or {}) for e in span.events])
+    return (
+        repr(dict(span.attributes))
+        + repr([dict(e.attributes or {}) for e in span.events])
+        + repr(span.status.description)
+    )
 
 
 async def _completion(content="SECRET-PROMPT", response="SECRET-ANSWER"):
@@ -387,6 +410,26 @@ async def test_failed_call_is_traced_with_the_error(traced):
     (span,) = await _drain(exporter, 1)
     assert span.status.status_code is StatusCode.ERROR
     assert "error.type" in span.attributes
+    # Provider error text can echo the prompt or chunk: content, so dropped
+    # unless capture is on (turn_off_message_logging doesn't cover failures).
+    assert "upstream exploded" not in _span_text(span)
+    assert "error.message" not in span.attributes
+    assert "error.stack_trace" not in span.attributes
+    assert not any(event.name == "exception" for event in span.events)
+
+
+@pytest.mark.asyncio
+async def test_failed_call_keeps_the_error_text_when_capture_is_on(monkeypatch, traced):
+    import litellm
+
+    monkeypatch.setenv("OPENRAG_TRACING_CAPTURE_CONTENT", "true")
+    exporter = traced()
+
+    with pytest.raises(litellm.InternalServerError):
+        await _completion(response=Exception("upstream exploded"))
+
+    (span,) = await _drain(exporter, 1)
+    assert "upstream exploded" in _span_text(span)
 
 
 @pytest.mark.parametrize(
