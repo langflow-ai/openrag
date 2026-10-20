@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 type Range = { from: Date; to: Date };
 
 const EMPTY_DAYS: Record<string, number> = {};
+const MAX_CUSTOM_DAYS = 3650;
 
 interface Preset {
   id: string;
@@ -141,6 +142,7 @@ function DateRangeFilterPopover() {
   const [today] = useState(() => startOfDay(new Date()));
   const [draft, setDraft] = useState<DateRange | undefined>();
   const [month, setMonth] = useState<Date>(today);
+  const [customDays, setCustomDays] = useState("");
 
   // Cover the shown month and every preset (the earliest starts last month).
   const windowStart = min([
@@ -169,6 +171,7 @@ function DateRangeFilterPopover() {
           : undefined,
       );
       setMonth(dateRange?.to ?? dateRange?.from ?? today);
+      setCustomDays("");
     }
     setOpen(next);
   };
@@ -196,7 +199,21 @@ function DateRangeFilterPopover() {
   const handlePreset = (preset: Preset) => {
     const range = preset.range(today);
     setDraft(range ?? undefined);
+    setCustomDays("");
     if (range) setMonth(range.to);
+  };
+
+  const handleCustomDays = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 4);
+    setCustomDays(digits);
+    const n = Math.min(Number.parseInt(digits, 10), MAX_CUSTOM_DAYS);
+    if (!n) {
+      setDraft(undefined);
+      return;
+    }
+    const range = { from: subDays(today, n - 1), to: today };
+    setDraft(range);
+    setMonth(range.to);
   };
 
   const handleApply = () => {
@@ -296,12 +313,34 @@ function DateRangeFilterPopover() {
                   );
                 })}
               </div>
+              <div className="mt-2 flex items-center gap-2 px-4 sm:mt-3">
+                <label
+                  htmlFor="custom-days"
+                  className="whitespace-nowrap text-sm text-muted-foreground"
+                >
+                  Last
+                </label>
+                <input
+                  id="custom-days"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="90"
+                  aria-label="Number of days"
+                  value={customDays}
+                  onChange={(e) => handleCustomDays(e.target.value)}
+                  className="h-8 w-16 rounded-md border bg-background px-2 text-sm tabular-nums"
+                />
+                <span className="text-sm text-muted-foreground">days</span>
+              </div>
             </div>
             <div className="flex flex-1 flex-col items-center px-2 py-3 sm:px-4">
               <Calendar
                 mode="range"
                 selected={draft}
-                onSelect={setDraft}
+                onSelect={(next) => {
+                  setCustomDays("");
+                  setDraft(next);
+                }}
                 month={month}
                 onMonthChange={setMonth}
                 toMonth={today}

@@ -242,4 +242,47 @@ describe("KnowledgeDateRangeFilter", () => {
     await click(screen.getByRole("button", { name: "Apply filter" }));
     expect(screen.getByText("Date range")).toBeInTheDocument();
   });
+
+  it("selects the last N days from a typed number and applies it", async () => {
+    renderFilter();
+    await openPopover();
+    await act(async () => {
+      fireEvent.change(
+        screen.getByRole("textbox", { name: "Number of days" }),
+        {
+          target: { value: "45" },
+        },
+      );
+    });
+
+    expect(
+      screen.getByText(
+        `${short(new Date(2024, 4, 7))} – ${short(new Date(2024, 5, 20))}`,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("12 files")).toBeInTheDocument();
+
+    await click(screen.getByRole("button", { name: "Apply filter" }));
+    expect(
+      screen.getByRole("button", {
+        name: `${fmt(new Date(2024, 4, 7))} – ${fmt(new Date(2024, 5, 20))}`,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("ignores non-numeric input and clears the draft when emptied", async () => {
+    renderFilter();
+    await openPopover();
+    const input = screen.getByRole("textbox", { name: "Number of days" });
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "7a" } });
+    });
+    expect(input).toHaveValue("7");
+    expect(preset(/last 7 days/i)).toHaveAttribute("aria-pressed", "true");
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "" } });
+    });
+    expect(preset(/any time/i)).toHaveAttribute("aria-pressed", "true");
+  });
 });
