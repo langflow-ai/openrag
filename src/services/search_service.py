@@ -680,6 +680,21 @@ class SearchService:
                 }
             }
 
+            # Apply the threshold to the hybrid score itself. A top-level
+            # min_score also counts the constant-score clause OpenSearch DLS
+            # adds to every user-scoped search, which lifts every visible hit
+            # over the threshold and turns the filter off.
+            effective_score_threshold = (
+                score_threshold if score_threshold > 0 else DEFAULT_SEARCH_SCORE_THRESHOLD
+            )
+            if effective_score_threshold > 0:
+                query_block = {
+                    "function_score": {
+                        "query": query_block,
+                        "min_score": effective_score_threshold,
+                    }
+                }
+
         search_body: dict[str, Any] = {
             "query": query_block,
             "aggs": _build_file_facet_aggregations(),
@@ -725,22 +740,15 @@ class SearchService:
                 "require_field_match": False,
             }
 
-        # Add score threshold only for hybrid (not meaningful for match_all)
-        effective_score_threshold = (
-            score_threshold if score_threshold > 0 else DEFAULT_SEARCH_SCORE_THRESHOLD
-        )
-        if not is_wildcard_match_all and effective_score_threshold > 0:
-            search_body["min_score"] = effective_score_threshold
-
         # Prepare fallback search body without num_candidates for clusters that don't support it.
         # Only relevant when we actually dispatched KNN queries.
         fallback_search_body: dict[str, Any] | None = None
         if not is_wildcard_match_all and query_embeddings:
             try:
                 fallback_search_body = copy.deepcopy(search_body)
-                knn_query_blocks = fallback_search_body["query"]["bool"]["should"][0]["dis_max"][
-                    "queries"
-                ]
+                hybrid_query = fallback_search_body["query"]
+                hybrid_query = hybrid_query.get("function_score", {}).get("query", hybrid_query)
+                knn_query_blocks = hybrid_query["bool"]["should"][0]["dis_max"]["queries"]
                 for query_candidate in knn_query_blocks:
                     knn_section = query_candidate.get("knn")
                     if isinstance(knn_section, dict):

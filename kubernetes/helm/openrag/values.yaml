@@ -339,6 +339,7 @@ backend:
 
   # Concurrency
   uploadBatchSize: 25                     # Max files per batch when ingesting from a folder
+  maxUploadMb: 100                        # Largest accepted upload, in mebibytes (OPENRAG_MAX_UPLOAD_MB)
   maxWorkers: ""                          # Backend worker processes; empty = auto (min(4, CPU_COUNT // 2))
 
   # Feature flags
@@ -573,7 +574,9 @@ ingress:
 
   # Annotations for ingress controller
   annotations: {}
-    # For nginx:
+    # For nginx. This limits the OpenRAG ingress only. It does not change the
+    # proxy in front of docling-serve; raise that proxy's client_max_body_size
+    # separately, or lower backend.maxUploadMb to match it.
     # nginx.ingress.kubernetes.io/proxy-body-size: "100m"
     # nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
     # For AWS ALB:

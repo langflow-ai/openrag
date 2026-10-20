@@ -33,6 +33,7 @@
     "@docusaurus/tsconfig": "3.10.2",
     "@docusaurus/types": "3.10.2",
     "baseline-browser-mapping": "^2.11.0",
+    "deepmerge": "file:./stubs/deepmerge-unused",
     "typescript": "~6.0.3"
   },
   "overrides": {
@@ -58,6 +59,7 @@
     "brace-expansion": "1.1.21",
     "undici": "8.11.2",
     "follow-redirects": "^1.16.0",
+    "deepmerge": "$deepmerge",
     "svgo": "3.3.5",
     "dompurify": "^3.4.11",
     "mermaid": "11.16.1",
