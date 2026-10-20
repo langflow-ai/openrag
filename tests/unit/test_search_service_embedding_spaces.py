@@ -91,6 +91,7 @@ async def test_backend_search_queries_exact_and_legacy_embedding_providers(monke
     set_search_filters({})
     set_search_limit(10)
     set_score_threshold(0)
+    monkeypatch.setattr("services.search_service.DEFAULT_SEARCH_SCORE_THRESHOLD", 0)
 
     await service.search_tool("needle", embedding_model="text-embedding-3-small")
 

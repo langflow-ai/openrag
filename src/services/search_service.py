@@ -37,6 +37,14 @@ EMBEDDING_SPACE_PAGE_SIZE = 100
 _global_search_service = None
 
 
+_HAS_WORDS = re.compile(r"[^\W\d_]{2,}")
+
+
+def _has_readable_text(text: Any) -> bool:
+    """Return False for chunks with no run of two letters, e.g. a ``|---|---|`` table rule."""
+    return not isinstance(text, str) or _HAS_WORDS.search(text) is not None
+
+
 _STOPWORDS = frozenset(
     "a an and are as at be but by for from if in into is it of on or so that the "
     "their then there these this to was were what when where which who why will with".split()
@@ -876,6 +884,9 @@ class SearchService:
                     "allowed_principal_labels": source.get("allowed_principal_labels", []),
                 }
             )
+
+        if not is_wildcard_match_all:
+            chunks = [chunk for chunk in chunks if _has_readable_text(chunk["text"])]
 
         # If query text appears verbatim in one subset of files, prefer those files
         # to avoid broad semantic spillover for unique lookups.

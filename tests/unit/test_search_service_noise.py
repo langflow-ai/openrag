@@ -72,3 +72,41 @@ def test_keyword_query_drops_fillers_unless_query_is_all_fillers(query, expected
     from services.search_service import _keyword_query
 
     assert _keyword_query(query) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "|---------------------------------------|-----------------------|",
+        "-----",
+        "| | | |",
+        "12345 6789",
+        "",
+        "   ",
+        "a b c",
+        "✅ 📌",
+    ],
+)
+def test_chunks_without_readable_words_are_dropped(text):
+    from services.search_service import _has_readable_text
+
+    assert not _has_readable_text(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "The Tessalune Free Harbor Authority recorded 4,812 container movements.",
+        "港の報告。テッサルーン港では",
+        "Отчёт порта.",
+        "تقرير الميناء",
+        "항만 보고서",
+        "| Name | Age |\n|---|---|\n| Ann | 30 |",
+        "ok",
+        None,
+    ],
+)
+def test_chunks_with_readable_words_are_kept(text):
+    from services.search_service import _has_readable_text
+
+    assert _has_readable_text(text)

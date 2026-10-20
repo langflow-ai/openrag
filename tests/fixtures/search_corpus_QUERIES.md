@@ -1,6 +1,6 @@
 # Search test queries
 
-Ingest only the 10 `.md` files in `search_corpus/` (not this file). Use a small chunk size (about 500 characters, no overlap) so each `[Cnn]` section stays its own chunk.
+Ingest only the 11 `.md` files in `search_corpus/` (not this file). Use a small chunk size (about 500 characters, no overlap) so each `[Cnn]` section stays its own chunk.
 
 ## Gibberish (expect no results; first six rows skip kNN, the rest rely on the noise-floor filter)
 
@@ -119,6 +119,43 @@ Unrelated controls (no keyword overlap and no related chunk; expect none or Low 
 | c++ | symbols in query | C40 |
 | §4.2(b) | section sign | C40 |
 | ops@tessalune.invalid | email | C40 |
+
+## Foreign-language corpus (`11_foreign_languages.md`, C51-C64)
+
+Expectations come from the chunk text; they have not been run against an index yet. Port report (same story as C01) in French C51, German C52, Portuguese C53, Italian C54, Russian C55, Arabic C56, Korean C57, Chinese C58, Hindi C64, plus the existing Spanish C36 and Japanese C38. Dog story (C26) in Dutch C59, Norwegian C60, Turkish C61. Footbridge (C12) in Turkish C62 and Greek C63.
+
+| Query | Tests | Expected |
+|---|---|---|
+| baisse du trafic de conteneurs | French query, French chunk | C51 top |
+| Containerbewegungen Rückgang | German query, German chunk | C52 top |
+| queda de contentores | Portuguese query | C53 top |
+| calo dei container | Italian query | C54 top |
+| контейнерные операции | Russian query, Cyrillic | C55 top |
+| حاويات الميناء | Arabic query, right-to-left script | C56 top |
+| 컨테이너 물동량 | Korean query, Hangul | C57 top |
+| 集装箱 港务局 | Simplified Chinese query | C58 top |
+| कंटेनर बंदरगाह | Hindi query, Devanagari | C64 top |
+| container throughput drop | English query, any-language port chunk | C01 plus C36, C38, C51-C58, C64 as semantic hits |
+| porto franco | Portuguese and Italian share the phrase | C53, C54 |
+| Ombrelle Dray | Latin-script name in every port chunk | C01, C36, C51-C54, C57 keyword hits |
+| Омбрель Дрэй | Same name transliterated to Cyrillic | C55 |
+| 翁布雷尔 | Same name in Chinese | C58 |
+| hond asiel | Dutch query | C59 top |
+| hundehjem | Norwegian query | C60 top |
+| köpek barınak | Turkish query | C61 top |
+| dog shelter adoption | English query for the dog story | C26 plus C59, C60, C61 as semantic hits |
+| köprü açılışı | Turkish query | C62 top |
+| γέφυρα εγκαίνια | Greek query | C63 top |
+| bridge opening ceremony | English query for the footbridge | C12 plus C62, C63 as semantic hits |
+| Straßenbahn | Existing German tram chunk, not the port report | C37 |
+| ß | Single special character | none or low |
+| 港 | Single CJK character | C38 keyword hit; C58 only as semantic |
+| 港口 | Chinese word for port | C58 keyword hit |
+| 港の報告 | Japanese phrase, shares 港 with Chinese | C38 top |
+| 日本語 | Word absent from the corpus | none or low |
+| Тессалюн | Cyrillic spelling of Tessalune | C55 |
+| تيسالون | Arabic spelling of Tessalune | C56 |
+| 테살룬 | Korean spelling of Tessalune | C57 |
 
 ## Multi-file and edge
 
