@@ -756,6 +756,7 @@ function SearchPage() {
     effectiveData,
     taskFiles,
     Boolean(selectedFilter),
+    dateRange,
   );
 
   const serverTotal = isWildcardQuery

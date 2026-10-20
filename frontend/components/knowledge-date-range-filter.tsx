@@ -12,7 +12,7 @@ import {
   subMonths,
 } from "date-fns";
 import { CalendarIcon, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { DateRange, DayContentProps } from "react-day-picker";
 import { useUploadHistogram } from "@/app/api/queries/useUploadHistogram";
 import { Button } from "@/components/ui/button";
@@ -138,8 +138,24 @@ export function KnowledgeDateRangeFilter() {
 function DateRangeFilterPopover() {
   const { dateRange, setDateRange, parsedFilterData } = useKnowledgeFilter();
   const [open, setOpen] = useState(false);
-  // Captured once on mount so server/client renders agree on the same Date.
-  const [today] = useState(() => startOfDay(new Date()));
+  // Initialised in state so server/client renders agree; refreshed on open and
+  // at midnight below so a long-lived page never keeps yesterday as "today".
+  const [today, setToday] = useState(() => startOfDay(new Date()));
+
+  useEffect(() => {
+    if (!open) return;
+    const rollover = () => {
+      const now = startOfDay(new Date());
+      setToday((prev) => (isSameDay(prev, now) ? prev : now));
+    };
+    rollover();
+    const nextMidnight = addDays(startOfDay(new Date()), 1);
+    const timer = setTimeout(
+      rollover,
+      nextMidnight.getTime() - Date.now() + 1000,
+    );
+    return () => clearTimeout(timer);
+  }, [open, today]);
   const [draft, setDraft] = useState<DateRange | undefined>();
   const [month, setMonth] = useState<Date>(today);
   const [customDays, setCustomDays] = useState("");
@@ -168,12 +184,14 @@ function DateRangeFilterPopover() {
 
   const handleOpenChange = (next: boolean) => {
     if (next) {
+      const freshToday = startOfDay(new Date());
+      setToday(freshToday);
       setDraft(
         dateRange?.from
           ? { from: dateRange.from, to: dateRange.to }
           : undefined,
       );
-      setMonth(dateRange?.to ?? dateRange?.from ?? today);
+      setMonth(dateRange?.to ?? dateRange?.from ?? freshToday);
       setCustomDays("");
     }
     setOpen(next);

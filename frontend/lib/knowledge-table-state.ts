@@ -188,14 +188,16 @@ export function buildKnowledgeTableRows(
   searchData: SearchFile[],
   taskFiles: TaskFile[],
   hasActiveFilter = false,
+  dateRange?: { from?: Date; to?: Date } | null,
 ): SearchFile[] {
+  const taskCreatedAt = new WeakMap<SearchFile, string>();
   const taskFilesAsFiles: SearchFile[] = taskFiles.map((taskFile) => {
     const normalizedFilename =
       taskFile.filename?.trim() ||
       taskFile.source_url?.trim() ||
       "Untitled source";
 
-    return {
+    const asFile: SearchFile = {
       filename: normalizedFilename,
       mimetype: taskFile.mimetype,
       source_url: taskFile.source_url || "",
@@ -208,6 +210,8 @@ export function buildKnowledgeTableRows(
       embedding_model: taskFile.embedding_model,
       embedding_dimensions: taskFile.embedding_dimensions,
     };
+    if (taskFile.created_at) taskCreatedAt.set(asFile, taskFile.created_at);
+    return asFile;
   });
 
   const taskFileMap = indexTaskFileOverlays(taskFilesAsFiles);
@@ -284,7 +288,40 @@ export function buildKnowledgeTableRows(
     return backendFiles;
   }
 
-  return [...backendFiles, ...filteredTaskFiles];
+  const rangeFrom = dateRange?.from;
+  const rangeTo = dateRange?.to;
+  const dateFilteredTaskFiles =
+    (rangeFrom ?? rangeTo)
+      ? filteredTaskFiles.filter((f) => {
+          const createdAt = taskCreatedAt.get(f);
+          if (!createdAt) return true;
+          const d = new Date(createdAt);
+          if (isNaN(d.getTime())) return true;
+          if (rangeFrom) {
+            const start = new Date(
+              rangeFrom.getFullYear(),
+              rangeFrom.getMonth(),
+              rangeFrom.getDate(),
+            );
+            if (d < start) return false;
+          }
+          if (rangeTo) {
+            const end = new Date(
+              rangeTo.getFullYear(),
+              rangeTo.getMonth(),
+              rangeTo.getDate(),
+              23,
+              59,
+              59,
+              999,
+            );
+            if (d > end) return false;
+          }
+          return true;
+        })
+      : filteredTaskFiles;
+
+  return [...backendFiles, ...dateFilteredTaskFiles];
 }
 
 export function buildActiveSourceOptions(

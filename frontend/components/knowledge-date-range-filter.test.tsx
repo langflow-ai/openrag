@@ -119,6 +119,34 @@ describe("KnowledgeDateRangeFilter", () => {
     expect(histogramRequests[0].searchParams.get("tz")).toBeTruthy();
   });
 
+  it("recomputes today when the picker is reopened after midnight", async () => {
+    renderFilter();
+    await openPopover();
+    await click(preset(/^today/i));
+    await click(screen.getByRole("button", { name: /apply/i }));
+
+    act(() => {
+      vi.setSystemTime(new Date(2024, 5, 21, 0, 5));
+    });
+    await click(
+      screen.getByRole("button", {
+        name: new RegExp(fmt(new Date(2024, 5, 20))),
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /any time/i })).toBeVisible(),
+    );
+
+    expect(juneDay(21)).not.toBeDisabled();
+    await click(preset(/^today/i));
+    await click(screen.getByRole("button", { name: /apply/i }));
+    expect(
+      screen.getByRole("button", {
+        name: new RegExp(fmt(new Date(2024, 5, 21))),
+      }),
+    ).toBeInTheDocument();
+  });
+
   it("lists quick ranges with their upload counts", async () => {
     renderFilter();
     await openPopover();
