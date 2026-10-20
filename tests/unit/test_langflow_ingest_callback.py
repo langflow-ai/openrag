@@ -443,3 +443,19 @@ def test_ingest_token_prefers_jwt_signing_key_over_session_secret(monkeypatch):
     session_service = LangflowIngestTokenService(secret=session_secret, ttl_seconds=60)
     with pytest.raises(ValueError, match="Invalid Langflow ingest token"):
         session_service.validate_token(token)
+
+
+def test_ingest_token_round_trips_indexed_time():
+    from services.langflow_ingest_token_service import LangflowIngestTokenService
+
+    payload = LangflowIngestTokenService._context_to_payload(
+        DocumentIndexContext(
+            document_id="d",
+            mimetype="application/pdf",
+            embedding_model="m",
+            indexed_time="2026-01-01T00:00:00+00:00",
+        )
+    )
+    context = LangflowIngestTokenService._payload_to_context(payload)
+
+    assert context.indexed_time == "2026-01-01T00:00:00+00:00"

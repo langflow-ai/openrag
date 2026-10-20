@@ -144,10 +144,13 @@ function DateRangeFilterPopover() {
   const [month, setMonth] = useState<Date>(today);
   const [customDays, setCustomDays] = useState("");
 
-  // Cover the shown month and every preset (the earliest starts last month).
+  // Cover the shown month, every preset (last month, or 29 days back when that
+  // is earlier), and the draft start so typed/custom ranges count correctly.
   const windowStart = min([
     startOfMonth(month),
     startOfMonth(subMonths(today, 1)),
+    subDays(today, 29),
+    ...(draft?.from ? [startOfDay(draft.from)] : []),
   ]);
   const { data: histogram } = useUploadHistogram(
     {

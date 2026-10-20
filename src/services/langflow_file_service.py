@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import io
 import json
 import time
@@ -300,6 +301,7 @@ class LangflowFileService:
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             connector_file_id=connector_file_id,
+            indexed_time=datetime.datetime.now(datetime.UTC).isoformat(),
         )
         token = self.ingest_token_service.create_token(context)
         logger.info(
