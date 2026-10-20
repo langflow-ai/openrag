@@ -64,6 +64,7 @@ dependencies = [
     "protobuf>=7.35.0,<8",
     "requests>=2.33.0",
     "urllib3>=2.8.0",
+    "fsspec>=2026.6.0",
     "sqlmodel>=0.0.22",
     "sqlalchemy[asyncio]>=2.0.36",
     "aiosqlite>=0.20.0",

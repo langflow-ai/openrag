@@ -147,7 +147,6 @@ export function ChatInput({
       }
     } else {
       setIsFilterDropdownOpen(false);
-      setAnchorPosition(null);
     }
   };
 
@@ -345,14 +344,12 @@ export function ChatInput({
         <div
           className={cn(
             "flex flex-col w-full p-2 rounded-xl border transition-all",
-            isCloudBrand
-              ? "border-[color:var(--chat-input-border)]"
-              : "border-input",
-            isCloudBrand ? "bg-[var(--chat-prompt-bg)]" : "bg-transparent",
+            isCloudBrand ? "border-(--chat-input-border)" : "border-input",
+            isCloudBrand ? "bg-(--chat-prompt-bg)" : "bg-transparent",
             !isDragging &&
               (isCloudBrand
-                ? "hover:[&:not(:focus-within)]:border-muted-foreground focus-within:border-[color:var(--chat-input-border)]"
-                : "hover:[&:not(:focus-within)]:border-muted-foreground focus-within:border-foreground"),
+                ? "hover:not-focus-within:border-muted-foreground focus-within:border-(--chat-input-border)"
+                : "hover:not-focus-within:border-muted-foreground focus-within:border-foreground"),
             isDragging && "border-dashed",
           )}
         >
@@ -422,7 +419,7 @@ export function ChatInput({
                     className={cn(
                       "h-8 w-8 p-0 rounded-md",
                       isCloudBrand
-                        ? "hover:bg-[var(--layered-select-bg)]"
+                        ? "hover:bg-(--layered-select-bg)"
                         : "hover:bg-muted/50",
                     )}
                     onMouseDown={(e) => {
@@ -447,7 +444,7 @@ export function ChatInput({
                   placeholder="Ask a question..."
                   data-testid="chat-input"
                   disabled={loading}
-                  className={`w-full text-sm bg-transparent focus-visible:outline-none resize-none`}
+                  className={`w-full text-sm bg-transparent focus-visible:outline-hidden resize-none`}
                   rows={1}
                 />
               </div>
@@ -475,7 +472,7 @@ export function ChatInput({
                     className={cn(
                       "h-8 w-8 p-0 rounded-md",
                       isCloudBrand
-                        ? "hover:bg-[var(--layered-select-bg)]"
+                        ? "hover:bg-(--layered-select-bg)"
                         : "hover:bg-muted/50",
                     )}
                     onMouseDown={(e) => {
@@ -496,9 +493,9 @@ export function ChatInput({
                     onClick={onFilePickerClick}
                     disabled={isUploading}
                     className={cn(
-                      "h-8 w-8 p-0 !rounded-md",
+                      "h-8 w-8 p-0 rounded-md!",
                       isCloudBrand
-                        ? "hover:bg-[var(--layered-select-bg)]"
+                        ? "hover:bg-(--layered-select-bg)"
                         : "hover:bg-muted/50",
                     )}
                   >
@@ -510,7 +507,7 @@ export function ChatInput({
                   type="submit"
                   size="iconSm"
                   disabled={(!input.trim() && !uploadedFile) || loading}
-                  className="chat-submit !rounded-md h-8 w-8 p-0"
+                  className="chat-submit rounded-md! h-8 w-8 p-0"
                   data-testid="send-button"
                 >
                   {loading ? (
@@ -583,11 +580,11 @@ export function ChatInput({
                       className={cn(
                         "w-full text-left px-2 py-2 text-sm rounded flex items-center justify-between",
                         isCloudBrand
-                          ? "hover:bg-[var(--layered-select-bg)]"
+                          ? "hover:bg-(--layered-select-bg)"
                           : "hover:bg-muted/50",
                         selectedFilterIndex === -1 &&
                           (isCloudBrand
-                            ? "bg-[var(--layered-select-bg)]"
+                            ? "bg-(--layered-select-bg)"
                             : "bg-muted/50"),
                       )}
                     >
@@ -605,11 +602,11 @@ export function ChatInput({
                       className={cn(
                         "w-full overflow-hidden text-left px-2 py-2 gap-2 text-sm rounded flex items-center justify-between",
                         isCloudBrand
-                          ? "hover:bg-[var(--layered-select-bg)]"
+                          ? "hover:bg-(--layered-select-bg)"
                           : "hover:bg-muted/50",
                         index === selectedFilterIndex &&
                           (isCloudBrand
-                            ? "bg-[var(--layered-select-bg)]"
+                            ? "bg-(--layered-select-bg)"
                             : "bg-muted/50"),
                       )}
                     >

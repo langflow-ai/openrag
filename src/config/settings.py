@@ -18,6 +18,7 @@ from utils.container_utils import determine_docling_host, get_container_host
 from utils.embedding_fields import build_knn_vector_field
 from utils.env_utils import get_env_float, get_env_int, get_env_set
 from utils.logging_config import get_logger
+from utils.upload_limits import max_upload_mb_from_env
 
 # Import configuration manager
 from .config_manager import config_manager
@@ -710,6 +711,18 @@ DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false"
     "yes",
 )
 
+
+def embedding_overflow_policy() -> str:
+    """What the gateway does with an embedding input the model rejects as too long.
+
+    ``average`` (the default) embeds the input in pieces and returns their
+    averaged vector, so the caller still gets one vector per input. ``error``
+    returns the provider's rejection as a 400 instead.
+    """
+    raw = os.getenv("OPENRAG_EMBEDDING_OVERFLOW_POLICY", "").strip().lower()
+    return "error" if raw == "error" else "average"
+
+
 # Show the "+" file upload button in the chat input
 OPENRAG_INGEST_VIA_CHAT = os.getenv("OPENRAG_INGEST_VIA_CHAT", "false").lower() in (
     "true",
@@ -760,6 +773,13 @@ FETCH_OPENRAG_DOCS_AT_STARTUP = os.getenv("FETCH_OPENRAG_DOCS_AT_STARTUP", "fals
 
 # Maximum number of files to upload / ingest (in batch) per task when adding knowledge via folder
 UPLOAD_BATCH_SIZE = get_env_int("UPLOAD_BATCH_SIZE", 25)
+
+# Largest accepted upload, in mebibytes. Enforced before a task is created and
+# again before the file is posted to Docling Serve. This does not raise the
+# body limit on the proxy in front of docling-serve; set it to that proxy's
+# real limit when the proxy cannot be changed. Unset stays at 100. A value that
+# is set but not a positive integer is logged and replaced with 100.
+OPENRAG_MAX_UPLOAD_MB = max_upload_mb_from_env(os.getenv("OPENRAG_MAX_UPLOAD_MB"))
 
 # Langflow HTTP timeout configuration (in seconds)
 # For large documents (300+ pages), ingestion can take 30+ minutes

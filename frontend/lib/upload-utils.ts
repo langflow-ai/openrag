@@ -1,4 +1,10 @@
 import { apiClient } from "@/lib/api-client";
+import { formatFileSize } from "@/lib/file-format";
+
+const DEFAULT_MAX_UPLOAD_MB = 100;
+const DEFAULT_MAX_UPLOAD_BYTES = DEFAULT_MAX_UPLOAD_MB * 1024 * 1024;
+
+let maxUploadBytesRequest: Promise<number> | null = null;
 
 function getUploadErrorMessage(data: unknown): string {
   if (typeof data === "string") return data;
@@ -12,6 +18,151 @@ function getUploadErrorMessage(data: unknown): string {
   }
   return "";
 }
+
+/** Turn an nginx HTML 413 into a short line a toast can show. */
+function plainTextBody(body: string): string {
+  const text = body.includes("<")
+    ? body
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    : body.trim();
+  if (!text) return "Upload failed";
+  return text.length > 300 ? `${text.slice(0, 300)}…` : text;
+}
+
+function uploadErrorText(data: unknown, fallback: string): string {
+  if (typeof data === "string") {
+    if (!data.trim()) return fallback;
+    return plainTextBody(data);
+  }
+  return getUploadErrorMessage(data) || fallback;
+}
+
+export function resetUploadLimitCache(): void {
+  maxUploadBytesRequest = null;
+}
+
+export async function getMaxUploadBytes(): Promise<number> {
+  if (!maxUploadBytesRequest) {
+    maxUploadBytesRequest = apiClient
+      .get("/upload_options")
+      .then((response) => {
+        const mb = response.data?.max_upload_mb;
+        if (
+          response.status >= 200 &&
+          response.status < 300 &&
+          typeof mb === "number" &&
+          mb > 0
+        ) {
+          return mb * 1024 * 1024;
+        }
+        maxUploadBytesRequest = null;
+        return DEFAULT_MAX_UPLOAD_BYTES;
+      })
+      .catch(() => {
+        maxUploadBytesRequest = null;
+        return DEFAULT_MAX_UPLOAD_BYTES;
+      });
+  }
+  return maxUploadBytesRequest;
+}
+
+export function uploadTooLargeMessage(
+  filename: string,
+  sizeBytes: number,
+  limitBytes: number,
+): string {
+  const limitMb = limitBytes / (1024 * 1024);
+  const limitLabel = Number.isInteger(limitMb)
+    ? String(limitMb)
+    : limitMb.toFixed(1);
+  return `"${filename}" is ${formatFileSize(sizeBytes)}. The upload limit is ${limitLabel} MB (OPENRAG_MAX_UPLOAD_MB).`;
+}
+
+/** Text shown in chat when a context upload fails. */
+export function uploadFailureText(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return "Failed to process document. Please try again.";
+}
+
+/** Duplicates that were actually sent; an oversized duplicate was skipped. */
+export function countSentDuplicates(
+  sentNames: string[],
+  duplicateNames: string[],
+): number {
+  const sent = new Set(sentNames);
+  return duplicateNames.filter((name) => sent.has(name)).length;
+}
+
+/**
+ * Success line for a folder upload. Null when nothing was sent, so callers
+ * do not report a failure or a success for files that were only skipped.
+ */
+export function folderUploadSuccessText(
+  sentCount: number,
+  oversizedCount: number,
+  lead: string,
+  extraParts: string[] = [],
+): string | null {
+  if (sentCount <= 0) return null;
+  const parts = extraParts.filter((part) => part.length > 0);
+  if (oversizedCount > 0) {
+    parts.push(`skipped ${oversizedCount} over the upload limit`);
+  }
+  const suffix = parts.length > 0 ? `, ${parts.join(", ")}` : "";
+  return `${lead}${suffix}`;
+}
+
+export async function assertFilesWithinUploadLimit(
+  files: File[],
+): Promise<void> {
+  const limitBytes = await getMaxUploadBytes();
+  for (const file of files) {
+    if (file.size > limitBytes) {
+      throw new Error(uploadTooLargeMessage(file.name, file.size, limitBytes));
+    }
+  }
+}
+
+/**
+ * Split a folder into requests that stay within the file-count limit and the
+ * upload byte budget. A file larger than the budget is returned separately so
+ * it is never posted.
+ */
+export function packUploadBatches(
+  files: File[],
+  maxCount: number,
+  maxBytes: number,
+): { batches: File[][]; oversized: File[] } {
+  const countLimit = Math.max(1, maxCount);
+  const oversized: File[] = [];
+  const batches: File[][] = [];
+  let current: File[] = [];
+  let currentBytes = 0;
+
+  for (const file of files) {
+    if (file.size > maxBytes) {
+      oversized.push(file);
+      continue;
+    }
+    const nextWouldExceedCount = current.length >= countLimit;
+    const nextWouldExceedBytes = currentBytes + file.size > maxBytes;
+    if (current.length > 0 && (nextWouldExceedCount || nextWouldExceedBytes)) {
+      batches.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+    current.push(file);
+    currentBytes += file.size;
+  }
+  if (current.length > 0) {
+    batches.push(current);
+  }
+  return { batches, oversized };
+}
 export type UploadContextResult =
   | { type: "task"; taskId: string }
   | { type: "direct"; filename: string; responseId: string };
@@ -21,6 +172,8 @@ export async function uploadFileForContext(
   endpoint: string,
   previousResponseId: string | null,
 ): Promise<UploadContextResult> {
+  await assertFilesWithinUploadLimit([file]);
+
   const formData = new FormData();
   formData.append("file", file);
   formData.append("endpoint", endpoint);
@@ -31,8 +184,9 @@ export async function uploadFileForContext(
   const response = await apiClient.post("/upload_context", formData);
 
   if (response.status < 200 || response.status >= 300) {
-    const errorText = getUploadErrorMessage(response.data);
-    throw new Error(errorText || "Failed to process document");
+    throw new Error(
+      uploadErrorText(response.data, "Failed to process document"),
+    );
   }
 
   const result = response.data;
@@ -96,7 +250,15 @@ export async function uploadFiles(
   files: File[],
   replace = false,
   preview = false,
+  options?: {
+    existingTaskId?: string;
+    rejectedFiles?: File[];
+  },
 ): Promise<{ taskId: string; fileCount: number; previewMode: boolean }> {
+  if (files.length > 0) {
+    await assertFilesWithinUploadLimit(files);
+  }
+
   const formData = new FormData();
   for (const file of files) {
     formData.append("file", file);
@@ -104,6 +266,20 @@ export async function uploadFiles(
   formData.append("replace_duplicates", replace.toString());
   if (preview) {
     formData.append("preview", "true");
+  }
+  if (options?.existingTaskId) {
+    formData.append("existing_task_id", options.existingTaskId);
+  }
+  if (options?.rejectedFiles && options.rejectedFiles.length > 0) {
+    formData.append(
+      "rejected_files",
+      JSON.stringify(
+        options.rejectedFiles.map((file) => ({
+          filename: file.name,
+          size: file.size,
+        })),
+      ),
+    );
   }
 
   const uploadResponse = await apiClient.post(
@@ -119,6 +295,9 @@ export async function uploadFiles(
   }
 
   if (typeof payload === "string") {
+    if (uploadResponse.status < 200 || uploadResponse.status >= 300) {
+      throw new Error(plainTextBody(payload));
+    }
     throw new Error("Upload failed: unable to parse server response");
   }
 
@@ -156,6 +335,8 @@ export async function uploadFile(
   preview = false,
 ): Promise<UploadFileResult> {
   try {
+    await assertFilesWithinUploadLimit([file]);
+
     const formData = new FormData();
     formData.append("file", file);
     formData.append("replace_duplicates", replace.toString());
@@ -179,6 +360,9 @@ export async function uploadFile(
     }
 
     if (typeof payload === "string") {
+      if (uploadResponse.status < 200 || uploadResponse.status >= 300) {
+        throw new Error(plainTextBody(payload));
+      }
       throw new Error("Upload failed: unable to parse server response");
     }
 

@@ -47,7 +47,7 @@ export function ProgressBar({
               });
               onSkip?.();
             }}
-            className="flex items-center gap-2 text-mmd !text-placeholder-foreground hover:!text-foreground hover:!no-underline"
+            className="flex items-center gap-2 text-mmd text-placeholder-foreground! hover:text-foreground! hover:no-underline!"
           >
             Skip overview
             <ArrowRight className="w-4 h-4" />

@@ -74,7 +74,7 @@ These variables are initially set during the [application onboarding process](/i
 | `RHOAI_EMBEDDINGS_ENDPOINT` | Not set | Embeddings endpoint for the Red Hat OpenShift AI model provider, a second `InferenceService`. Leave unset only if one endpoint serves both chat and embeddings. |
 | `RHOAI_API_KEY` | Not set | Kubernetes bearer token for the Red Hat OpenShift AI model provider, sent to both endpoints. Its subject needs `get` on `inferenceservices` in the model namespace. |
 | `RHOAI_TLS_VERIFY` | Not set | TLS trust for the Red Hat OpenShift AI endpoints. Set to a CA bundle path, such as the service-serving CA OpenShift projects into every pod (`/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt`), or `false` to skip verification for a local `oc port-forward` only. Scoped to this provider, so it does not affect other providers. |
-| `RHOAI_EMBEDDING_MAX_CONCURRENCY` | `16` | Maximum number of embedding requests OpenRAG sends to the Red Hat OpenShift AI embeddings endpoint at once; further requests wait inside OpenRAG. The default suits a GPU-served model. For a CPU-served model set `4`: it answers slowly enough that more queued requests outlast the endpoint proxy's upstream timeout, which returns `502` when several files are ingested together. One slot is reserved for search and chat queries so they are not queued behind ingestion; with a limit of `1` both share it. Set `0` for no limit. Also editable in **Settings**. |
+| `RHOAI_EMBEDDING_MAX_CONCURRENCY` | `16` | Maximum number of embedding requests OpenRAG sends to the Red Hat OpenShift AI embeddings endpoint at once; further requests wait inside OpenRAG. The default suits a GPU-served model, and also a CPU-served model whose InferenceService sets CPU requests equal to limits and `VLLM_CPU_OMP_THREADS_BIND` to the same number of cores (for example `6` and `0-5`). Without that, vLLM binds one thread per node core, the pod is CPU-throttled, and embedding takes over a second per chunk. Set `4` for such a slow endpoint: otherwise queued requests outlast the endpoint proxy's upstream timeout, which returns `502` when several files are ingested together. One slot is reserved for search and chat queries so they are not queued behind ingestion; with a limit of `1` both share it. Set `0` for no limit. Also editable in **Settings**. |
 
 Newly indexed chunks keep the model name in `embedding_model` for compatibility and also store
 `embedding_provider` plus the unambiguous `embedding_space_id` (`provider:model`). Retrieval queries
@@ -190,6 +190,19 @@ today — are entered in **Settings** through a form built from the provider's o
 credential fields. Configuring one needs no code change beyond its row in this
 file.
 
+#### Azure AI Foundry health checks {#azure-ai-foundry-health}
+
+For `azure_ai`, a resource endpoint such as
+`https://<resource>.services.ai.azure.com/` or its `/models` form uses the
+legacy Foundry inference route. Keep that endpoint if inference is already
+working; the periodic health check uses the resource's separate
+`/openai/v1/models` listing, not `GET /models`.
+
+Explicit `/openai/v1` endpoints, including project-scoped endpoints, keep their
+configured prefix when listing models. These lightweight checks do not run
+inference or consume model tokens, and a successful listing does not prove that
+a particular deployment supports chat or tool calling.
+
 #### Add a custom OpenAI-compatible provider {#custom-openai-compatible-provider}
 
 To offer a self-hosted OpenAI-compatible endpoint — vLLM, LM Studio, or an
@@ -244,6 +257,8 @@ For Langflow flow IDs and Langflow timeout settings, see [Langflow settings](#la
 | `HOST_DOCKER_INTERNAL` | `host.docker.internal` | Host address for accessing services running on the host machine from within Docker containers. This is used to connect to the local Docling Serve instance started by OpenRAG. If your system uses a different hostname for this purpose, set this variable accordingly. |
 | `INGESTION_TIMEOUT` | `3600` | Document ingestion timeout limit in seconds for each file. Increase this value if you experience timeouts when ingesting very large documents. Must be greater than or equal to [`LANGFLOW_TIMEOUT`](#langflow-settings).  |
 | `UPLOAD_BATCH_SIZE` | `25` | When ingesting folders, set the maximum number of files to ingest per batch. Each batch is an [ingestion task](/ingestion#monitor-ingestion). Increase this value to ingest more files per batch. If this value is too high, performance issues can occur. |
+| `OPENRAG_MAX_UPLOAD_MB` | `100` | Largest accepted upload, in mebibytes. A larger file is refused before ingestion starts, after the request body has been received. Cap the request at the reverse proxy in front of OpenRAG if temp disk must be bounded. This does not raise the body limit on the proxy in front of Docling Serve. A `proxy-body-size` annotation on the OpenRAG ingress does not change that proxy. Raise the Docling proxy's `client_max_body_size`, or set this variable to that proxy's real limit. |
+| `OPENRAG_EMBEDDING_OVERFLOW_POLICY` | `average` | What OpenRAG does when the embedding model rejects a chunk or query as longer than its input limit. With `average`, OpenRAG embeds the text in smaller pieces and stores the length-weighted average of their vectors, so ingestion continues; the full text is still stored and searchable by keyword. With `error`, the request fails and the file reports that a section is longer than the model accepts. |
 
 ## Langflow settings {#langflow-settings}
 

@@ -23,6 +23,20 @@ export const apiClient = axios.create({
   validateStatus: () => true,
 });
 
+/**
+ * True when a request failed because it was cancelled, not because it errored.
+ *
+ * Covers Axios cancellations (`CanceledError`, raised when React Query aborts a
+ * query's `signal`) and native `AbortError`s. Callers should skip error logging
+ * for these - cancellation is expected, e.g. when a query is removed or unmounted.
+ */
+export function isRequestCancelled(error: unknown): boolean {
+  return (
+    axios.isCancel(error) ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
 export function getUnauthorizedRedirectUrl(redirectUrl: unknown): string {
   const fallback = withFrontendBasePath("/login");
   if (typeof redirectUrl !== "string") return fallback;
