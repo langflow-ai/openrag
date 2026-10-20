@@ -70,7 +70,9 @@ def main() -> None:
     args = parser.parse_args()
 
     updated_paths = stamp_flow_version_tags(args.flows_directory, args.pyproject)
-    print(f"Stamped {len(updated_paths)} flow definitions with release {_project_version(args.pyproject)}")
+    print(
+        f"Stamped {len(updated_paths)} flow definitions with release {_project_version(args.pyproject)}"
+    )
 
 
 if __name__ == "__main__":

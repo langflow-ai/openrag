@@ -319,7 +319,9 @@ async def test_flow_update_requires_a_newer_version_and_different_content_id(tmp
 
 
 @pytest.mark.asyncio
-async def test_flow_update_ignores_timestamp_when_version_or_content_id_do_not_require_upgrade(tmp_path):
+async def test_flow_update_ignores_timestamp_when_version_or_content_id_do_not_require_upgrade(
+    tmp_path,
+):
     service = FlowsService()
     flow_path = tmp_path / "flow.json"
     flow_path.write_text(
@@ -402,7 +404,7 @@ def test_stamp_flow_version_tags_replaces_previous_release_tag(tmp_path):
         '{"id": "flow-1", "tags": ["rag", "openrag:flow-version:1.0.0:old-id"]}',
         encoding="utf-8",
     )
-    component_index_path.write_text('[]', encoding="utf-8")
+    component_index_path.write_text("[]", encoding="utf-8")
     pyproject_path.write_text('[project]\nversion = "1.2.3"\n', encoding="utf-8")
 
     updated_paths = flow_tag_version.stamp_flow_version_tags(tmp_path, pyproject_path)

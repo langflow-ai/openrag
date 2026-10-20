@@ -958,7 +958,9 @@ class FlowsService:
         for tag in tags:
             if not isinstance(tag, str) or not tag.startswith(_FLOW_VERSION_TAG_PREFIX):
                 continue
-            version_text, separator, flow_id = tag.removeprefix(_FLOW_VERSION_TAG_PREFIX).rpartition(":")
+            version_text, separator, flow_id = tag.removeprefix(
+                _FLOW_VERSION_TAG_PREFIX
+            ).rpartition(":")
             if not separator or not flow_id:
                 continue
             try:
