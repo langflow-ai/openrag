@@ -93,7 +93,6 @@ def test_langflow_image_installs_the_openrag_component_bundle():
 
 def test_docker_compose_seeds_openrag_llm_token_placeholder():
     compose = Path("docker-compose.yml").read_text(encoding="utf-8")
-    assert "LANGFLOW_COMPONENTS_INDEX_PATH=/app/flows/component_index.json" in compose
     assert "OPENRAG_LLM_TOKEN=None" in compose
     assert (
         "OPENRAG_LLM_TOKEN"

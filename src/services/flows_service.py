@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import Any
 
 from cachetools import LRUCache
-from packaging.version import InvalidVersion, Version
 
 from config.settings import (
     AGENT_COMPONENT_DISPLAY_NAME,
@@ -26,7 +25,7 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 logger = get_logger(__name__)
 
 _UNSET = object()
-_FLOW_VERSION_TAG_PREFIX = "openrag:flow-version:"
+_FLOW_FILE_MTIME_TAG_PREFIX = "openrag:file-mtime:"
 
 
 class FlowsService:
@@ -416,7 +415,7 @@ class FlowsService:
             )
             return None
 
-    def _find_flow_file_by_id(self, flow_id: str, flows_directory: str | None = None):
+    def _find_flow_file_by_id(self, flow_id: str):
         """
         Scan the flows directory and find the JSON file that contains the specified flow ID.
 
@@ -430,15 +429,15 @@ class FlowsService:
             raise ValueError("flow_id is required")
 
         # Check cache first
-        flows_dir = flows_directory or self._get_flows_directory()
-        cache_key = f"{flows_dir}:{flow_id}"
-        if cache_key in self._flow_file_cache:
-            cached_path = self._flow_file_cache[cache_key]
+        if flow_id in self._flow_file_cache:
+            cached_path = self._flow_file_cache[flow_id]
             if os.path.exists(cached_path):
                 return cached_path
             else:
                 # Remove stale cache entry
-                del self._flow_file_cache[cache_key]
+                del self._flow_file_cache[flow_id]
+
+        flows_dir = self._get_flows_directory()
 
         if not os.path.exists(flows_dir):
             logger.warning(f"Flows directory not found: {flows_dir}")
@@ -459,7 +458,7 @@ class FlowsService:
                     # Check if this file contains the flow we're looking for
                     if flow_data.get("id") == flow_id:
                         # Cache the result
-                        self._flow_file_cache[cache_key] = file_path
+                        self._flow_file_cache[flow_id] = file_path
                         logger.info(f"Found flow {flow_id} in file: {filename}")
                         return file_path
 
@@ -553,9 +552,7 @@ class FlowsService:
             raise ValueError("LANGFLOW_URL environment variable is required")
 
         # Dynamically find the flow file by ID
-        flow_path = self._find_flow_file_by_id(
-            flow_id, os.getenv("OPENRAG_IMAGE_FLOWS_PATH") or self._get_flows_directory()
-        )
+        flow_path = self._find_flow_file_by_id(flow_id)
         if not flow_path:
             raise FileNotFoundError(f"Flow file not found for flow ID: {flow_id}")
 
@@ -563,6 +560,7 @@ class FlowsService:
         try:
             with open(flow_path) as f:
                 flow_data = json.load(f)
+            self._stamp_flow_with_file_mtime(flow_data, flow_path)
             logger.info(
                 f"Successfully loaded flow data for {flow_type} from {os.path.basename(flow_path)}"
             )
@@ -573,10 +571,10 @@ class FlowsService:
 
         await self._unlock_flow(flow_id)
 
-        # Make PATCH request to Langflow API to update the flow using shared client
+        # Replace the complete flow so the stamped source timestamp is persisted.
         try:
             response = await clients.langflow_request(
-                "PATCH",
+                "PUT",
                 f"/api/v1/flows/{flow_id}",
                 json=flow_data,
                 idempotent=True,
@@ -893,38 +891,25 @@ class FlowsService:
         self, flow_type: str, flow_id: str, flow_data: dict[str, Any] | None = None
     ) -> dict[str, Any] | None:
         """
-        Check whether the flow bundled in the current image is newer than Langflow's copy.
+        Check whether the source flow file is newer than the version stored in Langflow.
 
-        Image builds stamp each bundled flow with an
-        ``openrag:flow-version:<version>:<id>`` tag. An update is available
-        only when the image has a newer package version *and* a different
-        flow-content identifier. Timestamps are not meaningful because copying
-        a flow into an image changes its mtime without changing its contents.
+        The backend stamps each uploaded flow with an
+        ``openrag:file-mtime:<nanoseconds>`` tag. Comparing the current file
+        timestamp to that tag avoids relying on Langflow's unrelated
+        ``updated_at`` value.
 
         Returns flow update info dict if an update is available, None otherwise.
         """
         if not flow_id:
             return None
-        flow_path = self._find_flow_file_by_id(
-            flow_id, os.getenv("OPENRAG_IMAGE_FLOWS_PATH") or self._get_flows_directory()
-        )
+        flow_path = self._find_flow_file_by_id(flow_id)
         if not flow_path or not os.path.exists(flow_path):
             return None
 
         try:
-            with open(flow_path, encoding="utf-8") as handle:
-                image_flow_data = json.load(handle)
-        except (OSError, json.JSONDecodeError) as error:
-            logger.warning(f"Could not read bundled flow {flow_path} for update check: {error}")
-            return None
-
-        image_flow_tag = self._get_flow_version_tag(image_flow_data)
-        if image_flow_tag is None:
-            logger.warning(
-                "Bundled flow has no OpenRAG release tag; skipping update check",
-                flow_type=flow_type,
-                flow_id=flow_id,
-            )
+            source_mtime = os.stat(flow_path).st_mtime_ns
+        except OSError as error:
+            logger.warning(f"Could not stat bundled flow {flow_path} for update check: {error}")
             return None
 
         if flow_data is None:
@@ -937,10 +922,8 @@ class FlowsService:
                 logger.error(f"Failed to fetch flow {flow_id} for update check: {e}")
                 return None
 
-        stored_flow_tag = self._get_flow_version_tag(flow_data)
-        if stored_flow_tag is None or (
-            image_flow_tag[0] > stored_flow_tag[0] and image_flow_tag[1] != stored_flow_tag[1]
-        ):
+        stored_mtime = self._get_flow_file_mtime_tag(flow_data)
+        if stored_mtime is None or source_mtime > stored_mtime:
             is_locked = flow_data.get("locked", False)
             return {
                 "flow_type": flow_type,
@@ -950,22 +933,28 @@ class FlowsService:
         return None
 
     @staticmethod
-    def _get_flow_version_tag(flow_data: dict[str, Any]) -> tuple[Version, str] | None:
-        """Return the parsed OpenRAG release version and flow-content identifier."""
+    def _stamp_flow_with_file_mtime(flow_data: dict[str, Any], flow_path: str) -> None:
+        """Embed the source flow's modification timestamp into its Langflow tags."""
+        tags = flow_data.get("tags")
+        if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
+            raise ValueError(f"Flow {flow_data.get('id', '<unknown>')} has invalid tags")
+        flow_data["tags"] = [
+            *[tag for tag in tags if not tag.startswith(_FLOW_FILE_MTIME_TAG_PREFIX)],
+            f"{_FLOW_FILE_MTIME_TAG_PREFIX}{os.stat(flow_path).st_mtime_ns}",
+        ]
+
+    @staticmethod
+    def _get_flow_file_mtime_tag(flow_data: dict[str, Any]) -> int | None:
+        """Return the source-file modification timestamp recorded on a Langflow flow."""
         tags = flow_data.get("tags")
         if not isinstance(tags, list):
             return None
         for tag in tags:
-            if not isinstance(tag, str) or not tag.startswith(_FLOW_VERSION_TAG_PREFIX):
-                continue
-            version_text, separator, flow_id = tag.removeprefix(
-                _FLOW_VERSION_TAG_PREFIX
-            ).rpartition(":")
-            if not separator or not flow_id:
+            if not isinstance(tag, str) or not tag.startswith(_FLOW_FILE_MTIME_TAG_PREFIX):
                 continue
             try:
-                return Version(version_text), flow_id
-            except InvalidVersion:
+                return int(tag.removeprefix(_FLOW_FILE_MTIME_TAG_PREFIX))
+            except ValueError:
                 continue
         return None
 
@@ -1012,9 +1001,7 @@ class FlowsService:
                     )
                     return None
 
-                flow_path = self._find_flow_file_by_id(
-                    flow_id, os.getenv("OPENRAG_IMAGE_FLOWS_PATH") or self._get_flows_directory()
-                )
+                flow_path = self._find_flow_file_by_id(flow_id)
                 if not flow_path:
                     logger.warning(
                         f"No flow file found for {flow_type} (ID: {flow_id}), cannot create"
@@ -1023,6 +1010,7 @@ class FlowsService:
 
                 with open(flow_path) as f:
                     flow_data = json.load(f)
+                self._stamp_flow_with_file_mtime(flow_data, flow_path)
 
                 response = await clients.langflow_request(
                     "PUT", f"/api/v1/flows/{flow_id}", json=flow_data
