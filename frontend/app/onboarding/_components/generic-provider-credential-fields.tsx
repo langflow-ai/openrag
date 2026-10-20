@@ -4,10 +4,11 @@ import type { CatalogCredentialField } from "@/components/models/catalog-models"
 import {
   AZURE_AUTH_GROUPS,
   fieldsForKeys,
-  groupRhoaiFields,
   ON_PREM_AUTH_GROUPS,
+  type RhoaiSectionsOpen,
   SECRET_REENTRY_HINT,
 } from "@/components/models/provider-credentials";
+import { RhoaiCredentialSections } from "@/components/models/rhoai-credential-sections";
 import {
   Accordion,
   AccordionContent,
@@ -15,12 +16,17 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
+const RHOAI_SECTIONS_CLOSED: RhoaiSectionsOpen = {
+  embeddings: false,
+  advanced: false,
+};
+
 export function GenericProviderCredentialFields({
   provider,
   fields,
   azureAuthMethod,
   onPremAuthMethod,
-  advancedOpenByDefault = false,
+  rhoaiOpenByDefault = RHOAI_SECTIONS_CLOSED,
   onAzureAuthMethodChange,
   onOnPremAuthMethodChange,
   renderField,
@@ -29,8 +35,8 @@ export function GenericProviderCredentialFields({
   fields: CatalogCredentialField[];
   azureAuthMethod: string;
   onPremAuthMethod: string;
-  /** Start "Advanced settings" open (RHOAI: a saved non-default value). */
-  advancedOpenByDefault?: boolean;
+  /** Which RHOAI sections start open. */
+  rhoaiOpenByDefault?: RhoaiSectionsOpen;
   onAzureAuthMethodChange: (method: string) => void;
   onOnPremAuthMethodChange: (method: string) => void;
   renderField: (field: CatalogCredentialField) => ReactNode;
@@ -114,29 +120,12 @@ export function GenericProviderCredentialFields({
     );
   }
   if (provider === "rhoai") {
-    const { primary, advanced } = groupRhoaiFields(fields);
     return (
-      <>
-        {primary.map(renderField)}
-        {advanced.length > 0 && (
-          <Accordion
-            // Remounted when saved settings arrive after the first render, so
-            // a saved advanced value still opens the section.
-            key={advancedOpenByDefault ? "advanced-open" : "advanced-closed"}
-            type="single"
-            collapsible
-            defaultValue={advancedOpenByDefault ? "advanced" : undefined}
-            className="space-y-2"
-          >
-            <AccordionItem value="advanced">
-              <AccordionTrigger>Advanced settings</AccordionTrigger>
-              <AccordionContent className="space-y-4">
-                {advanced.map(renderField)}
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        )}
-      </>
+      <RhoaiCredentialSections
+        fields={fields}
+        renderField={renderField}
+        openByDefault={rhoaiOpenByDefault}
+      />
     );
   }
   return <>{fields.map(renderField)}</>;

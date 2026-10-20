@@ -1537,7 +1537,7 @@ async def test_missing_credentials_say_what_is_missing(monkeypatch) -> None:
     with pytest.raises(Exception, match="No chat endpoint"):
         await rhoai.lightweight_health_check({"api_key": TOKEN})
 
-    with pytest.raises(Exception, match="No ServiceAccount token"):
+    with pytest.raises(Exception, match="No service account token"):
         await rhoai.lightweight_health_check({"api_base": CHAT_BASE})
 
 

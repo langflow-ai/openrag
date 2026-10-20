@@ -1223,11 +1223,15 @@ describe("GenericOnboarding cluster model discovery", () => {
   });
 });
 
-describe("GenericOnboarding RHOAI advanced settings", () => {
+describe("GenericOnboarding RHOAI sections", () => {
+  const embeddingsToggle = () =>
+    screen.getByRole("button", { name: "Embeddings" });
   const advancedToggle = () =>
     screen.getByRole("button", { name: "Advanced settings" });
   const tlsSwitch = () =>
     screen.getByRole("switch", { name: "Verify TLS certificates" });
+  const embeddingEndpoint = () =>
+    screen.getByRole("textbox", { name: /Embedding endpoint/ });
   const concurrency = () =>
     screen.getByRole("textbox", { name: /Max concurrent embedding requests/ });
   const caPath = () =>
@@ -1257,34 +1261,51 @@ describe("GenericOnboarding RHOAI advanced settings", () => {
     },
   });
 
-  it("shows the endpoints and token up front, with the tuning collapsed", async () => {
+  it("shows only the chat endpoint and token up front in the language step", async () => {
     renderOnboarding("rhoai");
 
     const chat = await screen.findByLabelText(/Chat endpoint/);
     expectInDocumentOrder(
       chat,
-      screen.getByLabelText(/Embedding endpoint/),
       screen.getByLabelText(/Token/),
+      embeddingsToggle(),
       advancedToggle(),
     );
+    expect(embeddingsToggle()).toHaveAttribute("aria-expanded", "false");
     expect(advancedToggle()).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/Embedding endpoint/),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText(/Max concurrent embedding requests/),
     ).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
     // The free-text field is replaced, never rendered alongside the switch.
     expect(
       screen.queryByLabelText(/TLS certificate verification/),
     ).not.toBeInTheDocument();
   });
 
-  it("orders the limit, the TLS switch and the CA path inside Advanced", async () => {
-    const { user } = renderOnboarding("rhoai");
-    await user.click(
-      await screen.findByRole("button", { name: "Advanced settings" }),
-    );
+  it("opens Embeddings in the embedding step, where its endpoint matters", async () => {
+    renderOnboarding("rhoai", true);
 
-    expectInDocumentOrder(concurrency(), tlsSwitch(), caPath());
+    await screen.findByLabelText(/Chat endpoint/);
+    expect(embeddingsToggle()).toHaveAttribute("aria-expanded", "true");
+    expect(embeddingEndpoint()).toBeInTheDocument();
+    expect(advancedToggle()).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("orders the fields inside each section", async () => {
+    const { user } = renderOnboarding("rhoai");
+    await user.click(await screen.findByRole("button", { name: "Embeddings" }));
+    await user.click(advancedToggle());
+
+    expectInDocumentOrder(
+      embeddingEndpoint(),
+      concurrency(),
+      tlsSwitch(),
+      caPath(),
+    );
     // Verification is on unless the operator turns it off.
     expect(tlsSwitch()).toBeChecked();
   });
@@ -1303,16 +1324,17 @@ describe("GenericOnboarding RHOAI advanced settings", () => {
     );
   });
 
-  it("submits the CA path and the concurrency limit that were typed", async () => {
+  it("submits the embeddings endpoint, limit and CA path that were typed", async () => {
     const { user, getSettings } = renderOnboarding("rhoai");
-    await user.click(
-      await screen.findByRole("button", { name: "Advanced settings" }),
-    );
+    await user.click(await screen.findByRole("button", { name: "Embeddings" }));
+    await user.click(advancedToggle());
 
+    await user.type(embeddingEndpoint(), "https://embed.example.com/v1");
     await user.type(concurrency(), "4");
     await user.type(caPath(), "/var/run/secrets/service-ca.crt");
 
     expect(getSettings().provider_credentials?.rhoai).toMatchObject({
+      embedding_api_base: "https://embed.example.com/v1",
       embedding_max_concurrency: "4",
       ssl_verify: "/var/run/secrets/service-ca.crt",
     });
@@ -1331,39 +1353,58 @@ describe("GenericOnboarding RHOAI advanced settings", () => {
   });
 
   it.each([
-    ["a disabled TLS setting", { ssl_verify: "false" }],
-    ["a CA path", { ssl_verify: "/var/run/secrets/service-ca.crt" }],
-    ["a concurrency limit", { embedding_max_concurrency: "4" }],
-  ])("opens Advanced when %s is saved", async (_name, saved) => {
+    [
+      "an embeddings endpoint",
+      { embedding_api_base: "https://embed.example.com/v1" },
+      { embeddings: "true", advanced: "false" },
+    ],
+    [
+      "a concurrency limit",
+      { embedding_max_concurrency: "4" },
+      { embeddings: "true", advanced: "false" },
+    ],
+    [
+      "a disabled TLS setting",
+      { ssl_verify: "false" },
+      { embeddings: "false", advanced: "true" },
+    ],
+    [
+      "a CA path",
+      { ssl_verify: "/var/run/secrets/service-ca.crt" },
+      { embeddings: "false", advanced: "true" },
+    ],
+    [
+      "the default TLS setting",
+      { ssl_verify: "true" },
+      { embeddings: "false", advanced: "false" },
+    ],
+  ])("opens only the section holding %s when saved", async (_name, saved, expanded) => {
     renderOnboarding("rhoai", false, savedRhoai(saved));
 
-    const toggle = await screen.findByRole("button", {
-      name: "Advanced settings",
-    });
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(tlsSwitch()).toBeInTheDocument();
+    await screen.findByLabelText(/Chat endpoint/);
+    expect(embeddingsToggle()).toHaveAttribute(
+      "aria-expanded",
+      expanded.embeddings,
+    );
+    expect(advancedToggle()).toHaveAttribute(
+      "aria-expanded",
+      expanded.advanced,
+    );
   });
 
-  it("keeps Advanced collapsed when the saved TLS setting is the default", async () => {
-    renderOnboarding("rhoai", false, savedRhoai({ ssl_verify: "true" }));
-
-    const toggle = await screen.findByRole("button", {
-      name: "Advanced settings",
-    });
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-  });
-
-  it("shows saved advanced values in their fields", async () => {
+  it("shows saved values in their fields", async () => {
     renderOnboarding(
       "rhoai",
       false,
       savedRhoai({
-        ssl_verify: "/var/run/secrets/service-ca.crt",
+        embedding_api_base: "https://embed.example.com/v1",
         embedding_max_concurrency: "4",
+        ssl_verify: "/var/run/secrets/service-ca.crt",
       }),
     );
 
     await screen.findByRole("switch", { name: "Verify TLS certificates" });
+    expect(embeddingEndpoint()).toHaveValue("https://embed.example.com/v1");
     expect(concurrency()).toHaveValue("4");
     expect(caPath()).toHaveValue("/var/run/secrets/service-ca.crt");
     expect(tlsSwitch()).toBeChecked();

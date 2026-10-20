@@ -509,7 +509,7 @@ def test_a_changed_target_without_the_secret_is_refused_and_nothing_changes(subm
 
     assert exc_info.value.fields == ("api_key",)
     # Client-safe: names the form label, never a value.
-    assert "ServiceAccount token" in str(exc_info.value)
+    assert "Service account token" in str(exc_info.value)
     assert "host-a-token" not in str(exc_info.value)
     assert config.providers.stored_credentials("rhoai") == _RHOAI_SAVED
     assert config.providers.custom["rhoai"].configured is True

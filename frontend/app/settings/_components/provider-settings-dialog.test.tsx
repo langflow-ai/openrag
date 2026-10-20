@@ -550,7 +550,7 @@ const rhoaiCatalog = {
         },
         {
           key: "api_key",
-          label: "ServiceAccount token",
+          label: "Service account token",
           required: true,
           field_type: "password",
         },
@@ -584,6 +584,8 @@ describe("ProviderSettingsDialog Red Hat OpenShift AI", () => {
     secretFields: ["api_key"],
     authMethod: "",
   });
+  const embeddingsToggle = () =>
+    screen.getByRole("button", { name: "Embeddings" });
   const advancedToggle = () =>
     screen.getByRole("button", { name: "Advanced settings" });
   const tlsSwitch = () =>
@@ -600,23 +602,29 @@ describe("ProviderSettingsDialog Red Hat OpenShift AI", () => {
     }
   }
 
-  it("shows the endpoints and token up front and the tuning behind Advanced", async () => {
+  it("shows only the chat endpoint and token up front", async () => {
     renderDialog(rhoaiSaved());
     const user = userEvent.setup();
 
     const chat = await screen.findByLabelText(/^Chat endpoint/);
     expectInDocumentOrder(
       chat,
-      screen.getByLabelText(/^Embeddings endpoint/),
-      screen.getByLabelText(/^ServiceAccount token/),
+      screen.getByLabelText(/^Service account token/),
+      embeddingsToggle(),
       advancedToggle(),
     );
+    expect(embeddingsToggle()).toHaveAttribute("aria-expanded", "false");
     expect(advancedToggle()).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByLabelText(/^Embeddings endpoint/),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
 
+    await user.click(embeddingsToggle());
     await user.click(advancedToggle());
 
     expectInDocumentOrder(
+      screen.getByLabelText(/^Embeddings endpoint/),
       screen.getByLabelText(/^Max concurrent embedding requests/),
       tlsSwitch(),
       caPath(),
@@ -625,6 +633,28 @@ describe("ProviderSettingsDialog Red Hat OpenShift AI", () => {
     expect(
       screen.queryByLabelText(/^TLS certificate verification/),
     ).not.toBeInTheDocument();
+  });
+
+  it("opens Embeddings with a saved endpoint and treats editing it as a target change", async () => {
+    const result = renderDialog(
+      rhoaiSaved({ embedding_api_base: "https://embed.example.com/v1" }),
+    );
+    const user = userEvent.setup();
+
+    const endpoint = await screen.findByLabelText(/^Embeddings endpoint/);
+    expect(embeddingsToggle()).toHaveAttribute("aria-expanded", "true");
+    expect(advancedToggle()).toHaveAttribute("aria-expanded", "false");
+    expect(endpoint).toHaveValue("https://embed.example.com/v1");
+
+    await user.clear(endpoint);
+    await user.type(endpoint, "https://other-embed.example.com/v1");
+    expect(screen.getByText(REENTRY_HINT)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByText("Service account token is required"),
+    ).toBeInTheDocument();
+    expect(result.submitted).toBeUndefined();
   });
 
   it("saves false once verification is switched off and the token retyped", async () => {
@@ -640,7 +670,7 @@ describe("ProviderSettingsDialog Red Hat OpenShift AI", () => {
     // A changed TLS setting is a new credential target.
     expect(screen.getByText(REENTRY_HINT)).toBeInTheDocument();
     await user.type(
-      screen.getByLabelText(/^ServiceAccount token/),
+      screen.getByLabelText(/^Service account token/),
       "sha256~new-token",
     );
     await user.click(screen.getByRole("button", { name: "Save" }));
@@ -668,7 +698,7 @@ describe("ProviderSettingsDialog Red Hat OpenShift AI", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     expect(
-      await screen.findByText("ServiceAccount token is required"),
+      await screen.findByText("Service account token is required"),
     ).toBeInTheDocument();
     expect(result.submitted).toBeUndefined();
   });
@@ -686,7 +716,7 @@ describe("ProviderSettingsDialog Red Hat OpenShift AI", () => {
 
     await user.click(toggle);
     await user.type(
-      screen.getByLabelText(/^ServiceAccount token/),
+      screen.getByLabelText(/^Service account token/),
       "sha256~new-token",
     );
     await user.click(screen.getByRole("button", { name: "Save" }));
@@ -717,7 +747,7 @@ describe("ProviderSettingsDialog Red Hat OpenShift AI", () => {
     expect(screen.getByText(REENTRY_HINT)).toBeInTheDocument();
   });
 
-  it("opens Advanced with a saved concurrency limit and saves a new one", async () => {
+  it("opens Embeddings with a saved concurrency limit and saves a new one", async () => {
     const result = renderDialog(rhoaiSaved({ embedding_max_concurrency: "4" }));
     const user = userEvent.setup();
 

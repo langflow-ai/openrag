@@ -21,7 +21,7 @@ import {
   authMethodCredentialKeys,
   clearedSavedCredentialKeys,
   credentialTargetChanged,
-  rhoaiAdvancedOpenByDefault,
+  rhoaiSectionsOpenByDefault,
 } from "@/components/models/provider-credentials";
 import {
   RhoaiTlsSettings,
@@ -316,9 +316,9 @@ export function GenericOnboarding({
           fields={fields}
           azureAuthMethod={azureAuthMethod}
           onPremAuthMethod={onPremAuthMethod}
-          advancedOpenByDefault={
-            provider === "rhoai" && rhoaiAdvancedOpenByDefault(savedCredentials)
-          }
+          rhoaiOpenByDefault={rhoaiSectionsOpenByDefault(savedCredentials, {
+            isEmbedding,
+          })}
           onAzureAuthMethodChange={(method) =>
             handleAuthMethodChange("azure", method)
           }

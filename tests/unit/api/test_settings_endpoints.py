@@ -1115,7 +1115,7 @@ async def test_update_settings_refuses_a_new_endpoint_without_the_token_before_p
         )
 
     assert response.status_code == 400
-    assert "Enter ServiceAccount token again" in _error_text(response)
+    assert "Enter Service account token again" in _error_text(response)
     validate.assert_not_awaited()
     save.assert_not_called()
     assert config.providers.stored_credentials("rhoai")["api_base"] == (
@@ -1155,7 +1155,7 @@ async def test_onboarding_refuses_a_new_endpoint_without_the_token_before_probin
         )
 
     assert response.status_code == 400
-    assert "Enter ServiceAccount token again" in _error_text(response)
+    assert "Enter Service account token again" in _error_text(response)
     validate.assert_not_awaited()
     assert config.providers.stored_credentials("rhoai")["api_base"] == (
         "https://chat.host-a:8443/v1"

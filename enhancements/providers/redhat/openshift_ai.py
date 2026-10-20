@@ -102,8 +102,8 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "label": "Chat endpoint",
         "placeholder": "https://openrag-chat-predictor.openrag-models.svc.cluster.local:8443/v1",
         "tooltip": "URL of the InferenceService serving your chat model, ending in /v1. "
-        "In-cluster this is the predictor Service; from a laptop it is an oc port-forward "
-        "or a Route.",
+        "In-cluster, this is the predictor service; otherwise, this is a public route. "
+        "This endpoint may also serve an embedding model.",
         "required": True,
         "field_type": "text",
         "options": None,
@@ -115,7 +115,7 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "placeholder": "https://openrag-embed-predictor.openrag-models.svc.cluster.local:8443/v1",
         "tooltip": "URL of the InferenceService serving your embedding model, ending in /v1. "
         "vLLM serves one model per deployment, so this is a second InferenceService. Leave "
-        "blank only if one endpoint serves both.",
+        "blank only if one endpoint serves both chat and embedding models.",
         "required": False,
         "field_type": "text",
         "options": None,
@@ -123,11 +123,10 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
     },
     {
         "key": "api_key",
-        "label": "ServiceAccount token",
+        "label": "Service account token",
         "placeholder": None,
         "tooltip": "A Kubernetes bearer token whose subject has `get` on inferenceservices in "
-        "the model namespace, e.g. `oc create token openrag-inference -n openrag`. Both "
-        "endpoints are authenticated with the same token.",
+        "the model namespace. Both endpoints are authenticated with the same token.",
         "required": True,
         "field_type": "password",
         "options": None,
@@ -138,9 +137,8 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "label": "TLS certificate verification",
         "placeholder": "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt",
         "tooltip": "Verify the endpoint certificate against the default trust store, or give "
-        "the path to the CA bundle that signs it; in-cluster this is OpenShift's projected "
-        "service CA. Disabling verification is for development only, for a port-forward "
-        "whose certificate cannot match localhost.",
+        "the path to the CA bundle that signs it. In-cluster, this is OpenShift's projected "
+        "service CA.",
         "required": False,
         "field_type": "text",
         "options": None,
@@ -153,11 +151,7 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "tooltip": "How many embedding requests OpenRAG sends to the embedding endpoint at "
         "once; the rest wait in OpenRAG. One slot is kept for search and chat queries so "
         "they never wait behind ingestion. Leave blank for the default of 16, sized for a "
-        "GPU-served model. A CPU-served model whose vLLM threads match its CPU limit "
-        "copes with 16; lower it to 4 if the endpoint takes more than about a second per "
-        "chunk: the endpoint's kube-rbac-proxy returns 502 once a queued request waits "
-        "past its upstream timeout (30s by default), which fails ingestion. 0 means no "
-        "limit.",
+        "GPU-served model. 0 means no limit.",
         "required": False,
         "field_type": "text",
         "options": None,
@@ -329,7 +323,7 @@ def _warn_if_cleartext(label: str, api_base: str) -> None:
         return
     _warn_once(
         f"http:{parts.netloc}",
-        "The OpenShift AI endpoint uses plain HTTP; the ServiceAccount token will be "
+        "The OpenShift AI endpoint uses plain HTTP; the service account token will be "
         "sent in cleartext on every request. Use https:// for anything beyond a "
         "port-forward to localhost or a cluster-local endpoint with auth disabled.",
         endpoint=label,
@@ -747,7 +741,7 @@ async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
     if not chat_base or not api_key:
         logger.warning(
             "Not listing models on OpenShift AI: credentials are incomplete. A chat endpoint "
-            "and a ServiceAccount token are needed; the configured model list is used "
+            "and a service account token are needed; the configured model list is used "
             "until then.",
             has_chat_endpoint=bool(chat_base),
             has_token=bool(api_key),
@@ -905,7 +899,7 @@ async def lightweight_health_check(credentials: Mapping[str, Any]) -> None:
     api_key = values.get("api_key", "")
     if not api_key:
         raise Exception(
-            "No ServiceAccount token is configured for Red Hat OpenShift AI. "
+            "No service account token is configured for Red Hat OpenShift AI. "
             "Create one with `oc create token <serviceaccount> -n <namespace>`."
         )
 
@@ -972,7 +966,7 @@ async def _check_endpoint(client: Any, label: str, api_base: str, api_key: str) 
             f"The OpenShift AI {label} endpoint at {api_base} redirected to "
             f"{location or 'another page'} instead of answering /v1/models. This is usually "
             "an OAuth proxy or SSO login page in front of the route; point the URL at the "
-            "model's inference route or predictor Service, which accepts a ServiceAccount token."
+            "model's inference route or predictor Service, which accepts a service account token."
         )
 
     if response.status_code == 200:
@@ -1060,7 +1054,7 @@ def _require_model_listing(response: Any, label: str, api_base: str, url: str) -
             f"The OpenShift AI {label} endpoint at {api_base} returned a web page "
             f"({content_type or 'text/html'}) instead of a model list. This is usually an "
             "OAuth proxy or SSO login page in front of the route; point the URL at the "
-            "model's inference route or predictor Service, which accepts a ServiceAccount token."
+            "model's inference route or predictor Service, which accepts a service account token."
         )
     logger.error(
         "The OpenShift AI endpoint answered with something other than a model list",
