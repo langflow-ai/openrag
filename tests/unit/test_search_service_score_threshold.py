@@ -25,10 +25,12 @@ class _OpenSearch:
     """Minimal OpenSearch stub that records every non-agg search body."""
 
     def __init__(self, reject_num_candidates: bool = False):
+        """Initialize request recording and optional rejection of the first search."""
         self.bodies: list[dict] = []
         self._reject_num_candidates = reject_num_candidates
 
     async def search(self, *, index, body, params):
+        """Return empty results, recording searches and optionally simulating a retry error."""
         # Agg-only probes (embedding space detection, wildcard facets)
         if body.get("size") == 0:
             return {
@@ -48,6 +50,7 @@ class _OpenSearch:
 
 
 def _make_service(opensearch: _OpenSearch, monkeypatch) -> SearchService:
+    """Build a search service with the supplied client and deterministic embedding stubs."""
     service = object.__new__(SearchService)
     service.session_manager = SimpleNamespace(
         get_user_opensearch_client=lambda user_id, jwt_token: opensearch
@@ -55,6 +58,7 @@ def _make_service(opensearch: _OpenSearch, monkeypatch) -> SearchService:
     service.models_service = None
 
     async def _no_embed(body, **_kwargs):
+        """Return a fixed query embedding without contacting an embedding provider."""
         return {"data": [{"embedding": [0.1, 0.2]}]}
 
     monkeypatch.setattr("services.search_service.gateway_embeddings", _no_embed)
@@ -77,6 +81,7 @@ def _make_service(opensearch: _OpenSearch, monkeypatch) -> SearchService:
 
 
 def _set_context(score_threshold: float) -> None:
+    """Set a test user's search context with the requested score threshold."""
     set_auth_context("user-1", None)
     set_search_filters({})
     set_search_limit(100)
@@ -84,6 +89,7 @@ def _set_context(score_threshold: float) -> None:
 
 
 def _knn_params(query: dict) -> list[dict]:
+    """Extract kNN parameters from a hybrid query with or without a score wrapper."""
     hybrid = query.get("function_score", {}).get("query", query)
     knn_queries = hybrid["bool"]["should"][0]["dis_max"]["queries"]
     return [params for knn in knn_queries for params in knn["knn"].values()]
@@ -91,6 +97,7 @@ def _knn_params(query: dict) -> list[dict]:
 
 @pytest.mark.asyncio
 async def test_positive_threshold_applies_inside_the_query(monkeypatch):
+    """Verify a positive threshold filters the hybrid score inside function_score."""
     os_client = _OpenSearch()
     service = _make_service(os_client, monkeypatch)
     _set_context(1.0)
@@ -107,6 +114,7 @@ async def test_positive_threshold_applies_inside_the_query(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_zero_threshold_leaves_the_query_unwrapped(monkeypatch):
+    """Verify a zero threshold leaves the hybrid query unwrapped and without min_score."""
     os_client = _OpenSearch()
     service = _make_service(os_client, monkeypatch)
     _set_context(0)
@@ -121,6 +129,7 @@ async def test_zero_threshold_leaves_the_query_unwrapped(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_wildcard_query_ignores_the_threshold(monkeypatch):
+    """Verify wildcard searches use match_all even when the score threshold is positive."""
     os_client = _OpenSearch()
     service = _make_service(os_client, monkeypatch)
     _set_context(1.0)
@@ -134,6 +143,7 @@ async def test_wildcard_query_ignores_the_threshold(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_num_candidates_retry_keeps_the_threshold(monkeypatch):
+    """Verify a retry removes unsupported num_candidates while preserving the threshold."""
     os_client = _OpenSearch(reject_num_candidates=True)
     service = _make_service(os_client, monkeypatch)
     _set_context(1.0)
