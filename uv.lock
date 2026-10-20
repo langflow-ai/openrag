@@ -2089,6 +2089,7 @@ tracing = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "langfuse" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -2156,6 +2157,7 @@ provides-extras = ["apm", "tracing"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "langfuse", specifier = ">=4.16,<5" },
     { name = "mypy", specifier = ">=2.0.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=0.21.0" },

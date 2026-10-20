@@ -96,6 +96,8 @@ dev = [
     "pytest-cov>=4.0.0",
     "ruff>=0.15.12",
     "mypy>=2.0.0",
+    # The tracing extra, so its unit tests (tests/unit/observability) run.
+    "langfuse>=4.16,<5",
 ]
 
 [project.scripts]
