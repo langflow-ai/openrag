@@ -47,6 +47,10 @@ export function RhoaiCredentialSections({
             <AccordionItem value="embeddings">
               <AccordionTrigger>Embeddings</AccordionTrigger>
               <AccordionContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Leave endpoint blank only if the chat endpoint also serves
+                  your embedding model.
+                </p>
                 {embeddings.map(renderField)}
               </AccordionContent>
             </AccordionItem>

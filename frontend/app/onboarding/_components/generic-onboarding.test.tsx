@@ -1292,6 +1292,11 @@ describe("GenericOnboarding RHOAI sections", () => {
     await screen.findByLabelText(/Chat endpoint/);
     expect(embeddingsToggle()).toHaveAttribute("aria-expanded", "true");
     expect(embeddingEndpoint()).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Leave endpoint blank only if the chat endpoint also serves your embedding model.",
+      ),
+    ).toBeInTheDocument();
     expect(advancedToggle()).toHaveAttribute("aria-expanded", "false");
   });
 

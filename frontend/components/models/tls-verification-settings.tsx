@@ -22,7 +22,7 @@ function TlsVerificationSettings({
   onValueChange,
   idPrefix,
   verifiedValue,
-  switchHelp,
+  switchDescription,
   caPathHelperText,
   caPathPlaceholder,
 }: {
@@ -35,8 +35,8 @@ function TlsVerificationSettings({
    * the switch off and on again is not a credential-target change.
    */
   verifiedValue: string;
-  /** Shown under the switch label (`description`) or behind an info icon. */
-  switchHelp: { text: string; as: "description" | "tooltip" };
+  /** Shown under the switch label and announced as its description. */
+  switchDescription: string;
   caPathHelperText: string;
   caPathPlaceholder: string;
 }) {
@@ -52,47 +52,30 @@ function TlsVerificationSettings({
   const descriptionId = `${switchId}-description`;
   const caPathId = `${idPrefix}-tls-ca-path`;
 
-  const toggle = (
-    <Switch
-      id={switchId}
-      checked={enabled}
-      aria-describedby={
-        switchHelp.as === "description" ? descriptionId : undefined
-      }
-      onCheckedChange={(checked) =>
-        onValueChange(
-          checked
-            ? lastCaPath.current.trim() || lastVerifiedValue.current
-            : "false",
-        )
-      }
-    />
-  );
-
   return (
     <div className="space-y-4">
-      {switchHelp.as === "description" ? (
-        <div className="flex items-center justify-between gap-4 py-1">
-          <div className="space-y-1">
-            <Label htmlFor={switchId} className="text-mmd font-medium">
-              {SWITCH_LABEL}
-            </Label>
-            <p id={descriptionId} className="text-sm text-muted-foreground">
-              {switchHelp.text}
-            </p>
-          </div>
-          {toggle}
+      <div className="flex items-center justify-between gap-4 py-1">
+        <div className="space-y-1">
+          <Label htmlFor={switchId} className="text-mmd font-medium">
+            {SWITCH_LABEL}
+          </Label>
+          <p id={descriptionId} className="text-sm text-muted-foreground">
+            {switchDescription}
+          </p>
         </div>
-      ) : (
-        <LabelWrapper
-          flex
+        <Switch
           id={switchId}
-          label={SWITCH_LABEL}
-          helperText={switchHelp.text}
-        >
-          {toggle}
-        </LabelWrapper>
-      )}
+          checked={enabled}
+          aria-describedby={descriptionId}
+          onCheckedChange={(checked) =>
+            onValueChange(
+              checked
+                ? lastCaPath.current.trim() || lastVerifiedValue.current
+                : "false",
+            )
+          }
+        />
+      </div>
 
       {enabled ? (
         <LabelWrapper
@@ -143,10 +126,7 @@ export function WatsonxTlsSettings(props: TlsPresetProps) {
     <TlsVerificationSettings
       {...props}
       verifiedValue="true"
-      switchHelp={{
-        as: "description",
-        text: "Recommended. Validates the cluster certificate before sending credentials or model traffic.",
-      }}
+      switchDescription="Recommended. Validates the cluster certificate before sending credentials or model traffic."
       caPathHelperText="Optional backend filesystem path to a mounted CA bundle. Include public roots too if this OpenRAG deployment also calls public providers."
       caPathPlaceholder="/etc/ssl/certs/openrag-ca.pem"
     />
@@ -162,10 +142,7 @@ export function RhoaiTlsSettings(props: TlsPresetProps) {
     <TlsVerificationSettings
       {...props}
       verifiedValue=""
-      switchHelp={{
-        as: "tooltip",
-        text: "Validates the cluster certificate before sending credentials or model traffic.",
-      }}
+      switchDescription="Validates the cluster certificate before sending credentials or model traffic."
       caPathHelperText="Path to the CA bundle that signs the endpoint's certificate. In-cluster this is OpenShift's projected service CA."
       caPathPlaceholder="/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"
     />

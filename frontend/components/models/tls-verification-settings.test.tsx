@@ -148,13 +148,12 @@ describe("TLS verification settings: help text", () => {
     return screen.findByRole("tooltip");
   }
 
-  it("puts the RHOAI switch help behind an info icon", async () => {
-    const { user } = renderTls("", "rhoai");
+  it("shows the RHOAI switch help as an inline description", () => {
+    renderTls("", "rhoai");
 
-    expect(await tooltipFor(user, "Verify TLS certificates")).toHaveTextContent(
+    expect(tlsSwitch()).toHaveAccessibleDescription(
       "Validates the cluster certificate before sending credentials or model traffic.",
     );
-    expect(tlsSwitch()).not.toHaveAttribute("aria-describedby");
   });
 
   it("puts the RHOAI CA path help behind an info icon", async () => {
