@@ -78,15 +78,39 @@ def patch_frontend_base_path(root_path: str, roots: list[pathlib.Path]) -> tuple
     return patched, already_configured
 
 
+def command_with_mounted_base_path(command: list[str]) -> list[str]:
+    """Replace Langflow's default CLI command with the image-local wrapper."""
+    commands = (
+        (["python", "-m", "langflow", "run"], ["python", "/usr/local/bin/langflow-base-path.py"]),
+        (
+            ["uv", "run", "langflow", "run"],
+            ["uv", "run", "python", "/usr/local/bin/langflow-base-path.py"],
+        ),
+        (["langflow", "run"], ["python", "/usr/local/bin/langflow-base-path.py"]),
+    )
+    for original, replacement in commands:
+        if command[: len(original)] == original:
+            return [*replacement, *command[len(original) :]]
+
+    msg = (
+        'LANGFLOW_ROOT_PATH requires the Langflow run command. Use "langflow run ...", '
+        '"python -m langflow run ...", or "uv run langflow run ...".'
+    )
+    raise ValueError(msg)
+
+
 try:
     root_path = normalize_root_path(os.environ.get("LANGFLOW_ROOT_PATH"))
 except ValueError as exc:
     sys.stderr.write(f"{exc}\n")
     raise SystemExit(1) from exc
 
-# Keep the native FastAPI setting normalized. The SPA has already been
-# compiled with root-relative URLs, so patch only its packaged image assets.
-os.environ["LANGFLOW_ROOT_PATH"] = root_path
+# Langflow's native LANGFLOW_ROOT_PATH setting is for a proxy that strips the
+# prefix before forwarding requests.  For direct requests to /<prefix>/..., the
+# image-local wrapper strips and mounts the prefix at ASGI level instead.
+# Keep the requested prefix separately and leave Langflow's proxy setting off.
+os.environ["OPENRAG_LANGFLOW_BASE_PATH"] = root_path
+os.environ["LANGFLOW_ROOT_PATH"] = ""
 if root_path:
     patched, already_configured = patch_frontend_base_path(root_path, frontend_roots())
     if not patched and not already_configured:
@@ -96,6 +120,14 @@ if root_path:
         raise SystemExit(1)
     status = "Applied" if patched else "Reused"
     print(f"{status} Langflow base path: '{root_path}'")
+
+try:
+    command = sys.argv[1:]
+    if root_path:
+        command = command_with_mounted_base_path(command)
+except ValueError as exc:
+    sys.stderr.write(f"{exc}\n")
+    raise SystemExit(1) from exc
 
 data_dir = pathlib.Path("/app/langflow-data")
 
@@ -139,4 +171,4 @@ try:
 except Exception as e:
     sys.stderr.write(f"Warning: could not configure SQLite WAL mode: {e}\n")
 
-os.execvp(sys.argv[1], sys.argv[1:])
+os.execvp(command[0], command)

@@ -81,6 +81,7 @@ COPY custom_components/ /app/custom_components/
 # Switch to root so the entrypoint can correct bind-mount permissions at
 # runtime before dropping back to uid=1000.
 COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
+COPY --chmod=755 scripts/langflow-base-path.py /usr/local/bin/langflow-base-path.py
 COPY scripts/patch_langflow_openrag_bundle.py /tmp/patch_langflow_openrag_bundle.py
 USER root
 RUN python3 /tmp/patch_langflow_openrag_bundle.py
