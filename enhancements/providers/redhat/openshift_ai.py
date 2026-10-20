@@ -135,11 +135,12 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
     },
     {
         "key": "ssl_verify",
-        "label": "TLS certificate authority",
+        "label": "TLS certificate verification",
         "placeholder": "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt",
-        "tooltip": "Path to the CA bundle that signs the endpoint's certificate. In-cluster "
-        "this is OpenShift's projected service CA. Set to `false` to skip verification — "
-        "development only, for a port-forward whose certificate cannot match localhost.",
+        "tooltip": "Verify the endpoint certificate against the default trust store, or give "
+        "the path to the CA bundle that signs it; in-cluster this is OpenShift's projected "
+        "service CA. Disabling verification is for development only, for a port-forward "
+        "whose certificate cannot match localhost.",
         "required": False,
         "field_type": "text",
         "options": None,

@@ -109,6 +109,11 @@ def test_the_form_asks_for_two_endpoints_a_token_and_a_ca() -> None:
     assert fields["embedding_api_base"]["field_type"] == "text"
     assert fields["api_key"]["field_type"] == "password"
     assert fields["ssl_verify"]["field_type"] == "text"
+    # The form renders it as a switch plus a CA path, so the label names the
+    # setting rather than asking for a CA, and no longer says to type `false`.
+    assert fields["ssl_verify"]["label"] == "TLS certificate verification"
+    assert "`false`" not in fields["ssl_verify"]["tooltip"]
+    assert fields["ssl_verify"]["required"] is False
     assert fields["embedding_max_concurrency"]["field_type"] == "text"
     assert fields["embedding_max_concurrency"]["required"] is False
 

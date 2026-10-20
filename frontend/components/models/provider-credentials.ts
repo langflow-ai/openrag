@@ -1,4 +1,5 @@
 import type { CatalogCredentialField } from "@/components/models/catalog-models";
+import { isDefaultTlsSetting } from "@/components/models/tls-verification";
 
 export const AZURE_AUTH_GROUPS = [
   { key: "api_key", label: "API key", fields: ["api_key"] },
@@ -32,6 +33,57 @@ export function fieldsForKeys(
     const field = byKey.get(key);
     return field ? [field] : [];
   });
+}
+
+/** RHOAI fields shown up front: where the models are, and the token. */
+const RHOAI_PRIMARY_FIELDS = [
+  "api_base",
+  "embedding_api_base",
+  "api_key",
+] as const;
+
+/** RHOAI fields behind "Advanced settings", in display order. */
+const RHOAI_ADVANCED_FIELDS = [
+  "embedding_max_concurrency",
+  "ssl_verify",
+] as const;
+
+/**
+ * The RHOAI catalogue fields split into the always-visible and the advanced
+ * section. A field the catalogue publishes that neither list names goes to
+ * the visible section, so a credential the backend adds later is never
+ * silently left out of the form.
+ */
+export function groupRhoaiFields(fields: CatalogCredentialField[]): {
+  primary: CatalogCredentialField[];
+  advanced: CatalogCredentialField[];
+} {
+  const grouped = new Set<string>([
+    ...RHOAI_PRIMARY_FIELDS,
+    ...RHOAI_ADVANCED_FIELDS,
+  ]);
+  return {
+    primary: [
+      ...fieldsForKeys(fields, RHOAI_PRIMARY_FIELDS),
+      ...fields.filter((field) => !grouped.has(field.key)),
+    ],
+    advanced: fieldsForKeys(fields, RHOAI_ADVANCED_FIELDS),
+  };
+}
+
+/**
+ * Whether the RHOAI "Advanced settings" section starts open: only when a saved
+ * value in it differs from the default, so a CA path, a concurrency limit or
+ * disabled verification is never hidden behind a collapsed section.
+ */
+export function rhoaiAdvancedOpenByDefault(
+  savedCredentials: Record<string, string> | undefined,
+): boolean {
+  const saved = savedCredentials ?? {};
+  return (
+    (saved.embedding_max_concurrency ?? "").trim() !== "" ||
+    !isDefaultTlsSetting(saved.ssl_verify)
+  );
 }
 
 const ON_PREM_SHARED_FIELDS = [

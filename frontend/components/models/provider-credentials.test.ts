@@ -4,6 +4,8 @@ import {
   authMethodCredentialKeys,
   clearedSavedCredentialKeys,
   credentialTargetChanged,
+  groupRhoaiFields,
+  rhoaiAdvancedOpenByDefault,
   secretsToReenter,
 } from "./provider-credentials";
 
@@ -181,5 +183,71 @@ describe("secretsToReenter", () => {
         true,
       ),
     ).toEqual(["api_key"]);
+  });
+});
+
+describe("groupRhoaiFields", () => {
+  const field = (key: string) => ({
+    key,
+    label: key,
+    required: false,
+    field_type: "text",
+  });
+  const keys = (fields: Array<{ key: string }>) => fields.map((f) => f.key);
+
+  it("puts the endpoints and token up front and the tuning behind Advanced", () => {
+    // Catalogue order deliberately differs from the display order.
+    const grouped = groupRhoaiFields([
+      field("ssl_verify"),
+      field("api_key"),
+      field("embedding_max_concurrency"),
+      field("embedding_api_base"),
+      field("api_base"),
+    ]);
+
+    expect(keys(grouped.primary)).toEqual([
+      "api_base",
+      "embedding_api_base",
+      "api_key",
+    ]);
+    expect(keys(grouped.advanced)).toEqual([
+      "embedding_max_concurrency",
+      "ssl_verify",
+    ]);
+  });
+
+  it("shows a field neither group names up front instead of dropping it", () => {
+    const grouped = groupRhoaiFields([
+      field("api_base"),
+      field("new_backend_field"),
+      field("ssl_verify"),
+    ]);
+
+    expect(keys(grouped.primary)).toEqual(["api_base", "new_backend_field"]);
+    expect(keys(grouped.advanced)).toEqual(["ssl_verify"]);
+  });
+
+  it("skips fields the catalogue does not publish", () => {
+    expect(groupRhoaiFields([field("api_base")])).toEqual({
+      primary: [field("api_base")],
+      advanced: [],
+    });
+    expect(groupRhoaiFields([])).toEqual({ primary: [], advanced: [] });
+  });
+});
+
+describe("rhoaiAdvancedOpenByDefault", () => {
+  it.each([
+    [undefined, false],
+    [{}, false],
+    [{ api_base: "https://chat.example.com/v1" }, false],
+    [{ ssl_verify: "" }, false],
+    [{ ssl_verify: "true" }, false],
+    [{ embedding_max_concurrency: "  " }, false],
+    [{ ssl_verify: "false" }, true],
+    [{ ssl_verify: "/var/run/secrets/ca.crt" }, true],
+    [{ embedding_max_concurrency: "4" }, true],
+  ])("opens for %j → %s", (saved, expected) => {
+    expect(rhoaiAdvancedOpenByDefault(saved)).toBe(expected);
   });
 });

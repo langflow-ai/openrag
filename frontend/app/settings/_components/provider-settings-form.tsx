@@ -4,11 +4,16 @@ import type { CatalogCredentialField } from "@/components/models/catalog-models"
 import {
   AZURE_AUTH_GROUPS,
   fieldsForKeys,
+  groupRhoaiFields,
   ON_PREM_AUTH_GROUPS,
+  rhoaiAdvancedOpenByDefault,
   SECRET_REENTRY_HINT,
 } from "@/components/models/provider-credentials";
+import {
+  RhoaiTlsSettings,
+  WatsonxTlsSettings,
+} from "@/components/models/tls-verification-settings";
 import { WatsonxSpaceSelect } from "@/components/models/watsonx-space-select";
-import { WatsonxTlsSettings } from "@/components/models/watsonx-tls-settings";
 import {
   Accordion,
   AccordionContent,
@@ -34,6 +39,7 @@ export function ProviderSettingsForm({
   fields,
   savedSecretFields,
   reenterSecretFields = [],
+  savedCredentialValues,
   saveError,
   azureAuthMethod,
   onAzureAuthMethodChange,
@@ -50,6 +56,8 @@ export function ProviderSettingsForm({
   savedSecretFields: string[];
   /** Saved secrets the chosen auth method needs typed again before Save. */
   reenterSecretFields?: string[];
+  /** Saved non-secret values; decide which collapsed sections start open. */
+  savedCredentialValues?: Record<string, string>;
   saveError?: string | null;
   azureAuthMethod?: string;
   onAzureAuthMethodChange?: (method: string) => void;
@@ -91,6 +99,19 @@ export function ProviderSettingsForm({
         <WatsonxTlsSettings
           key={field.key}
           idPrefix="provider-watsonx-onprem"
+          value={watch("credentials.ssl_verify")}
+          onValueChange={(value) =>
+            setValue("credentials.ssl_verify", value, { shouldDirty: true })
+          }
+        />
+      );
+    }
+
+    if (provider === "rhoai" && field.key === "ssl_verify") {
+      return (
+        <RhoaiTlsSettings
+          key={field.key}
+          idPrefix="provider-rhoai"
           value={watch("credentials.ssl_verify")}
           onValueChange={(value) =>
             setValue("credentials.ssl_verify", value, { shouldDirty: true })
@@ -178,6 +199,8 @@ export function ProviderSettingsForm({
   const onPremAdvancedFields = fields.filter((field) =>
     ["space_id", "project_id", "ssl_verify"].includes(field.key),
   );
+  const rhoaiFields = groupRhoaiFields(fields);
+  const rhoaiAdvancedOpen = rhoaiAdvancedOpenByDefault(savedCredentialValues);
 
   return (
     <div className="min-w-0 space-y-4">
@@ -252,6 +275,28 @@ export function ProviderSettingsForm({
               </AccordionContent>
             </AccordionItem>
           </Accordion>
+        </>
+      ) : provider === "rhoai" ? (
+        <>
+          {rhoaiFields.primary.map(renderField)}
+          {rhoaiFields.advanced.length > 0 && (
+            <Accordion
+              // Remounted when saved settings arrive after the first render,
+              // so a saved advanced value still opens the section.
+              key={rhoaiAdvancedOpen ? "advanced-open" : "advanced-closed"}
+              type="single"
+              collapsible
+              defaultValue={rhoaiAdvancedOpen ? "advanced" : undefined}
+              className="space-y-2"
+            >
+              <AccordionItem value="advanced">
+                <AccordionTrigger>Advanced settings</AccordionTrigger>
+                <AccordionContent className="space-y-4">
+                  {rhoaiFields.advanced.map(renderField)}
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          )}
         </>
       ) : (
         fields.map(renderField)

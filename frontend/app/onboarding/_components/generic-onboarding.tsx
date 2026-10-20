@@ -21,9 +21,13 @@ import {
   authMethodCredentialKeys,
   clearedSavedCredentialKeys,
   credentialTargetChanged,
+  rhoaiAdvancedOpenByDefault,
 } from "@/components/models/provider-credentials";
+import {
+  RhoaiTlsSettings,
+  WatsonxTlsSettings,
+} from "@/components/models/tls-verification-settings";
 import { WatsonxSpaceSelect } from "@/components/models/watsonx-space-select";
-import { WatsonxTlsSettings } from "@/components/models/watsonx-tls-settings";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { AdvancedOnboarding } from "./advanced";
 import {
@@ -280,6 +284,17 @@ export function GenericOnboarding({
       );
     }
 
+    if (provider === "rhoai" && field.key === "ssl_verify") {
+      return (
+        <RhoaiTlsSettings
+          key={field.key}
+          idPrefix={`onboarding-${provider}`}
+          value={credentials.ssl_verify}
+          onValueChange={(value) => handleCredentialChange("ssl_verify", value)}
+        />
+      );
+    }
+
     return (
       <GenericCredentialInput
         key={field.key}
@@ -301,6 +316,9 @@ export function GenericOnboarding({
           fields={fields}
           azureAuthMethod={azureAuthMethod}
           onPremAuthMethod={onPremAuthMethod}
+          advancedOpenByDefault={
+            provider === "rhoai" && rhoaiAdvancedOpenByDefault(savedCredentials)
+          }
           onAzureAuthMethodChange={(method) =>
             handleAuthMethodChange("azure", method)
           }
