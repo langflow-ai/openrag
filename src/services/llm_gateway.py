@@ -18,6 +18,7 @@ from itertools import pairwise
 from typing import Any, Literal, NamedTuple
 from uuid import uuid4
 
+from observability.tracing import gateway_trace_kwargs, trace_context
 from services import provider_error_log
 from services.model_catalog import is_known_provider, litellm_provider_key
 from utils.logging_config import get_logger
@@ -1402,6 +1403,14 @@ async def chat_completions(
                 **credentials,
                 **runtime_kwargs,
                 **kwargs,
+                **gateway_trace_kwargs(
+                    "chat",
+                    "completion",
+                    provider=provider,
+                    messages=len(messages) if isinstance(messages, list) else None,
+                    tools=len(body["tools"]) if isinstance(body.get("tools"), list) else None,
+                    stream=stream,
+                ),
             ),
             provider=provider,
             model=litellm_model,
@@ -1833,6 +1842,19 @@ def _embedding_input(value: Any) -> Any:
     return [value] if isinstance(value, str) else value
 
 
+def _embedding_trace_sizes(embedding_input: Any) -> dict[str, int | None]:
+    """How many inputs and how much text, for the trace; never the text itself."""
+    if not isinstance(embedding_input, list) or not embedding_input:
+        return {}
+    if all(isinstance(item, int) for item in embedding_input):
+        return {"inputs": 1}  # one pre-tokenised input
+    all_text = all(isinstance(item, str) for item in embedding_input)
+    return {
+        "inputs": len(embedding_input),
+        "input_chars": sum(map(len, embedding_input)) if all_text else None,
+    }
+
+
 #: How many times one input is cut smaller before the gateway gives up on it.
 _MAX_OVERFLOW_SPLIT_ROUNDS = 3
 #: Pieces are sized under the proportion the provider reported: tokens are not
@@ -2003,6 +2025,7 @@ async def embeddings(
     runtime_kwargs = _provider_runtime_kwargs(provider, cfg)
     limiter = _embedding_limiter(provider, cfg)
     lane = _INTERACTIVE_LANE if interactive else _BULK_LANE
+    purpose = "query" if interactive else "ingest"
     embedding_input = _embedding_input(body.get("input"))
 
     batch_size = _WATSONX_ONPREM_EMBEDDING_BATCH_SIZE if provider == "watsonx_onprem" else None
@@ -2017,6 +2040,12 @@ async def embeddings(
                     input=inputs,
                     **credentials,
                     **runtime_kwargs,
+                    **gateway_trace_kwargs(
+                        "embedding",
+                        purpose,
+                        provider=provider,
+                        **_embedding_trace_sizes(inputs),
+                    ),
                 ),
                 provider=provider,
                 model=litellm_model,
@@ -2069,8 +2098,16 @@ async def embeddings(
             response = {}
             data: list[dict[str, Any]] = []
             usage: dict[str, int | float] = {}
+            sub_batches = -(-len(embedding_input) // batch_size)
             for offset in range(0, len(embedding_input), batch_size):
-                payload = await embed(embedding_input[offset : offset + batch_size])
+                # Numbered in the trace; an over-length input's pieces keep it.
+                with trace_context(
+                    attributes={
+                        "openrag.embedding.sub_batch": offset // batch_size + 1,
+                        "openrag.embedding.sub_batches": sub_batches,
+                    }
+                ):
+                    payload = await embed(embedding_input[offset : offset + batch_size])
                 if not response:
                     response = {
                         key: value for key, value in payload.items() if key not in {"data", "usage"}

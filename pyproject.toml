@@ -84,6 +84,9 @@ dependencies = [
 # be adopted explicitly, not resolved into an install.
 # src/main.py imports it defensively, so its absence downgrades to a warning.
 apm = ["instana>=3.17.0,<4"]
+tracing = [
+    "langfuse>=4.16,<5",
+]
 
 [dependency-groups]
 dev = [
@@ -93,6 +96,8 @@ dev = [
     "pytest-cov>=4.0.0",
     "ruff>=0.15.12",
     "mypy>=2.0.0",
+    # The tracing extra, so its unit tests (tests/unit/observability) run.
+    "langfuse>=4.16,<5",
 ]
 
 [project.scripts]
