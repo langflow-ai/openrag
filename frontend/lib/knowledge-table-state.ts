@@ -190,15 +190,15 @@ export function buildKnowledgeTableRows(
   hasActiveFilter = false,
   dateRange?: { from?: Date; to?: Date } | null,
 ): SearchFile[] {
-  const taskCreatedAt = new WeakMap<SearchFile, string>();
   const taskFilesAsFiles: SearchFile[] = taskFiles.map((taskFile) => {
     const normalizedFilename =
       taskFile.filename?.trim() ||
       taskFile.source_url?.trim() ||
       "Untitled source";
 
-    const asFile: SearchFile = {
+    return {
       filename: normalizedFilename,
+      indexed_time: taskFile.created_at || undefined,
       mimetype: taskFile.mimetype,
       source_url: taskFile.source_url || "",
       size: taskFile.size,
@@ -210,8 +210,6 @@ export function buildKnowledgeTableRows(
       embedding_model: taskFile.embedding_model,
       embedding_dimensions: taskFile.embedding_dimensions,
     };
-    if (taskFile.created_at) taskCreatedAt.set(asFile, taskFile.created_at);
-    return asFile;
   });
 
   const taskFileMap = indexTaskFileOverlays(taskFilesAsFiles);
@@ -293,9 +291,8 @@ export function buildKnowledgeTableRows(
   const dateFilteredTaskFiles =
     (rangeFrom ?? rangeTo)
       ? filteredTaskFiles.filter((f) => {
-          const createdAt = taskCreatedAt.get(f);
-          if (!createdAt) return true;
-          const d = new Date(createdAt);
+          if (!f.indexed_time) return true;
+          const d = new Date(f.indexed_time);
           if (isNaN(d.getTime())) return true;
           if (rangeFrom) {
             const start = new Date(

@@ -220,6 +220,15 @@ describe("buildKnowledgeTableRows", () => {
       ).toHaveLength(1);
     });
 
+    it("exposes the task creation time as indexed_time on task-only rows", () => {
+      const created_at = new Date(2026, 8, 7, 10).toISOString();
+      const rows = buildKnowledgeTableRows(
+        [],
+        [taskFile({ filename: "pending.pdf", created_at })],
+      );
+      expect(rows[0].indexed_time).toBe(created_at);
+    });
+
     it("keeps every task file when no range is set", () => {
       const rows = buildKnowledgeTableRows([], [taskFile()], false, null);
       expect(rows).toHaveLength(1);

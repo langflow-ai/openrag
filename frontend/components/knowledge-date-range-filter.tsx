@@ -135,11 +135,9 @@ export function KnowledgeDateRangeFilter() {
   return <DateRangeFilterPopover />;
 }
 
-function DateRangeFilterPopover() {
-  const { dateRange, setDateRange, parsedFilterData } = useKnowledgeFilter();
-  const [open, setOpen] = useState(false);
-  // Initialised in state so server/client renders agree; refreshed on open and
-  // at midnight below so a long-lived page never keeps yesterday as "today".
+function useToday(open: boolean) {
+  // Refreshed while open so a page left running past midnight never keeps
+  // yesterday as "today".
   const [today, setToday] = useState(() => startOfDay(new Date()));
 
   useEffect(() => {
@@ -156,6 +154,184 @@ function DateRangeFilterPopover() {
     );
     return () => clearTimeout(timer);
   }, [open, today]);
+
+  return [today, setToday] as const;
+}
+
+function QuickRanges({
+  today,
+  activePresetId,
+  presetCount,
+  customDays,
+  onPreset,
+  onCustomDays,
+}: {
+  today: Date;
+  activePresetId: string | undefined;
+  presetCount: (range: Range | null) => number | undefined;
+  customDays: string;
+  onPreset: (preset: Preset) => void;
+  onCustomDays: (value: string) => void;
+}) {
+  return (
+    <div className="border-b py-2 sm:w-60 sm:flex-shrink-0 sm:border-b-0 sm:border-r sm:py-4">
+      <p className="hidden px-4 pb-2 text-xs text-muted-foreground sm:block">
+        Quick ranges
+      </p>
+      {/* A scrolling row on narrow screens, a list beside the calendar otherwise. */}
+      <div className="flex gap-1 overflow-x-auto px-2 sm:flex-col sm:gap-0 sm:px-0">
+        {PRESETS.map((preset) => {
+          const count = presetCount(preset.range(today));
+          const active = preset.id === activePresetId;
+          return (
+            <button
+              key={preset.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onPreset(preset)}
+              className={cn(
+                "flex flex-shrink-0 items-center justify-between gap-4 whitespace-nowrap rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent sm:rounded-none sm:px-4 sm:py-2.5",
+                active && "bg-accent font-medium text-foreground",
+              )}
+            >
+              <span>{preset.label}</span>
+              <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                {count ?? ""}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-2 flex items-center gap-2 px-4 sm:mt-3">
+        <label
+          htmlFor="custom-days"
+          className="whitespace-nowrap text-sm text-muted-foreground"
+        >
+          Last
+        </label>
+        <input
+          id="custom-days"
+          type="text"
+          inputMode="numeric"
+          placeholder="90"
+          aria-label="Number of days"
+          value={customDays}
+          onChange={(e) => onCustomDays(e.target.value)}
+          className="h-8 w-16 rounded-md border bg-background px-2 text-sm tabular-nums"
+        />
+        <span className="text-sm text-muted-foreground">days</span>
+      </div>
+    </div>
+  );
+}
+
+function CalendarPanel({
+  draft,
+  month,
+  today,
+  DayContent,
+  onSelect,
+  onMonthChange,
+}: {
+  draft: DateRange | undefined;
+  month: Date;
+  today: Date;
+  DayContent: (props: DayContentProps) => React.JSX.Element;
+  onSelect: (next: DateRange | undefined) => void;
+  onMonthChange: (month: Date) => void;
+}) {
+  return (
+    <div className="flex flex-1 flex-col items-center px-2 py-3 sm:px-4">
+      <Calendar
+        mode="range"
+        selected={draft}
+        onSelect={onSelect}
+        month={month}
+        onMonthChange={onMonthChange}
+        toMonth={today}
+        disabled={{ after: today }}
+        components={{ DayContent }}
+        classNames={{
+          caption_label: "text-base font-semibold",
+          head_cell: "w-10 text-xs font-normal text-muted-foreground sm:w-14",
+          cell: cn(
+            "relative h-11 w-10 p-0 text-center text-sm sm:h-12 sm:w-14",
+            "[&:has([aria-selected])]:bg-accent",
+            "first:[&:has([aria-selected])]:rounded-l-md",
+            "last:[&:has([aria-selected])]:rounded-r-md",
+            "focus-within:relative focus-within:z-20",
+          ),
+          day: "inline-flex h-11 w-10 items-center justify-center rounded-md p-0 font-normal hover:bg-accent/70 aria-selected:opacity-100 sm:h-12 sm:w-14",
+        }}
+      />
+      <div className="mt-2 flex w-full items-center gap-4 px-3 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <span className="h-1 w-1 rounded-full bg-primary" />1 upload
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-1 w-3 rounded-full bg-primary" />
+          2–4
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-1 w-5 rounded-full bg-primary" />
+          5+
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PopoverFooter({
+  footerCount,
+  footerRange,
+  onCancel,
+  onApply,
+}: {
+  footerCount: number | undefined;
+  footerRange: string;
+  onCancel: () => void;
+  onApply: () => void;
+}) {
+  return (
+    <div className="flex flex-col border-t sm:flex-row sm:items-stretch">
+      <p className="flex-1 px-4 py-3 text-sm" aria-live="polite">
+        {footerCount !== undefined && (
+          <>
+            <span className="font-semibold">
+              {footerCount} {footerCount === 1 ? "file" : "files"}
+            </span>
+            {" · "}
+          </>
+        )}
+        <span className="text-muted-foreground">{footerRange}</span>
+      </p>
+      <div className="flex border-t sm:border-t-0">
+        <Button
+          type="button"
+          variant="secondary"
+          ignoreTitleCase
+          className="h-auto flex-1 rounded-none px-6 py-3 sm:flex-none"
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          ignoreTitleCase
+          className="h-auto flex-1 rounded-none px-8 py-3 sm:flex-none"
+          onClick={onApply}
+        >
+          Apply filter
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function DateRangeFilterPopover() {
+  const { dateRange, setDateRange, parsedFilterData } = useKnowledgeFilter();
+  const [open, setOpen] = useState(false);
+  const [today, setToday] = useToday(open);
   const [draft, setDraft] = useState<DateRange | undefined>();
   const [month, setMonth] = useState<Date>(today);
   const [customDays, setCustomDays] = useState("");
@@ -237,6 +413,11 @@ function DateRangeFilterPopover() {
     setMonth(range.to);
   };
 
+  const handleCalendarSelect = (next: DateRange | undefined) => {
+    setCustomDays("");
+    setDraft(next);
+  };
+
   const handleApply = () => {
     setDateRange(draftRange);
     setOpen(false);
@@ -306,128 +487,29 @@ function DateRangeFilterPopover() {
           collisionPadding={16}
         >
           <div className="flex flex-col sm:flex-row">
-            <div className="border-b py-2 sm:w-60 sm:flex-shrink-0 sm:border-b-0 sm:border-r sm:py-4">
-              <p className="hidden px-4 pb-2 text-xs text-muted-foreground sm:block">
-                Quick ranges
-              </p>
-              {/* A scrolling row on narrow screens, a list beside the calendar otherwise. */}
-              <div className="flex gap-1 overflow-x-auto px-2 sm:flex-col sm:gap-0 sm:px-0">
-                {PRESETS.map((preset) => {
-                  const count = presetCount(preset.range(today));
-                  const active = preset.id === activePresetId;
-                  return (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() => handlePreset(preset)}
-                      className={cn(
-                        "flex flex-shrink-0 items-center justify-between gap-4 whitespace-nowrap rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent sm:rounded-none sm:px-4 sm:py-2.5",
-                        active && "bg-accent font-medium text-foreground",
-                      )}
-                    >
-                      <span>{preset.label}</span>
-                      <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                        {count ?? ""}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="mt-2 flex items-center gap-2 px-4 sm:mt-3">
-                <label
-                  htmlFor="custom-days"
-                  className="whitespace-nowrap text-sm text-muted-foreground"
-                >
-                  Last
-                </label>
-                <input
-                  id="custom-days"
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="90"
-                  aria-label="Number of days"
-                  value={customDays}
-                  onChange={(e) => handleCustomDays(e.target.value)}
-                  className="h-8 w-16 rounded-md border bg-background px-2 text-sm tabular-nums"
-                />
-                <span className="text-sm text-muted-foreground">days</span>
-              </div>
-            </div>
-            <div className="flex flex-1 flex-col items-center px-2 py-3 sm:px-4">
-              <Calendar
-                mode="range"
-                selected={draft}
-                onSelect={(next) => {
-                  setCustomDays("");
-                  setDraft(next);
-                }}
-                month={month}
-                onMonthChange={setMonth}
-                toMonth={today}
-                disabled={{ after: today }}
-                components={{ DayContent }}
-                classNames={{
-                  caption_label: "text-base font-semibold",
-                  head_cell:
-                    "w-10 text-xs font-normal text-muted-foreground sm:w-14",
-                  cell: cn(
-                    "relative h-11 w-10 p-0 text-center text-sm sm:h-12 sm:w-14",
-                    "[&:has([aria-selected])]:bg-accent",
-                    "first:[&:has([aria-selected])]:rounded-l-md",
-                    "last:[&:has([aria-selected])]:rounded-r-md",
-                    "focus-within:relative focus-within:z-20",
-                  ),
-                  day: "inline-flex h-11 w-10 items-center justify-center rounded-md p-0 font-normal hover:bg-accent/70 aria-selected:opacity-100 sm:h-12 sm:w-14",
-                }}
-              />
-              <div className="mt-2 flex w-full items-center gap-4 px-3 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-1 w-1 rounded-full bg-primary" />1 upload
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-1 w-3 rounded-full bg-primary" />
-                  2–4
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-1 w-5 rounded-full bg-primary" />
-                  5+
-                </span>
-              </div>
-            </div>
+            <QuickRanges
+              today={today}
+              activePresetId={activePresetId}
+              presetCount={presetCount}
+              customDays={customDays}
+              onPreset={handlePreset}
+              onCustomDays={handleCustomDays}
+            />
+            <CalendarPanel
+              draft={draft}
+              month={month}
+              today={today}
+              DayContent={DayContent}
+              onSelect={handleCalendarSelect}
+              onMonthChange={setMonth}
+            />
           </div>
-          <div className="flex flex-col border-t sm:flex-row sm:items-stretch">
-            <p className="flex-1 px-4 py-3 text-sm" aria-live="polite">
-              {footerCount !== undefined && (
-                <>
-                  <span className="font-semibold">
-                    {footerCount} {footerCount === 1 ? "file" : "files"}
-                  </span>
-                  {" · "}
-                </>
-              )}
-              <span className="text-muted-foreground">{footerRange}</span>
-            </p>
-            <div className="flex border-t sm:border-t-0">
-              <Button
-                type="button"
-                variant="secondary"
-                ignoreTitleCase
-                className="h-auto flex-1 rounded-none px-6 py-3 sm:flex-none"
-                onClick={() => setOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                ignoreTitleCase
-                className="h-auto flex-1 rounded-none px-8 py-3 sm:flex-none"
-                onClick={handleApply}
-              >
-                Apply filter
-              </Button>
-            </div>
-          </div>
+          <PopoverFooter
+            footerCount={footerCount}
+            footerRange={footerRange}
+            onCancel={() => setOpen(false)}
+            onApply={handleApply}
+          />
         </PopoverContent>
       </Popover>
       {dateRange && (
