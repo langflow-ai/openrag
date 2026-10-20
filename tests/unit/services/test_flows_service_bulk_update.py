@@ -1,6 +1,8 @@
 """Tests for flows_service bulk_update_flows with Langflow backup creation."""
 
+import json
 import sys
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,6 +14,12 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from services.flows_service import FlowsService  # noqa: E402
+
+FLOW_TAG_SCRIPT_PATH = ROOT / "scripts" / "tag_flow_version.py"
+FLOW_TAG_SCRIPT_SPEC = spec_from_file_location("tag_flow_version", FLOW_TAG_SCRIPT_PATH)
+assert FLOW_TAG_SCRIPT_SPEC and FLOW_TAG_SCRIPT_SPEC.loader
+flow_tag_version = module_from_spec(FLOW_TAG_SCRIPT_SPEC)
+FLOW_TAG_SCRIPT_SPEC.loader.exec_module(flow_tag_version)
 
 
 @pytest.mark.asyncio
@@ -281,3 +289,137 @@ async def test_get_flows_updates_available_includes_all_flows():
 
     assert len(updates) == 4
     assert all(u["flow_type"] in ["nudges", "retrieval", "ingest", "url_ingest"] for u in updates)
+
+
+@pytest.mark.asyncio
+async def test_flow_update_requires_a_newer_version_and_different_content_id(tmp_path, monkeypatch):
+    service = FlowsService()
+    flow_path = tmp_path / "flow.json"
+    flow_path.write_text(
+        '{"id": "flow-1", "tags": ["openrag:flow-version:2.0.0:new-id"]}',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("OPENRAG_IMAGE_FLOWS_PATH", str(tmp_path))
+    with patch.object(
+        service, "_find_flow_file_by_id", return_value=str(flow_path)
+    ) as find_flow_file:
+        update = await service._check_flow_update(
+            "retrieval",
+            "flow-1",
+            {
+                "locked": True,
+                "tags": ["openrag:flow-version:1.9.0:old-id"],
+                "updated_at": "2099-01-01T00:00:00Z",
+            },
+        )
+
+    find_flow_file.assert_called_once_with("flow-1", str(tmp_path))
+    assert update == {"flow_type": "retrieval", "flow_id": "flow-1", "is_custom": False}
+
+
+@pytest.mark.asyncio
+async def test_flow_update_ignores_timestamp_when_version_or_content_id_do_not_require_upgrade(tmp_path):
+    service = FlowsService()
+    flow_path = tmp_path / "flow.json"
+    flow_path.write_text(
+        '{"id": "flow-1", "tags": ["openrag:flow-version:2.0.0:matching-id"]}',
+        encoding="utf-8",
+    )
+
+    with patch.object(service, "_find_flow_file_by_id", return_value=str(flow_path)):
+        update = await service._check_flow_update(
+            "retrieval",
+            "flow-1",
+            {
+                "locked": False,
+                "tags": ["openrag:flow-version:1.0.0:matching-id"],
+                "updated_at": "1970-01-01T00:00:00Z",
+            },
+        )
+
+    assert update is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stored_tag",
+    [
+        "openrag:flow-version:2.0.0:old-id",
+        "openrag:flow-version:3.0.0:old-id",
+    ],
+)
+async def test_flow_update_does_not_upgrade_without_a_larger_version(tmp_path, stored_tag):
+    service = FlowsService()
+    flow_path = tmp_path / "flow.json"
+    flow_path.write_text(
+        '{"id": "flow-1", "tags": ["openrag:flow-version:2.0.0:new-id"]}',
+        encoding="utf-8",
+    )
+
+    with patch.object(service, "_find_flow_file_by_id", return_value=str(flow_path)):
+        update = await service._check_flow_update("retrieval", "flow-1", {"tags": [stored_tag]})
+
+    assert update is None
+
+
+@pytest.mark.asyncio
+async def test_flow_update_detects_legacy_stored_flow_without_a_release_tag(tmp_path):
+    service = FlowsService()
+    flow_path = tmp_path / "flow.json"
+    flow_path.write_text(
+        '{"id": "flow-1", "tags": ["openrag:flow-version:2.0.0:image-id"]}',
+        encoding="utf-8",
+    )
+
+    with patch.object(service, "_find_flow_file_by_id", return_value=str(flow_path)):
+        update = await service._check_flow_update(
+            "retrieval", "flow-1", {"locked": False, "tags": ["rag"]}
+        )
+
+    assert update == {"flow_type": "retrieval", "flow_id": "flow-1", "is_custom": True}
+
+
+@pytest.mark.asyncio
+async def test_flow_update_requires_a_release_tag_on_the_bundled_flow(tmp_path):
+    service = FlowsService()
+    flow_path = tmp_path / "flow.json"
+    flow_path.write_text('{"id": "flow-1", "tags": ["rag"]}', encoding="utf-8")
+
+    with patch.object(service, "_find_flow_file_by_id", return_value=str(flow_path)):
+        update = await service._check_flow_update(
+            "retrieval", "flow-1", {"tags": ["openrag:flow-version:1.0.0:old-id"]}
+        )
+
+    assert update is None
+
+
+def test_stamp_flow_version_tags_replaces_previous_release_tag(tmp_path):
+    flow_path = tmp_path / "flow.json"
+    component_index_path = tmp_path / "component_index.json"
+    pyproject_path = tmp_path / "pyproject.toml"
+    flow_path.write_text(
+        '{"id": "flow-1", "tags": ["rag", "openrag:flow-version:1.0.0:old-id"]}',
+        encoding="utf-8",
+    )
+    component_index_path.write_text('[]', encoding="utf-8")
+    pyproject_path.write_text('[project]\nversion = "1.2.3"\n', encoding="utf-8")
+
+    updated_paths = flow_tag_version.stamp_flow_version_tags(tmp_path, pyproject_path)
+
+    assert updated_paths == [flow_path]
+    assert component_index_path.read_text(encoding="utf-8") == "[]"
+    tags = json.loads(flow_path.read_text(encoding="utf-8"))["tags"]
+    assert tags[:1] == ["rag"]
+    assert tags[1].startswith("openrag:flow-version:1.2.3:")
+    assert len(tags[1].rsplit(":", 1)[1]) == 12
+
+
+def test_stamp_flow_version_tags_rejects_invalid_flow_tags(tmp_path):
+    flow_path = tmp_path / "flow.json"
+    pyproject_path = tmp_path / "pyproject.toml"
+    flow_path.write_text('{"id": "flow-1", "tags": "not-a-list"}', encoding="utf-8")
+    pyproject_path.write_text('[project]\nversion = "1.2.3"\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid flow tags"):
+        flow_tag_version.stamp_flow_version_tags(tmp_path, pyproject_path)

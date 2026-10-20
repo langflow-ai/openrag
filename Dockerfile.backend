@@ -58,6 +58,11 @@ RUN --mount=type=cache,target=/root/.cache/uv,uid=0,gid=0 \
 COPY src/ ./src/
 COPY enhancements/ ./enhancements/
 COPY flows/ ./flows/
+COPY flows/ ./bundled-flows/
+COPY scripts/tag_flow_version.py /usr/local/bin/tag_flow_version.py
+RUN python /usr/local/bin/tag_flow_version.py \
+    --flows-directory ./bundled-flows \
+    --pyproject ./pyproject.toml
 COPY securityconfig/ ./securityconfig/
 COPY cloud_securityconfig/ ./cloud_securityconfig/
 # Alembic migrations — the runtime calls run_alembic_upgrade("head") on
@@ -102,6 +107,7 @@ COPY --chown=appuser:appuser cloud_securityconfig/ ./cloud_securityconfig/
 COPY --chown=appuser:appuser scripts/backend-entrypoint.sh /entrypoint.sh
 
 ENV VIRTUAL_ENV=/app/.venv
+ENV OPENRAG_IMAGE_FLOWS_PATH=/app/bundled-flows
 # CWE-426 fix: explicitly set PATH so system-owned directories are always resolved
 # first. App venv dirs are appended last so they cannot shadow system binaries.
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/app/.venv/bin:/opt/app-root/bin:/opt/app-root/src/bin:/opt/app-root/src/.local/bin

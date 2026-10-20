@@ -1,10 +1,11 @@
 import asyncio
 import json
 import os
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from cachetools import LRUCache
+from packaging.version import InvalidVersion, Version
 
 from config.settings import (
     AGENT_COMPONENT_DISPLAY_NAME,
@@ -25,6 +26,7 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 logger = get_logger(__name__)
 
 _UNSET = object()
+_FLOW_VERSION_TAG_PREFIX = "openrag:flow-version:"
 
 
 class FlowsService:
@@ -414,7 +416,7 @@ class FlowsService:
             )
             return None
 
-    def _find_flow_file_by_id(self, flow_id: str):
+    def _find_flow_file_by_id(self, flow_id: str, flows_directory: str | None = None):
         """
         Scan the flows directory and find the JSON file that contains the specified flow ID.
 
@@ -428,15 +430,15 @@ class FlowsService:
             raise ValueError("flow_id is required")
 
         # Check cache first
-        if flow_id in self._flow_file_cache:
-            cached_path = self._flow_file_cache[flow_id]
+        flows_dir = flows_directory or self._get_flows_directory()
+        cache_key = f"{flows_dir}:{flow_id}"
+        if cache_key in self._flow_file_cache:
+            cached_path = self._flow_file_cache[cache_key]
             if os.path.exists(cached_path):
                 return cached_path
             else:
                 # Remove stale cache entry
-                del self._flow_file_cache[flow_id]
-
-        flows_dir = self._get_flows_directory()
+                del self._flow_file_cache[cache_key]
 
         if not os.path.exists(flows_dir):
             logger.warning(f"Flows directory not found: {flows_dir}")
@@ -457,7 +459,7 @@ class FlowsService:
                     # Check if this file contains the flow we're looking for
                     if flow_data.get("id") == flow_id:
                         # Cache the result
-                        self._flow_file_cache[flow_id] = file_path
+                        self._flow_file_cache[cache_key] = file_path
                         logger.info(f"Found flow {flow_id} in file: {filename}")
                         return file_path
 
@@ -551,7 +553,9 @@ class FlowsService:
             raise ValueError("LANGFLOW_URL environment variable is required")
 
         # Dynamically find the flow file by ID
-        flow_path = self._find_flow_file_by_id(flow_id)
+        flow_path = self._find_flow_file_by_id(
+            flow_id, os.getenv("OPENRAG_IMAGE_FLOWS_PATH") or self._get_flows_directory()
+        )
         if not flow_path:
             raise FileNotFoundError(f"Flow file not found for flow ID: {flow_id}")
 
@@ -889,15 +893,39 @@ class FlowsService:
         self, flow_type: str, flow_id: str, flow_data: dict[str, Any] | None = None
     ) -> dict[str, Any] | None:
         """
-        Check if a flow has a newer version on disk compared to Langflow.
+        Check whether the flow bundled in the current image is newer than Langflow's copy.
+
+        Image builds stamp each bundled flow with an
+        ``openrag:flow-version:<version>:<id>`` tag. An update is available
+        only when the image has a newer package version *and* a different
+        flow-content identifier. Timestamps are not meaningful because copying
+        a flow into an image changes its mtime without changing its contents.
+
         Returns flow update info dict if an update is available, None otherwise.
         """
         if not flow_id:
             return None
-        flow_path = self._find_flow_file_by_id(flow_id)
+        flow_path = self._find_flow_file_by_id(
+            flow_id, os.getenv("OPENRAG_IMAGE_FLOWS_PATH") or self._get_flows_directory()
+        )
         if not flow_path or not os.path.exists(flow_path):
             return None
-        local_mtime = os.path.getmtime(flow_path)
+
+        try:
+            with open(flow_path, encoding="utf-8") as handle:
+                image_flow_data = json.load(handle)
+        except (OSError, json.JSONDecodeError) as error:
+            logger.warning(f"Could not read bundled flow {flow_path} for update check: {error}")
+            return None
+
+        image_flow_tag = self._get_flow_version_tag(image_flow_data)
+        if image_flow_tag is None:
+            logger.warning(
+                "Bundled flow has no OpenRAG release tag; skipping update check",
+                flow_type=flow_type,
+                flow_id=flow_id,
+            )
+            return None
 
         if flow_data is None:
             try:
@@ -909,26 +937,34 @@ class FlowsService:
                 logger.error(f"Failed to fetch flow {flow_id} for update check: {e}")
                 return None
 
-        langflow_updated_at_str = flow_data.get("updated_at")
-        langflow_mtime: float = 0.0
-        if langflow_updated_at_str:
-            if langflow_updated_at_str.endswith("Z"):
-                langflow_updated_at_str = langflow_updated_at_str[:-1] + "+00:00"
-            try:
-                dt = datetime.fromisoformat(langflow_updated_at_str)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=UTC)
-                langflow_mtime = dt.timestamp()
-            except ValueError:
-                pass
-
-        if local_mtime > langflow_mtime + 1.0:
+        stored_flow_tag = self._get_flow_version_tag(flow_data)
+        if stored_flow_tag is None or (
+            image_flow_tag[0] > stored_flow_tag[0] and image_flow_tag[1] != stored_flow_tag[1]
+        ):
             is_locked = flow_data.get("locked", False)
             return {
                 "flow_type": flow_type,
                 "flow_id": flow_id,
                 "is_custom": not is_locked,
             }
+        return None
+
+    @staticmethod
+    def _get_flow_version_tag(flow_data: dict[str, Any]) -> tuple[Version, str] | None:
+        """Return the parsed OpenRAG release version and flow-content identifier."""
+        tags = flow_data.get("tags")
+        if not isinstance(tags, list):
+            return None
+        for tag in tags:
+            if not isinstance(tag, str) or not tag.startswith(_FLOW_VERSION_TAG_PREFIX):
+                continue
+            version_text, separator, flow_id = tag.removeprefix(_FLOW_VERSION_TAG_PREFIX).rpartition(":")
+            if not separator or not flow_id:
+                continue
+            try:
+                return Version(version_text), flow_id
+            except InvalidVersion:
+                continue
         return None
 
     async def ensure_flows_exist(self) -> set[str]:
@@ -974,7 +1010,9 @@ class FlowsService:
                     )
                     return None
 
-                flow_path = self._find_flow_file_by_id(flow_id)
+                flow_path = self._find_flow_file_by_id(
+                    flow_id, os.getenv("OPENRAG_IMAGE_FLOWS_PATH") or self._get_flows_directory()
+                )
                 if not flow_path:
                     logger.warning(
                         f"No flow file found for {flow_type} (ID: {flow_id}), cannot create"
