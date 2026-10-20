@@ -21,8 +21,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from connectors.base import ConnectorDocument, DocumentACL
-from models.processors import ConnectorFileProcessor
+from models.processors import DUPLICATE_NOT_REPLACEABLE_WARNING, ConnectorFileProcessor
 from models.tasks import FileTask, TaskStatus, UploadTask
+from utils.opensearch_queries import build_owned_filename_query, build_replace_filename_query
 
 COS_FILE_ID = "my-bucket::reports/q3.pdf"
 COS_FILENAME = "q3.pdf"
@@ -209,10 +210,40 @@ async def test_resync_without_the_permission_leaves_a_shared_file_alone(
     mock_process.assert_not_awaited()
     assert file_task.status == TaskStatus.SKIPPED
     assert file_task.result["reason"] == "duplicate_filename"
-    # ...and it is still shared afterwards: the owner fields reconciled on the
-    # way out are the shared ones, not this user's.
-    script = backend_write_client.update_by_query.await_args.kwargs["body"]["script"]
-    assert script["params"]["shared"] is True
+    # ...and it is still shared afterwards, because nothing touched it: a
+    # refusal issues no update to the document it refused either.
+    backend_write_client.update_by_query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_refused_overwrite_says_it_was_refused(monkeypatch, backend_write_client):
+    """Share-all off, Overwrite confirmed, by someone who may not replace the
+    shared document the name belongs to.
+
+    The file is skipped either way; what matters here is the warning. It used
+    to be the ordinary duplicate's "A file with this name already exists",
+    which reads as a failure to someone who was just asked whether to overwrite
+    and said yes.
+    """
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_processor(shared=False, allow_anonymous_delete=False)
+    _wire(processor, _make_document(), indexed_owner=None)
+
+    file_task, upload_task, mock_process = await _run(processor)
+
+    backend_write_client.delete.assert_not_awaited()
+    mock_process.assert_not_awaited()
+    assert file_task.status == TaskStatus.SKIPPED
+    assert file_task.result == {
+        "status": "skipped",
+        "reason": "duplicate_filename",
+        "warning": DUPLICATE_NOT_REPLACEABLE_WARNING,
+    }
+    # Still a skip, not a failure: the task reports a warning, as before.
+    assert upload_task.successful_files == 1
+    assert upload_task.failed_files == 0
+    # "You don't have permission to replace it" has to mean nothing was written.
+    backend_write_client.update_by_query.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -255,3 +286,162 @@ async def test_new_file_with_no_intent_falls_back_to_private(monkeypatch):
     assert file_task.status == TaskStatus.COMPLETED
     mock_process.assert_awaited_once()
     assert mock_process.await_args.kwargs["shared"] is False
+
+
+# ---------------------------------------------------------------------------
+# An inherited sharing state authorizes nothing
+# ---------------------------------------------------------------------------
+
+
+def _index_of_one_file(*, mine: bool, shared: bool) -> AsyncMock:
+    """A user-scoped client over an index holding this file under either
+    layout, or both: user-1's own copy, and a shared one another connection
+    ingested from the same object.
+
+    It honours the owner scope of the query the way OpenSearch would. Asked
+    without one, it answers with the shared chunk first, which is the order
+    that used to decide the matter.
+    """
+    own = {"_id": "mine", "_source": {"owner": "user-1"}}
+    ownerless = {"_id": "shared", "_source": {}}
+
+    async def search(index, body, **kwargs):
+        filters = body["query"]["bool"]["filter"]
+        if {"term": {"owner": "user-1"}} in filters:
+            hits = [own] if mine else []
+        elif {"bool": {"must_not": {"exists": {"field": "owner"}}}} in filters:
+            hits = [ownerless] if shared else []
+        else:
+            hits = ([ownerless] if shared else []) + ([own] if mine else [])
+        return {"hits": {"hits": hits[:1]}}
+
+    client = AsyncMock()
+    client.search = search
+    return client
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mine, shared, expected",
+    [
+        pytest.param(True, True, False, id="both-layouts-mine-wins"),
+        pytest.param(True, False, False, id="only-mine"),
+        pytest.param(False, True, True, id="only-shared"),
+        pytest.param(False, False, None, id="not-indexed"),
+    ],
+)
+async def test_a_users_own_copy_decides_what_a_resync_inherits(mine, shared, expected):
+    """One object can be indexed twice: privately by one user, and shared by
+    another connection. A re-sync of the first user's is about their own copy.
+    Taking whichever chunk the index returned first made it arbitrary, and when
+    the shared one came back their private file was synced as the shared
+    document."""
+    processor = _build_processor(shared=None)
+
+    state = await processor._indexed_shared_state(
+        COS_FILE_ID, _index_of_one_file(mine=mine, shared=shared), "ibm_cos"
+    )
+
+    assert state is expected
+
+
+@pytest.mark.asyncio
+async def test_a_failed_sharing_lookup_inherits_nothing():
+    client = AsyncMock()
+    client.search = AsyncMock(side_effect=RuntimeError("opensearch is down"))
+    processor = _build_processor(shared=None)
+
+    assert await processor._indexed_shared_state(COS_FILE_ID, client, "ibm_cos") is None
+
+
+@pytest.mark.asyncio
+async def test_a_shared_file_is_refused_before_the_callers_namesake_is_touched(
+    monkeypatch, backend_write_client
+):
+    """Sharing inherited, no permission, and the caller owns a private document
+    with the same name from somewhere else.
+
+    The duplicate gate only refuses a replace that deleted nothing. Here it
+    deleted the caller's own namesake, so it was not refused, and the file went
+    on to be indexed as shared: a shared write by someone not allowed to make
+    one, added to the document everyone reads. The refusal has to come first.
+    """
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_processor(shared=None, allow_anonymous_delete=False)
+    client = _wire(processor, _make_document(), indexed_owner=None)
+    search_shared_file = client.search
+
+    async def search(index, body, **kwargs):
+        query = body.get("query", {})
+        if query == build_owned_filename_query(COS_FILENAME, "user-1"):
+            return {"hits": {"hits": [{"_id": "mine-1"}, {"_id": "mine-2"}]}}
+        return await search_shared_file(index, body, **kwargs)
+
+    client.search = search
+
+    file_task, _, mock_process = await _run(processor)
+
+    backend_write_client.delete.assert_not_awaited()
+    backend_write_client.update_by_query.assert_not_awaited()
+    mock_process.assert_not_awaited()
+    assert file_task.status == TaskStatus.SKIPPED
+    assert file_task.result["warning"] == DUPLICATE_NOT_REPLACEABLE_WARNING
+
+
+def _decline_the_duplicate(processor, client, *, this_file_is_indexed: bool):
+    """A sync that finds its filename taken and was not asked to replace it,
+    which is where the owner reconcile runs. ``this_file_is_indexed`` False
+    makes the name belong to a document from another source."""
+    processor.replace_duplicates = False
+    if this_file_is_indexed:
+        return
+    search_shared_file = client.search
+
+    async def search(index, body, **kwargs):
+        if body.get("_source") == ["owner"]:
+            return {"hits": {"hits": []}}
+        return await search_shared_file(index, body, **kwargs)
+
+    client.search = search
+
+
+@pytest.mark.asyncio
+async def test_a_private_sync_does_not_claim_a_shared_document_with_the_same_name(
+    monkeypatch, backend_write_client
+):
+    """The permission is held, the toggle is off, and the name belongs to a
+    shared document this connector never ingested. The reconcile writes the
+    caller in as owner of whatever it matches, and it matches by filename, so
+    with the permission alone it took the shared document out of everyone
+    else's view without a delete or a prompt."""
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_processor(shared=False, allow_anonymous_delete=True)
+    client = _wire(processor, _make_document(), indexed_owner=None)
+    _decline_the_duplicate(processor, client, this_file_is_indexed=False)
+
+    file_task, _, _ = await _run(processor)
+
+    assert file_task.status == TaskStatus.SKIPPED
+    body = backend_write_client.update_by_query.await_args.kwargs["body"]
+    assert body["query"] == build_owned_filename_query(COS_FILENAME, "user-1")
+
+
+@pytest.mark.asyncio
+async def test_switching_share_all_off_still_makes_the_files_own_copy_private(
+    monkeypatch, backend_write_client
+):
+    """The other side of the same rule: when the shared document under the name
+    IS this file's own, an explicit private sync by someone holding the
+    permission still reaches it and writes the owner in."""
+    monkeypatch.setattr("config.settings.DISABLE_INGEST_WITH_LANGFLOW", True)
+    processor = _build_processor(shared=False, allow_anonymous_delete=True)
+    client = _wire(processor, _make_document(), indexed_owner=None)
+    _decline_the_duplicate(processor, client, this_file_is_indexed=True)
+
+    file_task, _, _ = await _run(processor)
+
+    assert file_task.status == TaskStatus.SKIPPED
+    body = backend_write_client.update_by_query.await_args.kwargs["body"]
+    assert body["query"] == build_replace_filename_query(COS_FILENAME, "user-1")
+    assert body["script"]["params"]["shared"] is False
+    assert body["script"]["params"]["owner"] == "user-1"
