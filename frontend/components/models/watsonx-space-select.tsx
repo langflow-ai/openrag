@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/popover";
 import { apiClient } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import { WATSONX_TLS_DISABLED_VALUES } from "./watsonx-tls-settings";
+import { isTlsVerificationDisabled } from "./tls-verification";
 
 interface WatsonxSpace {
   id: string;
@@ -98,8 +98,7 @@ export function WatsonxSpaceSelect({
   const apiKey = credentials.api_key ?? "";
   const zenApiKey = credentials.zen_api_key ?? "";
   const sslVerify = credentials.ssl_verify ?? "";
-  const tlsVerificationEnabled =
-    WATSONX_TLS_DISABLED_VALUES[sslVerify.trim().toLowerCase()] !== true;
+  const tlsVerificationEnabled = !isTlsVerificationDisabled(sslVerify);
   const ready =
     Boolean(apiBase) &&
     (authMethod === "zen_api_key"

@@ -5,8 +5,10 @@ import {
   AZURE_AUTH_GROUPS,
   fieldsForKeys,
   ON_PREM_AUTH_GROUPS,
+  type RhoaiSectionsOpen,
   SECRET_REENTRY_HINT,
 } from "@/components/models/provider-credentials";
+import { RhoaiCredentialSections } from "@/components/models/rhoai-credential-sections";
 import {
   Accordion,
   AccordionContent,
@@ -14,11 +16,17 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
+const RHOAI_SECTIONS_CLOSED: RhoaiSectionsOpen = {
+  embeddings: false,
+  advanced: false,
+};
+
 export function GenericProviderCredentialFields({
   provider,
   fields,
   azureAuthMethod,
   onPremAuthMethod,
+  rhoaiOpenByDefault = RHOAI_SECTIONS_CLOSED,
   onAzureAuthMethodChange,
   onOnPremAuthMethodChange,
   renderField,
@@ -27,6 +35,8 @@ export function GenericProviderCredentialFields({
   fields: CatalogCredentialField[];
   azureAuthMethod: string;
   onPremAuthMethod: string;
+  /** Which RHOAI sections start open. */
+  rhoaiOpenByDefault?: RhoaiSectionsOpen;
   onAzureAuthMethodChange: (method: string) => void;
   onOnPremAuthMethodChange: (method: string) => void;
   renderField: (field: CatalogCredentialField) => ReactNode;
@@ -107,6 +117,15 @@ export function GenericProviderCredentialFields({
           </AccordionItem>
         </Accordion>
       </>
+    );
+  }
+  if (provider === "rhoai") {
+    return (
+      <RhoaiCredentialSections
+        fields={fields}
+        renderField={renderField}
+        openByDefault={rhoaiOpenByDefault}
+      />
     );
   }
   return <>{fields.map(renderField)}</>;
