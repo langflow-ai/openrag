@@ -936,6 +936,8 @@ class FlowsService:
     def _stamp_flow_with_file_mtime(flow_data: dict[str, Any], flow_path: str) -> None:
         """Embed the source flow's modification timestamp into its Langflow tags."""
         tags = flow_data.get("tags")
+        if tags is None:
+            tags = []
         if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
             raise ValueError(f"Flow {flow_data.get('id', '<unknown>')} has invalid tags")
         flow_data["tags"] = [
