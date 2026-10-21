@@ -155,3 +155,21 @@ async def test_num_candidates_retry_keeps_the_threshold(monkeypatch):
     assert all("num_candidates" not in params for params in _knn_params(retry["query"]))
     assert retry["query"]["function_score"]["min_score"] == 1.0
     assert "min_score" not in retry
+
+
+@pytest.mark.asyncio
+async def test_filters_are_pushed_into_each_knn_clause(monkeypatch):
+    """Filters must constrain kNN neighbor selection, not only post-filter the top-k."""
+    os_client = _OpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+    set_search_filters({"created_after": "2024-01-01T00:00:00Z"})
+
+    await service.search_tool("MCP")
+
+    params = _knn_params(os_client.bodies[-1]["query"])
+    assert params
+    for knn in params:
+        assert knn["filter"] == {
+            "bool": {"filter": [{"range": {"indexed_time": {"gte": "2024-01-01T00:00:00Z"}}}]}
+        }

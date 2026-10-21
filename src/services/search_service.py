@@ -619,17 +619,17 @@ class SearchService:
             knn_queries = []
             for field_identity, embedding_vector in query_embeddings.items():
                 field_name = get_embedding_field_name(field_identity)
-                knn_queries.append(
-                    {
-                        "knn": {
-                            field_name: {
-                                "vector": embedding_vector,
-                                "k": 50,
-                                "num_candidates": 1000,
-                            }
-                        }
-                    }
-                )
+                knn_clause: dict[str, Any] = {
+                    "vector": embedding_vector,
+                    "k": 50,
+                    "num_candidates": 1000,
+                }
+                # Filter inside the kNN clause so neighbors are chosen among
+                # in-range documents; the outer bool filter alone is a
+                # post-filter over the global top-k.
+                if filter_clauses:
+                    knn_clause["filter"] = {"bool": {"filter": filter_clauses}}
+                knn_queries.append({"knn": {field_name: knn_clause}})
 
             # KNN clauses naturally apply only to documents carrying their
             # vector field. Keep all other documents eligible for keyword
@@ -647,7 +647,7 @@ class SearchService:
             # Hybrid search (semantic + keyword) when embeddings are available;
             # keyword-only fallback when none succeeded. When falling back, bump
             # the multi_match boost so keyword scoring isn't artificially damped.
-            should_clauses = []
+            should_clauses: list[dict[str, Any]] = []
             if knn_queries:
                 should_clauses.append(
                     {

@@ -77,7 +77,9 @@ export function toLocalDayStartISOString(date: Date): string {
 export function toLocalDayEndISOString(date: Date): string {
   const d = new Date(date);
   d.setHours(23, 59, 59, 999);
-  return d.toISOString();
+  // The backend stores microsecond-precision timestamps; extend the inclusive
+  // bound through the day's final microsecond.
+  return d.toISOString().replace(/\.999Z$/, ".999999Z");
 }
 
 // Matches the yyyy-MM-dd keys the upload histogram buckets by (viewer's time zone).

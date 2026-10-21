@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -40,6 +40,10 @@ async def search(
         merged_filters["created_after"] = body.created_after
     if body.created_before:
         merged_filters["created_before"] = body.created_before
+    for bound in ("created_after", "created_before"):
+        value = merged_filters.get(bound)
+        if value is not None and not isinstance(value, str):
+            raise HTTPException(status_code=422, detail=f"{bound} must be a string")
     # Validate after merging: the bounds can also arrive inside `filters`.
     _validate_date_range(merged_filters.get("created_after"), merged_filters.get("created_before"))
 

@@ -146,7 +146,6 @@ function useToday(open: boolean) {
       const now = startOfDay(new Date());
       setToday((prev) => (isSameDay(prev, now) ? prev : now));
     };
-    rollover();
     const nextMidnight = addDays(startOfDay(new Date()), 1);
     const timer = setTimeout(
       rollover,

@@ -49,7 +49,7 @@ describe("toLocalDayEndISOString", () => {
   it("returns a valid ISO 8601 string", () => {
     const date = new Date("2024-03-15");
     const result = toLocalDayEndISOString(date);
-    expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.999999Z$/);
     expect(new Date(result).getTime()).not.toBeNaN();
   });
 
