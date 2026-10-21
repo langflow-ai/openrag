@@ -120,6 +120,19 @@ def test_the_form_asks_for_two_endpoints_a_token_and_a_ca() -> None:
     assert fields["embedding_max_concurrency"]["required"] is False
 
 
+def test_the_tooltips_keep_the_guidance_an_operator_needs() -> None:
+    """The non-obvious setup and failure hints stay in the form, not only in the docs."""
+    fields = {field["key"]: field for field in model_catalog.credential_fields(PROVIDER)}
+
+    # A laptop reaches the cluster through a Route or a port-forward.
+    assert "oc port-forward" in fields["api_base"]["tooltip"]
+    # A slow CPU-served model needs a lower limit, or kube-rbac-proxy answers 502.
+    assert "Lower to 4" in fields["embedding_max_concurrency"]["tooltip"]
+    assert "502" in fields["embedding_max_concurrency"]["tooltip"]
+    # "Leave blank" lives in the Embeddings section hint, so it is not repeated here.
+    assert "blank" not in fields["embedding_api_base"]["tooltip"]
+
+
 def test_only_the_token_is_encrypted_at_rest() -> None:
     """`field_type` drives encryption. A CA path is not a secret; a token is."""
     assert model_catalog.secret_field_keys(PROVIDER) == {"api_key"}

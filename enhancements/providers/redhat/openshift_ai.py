@@ -102,7 +102,7 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "label": "Chat endpoint",
         "placeholder": "https://openrag-chat-predictor.openrag-models.svc.cluster.local:8443/v1",
         "tooltip": "URL of the InferenceService serving your chat model, ending in /v1. "
-        "In-cluster, this is the predictor service; otherwise, this is a public route. "
+        "In-cluster, the predictor Service; otherwise a Route or `oc port-forward`. "
         "This endpoint may also serve an embedding model.",
         "required": True,
         "field_type": "text",
@@ -114,8 +114,7 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "label": "Embeddings endpoint",
         "placeholder": "https://openrag-embed-predictor.openrag-models.svc.cluster.local:8443/v1",
         "tooltip": "URL of the InferenceService serving your embedding model, ending in /v1. "
-        "vLLM serves one model per deployment, so this is a second InferenceService. Leave "
-        "blank only if one endpoint serves both chat and embedding models.",
+        "vLLM serves one model per deployment, so this is a second InferenceService.",
         "required": False,
         "field_type": "text",
         "options": None,
@@ -151,7 +150,8 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "tooltip": "How many embedding requests OpenRAG sends to the embedding endpoint at "
         "once; the rest wait in OpenRAG. One slot is kept for search and chat queries so "
         "they never wait behind ingestion. Leave blank for the default of 16, sized for a "
-        "GPU-served model. 0 means no limit.",
+        "GPU-served model. Lower to 4 if ingestion fails with 502s on a slow CPU-served "
+        "model. 0 means no limit.",
         "required": False,
         "field_type": "text",
         "options": None,
