@@ -18,8 +18,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+import db.migrations_runtime as migrations_runtime  # noqa: E402
 import db.models  # noqa: E402,F401
-from db import migrations_runtime  # noqa: E402
 from db.repositories import ConversationRepo, SessionOwnershipRepo  # noqa: E402
 
 

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 
 from db.models import SessionOwnership
 
@@ -50,16 +51,18 @@ class SessionOwnershipRepo:
 
     async def list_for_user(self, user_id: str) -> list[str]:
         result = await self.session.execute(
-            select(SessionOwnership.response_id).where(SessionOwnership.user_id == user_id)
+            select(col(SessionOwnership.response_id)).where(
+                col(SessionOwnership.user_id) == user_id
+            )
         )
         return list(result.scalars().all())
 
     async def list_for_conversation(self, conversation_id: str, user_id: str) -> list[str]:
         result = await self.session.execute(
-            select(SessionOwnership.response_id).where(
-                SessionOwnership.user_id == user_id,
-                (SessionOwnership.conversation_id == conversation_id)
-                | (SessionOwnership.response_id == conversation_id),
+            select(col(SessionOwnership.response_id)).where(
+                col(SessionOwnership.user_id) == user_id,
+                (col(SessionOwnership.conversation_id) == conversation_id)
+                | (col(SessionOwnership.response_id) == conversation_id),
             )
         )
         return list(result.scalars().all())
