@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from pathlib import Path
 from types import SimpleNamespace
 
 import anyio
@@ -21,7 +22,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
 import agent as agent_module
-from api.chat import ChatBody, _assert_owns, langflow_endpoint
+from api.chat import ChatBody, _assert_owns, delete_session_endpoint, langflow_endpoint
+from services.chat_service import ChatService
 from services.conversation_persistence_service import ConversationPersistenceService
 from services.session_ownership_service import SessionOwnershipService
 
@@ -110,8 +112,9 @@ def store_in_memory(monkeypatch):
         agent_module.active_conversations[user_id][response_id] = conversation_state
 
     class _Ownership:
-        async def claim_session(self, user_id, session_id):
+        async def claim_session(self, user_id, session_id, conversation_id=None):
             claimed.append((user_id, session_id))
+            return True
 
         async def get_session_owner(self, session_id):
             return next((user_id for user_id, sid in claimed if sid == session_id), None)
@@ -592,8 +595,8 @@ async def test_stream_does_not_expose_unowned_response_id(
         await ownership.claim_session("mallory", "resp-unclaimable")
     else:
 
-        async def unavailable(*_args):
-            pass  # Simulate the service's existing logged-but-not-raised DB failure.
+        async def unavailable(*_args, **_kwargs):
+            return False
 
         monkeypatch.setattr(ownership, "claim_session", unavailable)
 
@@ -614,9 +617,11 @@ async def test_stream_does_not_expose_unowned_response_id(
 
 
 @pytest.mark.asyncio
-async def test_local_asgi_disconnect_smoke_preserves_followup(durable_stream_stores):
+async def test_local_asgi_disconnect_smoke_preserves_followup(
+    monkeypatch, durable_stream_stores
+):
     """Real endpoint → generator → OpenAI SSE adapter → durable stores, locally."""
-    _, persistence, _ = durable_stream_stores
+    _, persistence, factory = durable_stream_stores
     disconnected = anyio.Event()
     upstream_closed = anyio.Event()
     calls = []
@@ -664,7 +669,7 @@ async def test_local_asgi_disconnect_smoke_preserves_followup(durable_stream_sto
         max_retries=0,
     ) as client:
 
-        class ChatService:
+        class EndpointChatService:
             async def langflow_chat(self, prompt, _subject, _jwt, **kwargs):
                 return agent_module.async_langflow_chat_stream(
                     client,
@@ -682,7 +687,7 @@ async def test_local_asgi_disconnect_smoke_preserves_followup(durable_stream_sto
             name="Alice",
             email="alice@example.invalid",
         )
-        service = ChatService()
+        service = EndpointChatService()
         response = await langflow_endpoint(
             ChatBody(prompt="First HTTP question", stream=True),
             chat_service=service,
@@ -740,9 +745,66 @@ async def test_local_asgi_disconnect_smoke_preserves_followup(durable_stream_sto
             "Next HTTP question",
             "Follow-up HTTP answer",
         ]
+
+        # Restart before canonical deletion: aliases must come from durable state.
+        reloaded = SessionOwnershipService(session_factory=factory)
+        monkeypatch.setattr(
+            "services.session_ownership_service.session_ownership_service", reloaded
+        )
+        monkeypatch.setattr(agent_module, "active_conversations", {})
+        upstream_deletes = []
+
+        async def monitor_delete(method, path):
+            assert method == "DELETE"
+            upstream_deletes.append(path.rsplit("/", 1)[-1])
+            return httpx.Response(204)
+
+        monkeypatch.setattr("services.chat_service.clients.langflow_request", monitor_delete)
+        deletion = await delete_session_endpoint(
+            session_id="resp-http", chat_service=ChatService(), user=user
+        )
+        assert deletion.status_code == 200
+        assert set(upstream_deletes) == {"resp-http", "resp-http-next"}
+        fresh = SessionOwnershipService(session_factory=factory)
+        monkeypatch.setattr(
+            "services.session_ownership_service.session_ownership_service", fresh
+        )
+        with pytest.raises(HTTPException) as missing:
+            await langflow_endpoint(
+                ChatBody(prompt="Cannot resurrect", stream=True, previous_response_id="resp-http-next"),
+                chat_service=service,
+                session_manager=None,
+                user=user,
+            )
+        assert missing.value.status_code == 404
+        assert len(calls) == 2
+
+        # Actual endpoint + SSE adapter with both persistent destinations broken.
+        ownership_path = Path(fresh.ownership_file)
+        if ownership_path.exists():
+            ownership_path.unlink()
+        ownership_path.mkdir()
+
+        def unavailable_database():
+            raise OSError("local smoke database unavailable")
+
+        monkeypatch.setattr(fresh, "_resolve_session_factory", lambda: unavailable_database)
+        failed = await langflow_endpoint(
+            ChatBody(prompt="Fail closed", stream=True),
+            chat_service=service,
+            session_manager=None,
+            user=user,
+        )
+        failed_chunks = await _collect_error_chunks(failed.body_iterator)
+        assert len(failed_chunks) == 1 and failed_chunks[0]["status"] == "failed"
+        assert "id" not in failed_chunks[0] and "response_id" not in failed_chunks[0]
+        assert await SessionOwnershipService(session_factory=factory).get_session_owner(
+            "resp-http-next"
+        ) is None
         print(
-            "LOCAL SMOKE: disconnect closed upstream; durable ownership accepted "
-            "follow-up; 4 messages, 1 conversation, no replay"
+            "LOCAL SMOKE: disconnect/follow-up retained 4 messages; restart + "
+            "canonical deletion removed both upstream sessions and alias authorization; "
+            "persistent failures emitted no client ID"
         )
 
 
@@ -759,3 +821,164 @@ async def test_metadata_only_chunk_claims_id_before_exposure(
     chunk = json.loads(await anext(stream))
     await _assert_owns(chunk["id"], "alice")
     await stream.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("delete_id", ["resp-first", "resp-second"])
+async def test_delete_canonical_revokes_aliases_after_reload(
+    monkeypatch, durable_stream_stores, delete_id
+):
+    ownership, persistence, factory = durable_stream_stores
+
+    async def upstream(*_args, **kwargs):
+        response_id = "resp-second" if kwargs.get("previous_response_id") else "resp-first"
+        yield (json.dumps({"id": response_id, "delta": {"content": "Answer"}}) + "\n").encode()
+
+    monkeypatch.setattr(agent_module, "async_stream", upstream)
+    for previous in (None, "resp-first"):
+        await _collect_error_chunks(
+            agent_module.async_langflow_chat_stream(
+                object(), "flow", "Question", "alice", previous_response_id=previous
+            )
+        )
+    await ownership.claim_session("mallory", "resp-foreign")
+    await ownership.claim_session("alice", "resp-unrelated")
+    assert list(await persistence.get_user_conversations("alice")) == ["resp-first"]
+    assert await agent_module.delete_user_conversation("mallory", "resp-first") is False
+    assert agent_module.active_conversations["alice"]["resp-first"]["messages"]
+    # Restart: neither ownership cache nor the in-memory response_ids can help.
+    reloaded = SessionOwnershipService(session_factory=factory)
+    monkeypatch.setattr(
+        "services.session_ownership_service.session_ownership_service", reloaded
+    )
+    monkeypatch.setattr(agent_module, "active_conversations", {})
+    persistence = ConversationPersistenceService(
+        storage_file=persistence.storage_file, session_factory=factory
+    )
+    monkeypatch.setattr(agent_module, "conversation_persistence", persistence)
+    assert await agent_module.delete_user_conversation("alice", delete_id) is True
+    fresh = SessionOwnershipService(session_factory=factory)
+    monkeypatch.setattr(
+        "services.session_ownership_service.session_ownership_service", fresh
+    )
+    for response_id in ("resp-first", "resp-second"):
+        with pytest.raises(HTTPException) as missing:
+            await _assert_owns(response_id, "alice")
+        assert missing.value.status_code == 404
+    assert await fresh.get_session_owner("resp-foreign") == "mallory"
+    assert await fresh.get_session_owner("resp-unrelated") == "alice"
+    assert await persistence.get_user_conversations("alice") == {}
+
+
+@pytest.mark.asyncio
+async def test_persistent_claim_failure_never_exposes_cached_id(
+    monkeypatch, durable_stream_stores
+):
+    ownership, persistence, factory = durable_stream_stores
+    # A real IO failure, not a stubbed claim: cache echo must not prove durability.
+    Path(ownership.ownership_file).mkdir()
+
+    def unavailable_database():
+        raise OSError("local database unavailable")
+
+    monkeypatch.setattr(ownership, "_resolve_session_factory", lambda: unavailable_database)
+
+    async def upstream(*_args, **_kwargs):
+        yield b'{"id":"resp-file-failure","delta":{"content":"Not exposed"}}\n'
+
+    monkeypatch.setattr(agent_module, "async_stream", upstream)
+    chunks = await _collect_error_chunks(
+        agent_module.async_langflow_chat_stream(object(), "flow", "Question", "alice")
+    )
+    assert len(chunks) == 1
+    assert chunks[0]["status"] == "failed"
+    assert "id" not in chunks[0] and "response_id" not in chunks[0]
+    assert await ownership.get_session_owner("resp-file-failure") is None
+    assert await SessionOwnershipService(session_factory=factory).get_session_owner(
+        "resp-file-failure"
+    ) is None
+    assert await persistence.get_user_conversations("alice") == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("durable_stream_stores", ["hybrid", "files"], indirect=True)
+async def test_failed_file_revocation_is_not_reported_as_success(
+    monkeypatch, durable_stream_stores
+):
+    ownership, _, _ = durable_stream_stores
+
+    async def upstream(*_args, **_kwargs):
+        yield b'{"id":"resp-delete-failure","delta":{"content":"Answer"}}\n'
+
+    monkeypatch.setattr(agent_module, "async_stream", upstream)
+    await _collect_error_chunks(
+        agent_module.async_langflow_chat_stream(object(), "flow", "Question", "alice")
+    )
+    ownership_path = Path(ownership.ownership_file)
+    ownership_path.unlink()
+    ownership_path.mkdir()
+    async def monitor_delete(_self, _session_id):
+        return True
+
+    monkeypatch.setattr(ChatService, "_delete_langflow_session", monitor_delete)
+    result = await ChatService().delete_session("alice", "resp-delete-failure")
+    assert result["success"] is False
+    await _assert_owns("resp-delete-failure", "alice")
+    assert "resp-delete-failure" in agent_module.active_conversations["alice"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("durable_stream_stores", ["hybrid"], indirect=True)
+async def test_json_only_alias_cleanup_precedes_failed_db_revocation(
+    monkeypatch, durable_stream_stores
+):
+    from db.repositories import SessionOwnershipRepo
+
+    ownership, _, factory = durable_stream_stores
+
+    async def upstream(*_args, **kwargs):
+        response_id = "alias" if kwargs.get("previous_response_id") else "canonical"
+        yield (json.dumps({"id": response_id, "delta": {"content": "Answer"}}) + "\n").encode()
+
+    monkeypatch.setattr(agent_module, "async_stream", upstream)
+    await _collect_error_chunks(
+        agent_module.async_langflow_chat_stream(object(), "flow", "First", "alice")
+    )
+
+    def unavailable_database():
+        raise OSError("database temporarily unavailable")
+
+    ownership._session_factory = unavailable_database
+    await _collect_error_chunks(
+        agent_module.async_langflow_chat_stream(
+            object(), "flow", "Next", "alice", previous_response_id="canonical"
+        )
+    )
+    ownership._session_factory = factory
+    async with factory() as session:
+        assert await SessionOwnershipRepo(session).get("alias") is None
+    assert await ownership.get_session_owner("alias") == "alice"
+    original = SessionOwnershipRepo.release
+
+    async def failed_release(*_args):
+        raise OSError("database revocation failed")
+
+    upstream_deletes = []
+
+    async def monitor_delete(_self, session_id):
+        upstream_deletes.append(session_id)
+        return True
+
+    monkeypatch.setattr(ChatService, "_delete_langflow_session", monitor_delete)
+    monkeypatch.setattr(SessionOwnershipRepo, "release", failed_release)
+    result = await ChatService().delete_session("alice", "canonical")
+    assert result["success"] is False
+    assert set(upstream_deletes) == {"canonical", "alias"}
+    # Even though JSON-only ownership was revoked, its upstream cleanup was not
+    # lost. The surviving canonical DB row can be retried after a restart.
+    reloaded = SessionOwnershipService(session_factory=factory)
+    monkeypatch.setattr(
+        "services.session_ownership_service.session_ownership_service", reloaded
+    )
+    monkeypatch.setattr(SessionOwnershipRepo, "release", original)
+    assert (await ChatService().delete_session("alice", "canonical"))["success"] is True

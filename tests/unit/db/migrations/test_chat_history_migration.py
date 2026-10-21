@@ -1,5 +1,6 @@
 """Runtime migration: session_ownership.json + conversations.json → DB."""
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -7,6 +8,9 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+import sqlalchemy as sa
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from sqlmodel import SQLModel
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
@@ -147,3 +151,50 @@ async def test_run_marks_migration_done(staged_files, session_factory):
         assert await migrations_runtime._already_done(
             session, migrations_runtime.CHAT_HISTORY_JSON_TO_DB_V1
         )
+
+
+@pytest.mark.asyncio
+async def test_json_migration_preserves_alias_association(staged_files, session_factory):
+    ownership_file = staged_files / "session_ownership.json"
+    payload = json.loads(ownership_file.read_text())
+    payload["alias"] = {"user_id": "alice", "conversation_id": "sess-1"}
+    ownership_file.write_text(json.dumps(payload))
+    async with session_factory() as session:
+        await migrations_runtime.migrate_chat_history_json_to_db(session)
+        await session.commit()
+    async with session_factory() as session:
+        repo = SessionOwnershipRepo(session)
+        assert (await repo.get("alias")).conversation_id == "sess-1"
+        assert set(await repo.list_for_conversation("sess-1", "alice")) == {"sess-1", "alias"}
+
+
+def test_session_alias_schema_upgrade_and_downgrade():
+    migration_path = ROOT / "alembic" / "versions" / "0008_session_conversation_id.py"
+    spec = importlib.util.spec_from_file_location("migration_0008", migration_path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    engine = sa.create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(sa.text(
+            "CREATE TABLE session_ownership (response_id VARCHAR(64) PRIMARY KEY, "
+            "user_id VARCHAR(64) NOT NULL)"
+        ))
+        connection.execute(sa.text(
+            "INSERT INTO session_ownership VALUES ('legacy', 'alice')"
+        ))
+        migration.op = Operations(MigrationContext.configure(connection))
+        migration.upgrade()
+        assert connection.execute(sa.text(
+            "SELECT conversation_id FROM session_ownership WHERE response_id = 'legacy'"
+        )).scalar_one() == "legacy"
+        assert "ix_session_ownership_conversation_id" in {
+            index["name"] for index in sa.inspect(connection).get_indexes("session_ownership")
+        }
+        migration.downgrade()
+        assert connection.execute(sa.text(
+            "SELECT user_id FROM session_ownership WHERE response_id = 'legacy'"
+        )).scalar_one() == "alice"
+        assert "conversation_id" not in {
+            column["name"] for column in sa.inspect(connection).get_columns("session_ownership")
+        }
+    engine.dispose()

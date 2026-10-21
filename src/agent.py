@@ -95,13 +95,10 @@ async def _persist_error_conversation(
 
     from services.session_ownership_service import session_ownership_service
 
+    if not await session_ownership_service.claim_session(user_id, store_id):
+        raise RuntimeError("Unable to establish chat session ownership")
     conversation_state["last_activity"] = datetime.now()
     await store_conversation_thread(user_id, store_id, conversation_state)
-    try:
-        await session_ownership_service.claim_session(user_id, store_id)
-        logger.debug(f"Claimed session {store_id} for user {user_id} after stream error")
-    except Exception as e:
-        logger.warning(f"Failed to claim session ownership after stream error: {e}")
 
 
 def _stream_error_chunk(message: str, response_id: str | None = None) -> bytes:
@@ -730,6 +727,7 @@ async def async_chat_stream(
             await _persist_error_conversation(user_id, store_id, conversation_state)
         except Exception as store_error:
             logger.error(f"Failed to store error conversation: {store_error}")
+            store_id = None
         yield _stream_error_chunk(display_text, store_id)
 
 
@@ -862,17 +860,12 @@ async def async_langflow_chat(
 
     # Store the conversation thread with its response_id
     if response_id:
+        from services.session_ownership_service import session_ownership_service
+
+        if not await session_ownership_service.claim_session(user_id, response_id):
+            raise RuntimeError("Unable to establish chat session ownership")
         conversation_state["last_activity"] = datetime.now()
         await store_conversation_thread(user_id, response_id, conversation_state)
-
-        # Claim session ownership for this user
-        try:
-            from services.session_ownership_service import session_ownership_service
-
-            await session_ownership_service.claim_session(user_id, response_id)
-            logger.debug(f"Claimed session {response_id} for user {user_id}")
-        except Exception as e:
-            logger.warning(f"Failed to claim session ownership: {e}")
 
         logger.debug(
             "Stored langflow conversation thread",
@@ -957,10 +950,9 @@ async def async_langflow_chat_stream(
         for session_id in dict.fromkeys((store_id, *session_ids)):
             if not session_id or session_id in claimed_ids:
                 continue
-            await session_ownership_service.claim_session(user_id, session_id)
-            # The storage service logs DB failures; do not expose an ID whose
-            # durable claim failed, or one already belonging to another user.
-            if await session_ownership_service.get_session_owner(session_id) != user_id:
+            if not await session_ownership_service.claim_session(
+                user_id, session_id, conversation_id=store_id
+            ):
                 raise RuntimeError("Unable to establish chat session ownership")
             claimed_ids.add(session_id)
             response_ids = conversation_state.setdefault("response_ids", [])
@@ -1146,31 +1138,18 @@ async def delete_user_conversation(user_id: str, response_id: str) -> bool:
         Exception — on unexpected storage errors so callers can distinguish
                     a confirmed "not found" from a backend failure.
     """
-    deleted = False
+    from services.session_ownership_service import session_ownership_service
 
-    # Delete from in-memory storage (cannot raise)
-    if user_id in active_conversations and response_id in active_conversations[user_id]:
-        del active_conversations[user_id][response_id]
-        logger.debug(f"Deleted conversation {response_id} from memory for user {user_id}")
+    session_ids = await session_ownership_service.get_conversation_sessions(user_id, response_id)
+    if not session_ids:
+        return False
+    canonical_id = session_ids[0]
+    # Revoke ALL durable aliases before removing the local index. Failures must
+    # reach the caller, not turn into a successful delete with reusable IDs.
+    await session_ownership_service.release_conversation_sessions(user_id, session_ids)
+    deleted = await conversation_persistence.delete_conversation_thread(user_id, canonical_id)
+    if canonical_id in active_conversations.get(user_id, {}):
+        del active_conversations[user_id][canonical_id]
         deleted = True
-
-    # Delete from persistent storage — let real errors propagate to the caller
-    conversation_deleted = await conversation_persistence.delete_conversation_thread(
-        user_id, response_id
-    )
-    if conversation_deleted:
-        logger.debug(
-            f"Deleted conversation {response_id} from persistent storage for user {user_id}"
-        )
-        deleted = True
-
-    # Release session ownership (best-effort; never masks storage errors above)
-    try:
-        from services.session_ownership_service import session_ownership_service
-
-        await session_ownership_service.release_session(user_id, response_id)
-        logger.debug(f"Released session ownership for {response_id} for user {user_id}")
-    except Exception as e:
-        logger.warning(f"Failed to release session ownership: {e}")
 
     return deleted
