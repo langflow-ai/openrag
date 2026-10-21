@@ -13,7 +13,7 @@ class SessionOwnershipRepo:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get(self, response_id: str) -> Optional[SessionOwnership]:
+    async def get(self, response_id: str) -> SessionOwnership | None:
         return await self.session.get(SessionOwnership, response_id)
 
     async def claim(
@@ -29,10 +29,7 @@ class SessionOwnershipRepo:
                 raise PermissionError("Conversation is not owned by this user")
         if existing is not None and (
             existing.user_id != user_id
-            or (
-                existing.conversation_id is not None
-                and existing.conversation_id != canonical_id
-            )
+            or (existing.conversation_id is not None and existing.conversation_id != canonical_id)
         ):
             raise PermissionError("Session ownership or conversation conflict")
         if existing is None:
@@ -54,15 +51,11 @@ class SessionOwnershipRepo:
 
     async def list_for_user(self, user_id: str) -> list[str]:
         result = await self.session.execute(
-            select(SessionOwnership.response_id).where(
-                SessionOwnership.user_id == user_id
-            )
+            select(SessionOwnership.response_id).where(SessionOwnership.user_id == user_id)
         )
         return list(result.scalars().all())
 
-    async def list_for_conversation(
-        self, conversation_id: str, user_id: str
-    ) -> list[str]:
+    async def list_for_conversation(self, conversation_id: str, user_id: str) -> list[str]:
         result = await self.session.execute(
             select(SessionOwnership.response_id).where(
                 SessionOwnership.user_id == user_id,
@@ -89,8 +82,8 @@ class SessionOwnershipRepo:
         self,
         response_id: str,
         user_id: str,
-        created_at: Optional[datetime] = None,
-        last_accessed: Optional[datetime] = None,
+        created_at: datetime | None = None,
+        last_accessed: datetime | None = None,
         conversation_id: str | None = None,
     ) -> bool:
         """Used by the runtime migration to copy JSON rows verbatim

@@ -15,9 +15,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "session_ownership", sa.Column("conversation_id", sa.String(64), nullable=True)
-    )
+    op.add_column("session_ownership", sa.Column("conversation_id", sa.String(64), nullable=True))
     op.create_index(
         "ix_session_ownership_conversation_id", "session_ownership", ["conversation_id"]
     )
