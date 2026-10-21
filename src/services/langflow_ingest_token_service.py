@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+import datetime
 import time
 import uuid
 from typing import Any
@@ -83,6 +85,11 @@ class LangflowIngestTokenService:
 
     def create_token(self, context: DocumentIndexContext) -> str:
         now = int(time.time())
+        if context.indexed_time is None:
+            context = dataclasses.replace(
+                context,
+                indexed_time=datetime.datetime.fromtimestamp(now, datetime.UTC).isoformat(),
+            )
         jti = str(uuid.uuid4())
         payload = {
             "aud": self.audience,

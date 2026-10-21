@@ -459,3 +459,42 @@ def test_ingest_token_round_trips_indexed_time():
     context = LangflowIngestTokenService._payload_to_context(payload)
 
     assert context.indexed_time == "2026-01-01T00:00:00+00:00"
+
+
+def _token_context(**overrides):
+    return DocumentIndexContext(
+        document_id="d", mimetype="application/pdf", embedding_model="m", **overrides
+    )
+
+
+def test_create_token_defaults_indexed_time_to_issue_time():
+    import datetime
+
+    import jwt
+
+    service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
+    original = _token_context()
+
+    token = service.create_token(original)
+
+    iat = jwt.decode(token, options={"verify_signature": False})["iat"]
+    context, _ = service.validate_token(token)
+    assert context.indexed_time == datetime.datetime.fromtimestamp(iat, datetime.UTC).isoformat()
+
+
+def test_create_token_preserves_explicit_indexed_time():
+    service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
+
+    token = service.create_token(_token_context(indexed_time="2026-01-01T00:00:00+00:00"))
+
+    context, _ = service.validate_token(token)
+    assert context.indexed_time == "2026-01-01T00:00:00+00:00"
+
+
+def test_create_token_does_not_mutate_callers_context():
+    service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
+    original = _token_context()
+
+    service.create_token(original)
+
+    assert original.indexed_time is None
