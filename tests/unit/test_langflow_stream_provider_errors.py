@@ -482,9 +482,7 @@ async def durable_stream_stores(request, monkeypatch, tmp_path):
     persistence = ConversationPersistenceService(
         storage_file=str(tmp_path / "conversations.json"), session_factory=factory
     )
-    monkeypatch.setattr(
-        "services.session_ownership_service.session_ownership_service", ownership
-    )
+    monkeypatch.setattr("services.session_ownership_service.session_ownership_service", ownership)
     monkeypatch.setattr(agent_module, "conversation_persistence", persistence)
     monkeypatch.setattr(agent_module, "active_conversations", {})
     yield ownership, persistence, factory
@@ -511,15 +509,11 @@ async def test_aborted_langflow_stream_keeps_owned_id_and_partial_turn(
             upstream_closed.set()
 
     monkeypatch.setattr(agent_module, "async_stream", upstream)
-    stream = agent_module.async_langflow_chat_stream(
-        object(), "flow", "First question", "alice"
-    )
+    stream = agent_module.async_langflow_chat_stream(object(), "flow", "First question", "alice")
     chunk = json.loads(await anext(stream))
     # The ID must already be durable when it first crosses the generator boundary.
     await _assert_owns(chunk["id"], "alice")
-    assert (await persistence.get_conversation_thread("alice", chunk["id"]))[
-        "total_messages"
-    ] >= 1
+    assert (await persistence.get_conversation_thread("alice", chunk["id"]))["total_messages"] >= 1
     if abort == "close":
         await stream.aclose()
     else:
@@ -546,8 +540,12 @@ async def test_aborted_langflow_stream_keeps_owned_id_and_partial_turn(
     monkeypatch.setattr(agent_module, "async_stream", continuation)
     await _assert_owns(chunk["id"], "alice")
     followup = agent_module.async_langflow_chat_stream(
-        object(), "flow", "Follow-up", "alice",
-        previous_response_id=chunk["id"], conversation_id=chunk["id"],
+        object(),
+        "flow",
+        "Follow-up",
+        "alice",
+        previous_response_id=chunk["id"],
+        conversation_id=chunk["id"],
     )
     next_chunk = json.loads(await anext(followup))
     await _assert_owns(next_chunk["id"], "alice")
@@ -558,22 +556,29 @@ async def test_aborted_langflow_stream_keeps_owned_id_and_partial_turn(
     assert list(conversations) == ["resp-first"]  # Stable sidebar id, changing response ids.
     messages = agent_module.active_conversations["alice"]["resp-first"]["messages"]
     assert [(m["role"], m["content"]) for m in messages if m["role"] != "system"] == [
-        ("user", "First question"), ("assistant", "Partial answer"),
-        ("user", "Follow-up"), ("assistant", "Next"),
+        ("user", "First question"),
+        ("assistant", "Partial answer"),
+        ("user", "Follow-up"),
+        ("assistant", "Next"),
     ]
     assert conversations["resp-first"]["total_messages"] == 4
 
     # SDK callers may only carry the changing response ID, not conversation_id.
     await _collect_error_chunks(
         agent_module.async_langflow_chat_stream(
-            object(), "flow", "Third question", "alice",
+            object(),
+            "flow",
+            "Third question",
+            "alice",
             previous_response_id=next_chunk["response_id"],
         )
     )
     assert list(await persistence.get_user_conversations("alice")) == ["resp-first"]
     assert calls == [None, "resp-first", "resp-next-alias"]
     assert [m["content"] for m in messages if m["role"] == "user"] == [
-        "First question", "Follow-up", "Third question"
+        "First question",
+        "Follow-up",
+        "Third question",
     ]
 
 
@@ -586,8 +591,10 @@ async def test_stream_does_not_expose_unowned_response_id(
     if claim_failure == "foreign":
         await ownership.claim_session("mallory", "resp-unclaimable")
     else:
+
         async def unavailable(*_args):
             pass  # Simulate the service's existing logged-but-not-raised DB failure.
+
         monkeypatch.setattr(ownership, "claim_session", unavailable)
 
     async def upstream(*_args, **_kwargs):
@@ -617,11 +624,11 @@ async def test_local_asgi_disconnect_smoke_preserves_followup(durable_stream_sto
     class ProviderStream(httpx.AsyncByteStream):
         async def __aiter__(self):
             yield (
-                b'event: response.created\n'
+                b"event: response.created\n"
                 b'data: {"type":"response.created","response":{"id":"resp-http"}}\n\n'
             )
             yield (
-                b'event: response.output_text.delta\n'
+                b"event: response.output_text.delta\n"
                 b'data: {"type":"response.output_text.delta","id":"resp-http",'
                 b'"delta":{"content":"Partial HTTP answer"}}\n\n'
             )
@@ -638,38 +645,49 @@ async def test_local_asgi_disconnect_smoke_preserves_followup(durable_stream_sto
                 200, headers={"content-type": "text/event-stream"}, stream=ProviderStream()
             )
         return httpx.Response(
-            200, headers={"content-type": "text/event-stream"},
+            200,
+            headers={"content-type": "text/event-stream"},
             content=(
-                b'event: response.output_text.delta\n'
+                b"event: response.output_text.delta\n"
                 b'data: {"type":"response.output_text.delta","id":"resp-http-next",'
                 b'"delta":{"content":"Follow-up HTTP answer"}}\n\n'
-                b'event: response.completed\n'
+                b"event: response.completed\n"
                 b'data: {"type":"response.completed","response":{"id":"resp-http-next",'
                 b'"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}}\n\n'
             ),
         )
 
     async with AsyncOpenAI(
-        api_key="local-test-only", base_url="https://provider.invalid/v1",
+        api_key="local-test-only",
+        base_url="https://provider.invalid/v1",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(provider)),
         max_retries=0,
     ) as client:
+
         class ChatService:
             async def langflow_chat(self, prompt, _subject, _jwt, **kwargs):
                 return agent_module.async_langflow_chat_stream(
-                    client, "flow", prompt, kwargs["storage_user_id"],
+                    client,
+                    "flow",
+                    prompt,
+                    kwargs["storage_user_id"],
                     previous_response_id=kwargs["previous_response_id"],
                     conversation_id=kwargs["conversation_id"],
                 )
 
         user = SimpleNamespace(
-            user_id="oauth-alice", db_user_id="alice", jwt_token="local-test-only",
-            name="Alice", email="alice@example.invalid",
+            user_id="oauth-alice",
+            db_user_id="alice",
+            jwt_token="local-test-only",
+            name="Alice",
+            email="alice@example.invalid",
         )
         service = ChatService()
         response = await langflow_endpoint(
             ChatBody(prompt="First HTTP question", stream=True),
-            chat_service=service, session_manager=None, user=user,
+            chat_service=service,
+            session_manager=None,
+            user=user,
         )
         emitted = []
 
@@ -690,9 +708,7 @@ async def test_local_asgi_disconnect_smoke_preserves_followup(durable_stream_sto
         # Starlette's real disconnect listener cancels the body iterator using an
         # AnyIO cancel scope, rather than manually throwing into our generator.
         with anyio.fail_after(5):
-            await response(
-                {"type": "http", "asgi": {"spec_version": "2.3"}}, receive, send
-            )
+            await response({"type": "http", "asgi": {"spec_version": "2.3"}}, receive, send)
         assert upstream_closed.is_set()
         assert len(emitted) == 2
         metadata = await persistence.get_conversation_thread("alice", "resp-http")
@@ -700,25 +716,29 @@ async def test_local_asgi_disconnect_smoke_preserves_followup(durable_stream_sto
 
         followup = await langflow_endpoint(
             ChatBody(
-                prompt="Next HTTP question", stream=True,
-                previous_response_id="resp-http", conversation_id="resp-http",
+                prompt="Next HTTP question",
+                stream=True,
+                previous_response_id="resp-http",
+                conversation_id="resp-http",
             ),
-            chat_service=service, session_manager=None, user=user,
+            chat_service=service,
+            session_manager=None,
+            user=user,
         )
         chunks = await _collect_error_chunks(followup.body_iterator)
         await _assert_owns("resp-http-next", "alice")
         assert chunks[-1]["response"]["usage"]["total_tokens"] == 7
         assert calls[1]["previous_response_id"] == "resp-http"
-        assert [call["input"] for call in calls] == [
-            "First HTTP question", "Next HTTP question"
-        ]
+        assert [call["input"] for call in calls] == ["First HTTP question", "Next HTTP question"]
         conversations = await persistence.get_user_conversations("alice")
         assert list(conversations) == ["resp-http"]
         assert conversations["resp-http"]["total_messages"] == 4
         messages = agent_module.active_conversations["alice"]["resp-http"]["messages"]
         assert [m["content"] for m in messages if m["role"] != "system"] == [
-            "First HTTP question", "Partial HTTP answer",
-            "Next HTTP question", "Follow-up HTTP answer",
+            "First HTTP question",
+            "Partial HTTP answer",
+            "Next HTTP question",
+            "Follow-up HTTP answer",
         ]
         print(
             "LOCAL SMOKE: disconnect closed upstream; durable ownership accepted "
@@ -735,9 +755,7 @@ async def test_metadata_only_chunk_claims_id_before_exposure(
         yield (json.dumps({"id": "resp-metadata", "delta": delta}) + "\n").encode()
 
     monkeypatch.setattr(agent_module, "async_stream", upstream)
-    stream = agent_module.async_langflow_chat_stream(
-        object(), "flow", "Question", "alice"
-    )
+    stream = agent_module.async_langflow_chat_stream(object(), "flow", "Question", "alice")
     chunk = json.loads(await anext(stream))
     await _assert_owns(chunk["id"], "alice")
     await stream.aclose()

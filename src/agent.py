@@ -947,7 +947,8 @@ async def async_langflow_chat_stream(
 
         if store_id is None:
             store_id = _resolve_conversation_store_id(
-                response_id, thread_id,
+                response_id,
+                thread_id,
                 previous_loaded_from_memory=previous_loaded_from_memory,
                 mint_if_missing=mint_if_missing,
             )
