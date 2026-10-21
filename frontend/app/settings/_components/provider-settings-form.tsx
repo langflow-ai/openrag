@@ -100,6 +100,7 @@ export function ProviderSettingsForm({
           key={field.key}
           idPrefix="provider-watsonx-onprem"
           value={watch("credentials.ssl_verify")}
+          savedValue={savedCredentialValues?.ssl_verify ?? ""}
           onValueChange={(value) =>
             setValue("credentials.ssl_verify", value, { shouldDirty: true })
           }
@@ -113,6 +114,7 @@ export function ProviderSettingsForm({
           key={field.key}
           idPrefix="provider-rhoai"
           value={watch("credentials.ssl_verify")}
+          savedValue={savedCredentialValues?.ssl_verify ?? ""}
           onValueChange={(value) =>
             setValue("credentials.ssl_verify", value, { shouldDirty: true })
           }

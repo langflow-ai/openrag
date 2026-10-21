@@ -6,7 +6,11 @@ import { LabelWrapper } from "@/components/label-wrapper";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { isDefaultTlsSetting, parseTlsSetting } from "./tls-verification";
+import {
+  isDefaultTlsSetting,
+  isTlsVerificationDisabled,
+  parseTlsSetting,
+} from "./tls-verification";
 
 const SWITCH_LABEL = "Verify TLS certificates";
 const CA_PATH_LABEL = "Custom CA bundle path";
@@ -19,6 +23,7 @@ const CA_PATH_LABEL = "Custom CA bundle path";
  */
 function TlsVerificationSettings({
   value,
+  savedValue,
   onValueChange,
   idPrefix,
   verifiedValue,
@@ -27,13 +32,15 @@ function TlsVerificationSettings({
   caPathPlaceholder,
 }: {
   value?: string;
+  /**
+   * The saved `ssl_verify`; blank when unset, as the credential-target check
+   * reads it. Turning verification back on, or clearing the CA path, restores
+   * it where it verifies, so neither reads as a target change.
+   */
+  savedValue?: string;
   onValueChange: (value: string) => void;
   idPrefix: string;
-  /**
-   * Written when verification is on with no CA path, unless the field already
-   * held a verify-equivalent value — that one is restored instead, so turning
-   * the switch off and on again is not a credential-target change.
-   */
+  /** Written when verification is on with no CA path and nothing to restore. */
   verifiedValue: string;
   /** Shown under the switch label and announced as its description. */
   switchDescription: string;
@@ -41,12 +48,17 @@ function TlsVerificationSettings({
   caPathPlaceholder: string;
 }) {
   const { enabled, caPath } = parseTlsSetting(value);
-  const lastCaPath = useRef(caPath);
-  if (caPath) lastCaPath.current = caPath;
-  const lastVerifiedValue = useRef(verifiedValue);
-  if (isDefaultTlsSetting(value)) {
-    lastVerifiedValue.current = (value ?? "").trim();
-  }
+  const saved = savedValue?.trim();
+  const restoredValue =
+    saved !== undefined && !isTlsVerificationDisabled(saved)
+      ? saved
+      : verifiedValue;
+  const clearedValue =
+    saved !== undefined && isDefaultTlsSetting(saved) ? saved : verifiedValue;
+  // The value verification was switched off from. It lasts only as long as
+  // this mount — a collapsed accordion section unmounts it — so the saved
+  // value is the fallback.
+  const valueBeforeDisabling = useRef<string | null>(null);
 
   const switchId = `${idPrefix}-tls-verify`;
   const descriptionId = `${switchId}-description`;
@@ -67,13 +79,14 @@ function TlsVerificationSettings({
           id={switchId}
           checked={enabled}
           aria-describedby={descriptionId}
-          onCheckedChange={(checked) =>
-            onValueChange(
-              checked
-                ? lastCaPath.current.trim() || lastVerifiedValue.current
-                : "false",
-            )
-          }
+          onCheckedChange={(checked) => {
+            if (checked) {
+              onValueChange(valueBeforeDisabling.current ?? restoredValue);
+              return;
+            }
+            valueBeforeDisabling.current = (value ?? "").trim();
+            onValueChange("false");
+          }}
         />
       </div>
 
@@ -88,11 +101,9 @@ function TlsVerificationSettings({
             value={caPath}
             placeholder={caPathPlaceholder}
             autoComplete="off"
-            onChange={(event) => {
-              const next = event.target.value;
-              if (next) lastCaPath.current = next;
-              onValueChange(next || lastVerifiedValue.current);
-            }}
+            onChange={(event) =>
+              onValueChange(event.target.value || clearedValue)
+            }
           />
         </LabelWrapper>
       ) : (
@@ -116,6 +127,7 @@ function TlsVerificationSettings({
 
 type TlsPresetProps = {
   value?: string;
+  savedValue?: string;
   onValueChange: (value: string) => void;
   idPrefix: string;
 };

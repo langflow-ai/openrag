@@ -784,4 +784,18 @@ describe("ProviderSettingsDialog Red Hat OpenShift AI", () => {
     expect(screen.queryByText(REENTRY_HINT)).not.toBeInTheDocument();
     expect(screen.getByText(SAVED_HINT)).toBeInTheDocument();
   });
+
+  it("restores the saved CA path when verification is switched back on after Advanced was collapsed", async () => {
+    renderDialog(rhoaiSaved({ ssl_verify: "/var/run/secrets/service-ca.crt" }));
+    const user = userEvent.setup();
+
+    await screen.findByRole("switch", { name: "Verify TLS certificates" });
+    await user.click(tlsSwitch());
+    await user.click(advancedToggle());
+    await user.click(advancedToggle());
+    await user.click(tlsSwitch());
+
+    expect(caPath()).toHaveValue("/var/run/secrets/service-ca.crt");
+    expect(screen.queryByText(REENTRY_HINT)).not.toBeInTheDocument();
+  });
 });

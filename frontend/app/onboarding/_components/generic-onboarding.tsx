@@ -279,6 +279,7 @@ export function GenericOnboarding({
           key={field.key}
           idPrefix={`onboarding-${provider}`}
           value={credentials.ssl_verify}
+          savedValue={savedCredentials.ssl_verify ?? ""}
           onValueChange={(value) => handleCredentialChange("ssl_verify", value)}
         />
       );
@@ -290,6 +291,7 @@ export function GenericOnboarding({
           key={field.key}
           idPrefix={`onboarding-${provider}`}
           value={credentials.ssl_verify}
+          savedValue={savedCredentials.ssl_verify ?? ""}
           onValueChange={(value) => handleCredentialChange("ssl_verify", value)}
         />
       );

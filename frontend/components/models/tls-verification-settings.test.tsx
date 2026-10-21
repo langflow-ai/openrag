@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   renderWithProviders,
   screen,
   userEvent,
@@ -16,22 +22,42 @@ const PRESETS = {
   watsonx: WatsonxTlsSettings,
 } as const;
 
-/** Renders a preset as a parent form would: the value it writes flows back in. */
-function renderTls(initial: string | undefined, preset: keyof typeof PRESETS) {
+/**
+ * Renders a preset as a parent form would: the value it writes flows back in.
+ * `inAccordion` puts it in an open collapsible section, as the forms do.
+ */
+function renderTls(
+  initial: string | undefined,
+  preset: keyof typeof PRESETS,
+  {
+    savedValue,
+    inAccordion = false,
+  }: { savedValue?: string; inAccordion?: boolean } = {},
+) {
   const Preset = PRESETS[preset];
   const writes: string[] = [];
   const onWrite = vi.fn((value: string) => writes.push(value));
   function Harness() {
     const [value, setValue] = useState(initial);
-    return (
+    const settings = (
       <Preset
         idPrefix="test"
         value={value}
+        savedValue={savedValue}
         onValueChange={(next) => {
           onWrite(next);
           setValue(next);
         }}
       />
+    );
+    if (!inAccordion) return settings;
+    return (
+      <Accordion type="multiple" defaultValue={["advanced"]}>
+        <AccordionItem value="advanced">
+          <AccordionTrigger>Advanced settings</AccordionTrigger>
+          <AccordionContent>{settings}</AccordionContent>
+        </AccordionItem>
+      </Accordion>
     );
   }
   renderWithProviders(<Harness />, { providers: ["tooltip"] });
@@ -109,6 +135,40 @@ describe.each([
 
     expect(writes).toEqual(["false", stored]);
   });
+
+  it.each([
+    "/etc/ca.pem",
+    "",
+    "true",
+  ])("restores the saved %j when switched on after its section was collapsed", async (saved) => {
+    // Collapsing unmounts the section, so what was switched off from is gone;
+    // the saved value is what keeps this from being a target change.
+    const { user, writes } = renderTls(saved, preset, {
+      savedValue: saved,
+      inAccordion: true,
+    });
+    const section = screen.getByRole("button", { name: "Advanced settings" });
+
+    await user.click(tlsSwitch());
+    await user.click(section);
+    await user.click(section);
+    await user.click(tlsSwitch());
+
+    expect(writes).toEqual(["false", saved]);
+  });
+
+  it("forgets a CA path cleared before verification was switched off", async () => {
+    const { user, writes } = renderTls("/etc/ca.pem", preset, {
+      savedValue: "",
+    });
+
+    await user.clear(caPath() as HTMLElement);
+    await user.click(tlsSwitch());
+    await user.click(tlsSwitch());
+
+    expect(writes.at(-1)).toBe("");
+    expect(caPath()).toHaveValue("");
+  });
 });
 
 describe("TLS verification settings: the verified value", () => {
@@ -134,6 +194,32 @@ describe("TLS verification settings: the verified value", () => {
 
     expect(writes.at(-1)).toBe(expected);
     expect(tlsSwitch()).toBeChecked();
+  });
+
+  it.each([
+    "rhoai",
+    "watsonx",
+  ] as const)("%s writes the saved value back once a typed CA path is cleared", async (preset) => {
+    const { user, writes } = renderTls("", preset, { savedValue: "" });
+
+    await user.type(caPath() as HTMLElement, "/x");
+    await user.clear(caPath() as HTMLElement);
+
+    expect(writes.at(-1)).toBe("");
+  });
+
+  it.each([
+    ["rhoai", ""],
+    ["watsonx", "true"],
+  ] as const)("%s writes %j when switched on from a saved false", async (preset, expected) => {
+    const { user, writes } = renderTls("false", preset, {
+      savedValue: "false",
+      inAccordion: true,
+    });
+
+    await user.click(tlsSwitch());
+
+    expect(writes).toEqual([expected]);
   });
 });
 
