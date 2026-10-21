@@ -208,6 +208,7 @@ def test_the_settings_form_asks_for_cluster_credentials_not_ibm_cloud_ones() -> 
         "project_id",
         "ssl_verify",
     }
+    assert fields["ssl_verify"]["field_type"] == "tls_verify"
     assert fields["ssl_verify"]["default_value"] == "true"
     assert model_catalog.secret_field_keys(PROVIDER) == {"api_key", "zen_api_key"}
 

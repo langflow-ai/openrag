@@ -108,9 +108,29 @@ def test_the_form_asks_for_two_endpoints_a_token_and_a_ca() -> None:
     assert fields["api_base"]["field_type"] == "text"
     assert fields["embedding_api_base"]["field_type"] == "text"
     assert fields["api_key"]["field_type"] == "password"
-    assert fields["ssl_verify"]["field_type"] == "text"
+    # The form renders it as a switch (labelled by `label`) plus a CA path
+    # (helped by `tooltip`), so the tooltip no longer says to type `false`, and
+    # blank — no `default_value` — is what "verify" is stored as.
+    assert fields["ssl_verify"]["field_type"] == "tls_verify"
+    assert fields["ssl_verify"]["label"] == "Verify TLS certificates"
+    assert "`false`" not in fields["ssl_verify"]["tooltip"]
+    assert fields["ssl_verify"]["required"] is False
+    assert fields["ssl_verify"]["default_value"] is None
     assert fields["embedding_max_concurrency"]["field_type"] == "text"
     assert fields["embedding_max_concurrency"]["required"] is False
+
+
+def test_the_tooltips_keep_the_guidance_an_operator_needs() -> None:
+    """The non-obvious setup and failure hints stay in the form, not only in the docs."""
+    fields = {field["key"]: field for field in model_catalog.credential_fields(PROVIDER)}
+
+    # A laptop reaches the cluster through a Route or a port-forward.
+    assert "oc port-forward" in fields["api_base"]["tooltip"]
+    # A slow CPU-served model needs a lower limit, or kube-rbac-proxy answers 502.
+    assert "Lower to 4" in fields["embedding_max_concurrency"]["tooltip"]
+    assert "502" in fields["embedding_max_concurrency"]["tooltip"]
+    # "Leave blank" lives in the Embeddings section hint, so it is not repeated here.
+    assert "blank" not in fields["embedding_api_base"]["tooltip"]
 
 
 def test_only_the_token_is_encrypted_at_rest() -> None:
