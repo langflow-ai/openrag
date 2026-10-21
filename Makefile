@@ -1336,22 +1336,24 @@ test-sdk: ## Run SDK integration tests (requires running OpenRAG at localhost:30
 	@echo "$(PURPLE)SDK tests complete.$(NC)"
 
 EVAL_DIR := scripts/eval/retrieval
-# Paths below are relative to EVAL_DIR. EVAL_ARGS passes extra options to run_eval.py,
-# e.g. EVAL_ARGS="--keep-documents --fetch-limit 100".
-CURRENT ?= results/results.json
+# Paths below are relative to EVAL_DIR. Override OUTPUT_DIR (not --output-dir in
+# EVAL_ARGS) to change where results land, so eval-baseline's copy step always
+# matches what run_eval.py actually wrote.
+OUTPUT_DIR ?= results
+CURRENT ?= $(OUTPUT_DIR)/results.json
 
 eval-validate: ## Check the retrieval eval corpus and questions (no stack needed)
 	cd $(EVAL_DIR) && uv run run_eval.py run --validate-only $(EVAL_ARGS)
 
 eval-run: ## Run the retrieval eval (requires running OpenRAG and OPENRAG_API_KEY); BASELINE=file to compare
-	cd $(EVAL_DIR) && uv run run_eval.py run $(if $(BASELINE),--baseline $(BASELINE)) $(EVAL_ARGS)
+	cd $(EVAL_DIR) && uv run run_eval.py run --output-dir $(OUTPUT_DIR) $(if $(BASELINE),--baseline $(BASELINE)) $(EVAL_ARGS)
 
-eval-baseline: ## Run the retrieval eval and save it as results/baseline.json
-	cd $(EVAL_DIR) && uv run run_eval.py run $(EVAL_ARGS) && cp results/results.json results/baseline.json
-	@echo "$(PURPLE)Saved $(EVAL_DIR)/results/baseline.json$(NC)"
+eval-baseline: ## Run the retrieval eval and save it as $(OUTPUT_DIR)/baseline.json
+	cd $(EVAL_DIR) && uv run run_eval.py run --output-dir $(OUTPUT_DIR) $(EVAL_ARGS) && cp $(OUTPUT_DIR)/results.json $(OUTPUT_DIR)/baseline.json
+	@echo "$(PURPLE)Saved $(EVAL_DIR)/$(OUTPUT_DIR)/baseline.json$(NC)"
 
 eval-compare: ## Compare two retrieval eval results files offline (BASELINE=..., CURRENT=...)
-	cd $(EVAL_DIR) && uv run run_eval.py compare $(or $(BASELINE),results/baseline.json) $(CURRENT)
+	cd $(EVAL_DIR) && uv run run_eval.py compare $(or $(BASELINE),$(OUTPUT_DIR)/baseline.json) $(CURRENT)
 
 lint: ## Run linting checks
 	@echo "$(YELLOW)Running linting checks...$(NC)"
