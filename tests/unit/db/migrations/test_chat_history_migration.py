@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
@@ -19,8 +19,8 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import db.models  # noqa: E402,F401
-from db.repositories import ConversationRepo, SessionOwnershipRepo  # noqa: E402
 from db import migrations_runtime  # noqa: E402
+from db.repositories import ConversationRepo, SessionOwnershipRepo  # noqa: E402
 
 
 @pytest_asyncio.fixture
@@ -42,41 +42,49 @@ def staged_files(tmp_path, monkeypatch):
     so_path = tmp_path / "session_ownership.json"
     conv_path = tmp_path / "conversations.json"
 
-    so_path.write_text(json.dumps({
-        "sess-1": {
-            "user_id": "alice",
-            "created_at": "2026-04-01T10:00:00",
-            "last_accessed": "2026-04-02T11:00:00",
-        },
-        "sess-2": {
-            "user_id": "bob",
-            "created_at": "2026-04-03T09:00:00",
-            "last_accessed": "2026-04-03T09:00:00",
-        },
-    }))
+    so_path.write_text(
+        json.dumps(
+            {
+                "sess-1": {
+                    "user_id": "alice",
+                    "created_at": "2026-04-01T10:00:00",
+                    "last_accessed": "2026-04-02T11:00:00",
+                },
+                "sess-2": {
+                    "user_id": "bob",
+                    "created_at": "2026-04-03T09:00:00",
+                    "last_accessed": "2026-04-03T09:00:00",
+                },
+            }
+        )
+    )
 
-    conv_path.write_text(json.dumps({
-        "alice": {
-            "r-1": {
-                "title": "Project sync",
-                "endpoint": "chat",
-                "previous_response_id": None,
-                "filter_id": None,
-                "total_messages": 4,
-                "created_at": "2026-04-01T10:00:00",
-                "last_activity": "2026-04-02T11:00:00",
-            },
-        },
-        "bob": {
-            "r-2": {
-                "title": "Bug triage",
-                "endpoint": "langflow",
-                "total_messages": 1,
-                "created_at": "2026-04-03T09:00:00",
-                "last_activity": "2026-04-03T09:00:00",
-            },
-        },
-    }))
+    conv_path.write_text(
+        json.dumps(
+            {
+                "alice": {
+                    "r-1": {
+                        "title": "Project sync",
+                        "endpoint": "chat",
+                        "previous_response_id": None,
+                        "filter_id": None,
+                        "total_messages": 4,
+                        "created_at": "2026-04-01T10:00:00",
+                        "last_activity": "2026-04-02T11:00:00",
+                    },
+                },
+                "bob": {
+                    "r-2": {
+                        "title": "Bug triage",
+                        "endpoint": "langflow",
+                        "total_messages": 1,
+                        "created_at": "2026-04-03T09:00:00",
+                        "last_activity": "2026-04-03T09:00:00",
+                    },
+                },
+            }
+        )
+    )
 
     def _resolver(name):
         return str(tmp_path / name)
@@ -175,25 +183,33 @@ def test_session_alias_schema_upgrade_and_downgrade():
     spec.loader.exec_module(migration)
     engine = sa.create_engine("sqlite:///:memory:")
     with engine.begin() as connection:
-        connection.execute(sa.text(
-            "CREATE TABLE session_ownership (response_id VARCHAR(64) PRIMARY KEY, "
-            "user_id VARCHAR(64) NOT NULL)"
-        ))
-        connection.execute(sa.text(
-            "INSERT INTO session_ownership VALUES ('legacy', 'alice')"
-        ))
+        connection.execute(
+            sa.text(
+                "CREATE TABLE session_ownership (response_id VARCHAR(64) PRIMARY KEY, "
+                "user_id VARCHAR(64) NOT NULL)"
+            )
+        )
+        connection.execute(sa.text("INSERT INTO session_ownership VALUES ('legacy', 'alice')"))
         migration.op = Operations(MigrationContext.configure(connection))
         migration.upgrade()
-        assert connection.execute(sa.text(
-            "SELECT conversation_id FROM session_ownership WHERE response_id = 'legacy'"
-        )).scalar_one() == "legacy"
+        assert (
+            connection.execute(
+                sa.text(
+                    "SELECT conversation_id FROM session_ownership WHERE response_id = 'legacy'"
+                )
+            ).scalar_one()
+            == "legacy"
+        )
         assert "ix_session_ownership_conversation_id" in {
             index["name"] for index in sa.inspect(connection).get_indexes("session_ownership")
         }
         migration.downgrade()
-        assert connection.execute(sa.text(
-            "SELECT user_id FROM session_ownership WHERE response_id = 'legacy'"
-        )).scalar_one() == "alice"
+        assert (
+            connection.execute(
+                sa.text("SELECT user_id FROM session_ownership WHERE response_id = 'legacy'")
+            ).scalar_one()
+            == "alice"
+        )
         assert "conversation_id" not in {
             column["name"] for column in sa.inspect(connection).get_columns("session_ownership")
         }

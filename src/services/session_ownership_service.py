@@ -166,8 +166,7 @@ class SessionOwnershipService:
         files = self.ownership_data if mode != "db" else {}
         data = files.get(session_id, {})
         canonical_id = (
-            data.get("conversation_id") or session_id
-            if data.get("user_id") == user_id else None
+            data.get("conversation_id") or session_id if data.get("user_id") == user_id else None
         )
         sessions = []
         if mode != "files":
@@ -209,7 +208,8 @@ class SessionOwnershipService:
         if canonical_id is None or files.get(canonical_id, {}).get("user_id") != user_id:
             return []
         sessions = [
-            sid for sid, entry in files.items()
+            sid
+            for sid, entry in files.items()
             if entry.get("user_id") == user_id
             and (entry.get("conversation_id") or sid) == canonical_id
         ]
@@ -316,16 +316,16 @@ class SessionOwnershipService:
         existing = self.ownership_data.get(session_id)
         canonical = self.ownership_data.get(canonical_id)
         return bool(
-            existing and (
+            existing
+            and (
                 existing.get("user_id") != user_id
                 or (existing.get("conversation_id") or canonical_id) != canonical_id
             )
-            or canonical and canonical.get("user_id") != user_id
+            or canonical
+            and canonical.get("user_id") != user_id
         )
 
-    async def _db_claim(
-        self, user_id: str, session_id: str, conversation_id: str
-    ) -> bool:
+    async def _db_claim(self, user_id: str, session_id: str, conversation_id: str) -> bool:
         from sqlalchemy.exc import IntegrityError
 
         from db.repositories import SessionOwnershipRepo
