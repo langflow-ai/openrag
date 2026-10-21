@@ -96,7 +96,9 @@ GENERIC_CREDENTIAL_FIELDS: list[dict[str, Any]] = [
     },
 ]
 
-KNOWN_FIELD_TYPES = frozenset({"text", "password", "select", "textarea", "upload"})
+#: `tls_verify` is a provider's `ssl_verify`: rendered as a "verify" switch plus
+#: an optional CA bundle path, stored as one string.
+KNOWN_FIELD_TYPES = frozenset({"text", "password", "select", "textarea", "upload", "tls_verify"})
 
 #: OpenRAG provider keys LiteLLM cannot route under their own name, mapped to
 #: the key it routes them as. A row here is for a deployment shape that needs
