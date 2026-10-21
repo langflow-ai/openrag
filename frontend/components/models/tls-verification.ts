@@ -1,4 +1,10 @@
 /**
+ * The catalogue `field_type` of a provider's `ssl_verify` credential, rendered
+ * by `TlsVerificationField`. Mirrors `KNOWN_FIELD_TYPES` in `model_catalog.py`.
+ */
+export const TLS_VERIFY_FIELD_TYPE = "tls_verify";
+
+/**
  * Values of a provider's `ssl_verify` credential that mean "do not verify".
  * Mirrors `_FALSE_VALUES` / `_FALSE_TLS_VALUES` in the RHOAI and watsonx.ai
  * on-prem enhancement modules.

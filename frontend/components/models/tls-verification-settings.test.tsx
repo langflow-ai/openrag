@@ -12,35 +12,53 @@ import {
   userEvent,
   within,
 } from "@/test-utils/render";
-import {
-  RhoaiTlsSettings,
-  WatsonxTlsSettings,
-} from "./tls-verification-settings";
+import type { CatalogCredentialField } from "./catalog-models";
+import { TlsVerificationField } from "./tls-verification-settings";
 
+/** The `ssl_verify` rows the RHOAI and watsonx.ai on-prem catalogues publish. */
 const PRESETS = {
-  rhoai: RhoaiTlsSettings,
-  watsonx: WatsonxTlsSettings,
-} as const;
+  rhoai: {
+    key: "ssl_verify",
+    label: "Verify TLS certificates",
+    placeholder: "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt",
+    tooltip:
+      "Path to the CA bundle that signs the endpoint's certificate. In-cluster, this is OpenShift's projected service CA.",
+    required: false,
+    field_type: "tls_verify",
+    default_value: null,
+  },
+  watsonx: {
+    key: "ssl_verify",
+    label: "Verify TLS certificates",
+    placeholder: "/etc/ssl/certs/openrag-ca.pem",
+    tooltip:
+      "Optional backend filesystem path to a mounted CA bundle. Include public roots too if this OpenRAG deployment also calls public providers.",
+    required: false,
+    field_type: "tls_verify",
+    default_value: "true",
+  },
+} satisfies Record<string, CatalogCredentialField>;
 
 /**
- * Renders a preset as a parent form would: the value it writes flows back in.
+ * Renders a field as a parent form would: the value it writes flows back in.
  * `inAccordion` puts it in an open collapsible section, as the forms do.
  */
 function renderTls(
   initial: string | undefined,
-  preset: keyof typeof PRESETS,
+  preset: keyof typeof PRESETS | CatalogCredentialField,
   {
     savedValue,
     inAccordion = false,
   }: { savedValue?: string; inAccordion?: boolean } = {},
 ) {
-  const Preset = PRESETS[preset];
+  const field = typeof preset === "string" ? PRESETS[preset] : preset;
   const writes: string[] = [];
   const onWrite = vi.fn((value: string) => writes.push(value));
   function Harness() {
     const [value, setValue] = useState(initial);
     const settings = (
-      <Preset
+      <TlsVerificationField
+        field={field}
         idPrefix="test"
         value={value}
         savedValue={savedValue}
@@ -223,7 +241,7 @@ describe("TLS verification settings: the verified value", () => {
   });
 });
 
-describe("TLS verification settings: help text", () => {
+describe("TLS verification settings: help text from the catalogue", () => {
   async function tooltipFor(
     user: ReturnType<typeof userEvent.setup>,
     label: string,
@@ -234,35 +252,48 @@ describe("TLS verification settings: help text", () => {
     return screen.findByRole("tooltip");
   }
 
-  it("shows the RHOAI switch help as an inline description", () => {
-    renderTls("", "rhoai");
+  it.each([
+    "rhoai",
+    "watsonx",
+  ] as const)("%s shows the shared switch description inline", (preset) => {
+    renderTls("", preset);
 
     expect(tlsSwitch()).toHaveAccessibleDescription(
       "Validates the cluster certificate before sending credentials or model traffic.",
     );
   });
 
-  it("puts the RHOAI CA path help behind an info icon", async () => {
-    const { user } = renderTls("", "rhoai");
+  it.each([
+    "rhoai",
+    "watsonx",
+  ] as const)("%s puts the field's tooltip and placeholder on the CA path", async (preset) => {
+    const { user } = renderTls("", preset);
 
     expect(await tooltipFor(user, "Custom CA bundle path")).toHaveTextContent(
-      "Path to the CA bundle that signs the endpoint's certificate. In-cluster this is OpenShift's projected service CA.",
+      PRESETS[preset].tooltip,
     );
     expect(caPath()).toHaveAttribute(
       "placeholder",
-      "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt",
+      PRESETS[preset].placeholder,
     );
   });
 
-  it("keeps the watsonx switch help as an inline description", () => {
-    renderTls("true", "watsonx");
+  it("names the switch with the field's label", () => {
+    renderTls("", { ...PRESETS.rhoai, label: "Check certificates" });
 
-    expect(tlsSwitch()).toHaveAccessibleDescription(
-      "Recommended. Validates the cluster certificate before sending credentials or model traffic.",
-    );
-    expect(caPath()).toHaveAttribute(
-      "placeholder",
-      "/etc/ssl/certs/openrag-ca.pem",
-    );
+    expect(
+      screen.getByRole("switch", { name: "Check certificates" }),
+    ).toBeChecked();
+  });
+
+  it("renders a field with no tooltip or placeholder", () => {
+    renderTls("", { ...PRESETS.rhoai, tooltip: null, placeholder: null });
+
+    expect(tlsSwitch()).toBeChecked();
+    expect(caPath()).not.toHaveAttribute("placeholder");
+    const caLabel = screen.getByText("Custom CA bundle path").closest("label");
+    expect(
+      within(caLabel as HTMLElement).queryByRole("button"),
+    ).not.toBeInTheDocument();
   });
 });

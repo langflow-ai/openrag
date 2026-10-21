@@ -9,10 +9,8 @@ import {
   SECRET_REENTRY_HINT,
 } from "@/components/models/provider-credentials";
 import { RhoaiCredentialSections } from "@/components/models/rhoai-credential-sections";
-import {
-  RhoaiTlsSettings,
-  WatsonxTlsSettings,
-} from "@/components/models/tls-verification-settings";
+import { TLS_VERIFY_FIELD_TYPE } from "@/components/models/tls-verification";
+import { TlsVerificationField } from "@/components/models/tls-verification-settings";
 import { WatsonxSpaceSelect } from "@/components/models/watsonx-space-select";
 import {
   Accordion,
@@ -94,29 +92,16 @@ export function ProviderSettingsForm({
       );
     }
 
-    if (provider === "watsonx_onprem" && field.key === "ssl_verify") {
+    if (field.field_type === TLS_VERIFY_FIELD_TYPE) {
       return (
-        <WatsonxTlsSettings
+        <TlsVerificationField
           key={field.key}
-          idPrefix="provider-watsonx-onprem"
-          value={watch("credentials.ssl_verify")}
-          savedValue={savedCredentialValues?.ssl_verify ?? ""}
+          field={field}
+          idPrefix={`provider-${provider}`}
+          value={watch(`credentials.${field.key}`)}
+          savedValue={savedCredentialValues?.[field.key] ?? ""}
           onValueChange={(value) =>
-            setValue("credentials.ssl_verify", value, { shouldDirty: true })
-          }
-        />
-      );
-    }
-
-    if (provider === "rhoai" && field.key === "ssl_verify") {
-      return (
-        <RhoaiTlsSettings
-          key={field.key}
-          idPrefix="provider-rhoai"
-          value={watch("credentials.ssl_verify")}
-          savedValue={savedCredentialValues?.ssl_verify ?? ""}
-          onValueChange={(value) =>
-            setValue("credentials.ssl_verify", value, { shouldDirty: true })
+            setValue(`credentials.${field.key}`, value, { shouldDirty: true })
           }
         />
       );

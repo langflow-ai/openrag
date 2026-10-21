@@ -42,9 +42,9 @@ const catalog = {
         },
         {
           key: "ssl_verify",
-          label: "TLS certificate verification",
+          label: "Verify TLS certificates",
           required: false,
-          field_type: "text",
+          field_type: "tls_verify",
         },
       ],
       models: [],
@@ -556,9 +556,9 @@ const rhoaiCatalog = {
         },
         {
           key: "ssl_verify",
-          label: "TLS certificate verification",
+          label: "Verify TLS certificates",
           required: false,
-          field_type: "text",
+          field_type: "tls_verify",
         },
         {
           key: "embedding_max_concurrency",
@@ -630,8 +630,9 @@ describe("ProviderSettingsDialog Red Hat OpenShift AI", () => {
       caPath(),
     );
     expect(tlsSwitch()).toBeChecked();
+    // The free-text field is replaced, never rendered alongside the switch.
     expect(
-      screen.queryByLabelText(/^TLS certificate verification/),
+      screen.queryByRole("textbox", { name: /^Verify TLS certificates/ }),
     ).not.toBeInTheDocument();
   });
 

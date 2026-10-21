@@ -3,6 +3,7 @@
 import { AlertTriangle } from "lucide-react";
 import { useRef } from "react";
 import { LabelWrapper } from "@/components/label-wrapper";
+import type { CatalogCredentialField } from "@/components/models/catalog-models";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -12,25 +13,29 @@ import {
   parseTlsSetting,
 } from "./tls-verification";
 
-const SWITCH_LABEL = "Verify TLS certificates";
+const SWITCH_DESCRIPTION =
+  "Validates the cluster certificate before sending credentials or model traffic.";
 const CA_PATH_LABEL = "Custom CA bundle path";
 
 /**
- * A provider's `ssl_verify` credential as a "Verify TLS certificates" switch
- * plus an optional CA bundle path. The stored value stays a single string —
- * blank or a true-equivalent word (verify), a false-equivalent word (don't), or
- * a CA path — which is what the backend's `resolve_ssl_verify` reads.
+ * A provider's `tls_verify` catalogue field (its `ssl_verify` credential) as a
+ * switch plus an optional CA bundle path. The stored value stays a single
+ * string — blank or a true-equivalent word (verify), a false-equivalent word
+ * (don't), or a CA path — which is what the backend's `resolve_ssl_verify`
+ * reads.
+ *
+ * The catalogue supplies the copy and the default: `label` names the switch,
+ * `tooltip` helps with the CA path, `placeholder` is the CA path example and
+ * `default_value` is what "verify" is stored as (blank when it has none).
  */
-function TlsVerificationSettings({
+export function TlsVerificationField({
+  field,
   value,
   savedValue,
   onValueChange,
   idPrefix,
-  verifiedValue,
-  switchDescription,
-  caPathHelperText,
-  caPathPlaceholder,
 }: {
+  field: CatalogCredentialField;
   value?: string;
   /**
    * The saved `ssl_verify`; blank when unset, as the credential-target check
@@ -40,13 +45,10 @@ function TlsVerificationSettings({
   savedValue?: string;
   onValueChange: (value: string) => void;
   idPrefix: string;
-  /** Written when verification is on with no CA path and nothing to restore. */
-  verifiedValue: string;
-  /** Shown under the switch label and announced as its description. */
-  switchDescription: string;
-  caPathHelperText: string;
-  caPathPlaceholder: string;
 }) {
+  // Written when verification is on with no CA path and nothing to restore.
+  const verifiedValue =
+    typeof field.default_value === "string" ? field.default_value : "";
   const { enabled, caPath } = parseTlsSetting(value);
   const saved = savedValue?.trim();
   const restoredValue =
@@ -69,10 +71,10 @@ function TlsVerificationSettings({
       <div className="flex items-center justify-between gap-4 py-1">
         <div className="space-y-1">
           <Label htmlFor={switchId} className="text-mmd font-medium">
-            {SWITCH_LABEL}
+            {field.label}
           </Label>
           <p id={descriptionId} className="text-sm text-muted-foreground">
-            {switchDescription}
+            {SWITCH_DESCRIPTION}
           </p>
         </div>
         <Switch
@@ -94,12 +96,12 @@ function TlsVerificationSettings({
         <LabelWrapper
           id={caPathId}
           label={CA_PATH_LABEL}
-          helperText={caPathHelperText}
+          helperText={field.tooltip ?? undefined}
         >
           <Input
             id={caPathId}
             value={caPath}
-            placeholder={caPathPlaceholder}
+            placeholder={field.placeholder ?? undefined}
             autoComplete="off"
             onChange={(event) =>
               onValueChange(event.target.value || clearedValue)
@@ -122,41 +124,5 @@ function TlsVerificationSettings({
         </div>
       )}
     </div>
-  );
-}
-
-type TlsPresetProps = {
-  value?: string;
-  savedValue?: string;
-  onValueChange: (value: string) => void;
-  idPrefix: string;
-};
-
-/** watsonx.ai on-prem: the backend seeds `"true"` as its default. */
-export function WatsonxTlsSettings(props: TlsPresetProps) {
-  return (
-    <TlsVerificationSettings
-      {...props}
-      verifiedValue="true"
-      switchDescription="Recommended. Validates the cluster certificate before sending credentials or model traffic."
-      caPathHelperText="Optional backend filesystem path to a mounted CA bundle. Include public roots too if this OpenRAG deployment also calls public providers."
-      caPathPlaceholder="/etc/ssl/certs/openrag-ca.pem"
-    />
-  );
-}
-
-/**
- * Red Hat OpenShift AI: blank means "verify", so verification on with no CA
- * path is stored blank rather than as `"true"`.
- */
-export function RhoaiTlsSettings(props: TlsPresetProps) {
-  return (
-    <TlsVerificationSettings
-      {...props}
-      verifiedValue=""
-      switchDescription="Validates the cluster certificate before sending credentials or model traffic."
-      caPathHelperText="Path to the CA bundle that signs the endpoint's certificate. In-cluster this is OpenShift's projected service CA."
-      caPathPlaceholder="/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"
-    />
   );
 }

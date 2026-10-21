@@ -67,9 +67,9 @@ const catalog = {
         },
         {
           key: "ssl_verify",
-          label: "TLS certificate verification",
+          label: "Verify TLS certificates",
           required: false,
-          field_type: "text",
+          field_type: "tls_verify",
         },
       ],
       models: [
@@ -106,9 +106,9 @@ const catalog = {
         // Catalogue order, as the backend publishes it: TLS before the limit.
         {
           key: "ssl_verify",
-          label: "TLS certificate verification",
+          label: "Verify TLS certificates",
           required: false,
-          field_type: "text",
+          field_type: "tls_verify",
         },
         {
           key: "embedding_max_concurrency",
@@ -1282,7 +1282,7 @@ describe("GenericOnboarding RHOAI sections", () => {
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
     // The free-text field is replaced, never rendered alongside the switch.
     expect(
-      screen.queryByLabelText(/TLS certificate verification/),
+      screen.queryByRole("textbox", { name: /Verify TLS certificates/ }),
     ).not.toBeInTheDocument();
   });
 

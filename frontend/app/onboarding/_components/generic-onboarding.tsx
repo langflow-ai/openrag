@@ -23,10 +23,8 @@ import {
   credentialTargetChanged,
   rhoaiSectionsOpenByDefault,
 } from "@/components/models/provider-credentials";
-import {
-  RhoaiTlsSettings,
-  WatsonxTlsSettings,
-} from "@/components/models/tls-verification-settings";
+import { TLS_VERIFY_FIELD_TYPE } from "@/components/models/tls-verification";
+import { TlsVerificationField } from "@/components/models/tls-verification-settings";
 import { WatsonxSpaceSelect } from "@/components/models/watsonx-space-select";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { AdvancedOnboarding } from "./advanced";
@@ -273,26 +271,15 @@ export function GenericOnboarding({
       );
     }
 
-    if (provider === "watsonx_onprem" && field.key === "ssl_verify") {
+    if (field.field_type === TLS_VERIFY_FIELD_TYPE) {
       return (
-        <WatsonxTlsSettings
+        <TlsVerificationField
           key={field.key}
+          field={field}
           idPrefix={`onboarding-${provider}`}
-          value={credentials.ssl_verify}
-          savedValue={savedCredentials.ssl_verify ?? ""}
-          onValueChange={(value) => handleCredentialChange("ssl_verify", value)}
-        />
-      );
-    }
-
-    if (provider === "rhoai" && field.key === "ssl_verify") {
-      return (
-        <RhoaiTlsSettings
-          key={field.key}
-          idPrefix={`onboarding-${provider}`}
-          value={credentials.ssl_verify}
-          savedValue={savedCredentials.ssl_verify ?? ""}
-          onValueChange={(value) => handleCredentialChange("ssl_verify", value)}
+          value={credentials[field.key]}
+          savedValue={savedCredentials[field.key] ?? ""}
+          onValueChange={(value) => handleCredentialChange(field.key, value)}
         />
       );
     }

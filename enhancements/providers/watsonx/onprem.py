@@ -152,13 +152,13 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
     },
     {
         "key": "ssl_verify",
-        "label": "TLS certificate verification",
+        "label": "Verify TLS certificates",
         "placeholder": "/etc/ssl/certs/openrag-ca.pem",
-        "tooltip": "Verify the cluster certificate using OpenRAG's trust store, or provide "
-        "the backend path to a mounted CA bundle. Disabling verification is for local "
-        "development only.",
+        "tooltip": "Optional backend filesystem path to a mounted CA bundle. Include public "
+        "roots too if this OpenRAG deployment also calls public providers.",
         "required": False,
-        "field_type": "text",
+        # A switch plus a CA path; `default_value` is what "verify" is stored as.
+        "field_type": "tls_verify",
         "options": None,
         "default_value": "true",
     },

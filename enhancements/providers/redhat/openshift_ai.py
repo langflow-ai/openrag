@@ -134,13 +134,13 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
     },
     {
         "key": "ssl_verify",
-        "label": "TLS certificate verification",
+        "label": "Verify TLS certificates",
         "placeholder": "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt",
-        "tooltip": "Verify the endpoint certificate against the default trust store, or give "
-        "the path to the CA bundle that signs it. In-cluster, this is OpenShift's projected "
-        "service CA.",
+        "tooltip": "Path to the CA bundle that signs the endpoint's certificate. In-cluster, "
+        "this is OpenShift's projected service CA.",
         "required": False,
-        "field_type": "text",
+        # A switch plus a CA path; blank (`default_value` None) means verify.
+        "field_type": "tls_verify",
         "options": None,
         "default_value": None,
     },
