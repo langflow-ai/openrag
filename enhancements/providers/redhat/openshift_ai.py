@@ -102,7 +102,8 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "label": "Chat endpoint",
         "placeholder": "https://openrag-chat-predictor.openrag-models.svc.cluster.local:8443/v1",
         "tooltip": "URL of the InferenceService serving your chat model, ending in /v1. "
-        "In-cluster, the predictor Service; otherwise a Route or `oc port-forward`. "
+        "In-cluster, this is the predictor Service; otherwise, this is a Route or an "
+        "`oc port-forward`. "
         "This endpoint may also serve an embedding model.",
         "required": True,
         "field_type": "text",
@@ -122,7 +123,9 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
     },
     {
         "key": "api_key",
-        "label": "Service account token",
+        # The Kubernetes kind name: a proper noun, so it reads correctly where
+        # it is interpolated mid-sentence (CredentialTargetChangedError).
+        "label": "ServiceAccount token",
         "placeholder": None,
         "tooltip": "A Kubernetes bearer token whose subject has `get` on inferenceservices in "
         "the model namespace. Both endpoints are authenticated with the same token.",
@@ -323,7 +326,7 @@ def _warn_if_cleartext(label: str, api_base: str) -> None:
         return
     _warn_once(
         f"http:{parts.netloc}",
-        "The OpenShift AI endpoint uses plain HTTP; the service account token will be "
+        "The OpenShift AI endpoint uses plain HTTP; the ServiceAccount token will be "
         "sent in cleartext on every request. Use https:// for anything beyond a "
         "port-forward to localhost or a cluster-local endpoint with auth disabled.",
         endpoint=label,
@@ -741,7 +744,7 @@ async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
     if not chat_base or not api_key:
         logger.warning(
             "Not listing models on OpenShift AI: credentials are incomplete. A chat endpoint "
-            "and a service account token are needed; the configured model list is used "
+            "and a ServiceAccount token are needed; the configured model list is used "
             "until then.",
             has_chat_endpoint=bool(chat_base),
             has_token=bool(api_key),
@@ -899,7 +902,7 @@ async def lightweight_health_check(credentials: Mapping[str, Any]) -> None:
     api_key = values.get("api_key", "")
     if not api_key:
         raise Exception(
-            "No service account token is configured for Red Hat OpenShift AI. "
+            "No ServiceAccount token is configured for Red Hat OpenShift AI. "
             "Create one with `oc create token <serviceaccount> -n <namespace>`."
         )
 
@@ -966,7 +969,7 @@ async def _check_endpoint(client: Any, label: str, api_base: str, api_key: str) 
             f"The OpenShift AI {label} endpoint at {api_base} redirected to "
             f"{location or 'another page'} instead of answering /v1/models. This is usually "
             "an OAuth proxy or SSO login page in front of the route; point the URL at the "
-            "model's inference route or predictor Service, which accepts a service account token."
+            "model's inference route or predictor Service, which accepts a ServiceAccount token."
         )
 
     if response.status_code == 200:
@@ -1054,7 +1057,7 @@ def _require_model_listing(response: Any, label: str, api_base: str, url: str) -
             f"The OpenShift AI {label} endpoint at {api_base} returned a web page "
             f"({content_type or 'text/html'}) instead of a model list. This is usually an "
             "OAuth proxy or SSO login page in front of the route; point the URL at the "
-            "model's inference route or predictor Service, which accepts a service account token."
+            "model's inference route or predictor Service, which accepts a ServiceAccount token."
         )
     logger.error(
         "The OpenShift AI endpoint answered with something other than a model list",

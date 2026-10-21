@@ -550,7 +550,7 @@ const rhoaiCatalog = {
         },
         {
           key: "api_key",
-          label: "Service account token",
+          label: "ServiceAccount token",
           required: true,
           field_type: "password",
         },
@@ -609,7 +609,7 @@ describe("ProviderSettingsDialog Red Hat OpenShift AI", () => {
     const chat = await screen.findByLabelText(/^Chat endpoint/);
     expectInDocumentOrder(
       chat,
-      screen.getByLabelText(/^Service account token/),
+      screen.getByLabelText(/^ServiceAccount token/),
       embeddingsToggle(),
       advancedToggle(),
     );
@@ -653,7 +653,7 @@ describe("ProviderSettingsDialog Red Hat OpenShift AI", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     expect(
-      await screen.findByText("Service account token is required"),
+      await screen.findByText("ServiceAccount token is required"),
     ).toBeInTheDocument();
     expect(result.submitted).toBeUndefined();
   });
@@ -671,7 +671,7 @@ describe("ProviderSettingsDialog Red Hat OpenShift AI", () => {
     // A changed TLS setting is a new credential target.
     expect(screen.getByText(REENTRY_HINT)).toBeInTheDocument();
     await user.type(
-      screen.getByLabelText(/^Service account token/),
+      screen.getByLabelText(/^ServiceAccount token/),
       "sha256~new-token",
     );
     await user.click(screen.getByRole("button", { name: "Save" }));
@@ -699,7 +699,7 @@ describe("ProviderSettingsDialog Red Hat OpenShift AI", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     expect(
-      await screen.findByText("Service account token is required"),
+      await screen.findByText("ServiceAccount token is required"),
     ).toBeInTheDocument();
     expect(result.submitted).toBeUndefined();
   });
@@ -717,7 +717,7 @@ describe("ProviderSettingsDialog Red Hat OpenShift AI", () => {
 
     await user.click(toggle);
     await user.type(
-      screen.getByLabelText(/^Service account token/),
+      screen.getByLabelText(/^ServiceAccount token/),
       "sha256~new-token",
     );
     await user.click(screen.getByRole("button", { name: "Save" }));
