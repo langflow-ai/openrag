@@ -1,4 +1,5 @@
 import type { CatalogCredentialField } from "@/components/models/catalog-models";
+import { isDefaultTlsSetting } from "@/components/models/tls-verification";
 
 export const AZURE_AUTH_GROUPS = [
   { key: "api_key", label: "API key", fields: ["api_key"] },
@@ -32,6 +33,75 @@ export function fieldsForKeys(
     const field = byKey.get(key);
     return field ? [field] : [];
   });
+}
+
+/** RHOAI fields shown up front: the two every configuration needs. */
+const RHOAI_PRIMARY_FIELDS = ["api_base", "api_key"] as const;
+
+/** RHOAI fields behind "Embeddings": only embedding calls use them. */
+const RHOAI_EMBEDDING_FIELDS = [
+  "embedding_api_base",
+  "embedding_max_concurrency",
+] as const;
+
+/** RHOAI fields behind "Advanced settings". */
+const RHOAI_ADVANCED_FIELDS = ["ssl_verify"] as const;
+
+export interface RhoaiFieldGroups {
+  primary: CatalogCredentialField[];
+  embeddings: CatalogCredentialField[];
+  advanced: CatalogCredentialField[];
+}
+
+export interface RhoaiSectionsOpen {
+  embeddings: boolean;
+  advanced: boolean;
+}
+
+/**
+ * The RHOAI catalogue fields split into the always-visible fields and the two
+ * collapsible sections, each in display order. A field the catalogue publishes
+ * that no list names goes to the visible fields, so a credential the backend
+ * adds later is never silently left out of the form.
+ */
+export function groupRhoaiFields(
+  fields: CatalogCredentialField[],
+): RhoaiFieldGroups {
+  const grouped = new Set<string>([
+    ...RHOAI_PRIMARY_FIELDS,
+    ...RHOAI_EMBEDDING_FIELDS,
+    ...RHOAI_ADVANCED_FIELDS,
+  ]);
+  return {
+    primary: [
+      ...fieldsForKeys(fields, RHOAI_PRIMARY_FIELDS),
+      ...fields.filter((field) => !grouped.has(field.key)),
+    ],
+    embeddings: fieldsForKeys(fields, RHOAI_EMBEDDING_FIELDS),
+    advanced: fieldsForKeys(fields, RHOAI_ADVANCED_FIELDS),
+  };
+}
+
+/**
+ * Which RHOAI sections start open. A section opens when a saved value in it
+ * differs from the default, so an embeddings endpoint, a concurrency limit, a
+ * CA path or disabled verification is never hidden behind a collapsed section.
+ * The onboarding embedding step opens "Embeddings" regardless: there, the
+ * embeddings endpoint is the one that matters.
+ */
+export function rhoaiSectionsOpenByDefault(
+  savedCredentials: Record<string, string> | undefined,
+  { isEmbedding = false }: { isEmbedding?: boolean } = {},
+): RhoaiSectionsOpen {
+  const saved = savedCredentials ?? {};
+  const hasSaved = (key: string) => (saved[key] ?? "").trim() !== "";
+  return {
+    embeddings:
+      isEmbedding ||
+      hasSaved("embedding_api_base") ||
+      hasSaved("embedding_max_concurrency"),
+    advanced: !isDefaultTlsSetting(saved.ssl_verify),
+  };
 }
 
 const ON_PREM_SHARED_FIELDS = [
