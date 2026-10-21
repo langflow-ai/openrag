@@ -880,7 +880,8 @@ class TaskProcessor:
                 index.set(chunks_indexed=len(index_chunks))
 
             ingest_trace.set(status="indexed", chunks=len(index_chunks))
-            return {"status": "indexed", "id": file_hash}
+            # Which pipeline chunked the file; chunk stats are labelled with it.
+            return {"status": "indexed", "id": file_hash, "ingest_path": "openrag"}
 
     async def process_item(self, upload_task: UploadTask, item: Any, file_task: FileTask) -> None:
         """

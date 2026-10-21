@@ -1269,4 +1269,6 @@ class LangflowFileService:
             "docling_task_id": task_id,
             "ingestion": ingest_result,
             "message": f"File '{filename}' processed via Docling and ingested successfully",
+            # Which pipeline chunked the file; chunk stats are labelled with it.
+            "ingest_path": "langflow",
         }

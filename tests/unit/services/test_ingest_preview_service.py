@@ -12,6 +12,7 @@ from services.ingest_preview_service import (
     _chunk_sequence,
     _extract_hit_total,
     _sort_hits,
+    document_chunks_query,
     summarize_docling_document,
 )
 
@@ -88,6 +89,21 @@ def test_extract_hit_total_falls_back_when_value_is_null():
     assert _extract_hit_total({"total": {"value": None}, "hits": []}, 5) == 5
 
 
+def test_document_chunks_query_matches_document_or_connector_file_id():
+    query = document_chunks_query("doc-1")
+
+    assert query == {
+        "bool": {
+            "should": [
+                {"term": {"document_id": "doc-1"}},
+                {"term": {"connector_file_id": "doc-1"}},
+                {"term": {"connector_file_id.keyword": "doc-1"}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+
 @pytest.mark.asyncio
 async def test_get_index_proof_selects_file_by_path():
     service = IngestPreviewService()
@@ -117,7 +133,7 @@ async def test_get_index_proof_selects_file_by_path():
     assert proof["phase"] == "complete"
     assert proof["document_id"] == "hash-b"
     searched_body = opensearch_client.search.await_args.kwargs["body"]
-    assert searched_body["query"]["term"]["document_id"] == "hash-b"
+    assert searched_body["query"] == document_chunks_query("hash-b")
     assert "_id" not in str(searched_body.get("sort", []))
 
 

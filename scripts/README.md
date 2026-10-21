@@ -133,6 +133,58 @@ uv run scripts/openrag_bulk.py bench arxiv summary
 uv run scripts/openrag_bulk.py bench arxiv summary --detail latest
 ```
 
+## Ingest path comparison (`ingest_compare.py`)
+
+`ingest_compare.py` ingests one fixed document set through both ingest paths,
+OpenRAG's own pipeline and Langflow's. It then writes a side-by-side Markdown
+report of how each path chunked the same files.
+
+It runs against a local dev stack in no-auth mode, with the backend at
+`http://localhost:8000` and OpenSearch at `https://localhost:9200`. For each
+path it:
+
+1. deletes and reuses a dedicated index (`compare-openrag-documents`,
+   `compare-langflow-documents`)
+2. switches `index_name` and the ingest mode through `POST /settings`
+3. uploads the fixtures and waits for the task
+4. reads back each file's `chunk_stats` and its chunks
+
+The original index and mode are restored afterwards, even if the run fails.
+While it runs, anything else ingested on the stack lands in the comparison
+index.
+
+```bash
+uv run scripts/ingest_compare.py
+uv run scripts/ingest_compare.py --only AMCOR_2022.pdf sample.md --out /tmp/compare
+```
+
+OpenSearch credentials come from `OPENSEARCH_USERNAME` /
+`OPENSEARCH_PASSWORD`, read from the environment or the repository's `.env`.
+`--backend-url` and `--opensearch-url` override the endpoints.
+
+Most fixtures are documents already in the repository. Two are built at run
+time into `<out>/fixtures`:
+
+- a scanned PDF: `kubernetes.pdf` rasterised to images
+- a CJK PDF: an original Chinese/Japanese passage
+
+The output directory (default `~/.openrag/ingest-compare/<timestamp>/`)
+gets:
+
+- `report.md`, which has per document:
+  - the chunk stats per path
+  - the text each path has that the other lacks (word 5-grams, as a
+    percentage, with examples)
+  - sample chunks: the first, a table-like one, and the longest
+- `results.json`, the raw data
+
+The indexes are kept for retrieval evaluation unless you pass
+`--delete-indexes`.
+
+The comparison is only as even as the stack's settings: OCR, picture
+descriptions and chunk size apply to both paths and are listed at the top of
+the report.
+
 ## Sync default user roles (`sync_default_user_roles.py`)
 
 Dev-only helper for RBAC in **OSS run mode** (`OPENRAG_RUN_MODE=oss`): updates

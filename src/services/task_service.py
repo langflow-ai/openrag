@@ -17,6 +17,7 @@ from models.tasks import (
     UploadTask,
 )
 from observability.tracing import trace_context
+from services.chunk_stats import record_chunk_stats
 from session_manager import AnonymousUser
 from utils.filename_claims import (
     INFLIGHT_CLAIM_WINNER_FAILED_ERROR,
@@ -860,6 +861,8 @@ class TaskService:
                                 processor.process_item(upload_task, item, file_task),
                                 timeout_seconds=self.ingestion_timeout,
                             )
+                            # Outside the ingestion timeout; bounded on its own.
+                            await record_chunk_stats(file_task)
 
                         logger.info(
                             "File processing task succeeded",

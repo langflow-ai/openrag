@@ -89,6 +89,7 @@ async def test_two_phase_success_invokes_langflow_with_task_id(
     # Result envelope.
     assert result["status"] == "success"
     assert result["docling_task_id"] == "task-abc-123"
+    assert result["ingest_path"] == "langflow"
 
 
 @pytest.mark.asyncio
