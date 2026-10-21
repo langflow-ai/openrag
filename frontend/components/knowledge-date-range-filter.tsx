@@ -173,12 +173,12 @@ function QuickRanges({
   onCustomDays: (value: string) => void;
 }) {
   return (
-    <div className="border-b py-2 sm:w-60 sm:flex-shrink-0 sm:border-b-0 sm:border-r sm:py-4">
-      <p className="hidden px-4 pb-2 text-xs text-muted-foreground sm:block">
+    <div className="border-b py-2 md:w-60 md:flex-shrink-0 md:border-b-0 md:border-r md:py-4">
+      <p className="hidden px-4 pb-2 text-xs text-muted-foreground md:block">
         Quick ranges
       </p>
       {/* A scrolling row on narrow screens, a list beside the calendar otherwise. */}
-      <div className="flex gap-1 overflow-x-auto px-2 sm:flex-col sm:gap-0 sm:px-0">
+      <div className="flex gap-1 overflow-x-auto px-2 md:flex-col md:gap-0 md:px-0">
         {PRESETS.map((preset) => {
           const count = presetCount(preset.range(today));
           const active = preset.id === activePresetId;
@@ -189,7 +189,7 @@ function QuickRanges({
               aria-pressed={active}
               onClick={() => onPreset(preset)}
               className={cn(
-                "flex flex-shrink-0 items-center justify-between gap-4 whitespace-nowrap rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent sm:rounded-none sm:px-4 sm:py-2.5",
+                "flex flex-shrink-0 items-center justify-between gap-4 whitespace-nowrap rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent md:rounded-none md:px-4 md:py-2.5",
                 active && "bg-accent font-medium text-foreground",
               )}
             >
@@ -201,7 +201,7 @@ function QuickRanges({
           );
         })}
       </div>
-      <div className="mt-2 flex items-center gap-2 px-4 sm:mt-3">
+      <div className="mt-2 flex items-center gap-2 px-4 md:mt-3">
         <label
           htmlFor="custom-days"
           className="whitespace-nowrap text-sm text-muted-foreground"
@@ -240,7 +240,7 @@ function CalendarPanel({
   onMonthChange: (month: Date) => void;
 }) {
   return (
-    <div className="flex flex-1 flex-col items-center px-2 py-3 sm:px-4">
+    <div className="flex flex-1 flex-col items-center px-1 py-3 sm:px-4">
       <Calendar
         mode="range"
         selected={draft}
@@ -252,15 +252,15 @@ function CalendarPanel({
         components={{ DayContent }}
         classNames={{
           caption_label: "text-base font-semibold",
-          head_cell: "w-10 text-xs font-normal text-muted-foreground sm:w-14",
+          head_cell: "w-9 text-xs font-normal text-muted-foreground sm:w-14",
           cell: cn(
-            "relative h-11 w-10 p-0 text-center text-sm sm:h-12 sm:w-14",
+            "relative h-11 w-9 p-0 text-center text-sm sm:h-12 sm:w-14",
             "[&:has([aria-selected])]:bg-accent",
             "first:[&:has([aria-selected])]:rounded-l-md",
             "last:[&:has([aria-selected])]:rounded-r-md",
             "focus-within:relative focus-within:z-20",
           ),
-          day: "inline-flex h-11 w-10 items-center justify-center rounded-md p-0 font-normal hover:bg-accent/70 aria-selected:opacity-100 sm:h-12 sm:w-14",
+          day: "inline-flex h-11 w-9 items-center justify-center rounded-md p-0 font-normal hover:bg-accent/70 aria-selected:opacity-100 sm:h-12 sm:w-14",
         }}
       />
       <div className="mt-2 flex w-full items-center gap-4 px-3 text-xs text-muted-foreground">
@@ -292,7 +292,7 @@ function PopoverFooter({
   onApply: () => void;
 }) {
   return (
-    <div className="flex flex-col border-t sm:flex-row sm:items-stretch">
+    <div className="flex flex-col border-t md:flex-row md:items-stretch">
       <p className="flex-1 px-4 py-3 text-sm" aria-live="polite">
         {footerCount !== undefined && (
           <>
@@ -304,12 +304,12 @@ function PopoverFooter({
         )}
         <span className="text-muted-foreground">{footerRange}</span>
       </p>
-      <div className="flex border-t sm:border-t-0">
+      <div className="flex border-t md:border-t-0">
         <Button
           type="button"
           variant="secondary"
           ignoreTitleCase
-          className="h-auto flex-1 rounded-none px-6 py-3 sm:flex-none"
+          className="h-auto flex-1 rounded-none px-6 py-3 md:flex-none"
           onClick={onCancel}
         >
           Cancel
@@ -317,7 +317,7 @@ function PopoverFooter({
         <Button
           type="button"
           ignoreTitleCase
-          className="h-auto flex-1 rounded-none px-8 py-3 sm:flex-none"
+          className="h-auto flex-1 rounded-none px-8 py-3 md:flex-none"
           onClick={onApply}
         >
           Apply filter
@@ -485,7 +485,7 @@ function DateRangeFilterPopover() {
           align="end"
           collisionPadding={16}
         >
-          <div className="flex flex-col sm:flex-row">
+          <div className="flex flex-col md:flex-row">
             <QuickRanges
               today={today}
               activePresetId={activePresetId}
