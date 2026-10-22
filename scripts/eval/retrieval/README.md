@@ -8,6 +8,9 @@ chunking or embeddings to see which questions got better and which got worse.
 
 It measures retrieval only. It does not judge chat answers.
 
+[FRAMEWORK_COMPARISON.md](FRAMEWORK_COMPARISON.md) explains why this harness is
+homegrown rather than built on RAGAS, DeepEval or LangSmith.
+
 ## Quick start
 
 Run these from this directory against a running stack. You need an API key
@@ -43,9 +46,12 @@ Paths are relative to this directory.
 | `make eval-baseline` | `uv run run_eval.py run`, then copy the results to `results/baseline.json` |
 | `make eval-compare` | `uv run run_eval.py compare results/baseline.json results/results.json` |
 | `make eval-compare BASELINE=a.json CURRENT=b.json` | `uv run run_eval.py compare a.json b.json` |
+| `make eval-baseline OUTPUT_DIR=results/demo` | `uv run run_eval.py run --output-dir results/demo`, then copy the results to `results/demo/baseline.json` |
 
 Pass any other option with `EVAL_ARGS`, for example
-`make eval-run EVAL_ARGS="--keep-documents --fetch-limit 100"`.
+`make eval-run EVAL_ARGS="--keep-documents --fetch-limit 100"`. To write results
+somewhere else, set `OUTPUT_DIR` rather than passing `--output-dir` in
+`EVAL_ARGS`, so `eval-baseline` copies the file the run actually wrote.
 
 The rest of this file explains each step.
 
@@ -59,6 +65,7 @@ The rest of this file explains each step.
 | `dataset.py` | Loads and validates the corpus and questions |
 | `metrics.py` | Turns ranked chunks into ranked files and scores them |
 | `report.py` | Writes results, the summary and the baseline diff |
+| `FRAMEWORK_COMPARISON.md` | How this harness compares with RAGAS, DeepEval, LangSmith and others |
 | `results/` | Output of each run (not committed) |
 
 The corpus is invented so that no model has seen it and no license applies. Its
