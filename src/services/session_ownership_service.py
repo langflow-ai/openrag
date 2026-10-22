@@ -14,8 +14,10 @@ flipped from sync to ``await`` as part of this migration.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import stat
 import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -39,6 +41,7 @@ class SessionOwnershipService:
         self.ownership_file = get_data_file("session_ownership.json")
         os.makedirs(os.path.dirname(self.ownership_file), exist_ok=True)
         self._session_factory = session_factory
+        self._file_lock = asyncio.Lock()
         # JSON cache — eagerly loaded so `files` and `hybrid` modes
         # behave like the legacy implementation.
         self.ownership_data: dict[str, dict[str, Any]] = self._load_ownership_data()
@@ -58,21 +61,42 @@ class SessionOwnershipService:
         return {}
 
     def _save_ownership_data(self, data: dict[str, dict[str, Any]]) -> None:
-        """Publish a complete file before changing the authorization cache."""
+        """Write atomically on a worker thread; the caller publishes the cache."""
         temporary = None
         try:
+            try:
+                mode = stat.S_IMODE(os.stat(self.ownership_file).st_mode)
+            except FileNotFoundError:
+                mode = None
             with tempfile.NamedTemporaryFile(
                 mode="w", dir=os.path.dirname(self.ownership_file), delete=False
             ) as f:
                 temporary = f.name
+                if mode is not None:
+                    os.fchmod(f.fileno(), mode)
                 json.dump(data, f, indent=2)
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(temporary, self.ownership_file)
-            self.ownership_data = data
         finally:
             if temporary is not None and os.path.exists(temporary):
                 os.unlink(temporary)
+
+    async def _persist_ownership_data(self, data: dict[str, dict[str, Any]]) -> None:
+        """Persist then publish while the caller holds ``_file_lock``."""
+        write = asyncio.create_task(asyncio.to_thread(self._save_ownership_data, data))
+        cancelled = False
+        while not write.done():
+            try:
+                await asyncio.shield(write)
+            except asyncio.CancelledError:
+                # Cancelling to_thread cannot stop its filesystem write. Keep
+                # the lock until it finishes so the next writer sees its state.
+                cancelled = True
+        write.result()
+        self.ownership_data = data
+        if cancelled:
+            raise asyncio.CancelledError
 
     # ------------------------------------------------------------------
     # Public async API
@@ -97,30 +121,31 @@ class SessionOwnershipService:
             except PermissionError:
                 return False
         if file_writes_enabled():
-            # Another claim may have published while the DB write was awaiting.
-            if self._file_claim_conflicts(user_id, session_id, canonical_id):
-                return False
-            now = datetime.now(UTC).isoformat()
-            existing = self.ownership_data.get(session_id, {})
-            if canonical_id != session_id and not durable:
-                canonical = self.ownership_data.get(canonical_id)
-                if not canonical or canonical.get("user_id") != user_id:
+            async with self._file_lock:
+                # Recheck after DB work and after any pending file publication.
+                if self._file_claim_conflicts(user_id, session_id, canonical_id):
                     return False
-            updated = {
-                **self.ownership_data,
-                session_id: {
-                    **existing,
-                    "user_id": user_id,
-                    "conversation_id": canonical_id,
-                    "created_at": existing.get("created_at", now),
-                    "last_accessed": now,
-                },
-            }
-            try:
-                self._save_ownership_data(updated)
-                durable = True
-            except Exception as exc:  # noqa: BLE001
-                logger.error("File claim_session failed", error=str(exc))
+                now = datetime.now(UTC).isoformat()
+                existing = self.ownership_data.get(session_id, {})
+                if canonical_id != session_id and not durable:
+                    canonical = self.ownership_data.get(canonical_id)
+                    if not canonical or canonical.get("user_id") != user_id:
+                        return False
+                updated = {
+                    **self.ownership_data,
+                    session_id: {
+                        **existing,
+                        "user_id": user_id,
+                        "conversation_id": canonical_id,
+                        "created_at": existing.get("created_at", now),
+                        "last_accessed": now,
+                    },
+                }
+                try:
+                    await self._persist_ownership_data(updated)
+                    durable = True
+                except Exception as exc:  # noqa: BLE001
+                    logger.error("File claim_session failed", error=str(exc))
         return durable
 
     async def get_session_owner(self, session_id: str) -> str | None:
@@ -222,11 +247,12 @@ class SessionOwnershipService:
         hybrid groups can contain JSON-only aliases absent from a DB rollback.
         """
         if file_writes_enabled():
-            updated = dict(self.ownership_data)
-            for session_id in session_ids:
-                if updated.get(session_id, {}).get("user_id") == user_id:
-                    del updated[session_id]
-            self._save_ownership_data(updated)
+            async with self._file_lock:
+                updated = dict(self.ownership_data)
+                for session_id in session_ids:
+                    if updated.get(session_id, {}).get("user_id") == user_id:
+                        del updated[session_id]
+                await self._persist_ownership_data(updated)
         if db_writes_enabled():
             from db.repositories import SessionOwnershipRepo
 
@@ -244,16 +270,19 @@ class SessionOwnershipService:
     async def release_session(self, user_id: str, session_id: str) -> bool:
         released = False
 
-        if file_writes_enabled() and session_id in self.ownership_data:
-            if self.ownership_data[session_id].get("user_id") == user_id:
-                updated = dict(self.ownership_data)
-                del updated[session_id]
-                self._save_ownership_data(updated)
-                released = True
-            else:
-                logger.warning(
-                    f"User {user_id} tried to release session {session_id} they don't own (json)"
-                )
+        if file_writes_enabled():
+            async with self._file_lock:
+                existing = self.ownership_data.get(session_id)
+                if existing is not None:
+                    if existing.get("user_id") == user_id:
+                        updated = dict(self.ownership_data)
+                        del updated[session_id]
+                        await self._persist_ownership_data(updated)
+                        released = True
+                    else:
+                        logger.warning(
+                            f"User {user_id} tried to release session {session_id} they don't own (json)"
+                        )
 
         if db_writes_enabled():
             db_released = await self._db_release(session_id, user_id)
@@ -319,7 +348,7 @@ class SessionOwnershipService:
             existing
             and (
                 existing.get("user_id") != user_id
-                or (existing.get("conversation_id") or canonical_id) != canonical_id
+                or (existing.get("conversation_id") or session_id) != canonical_id
             )
             or canonical
             and canonical.get("user_id") != user_id
@@ -350,10 +379,10 @@ class SessionOwnershipService:
             return True
         except PermissionError:
             raise
-        except IntegrityError as exc:
-            # A competing insert may now own the ID. Never turn a uniqueness
-            # conflict into permission to publish a JSON fallback for this user.
-            raise PermissionError("Concurrent session ownership conflict") from exc
+        except IntegrityError:
+            # The repository recovers only a confirmed, compatible INSERT
+            # winner. Any other integrity failure must not authorize fallback.
+            raise
         except Exception as exc:  # noqa: BLE001
             logger.error("DB claim_session failed", error=str(exc))
             return False

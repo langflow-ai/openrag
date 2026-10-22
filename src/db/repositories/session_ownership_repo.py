@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
@@ -27,11 +28,6 @@ class SessionOwnershipRepo:
             canonical = await self.get(canonical_id)
             if canonical is None or canonical.user_id != user_id:
                 raise PermissionError("Conversation is not owned by this user")
-        if existing is not None and (
-            existing.user_id != user_id
-            or (existing.conversation_id is not None and existing.conversation_id != canonical_id)
-        ):
-            raise PermissionError("Session ownership or conversation conflict")
         if existing is None:
             row = SessionOwnership(
                 response_id=response_id,
@@ -41,8 +37,33 @@ class SessionOwnershipRepo:
                 last_accessed=now,
             )
             self.session.add(row)
-            await self.session.flush()
-            return row
+            try:
+                await self.session.flush()
+            except IntegrityError as exc:
+                # Only primary-key/unique violations can be an INSERT race.
+                # Never hide another constraint failure behind a matching row.
+                if (
+                    getattr(exc.orig, "sqlstate", None) != "23505"
+                    and getattr(exc.orig, "sqlite_errorname", None)
+                    != "SQLITE_CONSTRAINT_PRIMARYKEY"
+                ):
+                    raise
+                # A failed flush leaves the transaction unusable. Roll it back
+                # before reading the committed winner of an INSERT race.
+                await self.session.rollback()
+                existing = await self.get(response_id)
+                if existing is None:
+                    raise
+                if canonical_id != response_id:
+                    canonical = await self.get(canonical_id)
+                    if canonical is None or canonical.user_id != user_id:
+                        raise PermissionError("Conversation is not owned by this user") from None
+            else:
+                return row
+        if existing.user_id != user_id or (
+            (existing.conversation_id or response_id) != canonical_id
+        ):
+            raise PermissionError("Session ownership or conversation conflict")
         existing.conversation_id = canonical_id
         existing.last_accessed = now
         self.session.add(existing)

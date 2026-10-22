@@ -948,7 +948,9 @@ class ChatService:
             ]
             langflow_deleted = bool(upstream_results) and all(upstream_results)
 
-            local_deleted = await delete_user_conversation(user_id, session_id)
+            local_deleted = await delete_user_conversation(
+                user_id, session_id, session_ids=session_ids
+            )
 
             if not local_deleted:
                 return {
@@ -981,7 +983,7 @@ class ChatService:
         for session_id in dict.fromkeys(session_ids):
             try:
                 owner = await session_ownership_service.get_session_owner(session_id)
-                if owner != user_id:
+                if owner is not None and owner != user_id:
                     logger.warning("bulk_delete: %s not owned by %s", session_id, user_id)
                     failed.append(session_id)
                     continue
