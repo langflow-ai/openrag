@@ -33,7 +33,7 @@ this writeup and its findings are kept.
 | New packages installed | 0 (`openrag-sdk` only, already required) | 95 | 68 | 25 |
 | Pulls in | nothing new | `langchain`, `langchain-community`, `langchain-openai`, `openai`, `datasets`, `pillow`, `networkx` | `openai`, `grpcio`, `posthog`, `opentelemetry-*` | its own small SDK |
 | Native recall@k, MRR, nDCG@k | Yes | No, hand-written | No, hand-written | No, hand-written |
-| Runs without an API key | Yes | Yes, after pinning `langchain-community` | Yes, after turning off telemetry | No |
+| Runs without a third-party API key | Yes | Yes, after pinning `langchain-community` | Yes, after turning off telemetry | No |
 | Fit for file-level ranked results | Built for it | Approximate: set-based text similarity, not rank-based | Poor: no ranked-result concept | Good: the evaluator signature maps cleanly |
 
 In the live DeepEval spike, `uv.lock` resolved 72 packages, against 13 for this
@@ -215,7 +215,10 @@ it could store and display this harness's results without a new vendor.
    file-level ranked scoring with an optional text check. Each framework needed
    a workaround: expected files packed into strings, no ranked-result concept,
    or no offline mode.
-5. **No account, key or network service.** This matters for running in CI in
+5. **No third-party account, key or service.** A `run` still needs a reachable
+   OpenRAG stack and an OpenRAG API key, because it uploads the corpus and
+   queries `/v1/search`. Scoring, reporting and `compare` need no network at
+   all. Nothing goes to an outside vendor, which matters for running in CI in
    phase 2. LangSmith cannot run without a hosted account, and RAGAS and
    DeepEval avoid one only through careful metric choice and opt-out settings
    that are off by default.

@@ -1349,6 +1349,7 @@ eval-run: ## Run the retrieval eval (requires running OpenRAG and OPENRAG_API_KE
 	cd $(EVAL_DIR) && uv run run_eval.py run --output-dir $(OUTPUT_DIR) $(if $(BASELINE),--baseline $(BASELINE)) $(EVAL_ARGS)
 
 eval-baseline: ## Run the retrieval eval and save it as $(OUTPUT_DIR)/baseline.json
+	$(if $(findstring --output-dir,$(EVAL_ARGS)),$(error Set OUTPUT_DIR instead of passing --output-dir in EVAL_ARGS))
 	cd $(EVAL_DIR) && uv run run_eval.py run --output-dir $(OUTPUT_DIR) $(EVAL_ARGS) && cp $(OUTPUT_DIR)/results.json $(OUTPUT_DIR)/baseline.json
 	@echo "$(PURPLE)Saved $(EVAL_DIR)/$(OUTPUT_DIR)/baseline.json$(NC)"
 

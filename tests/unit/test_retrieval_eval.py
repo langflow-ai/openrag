@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import math
+import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -556,3 +558,49 @@ def test_load_results_rejects_files_that_are_not_harness_output(tmp_path: Path) 
 )
 def test_redact_url_drops_credentials_and_query(url: str, expected: str) -> None:
     assert report.redact_url(url) == expected
+
+
+def test_diff_falls_back_to_a_cutoff_both_runs_have() -> None:
+    before = make_query("q", 1.0, 1.0, 1.0, 1)
+    before["metrics"].update({"recall@3": 1.0, "ndcg@3": 1.0})
+    after = make_query("q", 1.0, 1.0, 1.0, 1)
+    after["metrics"] = {"recall@3": 0.0, "recall@4": 1.0, "reciprocal_rank": 1.0, "ndcg@3": 0.0}
+
+    diff = report.diff_results(
+        make_results([before]), make_results([after], k_values=[3, 4], primary_k=4)
+    )
+
+    assert diff["compare_metrics"] == ["recall@3", "reciprocal_rank", "ndcg@3"]
+    assert [entry["id"] for entry in diff["regressed"]] == ["q"]
+    assert "compared on recall@3" in "\n".join(diff["warnings"])
+
+
+def test_diff_rejects_runs_without_a_shared_cutoff() -> None:
+    baseline = make_results([make_query("q", 1.0, 1.0, 1.0, 1)])
+    current = make_results([make_query("q", 1.0, 1.0, 1.0, 1)], k_values=[2, 4], primary_k=4)
+
+    with pytest.raises(report.ResultsError, match="share no k value"):
+        report.diff_results(baseline, current)
+
+
+@pytest.mark.parametrize("fetch_limit", ["0", "-1", "4"])
+def test_run_rejects_a_fetch_limit_below_the_largest_cutoff(fetch_limit: str) -> None:
+    script = Path(__file__).resolve().parents[2] / "scripts/eval/retrieval/run_eval.py"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "run",
+            "--validate-only",
+            "--k",
+            "1,5",
+            "--fetch-limit",
+            fetch_limit,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 2
+    assert "--fetch-limit must be at least the largest --k value (5)" in completed.stderr

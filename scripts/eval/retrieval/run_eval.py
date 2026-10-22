@@ -316,8 +316,14 @@ async def run(args: argparse.Namespace) -> int:
     if args.validate_only:
         print(f"OK: {len(corpus_names)} documents, {len(queries)} questions")
         return 0
-    # Read the baseline before the run so a bad path fails in seconds.
+    # Read the baseline before the run so a bad path or an incomparable
+    # baseline fails in seconds.
     baseline = report.load_results(args.baseline) if args.baseline else None
+    if baseline is not None:
+        report.compare_k(
+            baseline["run"],
+            {"k_values": args.k_values, "primary_k": metrics.primary_k(args.k_values)},
+        )
     if not args.api_key:
         raise EvalError("no API key: set OPENRAG_API_KEY or pass --api-key")
 
@@ -398,7 +404,15 @@ def compare(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.command == "run" and args.fetch_limit < max(args.k_values):
+        # Fewer chunks than the largest cutoff cannot fill that many file
+        # ranks, so recall@k and nDCG@k at that cutoff would be meaningless.
+        parser.error(
+            f"--fetch-limit must be at least the largest --k value "
+            f"({max(args.k_values)}), got {args.fetch_limit}"
+        )
     try:
         if args.command == "compare":
             return compare(args)

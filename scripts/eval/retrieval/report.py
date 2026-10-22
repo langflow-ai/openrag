@@ -81,8 +81,28 @@ def write_results(
     return written
 
 
-def _compare_metrics(run: Mapping[str, Any]) -> list[str]:
-    k = run["primary_k"]
+def compare_k(baseline_run: Mapping[str, Any], current_run: Mapping[str, Any]) -> int:
+    """The cutoff to compare two runs on, which both runs must have evaluated.
+
+    This is the current run's primary cutoff when the baseline has it too.
+    Otherwise it is 5 if both runs have it, then the largest shared cutoff.
+    Raises ``ResultsError`` when the runs share no cutoff, because recall and
+    nDCG could then not be compared and a regression would go unnoticed.
+    """
+    base_k = set(baseline_run.get("k_values") or [baseline_run["primary_k"]])
+    cur_k = set(current_run.get("k_values") or [current_run["primary_k"]])
+    shared = base_k & cur_k
+    if not shared:
+        raise ResultsError(
+            f"the runs share no k value (baseline {sorted(base_k)}, "
+            f"current {sorted(cur_k)}), so recall@k and nDCG@k cannot be compared"
+        )
+    if current_run["primary_k"] in shared:
+        return int(current_run["primary_k"])
+    return 5 if 5 in shared else max(shared)
+
+
+def _compare_metrics(k: int) -> list[str]:
     return [f"recall@{k}", "reciprocal_rank", f"ndcg@{k}"]
 
 
@@ -137,11 +157,13 @@ def diff_results(
 ) -> dict[str, Any]:
     """Compare two runs question by question.
 
-    Questions are matched by id. Each is classified on the primary recall@k,
-    then reciprocal rank, then nDCG@k: the first of those that moved by more
-    than ``epsilon`` decides whether the question improved or regressed.
+    Questions are matched by id. Each is classified on recall@k at the cutoff
+    from ``compare_k``, then reciprocal rank, then nDCG@k: the first of those
+    that moved by more than ``epsilon`` decides whether the question improved
+    or regressed.
     """
-    metrics = _compare_metrics(current["run"])
+    k = compare_k(baseline["run"], current["run"])
+    metrics = _compare_metrics(k)
     base_by_id = {q["id"]: q for q in baseline["queries"]}
     cur_by_id = {q["id"]: q for q in current["queries"]}
 
@@ -199,6 +221,11 @@ def diff_results(
     }
 
     warnings = _mismatch_warnings(baseline, current)
+    if k != current["run"]["primary_k"]:
+        warnings.append(
+            f"The baseline has no recall@{current['run']['primary_k']}, "
+            f"so questions are compared on recall@{k}."
+        )
     if added or removed:
         warnings.append(
             "The runs do not cover the same questions, so the aggregate deltas "

@@ -52,6 +52,7 @@ Pass any other option with `EVAL_ARGS`, for example
 `make eval-run EVAL_ARGS="--keep-documents --fetch-limit 100"`. To write results
 somewhere else, set `OUTPUT_DIR` rather than passing `--output-dir` in
 `EVAL_ARGS`, so `eval-baseline` copies the file the run actually wrote.
+`make eval-baseline` stops with an error if `EVAL_ARGS` contains `--output-dir`.
 
 The rest of this file explains each step.
 
@@ -124,7 +125,7 @@ Useful options:
 | `--baseline FILE` | none | Compare this run with an earlier results file |
 | `--output-dir DIR` | `results/` | Where to write results |
 | `--k 1,3,5,10` | `1,3,5,10` | Cutoffs to report |
-| `--fetch-limit N` | `50` | Chunks requested per question |
+| `--fetch-limit N` | `50` | Chunks requested per question; must be at least the largest `--k` |
 | `--score-threshold X` | `0` | Minimum score passed to search |
 | `--concurrency N` | `4` | Parallel uploads |
 | `--keep-documents` | off | Leave the uploaded files in place for debugging |
@@ -204,6 +205,8 @@ boundaries move whenever chunking changes. For each question the harness:
 | nDCG@k | Like recall@k, but a relevant file counts for more the nearer it is to the top |
 
 All three run from 0 to 1, and higher is better. Runs are compared on recall@5.
+If either run did not evaluate k=5, the comparison uses a cutoff both runs have
+and says so. Two runs with no cutoff in common cannot be compared.
 
 ## Results files
 
