@@ -192,6 +192,7 @@ async def test_langflow_stream_keeps_policy_text_with_unauthorized(
     monkeypatch, store_in_memory, response_text
 ):
     """Ordinary policy language must not turn a successful turn into an error."""
+
     async def stream_policy(*_args, **_kwargs) -> AsyncIterator[bytes]:
         yield (
             json.dumps(
@@ -223,7 +224,10 @@ async def test_langflow_stream_keeps_policy_text_with_unauthorized(
         }
     ]
     assert not any(chunk.get("status") == "failed" for chunk in chunks)
-    assert agent_module.active_conversations[user_id]["resp-policy"]["messages"][-1]["error"] is not True
+    assert (
+        agent_module.active_conversations[user_id]["resp-policy"]["messages"][-1]["error"]
+        is not True
+    )
 
 
 @pytest.mark.asyncio
@@ -263,9 +267,10 @@ async def test_langflow_stream_marks_explanatory_unauthorized_as_error(
         "id": "resp-unauthorized",
         "response_id": "resp-unauthorized",
     }
-    assert agent_module.active_conversations[user_id]["resp-unauthorized"]["messages"][-1][
-        "error"
-    ] is True
+    assert (
+        agent_module.active_conversations[user_id]["resp-unauthorized"]["messages"][-1]["error"]
+        is True
+    )
 
 
 @pytest.mark.asyncio
