@@ -46,7 +46,13 @@ FROM registry.access.redhat.com/ubi10/nodejs-24-minimal AS runtime
 WORKDIR /opt/app-root/src
 USER 0
 
-RUN microdnf update -y && microdnf clean all && rm -rf /var/cache/yum
+# The npm CLI is only needed to install and build, so the runtime stage drops
+# it. Its bundled dependencies (e.g. undici via node-gyp) otherwise ship in the
+# image and get flagged by scanners (CVE-2026-15157, CVE-2026-16728,
+# CVE-2026-16729).
+RUN microdnf update -y \
+    && microdnf remove -y nodejs24-npm \
+    && microdnf clean all && rm -rf /var/cache/yum
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1

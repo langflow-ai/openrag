@@ -40,24 +40,36 @@ RUN pip install --no-cache-dir --upgrade "pip>=26.1.2" \
     && pip install --no-cache-dir uv
 
 USER root
-# Upgrade libxml2 to patch CVE-2026-74860 and CVE-2026-86140 (fixed in
-# 2.12.5-10.el10_2.4) in the base image. libxslt is the runtime library for the
-# source-built lxml from the lxml-build stage. TODO: remove (see lxml-build).
+# Patch base-image CVEs in system packages:
+#   libxml2 >= 2.12.5-10.el10_2.4: CVE-2026-74860, CVE-2026-86140. libxslt is
+#     the runtime library for the source-built lxml. TODO: remove (see lxml-build).
+#   expat >= 2.7.3-1.el10_2.5: CVE-2026-66046, CVE-2026-93990
+#   npm 12.2.1 (bundles brace-expansion 5.0.12): CVE-2026-102276, CVE-2026-102278
 RUN microdnf install -y 'libxml2 >= 2.12.5-10.el10_2.4' \
     && microdnf install -y libxslt \
+    && microdnf install -y 'expat >= 2.7.3-1.el10_2.5' \
+    && npm install -g --no-audit --no-fund npm@12.2.1 \
+    && npm cache clean --force \
     && microdnf clean all \
     && rm -rf /var/cache/yum \
     && mkdir -p /app/langflow-data \
     && chmod 0777 /app/langflow-data
 USER 1000
 
+# Minimum versions that patch base-image CVEs:
+#   pypdf 6.19.0: CVE-2026-102998, CVE-2026-102999, CVE-2026-103000
+#   pyjwt 2.14.0: CVE-2026-102266, CVE-2026-102267, CVE-2026-102268,
+#     CVE-2026-102271, CVE-2026-102272, CVE-2026-102273
+#   urllib3 2.8.0: CVE-2026-97687, CVE-2026-97689
 RUN pip install --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     torch==2.13.0 \
     torchvision==0.28.0 \
     "transformers>=5.10.1,<6.0.0" \
     "docling-core<3.0.0" \
-    "pypdf>=6.16.1,<7.0.0" \
+    "pypdf>=6.19.0,<7.0.0" \
+    "pyjwt>=2.14.0,<3.0.0" \
+    "urllib3>=2.8.0,<3.0.0" \
     openai \
     langchain-openai \
     anthropic \
