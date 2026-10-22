@@ -48,10 +48,19 @@ _PROVIDER_CREDENTIAL_ERROR_MARKERS = (
     "authentication_error",
     "failed to authenticate",
     "invalid x-api-key",
-    "unauthorized",
     "authentication failed",
     "invalid credentials",
     "could not authenticate",
+)
+
+# ``unauthorized`` is common, valid English in documents such as employee
+# policies ("unauthorized absence").  It is still useful for a *standalone*
+# provider failure, but must not make an otherwise normal assistant answer
+# look like a credential error merely because it mentions the word.
+_UNAUTHORIZED_PROVIDER_ERROR_RE = re.compile(
+    r"(?:\berror\b[:\s]*|\b(?:401|403)\b[:\s]*)unauthorized\b"
+    r"|^\s*unauthorized(?:\s+(?:error|request|access|token|api|authentication|credentials)\b|\s*[.!:]?\s*$)",
+    re.IGNORECASE,
 )
 
 
@@ -133,7 +142,9 @@ def is_provider_credential_error(text: str | BaseException | None) -> bool:
     if text is None:
         return False
     lowered = (str(text) if not isinstance(text, str) else text).lower()
-    return any(marker in lowered for marker in _PROVIDER_CREDENTIAL_ERROR_MARKERS)
+    return any(marker in lowered for marker in _PROVIDER_CREDENTIAL_ERROR_MARKERS) or bool(
+        _UNAUTHORIZED_PROVIDER_ERROR_RE.search(lowered)
+    )
 
 
 #: Markers for a TLS trust failure, which is neither a bad credential nor an
@@ -322,7 +333,9 @@ def looks_like_provider_error_content(text: str | None) -> bool:
     if is_generic_upstream_error(content):
         return True
     lowered = content.lower()
-    if any(marker in lowered for marker in _PROVIDER_ERROR_CONTENT_MARKERS):
+    if any(marker in lowered for marker in _PROVIDER_ERROR_CONTENT_MARKERS) or (
+        _UNAUTHORIZED_PROVIDER_ERROR_RE.search(lowered)
+    ):
         return True
     # Raw provider payloads often embed an error object: as JSON, or as the
     # Python dict the OpenAI SDK prints (`Error code: 400 - {'error': {...}}`).

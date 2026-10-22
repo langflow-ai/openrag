@@ -93,6 +93,18 @@ describe("looksLikeProviderErrorContent", () => {
       ),
       false,
     );
+    assert.equal(
+      looksLikeProviderErrorContent(
+        "Unauthorized absence may be treated as disciplinary.",
+      ),
+      false,
+    );
+  });
+
+  it("recognizes error-shaped unauthorized messages", () => {
+    assert.equal(looksLikeProviderErrorContent("Unauthorized"), true);
+    assert.equal(looksLikeProviderErrorContent("HTTP 401: Unauthorized"), true);
+    assert.equal(looksLikeProviderErrorContent("Error: unauthorized"), true);
   });
 
   it("flags IBM disabled API key messages", () => {

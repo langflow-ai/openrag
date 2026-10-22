@@ -164,7 +164,9 @@ export function looksLikeProviderErrorContent(text: string): boolean {
   }
   // Tighter matches for phrases that also appear in ordinary explanations.
   if (
-    /(?:^|\berror\b[:\s]*|\b(?:401|403)\b[:\s]*)unauthorized\b/.test(lowered) ||
+    /(?:\berror\b[:\s]*|\b(?:401|403)\b[:\s]*)unauthorized\b|^\s*unauthorized(?:\s+(?:error|request|access|token|api|authentication|credentials)\b|\s*[.!:]?\s*$)/.test(
+      lowered,
+    ) ||
     /(?:^|\berror\b[:\s]*)permission denied\b/.test(lowered) ||
     /\bpermission denied\s*:/.test(lowered) ||
     /(?:^|\berror\b[:\s]*)quota exceeded\b/.test(lowered) ||

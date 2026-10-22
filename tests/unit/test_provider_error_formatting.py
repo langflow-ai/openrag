@@ -60,7 +60,12 @@ def test_is_provider_credential_error():
     assert is_provider_credential_error("Provided API key could not be found.")
     assert is_provider_credential_error("Provided API key is disabled.")
     assert is_provider_credential_error(json.dumps({"errorMessage": "api key revoked"}))
+    assert is_provider_credential_error("Unauthorized")
+    assert is_provider_credential_error("HTTP 401: Unauthorized")
     assert not is_provider_credential_error("Rate limit exceeded")
+    assert not is_provider_credential_error(
+        "Unauthorized absence may be treated as disciplinary."
+    )
 
 
 def test_disabled_watsonx_key_embedding_dump_is_credential_error():
@@ -95,6 +100,10 @@ def test_looks_like_provider_error_content():
         'Failed to authenticate: {"errorMessage":"Provided API key could not be found."}'
     )
     assert not looks_like_provider_error_content("OpenRAG is an open-source package.")
+    assert not looks_like_provider_error_content(
+        "Unauthorized absence may be treated as disciplinary."
+    )
+    assert looks_like_provider_error_content("Error: unauthorized")
     assert is_generic_upstream_error("An unknown error occurred.")
 
 
