@@ -60,12 +60,11 @@ def test_is_provider_credential_error():
     assert is_provider_credential_error("Provided API key could not be found.")
     assert is_provider_credential_error("Provided API key is disabled.")
     assert is_provider_credential_error(json.dumps({"errorMessage": "api key revoked"}))
-    assert is_provider_credential_error("Unauthorized")
-    assert is_provider_credential_error("HTTP 401: Unauthorized")
+    assert is_provider_credential_error("401, message='Unauthorized', url='http://x/v1/chat'")
+    assert is_provider_credential_error("Error code: 401 - Unauthorized")
+    assert is_provider_credential_error('{"detail":"Unauthorized"}')
+    assert is_provider_credential_error("litellm.AuthenticationError: Unauthorized")
     assert not is_provider_credential_error("Rate limit exceeded")
-    assert not is_provider_credential_error(
-        "Unauthorized absence may be treated as disciplinary."
-    )
 
 
 def test_disabled_watsonx_key_embedding_dump_is_credential_error():
@@ -103,7 +102,11 @@ def test_looks_like_provider_error_content():
     assert not looks_like_provider_error_content(
         "Unauthorized absence may be treated as disciplinary."
     )
+    assert not looks_like_provider_error_content(
+        "Unauthorized access to payroll records is prohibited."
+    )
     assert looks_like_provider_error_content("Error: unauthorized")
+    assert looks_like_provider_error_content("Unauthorized: Access token is expired")
     assert is_generic_upstream_error("An unknown error occurred.")
 
 
