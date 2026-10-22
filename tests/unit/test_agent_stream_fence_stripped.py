@@ -46,6 +46,9 @@ class AsyncChunkStream:
         except StopIteration:
             raise StopAsyncIteration from None
 
+    async def close(self):
+        self._chunks = iter(())
+
 
 class FakeResponses:
     def __init__(self, chunks):
