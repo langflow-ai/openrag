@@ -432,6 +432,10 @@ backend:
 frontend:
   enabled: true
 
+  # Optional URL path below which the frontend is served (for example,
+  # /openrag-fe). Applied when each frontend pod starts; no image rebuild.
+  basePath: ""
+
   image:
     repository: langflowai/openrag-frontend
     tag: ""                               # Uses global.imageTag if empty
