@@ -93,6 +93,28 @@ describe("looksLikeProviderErrorContent", () => {
       ),
       false,
     );
+    assert.equal(
+      looksLikeProviderErrorContent(
+        "Unauthorized absence may be treated as disciplinary.",
+      ),
+      false,
+    );
+    assert.equal(
+      looksLikeProviderErrorContent(
+        "Unauthorized access to payroll records is prohibited.",
+      ),
+      false,
+    );
+  });
+
+  it("recognizes error-shaped unauthorized messages", () => {
+    assert.equal(looksLikeProviderErrorContent("Unauthorized"), true);
+    assert.equal(looksLikeProviderErrorContent("HTTP 401: Unauthorized"), true);
+    assert.equal(looksLikeProviderErrorContent("Error: unauthorized"), true);
+    assert.equal(
+      looksLikeProviderErrorContent("Unauthorized: Access token is expired"),
+      true,
+    );
   });
 
   it("flags IBM disabled API key messages", () => {
