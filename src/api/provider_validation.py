@@ -54,8 +54,19 @@ _PROVIDER_CREDENTIAL_ERROR_MARKERS = (
     "could not authenticate",
 )
 
+# ``unauthorized`` is a reliable signal in provider exceptions, but ordinary
+# assistant replies can use it in policy language ("unauthorized absence" or
+# "unauthorized access").  Content needs an error-shaped use of the word.
+_UNAUTHORIZED_PROVIDER_ERROR_CONTENT_RE = re.compile(
+    r"(?:\berror\b[:\s]*|\b(?:401|403)\b[:\s]*)unauthorized\b"
+    r"|^\s*unauthorized\s*(?:[.!]?\s*$|:)",
+    re.IGNORECASE,
+)
 
-_PROVIDER_ERROR_CONTENT_MARKERS = _PROVIDER_CREDENTIAL_ERROR_MARKERS + (
+
+_PROVIDER_ERROR_CONTENT_MARKERS = tuple(
+    marker for marker in _PROVIDER_CREDENTIAL_ERROR_MARKERS if marker != "unauthorized"
+) + (
     "rate limit",
     "rate_limit",
     "permission denied",
@@ -322,7 +333,9 @@ def looks_like_provider_error_content(text: str | None) -> bool:
     if is_generic_upstream_error(content):
         return True
     lowered = content.lower()
-    if any(marker in lowered for marker in _PROVIDER_ERROR_CONTENT_MARKERS):
+    if any(marker in lowered for marker in _PROVIDER_ERROR_CONTENT_MARKERS) or (
+        _UNAUTHORIZED_PROVIDER_ERROR_CONTENT_RE.search(lowered)
+    ):
         return True
     # Raw provider payloads often embed an error object: as JSON, or as the
     # Python dict the OpenAI SDK prints (`Error code: 400 - {'error': {...}}`).
