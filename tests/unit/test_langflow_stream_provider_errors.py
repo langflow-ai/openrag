@@ -181,6 +181,99 @@ async def test_langflow_stream_yields_provider_error_chunk(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "response_text",
+    [
+        "Unauthorized absence may be treated as disciplinary.",
+        "Unauthorized access to payroll records is prohibited.",
+    ],
+)
+async def test_langflow_stream_keeps_policy_text_with_unauthorized(
+    monkeypatch, store_in_memory, response_text
+):
+    """Ordinary policy language must not turn a successful turn into an error."""
+
+    async def stream_policy(*_args, **_kwargs) -> AsyncIterator[bytes]:
+        yield (
+            json.dumps(
+                {
+                    "id": "resp-policy",
+                    "delta": {"content": response_text},
+                }
+            )
+            + "\n"
+        ).encode("utf-8")
+
+    monkeypatch.setattr(agent_module, "async_stream", stream_policy)
+
+    user_id = "test-policy-text-user"
+    agent_module.active_conversations.pop(user_id, None)
+    chunks = await _collect_error_chunks(
+        agent_module.async_langflow_chat_stream(
+            langflow_client=object(),
+            flow_id="flow-id",
+            prompt="What does the leave policy say?",
+            user_id=user_id,
+        )
+    )
+
+    assert chunks == [
+        {
+            "id": "resp-policy",
+            "delta": {"content": response_text},
+        }
+    ]
+    assert not any(chunk.get("status") == "failed" for chunk in chunks)
+    assert (
+        agent_module.active_conversations[user_id]["resp-policy"]["messages"][-1]["error"]
+        is not True
+    )
+
+
+@pytest.mark.asyncio
+async def test_langflow_stream_marks_explanatory_unauthorized_as_error(
+    monkeypatch, store_in_memory
+):
+    response_text = "Unauthorized: Access token is expired"
+
+    async def stream_error_text(*_args, **_kwargs) -> AsyncIterator[bytes]:
+        yield (
+            json.dumps(
+                {
+                    "id": "resp-unauthorized",
+                    "delta": {"content": response_text},
+                }
+            )
+            + "\n"
+        ).encode("utf-8")
+
+    monkeypatch.setattr(agent_module, "async_stream", stream_error_text)
+
+    user_id = "test-unauthorized-error-user"
+    agent_module.active_conversations.pop(user_id, None)
+    chunks = await _collect_error_chunks(
+        agent_module.async_langflow_chat_stream(
+            langflow_client=object(),
+            flow_id="flow-id",
+            prompt="Why did this request fail?",
+            user_id=user_id,
+        )
+    )
+
+    assert chunks[-1] == {
+        "status": "failed",
+        "finish_reason": "error",
+        "error": {"message": response_text},
+        "id": "resp-unauthorized",
+        "response_id": "resp-unauthorized",
+    }
+    assert (
+        agent_module.active_conversations[user_id]["resp-unauthorized"]["messages"][-1]["error"]
+        is True
+    )
+
+
+@pytest.mark.asyncio
 async def test_langflow_stream_persists_error_onto_existing_thread(monkeypatch, store_in_memory):
     provider_message = "Invalid API key for Anthropic. Check your credentials."
 
