@@ -57,6 +57,42 @@ In addition to OpenRAG's built-in flows, all Langflow features are available thr
 
 Explore the [Langflow documentation](https://docs.langflow.org/) to learn more about the Langflow platform, features, and visual editor.
 
+### Search and fetch web pages with Parallel Search MCP
+
+You can add free web search and page fetching to a custom flow with [Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp).
+The anonymous endpoint needs no Parallel account or API key, and search uses Fast mode.
+It is intended for exploration and light use, with lower rate limits than authenticated access.
+
+1. In OpenRAG, click **Settings**, and then **Edit in Langflow**.
+   Create a new flow from the Langflow **Projects** page.
+2. In the flow editor's **MCP** sidebar, click **Add MCP Server**.
+   Select **JSON** and paste the following configuration, then save the server:
+
+   ```json
+   {
+     "mcpServers": {
+       "parallel-search": {
+         "url": "https://search.parallel.ai/mcp",
+         "headers": {
+           "User-Agent": "OpenRAG/ParallelSearchMCP (https://github.com/langflow-ai/openrag)"
+         }
+       }
+     }
+   }
+   ```
+
+3. Drag **parallel-search** from the MCP sidebar onto the canvas.
+   In the resulting **MCP Tools** component, select **web_search** in the **Tool** field.
+4. Enter `Find OpenRAG documentation about customizing flows` in **objective** and add `OpenRAG customize Langflow flows` to **search_queries**.
+   Run the component and inspect its output for source URLs and excerpts.
+5. To read a page, select **web_fetch**, add a URL from the search results to **urls**, and run the component again.
+   Leave **full_content** disabled to get focused excerpts.
+
+This setup adds a server for your custom flow without editing OpenRAG's built-in flows.
+Keep authentication headers empty to use the anonymous endpoint.
+Search queries and fetched URLs are sent to Parallel, so avoid including private document content.
+For more MCP client options, see [Use Langflow as an MCP client](https://docs.langflow.org/mcp-client).
+
 ## Modify a flow at runtime {#modify-a-flow-at-runtime}
 
 You can use _tweaks_ to modify flow settings at runtime without permanently changing the flow's configuration.
