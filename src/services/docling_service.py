@@ -496,6 +496,16 @@ class DoclingService:
                         f"Docling VLM cannot use this Azure AI Foundry endpoint. "
                         f"{foundry.UNSUPPORTED_ENDPOINT_MESSAGE}"
                     )
+                if profile == "resource_root":
+                    # The bare resource endpoint. Routed as legacy it would be
+                    # sent to `/models/chat/completions`, a different surface
+                    # from the one the deployment is on, and fail inside
+                    # docling-serve during ingestion. Refused here with the
+                    # suffix to add, matching the gateway.
+                    raise DoclingServeError(
+                        f"Docling VLM cannot use this Azure AI Foundry endpoint. "
+                        f"{foundry.RESOURCE_ROOT_MESSAGE}"
+                    )
                 if profile == "legacy_deployment_uri":
                     # A per-deployment Target URI. The gateway still routes this
                     # shape, for installs configured before it was refused at

@@ -179,6 +179,7 @@ Profile = Literal[
     "project_openai_v1",
     "legacy_models",
     "legacy_deployment_uri",
+    "resource_root",
     "unknown",
 ]
 
@@ -199,6 +200,21 @@ DEPLOYMENT_URI_MESSAGE = (
     "This is a single deployment's Target URI, so every model selected would be "
     "sent to that one deployment. Use the resource endpoint ending in /openai/v1 "
     "and name the deployment when selecting a model."
+)
+
+
+#: The resource endpoint with no path. It is what the portal's Overview page
+#: shows, so it is the single most likely thing to be pasted — and the one
+#: shape that routes somewhere the operator did not ask for. LiteLLM's legacy
+#: default on this host sends it to `/models/chat/completions`, a different
+#: inference surface from the `/openai/v1` one a deployment is usually on, and
+#: Azure answers "Resource not found" at first use. Refused at save instead,
+#: naming the suffix to add.
+RESOURCE_ROOT_MESSAGE = (
+    "This is the resource endpoint without a path, which would be sent to the "
+    "older /models inference surface rather than the one your deployments are "
+    "on. Add the /openai/v1 suffix — for example "
+    "https://<resource>.services.ai.azure.com/openai/v1"
 )
 
 
@@ -399,10 +415,15 @@ def endpoint_profile(api_base: Any) -> Profile:
         # the auth header: LiteLLM picks that by hostname too, sending
         # `api-key` on the Foundry and Azure OpenAI families and
         # `Authorization: Bearer` everywhere else. Fixing half of a
-        # host-dependent pair would turn a legible 404 into a puzzling 401, so
-        # the root is refused off the Foundry host and the operator is asked
-        # for the endpoint in full.
-        return "legacy_models" if _is_foundry_host(parts) else "unknown"
+        # host-dependent pair would turn a legible 404 into a puzzling 401.
+        #
+        # So the root is never routed. On the Foundry host it is named
+        # `resource_root` so the operator can be told which suffix to add —
+        # it is the value the portal's Overview page shows, and routing it as
+        # legacy sent calls to `/models/chat/completions` and produced
+        # "Resource not found" at first use. Off that host there is nothing
+        # specific to say, so it stays `unknown`.
+        return "resource_root" if _is_foundry_host(parts) else "unknown"
     if path.endswith(_LEGACY_SUFFIX):
         return "legacy_models"
     if _DEPLOYMENT_MARKER in path and (parts.hostname or "").lower().endswith(
@@ -432,6 +453,8 @@ def litellm_route(stored: Mapping[str, Any] | None) -> str:
         return OPENAI_COMPATIBLE_ROUTE
     if profile in ("legacy_models", "legacy_deployment_uri"):
         return LITELLM_PROVIDER
+    if profile == "resource_root":
+        raise UnsupportedEndpointError(RESOURCE_ROOT_MESSAGE)
     raise UnsupportedEndpointError(UNSUPPORTED_ENDPOINT_MESSAGE)
 
 
@@ -568,6 +591,8 @@ async def lightweight_health_check(credentials: Mapping[str, Any]) -> None:
     profile = endpoint_profile(api_base)
     if profile == "unknown":
         raise UnsupportedEndpointError(UNSUPPORTED_ENDPOINT_MESSAGE)
+    if profile == "resource_root":
+        raise UnsupportedEndpointError(RESOURCE_ROOT_MESSAGE)
     if profile == "legacy_deployment_uri":
         # Still routable, so an install already configured this way keeps
         # working — but it must not be saved again in that shape.
