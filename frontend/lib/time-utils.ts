@@ -64,3 +64,28 @@ export function formatTaskTimestamp(
     return `${diffHours} hours ago · ${formatClockTime(date)}`;
   return `${Math.floor(diffHours / 24)} days ago · ${formatClockTime(date)}`;
 }
+
+// Day bounds are the viewer's local calendar day, sent as UTC instants. The
+// "Date Uploaded" column renders indexed_time in local time too, so a file
+// listed under a day is the file that day's filter returns, in any timezone.
+export function toLocalDayStartISOString(date: Date): string {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+export function toLocalDayEndISOString(date: Date): string {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  // The backend stores microsecond-precision timestamps; extend the inclusive
+  // bound through the day's final microsecond.
+  return d.toISOString().replace(/\.999Z$/, ".999999Z");
+}
+
+// Matches the yyyy-MM-dd keys the upload histogram buckets by (viewer's time zone).
+export function toLocalDayKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}

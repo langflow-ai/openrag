@@ -188,6 +188,7 @@ export function buildKnowledgeTableRows(
   searchData: SearchFile[],
   taskFiles: TaskFile[],
   hasActiveFilter = false,
+  dateRange?: { from?: Date; to?: Date } | null,
 ): SearchFile[] {
   const taskFilesAsFiles: SearchFile[] = taskFiles.map((taskFile) => {
     const normalizedFilename =
@@ -197,6 +198,7 @@ export function buildKnowledgeTableRows(
 
     return {
       filename: normalizedFilename,
+      indexed_time: taskFile.created_at || undefined,
       mimetype: taskFile.mimetype,
       source_url: taskFile.source_url || "",
       size: taskFile.size,
@@ -284,7 +286,39 @@ export function buildKnowledgeTableRows(
     return backendFiles;
   }
 
-  return [...backendFiles, ...filteredTaskFiles];
+  const rangeFrom = dateRange?.from;
+  const rangeTo = dateRange?.to;
+  const dateFilteredTaskFiles =
+    (rangeFrom ?? rangeTo)
+      ? filteredTaskFiles.filter((f) => {
+          if (!f.indexed_time) return true;
+          const d = new Date(f.indexed_time);
+          if (isNaN(d.getTime())) return true;
+          if (rangeFrom) {
+            const start = new Date(
+              rangeFrom.getFullYear(),
+              rangeFrom.getMonth(),
+              rangeFrom.getDate(),
+            );
+            if (d < start) return false;
+          }
+          if (rangeTo) {
+            const end = new Date(
+              rangeTo.getFullYear(),
+              rangeTo.getMonth(),
+              rangeTo.getDate(),
+              23,
+              59,
+              59,
+              999,
+            );
+            if (d > end) return false;
+          }
+          return true;
+        })
+      : filteredTaskFiles;
+
+  return [...backendFiles, ...dateFilteredTaskFiles];
 }
 
 export function buildActiveSourceOptions(

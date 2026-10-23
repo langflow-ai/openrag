@@ -21,6 +21,7 @@ from typing import Any
 
 from config.settings import get_index_name
 from utils.logging_config import get_logger
+from utils.opensearch_queries import build_date_range_query
 
 logger = get_logger(__name__)
 
@@ -55,6 +56,8 @@ class FileServiceV2:
         search: str | None = None,
         after_key: dict | None = None,
         data_sources: list[str] | None = None,
+        created_after: str | None = None,
+        created_before: str | None = None,
     ) -> dict[str, Any]:
         """
         List files with server-side pagination via composite aggregation.
@@ -71,7 +74,14 @@ class FileServiceV2:
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
         query = self._build_filter_query(
-            user_id, connector_type, mimetype, owner, search, data_sources
+            user_id,
+            connector_type,
+            mimetype,
+            owner,
+            search,
+            data_sources,
+            created_after,
+            created_before,
         )
         total, is_approximate = await self._get_file_count(opensearch_client, query)
 
@@ -141,6 +151,66 @@ class FileServiceV2:
             "after_key": next_after_key,
         }
 
+    async def upload_histogram(
+        self,
+        user_id: str,
+        jwt_token: str = None,
+        start: str = "",
+        end: str = "",
+        time_zone: str = "UTC",
+        connector_type: list[str] | None = None,
+        mimetype: list[str] | None = None,
+        owner: list[str] | None = None,
+        data_sources: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Distinct files per calendar day (in *time_zone*) within [start, end], plus the all-time total."""
+        opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+        query = self._build_filter_query(
+            user_id, connector_type, mimetype, owner, None, data_sources
+        )
+        # The window is a filter sub-agg rather than part of the query so the
+        # same request also yields the all-time total.
+        body = {
+            "size": 0,
+            "query": query,
+            "aggs": {
+                "total": {"cardinality": {"field": "filename", "precision_threshold": 3000}},
+                "window": {
+                    "filter": build_date_range_query("indexed_time", gte=start, lte=end),
+                    "aggs": {
+                        "days": {
+                            "date_histogram": {
+                                "field": "indexed_time",
+                                "calendar_interval": "day",
+                                "time_zone": time_zone,
+                                "format": "yyyy-MM-dd",
+                                "min_doc_count": 1,
+                            },
+                            "aggs": {
+                                "files": {
+                                    "cardinality": {
+                                        "field": "filename",
+                                        "precision_threshold": 3000,
+                                    }
+                                }
+                            },
+                        }
+                    },
+                },
+            },
+        }
+        result = await opensearch_client.search(index=get_index_name(), body=body)
+        aggs = result.get("aggregations", {})
+        buckets = aggs.get("window", {}).get("days", {}).get("buckets", [])
+        return {
+            "total": aggs.get("total", {}).get("value", 0),
+            "days": {
+                b["key_as_string"]: b.get("files", {}).get("value", 0)
+                for b in buckets
+                if b.get("key_as_string")
+            },
+        }
+
     async def _list_files_by_chunk_count(
         self,
         opensearch_client: Any,
@@ -207,6 +277,8 @@ class FileServiceV2:
         owner: list[str] | None = None,
         after_key: dict | None = None,
         data_sources: list[str] | None = None,
+        created_after: str | None = None,
+        created_before: str | None = None,
     ) -> dict[str, Any]:
         """Search files by name with fuzzy/prefix matching."""
         return await self.list_files(
@@ -222,6 +294,8 @@ class FileServiceV2:
             search=query,
             after_key=after_key,
             data_sources=data_sources,
+            created_after=created_after,
+            created_before=created_before,
         )
 
     def _build_filter_query(
@@ -232,6 +306,8 @@ class FileServiceV2:
         owner: list[str] | None = None,
         search: str | None = None,
         data_sources: list[str] | None = None,
+        created_after: str | None = None,
+        created_before: str | None = None,
     ) -> dict[str, Any]:
         def _effective_values(values: str | list[str] | None) -> list[str]:
             if values is None:
@@ -278,6 +354,12 @@ class FileServiceV2:
                 else {"terms": {"filename": effective_sources}}
             )
             filter_clauses.append(clause)
+
+        date_range_clause = build_date_range_query(
+            "indexed_time", gte=created_after, lte=created_before
+        )
+        if date_range_clause is not None:
+            filter_clauses.append(date_range_clause)
 
         if search:
             must.append(
