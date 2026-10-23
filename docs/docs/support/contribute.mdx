@@ -68,6 +68,43 @@ If you want to contribute code to OpenRAG, you can do so by submitting a pull re
 
 See [CONTRIBUTING.md](https://github.com/langflow-ai/openrag/blob/main/CONTRIBUTING.md) to set up your development environment and learn about the contribution process.
 
+### Run OpenRAG from a checkout
+
+For day-to-day development, run the infrastructure in containers and run the backend and frontend from your checked-out repository.
+
+1. Copy `.env.example` to `.env`, and populate the required values. If you have a `.env` created by the OpenRAG terminal UI, you can reuse its credentials and generated secrets, but do not reuse the path variables that point to `~/.openrag`. Keep the repository-relative defaults for the flow, data, configuration, key, document, and Langflow-data paths.
+
+2. In four terminals at the root of the repository, run the following commands:
+
+   ```bash
+   # Terminal 1: build Langflow and OpenSearch from this checkout, then start infra.
+   # Use make dev-local instead when you need GPU support.
+   make dev-local-cpu
+
+   # Terminal 2
+   make backend
+
+   # Terminal 3
+   make frontend
+
+   # Terminal 4
+   make docling
+   ```
+
+   The frontend reloads automatically when you edit it. Restart the backend process after backend changes.
+
+3. To build the full container stack from the current checkout instead, run `make dev-build` (GPU) or `make dev-build-cpu` (CPU), then run `make docling` separately. In this mode, do not run `make backend` or `make frontend` because they are already running in containers.
+
+4. To discard local service state and start over, run `make factory-reset` and confirm the prompt. This removes the containers and volumes, local Langflow data, backend configuration and data, and generated JWT keys. Then repeat the local development commands.
+
+:::warning Keep image versions and flows compatible
+
+When you launch the terminal UI with `uv run openrag`, it takes the OpenRAG version from the package metadata for the checkout (derived from `pyproject.toml`) and writes it to `OPENRAG_VERSION`. Docker Compose uses that value to pull the OpenRAG images from Docker Hub.
+
+The development flows come from the source you have checked out, rather than from the pulled OpenRAG image. Check out the release tag that corresponds to the version in `pyproject.toml` before you start services this way. Running an outdated image with newer checked-out flows, or the reverse, can break flow components and behavior.
+
+:::
+
 ### Tips for successful submissions
 
 * Explain the motivation for your submission in the PR description.
