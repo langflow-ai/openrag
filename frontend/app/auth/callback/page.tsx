@@ -33,10 +33,8 @@ function cleanupOAuthStorage() {
 
 type CallbackResult = { purpose?: string };
 
-// OAuth codes are single-use, so each code is exchanged at most once per page
-// load. Keeping the promise (not just a "seen" flag) lets a re-run of the
-// effect, such as StrictMode's dev remount, wait on the exchange already in
-// flight instead of abandoning it.
+// One exchange per single-use code, kept after settling so re-runs and remounts
+// reuse it instead of POSTing the spent code again.
 const exchanges = new Map<string, Promise<CallbackResult>>();
 
 const callbackKeyFor = (code: string) => `callback_processed_${code}`;
@@ -79,9 +77,16 @@ function AuthCallbackContent() {
       ? localStorage.getItem("connecting_connector_type")
       : null,
   );
+  // Read once: cleanupOAuthStorage() clears auth_redirect_to.
+  const [appAuthRedirectTo] = useState(
+    () =>
+      (typeof window !== "undefined" &&
+        localStorage.getItem("auth_redirect_to")) ||
+      searchParams.get("redirect") ||
+      "/chat",
+  );
 
-  // Marked used by an earlier load of this URL (a reload or the back button)
-  // with no exchange in flight here. The code cannot be exchanged again.
+  // Reload / back button: an earlier load spent the code and nothing is in flight.
   const [codeAlreadyUsed] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -162,8 +167,6 @@ function AuthCallbackContent() {
       exchanges.set(code!, exchange);
     }
 
-    // Only the latest run of this effect reacts to the result; an earlier,
-    // cleaned-up run must not redirect or set state.
     exchange.then(
       async (result) => {
         if (!active) return;
@@ -172,14 +175,9 @@ function AuthCallbackContent() {
           await refreshAuth();
           if (!active) return;
 
-          const redirectTo =
-            localStorage.getItem("auth_redirect_to") ||
-            searchParams.get("redirect") ||
-            "/chat";
-
           cleanupOAuthStorage();
           redirectTimeoutRef.current = setTimeout(
-            () => router.push(redirectTo),
+            () => router.push(appAuthRedirectTo),
             2000,
           );
         } else if (result.purpose === "test" || purpose === "test") {
@@ -226,7 +224,7 @@ function AuthCallbackContent() {
     finalConnectorId,
     storedConnectorType,
     validationError,
-    searchParams,
+    appAuthRedirectTo,
     isIbmAuthMode,
     queryClient,
     refreshAuth,

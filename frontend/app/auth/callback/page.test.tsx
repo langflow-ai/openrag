@@ -24,12 +24,8 @@ describe("AuthCallbackPage", () => {
     localStorage.setItem("auth_purpose", "app_auth");
   });
 
-  // `reactStrictMode` wraps the whole tree, providers included. A <StrictMode>
-  // nested inside the provider wrapper does not double-invoke effects, so it
-  // would not reproduce the dev-mode mount/unmount/remount.
+  // A <StrictMode> inside the provider wrapper doesn't double-invoke effects.
   it("finishes sign-in under StrictMode's effect double-invoke", async () => {
-    // A fresh code per test: the page dedupes exchanges by code for the
-    // lifetime of the module, as the browser would within one page load.
     setCallbackLocation(crypto.randomUUID());
 
     renderWithProviders(<AuthCallbackPage />, {
@@ -43,6 +39,41 @@ describe("AuthCallbackPage", () => {
       timeout: 3000,
     });
     expect(callbackRequests).toBe(1);
+  });
+
+  it("reuses a settled exchange when the page remounts with the same code", async () => {
+    setCallbackLocation(crypto.randomUUID());
+
+    const first = renderWithProviders(<AuthCallbackPage />, {
+      providers: ["auth"],
+      handlers: [callbackHandler],
+    });
+    expect(await screen.findByText("Welcome to OpenRAG!")).toBeInTheDocument();
+    first.unmount();
+
+    renderWithProviders(<AuthCallbackPage />, {
+      providers: ["auth"],
+      handlers: [callbackHandler],
+    });
+    expect(await screen.findByText("Welcome to OpenRAG!")).toBeInTheDocument();
+    expect(callbackRequests).toBe(1);
+  });
+
+  it("redirects to auth_redirect_to after sign-in", async () => {
+    setCallbackLocation(crypto.randomUUID());
+    localStorage.setItem("auth_redirect_to", "/knowledge");
+
+    renderWithProviders(<AuthCallbackPage />, {
+      providers: ["auth"],
+      handlers: [callbackHandler],
+      reactStrictMode: true,
+    });
+
+    await waitFor(
+      () => expect(mockRouter.push).toHaveBeenCalledWith("/knowledge"),
+      { timeout: 3000 },
+    );
+    expect(localStorage.getItem("auth_redirect_to")).toBeNull();
   });
 
   it("shows the backend's error and allows a retry when the exchange fails", async () => {
@@ -67,7 +98,6 @@ describe("AuthCallbackPage", () => {
   it("shows an error instead of spinning when the code was already used", async () => {
     const code = crypto.randomUUID();
     setCallbackLocation(code);
-    // A reload of the callback URL: the earlier load marked the code used.
     sessionStorage.setItem(`callback_processed_${code}`, "true");
 
     renderWithProviders(<AuthCallbackPage />, {
