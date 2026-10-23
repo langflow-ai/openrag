@@ -491,16 +491,16 @@ def test_a_configured_vision_model_is_tagged_vision(monkeypatch, tmp_path) -> No
             tmp_path,
             "providers:\n  - name: openai\n    modes:\n      oss: true\n"
             "    models:\n      - house-tuned-gpt\n"
-            "    vision_models:\n      - gpt-3.5-turbo\n      - house-tuned-*\n",
+            "    vision_models:\n      - gpt-5.5-cyber\n      - house-tuned-*\n",
         ),
     )
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
 
     models = {entry["model"]: entry for entry in model_catalog.catalog()["providers"][0]["models"]}
-    assert "vision" in models["gpt-3.5-turbo"]["capabilities"]
-    assert "function_calling" in models["gpt-3.5-turbo"]["capabilities"]
+    assert "vision" in models["gpt-5.5-cyber"]["capabilities"]
+    assert "reasoning" in models["gpt-5.5-cyber"]["capabilities"]
     assert models["house-tuned-gpt"]["capabilities"] == ["vision"]
-    assert "vision" not in models["gpt-3.5-turbo-0125"].get("capabilities", [])
+    assert "vision" not in models["gpt-5.5-cyber-preview"].get("capabilities", [])
 
 
 def test_the_shipped_config_offers_watsonx_vision_models(monkeypatch) -> None:
