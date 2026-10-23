@@ -34,11 +34,19 @@ These IDs can differ when Langflow returns a new response ID.
 Both IDs are checked against the authenticated user's session ownership; interruption recovery does not bypass those checks.
 
 Response aliases are durably associated with their canonical conversation, including across backend restarts.
+After a backend restart, continuing with an owned response alias reuses the canonical sidebar thread and preserves its saved title and message count.
+Successful message bodies are still retrieved from Langflow; the backend does not reconstruct them from metadata.
 Deleting a conversation revokes its canonical ID and all recorded aliases and attempts to remove every associated Langflow session.
 A deleted alias cannot be used to resume the conversation.
+Bulk deletion also removes the caller's own legacy local conversation records that have no ownership row.
+Those orphan records do not authorize upstream session deletion or bypass the ownership checks on chat requests.
+Orphan cleanup is bulk-only at the API: single-conversation delete endpoints return `404` for records without an ownership row.
 
 IDs are sent only after ownership and its conversation association have been persisted.
 In `files` mode this requires a successful file write; in `db` mode it requires a committed database write.
+File updates are serialized and persisted on a worker thread, so durable writes do not block the event loop or overwrite concurrent ownership changes.
+File writes sync both the file contents and the parent directory after atomic replacement before ownership is acknowledged.
+If directory sync fails after replacement, file-backed authorization is suspended and further file mutations require a successful reload and directory sync, preventing updates from overwriting ownership changes with stale cached data.
 In `hybrid` mode the database is preferred, with a successful durable JSON write as fallback if the database is unavailable.
 If neither configured destination can persist the claim, the stream returns an error without exposing a new response ID; an in-memory cache entry is not sufficient.
 

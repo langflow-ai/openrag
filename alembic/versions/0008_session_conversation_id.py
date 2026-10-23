@@ -23,5 +23,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_session_ownership_conversation_id", table_name="session_ownership")
-    op.drop_column("session_ownership", "conversation_id")
+    with op.batch_alter_table("session_ownership") as batch:
+        batch.drop_index("ix_session_ownership_conversation_id")
+        batch.drop_column("conversation_id")

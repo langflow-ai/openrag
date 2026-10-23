@@ -14,8 +14,10 @@ flipped from sync to ``await`` as part of this migration.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import stat
 import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -32,6 +34,10 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+class _IndeterminateOwnershipWrite(OSError):
+    """The replacement is visible, but its directory entry was not synced."""
+
+
 class SessionOwnershipService:
     """Tracks which user owns which session."""
 
@@ -39,6 +45,8 @@ class SessionOwnershipService:
         self.ownership_file = get_data_file("session_ownership.json")
         os.makedirs(os.path.dirname(self.ownership_file), exist_ok=True)
         self._session_factory = session_factory
+        self._file_lock = asyncio.Lock()
+        self._file_state_indeterminate = False
         # JSON cache — eagerly loaded so `files` and `hybrid` modes
         # behave like the legacy implementation.
         self.ownership_data: dict[str, dict[str, Any]] = self._load_ownership_data()
@@ -58,21 +66,74 @@ class SessionOwnershipService:
         return {}
 
     def _save_ownership_data(self, data: dict[str, dict[str, Any]]) -> None:
-        """Publish a complete file before changing the authorization cache."""
+        """Atomically replace and sync file + directory on the caller's worker thread."""
         temporary = None
         try:
+            try:
+                mode = stat.S_IMODE(os.stat(self.ownership_file).st_mode)
+            except FileNotFoundError:
+                mode = None
             with tempfile.NamedTemporaryFile(
                 mode="w", dir=os.path.dirname(self.ownership_file), delete=False
             ) as f:
                 temporary = f.name
+                if mode is not None:
+                    os.fchmod(f.fileno(), mode)
                 json.dump(data, f, indent=2)
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(temporary, self.ownership_file)
-            self.ownership_data = data
+            temporary = None
+            # Persist the replacement directory entry before publishing ownership.
+            try:
+                directory_fd = os.open(os.path.dirname(self.ownership_file), os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+            except OSError as exc:
+                raise _IndeterminateOwnershipWrite(str(exc)) from exc
         finally:
             if temporary is not None and os.path.exists(temporary):
                 os.unlink(temporary)
+
+    def _read_and_sync_ownership_data(self) -> dict[str, dict[str, Any]]:
+        """Strictly reload an uncertain replacement and make its name durable."""
+        with open(self.ownership_file) as f:
+            data = json.load(f)
+        directory_fd = os.open(os.path.dirname(self.ownership_file), os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+        return data
+
+    async def _reconcile_ownership_data(self) -> None:
+        """Reconcile before mutation, under ``_file_lock``; failures stay closed."""
+        if self._file_state_indeterminate:
+            data = await asyncio.to_thread(self._read_and_sync_ownership_data)
+            self.ownership_data = data
+            self._file_state_indeterminate = False
+
+    async def _persist_ownership_data(self, data: dict[str, dict[str, Any]]) -> None:
+        """Persist then publish while the caller holds ``_file_lock``."""
+        write = asyncio.create_task(asyncio.to_thread(self._save_ownership_data, data))
+        cancelled = False
+        try:
+            while not write.done():
+                try:
+                    await asyncio.shield(write)
+                except asyncio.CancelledError:
+                    # Keep the lock until the worker finishes, even on cancellation.
+                    cancelled = True
+            write.result()
+        except _IndeterminateOwnershipWrite:
+            # A failed sync cannot undo an already completed replacement.
+            self._file_state_indeterminate = True
+            raise
+        self.ownership_data = data
+        if cancelled:
+            raise asyncio.CancelledError
 
     # ------------------------------------------------------------------
     # Public async API
@@ -88,8 +149,15 @@ class SessionOwnershipService:
         An unsuccessful write never adds an authorization entry to the cache.
         """
         canonical_id = conversation_id or session_id
-        if file_writes_enabled() and self._file_claim_conflicts(user_id, session_id, canonical_id):
-            return False
+        if file_writes_enabled():
+            async with self._file_lock:
+                try:
+                    await self._reconcile_ownership_data()
+                except Exception as exc:
+                    logger.error("File ownership reconciliation failed", error=str(exc))
+                    return False
+                if self._file_claim_conflicts(user_id, session_id, canonical_id):
+                    return False
         durable = False
         if db_writes_enabled():
             try:
@@ -97,30 +165,36 @@ class SessionOwnershipService:
             except PermissionError:
                 return False
         if file_writes_enabled():
-            # Another claim may have published while the DB write was awaiting.
-            if self._file_claim_conflicts(user_id, session_id, canonical_id):
-                return False
-            now = datetime.now(UTC).isoformat()
-            existing = self.ownership_data.get(session_id, {})
-            if canonical_id != session_id and not durable:
-                canonical = self.ownership_data.get(canonical_id)
-                if not canonical or canonical.get("user_id") != user_id:
+            async with self._file_lock:
+                try:
+                    await self._reconcile_ownership_data()
+                except Exception as exc:
+                    logger.error("File ownership reconciliation failed", error=str(exc))
+                    return durable
+                # Recheck after DB work and after any pending file publication.
+                if self._file_claim_conflicts(user_id, session_id, canonical_id):
                     return False
-            updated = {
-                **self.ownership_data,
-                session_id: {
-                    **existing,
-                    "user_id": user_id,
-                    "conversation_id": canonical_id,
-                    "created_at": existing.get("created_at", now),
-                    "last_accessed": now,
-                },
-            }
-            try:
-                self._save_ownership_data(updated)
-                durable = True
-            except Exception as exc:  # noqa: BLE001
-                logger.error("File claim_session failed", error=str(exc))
+                now = datetime.now(UTC).isoformat()
+                existing = self.ownership_data.get(session_id, {})
+                if canonical_id != session_id and not durable:
+                    canonical = self.ownership_data.get(canonical_id)
+                    if not canonical or canonical.get("user_id") != user_id:
+                        return False
+                updated = {
+                    **self.ownership_data,
+                    session_id: {
+                        **existing,
+                        "user_id": user_id,
+                        "conversation_id": canonical_id,
+                        "created_at": existing.get("created_at", now),
+                        "last_accessed": now,
+                    },
+                }
+                try:
+                    await self._persist_ownership_data(updated)
+                    durable = True
+                except Exception as exc:  # noqa: BLE001
+                    logger.error("File claim_session failed", error=str(exc))
         return durable
 
     async def get_session_owner(self, session_id: str) -> str | None:
@@ -132,6 +206,8 @@ class SessionOwnershipService:
             if mode == "db":
                 return None
         # files or hybrid-with-no-db-row → fall back to JSON
+        if self._file_state_indeterminate:
+            return None
         data = self.ownership_data.get(session_id)
         return data.get("user_id") if data else None
 
@@ -143,10 +219,14 @@ class SessionOwnershipService:
                 return db_sessions
             # hybrid: union with JSON-only entries
             json_sessions = [
-                sid for sid, data in self.ownership_data.items() if data.get("user_id") == user_id
+                sid
+                for sid, data in self.ownership_data.items()
+                if not self._file_state_indeterminate and data.get("user_id") == user_id
             ]
             return list(dict.fromkeys(db_sessions + json_sessions))
         # files mode
+        if self._file_state_indeterminate:
+            return []
         return [sid for sid, data in self.ownership_data.items() if data.get("user_id") == user_id]
 
     async def is_session_owned_by_user(self, session_id: str, user_id: str) -> bool:
@@ -163,6 +243,8 @@ class SessionOwnershipService:
         durable aliases authorized while reporting successful removal.
         """
         mode = get_storage_mode()
+        if mode != "db" and self._file_state_indeterminate:
+            raise RuntimeError("File ownership state requires reconciliation")
         files = self.ownership_data if mode != "db" else {}
         data = files.get(session_id, {})
         canonical_id = (
@@ -222,11 +304,13 @@ class SessionOwnershipService:
         hybrid groups can contain JSON-only aliases absent from a DB rollback.
         """
         if file_writes_enabled():
-            updated = dict(self.ownership_data)
-            for session_id in session_ids:
-                if updated.get(session_id, {}).get("user_id") == user_id:
-                    del updated[session_id]
-            self._save_ownership_data(updated)
+            async with self._file_lock:
+                await self._reconcile_ownership_data()
+                updated = dict(self.ownership_data)
+                for session_id in session_ids:
+                    if updated.get(session_id, {}).get("user_id") == user_id:
+                        del updated[session_id]
+                await self._persist_ownership_data(updated)
         if db_writes_enabled():
             from db.repositories import SessionOwnershipRepo
 
@@ -244,16 +328,20 @@ class SessionOwnershipService:
     async def release_session(self, user_id: str, session_id: str) -> bool:
         released = False
 
-        if file_writes_enabled() and session_id in self.ownership_data:
-            if self.ownership_data[session_id].get("user_id") == user_id:
-                updated = dict(self.ownership_data)
-                del updated[session_id]
-                self._save_ownership_data(updated)
-                released = True
-            else:
-                logger.warning(
-                    f"User {user_id} tried to release session {session_id} they don't own (json)"
-                )
+        if file_writes_enabled():
+            async with self._file_lock:
+                await self._reconcile_ownership_data()
+                existing = self.ownership_data.get(session_id)
+                if existing is not None:
+                    if existing.get("user_id") == user_id:
+                        updated = dict(self.ownership_data)
+                        del updated[session_id]
+                        await self._persist_ownership_data(updated)
+                        released = True
+                    else:
+                        logger.warning(
+                            f"User {user_id} tried to release session {session_id} they don't own (json)"
+                        )
 
         if db_writes_enabled():
             db_released = await self._db_release(session_id, user_id)
@@ -319,7 +407,7 @@ class SessionOwnershipService:
             existing
             and (
                 existing.get("user_id") != user_id
-                or (existing.get("conversation_id") or canonical_id) != canonical_id
+                or (existing.get("conversation_id") or session_id) != canonical_id
             )
             or canonical
             and canonical.get("user_id") != user_id
@@ -350,10 +438,10 @@ class SessionOwnershipService:
             return True
         except PermissionError:
             raise
-        except IntegrityError as exc:
-            # A competing insert may now own the ID. Never turn a uniqueness
-            # conflict into permission to publish a JSON fallback for this user.
-            raise PermissionError("Concurrent session ownership conflict") from exc
+        except IntegrityError:
+            # The repository recovers only a confirmed, compatible INSERT
+            # winner. Any other integrity failure must not authorize fallback.
+            raise
         except Exception as exc:  # noqa: BLE001
             logger.error("DB claim_session failed", error=str(exc))
             return False
