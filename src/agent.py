@@ -931,14 +931,21 @@ async def async_langflow_chat_stream(
                 persisted_metadata = await conversation_persistence.get_conversation_thread(
                     user_id, thread_id
                 )
+    from datetime import datetime
+
     conversation_state = get_conversation_thread(user_id, thread_id)
     if persisted_metadata:
         conversation_state["_persisted_metadata"] = persisted_metadata
-        conversation_state["created_at"] = persisted_metadata.get("created_at")
+        restored_created_at = persisted_metadata.get("created_at")
+        if isinstance(restored_created_at, str):
+            try:
+                restored_created_at = datetime.fromisoformat(restored_created_at)
+            except ValueError:
+                restored_created_at = None
+        if isinstance(restored_created_at, datetime):
+            conversation_state["created_at"] = restored_created_at
         conversation_state["filter_id"] = persisted_metadata.get("filter_id")
         conversation_state["response_ids"] = list(owned_session_ids)
-
-    from datetime import datetime
 
     conversation_state["messages"].append(
         {"role": "user", "content": prompt, "timestamp": datetime.now()}

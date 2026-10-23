@@ -36,9 +36,12 @@ class SessionOwnershipRepo:
                 created_at=now,
                 last_accessed=now,
             )
-            self.session.add(row)
             try:
-                await self.session.flush()
+                # begin_nested flushes pending caller work before establishing
+                # its savepoint, so add only this claim inside the savepoint.
+                async with self.session.begin_nested():
+                    self.session.add(row)
+                    await self.session.flush()
             except IntegrityError as exc:
                 # Only primary-key/unique violations can be an INSERT race.
                 # Never hide another constraint failure behind a matching row.
@@ -48,14 +51,17 @@ class SessionOwnershipRepo:
                     != "SQLITE_CONSTRAINT_PRIMARYKEY"
                 ):
                     raise
-                # A failed flush leaves the transaction unusable. Roll it back
-                # before reading the committed winner of an INSERT race.
-                await self.session.rollback()
-                existing = await self.get(response_id)
+                # The savepoint has rolled back only this insert; preserve the
+                # caller's transaction while reading the winning claim afresh.
+                existing = await self.session.get(
+                    SessionOwnership, response_id, populate_existing=True
+                )
                 if existing is None:
                     raise
                 if canonical_id != response_id:
-                    canonical = await self.get(canonical_id)
+                    canonical = await self.session.get(
+                        SessionOwnership, canonical_id, populate_existing=True
+                    )
                     if canonical is None or canonical.user_id != user_id:
                         raise PermissionError("Conversation is not owned by this user") from None
             else:

@@ -688,11 +688,12 @@ class ChatService:
                     if first_user_msg
                     else "New chat"
                 )
+                persisted_metadata = conversation_state.get("_persisted_metadata", {})
 
                 conversations.append(
                     {
                         "response_id": response_id,
-                        "title": title,
+                        "title": persisted_metadata.get("title") or title,
                         "endpoint": "chat",
                         "messages": messages,
                         "created_at": conversation_state.get("created_at").isoformat()
@@ -703,7 +704,8 @@ class ChatService:
                         else None,
                         "previous_response_id": conversation_state.get("previous_response_id"),
                         "filter_id": conversation_state.get("filter_id"),
-                        "total_messages": len(messages),
+                        "total_messages": (persisted_metadata.get("total_messages") or 0)
+                        + len(messages),
                         "source": "in_memory",
                     }
                 )

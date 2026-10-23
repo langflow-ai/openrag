@@ -460,6 +460,46 @@ async def test_failed_file_mutation_preserves_durable_ownership(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("sync_fails", [False, True])
+async def test_file_claim_waits_for_directory_durability_before_publishing(
+    monkeypatch, tmp_data_dir, sync_fails
+):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
+    svc = _svc(None)
+    entered = threading.Event()
+    finish = threading.Event()
+    directory_fds = []
+    original_fsync = os.fsync
+
+    def pause_directory_fsync(fd):
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            directory_fds.append(fd)
+            entered.set()
+            assert finish.wait(timeout=2), "directory sync blocked the event loop"
+            if sync_fails:
+                raise OSError("directory sync unavailable")
+        original_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", pause_directory_fsync)
+    claim = asyncio.create_task(svc.claim_session("alice", "canonical"))
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        # Replacement alone is not a durable claim and must not authorize it.
+        assert json.loads(tmp_data_dir.read_text())["canonical"]["user_id"] == "alice"
+        assert not claim.done()
+        assert await svc.get_session_owner("canonical") is None
+    finally:
+        finish.set()
+        result = await claim
+    assert result is not sync_fails
+    assert await svc.get_session_owner("canonical") == (None if sync_fails else "alice")
+    assert len(directory_fds) == 1
+    with pytest.raises(OSError):
+        os.fstat(directory_fds[0])
+    assert list(tmp_data_dir.parent.iterdir()) == [tmp_data_dir]
+
+
+@pytest.mark.asyncio
 async def test_atomic_file_replacement_preserves_existing_permissions(monkeypatch, tmp_data_dir):
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
     svc = _svc(None)

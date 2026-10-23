@@ -61,7 +61,7 @@ class SessionOwnershipService:
         return {}
 
     def _save_ownership_data(self, data: dict[str, dict[str, Any]]) -> None:
-        """Write atomically on a worker thread; the caller publishes the cache."""
+        """Atomically replace and sync file + directory on the caller's worker thread."""
         temporary = None
         try:
             try:
@@ -78,6 +78,13 @@ class SessionOwnershipService:
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(temporary, self.ownership_file)
+            temporary = None
+            # Persist the replacement directory entry before publishing ownership.
+            directory_fd = os.open(os.path.dirname(self.ownership_file), os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
         finally:
             if temporary is not None and os.path.exists(temporary):
                 os.unlink(temporary)

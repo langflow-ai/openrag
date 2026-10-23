@@ -719,6 +719,11 @@ async def test_restart_alias_only_continuation_keeps_durable_canonical(
     assert after_restart["created_at"] == before_restart["created_at"]
     assert after_restart["filter_id"] == "knowledge-filter"
     assert after_restart["total_messages"] == 6
+    history = await ChatService().get_chat_history("alice")
+    restored = next(c for c in history["conversations"] if c["response_id"] == "canonical")
+    assert restored["created_at"] == before_restart["created_at"]
+    assert restored["title"] == "First question"
+    assert restored["total_messages"] == 6
     fresh = SessionOwnershipService(session_factory=factory)
     assert set(await fresh.get_conversation_sessions("alice", "after-restart")) == {
         "canonical",
@@ -726,3 +731,35 @@ async def test_restart_alias_only_continuation_keeps_durable_canonical(
         "after-restart",
     }
     assert set(agent_module.active_conversations["alice"]) == {"canonical"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("durable_stream_stores", ["files"], indirect=True)
+@pytest.mark.parametrize("created_at", [None, "not-a-date", 123])
+async def test_restart_invalid_creation_time_keeps_default(
+    monkeypatch, durable_stream_stores, created_at
+):
+    ownership, persistence, _ = durable_stream_stores
+    await ownership.claim_session("alice", "canonical")
+    await ownership.claim_session("alice", "alias", conversation_id="canonical")
+    await persistence.store_conversation_thread(
+        "alice",
+        "canonical",
+        {"title": "Saved title", "created_at": created_at, "total_messages": 4},
+    )
+
+    async def upstream(*_args, **_kwargs):
+        yield b'{"id":"next","delta":{"content":"Answer"}}\n'
+
+    monkeypatch.setattr(agent_module, "async_stream", upstream)
+    started = datetime.now()
+    await _collect_error_chunks(
+        agent_module.async_langflow_chat_stream(
+            object(), "flow", "Follow-up", "alice", previous_response_id="alias"
+        )
+    )
+    history = await ChatService().get_chat_history("alice")
+    restored = next(c for c in history["conversations"] if c["response_id"] == "canonical")
+    assert started <= datetime.fromisoformat(restored["created_at"]) <= datetime.now()
+    assert restored["title"] == "Saved title"
+    assert restored["total_messages"] == 6
