@@ -81,7 +81,7 @@ export function UserNav() {
       <button
         type="button"
         onClick={login}
-        className="flex items-center gap-2 h-7 px-3 mr-2 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-[13px] line-height-[16px]"
+        className="flex items-center gap-2 h-7 px-3 mr-2 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-mmd line-height-[16px]"
       >
         Sign In
       </button>

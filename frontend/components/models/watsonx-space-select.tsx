@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/popover";
 import { apiClient } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import { WATSONX_TLS_DISABLED_VALUES } from "./watsonx-tls-settings";
+import { isTlsVerificationDisabled } from "./tls-verification";
 
 interface WatsonxSpace {
   id: string;
@@ -98,8 +98,7 @@ export function WatsonxSpaceSelect({
   const apiKey = credentials.api_key ?? "";
   const zenApiKey = credentials.zen_api_key ?? "";
   const sslVerify = credentials.ssl_verify ?? "";
-  const tlsVerificationEnabled =
-    WATSONX_TLS_DISABLED_VALUES[sslVerify.trim().toLowerCase()] !== true;
+  const tlsVerificationEnabled = !isTlsVerificationDisabled(sslVerify);
   const ready =
     Boolean(apiBase) &&
     (authMethod === "zen_api_key"
@@ -118,15 +117,21 @@ export function WatsonxSpaceSelect({
 
     const timeout = window.setTimeout(async () => {
       try {
-        const submittedCredentials = Object.fromEntries(
-          Object.entries({
-            api_base: apiBase,
-            username,
-            api_key: apiKey,
-            zen_api_key: zenApiKey,
-            ssl_verify: sslVerify,
-          }).filter(([, credentialValue]) => credentialValue !== ""),
-        );
+        // A blank ssl_verify still goes out: if one was saved, the operator
+        // cleared it (Submit removes it), and the backend must not list spaces
+        // with the saved CA — or the saved key. Blank secrets mean "keep the
+        // saved one" and are left out as before.
+        const submittedCredentials = {
+          ...Object.fromEntries(
+            Object.entries({
+              api_base: apiBase,
+              username,
+              api_key: apiKey,
+              zen_api_key: zenApiKey,
+            }).filter(([, credentialValue]) => credentialValue !== ""),
+          ),
+          ssl_verify: sslVerify,
+        };
         const response = await apiClient.post(
           "/models/watsonx_onprem/spaces",
           {
@@ -214,7 +219,7 @@ export function WatsonxSpaceSelect({
                 <ChevronsUpDown className="opacity-50" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+            <PopoverContent className="w-(--radix-popover-trigger-width) p-0">
               <Command>
                 <CommandInput
                   placeholder="Search or enter a deployment space ID…"

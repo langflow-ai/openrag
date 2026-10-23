@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Literal
 
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
+from observability.spans import trace_root, trace_span
 from session_manager import AnonymousUser
 from utils.document_processing import (
     extract_relevant,
@@ -33,6 +34,32 @@ DOCLING_PARSER_LABEL = "Docling Serve 1.20.0"
 TEXT_PARSER_LABEL = "Text Parser"
 
 DUPLICATE_FILENAME_WARNING = "A file with this name already exists."
+
+
+def _docling_counts(doc: Any) -> dict[str, int]:
+    """What Docling produced, for the parse span: element counts, never text."""
+    if not isinstance(doc, dict):
+        return {}
+    return {key: len(doc.get(key) or ()) for key in ("pages", "texts", "tables", "pictures")}
+
+
+def _chunk_type_counts(chunks: list[dict]) -> dict[str, int]:
+    """Chunk count, and per type (text/table/picture) where non-zero."""
+    counts: dict[str, int] = {"chunks": len(chunks)}
+    for chunk in chunks:
+        key = f"chunks_{chunk.get('type') or 'unknown'}"
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _prompt_tokens(response: Any) -> int:
+    """Input tokens an embedding response reports, or 0."""
+    usage = response.get("usage") if isinstance(response, dict) else None
+    if not isinstance(usage, dict):
+        return 0
+    tokens = usage.get("prompt_tokens") or usage.get("total_tokens") or 0
+    return tokens if isinstance(tokens, int) else 0
+
 
 # Both outcomes finish the file the same way — SKIPPED, counted successful,
 # duplicate warning — but only "skip" means a document with this name is
@@ -570,242 +597,317 @@ class TaskProcessor:
         if chunk_overlap is None:
             chunk_overlap = config.knowledge.chunk_overlap
 
-        # Get user's OpenSearch client with JWT for OIDC auth
-        opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
-            owner_user_id, jwt_token
-        )
-
         stable_document_id = document_id or file_hash
-        # URL sources perform their own normalized-content dedupe. Replacements
-        # retain a stable document id while clearing obsolete chunks below.
-        if not replace_existing and await self.check_document_exists(
-            stable_document_id, opensearch_client
-        ):
-            return {"status": "unchanged", "id": stable_document_id}
-
-        logger.info(
-            "Processing document with embedding model",
-            embedding_model=embedding_model,
-            file_hash=file_hash,
-        )
-
-        # Check if this is a .txt or .md file - use simple processing instead of docling
         file_ext = os.path.splitext(file_path)[1].lower()
 
-        if file_ext in (".txt", ".md"):
-            # Simple text file processing without docling
+        # One trace per file, with a span per stage; no-ops while tracing is off.
+        with trace_root(
+            "ingest.file",
+            user_id=owner_user_id,
+            tags=["ingest_path:openrag", f"connector:{connector_type}"],
+            attributes={
+                "document_id": stable_document_id,
+                "ingest_path": "openrag",
+                "connector_type": connector_type,
+                "embedding_model": embedding_model,
+                "embedding_provider": embedding_provider,
+                "file.extension": file_ext or None,
+                "file.size": file_size,
+                "sample_data": is_sample_data or None,
+            },
+        ) as ingest_trace:
+            ingest_trace.set_content(filename=original_filename or os.path.basename(file_path))
+
+            # Get user's OpenSearch client with JWT for OIDC auth
+            opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
+                owner_user_id, jwt_token
+            )
+
+            # URL sources own normalized-content deduplication. A page re-sync
+            # deliberately replaces chunks under its stable document ID.
+            if not replace_existing and await self.check_document_exists(
+                stable_document_id, opensearch_client
+            ):
+                ingest_trace.set(status="unchanged")
+                return {"status": "unchanged", "id": stable_document_id}
+
             logger.info(
-                "Processing as plain text file (bypassing docling)",
-                file_path=file_path,
+                "Processing document with embedding model",
+                embedding_model=embedding_model,
                 file_hash=stable_document_id,
             )
-            slim_doc = process_text_file(file_path)
-            slim_doc["parser"] = TEXT_PARSER_LABEL
-        else:
-            full_doc = await self.docling_service.convert_file(
-                file_path,
-                user_id=owner_user_id,
-                auth_header=jwt_token,
-                ocr=ocr,
-                picture_descriptions=picture_descriptions,
-            )
-            slim_doc = extract_relevant(full_doc)
-            slim_doc["parser"] = DOCLING_PARSER_LABEL
 
-        # Override filename with original_filename if provided
-        if original_filename:
-            slim_doc["filename"] = original_filename
+            # Check if this is a .txt or .md file - use simple processing instead of docling
+            if file_ext in (".txt", ".md"):
+                # Simple text file processing without docling
+                logger.info(
+                    "Processing as plain text file (bypassing docling)",
+                    file_path=file_path,
+                    file_hash=file_hash,
+                )
+                with trace_span("ingest.parse", parser=TEXT_PARSER_LABEL) as parse:
+                    slim_doc = process_text_file(file_path)
+                    parse.set(chunks=len(slim_doc["chunks"]))
+                slim_doc["parser"] = TEXT_PARSER_LABEL
+            else:
+                with trace_span(
+                    "ingest.parse",
+                    parser=DOCLING_PARSER_LABEL,
+                    # Unset per-request options fall back to config, as in Docling.
+                    ocr=ocr if ocr is not None else getattr(config.knowledge, "ocr", None),
+                    picture_descriptions=picture_descriptions
+                    if picture_descriptions is not None
+                    else getattr(config.knowledge, "picture_descriptions", None),
+                    table_structure=getattr(config.knowledge, "table_structure", None),
+                ) as parse:
+                    full_doc = await self.docling_service.convert_file(
+                        file_path,
+                        user_id=owner_user_id,
+                        auth_header=jwt_token,
+                        ocr=ocr,
+                        picture_descriptions=picture_descriptions,
+                    )
+                    parse.set(**_docling_counts(full_doc))
+                with trace_span("ingest.extract") as extract:
+                    slim_doc = extract_relevant(full_doc)
+                    extract.set(**_chunk_type_counts(slim_doc["chunks"]))
+                slim_doc["parser"] = DOCLING_PARSER_LABEL
+            ingest_trace.set(mimetype=slim_doc.get("mimetype"))
 
-        if chunk_size is not None:
-            try:
-                cs = int(chunk_size)
-            except (TypeError, ValueError):
-                cs = 0
-            if cs > 0:
+            # Override filename with original_filename if provided
+            if original_filename:
+                slim_doc["filename"] = original_filename
+
+            if chunk_size is not None:
                 try:
-                    co = int(chunk_overlap) if chunk_overlap is not None else 0
+                    cs = int(chunk_size)
                 except (TypeError, ValueError):
-                    co = 0
-                if co < cs:
-                    slim_doc["chunks"] = resplit_chunks_character_windows(
-                        slim_doc["chunks"], cs, max(0, co)
+                    cs = 0
+                if cs > 0:
+                    try:
+                        co = int(chunk_overlap) if chunk_overlap is not None else 0
+                    except (TypeError, ValueError):
+                        co = 0
+                    if co < cs:
+                        with trace_span(
+                            "ingest.resplit",
+                            chunk_size=cs,
+                            chunk_overlap=max(0, co),
+                            chunks_in=len(slim_doc["chunks"]),
+                        ) as resplit:
+                            slim_doc["chunks"] = resplit_chunks_character_windows(
+                                slim_doc["chunks"], cs, max(0, co)
+                            )
+                            resplit.set(chunks_out=len(slim_doc["chunks"]))
+
+            litellm_embedding_model = (
+                await self.models_service.get_litellm_model_name(
+                    embedding_model,
+                    provider=embedding_provider,
+                )
+                if self.models_service is not None
+                else embedding_model
+            )
+
+            litellm_model_lower = litellm_embedding_model.lower() if litellm_embedding_model else ""
+            if "watsonx" in litellm_model_lower:
+                max_tokens = 500
+            elif "ollama" in litellm_model_lower:
+                max_tokens = 2000
+            else:
+                max_tokens = 8000
+
+            with trace_span(
+                "ingest.token_cap", max_tokens=max_tokens, chunks_in=len(slim_doc["chunks"])
+            ) as token_cap:
+                # Filter out chunks with empty or whitespace-only text before generating embeddings.
+                # This ensures the length of chunks matches the length of the embeddings array,
+                # since chunk_texts_for_embeddings also drops empty texts.
+                slim_doc["chunks"] = [
+                    c for c in slim_doc["chunks"] if c.get("text") and c["text"].strip()
+                ]
+                non_empty = len(slim_doc["chunks"])
+
+                # Split any chunks that exceed max_tokens before embedding, ensuring chunks and embeddings align 1-to-1.
+                slim_doc["chunks"] = split_chunks_by_max_tokens(
+                    slim_doc["chunks"], max_tokens, litellm_embedding_model
+                )
+                # Re-filter out chunks with empty or whitespace-only text that may have resulted from splitting
+                slim_doc["chunks"] = [
+                    c for c in slim_doc["chunks"] if c.get("text") and c["text"].strip()
+                ]
+                token_cap.set(non_empty=non_empty, chunks_out=len(slim_doc["chunks"]))
+            texts = [c["text"] for c in slim_doc["chunks"]]
+
+            text_batches = chunk_texts_for_embeddings(texts, max_tokens=max_tokens)
+            embeddings = []
+            # Every provider goes through the gateway, not just the aliased ones.
+            # The gateway resolves credentials per call from config; the direct
+            # client resolved them from process-global environment written once per
+            # process, which is never unset when a provider is deconfigured and is
+            # shared by every provider in the process. Gating on "is this provider
+            # aliased?" also meant the correctness of ingestion depended on an
+            # unrelated routing detail.
+            from services.llm_gateway import embeddings as gateway_embeddings
+            from services.llm_gateway import qualified_model_id
+
+            gateway_model = qualified_model_id(embedding_provider, embedding_model)
+
+            with trace_span("ingest.embed", batches=len(text_batches), inputs=len(texts)) as embed:
+                prompt_tokens = 0
+                for batch in text_batches:
+                    response = await gateway_embeddings({"model": gateway_model, "input": batch})
+                    data = response.get("data", [])
+                    embeddings.extend(
+                        [
+                            item["embedding"] if isinstance(item, dict) else item.embedding
+                            for item in data
+                        ]
+                    )
+                    prompt_tokens += _prompt_tokens(response)
+                embed.set(
+                    vectors=len(embeddings),
+                    dimensions=len(embeddings[0]) if embeddings else None,
+                    prompt_tokens=prompt_tokens or None,
+                )
+
+            if not embeddings or len(embeddings) == 0:
+                logger.error(
+                    "No embeddings generated — document may be empty or unreadable",
+                    file_hash=file_hash,
+                    embedding_model=embedding_model,
+                )
+                ingest_trace.fail("NoEmbeddings")
+                return {
+                    "status": "error",
+                    "error": "No text content could be extracted from document",
+                }
+
+            from services.document_index_writer import (
+                DocumentIndexChunk,
+                DocumentIndexContext,
+                DocumentIndexWriter,
+            )
+
+            document_index_writer = getattr(self.document_service, "document_index_writer", None)
+            if document_index_writer is None:
+                document_index_writer = DocumentIndexWriter()
+
+            # Owner is always the authenticated uploading/syncing user unless shared=True,
+            # in which case owner fields are omitted so DLS makes the doc visible to all users.
+            owner, owner_name, owner_email = resolve_shared_owner_fields(
+                owner_user_id, owner_name, owner_email, shared
+            )
+            if acl:
+                allowed_users = acl.allowed_users or []
+                allowed_groups = acl.allowed_groups or []
+                allowed_principals = acl.allowed_principals or []
+                allowed_principal_labels = acl.allowed_principal_labels or []
+            else:
+                allowed_users = []
+                allowed_groups = []
+                allowed_principals = []
+                allowed_principal_labels = []
+
+            filename = original_filename if original_filename else slim_doc["filename"]
+            index_context = DocumentIndexContext(
+                document_id=stable_document_id,
+                filename=filename,
+                mimetype=slim_doc["mimetype"],
+                embedding_model=embedding_model,
+                embedding_provider=embedding_provider,
+                owner=owner,
+                owner_name=owner_name,
+                owner_email=owner_email,
+                file_size=file_size,
+                connector_type=connector_type,
+                source_url=source_url,
+                record_kind="web_page" if web_source_id else None,
+                web_source_id=web_source_id,
+                web_page_id=web_page_id,
+                web_page_depth=web_page_depth,
+                root_source_url=root_source_url,
+                canonical_url=canonical_url,
+                allowed_users=allowed_users,
+                allowed_groups=allowed_groups,
+                allowed_principals=allowed_principals,
+                allowed_principal_labels=allowed_principal_labels,
+                is_sample_data=is_sample_data,
+            )
+            parser_name = slim_doc.get("parser")
+            if not parser_name:
+                if file_ext in (".txt", ".md"):
+                    parser_name = TEXT_PARSER_LABEL
+                else:
+                    parser_name = DOCLING_PARSER_LABEL
+
+            chunk_metadata = {"parser": parser_name}
+            if chunk_size is not None:
+                chunk_metadata["chunk_size"] = chunk_size
+            if chunk_overlap is not None:
+                chunk_metadata["chunk_overlap"] = chunk_overlap
+            if connector_file_id:
+                chunk_metadata["connector_file_id"] = connector_file_id
+
+            index_chunks = [
+                DocumentIndexChunk(
+                    chunk_id=f"{stable_document_id}_{i}",
+                    text=chunk["text"],
+                    vector=vect,
+                    page=chunk["page"],
+                    metadata=chunk_metadata,
+                )
+                for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings, strict=True))
+            ]
+
+            with trace_span("ingest.index") as index:
+                # Clear stale chunks from a prior indexing of this document. Chunks are
+                # stored under ids {file_hash}_{i}; if the new chunk count is lower
+                # than the prior one, trailing chunks would otherwise survive the
+                # writer's idempotent upsert.
+                # DLS-safe: enumerate visible chunk ids with the scoped user client,
+                # then delete concrete ids with the trusted backend client.
+                try:
+                    if before_index_write is not None:
+                        await before_index_write()
+                    from utils.opensearch_delete import (
+                        collect_visible_document_ids,
+                        delete_document_ids,
                     )
 
-        # Filter out chunks with empty or whitespace-only text before generating embeddings.
-        # This ensures the length of chunks matches the length of the embeddings array,
-        # since chunk_texts_for_embeddings also drops empty texts.
-        slim_doc["chunks"] = [c for c in slim_doc["chunks"] if c.get("text") and c["text"].strip()]
+                    write_client = clients.opensearch
+                    if write_client is None:
+                        raise RuntimeError("Backend OpenSearch write client is unavailable")
 
-        litellm_embedding_model = (
-            await self.models_service.get_litellm_model_name(
-                embedding_model,
-                provider=embedding_provider,
-            )
-            if self.models_service is not None
-            else embedding_model
-        )
+                    stale_chunk_ids = await collect_visible_document_ids(
+                        opensearch_client,
+                        index=get_index_name(),
+                        query={"term": {"document_id": stable_document_id}},
+                    )
+                    await delete_document_ids(
+                        write_client,
+                        index=get_index_name(),
+                        document_ids=stale_chunk_ids,
+                        refresh=True,
+                    )
+                    index.set(stale_chunks_deleted=len(stale_chunk_ids))
+                except Exception as e:
+                    logger.warning(
+                        "Failed to clear stale chunks before re-index; proceeding",
+                        file_hash=stable_document_id,
+                        error=str(e),
+                    )
+                    index.set(stale_cleanup_failed=True)
 
-        litellm_model_lower = litellm_embedding_model.lower() if litellm_embedding_model else ""
-        if "watsonx" in litellm_model_lower:
-            max_tokens = 500
-        elif "ollama" in litellm_model_lower:
-            max_tokens = 2000
-        else:
-            max_tokens = 8000
+                await document_index_writer.index_chunks(index_context, index_chunks, final=True)
+                index.set(chunks_indexed=len(index_chunks))
 
-        # Split any chunks that exceed max_tokens before embedding, ensuring chunks and embeddings align 1-to-1.
-        slim_doc["chunks"] = split_chunks_by_max_tokens(
-            slim_doc["chunks"], max_tokens, litellm_embedding_model
-        )
-        # Re-filter out chunks with empty or whitespace-only text that may have resulted from splitting
-        slim_doc["chunks"] = [c for c in slim_doc["chunks"] if c.get("text") and c["text"].strip()]
-        texts = [c["text"] for c in slim_doc["chunks"]]
-
-        text_batches = chunk_texts_for_embeddings(texts, max_tokens=max_tokens)
-        embeddings = []
-        # Every provider goes through the gateway, not just the aliased ones.
-        # The gateway resolves credentials per call from config; the direct
-        # client resolved them from process-global environment written once per
-        # process, which is never unset when a provider is deconfigured and is
-        # shared by every provider in the process. Gating on "is this provider
-        # aliased?" also meant the correctness of ingestion depended on an
-        # unrelated routing detail.
-        from services.llm_gateway import embeddings as gateway_embeddings
-        from services.llm_gateway import qualified_model_id
-
-        gateway_model = qualified_model_id(embedding_provider, embedding_model)
-
-        for batch in text_batches:
-            response = await gateway_embeddings({"model": gateway_model, "input": batch})
-            data = response.get("data", [])
-            embeddings.extend(
-                [item["embedding"] if isinstance(item, dict) else item.embedding for item in data]
-            )
-
-        if not embeddings or len(embeddings) == 0:
-            logger.error(
-                "No embeddings generated — document may be empty or unreadable",
-                file_hash=file_hash,
-                embedding_model=embedding_model,
-            )
-            return {"status": "error", "error": "No text content could be extracted from document"}
-
-        from services.document_index_writer import (
-            DocumentIndexChunk,
-            DocumentIndexContext,
-            DocumentIndexWriter,
-        )
-
-        document_index_writer = getattr(self.document_service, "document_index_writer", None)
-        if document_index_writer is None:
-            document_index_writer = DocumentIndexWriter()
-
-        # Clear stale chunks from a prior indexing of this document. Chunks are
-        # stored under ids {file_hash}_{i}; if the new chunk count is lower
-        # than the prior one, trailing chunks would otherwise survive the
-        # writer's idempotent upsert.
-        # DLS-safe: enumerate visible chunk ids with the scoped user client,
-        # then delete concrete ids with the trusted backend client.
-        try:
-            if before_index_write is not None:
-                await before_index_write()
-            from utils.opensearch_delete import (
-                collect_visible_document_ids,
-                delete_document_ids,
-            )
-
-            write_client = clients.opensearch
-            if write_client is None:
-                raise RuntimeError("Backend OpenSearch write client is unavailable")
-
-            stale_chunk_ids = await collect_visible_document_ids(
-                opensearch_client,
-                index=get_index_name(),
-                query={"term": {"document_id": stable_document_id}},
-            )
-            await delete_document_ids(
-                write_client,
-                index=get_index_name(),
-                document_ids=stale_chunk_ids,
-                refresh=True,
-            )
-        except Exception as e:
-            logger.warning(
-                "Failed to clear stale chunks before re-index; proceeding",
-                file_hash=stable_document_id,
-                error=str(e),
-            )
-
-        # Owner is always the authenticated uploading/syncing user unless shared=True,
-        # in which case owner fields are omitted so DLS makes the doc visible to all users.
-        owner, owner_name, owner_email = resolve_shared_owner_fields(
-            owner_user_id, owner_name, owner_email, shared
-        )
-        if acl:
-            allowed_users = acl.allowed_users or []
-            allowed_groups = acl.allowed_groups or []
-            allowed_principals = acl.allowed_principals or []
-            allowed_principal_labels = acl.allowed_principal_labels or []
-        else:
-            allowed_users = []
-            allowed_groups = []
-            allowed_principals = []
-            allowed_principal_labels = []
-
-        filename = original_filename if original_filename else slim_doc["filename"]
-        index_context = DocumentIndexContext(
-            document_id=stable_document_id,
-            filename=filename,
-            mimetype=slim_doc["mimetype"],
-            embedding_model=embedding_model,
-            embedding_provider=embedding_provider,
-            owner=owner,
-            owner_name=owner_name,
-            owner_email=owner_email,
-            file_size=file_size,
-            connector_type=connector_type,
-            source_url=source_url,
-            record_kind="web_page" if web_source_id else None,
-            web_source_id=web_source_id,
-            web_page_id=web_page_id,
-            web_page_depth=web_page_depth,
-            root_source_url=root_source_url,
-            canonical_url=canonical_url,
-            allowed_users=allowed_users,
-            allowed_groups=allowed_groups,
-            allowed_principals=allowed_principals,
-            allowed_principal_labels=allowed_principal_labels,
-            is_sample_data=is_sample_data,
-        )
-        parser_name = slim_doc.get("parser")
-        if not parser_name:
-            if file_ext in (".txt", ".md"):
-                parser_name = TEXT_PARSER_LABEL
-            else:
-                parser_name = DOCLING_PARSER_LABEL
-
-        chunk_metadata = {"parser": parser_name}
-        if chunk_size is not None:
-            chunk_metadata["chunk_size"] = chunk_size
-        if chunk_overlap is not None:
-            chunk_metadata["chunk_overlap"] = chunk_overlap
-        if connector_file_id:
-            chunk_metadata["connector_file_id"] = connector_file_id
-
-        index_chunks = [
-            DocumentIndexChunk(
-                chunk_id=f"{stable_document_id}_{i}",
-                text=chunk["text"],
-                vector=vect,
-                page=chunk["page"],
-                metadata=chunk_metadata,
-            )
-            for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings, strict=True))
-        ]
-        if before_index_write is not None:
-            await before_index_write()
-        await document_index_writer.index_chunks(index_context, index_chunks, final=True)
-        return {"status": "indexed", "id": stable_document_id, "chunk_count": len(index_chunks)}
+            ingest_trace.set(status="indexed", chunks=len(index_chunks))
+            return {
+                "status": "indexed",
+                "id": stable_document_id,
+                "chunk_count": len(index_chunks),
+            }
 
     async def process_item(self, upload_task: UploadTask, item: Any, file_task: FileTask) -> None:
         """

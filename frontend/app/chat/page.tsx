@@ -28,7 +28,7 @@ import {
   handleInputKeyDown,
   type ImeCompositionState,
 } from "@/lib/ime-composition";
-import { uploadFileForContext } from "@/lib/upload-utils";
+import { uploadFailureText, uploadFileForContext } from "@/lib/upload-utils";
 import { resolveDisplayName } from "@/lib/user";
 import { cn } from "@/lib/utils";
 import { useGetConversationsQuery } from "../api/queries/useGetConversationsQuery";
@@ -343,11 +343,12 @@ function ChatPage() {
       setChatError(true);
       const errorMessage: Message = {
         role: "assistant",
-        content: `❌ Failed to process document. Please try again.`,
+        content: `❌ ${uploadFailureText(error)}`,
         timestamp: new Date(),
         error: true,
       };
       setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
+      return { type: "failed" as const };
     } finally {
       setIsUploading(false);
       setLoading(false);
@@ -863,6 +864,14 @@ function ChatPage() {
       const uploadResult = await handleFileUpload(uploadedFile);
       setUploadedFile(null);
 
+      if (
+        uploadResult &&
+        typeof uploadResult === "object" &&
+        uploadResult.type === "failed"
+      ) {
+        return;
+      }
+
       if (uploadResult && typeof uploadResult === "object") {
         // File is being processed asynchronously — don't send the message yet.
         // The user can submit again once the task completes.
@@ -1237,7 +1246,7 @@ export default function ProtectedChatPage() {
           "flex w-full h-full overflow-hidden",
           isCloudBrand && "ibm-chat-page",
           isCloudBrand &&
-            "bg-[var(--chat-surface-bg)] [background-image:linear-gradient(0deg,var(--chat-surface-gradient),transparent_280px)]",
+            "bg-(--chat-surface-bg) bg-[linear-gradient(0deg,var(--chat-surface-gradient),transparent_280px)]",
         )}
       >
         <StickToBottom

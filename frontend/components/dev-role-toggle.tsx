@@ -93,7 +93,7 @@ export function DevRoleToggle() {
           key={role.value}
           type="button"
           disabled={mutation.isPending}
-          className={`px-2 h-6 rounded-full text-[11px] font-medium transition-colors disabled:opacity-50 ${
+          className={`px-2 h-6 rounded-full text-xxs font-medium transition-colors disabled:opacity-50 ${
             currentRole === role.value
               ? "bg-blue-600 text-white"
               : "text-foreground hover:bg-blue-600 hover:text-white"

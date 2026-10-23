@@ -35,6 +35,7 @@ from config.model_providers import ProviderEntry, visible_provider_entries
 from enhancements.providers.registry import (
     credential_field_overrides,
     litellm_route_for,
+    model_discovery_for,
     route_aliases,
 )
 from enhancements.providers.registry import (
@@ -95,7 +96,9 @@ GENERIC_CREDENTIAL_FIELDS: list[dict[str, Any]] = [
     },
 ]
 
-KNOWN_FIELD_TYPES = frozenset({"text", "password", "select", "textarea", "upload"})
+#: `tls_verify` is a provider's `ssl_verify`: rendered as a "verify" switch plus
+#: an optional CA bundle path, stored as one string.
+KNOWN_FIELD_TYPES = frozenset({"text", "password", "select", "textarea", "upload", "tls_verify"})
 
 #: OpenRAG provider keys LiteLLM cannot route under their own name, mapped to
 #: the key it routes them as. A row here is for a deployment shape that needs
@@ -240,10 +243,11 @@ def _model_entry(name: str, info: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
-def _excluded(name: str, patterns: tuple[str, ...]) -> bool:
-    """Whether a model id is one the config file keeps out of the pickers.
+def _matches(name: str, patterns: tuple[str, ...]) -> bool:
+    """Whether a model id matches a config pattern list.
 
-    Matched on the id as the picker shows it — `gpt-3.5-turbo`, not
+    Used for `exclude_models` (ids kept out of the pickers) and `vision_models`
+    (ids tagged as accepting images). Matched on the id as the picker shows it — `gpt-3.5-turbo`, not
     `openai/gpt-3.5-turbo` — because that is the name an operator reads off the
     screen when deciding what to suppress. `*` and `?` work, so a whole
     generation goes in one line.
@@ -268,6 +272,40 @@ def _declared_entries(names: tuple[str, ...], mode: str) -> list[dict[str, Any]]
     and the mode are known here — no pricing, no capability flags.
     """
     return [{"model": name, "mode": mode} for name in names]
+
+
+def _with_vision(entry: dict[str, Any]) -> dict[str, Any]:
+    """`entry` with the `vision` capability, for a config `vision_models:` match.
+
+    LiteLLM's table lags the providers: watsonx.ai serves Llama 4 Maverick and
+    Mistral Small 3.1 with image input, but the table flags neither, while
+    every watsonx id it does flag has been withdrawn.
+    """
+    capabilities = entry.get("capabilities") or []
+    if "vision" in capabilities:
+        return entry
+    return {**entry, "capabilities": [*capabilities, "vision"]}
+
+
+def _picker_rows(
+    rows: list[dict[str, Any]],
+    *,
+    excluded: tuple[str, ...],
+    vision: tuple[str, ...],
+    chat: bool,
+) -> list[dict[str, Any]]:
+    """Apply a provider's config to its rows: `exclude_models`, then `vision_models`.
+
+    The one place both rules live, so the catalogue and draft discovery cannot
+    disagree about an id. Exclusion runs first, so it wins over a `models:`
+    row, a live listing and a `vision_models` match alike — a deployment that
+    suppresses an id means it, wherever the id came from. Only chat rows are
+    tagged: an embedding model takes no images.
+    """
+    kept = [entry for entry in rows if not _matches(entry["model"], excluded)]
+    if not chat or not vision:
+        return kept
+    return [_with_vision(entry) if _matches(entry["model"], vision) else entry for entry in kept]
 
 
 @lru_cache(maxsize=8)
@@ -319,7 +357,7 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
         bucket.setdefault(provider, []).append(_model_entry(name, info))
 
     entries = []
-    for key, display_name, declared_chat, declared_embed, excluded in providers:
+    for key, display_name, declared_chat, declared_embed, excluded, vision in providers:
         if not is_known_provider(key):
             # The catalogue would still render, but `split_model_id` cannot
             # recognise the prefix, so every id would be billed to the default
@@ -339,10 +377,9 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
             tuple(name for name in declared_embed if name not in known_embed), EMBEDDING_MODE
         )
         # Applied last, so `exclude_models` also wins over a `models:` row —
-        # a deployment that suppresses an id means it, wherever the id came
-        # from, and the alternative is two lines that quietly contradict.
-        chat = [entry for entry in chat if not _excluded(entry["model"], excluded)]
-        embed = [entry for entry in embed if not _excluded(entry["model"], excluded)]
+        # the alternative is two lines that quietly contradict.
+        chat = _picker_rows(chat, excluded=excluded, vision=vision, chat=True)
+        embed = _picker_rows(embed, excluded=excluded, vision=vision, chat=False)
         entries.append(
             {
                 "key": key,
@@ -351,6 +388,9 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
                 "name": display_name or (specs.get(key) or {}).get("provider_display_name") or key,
                 "credential_fields": credential_fields(key),
                 "model_placeholder": (specs.get(key) or {}).get("default_model_placeholder"),
+                # Whether `POST /models/{provider}/discover` can list what this
+                # provider serves from credentials that are not saved yet.
+                "discovers_models": model_discovery_for(key) is not None,
                 "models": sorted(chat, key=lambda entry: entry["model"]),
                 "embedding_models": sorted(embed, key=lambda entry: entry["model"]),
             }
@@ -380,13 +420,46 @@ def _catalog_for(today: datetime.date, providers: tuple[ProviderEntry, ...]) -> 
     return {"providers": entries}
 
 
+def _provider_entry(provider: str) -> ProviderEntry | None:
+    """The visible `model_providers.yaml` row for `provider`, or None."""
+    key = (provider or "").strip().lower()
+    return next((entry for entry in visible_provider_entries() if entry.name == key), None)
+
+
 def exclusions_for(provider: str) -> tuple[str, ...]:
     """The `exclude_models` patterns configured for `provider`."""
-    key = (provider or "").strip().lower()
-    for entry in visible_provider_entries():
-        if entry.name == key:
-            return entry.exclude_models
-    return ()
+    entry = _provider_entry(provider)
+    return entry.exclude_models if entry is not None else ()
+
+
+def discovered_model_payload(provider: str, listed: Any) -> dict[str, Any]:
+    """Catalogue rows for what a cluster said it serves, per picker.
+
+    `listed` is an enhancement's `ClusterModels` (or None). A half is None when
+    that endpoint could not be listed — the caller keeps the catalogue's rows
+    for it — and a list otherwise. The provider's `exclude_models` and
+    `vision_models` apply exactly as they do to the catalogue (`_picker_rows`),
+    so an id reads the same before and after its credentials are saved.
+    """
+    entry = _provider_entry(provider)
+    excluded = entry.exclude_models if entry is not None else ()
+    vision = entry.vision_models if entry is not None else ()
+
+    def _rows(names: Any, mode: str) -> list[dict[str, Any]] | None:
+        if names is None:
+            return None
+        declared = _declared_entries(tuple(str(name) for name in names), mode)
+        return _picker_rows(declared, excluded=excluded, vision=vision, chat=mode != EMBEDDING_MODE)
+
+    chat = _rows(getattr(listed, "chat", None), "chat")
+    embedding = _rows(getattr(listed, "embedding", None), EMBEDDING_MODE)
+    logger.debug(
+        "Built discovered model rows",
+        provider=provider,
+        chat=None if chat is None else len(chat),
+        embedding=None if embedding is None else len(embedding),
+    )
+    return {"models": chat, "embedding_models": embedding}
 
 
 #: Keys in a live `/models/{provider}` payload that hold model lists.
@@ -413,7 +486,7 @@ def hide_excluded_live_models(provider: str, payload: Any) -> Any:
         filtered[key] = [
             model
             for model in models
-            if not _excluded(str((model or {}).get("value", "")), patterns)
+            if not _matches(str((model or {}).get("value", "")), patterns)
             if isinstance(model, dict)
         ]
     return filtered

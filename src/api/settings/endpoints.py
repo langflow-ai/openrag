@@ -65,6 +65,7 @@ from api.settings.models import (
 from config.config_manager import (
     ALLOWED_INDEX_NAME_PATTERNS,
     DEFAULT_SYSTEM_PROMPT,
+    CredentialTargetChangedError,
     is_permitted_index_name,
 )
 from config.settings import (
@@ -439,6 +440,10 @@ async def update_settings(
             for name, fields in (body.provider_credential_removals or {}).items()
         }
         provider_update_keys = set(submitted_credentials) | set(removals_by_provider)
+        auth_methods_by_provider = {
+            _provider_key(name): method
+            for name, method in (body.provider_auth_methods or {}).items()
+        }
         should_validate = any(getattr(body, field) is not None for field in provider_fields)
 
         # Docling VLM settings reuse provider credentials, so they are gated
@@ -486,11 +491,11 @@ async def update_settings(
                 for provider_key in provider_update_keys:
                     submitted = submitted_credentials.get(provider_key, {})
                     removals = removals_by_provider.get(provider_key, set())
+                    auth_method = auth_methods_by_provider.get(provider_key)
                     credentials = current_config.providers.pending_credentials(
-                        provider_key, submitted, remove=removals
+                        provider_key, submitted, remove=removals, auth_method=auth_method
                     )
                     if provider_key == "azure":
-                        auth_method = (body.provider_auth_methods or {}).get(provider_key)
                         required_by_method = {
                             "api_key": {"api_key"},
                             "entra_token": {"azure_ad_token"},
@@ -521,7 +526,7 @@ async def update_settings(
                             provider=provider_key,
                             credentials=credentials,
                             stored_credentials=current_config.providers.pending_stored_credentials(
-                                provider_key, submitted, remove=removals
+                                provider_key, submitted, remove=removals, auth_method=auth_method
                             ),
                         )
 
@@ -550,6 +555,7 @@ async def update_settings(
                         llm_provider_key,
                         submitted_credentials.get(llm_provider_key, {}),
                         remove=removals_by_provider.get(llm_provider_key, set()),
+                        auth_method=auth_methods_by_provider.get(llm_provider_key),
                     )
                     api_key = credentials.get("api_key", api_key)
                     endpoint = credentials.get("api_base", endpoint)
@@ -576,6 +582,7 @@ async def update_settings(
                             llm_provider_key,
                             submitted_credentials.get(llm_provider_key, {}),
                             remove=removals_by_provider.get(llm_provider_key, set()),
+                            auth_method=auth_methods_by_provider.get(llm_provider_key),
                         ),
                         # A model the cluster does not serve must fail the
                         # save, not the first chat.
@@ -611,6 +618,7 @@ async def update_settings(
                         submitted_credentials.get(embedding_provider_key, {}),
                         kind="embedding",
                         remove=removals_by_provider.get(embedding_provider_key, set()),
+                        auth_method=auth_methods_by_provider.get(embedding_provider_key),
                     )
                     api_key = credentials.get("api_key", api_key)
                     endpoint = credentials.get("api_base", endpoint)
@@ -637,6 +645,7 @@ async def update_settings(
                             embedding_provider_key,
                             submitted_credentials.get(embedding_provider_key, {}),
                             remove=removals_by_provider.get(embedding_provider_key, set()),
+                            auth_method=auth_methods_by_provider.get(embedding_provider_key),
                         ),
                         verify_model=True,
                     )
@@ -644,6 +653,16 @@ async def update_settings(
                         f"Embedding provider validation successful for {embedding_provider}"
                     )
 
+            except CredentialTargetChangedError as e:
+                # Raised before any probe is sent; the message names form
+                # labels only, so it is returned as-is rather than run through
+                # the provider-error humaniser.
+                logger.warning(
+                    "Settings update refused: a credential target changed without its secrets",
+                    provider=e.provider,
+                    fields=list(e.fields),
+                )
+                return JSONResponse({"error": str(e)}, status_code=400)
             except Exception as e:
                 logger.error(f"Provider validation failed: {str(e)}")
                 return JSONResponse({"error": sanitize_provider_error_content(e)}, status_code=400)
@@ -876,13 +895,15 @@ async def update_settings(
                     effective_vlm_provider
                 )
                 credentials = current_config.providers.credential_values(effective_vlm_provider)
-                api_key = getattr(vlm_provider_config, "api_key", "") or credentials.get(
-                    "api_key", ""
-                )
-                vlm_provider_missing = not api_key or not vlm_provider_config.configured
+
+                # Whether the provider is usable at all is the provider's own
+                # question, and `configured` already answers it against that
+                # provider's required fields.
+                vlm_provider_missing = not vlm_provider_config.configured
                 if effective_vlm_provider in ("azure", "azure_ai"):
-                    endpoint = credentials.get("api_base", "")
-                    vlm_provider_missing = vlm_provider_missing or not endpoint
+                    vlm_provider_missing = vlm_provider_missing or not credentials.get(
+                        "api_base", ""
+                    )
                 if effective_vlm_provider == "watsonx":
                     vlm_provider_missing = (
                         vlm_provider_missing
@@ -895,6 +916,37 @@ async def update_settings(
                             "error": (
                                 f"Cannot enable Docling VLM: provider '{effective_vlm_provider}' "
                                 "is not configured. Configure it in Settings > Providers first."
+                            )
+                        },
+                        status_code=400,
+                    )
+
+                # Separately: docling-serve calls the model endpoint itself,
+                # with headers OpenRAG builds for it, and every remote branch
+                # in `docling_service` builds an API-key header. So VLM needs a
+                # key even where the provider itself can authenticate other
+                # ways — Azure OpenAI already accepts a Microsoft Entra token
+                # or a service principal for inference.
+                #
+                # This is a limit of the VLM integration, not of the provider,
+                # and it is reported as one. Rolling it into "provider is not
+                # configured" above sent operators to re-enter credentials that
+                # were already valid, and wrote "an API key is the only way to
+                # authenticate" into a gate that has no business saying so.
+                # Entra for VLM needs token acquisition, refresh and
+                # propagation to docling-serve, and is a separate change.
+                api_key = getattr(vlm_provider_config, "api_key", "") or credentials.get(
+                    "api_key", ""
+                )
+                if not api_key:
+                    return JSONResponse(
+                        {
+                            "error": (
+                                f"Cannot enable Docling VLM: provider "
+                                f"'{effective_vlm_provider}' is configured, but image "
+                                "descriptions are sent to the document converter, which "
+                                "authenticates with an API key. Add one in "
+                                "Settings > Providers, or turn off image descriptions."
                             )
                         },
                         status_code=400,
@@ -934,11 +986,19 @@ async def update_settings(
         # Update provider-specific settings
         provider_updated = False
         for provider in provider_update_keys:
+            removals = removals_by_provider.get(provider, set())
+            auth_method = auth_methods_by_provider.get(provider)
+            logger.info(
+                "Saving provider credentials",
+                provider=provider,
+                auth_method=auth_method,
+                removed=sorted(removals),
+            )
             working_config.providers.set_credentials(
                 provider,
                 submitted_credentials.get(provider, {}),
-                auth_method=(body.provider_auth_methods or {}).get(provider),
-                remove=removals_by_provider.get(provider, set()),
+                auth_method=auth_method,
+                remove=removals,
             )
             config_updated = True
             provider_updated = True
@@ -1166,6 +1226,15 @@ async def update_settings(
         # Preserve intentional client-error status codes (e.g. 422 validation
         # failures) instead of letting the catch-all below flatten them to 500.
         raise
+    except CredentialTargetChangedError as e:
+        # Normally caught during validation; this covers a save that skipped it.
+        # The changes were staged on `working_config`, so nothing was applied.
+        logger.warning(
+            "Settings update refused: a credential target changed without its secrets",
+            provider=e.provider,
+            fields=list(e.fields),
+        )
+        return JSONResponse({"error": str(e)}, status_code=400)
     except Exception:
         logger.exception("Failed to update settings")
         await TelemetryClient.send_event(
@@ -1312,13 +1381,36 @@ async def onboarding(
             _provider_key(name): set(fields)
             for name, fields in (body.provider_credential_removals or {}).items()
         }
+        auth_methods_by_provider = {
+            _provider_key(name): method
+            for name, method in (body.provider_auth_methods or {}).items()
+        }
         for provider in set(submitted_credentials) | set(removals_by_provider):
-            current_config.providers.set_credentials(
-                provider,
-                submitted_credentials.get(provider, {}),
-                auth_method=(body.provider_auth_methods or {}).get(provider),
-                remove=removals_by_provider.get(provider, set()),
+            removals = removals_by_provider.get(provider, set())
+            auth_method = auth_methods_by_provider.get(provider)
+            logger.info(
+                "Saving provider credentials during onboarding",
+                provider=provider,
+                auth_method=auth_method,
+                removed=sorted(removals),
             )
+            try:
+                current_config.providers.set_credentials(
+                    provider,
+                    submitted_credentials.get(provider, {}),
+                    auth_method=auth_method,
+                    remove=removals,
+                )
+            except CredentialTargetChangedError as e:
+                # Refused before the validation probe below could send the
+                # stored secret to the new target; `current_config` is a copy,
+                # so nothing was applied.
+                logger.warning(
+                    "Onboarding refused: a credential target changed without its secrets",
+                    provider=e.provider,
+                    fields=list(e.fields),
+                )
+                return JSONResponse({"error": str(e)}, status_code=400)
             config_updated = True
 
         # Mark providers as configured if they were chosen during onboarding

@@ -103,7 +103,7 @@ export default function ConnectorCard({
               <CardDescription
                 className={cn(
                   "text-sm",
-                  isCloudBrand && "!text-layer-contextual-foreground",
+                  isCloudBrand && "text-layer-contextual-foreground!",
                 )}
               >
                 {isConnected
@@ -133,7 +133,7 @@ export default function ConnectorCard({
                       : "You do not have permission to add knowledge"
                   }
                   className={cn(
-                    "cursor-pointer !text-sm truncate flex-1 text-primary-foreground [&_svg]:text-primary-foreground",
+                    "cursor-pointer text-sm! truncate flex-1 text-primary-foreground [&_svg]:text-primary-foreground",
                     isCloudBrand ? "rounded-none" : "rounded-md",
                   )}
                   size="md"

@@ -4,7 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { ParsedQueryData } from "@/contexts/knowledge-filter-context";
-import { apiClient } from "@/lib/api-client";
+import { apiClient, isRequestCancelled } from "@/lib/api-client";
 import { SEARCH_CONSTANTS } from "@/lib/constants";
 import {
   buildSearchPayloadFilters,
@@ -322,7 +322,10 @@ export const useGetSearchQuery = (
 
       return { files, warnings };
     } catch (error) {
-      console.error("Error getting files", error);
+      // Cancellation is expected (not an error); still re-throw it below
+      if (!isRequestCancelled(error)) {
+        console.error("Error getting files", error);
+      }
       // Re-throw the error so React Query can handle it and trigger onError callbacks
       throw error;
     }

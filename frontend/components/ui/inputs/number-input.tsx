@@ -42,7 +42,7 @@ export const NumberInput = ({
           }
         />
         {!disabled && (
-          <div className="absolute inset-y-0 right-0 top-0 p-[1px] py-[1.5px] flex items-center ">
+          <div className="absolute inset-y-0 right-0 top-0 p-px py-[1.5px] flex items-center ">
             <span className="text-sm text-placeholder-foreground mr-4 pointer-events-none">
               {unit}
             </span>
@@ -61,7 +61,7 @@ export const NumberInput = ({
               </Button>
               <Button
                 aria-label={`Decrease ${label} value`}
-                className="h-5 rounded-l-none rounded-tr-none border-input border-b-transparent border-r-transparent hover:border-b-1 hover:border-b-[.5px] hover:border-foreground"
+                className="h-5 rounded-l-none rounded-tr-none border-input border-b-transparent border-r-transparent hover:border-b hover:border-b-[.5px] hover:border-foreground"
                 variant="outline"
                 size="iconSm"
                 onClick={() => onChange(value - 1)}

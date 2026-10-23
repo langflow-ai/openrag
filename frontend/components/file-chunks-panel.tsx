@@ -129,7 +129,7 @@ function FileChunkCard({
       {showContents ? (
         <blockquote
           className={cn(
-            "min-w-0 text-foreground leading-relaxed break-words [overflow-wrap:anywhere] whitespace-pre-wrap",
+            "min-w-0 text-foreground leading-relaxed wrap-break-word wrap-anywhere whitespace-pre-wrap",
             compact ? "text-xs" : "text-sm ml-1.5",
           )}
         >

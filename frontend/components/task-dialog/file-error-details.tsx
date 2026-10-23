@@ -49,7 +49,7 @@ export function TaskDialogFileErrorDetails({
             <div
               key={step.id}
               className={cn(
-                "grid grid-cols-[theme(spacing.4)_minmax(0,1fr)] items-start gap-x-3 gap-y-1",
+                "grid grid-cols-[--spacing(4)_minmax(0,1fr)] items-start gap-x-3 gap-y-1",
                 isFailed && (isCloudBrand ? "gap-y-2" : "gap-y-1"),
               )}
             >
@@ -94,7 +94,7 @@ export function TaskDialogFileErrorDetails({
 
               {isFailed && (
                 <>
-                  <p className="col-start-2 whitespace-pre-wrap break-words text-sm text-foreground/90">
+                  <p className="col-start-2 whitespace-pre-wrap wrap-break-word text-sm text-foreground/90">
                     {analysis.resolvedError}
                   </p>
                   <p className="col-start-2 text-xs text-muted-foreground">

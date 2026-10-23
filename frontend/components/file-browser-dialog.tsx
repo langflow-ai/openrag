@@ -466,13 +466,13 @@ function FileRow({
         </div>
       </div>
       {file.is_stale ? (
-        <Badge variant="outline" className="text-xs flex-shrink-0">
+        <Badge variant="outline" className="text-xs shrink-0">
           <RefreshCw className="h-3 w-3 mr-1" />
           Update available
         </Badge>
       ) : (
         file.is_ingested && (
-          <Badge variant="secondary" className="text-xs flex-shrink-0">
+          <Badge variant="secondary" className="text-xs shrink-0">
             <Check className="h-3 w-3 mr-1" />
             Ingested
           </Badge>

@@ -55,7 +55,8 @@
   "overrides": {
     "picomatch": "^4.0.4",
     "postcss": "^8.5.26",
-    "rollup": "^4.59.0"
+    "rollup": "^4.59.0",
+    "source-map-js": "^1.2.2"
   },
   "engines": {
     "node": ">=22.0.0"

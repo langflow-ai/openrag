@@ -56,7 +56,7 @@ dependencies = [
     "pyyaml>=6.0",
     "tiktoken>=0.7.0",
     "fastmcp>=3.4.0",
-    "mcp>=1.28.1",
+    "mcp>=1.30.0",
     "openai>=2.24.0,<3",
     "tenacity>=9.1.4",
     "pygments>=2.20.0",
@@ -64,6 +64,7 @@ dependencies = [
     "protobuf>=7.35.0,<8",
     "requests>=2.33.0",
     "urllib3>=2.8.0",
+    "fsspec>=2026.6.0",
     "sqlmodel>=0.0.22",
     "sqlalchemy[asyncio]>=2.0.36",
     "scrapy>=2.13.0",
@@ -84,6 +85,9 @@ dependencies = [
 # be adopted explicitly, not resolved into an install.
 # src/main.py imports it defensively, so its absence downgrades to a warning.
 apm = ["instana>=3.17.0,<4"]
+tracing = [
+    "langfuse>=4.16,<5",
+]
 
 [dependency-groups]
 dev = [
@@ -93,6 +97,8 @@ dev = [
     "pytest-cov>=4.0.0",
     "ruff>=0.15.12",
     "mypy>=2.0.0",
+    # The tracing extra, so its unit tests (tests/unit/observability) run.
+    "langfuse>=4.16,<5",
 ]
 
 [project.scripts]

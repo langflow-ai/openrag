@@ -8,11 +8,11 @@ export type Status =
   | "sync"
   | "failed"
   | "cancelled"
+  | "skipped"
   | "ready"
   | "fallback"
   | "not-configured"
-  | "disabled"
-  | "skipped";
+  | "disabled";
 
 interface StatusBadgeProps {
   /**
@@ -24,7 +24,7 @@ interface StatusBadgeProps {
   className?: string;
 }
 
-const statusConfig = {
+const statusConfig: Record<Status, { label: string; className: string }> = {
   processing: {
     label: "Processing",
     className: "text-muted-foreground ",
@@ -43,6 +43,10 @@ const statusConfig = {
   },
   cancelled: {
     label: "Cancelled",
+    className: "text-muted-foreground ",
+  },
+  skipped: {
+    label: "Skipped",
     className: "text-muted-foreground ",
   },
   hidden: {
@@ -67,10 +71,6 @@ const statusConfig = {
   },
   disabled: {
     label: "Disabled",
-    className: "text-muted-foreground ",
-  },
-  skipped: {
-    label: "Skipped",
     className: "text-muted-foreground ",
   },
 };

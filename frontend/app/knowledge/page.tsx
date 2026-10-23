@@ -110,21 +110,19 @@ function pruneNonDeletableGridSelection(
 }
 
 // Function to get the appropriate icon for a connector type
-function getSourceIcon(connectorType?: string) {
+export function getSourceIcon(connectorType?: string) {
+  if (connectorType === "openrag_docs" || connectorType === "url") {
+    return <KnowledgeUrlIcon className="h-4 w-4 text-muted-foreground" />;
+  }
   if (connectorType) {
     const Icon = getConnectorDescriptor(connectorType)?.Icon;
-    if (Icon) return <Icon className="h-4 w-4 text-foreground flex-shrink-0" />;
+    if (Icon) return <Icon className="h-4 w-4 text-foreground shrink-0" />;
   }
   switch (connectorType) {
-    case "openrag_docs":
-    case "url":
-      return <KnowledgeUrlIcon className="h-4 w-4 text-muted-foreground" />;
     case "s3":
-      return <Cloud className="h-4 w-4 text-foreground flex-shrink-0" />;
+      return <Cloud className="h-4 w-4 text-foreground shrink-0" />;
     default:
-      return (
-        <FileIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-      );
+      return <FileIcon className="h-4 w-4 text-muted-foreground shrink-0" />;
   }
 }
 
@@ -205,7 +203,7 @@ export function SkippedStatusCell({ warning }: { warning?: string }) {
       <TooltipContent
         side="top"
         align="end"
-        className="max-w-80 whitespace-pre-wrap break-words"
+        className="max-w-80 whitespace-pre-wrap wrap-break-word"
       >
         {warningText}
       </TooltipContent>
@@ -372,7 +370,7 @@ export function StatusCellContent({
         <TooltipContent
           side="top"
           align="end"
-          className="max-w-80 whitespace-pre-wrap break-words"
+          className="max-w-80 whitespace-pre-wrap wrap-break-word"
         >
           {data.error}
         </TooltipContent>
