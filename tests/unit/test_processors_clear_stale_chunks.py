@@ -145,6 +145,7 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
     opensearch_client.search = AsyncMock(side_effect=_search)
     opensearch_client.delete = AsyncMock(side_effect=_delete)
     processor.document_service.document_index_writer = _FakeDocumentIndexWriter()
+    before_index_write = AsyncMock()
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
         tmp.write(b"hello world")
@@ -157,6 +158,7 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
             owner_user_id="alice",
             original_filename="renamed.txt",
             connector_type="sharepoint",
+            before_index_write=before_index_write,
         )
     finally:
         Path(tmp_path).unlink(missing_ok=True)
@@ -193,6 +195,7 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
     assert index_call["context"].filename == "renamed.txt"
     assert len(index_call["chunks"]) == 3
     assert index_call["final"] is True
+    assert before_index_write.await_count == 2
 
     # 5) delete_by_query must NEVER be used (DLS would silently filter it).
     if hasattr(opensearch_client, "delete_by_query"):

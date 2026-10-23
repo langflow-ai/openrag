@@ -1,7 +1,7 @@
 """
 File service v2 — composite aggregation pagination.
 
-Uses OpenSearch composite aggregation for  O(page_size) server-side
+Uses OpenSearch composite aggregation for O(page_size) server-side
 pagination. Only page_size buckets are processed per request regardless of
 total file count.
 
@@ -40,6 +40,19 @@ class FileServiceV2:
 
     def __init__(self, session_manager=None):
         self.session_manager = session_manager
+
+    @staticmethod
+    def _exact_metadata_filter(field: str, value: str) -> dict[str, Any]:
+        """Match metadata written before and after its keyword mapping existed."""
+        return {
+            "bool": {
+                "should": [
+                    {"term": {field: value}},
+                    {"term": {f"{field}.keyword": value}},
+                ],
+                "minimum_should_match": 1,
+            }
+        }
 
     async def list_files(
         self,
@@ -303,7 +316,27 @@ class FileServiceV2:
                 }
             )
 
-        query: dict[str, Any] = {"bool": {"filter": filter_clauses}}
+        query: dict[str, Any] = {
+            "bool": {
+                "filter": filter_clauses,
+            }
+        }
+        # The root Knowledge view exposes URL source projections only.
+        # Legacy documents with no record_kind continue to match. Failed
+        # first-time URL crawls mirror regular failed uploads: they do not
+        # become persistent Knowledge rows.
+        query["bool"]["must_not"] = [
+            self._exact_metadata_filter("record_kind", "web_page"),
+            self._exact_metadata_filter("record_kind", "web_page_manifest"),
+            {
+                "bool": {
+                    "filter": [
+                        self._exact_metadata_filter("record_kind", "web_source"),
+                        self._exact_metadata_filter("status", "failed"),
+                    ]
+                }
+            },
+        ]
         if must:
             query["bool"]["must"] = must
         return query
@@ -343,6 +376,15 @@ class FileServiceV2:
                     if sort_field != "filename"
                     else []
                 ),
+                {
+                    "document_id_tiebreak": {
+                        "terms": {
+                            "field": "document_id",
+                            "order": sort_order,
+                            "missing_bucket": True,
+                        }
+                    }
+                },
             ],
         }
 
@@ -377,6 +419,14 @@ class FileServiceV2:
                                     "allowed_users",
                                     "allowed_groups",
                                     "allowed_principal_labels",
+                                    "web_source_id",
+                                    "web_page_id",
+                                    "web_page_depth",
+                                    "web_child_count",
+                                    "chunk_count",
+                                    "record_kind",
+                                    "status",
+                                    "error",
                                 ],
                                 "sort": [{"indexed_time": {"order": "desc"}}],
                             }
@@ -407,9 +457,9 @@ class FileServiceV2:
             "aggs": {
                 "files": {
                     "terms": {
-                        "field": "filename",
+                        "field": "document_id",
                         "size": offset + page_size,
-                        "order": {"chunk_count": sort_order},
+                        "order": {"sort_chunk_count": sort_order},
                     },
                     "aggs": {
                         "file_metadata": {
@@ -433,11 +483,39 @@ class FileServiceV2:
                                     "allowed_users",
                                     "allowed_groups",
                                     "allowed_principal_labels",
+                                    "web_source_id",
+                                    "web_page_id",
+                                    "web_page_depth",
+                                    "web_child_count",
+                                    "chunk_count",
+                                    "record_kind",
+                                    "status",
+                                    "error",
                                 ],
                                 "sort": [{"indexed_time": {"order": "desc"}}],
                             }
                         },
                         "chunk_count": {"value_count": {"field": "_id"}},
+                        # Website sources are represented by one summary
+                        # manifest, while ordinary documents have one record
+                        # per chunk. Sum one per normal record but use the
+                        # summary's aggregate count for website sources so the
+                        # ordering matches the value displayed in the table.
+                        "sort_chunk_count": {
+                            "sum": {
+                                "script": {
+                                    "lang": "painless",
+                                    "source": (
+                                        "if (doc.containsKey('record_kind') "
+                                        "&& doc['record_kind'].size() != 0 "
+                                        "&& doc['record_kind'].value == 'web_source') { "
+                                        "return doc.containsKey('chunk_count') "
+                                        "&& doc['chunk_count'].size() != 0 "
+                                        "? doc['chunk_count'].value : 0; } return 1;"
+                                    ),
+                                }
+                            }
+                        },
                     },
                 }
             },
@@ -452,7 +530,7 @@ class FileServiceV2:
     async def _get_file_count(
         self, opensearch_client: Any, query: dict[str, Any]
     ) -> tuple[int, bool]:
-        """Approximate unique-filename count via cardinality aggregation (O(1)).
+        """Approximate unique-document count via cardinality aggregation (O(1)).
 
         Returns (count, is_approximate).  is_approximate is always True on
         success (cardinality agg is inherently approximate) and True when the
@@ -464,7 +542,7 @@ class FileServiceV2:
             "aggs": {
                 "file_count": {
                     "cardinality": {
-                        "field": "filename",
+                        "field": "document_id",
                         "precision_threshold": 3000,
                     }
                 }
@@ -517,10 +595,20 @@ class FileServiceV2:
                     "embedding_space_id": source.get("embedding_space_id", ""),
                     "embedding_dimensions": source.get("embedding_dimensions"),
                     "indexed_time": source.get("indexed_time", ""),
-                    "chunk_count": bucket.get("chunk_count", {}).get("value", 0),
+                    "chunk_count": (
+                        source.get("chunk_count", 0)
+                        if source.get("record_kind") == "web_source"
+                        else bucket.get("chunk_count", {}).get("value", 0)
+                    ),
                     "allowed_users": source.get("allowed_users", []),
                     "allowed_groups": source.get("allowed_groups", []),
                     "allowed_principal_labels": source.get("allowed_principal_labels", []),
+                    "web_source_id": source.get("web_source_id"),
+                    "web_page_id": source.get("web_page_id"),
+                    "web_page_depth": source.get("web_page_depth"),
+                    "web_child_count": source.get("web_child_count", 0),
+                    "status": source.get("status", "active"),
+                    "error": source.get("error", ""),
                 }
             )
         return files
