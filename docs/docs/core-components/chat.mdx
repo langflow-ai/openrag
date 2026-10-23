@@ -46,6 +46,7 @@ IDs are sent only after ownership and its conversation association have been per
 In `files` mode this requires a successful file write; in `db` mode it requires a committed database write.
 File updates are serialized and persisted on a worker thread, so durable writes do not block the event loop or overwrite concurrent ownership changes.
 File writes sync both the file contents and the parent directory after atomic replacement before ownership is acknowledged.
+If directory sync fails after replacement, file-backed authorization is suspended and further file mutations require a successful reload and directory sync, preventing updates from overwriting ownership changes with stale cached data.
 In `hybrid` mode the database is preferred, with a successful durable JSON write as fallback if the database is unavailable.
 If neither configured destination can persist the claim, the stream returns an error without exposing a new response ID; an in-memory cache entry is not sufficient.
 

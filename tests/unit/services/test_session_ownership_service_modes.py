@@ -658,3 +658,52 @@ async def test_legacy_null_association_remains_its_own_canonical_conversation(
     fresh = _svc(session_factory)
     assert await fresh.claim_session("alice", "legacy", conversation_id="other") is False
     assert await fresh.get_conversation_sessions("alice", "legacy") == ["legacy"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["files", "hybrid"])
+@pytest.mark.parametrize("operation", ["claim", "release", "release_group"])
+async def test_directory_sync_failure_reconciles_before_next_mutation(
+    monkeypatch, tmp_data_dir, session_factory, mode, operation
+):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", mode)
+    svc = _svc(session_factory)
+    if mode == "hybrid":
+        # Exercise the JSON fallback without a successful database write.
+        monkeypatch.setattr(svc, "_resolve_session_factory", lambda: None)
+    assert await svc.claim_session("alice", "existing")
+    real_fsync = os.fsync
+
+    def failed_directory_sync(fd):
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            raise OSError("directory sync unavailable")
+        real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", failed_directory_sync)
+    if operation == "claim":
+        assert await svc.claim_session("alice", "uncertain") is False
+    else:
+        with pytest.raises(OSError, match="directory sync unavailable"):
+            if operation == "release":
+                await svc.release_session("alice", "existing")
+            else:
+                await svc.release_conversation_sessions("alice", ["existing"])
+    replaced = json.loads(tmp_data_dir.read_text())
+    assert ("uncertain" in replaced) == (operation == "claim")
+    assert ("existing" in replaced) == (operation == "claim")
+    # Neither authorization nor subsequent mutations may use the stale cache.
+    assert await svc.get_session_owner("existing") is None
+    assert await svc.get_user_sessions("alice") == []
+    assert await svc.claim_session("alice", "later") is False
+    with pytest.raises(OSError, match="directory sync unavailable"):
+        await svc.release_session("alice", "existing")
+    assert json.loads(tmp_data_dir.read_text()) == replaced
+
+    monkeypatch.setattr(os, "fsync", real_fsync)
+    assert await svc.claim_session("alice", "later") is True
+    recovered = _svc(session_factory)
+    if mode == "hybrid":
+        monkeypatch.setattr(recovered, "_resolve_session_factory", lambda: None)
+    expected = {"existing", "uncertain", "later"} if operation == "claim" else {"later"}
+    assert set(await svc.get_user_sessions("alice")) == expected
+    assert set(await recovered.get_user_sessions("alice")) == expected
