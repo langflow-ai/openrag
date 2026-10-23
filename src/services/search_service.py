@@ -303,8 +303,8 @@ def _group_suggest_files(
             }
         )
     return files
-  
-  
+
+
 def _record_search_response(span: Span, response: dict[str, Any]) -> None:
     """What a search returned, for its trace: counts, scores and ids, never text."""
     results = response.get("results") or []
@@ -410,7 +410,7 @@ class SearchService:
                     break
                 after = next_after
         return available_spaces
-      
+
     async def search_tool(
         self, query: str, embedding_model: str = None, *, source: str = "agent_tool"
     ) -> dict[str, Any]:
