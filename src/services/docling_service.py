@@ -1,6 +1,7 @@
 import asyncio
 import json
 import platform
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -230,6 +231,40 @@ def _format_docling_error(payload: dict[str, Any]) -> str:
     if len(result) > DOCLING_ERROR_DETAIL_MAX_LENGTH:
         return f"{result[:DOCLING_ERROR_DETAIL_MAX_LENGTH]}..."
     return result
+
+
+# Keeps the "incorrect password" substring that task_service._infer_failure_metadata
+# maps to the user-facing password-protected message.
+PASSWORD_PROTECTED_PDF_DETAIL = "PDF is password-protected (Incorrect password)"
+
+# The trailer / xref-stream dictionary holding /Encrypt is never compressed, so a
+# byte scan finds it without a PDF library. Matches an indirect reference
+# (/Encrypt 5 0 R) or a direct dictionary (/Encrypt <<).
+_PDF_ENCRYPT_RE = re.compile(rb"/Encrypt\s*(?:\d+\s+\d+\s+R|<<)")
+
+
+def is_docling_load_failure(message: str) -> bool:
+    """True when docling reports that its backend could not open the document."""
+    return "could not load document" in message.lower()
+
+
+def is_encrypted_pdf(content: bytes) -> bool:
+    """True when ``content`` is a PDF that declares an encryption dictionary."""
+    return b"%PDF-" in content[:1024] and _PDF_ENCRYPT_RE.search(content) is not None
+
+
+def password_protected_pdf_error(message: str, content: bytes) -> str | None:
+    """Return the password-protected detail for a docling load failure on an encrypted PDF.
+
+    docling 2.108 pre-opened PDFs with pypdfium2, whose error read "Incorrect
+    password". Later versions load through docling-parse first, which reports only
+    "Failed to load document with key ...", so the reason has to be recovered from
+    the bytes. This is checked only after docling failed to load the file: a PDF
+    with just an owner password also declares /Encrypt but converts fine.
+    """
+    if is_docling_load_failure(message) and is_encrypted_pdf(content):
+        return PASSWORD_PROTECTED_PDF_DETAIL
+    return None
 
 
 def _extract_document_json_content(payload: dict[str, Any], *, task_id: str) -> dict[str, Any]:
@@ -851,8 +886,8 @@ class DoclingService:
             ocr=ocr,
             picture_descriptions=picture_descriptions,
         )
-        return await self.get_docling_result_async(
-            task_id, user_id=user_id, auth_header=auth_header
+        return await self._get_result_for_content(
+            task_id, file_bytes, user_id=user_id, auth_header=auth_header
         )
 
     async def convert_bytes(
@@ -868,6 +903,30 @@ class DoclingService:
         task_id = await self.upload_to_docling_direct_async(
             filename, content, user_id=user_id, auth_header=auth_header
         )
-        return await self.get_docling_result_async(
-            task_id, user_id=user_id, auth_header=auth_header
+        return await self._get_result_for_content(
+            task_id, content, user_id=user_id, auth_header=auth_header
         )
+
+    async def _get_result_for_content(
+        self,
+        task_id: str,
+        content: bytes,
+        *,
+        user_id: str | None,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        """Fetch the conversion result, naming a password-protected PDF on load failure."""
+        try:
+            return await self.get_docling_result_async(
+                task_id, user_id=user_id, auth_header=auth_header
+            )
+        except DoclingServeError as exc:
+            detail = password_protected_pdf_error(str(exc), content)
+            if detail is None:
+                raise
+            logger.warning(
+                "Docling could not load an encrypted PDF",
+                task_id=task_id,
+                docling_error=str(exc),
+            )
+            raise DoclingServeError(f"Docling processing failed: {detail}") from exc
