@@ -29,10 +29,25 @@ from .projection import (
 
 CRAWL_INGESTION_HEADROOM_SECONDS = 5 * 60
 CRAWL_SHUTDOWN_GRACE_SECONDS = 30
+LEGACY_DEFAULT_CRAWL_LIMITS = {
+    "max_pages": 250,
+    "max_depth": 4,
+    "max_downloaded_mb": 128,
+    "max_crawl_minutes": 15,
+}
 
 
 def _document_id(source_id: str, canonical_url: str) -> str:
     return hashlib.sha256(f"{source_id}\0{canonical_url}".encode()).hexdigest()
+
+
+def _crawl_settings(source: dict[str, Any]) -> dict[str, Any]:
+    """Use the higher page cap for sources created with the old untouched defaults."""
+    settings = dict(source["crawl_settings"])
+    if all(settings.get(key) == value for key, value in LEGACY_DEFAULT_CRAWL_LIMITS.items()):
+        settings["max_pages"] = CrawlSpec.max_pages
+        source["crawl_settings"] = settings
+    return settings
 
 
 class WebsiteSourceProcessor(TaskProcessor):
@@ -159,7 +174,7 @@ class WebsiteSourceProcessor(TaskProcessor):
         source.update(status="processing", last_error=None, updated_at=started_at.isoformat())
         await upsert_source_manifest(source, pages=pages)
 
-        spec_values = dict(source["crawl_settings"])
+        spec_values = _crawl_settings(source)
         if target_page is not None:
             spec_values.update(
                 seed_url=target_page["canonical_url"], scope="page", max_pages=1, max_depth=0
@@ -170,11 +185,15 @@ class WebsiteSourceProcessor(TaskProcessor):
         if self.ingestion_timeout is not None:
             # TaskService applies one timeout to crawling and ingestion. Keep a
             # bounded portion for page ingestion after Scrapy returns, plus
-            # the crawler subprocess's shutdown grace period.
+            # the crawler subprocess's shutdown grace period. On short task
+            # timeouts, a fixed five-minute reserve leaves an impractically
+            # small crawl window, so reserve at most one quarter instead.
+            crawl_ingestion_headroom = min(
+                CRAWL_INGESTION_HEADROOM_SECONDS,
+                max(60, self.ingestion_timeout // 4),
+            )
             crawl_budget_seconds = (
-                self.ingestion_timeout
-                - CRAWL_INGESTION_HEADROOM_SECONDS
-                - CRAWL_SHUTDOWN_GRACE_SECONDS
+                self.ingestion_timeout - crawl_ingestion_headroom - CRAWL_SHUTDOWN_GRACE_SECONDS
             )
             if crawl_budget_seconds < 60:
                 raise ValueError("Task timeout is too short for a website crawl")
@@ -338,7 +357,8 @@ class WebsiteSourceProcessor(TaskProcessor):
             succeeded = False
         else:
             succeeded = successful_pages > 0
-            partial_failure = succeeded and not crawl_authoritative
+            capped_with_progress = succeeded and result.capped and not page_errors
+            partial_failure = succeeded and not crawl_authoritative and not capped_with_progress
             if not succeeded and target_page is not None:
                 final_page = pages_by_url.get(str(target_page["canonical_url"]), target_page)
                 if final_page.get("status") == "processing":
@@ -354,7 +374,11 @@ class WebsiteSourceProcessor(TaskProcessor):
                 if partial_failure
                 else (None if source_is_established else (None if succeeded else failure_reason))
             )
-            if succeeded and crawl_authoritative:
+            if capped_with_progress:
+                source["last_crawl_warning"] = failure_reason
+            else:
+                source.pop("last_crawl_warning", None)
+            if succeeded:
                 source["last_successful_sync_at"] = datetime.now(UTC).isoformat()
             source["updated_at"] = datetime.now(UTC).isoformat()
 
@@ -372,9 +396,13 @@ class WebsiteSourceProcessor(TaskProcessor):
             )
             upload_task.failed_files += 1
             return
-        file_task.status, file_task.result, file_task.updated_at = (
+        result_summary: dict[str, Any] = {"indexed": indexed, "pages": successful_pages}
+        if result.capped:
+            result_summary["warning"] = failure_reason
+        file_task.status, file_task.error, file_task.result, file_task.updated_at = (
             TaskStatus.COMPLETED,
-            {"indexed": indexed, "pages": successful_pages},
+            None,
+            result_summary,
             time.time(),
         )
         upload_task.successful_files += 1

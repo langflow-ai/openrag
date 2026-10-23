@@ -128,6 +128,7 @@ def test_aggregate_limit_counts_error_and_redirect_response_bodies(tmp_path):
     assert spider.count_downloaded_response(redirect_response) is False
     assert spider.downloaded_bytes == 1_100_000
     assert spider.capped is True
+    assert spider.reason == "Website crawl reached its configured download limit of 1 MB."
     spider.crawler.engine.close_spider.assert_called_once()
 
 
@@ -183,3 +184,4 @@ def test_frontier_does_not_schedule_more_requests_than_page_limit(tmp_path):
     assert len(requests) == 1
     assert len(spider._scheduled) == 2
     assert spider.capped is True
+    assert spider.reason == "Website crawl reached its configured limit of 2 pages."

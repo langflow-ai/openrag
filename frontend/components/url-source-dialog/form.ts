@@ -38,7 +38,7 @@ export const INITIAL_URL_SOURCE_FORM: UrlSourceForm = {
   additional_hosts: "",
   include_paths: "",
   exclude_paths: "",
-  max_pages: 250,
+  max_pages: 1000,
   max_depth: 4,
   max_downloaded_mb: 128,
   max_crawl_minutes: 15,

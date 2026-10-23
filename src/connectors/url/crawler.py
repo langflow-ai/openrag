@@ -121,7 +121,12 @@ async def crawl(spec: CrawlSpec) -> CrawlResult:
             )
         except TimeoutError:
             await _stop(process)
-            return CrawlResult((), complete=False, capped=True, reason="safety limit reached")
+            return CrawlResult(
+                (),
+                complete=False,
+                capped=True,
+                reason="Website crawl reached its configured time limit.",
+            )
         except asyncio.CancelledError:
             await _stop(process)
             raise

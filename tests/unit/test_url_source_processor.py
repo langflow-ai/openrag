@@ -166,7 +166,33 @@ async def test_initial_crawl_keeps_saved_scope_when_future_resync_is_root_only(m
 
     spec = crawl.await_args.args[0]
     assert spec.scope == "path"
-    assert spec.max_pages == 250
+    assert spec.max_pages == 1000
+
+
+@pytest.mark.asyncio
+async def test_untouched_legacy_crawl_limit_is_raised_for_the_next_sync(monkeypatch):
+    source = _source(
+        crawl_settings={
+            "seed_url": "https://docs.example.com/",
+            "max_pages": 250,
+            "max_depth": 4,
+            "max_downloaded_mb": 128,
+            "max_crawl_minutes": 15,
+        }
+    )
+    crawl = AsyncMock(
+        return_value=CrawlResult((), complete=False, capped=False, reason="network down")
+    )
+    monkeypatch.setattr(processor_module, "get_source_manifest", AsyncMock(return_value=source))
+    monkeypatch.setattr(processor_module, "list_page_manifests", AsyncMock(return_value=[]))
+    monkeypatch.setattr(processor_module, "upsert_source_manifest", AsyncMock())
+    monkeypatch.setattr(processor_module, "crawl", crawl)
+
+    task, file_task = UploadTask(task_id="task-1", total_files=1), FileTask(file_path="source-1")
+    await _processor(source).process_item(task, file_task.file_path, file_task)
+
+    assert crawl.await_args.args[0].max_pages == 1000
+    assert source["crawl_settings"]["max_pages"] == 1000
 
 
 @pytest.mark.asyncio
@@ -187,7 +213,7 @@ async def test_crawl_leaves_task_timeout_headroom_for_page_ingestion(monkeypatch
         task, file_task.file_path, file_task
     )
 
-    assert crawl.await_args.args[0].max_crawl_minutes == 4
+    assert crawl.await_args.args[0].max_crawl_minutes == 7
 
 
 @pytest.mark.asyncio
@@ -273,7 +299,7 @@ async def test_nofollow_resync_does_not_reconcile_unvisited_pages(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_partial_crawl_fails_the_task_without_advancing_last_success(monkeypatch):
+async def test_partial_crawl_fails_the_task_and_advances_last_success(monkeypatch):
     last_success = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
     source = _source(last_successful_sync_at=last_success)
     document = WebDocument("Guide", "# Guide\n\nContent", "hash-1", 512)
@@ -319,9 +345,61 @@ async def test_partial_crawl_fails_the_task_without_advancing_last_success(monke
 
     assert source["status"] == "active"
     assert source["last_error"] == "HTTP 503"
-    assert source["last_successful_sync_at"] == last_success
+    assert source["last_successful_sync_at"] != last_success
     assert file_task.status is TaskStatus.FAILED
     assert file_task.result == {"indexed": 1, "pages": 1}
+
+
+@pytest.mark.asyncio
+async def test_capped_crawl_with_indexed_pages_completes_with_a_warning(monkeypatch):
+    source = _source()
+    document = WebDocument("Guide", "# Guide\n\nContent", "hash-1", 512)
+    monkeypatch.setattr(processor_module, "get_source_manifest", AsyncMock(return_value=source))
+    monkeypatch.setattr(processor_module, "list_page_manifests", AsyncMock(return_value=[]))
+    monkeypatch.setattr(processor_module, "upsert_page_manifest", AsyncMock())
+    monkeypatch.setattr(processor_module, "upsert_source_manifest", AsyncMock())
+    monkeypatch.setattr(processor_module, "get_page_index_metadata", AsyncMock(return_value={}))
+    monkeypatch.setattr(
+        processor_module,
+        "crawl",
+        AsyncMock(
+            return_value=CrawlResult(
+                (
+                    CrawledPage(
+                        "https://docs.example.com/guide",
+                        "https://docs.example.com/guide",
+                        1,
+                        document,
+                    ),
+                ),
+                complete=False,
+                capped=True,
+                reason="Website crawl reached its configured limit of 1000 pages.",
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        WebsiteSourceProcessor,
+        "process_document_standard",
+        AsyncMock(return_value={"status": "indexed", "chunk_count": 1}),
+    )
+
+    task, file_task = UploadTask(task_id="task-1", total_files=1), FileTask(file_path="source-1")
+    await _processor(source).process_item(task, file_task.file_path, file_task)
+
+    assert source["status"] == "active"
+    assert source["last_error"] is None
+    assert source["last_successful_sync_at"]
+    assert source["last_crawl_warning"] == (
+        "Website crawl reached its configured limit of 1000 pages."
+    )
+    assert file_task.status is TaskStatus.COMPLETED
+    assert file_task.error is None
+    assert file_task.result == {
+        "indexed": 1,
+        "pages": 1,
+        "warning": "Website crawl reached its configured limit of 1000 pages.",
+    }
 
 
 @pytest.mark.asyncio

@@ -51,6 +51,77 @@ def _website_page_chunk(page: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _website_source_chunk(source: dict[str, Any], matching_page: dict[str, Any]) -> dict[str, Any]:
+    """Represent a content-matching website page as its parent Knowledge row."""
+    source_id = str(source["id"])
+    return {
+        "filename": source.get("filename") or source.get("name") or "Untitled website",
+        "mimetype": source.get("mimetype") or "text/html",
+        "page": matching_page.get("page"),
+        "text": "",
+        "highlights": matching_page.get("highlights", []),
+        "score": matching_page.get("score", 0),
+        "source_url": source.get("source_url") or source.get("starting_url") or "",
+        "owner": source.get("owner") or source.get("owner_id"),
+        "owner_name": source.get("owner_name", ""),
+        "owner_email": source.get("owner_email", ""),
+        "file_size": source.get("file_size", 0),
+        "connector_type": "url",
+        "embedding_model": source.get("embedding_model"),
+        "embedding_provider": source.get("embedding_provider"),
+        "embedding_space_id": source.get("embedding_space_id"),
+        "embedding_dimensions": source.get("embedding_dimensions"),
+        "allowed_users": source.get("allowed_users", []),
+        "allowed_groups": source.get("allowed_groups", []),
+        "allowed_principal_labels": source.get("allowed_principal_labels", []),
+        "document_id": source.get("document_id"),
+        "web_source_id": source_id,
+        "web_child_count": source.get("web_child_count", 0),
+        "chunk_count": source.get("chunk_count", 0),
+        "canonical_url": source.get("starting_url"),
+        "status": source.get("status", "active"),
+        "error": source.get("last_error") or source.get("error"),
+    }
+
+
+async def _aggregate_website_page_matches(
+    results: list[dict[str, Any]], user: User
+) -> list[dict[str, Any]]:
+    """Replace matching website-page chunks with their parent source manifests.
+
+    A website source manifest has no body text or embedding. Its indexed child
+    pages do, so excluding child chunks before ranking means content searches
+    can never find their parent source. Keep the page hit's rank and score,
+    but return the parent projection expected by the Knowledge table.
+    """
+    ranked_results: list[tuple[int, dict[str, Any]]] = []
+    page_matches: dict[str, tuple[int, dict[str, Any]]] = {}
+    direct_source_hits: dict[str, tuple[int, dict[str, Any]]] = {}
+
+    for rank, result in enumerate(results):
+        source_id = result.get("web_source_id")
+        if result.get("web_page_id") and source_id:
+            page_matches.setdefault(str(source_id), (rank, result))
+        elif result.get("connector_type") == "url" and source_id:
+            direct_source_hits[str(source_id)] = (rank, result)
+        else:
+            ranked_results.append((rank, result))
+
+    for source_id, (page_rank, page_match) in page_matches.items():
+        source = await get_source_manifest(source_id)
+        if source is None or source.get("owner_id") != user.user_id or source.get("deleting"):
+            continue
+        direct_hit = direct_source_hits.pop(source_id, None)
+        rank = min(page_rank, direct_hit[0]) if direct_hit else page_rank
+        source_result = _website_source_chunk(source, page_match)
+        if direct_hit and (direct_score := direct_hit[1].get("score")) is not None:
+            source_result["score"] = max(source_result["score"] or 0, direct_score)
+        ranked_results.append((rank, source_result))
+
+    ranked_results.extend(direct_source_hits.values())
+    return [result for _, result in sorted(ranked_results, key=lambda item: item[0])]
+
+
 async def _website_page_search_result(
     body: SearchBody,
     user: User,
@@ -104,9 +175,9 @@ async def search(
                 result_mode=body.resultMode,
             )
             if body.resultMode == "knowledge_sources":
-                result["results"] = [
-                    item for item in result.get("results", []) if not item.get("web_page_id")
-                ]
+                result["results"] = await _aggregate_website_page_matches(
+                    result.get("results", []), user
+                )
                 result["total"] = len(result["results"])
         return JSONResponse(result, status_code=200)
     except HTTPException:

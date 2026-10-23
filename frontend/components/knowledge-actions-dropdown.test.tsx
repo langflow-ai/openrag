@@ -19,6 +19,7 @@ describe("KnowledgeActionsDropdown", () => {
         connectorType="url"
         webSourceId="source-1"
         webChildCount={3}
+        searchQuery="baseball"
       />,
       {
         providers: ["task"],
@@ -40,7 +41,9 @@ describe("KnowledgeActionsDropdown", () => {
     await user.click(
       await screen.findByRole("menuitem", { name: "View pages" }),
     );
-    expect(mockRouter.push).toHaveBeenCalledWith("/knowledge?website=source-1");
+    expect(mockRouter.push).toHaveBeenCalledWith(
+      "/knowledge?website=source-1&q=baseball",
+    );
 
     await user.click(screen.getByRole("button"));
     await user.click(await screen.findByRole("menuitem", { name: "Sync" }));

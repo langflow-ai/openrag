@@ -14,21 +14,23 @@ import { useGetWebsiteSourceQuery } from "@/app/api/queries/useGetWebsiteSourceQ
 import { KnowledgeDataTable } from "@/components/knowledge-data-table";
 import { KnowledgePaginationFooter } from "@/components/knowledge-pagination-footer";
 import { useIsCloudBrand } from "@/contexts/brand-context";
+import { useTask } from "@/contexts/task-context";
+import { moveDisabledPagesLast } from "./website-pages/page-sort";
 import { useWebsitePageColumns } from "./website-pages/use-website-page-columns";
 import { useWebsitePagesTable } from "./website-pages/use-website-pages-table";
 import { WebsitePagesHeader } from "./website-pages/website-pages-header";
 import { WebsitePagesToolbar } from "./website-pages/website-pages-toolbar";
 
-/** Keep user-disabled pages at the end after AG Grid applies its own sort. */
-export function moveDisabledPagesLast(nodes: Array<{ data?: File }>) {
-  const enabled = nodes.filter((node) => node.data?.status !== "disabled");
-  const disabled = nodes.filter((node) => node.data?.status === "disabled");
-  nodes.splice(0, nodes.length, ...enabled, ...disabled);
-}
-
-export function WebsitePagesView({ sourceId }: { sourceId: string }) {
+export function WebsitePagesView({
+  sourceId,
+  initialSearch = "",
+}: {
+  sourceId: string;
+  initialSearch?: string;
+}) {
   const router = useRouter();
   const isCloudBrand = useIsCloudBrand();
+  const { addTask } = useTask();
   const gridRef = useRef<AgGridReact<File>>(null);
   const cursorCacheRef = useRef<Map<number, Record<string, unknown>>>(null!);
   if (!cursorCacheRef.current) {
@@ -49,7 +51,7 @@ export function WebsitePagesView({ sourceId }: { sourceId: string }) {
     setCurrentPageSize,
     total,
     updateSearch,
-  } = useWebsitePagesTable(sourceId, gridRef);
+  } = useWebsitePagesTable(sourceId, gridRef, initialSearch);
   const syncWebsiteSourceMutation = useSyncWebsiteSourceMutation();
   const deleteWebsiteSourcePageMutation = useDeleteWebsiteSourcePageMutation();
 
@@ -66,7 +68,14 @@ export function WebsitePagesView({ sourceId }: { sourceId: string }) {
           });
           toast.success("Page disabled");
         } else {
-          await syncWebsiteSourceMutation.mutateAsync({ sourceId, pageId });
+          const result = await syncWebsiteSourceMutation.mutateAsync({
+            sourceId,
+            pageId,
+          });
+          const taskId = result.task_id ?? result.last_task_id;
+          if (taskId) {
+            addTask(taskId, { connectorType: "url" });
+          }
           toast.success(
             operation === "enable" ? "Page enabled" : "Sync started",
           );
@@ -75,7 +84,12 @@ export function WebsitePagesView({ sourceId }: { sourceId: string }) {
         toast.error(error instanceof Error ? error.message : "Action failed");
       }
     },
-    [deleteWebsiteSourcePageMutation, sourceId, syncWebsiteSourceMutation],
+    [
+      addTask,
+      deleteWebsiteSourcePageMutation,
+      sourceId,
+      syncWebsiteSourceMutation,
+    ],
   );
 
   const syncSource = () => action();

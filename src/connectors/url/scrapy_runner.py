@@ -124,13 +124,25 @@ class ManagedWebsiteSpider(scrapy.Spider):
 
     def _stop_for_limit(self, reason: str) -> None:
         self.capped = True
-        self.reason = "safety limit reached"
+        self.reason = self._limit_reason(reason)
         self.crawler.engine.close_spider(self, reason)
 
     def _mark_frontier_capped(self) -> None:
         """Stop growing the frontier while allowing accepted requests to finish."""
         self.capped = True
-        self.reason = "safety limit reached"
+        self.reason = self._limit_reason("openrag_page_limit")
+
+    def _limit_reason(self, reason: str) -> str:
+        if reason == "openrag_page_limit":
+            return f"Website crawl reached its configured limit of {self.spec.max_pages} pages."
+        if reason == "openrag_download_limit":
+            return (
+                "Website crawl reached its configured download limit of "
+                f"{self.spec.max_downloaded_mb} MB."
+            )
+        if reason == "closespider_timeout":
+            return "Website crawl reached its configured time limit."
+        return "Website crawl reached a configured safety limit."
 
     def mark_incomplete(self, reason: str) -> None:
         self.incomplete = True
@@ -292,7 +304,7 @@ class ManagedWebsiteSpider(scrapy.Spider):
     def closed(self, reason: str) -> None:
         if reason in {"closespider_timeout", "openrag_page_limit", "openrag_download_limit"}:
             self.capped = True
-            self.reason = "safety limit reached"
+            self.reason = self.reason or self._limit_reason(reason)
         manifest = {
             "pages": self.pages,
             "complete": not self.capped and not self.incomplete,

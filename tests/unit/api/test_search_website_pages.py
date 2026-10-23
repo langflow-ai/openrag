@@ -8,7 +8,6 @@ from api.search import SearchBody, _website_page_search_result
 from auth_context import get_search_filters, set_search_filters
 from services.search_service import (
     SearchService,
-    _add_result_mode_filter,
     _build_search_filter_clauses,
 )
 
@@ -27,12 +26,6 @@ def test_url_source_filter_matches_current_and_legacy_keyword_mappings():
             }
         }
     ]
-
-
-def test_knowledge_sources_filter_excludes_child_pages_before_ranking():
-    clauses = _add_result_mode_filter([], "knowledge_sources")
-
-    assert clauses == [{"bool": {"must_not": [{"exists": {"field": "web_page_id"}}]}}]
 
 
 @pytest.mark.asyncio
@@ -95,7 +88,19 @@ async def test_website_page_search_reads_zero_chunk_manifest_rows(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_root_knowledge_search_excludes_child_page_hits():
+async def test_root_knowledge_search_aggregates_child_page_hits_under_their_source(monkeypatch):
+    source = {
+        "id": "source-1",
+        "owner_id": "user-1",
+        "name": "MLB",
+        "starting_url": "https://www.mlb.com",
+        "filename": "MLB",
+        "mimetype": "text/html",
+        "file_size": 4096,
+        "chunk_count": 4,
+        "web_child_count": 1,
+        "status": "active",
+    }
     search_service = type(
         "SearchService",
         (),
@@ -104,11 +109,14 @@ async def test_root_knowledge_search_excludes_child_page_hits():
                 return_value={
                     "results": [
                         {
-                            "filename": "Child page",
+                            "filename": "Baseball news",
+                            "text": "Baseball highlights",
+                            "score": 0.9,
+                            "connector_type": "url",
                             "web_source_id": "source-1",
                             "web_page_id": "page-1",
                         },
-                        {"filename": "Document.pdf"},
+                        {"filename": "Document.pdf", "score": 0.5},
                     ],
                     "total": 2,
                 }
@@ -116,14 +124,18 @@ async def test_root_knowledge_search_excludes_child_page_hits():
         },
     )()
     user = type("User", (), {"user_id": "user-1", "jwt_token": None})()
+    monkeypatch.setattr(search_api, "get_source_manifest", AsyncMock(return_value=source))
 
     response = await search_api.search(
-        SearchBody(query="guide", resultMode="knowledge_sources"),
+        SearchBody(query="baseball", resultMode="knowledge_sources"),
         search_service=search_service,
         user=user,
     )
 
     body = json.loads(response.body)
-    assert body["results"] == [{"filename": "Document.pdf"}]
-    assert body["total"] == 1
+    assert [result["filename"] for result in body["results"]] == ["MLB", "Document.pdf"]
+    assert body["results"][0]["web_source_id"] == "source-1"
+    assert body["results"][0].get("web_page_id") is None
+    assert body["results"][0]["score"] == 0.9
+    assert body["total"] == 2
     assert search_service.search.await_args.kwargs["result_mode"] == "knowledge_sources"

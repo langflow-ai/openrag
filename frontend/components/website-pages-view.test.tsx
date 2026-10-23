@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 import { authPresets } from "@/test-utils/fixtures/auth";
 import { server } from "@/test-utils/msw/server";
 import { renderWithProviders } from "@/test-utils/render";
-import { moveDisabledPagesLast, WebsitePagesView } from "./website-pages-view";
+import { moveDisabledPagesLast } from "./website-pages/page-sort";
+import { WebsitePagesView } from "./website-pages-view";
 
 const tableProps = vi.hoisted(() => ({ current: null as unknown }));
 
@@ -47,48 +48,56 @@ describe("WebsitePagesView", () => {
     const user = userEvent.setup();
     let syncCalls = 0;
     let taskRequests = 0;
+    let searchPayload: { query?: string; resultMode?: string } | undefined;
 
-    renderWithProviders(<WebsitePagesView sourceId="source-1" />, {
-      providers: ["brand", "knowledgeFilter", "task"],
-      auth: authPresets.admin,
-      brand: "oss",
-      handlers: [
-        http.get("/api/connectors/url/sources/source-1", () =>
-          HttpResponse.json({
-            id: "source-1",
-            name: "Docs",
-            starting_url: "https://docs.example.com",
-            status: "active",
-            web_child_count: 1,
+    renderWithProviders(
+      <WebsitePagesView sourceId="source-1" initialSearch="baseball" />,
+      {
+        providers: ["brand", "knowledgeFilter", "task"],
+        auth: authPresets.admin,
+        brand: "oss",
+        handlers: [
+          http.get("/api/connectors/url/sources/source-1", () =>
+            HttpResponse.json({
+              id: "source-1",
+              name: "Docs",
+              starting_url: "https://docs.example.com",
+              status: "active",
+              web_child_count: 1,
+            }),
+          ),
+          http.post("/api/search", async ({ request }) => {
+            searchPayload = (await request.json()) as {
+              query?: string;
+              resultMode?: string;
+            };
+            return HttpResponse.json({
+              results: [
+                {
+                  document_id: "doc-1",
+                  filename: "Getting started",
+                  source_url: "https://docs.example.com/start",
+                  mimetype: "text/html",
+                  page: 1,
+                  text: "Start here",
+                  score: 1,
+                  status: "active",
+                },
+              ],
+              warnings: [],
+            });
           }),
-        ),
-        http.post("/api/search", () =>
-          HttpResponse.json({
-            results: [
-              {
-                document_id: "doc-1",
-                filename: "Getting started",
-                source_url: "https://docs.example.com/start",
-                mimetype: "text/html",
-                page: 1,
-                text: "Start here",
-                score: 1,
-                status: "active",
-              },
-            ],
-            warnings: [],
+          http.post("/api/connectors/url/sources/source-1/sync", () => {
+            syncCalls += 1;
+            return HttpResponse.json({ task_id: "task-1" });
           }),
-        ),
-        http.post("/api/connectors/url/sources/source-1/sync", () => {
-          syncCalls += 1;
-          return HttpResponse.json({ task_id: "task-1" });
-        }),
-        http.get("/api/tasks/enhanced", () => {
-          taskRequests += 1;
-          return HttpResponse.json({ tasks: [] });
-        }),
-      ],
-    });
+          http.get("/api/tasks/enhanced", () => {
+            taskRequests += 1;
+            return HttpResponse.json({ tasks: [] });
+          }),
+        ],
+      },
+    );
 
     expect(
       await screen.findByRole("heading", { name: "Docs" }),
@@ -96,6 +105,10 @@ describe("WebsitePagesView", () => {
     expect(await screen.findByTestId("website-page-table")).toHaveTextContent(
       "Getting started",
     );
+    expect(searchPayload).toMatchObject({
+      query: "baseball",
+      resultMode: "chunks",
+    });
     expect(tableProps.current).not.toBeNull();
     await waitFor(() => expect(taskRequests).toBeGreaterThan(0));
     const taskRequestsBeforeSync = taskRequests;
@@ -103,7 +116,7 @@ describe("WebsitePagesView", () => {
     await user.click(screen.getByRole("button", { name: "Sync" }));
     await waitFor(() => expect(syncCalls).toBe(1));
     await waitFor(() =>
-      expect(taskRequests).toBeGreaterThan(taskRequestsBeforeSync),
+      expect(taskRequests).toBeGreaterThan(taskRequestsBeforeSync + 1),
     );
   });
 });

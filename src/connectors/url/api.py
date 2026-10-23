@@ -42,7 +42,7 @@ class CreateSourceBody(BaseModel):
     additional_hosts: list[str] = Field(default_factory=list)
     include_paths: list[str] = Field(default_factory=list)
     exclude_paths: list[str] = Field(default_factory=list)
-    max_pages: int = Field(default=250, ge=1, le=10_000)
+    max_pages: int = Field(default=1000, ge=1, le=10_000)
     max_depth: int = Field(default=4, ge=0, le=20)
     max_downloaded_mb: int = Field(default=128, ge=1, le=2048)
     max_crawl_minutes: int = Field(default=15, ge=1, le=60)

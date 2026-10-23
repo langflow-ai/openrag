@@ -108,7 +108,7 @@ class CrawlSpec:
     additional_hosts: tuple[str, ...] = ()
     include_paths: tuple[str, ...] = ()
     exclude_paths: tuple[str, ...] = ()
-    max_pages: int = 250
+    max_pages: int = 1000
     max_depth: int = 4
     max_downloaded_mb: int = 128
     max_crawl_minutes: int = 15

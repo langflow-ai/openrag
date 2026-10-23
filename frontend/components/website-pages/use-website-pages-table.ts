@@ -12,8 +12,9 @@ import { SEARCH_CONSTANTS } from "@/lib/constants";
 export function useWebsitePagesTable(
   sourceId: string,
   gridRef: RefObject<AgGridReact<File> | null>,
+  initialSearch = "",
 ) {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
   const [currentPage, setCurrentPage] = useState(1);
   const [currentPageSize, setCurrentPageSize] = useState(25);
   const [sortBy, setSortBy] = useState("filename");
@@ -46,7 +47,11 @@ export function useWebsitePagesTable(
     search,
     websiteSearchQuery,
     { refetchInterval: 5000 },
-    { groupBy: "document_id", resultMode: "website_pages" },
+    {
+      groupBy: "document_id",
+      resultMode:
+        search.trim() && search.trim() !== "*" ? "chunks" : "website_pages",
+    },
   );
 
   const { files: searchPages } = searchData as SearchResult;

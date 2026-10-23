@@ -42,6 +42,7 @@ interface KnowledgeActionsDropdownProps {
   webSourceId?: string;
   webPageId?: string;
   webChildCount?: number;
+  searchQuery?: string;
 }
 
 // Cloud connector types that support sync
@@ -57,6 +58,7 @@ export const KnowledgeActionsDropdown = ({
   webSourceId,
   webPageId,
   webChildCount,
+  searchQuery,
 }: KnowledgeActionsDropdownProps) => {
   const { refreshTasks } = useTask();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -185,9 +187,14 @@ export const KnowledgeActionsDropdown = ({
                       elementId: "view-website-pages-button",
                       namespace: "knowledge",
                     });
-                    router.push(
-                      `/knowledge?website=${encodeURIComponent(webSourceId)}`,
-                    );
+                    const params = new URLSearchParams({
+                      website: webSourceId,
+                    });
+                    const query = searchQuery?.trim();
+                    if (query && query !== "*") {
+                      params.set("q", query);
+                    }
+                    router.push(`/knowledge?${params.toString()}`);
                   }}
                 >
                   View pages

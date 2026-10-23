@@ -61,7 +61,11 @@ function ToolbarHarness({
 
 describe("website page data", () => {
   it("loads the source and searches, sorts, and paginates its website pages", async () => {
-    const requests: string[] = [];
+    const requests: Array<{
+      query: string;
+      resultMode?: string;
+      filters?: { web_source_ids?: string[] };
+    }> = [];
     server.use(
       http.get("/api/connectors/url/sources/source-1", () =>
         HttpResponse.json({
@@ -72,8 +76,12 @@ describe("website page data", () => {
         }),
       ),
       http.post("/api/search", async ({ request }) => {
-        const body = (await request.json()) as { query: string };
-        requests.push(body.query);
+        const body = (await request.json()) as {
+          query: string;
+          resultMode?: string;
+          filters?: { web_source_ids?: string[] };
+        };
+        requests.push(body);
         return HttpResponse.json({
           results: [
             page({
@@ -142,7 +150,14 @@ describe("website page data", () => {
     }
 
     act(() => table.result.current.updateSearch("guide"));
-    await waitFor(() => expect(requests).toContain("guide"));
+    await waitFor(() =>
+      expect(requests.some((request) => request.query === "guide")).toBe(true),
+    );
+    expect(requests.at(-1)).toMatchObject({
+      query: "guide",
+      resultMode: "chunks",
+      filters: { web_source_ids: ["source-1"] },
+    });
     expect(table.result.current.currentPage).toBe(1);
   });
 

@@ -270,6 +270,18 @@ export function buildChunksUrl(
   return `/knowledge/chunks?${params.toString()}`;
 }
 
+export function buildWebsitePagesUrl(
+  sourceId: string,
+  effectiveSearchText: string,
+): string {
+  const params = new URLSearchParams({ website: sourceId });
+  const trimmed = effectiveSearchText.trim();
+  if (trimmed && trimmed !== "*") {
+    params.set("q", trimmed);
+  }
+  return `/knowledge?${params.toString()}`;
+}
+
 const AVG_SCORE_TOOLTIP =
   "Average relevance score across the matched chunks of this file. Higher means a stronger match — sort by this column to rank results by relevance.";
 
@@ -828,7 +840,10 @@ function SearchPage() {
                 if (!isActive) return;
                 if (data?.connector_type === "url" && data.web_source_id) {
                   router.push(
-                    `/knowledge?website=${encodeURIComponent(data.web_source_id)}`,
+                    buildWebsitePagesUrl(
+                      data.web_source_id,
+                      effectiveSearchText,
+                    ),
                   );
                   return;
                 }
@@ -985,6 +1000,7 @@ function SearchPage() {
             webSourceId={data?.web_source_id}
             webPageId={data?.web_page_id}
             webChildCount={data?.web_child_count}
+            searchQuery={effectiveSearchText}
           />
         );
       }
@@ -1250,9 +1266,18 @@ function SearchPage() {
 function ProtectedSearchPageContent() {
   const searchParams = useSearchParams();
   const websiteId = searchParams.get("website");
+  const websiteSearch = searchParams.get("q") ?? "";
   return (
     <ProtectedRoute>
-      {websiteId ? <WebsitePagesView sourceId={websiteId} /> : <SearchPage />}
+      {websiteId ? (
+        <WebsitePagesView
+          key={`${websiteId}:${websiteSearch}`}
+          sourceId={websiteId}
+          initialSearch={websiteSearch}
+        />
+      ) : (
+        <SearchPage />
+      )}
     </ProtectedRoute>
   );
 }

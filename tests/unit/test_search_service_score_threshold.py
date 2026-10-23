@@ -17,7 +17,13 @@ from types import SimpleNamespace
 import pytest
 from opensearchpy.exceptions import RequestError
 
-from auth_context import set_auth_context, set_score_threshold, set_search_filters, set_search_limit
+from auth_context import (
+    set_auth_context,
+    set_score_threshold,
+    set_search_filters,
+    set_search_limit,
+    set_search_result_mode,
+)
 from services.search_service import SearchService
 
 
@@ -86,6 +92,7 @@ def _set_context(score_threshold: float) -> None:
     set_search_filters({})
     set_search_limit(100)
     set_score_threshold(score_threshold)
+    set_search_result_mode("chunks")
 
 
 def _knn_params(query: dict) -> list[dict]:
@@ -155,3 +162,22 @@ async def test_num_candidates_retry_keeps_the_threshold(monkeypatch):
     assert all("num_candidates" not in params for params in _knn_params(retry["query"]))
     assert retry["query"]["function_score"]["min_score"] == 1.0
     assert "min_score" not in retry
+
+
+@pytest.mark.asyncio
+async def test_knowledge_source_search_keeps_website_page_chunks_for_parent_aggregation(
+    monkeypatch,
+):
+    """The API folds page hits into their source after SearchService ranks them."""
+    os_client = _OpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+    set_search_result_mode("knowledge_sources")
+
+    await service.search_tool("baseball")
+
+    filters = os_client.bodies[-1]["query"]["bool"].get("filter", [])
+    assert not any(
+        clause.get("bool", {}).get("must_not") == [{"exists": {"field": "web_page_id"}}]
+        for clause in filters
+    )
