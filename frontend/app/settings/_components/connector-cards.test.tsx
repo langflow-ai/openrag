@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import { authPresets } from "@/test-utils/fixtures/auth";
 import { makeSettings } from "@/test-utils/fixtures/settings";
 import { renderWithProviders } from "@/test-utils/render";
-import { mockRouter } from "@/test-utils/router";
 import ConnectorCards from "./connector-cards";
 
 describe("ConnectorCards", () => {
@@ -35,6 +34,9 @@ describe("ConnectorCards", () => {
         http.get("/api/connectors/url/status", () =>
           HttpResponse.json({ connections: [] }),
         ),
+        http.get("/api/connectors/url/sources", () =>
+          HttpResponse.json({ sources: [] }),
+        ),
       ],
     });
 
@@ -43,6 +45,8 @@ describe("ConnectorCards", () => {
 
     await user.click(screen.getByRole("button", { name: /add knowledge/i }));
 
-    expect(mockRouter.push).toHaveBeenCalledWith("/knowledge?add=url");
+    expect(
+      await screen.findByRole("heading", { name: "Add a Website connection" }),
+    ).toBeVisible();
   });
 });

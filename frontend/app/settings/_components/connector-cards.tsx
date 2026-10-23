@@ -10,6 +10,7 @@ import {
 } from "@/app/api/queries/useGetConnectorsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog";
+import { UrlSourceDialog } from "@/components/url-source-dialog";
 import { useAuth } from "@/contexts/auth-context";
 import { useBrand } from "@/contexts/brand-context";
 import { isSaasPolicyContext } from "@/lib/brand";
@@ -32,6 +33,7 @@ export default function ConnectorCards() {
   });
   const router = useRouter();
   const [openDialog, setOpenDialog] = useState<string | null>(null);
+  const [urlDialogOpen, setUrlDialogOpen] = useState(false);
   const [disconnectTarget, setDisconnectTarget] = useState<Connector | null>(
     null,
   );
@@ -97,9 +99,9 @@ export default function ConnectorCards() {
     }
   };
 
-  const navigateToKnowledgePage = (connector: Connector) => {
+  const handleAddKnowledge = (connector: Connector) => {
     if (connector.type === "url") {
-      router.push("/knowledge?add=url");
+      setUrlDialogOpen(true);
       return;
     }
     const provider = connector.type.replace(/-/g, "_");
@@ -165,7 +167,7 @@ export default function ConnectorCards() {
                   }
                   onConnect={handleConnect}
                   onDisconnect={handleDisconnect}
-                  onNavigateToKnowledge={navigateToKnowledgePage}
+                  onAddKnowledge={handleAddKnowledge}
                   onConfigure={getConfigureHandler(connector)}
                 />
               ))
@@ -187,7 +189,7 @@ export default function ConnectorCards() {
                 isDisconnecting={false}
                 onConnect={handleConnect}
                 onDisconnect={handleDisconnect}
-                onNavigateToKnowledge={navigateToKnowledgePage}
+                onAddKnowledge={handleAddKnowledge}
                 onConfigure={getConfigureHandler(connector)}
               />
             ))}
@@ -221,7 +223,7 @@ export default function ConnectorCards() {
                   }
                   onConnect={handleConnect}
                   onDisconnect={handleDisconnect}
-                  onNavigateToKnowledge={navigateToKnowledgePage}
+                  onAddKnowledge={handleAddKnowledge}
                   onConfigure={getConfigureHandler(connector)}
                 />
               ))
@@ -250,6 +252,10 @@ export default function ConnectorCards() {
           />
         );
       })}
+
+      {showUrlConnector && (
+        <UrlSourceDialog open={urlDialogOpen} onOpenChange={setUrlDialogOpen} />
+      )}
 
       <DeleteConfirmationDialog
         open={disconnectTarget !== null}

@@ -15,7 +15,6 @@ const BUILTIN_CONNECTORS: ConnectorUIDescriptor[] = [
     name: "URL",
     Icon: KnowledgeUrlIcon,
     kind: "managed",
-    menuItem: { label: "URL", route: "/knowledge?add=url" },
   },
   {
     connectorType: "google_drive",

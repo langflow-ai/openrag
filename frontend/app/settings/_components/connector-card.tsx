@@ -34,7 +34,7 @@ interface ConnectorCardProps {
   isDisconnecting: boolean;
   onConnect: (connector: Connector) => void;
   onDisconnect: (connector: Connector) => void;
-  onNavigateToKnowledge: (connector: Connector) => void;
+  onAddKnowledge: (connector: Connector) => void;
   /** Optional: open a connector-specific settings/edit dialog */
   onConfigure?: (connector: Connector) => void;
 }
@@ -45,7 +45,7 @@ export default function ConnectorCard({
   isDisconnecting,
   onConnect,
   onDisconnect,
-  onNavigateToKnowledge,
+  onAddKnowledge,
   onConfigure,
 }: ConnectorCardProps) {
   const isCloudBrand = useIsCloudBrand();
@@ -125,7 +125,7 @@ export default function ConnectorCard({
               <div className="flex gap-2 overflow-hidden w-full">
                 <Button
                   variant="default"
-                  onClick={() => onNavigateToKnowledge(connector)}
+                  onClick={() => onAddKnowledge(connector)}
                   disabled={isDisconnecting || isConnecting || !canUpload}
                   title={
                     canUpload
