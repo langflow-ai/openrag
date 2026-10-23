@@ -56,6 +56,7 @@ const sidebars = {
       id: "core-components/agents",
       label: "Flows",
     },
+    "core-components/editing-in-langflow",
     {
       type: "category",
       label: "Knowledge",
