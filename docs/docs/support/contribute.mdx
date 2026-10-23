@@ -95,7 +95,7 @@ For day-to-day development, run the infrastructure in containers and run the bac
 
 3. To build the full container stack from the current checkout instead, run `make dev-build` (GPU) or `make dev-build-cpu` (CPU), then run `make docling` separately. In this mode, do not run `make backend` or `make frontend` because they are already running in containers.
 
-4. To discard local service state and start over, run `make factory-reset` and confirm the prompt. This removes the containers and volumes, local Langflow data, backend configuration and data, and generated JWT keys. Then repeat the local development commands.
+4. To discard local service state and start over, first stop any host `make backend` and `make frontend` processes with <kbd>Ctrl</kbd>+<kbd>C</kbd> in their terminals. `make factory-reset` stops the infrastructure containers, but it does not stop those host processes; leaving them running prevents the replacement backend and frontend from binding to their ports. Then run `make factory-reset` and confirm the prompt. This removes the containers and volumes, local Langflow data, backend configuration and data, and generated JWT keys. Finally, repeat the local development commands.
 
 :::warning Keep image versions and flows compatible
 

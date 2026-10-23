@@ -8,7 +8,7 @@ You can edit OpenRAG flows in the Langflow visual editor, subject to the followi
 ## Supported customization
 
 * **SaaS:** Edit flows using components already available in Langflow. Custom components and custom component code are not supported.
-* **Local deployments:** Custom components and custom component code are available only when explicitly enabled.
+* **Local deployments:** Custom components and custom component code are available only when you set `LANGFLOW_ALLOW_CUSTOM_COMPONENTS=true`. Otherwise, use components already available in Langflow.
 * **Ingestion:** Adding custom metadata to the **OpenSearch** component in Langflow is not supported.
 * **Recommended components:** Use **OpenRAG LLM** and **OpenRAG Embeddings** for language models and embeddings.
 
@@ -17,8 +17,9 @@ You can edit OpenRAG flows in the Langflow visual editor, subject to the followi
 1. In OpenRAG, open **Settings** and click **Edit in Langflow**.
 2. Open the **Projects** page and select the flow you want to edit.
 3. Disable lock mode before editing: click the flow name in the header, then turn off the **Lock** toggle.
-4. Modify the flow within the limits above, then press <kbd>Command</kbd>+<kbd>S</kbd> (macOS) or <kbd>Ctrl</kbd>+<kbd>S</kbd> (Windows/Linux) to save.
-5. Test the flow through OpenRAG. The Langflow **Playground** and **Run** controls do not work for OpenRAG flows because OpenRAG passes the values required to run a flow at runtime. For example, test an Agent-flow change by starting a new conversation in OpenRAG.
-6. After editing the **Agent** flow, start a new conversation in OpenRAG so previous conversation context is not reused.
+4. Save the unlock change by pressing <kbd>Command</kbd>+<kbd>S</kbd> (macOS) or <kbd>Ctrl</kbd>+<kbd>S</kbd> (Windows/Linux).
+5. Modify the flow within the limits above, then save it with the same keyboard shortcut.
+6. Test the flow through OpenRAG. The Langflow **Playground** and **Run** controls do not work for OpenRAG flows because OpenRAG passes the values required to run a flow at runtime. For example, test an Agent-flow change by starting a new conversation in OpenRAG.
+7. After editing the **Agent** flow, start a new conversation in OpenRAG so previous conversation context is not reused.
 
 For restore options, see [Use Langflow in OpenRAG](/agents#revert-a-built-in-flow-to-its-original-configuration).

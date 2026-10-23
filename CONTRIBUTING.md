@@ -234,10 +234,15 @@ The frontend automatically picks up changes. Restart `make backend` after backen
 
 ### Run two local OpenRAG instances
 
-Give the second instance its own environment file, then pass that file to every `make` command for that instance. Set a unique Compose project name and host ports so its containers and services do not conflict with the first instance:
+Use this configuration only when you have **two separate clones** of the OpenRAG repository on the same machine and want to run both at the same time. Each clone has its own local files, including its Langflow database.
+
+> [!IMPORTANT]
+> Do not run two OpenRAG stacks from the same clone. Even with different ports and Compose project names, they share the local database and other state, so this configuration is unsupported.
+
+In the second clone, set a unique Compose project name and host ports in its `.env` file so its containers and services do not conflict with the first clone:
 
 ```env
-# .env.openrag-1
+# second OpenRAG clone: .env
 OPENRAG_BACKEND_PORT=8001
 COMPOSE_PROJECT_NAME=openrag-1
 
@@ -254,17 +259,17 @@ BASE_URL=http://localhost:3001
 LANGFLOW_PUBLIC_URL=http://localhost:7861
 ```
 
-Start it with the same local-development commands, adding `ENV_FILE=.env.openrag-1` to each command:
+Start the second clone with the same local-development commands, from that clone's repository root:
 
 ```bash
-make ENV_FILE=.env.openrag-1 dev-local-cpu
-make ENV_FILE=.env.openrag-1 backend
-make ENV_FILE=.env.openrag-1 frontend
+make dev-local-cpu
+make backend
+make frontend
 ```
 
 Both instances can use the same host Docling process; start it once with `make docling`.
 
-`BASE_URL` is used by the frontend end-to-end test tooling; it does not configure the running application. If both instances need independent persistent state, also give the second environment file unique values for `LANGFLOW_DATA_PATH`, `OPENRAG_DATA_PATH`, `OPENRAG_CONFIG_PATH`, `OPENRAG_KEYS_PATH`, `OPENRAG_DOCUMENTS_PATH`, and `OPENRAG_FLOWS_PATH`.
+`BASE_URL` is used by the frontend end-to-end test tooling; it does not configure the running application.
 
 ### Full Docker Stack (Build from This Checkout)
 
@@ -407,6 +412,8 @@ make clear-os-data  # Clear OpenSearch data directory completely
 
 > [!CAUTION]
 > This stops and removes containers and volumes, then deletes local Langflow data, backend configuration and data, and generated JWT keys. Use only when you need a completely fresh start.
+
+Before resetting, stop any host `make backend` and `make frontend` processes with <kbd>Ctrl</kbd>+<kbd>C</kbd> in their terminals. `make factory-reset` stops the infrastructure containers, but it does not stop those host processes; leaving them running prevents the replacement backend and frontend from binding to their ports.
 
 ```bash
 make factory-reset  # Complete reset: containers, volumes, and data
