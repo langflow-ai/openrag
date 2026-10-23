@@ -24,6 +24,7 @@ const {
 // Mutable tasks list so individual tests can swap in different data.
 const mockTasksHolder = vi.hoisted(() => ({
   tasks: [] as { status: string }[],
+  hasUnreadFinishedTasks: false,
 }));
 
 vi.mock("@/contexts/brand-context", () => ({
@@ -35,7 +36,10 @@ vi.mock("@/contexts/auth-context", () => ({
 }));
 
 vi.mock("@/contexts/task-context", () => ({
-  useTask: () => ({ tasks: mockTasksHolder.tasks }),
+  useTask: () => ({
+    tasks: mockTasksHolder.tasks,
+    hasUnreadFinishedTasks: mockTasksHolder.hasUnreadFinishedTasks,
+  }),
 }));
 
 vi.mock("@/contexts/console-status-context", () => ({
@@ -164,7 +168,18 @@ describe("Header — notification badge counts", () => {
 
   it("shows no badge when all tasks are in terminal non-failed states", () => {
     mockTasksHolder.tasks = [{ status: "completed" }, { status: "cancelled" }];
+    mockTasksHolder.hasUnreadFinishedTasks = false;
     render(<Header />);
     expect(screen.queryByText(/^\d+$/)).toBeNull();
+    expect(
+      screen.queryByTestId("task-notification-dot"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows red dot when task upload finishes and hasUnreadFinishedTasks is true", () => {
+    mockTasksHolder.tasks = [{ status: "completed" }];
+    mockTasksHolder.hasUnreadFinishedTasks = true;
+    render(<Header />);
+    expect(screen.getByTestId("task-notification-dot")).toBeInTheDocument();
   });
 });

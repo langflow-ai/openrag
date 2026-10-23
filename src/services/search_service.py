@@ -10,6 +10,7 @@ from agentd.tool_decorator import tool
 
 from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
+from config.search_constants import DEFAULT_SEARCH_SCORE_THRESHOLD
 from config.settings import get_embedding_model, get_index_name, get_openrag_config
 from observability.spans import Span, trace_root, trace_span
 from services.llm_gateway import LlmGatewayError
@@ -36,6 +37,72 @@ EMBEDDING_SPACE_PAGE_SIZE = 100
 
 # Variable used to store the active instance for the tool wrapper
 _global_search_service = None
+
+
+_HAS_WORDS = re.compile(r"[^\W\d_]{2,}")
+
+
+def _has_readable_text(text: Any) -> bool:
+    """Return False for chunks with no run of two letters, e.g. a ``|---|---|`` table rule."""
+    return not isinstance(text, str) or _HAS_WORDS.search(text) is not None
+
+
+_STOPWORDS = frozenset(
+    "a an and are as at be but by for from if in into is it of on or so that the "
+    "their then there these this to was were what when where which who why will with".split()
+)
+
+
+def _keyword_query(query: str) -> str:
+    """Drop filler words from the keyword leg of a multi-word query.
+
+    The semantic leg still embeds the full query. A filler word counts as a
+    keyword match (and gets highlighted) only when it is the whole query, or
+    when it sits inside a phrase matched by the phrase clause.
+    """
+    tokens = query.split()
+    if len(tokens) < 2:
+        return query
+    kept = [t for t in tokens if t.lower().strip(".,;:!?\"'()[]") not in _STOPWORDS]
+    return " ".join(kept) if kept else query
+
+
+_KEYBOARD_ROWS = ("qwertyuiop", "asdfghjkl", "zxcvbnm")
+
+
+def _is_noise_token(token: str) -> bool:
+    """Return True for tokens that are clearly keyboard mash, not language.
+
+    Deliberately conservative: only repeated characters, keyboard-row runs,
+    long vowel-less words and very long consonant runs. Vowel-poor real terms
+    ("https", "pgsql", "rhythms", "strengths") and invented-but-pronounceable
+    words must pass.
+    """
+    token = token.lower()
+    if not token.isalpha() or not token.isascii():
+        return False
+    length = len(token)
+    if length >= 2 and len(set(token)) == 1:
+        return True
+    if length >= 5 and any(token in row for row in _KEYBOARD_ROWS):
+        return True
+    if length >= 6 and not re.search(r"[aeiouy]", token):
+        return True
+    return (
+        length >= 8
+        and re.search(r"[^aeiouy]{5,}", token) is not None
+        and re.search(r"ngths|lfths|ghts|ngst", token) is None
+    )
+
+
+def _is_noise_query(query: str) -> bool:
+    """Return True when every token of the query is keyboard mash.
+
+    Such queries get no semantic (kNN) leg: an embedding model always returns
+    nearest neighbours, so gibberish would otherwise match arbitrary chunks.
+    """
+    tokens = re.findall(r"\w+", query, flags=re.UNICODE)
+    return bool(tokens) and all(_is_noise_token(t) for t in tokens)
 
 
 def _is_exact_token_query(query: str) -> bool:
@@ -471,6 +538,10 @@ class SearchService:
                         )
                     ]
 
+            if _is_noise_query(query):
+                logger.info("Skipping semantic search for noise query")
+                available_spaces = []
+
             # Parallelize embedding generation for all models
             async def embed_with_space(
                 space: EmbeddingSpace,
@@ -645,10 +716,11 @@ class SearchService:
                 [
                     {
                         "multi_match": {
-                            "query": query,
+                            "query": _keyword_query(query),
                             "fields": ["text^2", "filename^1.5"],
                             "type": "best_fields",
                             "operator": "or",
+                            "minimum_should_match": "2<75%",
                             "fuzziness": "AUTO:4,7",
                             "boost": 0.3 if knn_queries else 1.0,
                         }
@@ -682,9 +754,15 @@ class SearchService:
             # min_score also counts the constant-score clause OpenSearch DLS
             # adds to every user-scoped search, which lifts every visible hit
             # over the threshold and turns the filter off.
-            if score_threshold > 0:
+            effective_score_threshold = (
+                score_threshold if score_threshold > 0 else DEFAULT_SEARCH_SCORE_THRESHOLD
+            )
+            if effective_score_threshold > 0:
                 query_block = {
-                    "function_score": {"query": query_block, "min_score": score_threshold}
+                    "function_score": {
+                        "query": query_block,
+                        "min_score": effective_score_threshold,
+                    }
                 }
 
         search_body: dict[str, Any] = {
@@ -724,8 +802,7 @@ class SearchService:
                 "type": "unified",
                 "fields": {
                     "text": {
-                        "fragment_size": 200,
-                        "number_of_fragments": 3,
+                        "number_of_fragments": 0,
                         "pre_tags": ["<mark>"],
                         "post_tags": ["</mark>"],
                     }
@@ -874,6 +951,9 @@ class SearchService:
                     "allowed_principal_labels": source.get("allowed_principal_labels", []),
                 }
             )
+
+        if not is_wildcard_match_all:
+            chunks = [chunk for chunk in chunks if _has_readable_text(chunk["text"])]
 
         # If query text appears verbatim in one subset of files, prefer those files
         # to avoid broad semantic spillover for unique lookups.

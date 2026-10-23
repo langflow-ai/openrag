@@ -8,7 +8,8 @@ The threshold must therefore sit inside the query, on the hybrid score.
 Verifies:
 - a positive threshold wraps the hybrid query in function_score.min_score
 - no top-level min_score is sent
-- threshold 0 and wildcard queries are not wrapped
+- threshold 0 falls back to the default threshold; with no default it is not wrapped
+- wildcard queries are not wrapped
 - the num_candidates retry still strips num_candidates inside the wrapper
 """
 
@@ -113,8 +114,9 @@ async def test_positive_threshold_applies_inside_the_query(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_zero_threshold_leaves_the_query_unwrapped(monkeypatch):
-    """Verify a zero threshold leaves the hybrid query unwrapped and without min_score."""
+async def test_zero_threshold_without_default_leaves_the_query_unwrapped(monkeypatch):
+    """Verify a zero threshold and no default leave the hybrid query unwrapped."""
+    monkeypatch.setattr("services.search_service.DEFAULT_SEARCH_SCORE_THRESHOLD", 0)
     os_client = _OpenSearch()
     service = _make_service(os_client, monkeypatch)
     _set_context(0)
@@ -125,6 +127,34 @@ async def test_zero_threshold_leaves_the_query_unwrapped(monkeypatch):
     assert "min_score" not in body
     assert "function_score" not in body["query"]
     assert "bool" in body["query"]
+
+
+@pytest.mark.asyncio
+async def test_zero_threshold_falls_back_to_the_default(monkeypatch):
+    """Verify a zero request threshold applies the default inside function_score."""
+    monkeypatch.setattr("services.search_service.DEFAULT_SEARCH_SCORE_THRESHOLD", 0.37)
+    os_client = _OpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+
+    await service.search_tool("MCP")
+
+    body = os_client.bodies[-1]
+    assert "min_score" not in body
+    assert body["query"]["function_score"]["min_score"] == 0.37
+
+
+@pytest.mark.asyncio
+async def test_explicit_threshold_overrides_the_default(monkeypatch):
+    """Verify a positive request threshold wins over the default."""
+    monkeypatch.setattr("services.search_service.DEFAULT_SEARCH_SCORE_THRESHOLD", 0.37)
+    os_client = _OpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    _set_context(1.0)
+
+    await service.search_tool("MCP")
+
+    assert os_client.bodies[-1]["query"]["function_score"]["min_score"] == 1.0
 
 
 @pytest.mark.asyncio

@@ -153,3 +153,39 @@ async def test_highlights_empty_when_no_keyword_match(monkeypatch):
     result = await service.search_tool("relevant query")
 
     assert result["results"][0]["highlights"] == []
+
+
+@pytest.mark.asyncio
+async def test_empty_formatting_chunks_are_dropped_from_search_results(monkeypatch):
+    """A table-rule chunk with no words is removed; real chunks stay."""
+    os_client = _OpenSearch(
+        hits=[
+            _make_hit("A real sentence about harbors."),
+            _make_hit("|-----|-----|"),
+        ]
+    )
+    service = _make_service(os_client, monkeypatch)
+    set_auth_context("user-1", None)
+    set_search_filters({})
+    set_search_limit(5)
+    set_score_threshold(0)
+
+    result = await service.search_tool("harbor")
+
+    assert [c["text"] for c in result["results"]] == ["A real sentence about harbors."]
+    assert result["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_wildcard_search_keeps_empty_formatting_chunks(monkeypatch):
+    """The chunk browser lists every chunk, so wildcard results are not filtered."""
+    os_client = _OpenSearch(hits=[_make_hit("|-----|-----|")])
+    service = _make_service(os_client, monkeypatch)
+    set_auth_context("user-1", None)
+    set_search_filters({})
+    set_search_limit(5)
+    set_score_threshold(0)
+
+    result = await service.search_tool("*")
+
+    assert len(result["results"]) == 1
