@@ -550,6 +550,8 @@ def test_load_results_rejects_files_that_are_not_harness_output(tmp_path: Path) 
     ("url", "expected"),
     [
         ("http://localhost:3000", "http://localhost:3000"),
+        ("http://[::1]:3000/", "http://[::1]:3000"),
+        ("http://user:secret@[2001:db8::1]/base", "http://[2001:db8::1]/base"),
         (
             "https://user:secret@rag.example.com:8443/base/?token=abc#frag",
             "https://rag.example.com:8443/base",

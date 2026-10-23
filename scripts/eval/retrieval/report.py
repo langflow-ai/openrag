@@ -39,6 +39,9 @@ def redact_url(url: str) -> str:
     """Drop credentials, query string and fragment so the URL is safe to store."""
     parts = urlsplit(url)
     host = parts.hostname or ""
+    if ":" in host:
+        # urlsplit strips the brackets from an IPv6 host; a URL needs them back.
+        host = f"[{host}]"
     if parts.port:
         host = f"{host}:{parts.port}"
     return urlunsplit((parts.scheme, host, parts.path.rstrip("/"), "", ""))
