@@ -8,7 +8,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from services.docling_service import DoclingPayloadTooLarge, DoclingServeError, DoclingService
+from services.docling_service import (
+    PASSWORD_PROTECTED_PDF_DETAIL,
+    DoclingPayloadTooLarge,
+    DoclingServeError,
+    DoclingService,
+    is_encrypted_pdf,
+    password_protected_pdf_error,
+)
 from utils.upload_limits import UploadTooLarge
 
 # Shape of a /v1/result body for a password-protected PDF: the task ran to
@@ -164,6 +171,86 @@ async def test_poll_result_surfaces_conversion_failure_from_result_payload(
     assert message.startswith("Docling processing failed: ")
     assert "Incorrect password" in message
     assert "missing document.json_content" not in message
+
+
+# ── Password-protected PDFs on newer docling ───────────────────────
+
+# docling >= 2.141 loads through docling-parse first, whose load failure no longer
+# names the reason (seen on CPD, tracker #99817).
+_DOCLING_PARSE_LOAD_FAILURE = (
+    "Docling processing failed: docling-parse could not load document 8fc525: "
+    "Failed to load document with key key=8fc525"
+)
+_ENCRYPTED_PDF = (
+    b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+    b"trailer\n<< /Root 1 0 R /Encrypt 5 0 R /Size 6 >>\n%%EOF\n"
+)
+_PLAIN_PDF = b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        (_ENCRYPTED_PDF, True),
+        (b"%PDF-1.5\n<< /Type /XRef /Encrypt << /Filter /Standard >> >>", True),
+        (_PLAIN_PDF, False),
+        (b"not a pdf /Encrypt 5 0 R", False),
+        (b"%PDF-1.7\nBT (the /Encrypt key) Tj ET", False),
+    ],
+)
+def test_is_encrypted_pdf(content, expected):
+    assert is_encrypted_pdf(content) is expected
+
+
+def test_password_protected_pdf_error_needs_load_failure_and_encryption():
+    assert (
+        password_protected_pdf_error(_DOCLING_PARSE_LOAD_FAILURE, _ENCRYPTED_PDF)
+        == PASSWORD_PROTECTED_PDF_DETAIL
+    )
+    # A corrupt but unencrypted PDF keeps docling's own message.
+    assert password_protected_pdf_error(_DOCLING_PARSE_LOAD_FAILURE, _PLAIN_PDF) is None
+    # An owner-password-only PDF that failed for another reason is not relabelled.
+    assert (
+        password_protected_pdf_error("Docling processing failed: OCR crashed", _ENCRYPTED_PDF)
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_convert_bytes_names_password_protected_pdf(docling_service):
+    with (
+        patch.object(
+            docling_service, "upload_to_docling_direct_async", AsyncMock(return_value="t1")
+        ),
+        patch.object(
+            docling_service,
+            "get_docling_result_async",
+            AsyncMock(side_effect=DoclingServeError(_DOCLING_PARSE_LOAD_FAILURE)),
+        ),
+        pytest.raises(DoclingServeError) as exc_info,
+    ):
+        await docling_service.convert_bytes(_ENCRYPTED_PDF, "secret.pdf")
+
+    assert str(exc_info.value) == f"Docling processing failed: {PASSWORD_PROTECTED_PDF_DETAIL}"
+    assert str(exc_info.value.__cause__) == _DOCLING_PARSE_LOAD_FAILURE
+
+
+@pytest.mark.asyncio
+async def test_convert_file_keeps_docling_error_for_unencrypted_pdf(docling_service, tmp_path):
+    pdf = tmp_path / "broken.pdf"
+    pdf.write_bytes(_PLAIN_PDF)
+    with (
+        patch.object(
+            docling_service, "upload_to_docling_direct_async", AsyncMock(return_value="t1")
+        ),
+        patch.object(
+            docling_service,
+            "get_docling_result_async",
+            AsyncMock(side_effect=DoclingServeError(_DOCLING_PARSE_LOAD_FAILURE)),
+        ),
+        pytest.raises(DoclingServeError, match="Failed to load document with key"),
+    ):
+        await docling_service.convert_file(str(pdf))
 
 
 @pytest.mark.asyncio
