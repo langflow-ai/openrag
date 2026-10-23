@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle, Loader2, XCircle } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -30,6 +30,16 @@ function cleanupOAuthStorage() {
   localStorage.removeItem("auth_purpose");
   localStorage.removeItem("auth_redirect_to");
 }
+
+type CallbackResult = { purpose?: string };
+
+// OAuth codes are single-use, so each code is exchanged at most once per page
+// load. Keeping the promise (not just a "seen" flag) lets a re-run of the
+// effect, such as StrictMode's dev remount, wait on the exchange already in
+// flight instead of abandoning it.
+const exchanges = new Map<string, Promise<CallbackResult>>();
+
+const callbackKeyFor = (code: string) => `callback_processed_${code}`;
 
 function AuthCallbackContent() {
   const router = useRouter();
@@ -70,33 +80,27 @@ function AuthCallbackContent() {
       : null,
   );
 
+  // Marked used by an earlier load of this URL (a reload or the back button)
+  // with no exchange in flight here. The code cannot be exchanged again.
+  const [codeAlreadyUsed] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      !!code &&
+      !exchanges.has(code) &&
+      !!sessionStorage.getItem(callbackKeyFor(code)),
+  );
+
   const validationError = errorParam
     ? `OAuth error: ${errorParam}`
     : !code || !state || !finalConnectorId
       ? "Missing required parameters for OAuth callback"
-      : null;
+      : codeAlreadyUsed
+        ? "This sign-in link has already been used. Please try again."
+        : null;
 
-  const { mutate: exchangeCode, ...callbackMutation } = useMutation({
-    mutationFn: async (params: {
-      connectionId: string;
-      code: string;
-      state: string;
-    }) => {
-      const response = await apiClient.post("/auth/callback", {
-        connection_id: params.connectionId,
-        authorization_code: params.code,
-        state: params.state,
-      });
-      const result = response.data;
-      if (response.status < 200 || response.status >= 300) {
-        throw new Error(result.error || "Authentication failed");
-      }
-      return result as { purpose?: string };
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["connectors"], exact: false });
-    },
-  });
+  const [exchangeResult, setExchangeResult] = useState<
+    { status: "success" } | { status: "error"; error: string } | null
+  >(null);
 
   useEffect(() => {
     if (validationError) {
@@ -104,10 +108,8 @@ function AuthCallbackContent() {
       return;
     }
 
-    const callbackKey = `callback_processed_${code}`;
-
-    if (sessionStorage.getItem(callbackKey)) return;
-    sessionStorage.setItem(callbackKey, "true");
+    const callbackKey = callbackKeyFor(code!);
+    let active = true;
 
     let parsedConnectionId = finalConnectorId!;
 
@@ -135,53 +137,89 @@ function AuthCallbackContent() {
       }
     }
 
-    exchangeCode(
-      { connectionId: parsedConnectionId, code: code!, state: state! },
-      {
-        onSuccess: async (result) => {
-          if (result.purpose === "app_auth" || purpose === "app_auth") {
-            await refreshAuth();
-
-            const redirectTo =
-              localStorage.getItem("auth_redirect_to") ||
-              searchParams.get("redirect") ||
-              "/chat";
-
-            cleanupOAuthStorage();
-            redirectTimeoutRef.current = setTimeout(
-              () => router.push(redirectTo),
-              2000,
-            );
-          } else if (result.purpose === "test" || purpose === "test") {
-            // Test Connection — token exchange succeeded, credentials work. No
-            // connection was persisted (see _handle_test_auth); send the admin
-            // back to Connector Settings with a success indicator to toast.
-            cleanupOAuthStorage();
-            localStorage.removeItem("test_connection_return_tab");
-            redirectTimeoutRef.current = setTimeout(
-              () =>
-                router.push(
-                  `/settings/connector-access?oauth_test=success&credential=${encodeURIComponent(storedConnectorType || "")}`,
-                ),
-              1000,
-            );
-          } else {
-            cleanupOAuthStorage();
-            redirectTimeoutRef.current = setTimeout(
-              () => router.push("/settings?oauth_success=true"),
-              2000,
-            );
+    let exchange = exchanges.get(code!);
+    if (!exchange) {
+      sessionStorage.setItem(callbackKey, "true");
+      exchange = apiClient
+        .post("/auth/callback", {
+          connection_id: parsedConnectionId,
+          authorization_code: code,
+          state,
+        })
+        .then((response) => {
+          const result = response.data;
+          if (response.status < 200 || response.status >= 300) {
+            throw new Error(result.error || "Authentication failed");
           }
-        },
-        onError: () => {
+          return result as CallbackResult;
+        })
+        .finally(() => {
+          queryClient.invalidateQueries({
+            queryKey: ["connectors"],
+            exact: false,
+          });
+        });
+      exchanges.set(code!, exchange);
+    }
+
+    // Only the latest run of this effect reacts to the result; an earlier,
+    // cleaned-up run must not redirect or set state.
+    exchange.then(
+      async (result) => {
+        if (!active) return;
+        setExchangeResult({ status: "success" });
+        if (result.purpose === "app_auth" || purpose === "app_auth") {
+          await refreshAuth();
+          if (!active) return;
+
+          const redirectTo =
+            localStorage.getItem("auth_redirect_to") ||
+            searchParams.get("redirect") ||
+            "/chat";
+
+          cleanupOAuthStorage();
+          redirectTimeoutRef.current = setTimeout(
+            () => router.push(redirectTo),
+            2000,
+          );
+        } else if (result.purpose === "test" || purpose === "test") {
+          // Test Connection — token exchange succeeded, credentials work. No
+          // connection was persisted (see _handle_test_auth); send the admin
+          // back to Connector Settings with a success indicator to toast.
           cleanupOAuthStorage();
           localStorage.removeItem("test_connection_return_tab");
-          sessionStorage.removeItem(callbackKey);
-        },
+          redirectTimeoutRef.current = setTimeout(
+            () =>
+              router.push(
+                `/settings/connector-access?oauth_test=success&credential=${encodeURIComponent(storedConnectorType || "")}`,
+              ),
+            1000,
+          );
+        } else {
+          cleanupOAuthStorage();
+          redirectTimeoutRef.current = setTimeout(
+            () => router.push("/settings?oauth_success=true"),
+            2000,
+          );
+        }
+      },
+      (error: unknown) => {
+        if (!active) return;
+        setExchangeResult({
+          status: "error",
+          error:
+            error instanceof Error ? error.message : "Authentication failed",
+        });
+        cleanupOAuthStorage();
+        localStorage.removeItem("test_connection_return_tab");
+        sessionStorage.removeItem(callbackKey);
       },
     );
 
-    return () => clearTimeout(redirectTimeoutRef.current);
+    return () => {
+      active = false;
+      clearTimeout(redirectTimeoutRef.current);
+    };
   }, [
     code,
     state,
@@ -190,24 +228,19 @@ function AuthCallbackContent() {
     validationError,
     searchParams,
     isIbmAuthMode,
-    exchangeCode,
+    queryClient,
     refreshAuth,
     purpose,
     router,
   ]);
 
-  const status: "processing" | "success" | "error" =
-    validationError || callbackMutation.isError
-      ? "error"
-      : callbackMutation.isSuccess
-        ? "success"
-        : "processing";
+  const status: "processing" | "success" | "error" = validationError
+    ? "error"
+    : (exchangeResult?.status ?? "processing");
 
   const error =
     validationError ||
-    (callbackMutation.error instanceof Error
-      ? callbackMutation.error.message
-      : null);
+    (exchangeResult?.status === "error" ? exchangeResult.error : null);
 
   const isAppAuth = mounted && purpose === "app_auth";
   const isTest = mounted && purpose === "test";
