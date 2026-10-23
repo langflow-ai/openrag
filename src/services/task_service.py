@@ -16,6 +16,7 @@ from models.tasks import (
     TaskStatus,
     UploadTask,
 )
+from observability.tracing import trace_context
 from session_manager import AnonymousUser
 from utils.filename_claims import (
     INFLIGHT_CLAIM_WINNER_FAILED_ERROR,
@@ -374,6 +375,7 @@ class TaskService:
         preview_mode: bool = False,
         *,
         allow_anonymous_delete: bool,
+        existing_task_id: str | None = None,
     ) -> str:
         """Create a new upload task for bulk file processing.
 
@@ -404,6 +406,7 @@ class TaskService:
             original_filenames=original_filenames,
             temp_file_paths=file_paths,
             preview_mode=preview_mode,
+            existing_task_id=existing_task_id,
         )
 
     async def create_langflow_upload_task(
@@ -461,6 +464,54 @@ class TaskService:
             temp_file_paths=temp_file_paths if temp_file_paths is not None else file_paths,
             preview_mode=preview_mode,
         )
+
+    def record_rejected_uploads(
+        self,
+        user_id: str,
+        rejections: list[tuple[str, int]],
+        *,
+        task_id: str | None = None,
+    ) -> str:
+        """Keep files the client did not send because they exceed the upload limit.
+
+        Attached to ``task_id`` when that task exists, already counted as
+        failed, so the panel shows them after the toasts are gone. Otherwise a
+        completed task that contains only these failures.
+        """
+        from utils.upload_limits import max_upload_mb, upload_too_large_message
+
+        if not rejections:
+            raise ValueError("rejections must not be empty")
+
+        limit_mb = max_upload_mb()
+        store_user_id = user_id or AnonymousUser().user_id
+        upload_task = self._find_upload_task(task_id) if task_id else None
+        created = upload_task is None
+        if upload_task is None:
+            upload_task = UploadTask(
+                task_id=task_id or str(uuid.uuid4()),
+                total_files=0,
+                status=TaskStatus.COMPLETED,
+            )
+            if store_user_id not in self.task_store:
+                self.task_store[store_user_id] = {}
+            self.task_store[store_user_id][upload_task.task_id] = upload_task
+
+        for index, (filename, size_bytes) in enumerate(rejections):
+            key = f"over-limit:{upload_task.task_id}:{index}:{filename}"
+            upload_task.file_tasks[key] = FileTask(
+                file_path=key,
+                filename=filename,
+                status=TaskStatus.FAILED,
+                error=upload_too_large_message(filename, size_bytes, limit_mb),
+            )
+            upload_task.total_files += 1
+            upload_task.failed_files += 1
+            upload_task.processed_files += 1
+        upload_task.updated_at = time.time()
+        if created:
+            upload_task.status = TaskStatus.COMPLETED
+        return upload_task.task_id
 
     async def create_url_upload_task(
         self,
@@ -800,10 +851,15 @@ class TaskService:
 
                     try:
                         # Add timeout protection to prevent indefinite hangs
-                        await self._process_with_timeout(
-                            processor.process_item(upload_task, item, file_task),
-                            timeout_seconds=self.ingestion_timeout,
-                        )
+                        # Traces opened for this file (and its model calls)
+                        # carry the task; an upload's files share a session.
+                        with trace_context(
+                            session_id=task_id, attributes={"openrag.task_id": task_id}
+                        ):
+                            await self._process_with_timeout(
+                                processor.process_item(upload_task, item, file_task),
+                                timeout_seconds=self.ingestion_timeout,
+                            )
 
                         logger.info(
                             "File processing task succeeded",
@@ -1273,6 +1329,19 @@ class TaskService:
             return {
                 "failure_phase": "cancelled",
                 "user_facing_message": "Ingestion was cancelled.",
+                "actionable_by": "USER_ACTIONABLE",
+            }
+
+        from utils.upload_limits import is_upload_size_error, upload_size_user_message
+
+        # A size refusal is stored while docling_status is still PENDING, because
+        # the proxy rejects the body before a Docling task exists. Later branches
+        # would drop that text.
+        if is_upload_size_error(error):
+            return {
+                "component": "docling",
+                "failure_phase": "parsing",
+                "user_facing_message": upload_size_user_message(error),
                 "actionable_by": "USER_ACTIONABLE",
             }
 

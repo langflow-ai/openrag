@@ -104,7 +104,7 @@
     "nanoid": "5.1.16",
     "js-cookie": "3.0.7",
     "picomatch": "4.0.4",
-    "sharp": "file:./stubs/sharp-0.35.4.tgz",
+    "sharp": "file:./stubs/sharp-0.35.5.tgz",
     "glob-parent": "5.1.2",
     "minimatch": "10.2.3",
     "semver": "7.5.4",

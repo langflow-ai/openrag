@@ -172,8 +172,8 @@ providers:
     display_name: Azure AI Foundry
     modes:
       oss: false
-      on_prem: false
-      saas: false
+      on_prem: true
+      saas: true
 
   # Azure OpenAI Service, which LiteLLM keys separately from Foundry above:
   # `azure_ai` is the Foundry catalogue (Llama, Phi, Mistral, Cohere, and the

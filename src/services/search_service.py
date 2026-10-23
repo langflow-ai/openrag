@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import json
 import os
 import re
 from collections import Counter
@@ -10,6 +11,7 @@ from agentd.tool_decorator import tool
 from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
 from config.settings import get_embedding_model, get_index_name, get_openrag_config
+from observability.spans import Span, trace_root, trace_span
 from services.llm_gateway import LlmGatewayError
 from services.llm_gateway import embeddings as gateway_embeddings
 from services.search_cache import (
@@ -301,6 +303,22 @@ def _group_suggest_files(
             }
         )
     return files
+  
+  
+def _record_search_response(span: Span, response: dict[str, Any]) -> None:
+    """What a search returned, for its trace: counts, scores and ids, never text."""
+    results = response.get("results") or []
+    span.set(
+        **{
+            "search.hit_count": len(results),
+            "search.top_scores": [
+                round(r["score"], 4) for r in results[:5] if isinstance(r.get("score"), int | float)
+            ],
+            "search.chunk_ids": [r["chunk_id"] for r in results[:10] if r.get("chunk_id")],
+            "search.degraded": True if response.get("warnings") else None,
+            "search.error": response.get("error"),
+        }
+    )
 
 
 def register_search_service(service: "SearchService") -> None:
@@ -392,8 +410,10 @@ class SearchService:
                     break
                 after = next_after
         return available_spaces
-
-    async def search_tool(self, query: str, embedding_model: str = None) -> dict[str, Any]:
+      
+    async def search_tool(
+        self, query: str, embedding_model: str = None, *, source: str = "agent_tool"
+    ) -> dict[str, Any]:
         """
         Use this tool to search for documents relevant to the query.
 
@@ -402,10 +422,14 @@ class SearchService:
             embedding_model (str): Optional override for embedding model.
                                   If not provided, uses the current embedding
                                   model from configuration.
+            source (str): Who is searching, for the trace: ``agent_tool`` or
+                          ``api`` (see ``search``).
 
         Returns:
             dict (str, Any): {"results": [chunks]} on success
         """
+        from auth_context import get_score_threshold, get_search_filters, get_search_limit
+
         # Strategy: Use provided model, or default to the configured embedding
         # model. This assumes documents are embedded with that model by default.
         # Future enhancement: Could auto-detect available models in corpus.
@@ -416,6 +440,38 @@ class SearchService:
                 get_openrag_config().knowledge.embedding_provider
             )
         )
+        filters = get_search_filters() or {}
+        # One trace per search; a no-op while tracing is off. Filter values are
+        # filenames and owners, so only how many of each is recorded.
+        with trace_root(
+            "search",
+            user_id=get_auth_context()[0],
+            tags=[f"search_source:{source}"],
+            attributes={
+                "search.source": source,
+                "search.k": get_search_limit(),
+                "search.score_threshold": get_score_threshold(),
+                "search.query_chars": len(query) if isinstance(query, str) else None,
+                "search.wildcard": isinstance(query, str) and query.strip() == "*",
+                "search.filters": json.dumps(
+                    {
+                        key: len(values)
+                        for key, values in filters.items()
+                        if isinstance(values, list)
+                    }
+                )
+                if filters
+                else None,
+                "embedding_model": embedding_model,
+            },
+        ) as search_trace:
+            search_trace.set_content(**{"search.query": query})
+            response = await self._search(query, embedding_model)
+            _record_search_response(search_trace, response)
+            return response
+
+    async def _search(self, query: str, embedding_model: str) -> dict[str, Any]:
+        """The search itself; ``search_tool`` wraps it in its trace."""
         embedding_field_name = get_embedding_field_name(embedding_model)
 
         logger.info(
@@ -589,23 +645,29 @@ class SearchService:
             # one broken model (e.g. provider credentials removed after ingest)
             # doesn't take down the entire search. If all models fail we fall
             # back to keyword-only search below.
-            embedding_results = await asyncio.gather(
-                *[embed_with_space(space) for space in available_spaces],
-                return_exceptions=True,
-            )
+            with trace_span(
+                "search.embed",
+                spaces=len(available_spaces),
+                space_ids=[space.space_id for space in available_spaces],
+            ) as embed_span:
+                embedding_results = await asyncio.gather(
+                    *[embed_with_space(space) for space in available_spaces],
+                    return_exceptions=True,
+                )
 
-            for space, result in zip(available_spaces, embedding_results, strict=False):
-                if isinstance(result, BaseException):
-                    failed_models.append(space.space_id)
-                    logger.warning(
-                        "Skipping model with failed embedding; continuing with others",
-                        model=space.space_id,
-                        error=str(result),
-                    )
-                    continue
-                if isinstance(result, tuple) and result[1] is not None:
-                    successful_space, embedding = result
-                    query_embeddings[successful_space.field_identity] = embedding
+                for space, result in zip(available_spaces, embedding_results, strict=False):
+                    if isinstance(result, BaseException):
+                        failed_models.append(space.space_id)
+                        logger.warning(
+                            "Skipping model with failed embedding; continuing with others",
+                            model=space.space_id,
+                            error=str(result),
+                        )
+                        continue
+                    if isinstance(result, tuple) and result[1] is not None:
+                        successful_space, embedding = result
+                        query_embeddings[successful_space.field_identity] = embedding
+                embed_span.set(succeeded=len(query_embeddings), failed=len(failed_models))
 
             logger.info(
                 "Generated query embeddings",
@@ -729,6 +791,15 @@ class SearchService:
                 }
             }
 
+            # Apply the threshold to the hybrid score itself. A top-level
+            # min_score also counts the constant-score clause OpenSearch DLS
+            # adds to every user-scoped search, which lifts every visible hit
+            # over the threshold and turns the filter off.
+            if score_threshold > 0:
+                query_block = {
+                    "function_score": {"query": query_block, "min_score": score_threshold}
+                }
+
         search_body: dict[str, Any] = {
             "query": query_block,
             "aggs": _build_file_facet_aggregations(),
@@ -775,19 +846,15 @@ class SearchService:
                 "require_field_match": False,
             }
 
-        # Add score threshold only for hybrid (not meaningful for match_all)
-        if not is_wildcard_match_all and score_threshold > 0:
-            search_body["min_score"] = score_threshold
-
         # Prepare fallback search body without num_candidates for clusters that don't support it.
         # Only relevant when we actually dispatched KNN queries.
         fallback_search_body: dict[str, Any] | None = None
         if not is_wildcard_match_all and query_embeddings:
             try:
                 fallback_search_body = copy.deepcopy(search_body)
-                knn_query_blocks = fallback_search_body["query"]["bool"]["should"][0]["dis_max"][
-                    "queries"
-                ]
+                hybrid_query = fallback_search_body["query"]
+                hybrid_query = hybrid_query.get("function_score", {}).get("query", hybrid_query)
+                knn_query_blocks = hybrid_query["bool"]["should"][0]["dis_max"]["queries"]
                 for query_candidate in knn_query_blocks:
                     knn_section = query_candidate.get("knn")
                     if isinstance(knn_section, dict):
@@ -820,63 +887,68 @@ class SearchService:
 
         search_params = {"terminate_after": 0}
 
-        try:
-            index_name = get_index_name()
-            logger.info(f"Sending query to index '{index_name}'..")
-            results = await opensearch_client.search(
-                index=index_name, body=search_body, params=search_params
-            )
-        except RequestError as e:
-            error_message = str(e)
-            if is_disk_space_error(e):
-                logger.error(
-                    "OpenSearch query blocked by disk space constraint",
-                    error=error_message,
+        with trace_span("search.query", knn_fields=len(query_embeddings), size=limit) as query_span:
+            try:
+                index_name = get_index_name()
+                logger.info(f"Sending query to index '{index_name}'..")
+                results = await opensearch_client.search(
+                    index=index_name, body=search_body, params=search_params
                 )
-                raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from e
-            if (
-                fallback_search_body is not None
-                and "unknown field [num_candidates]" in error_message.lower()
-            ):
-                logger.warning(
-                    "OpenSearch cluster does not support num_candidates; retrying without it"
-                )
-                try:
-                    results = await opensearch_client.search(
-                        index=get_index_name(),
-                        body=fallback_search_body,
-                        params=search_params,
-                    )
-                except RequestError as retry_error:
-                    if is_disk_space_error(retry_error):
-                        logger.error(
-                            "OpenSearch retry blocked by disk space constraint",
-                            error=str(retry_error),
-                        )
-                        raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from retry_error
+            except RequestError as e:
+                error_message = str(e)
+                if is_disk_space_error(e):
                     logger.error(
-                        "OpenSearch retry without num_candidates failed",
-                        error=str(retry_error),
-                        search_body=fallback_search_body,
+                        "OpenSearch query blocked by disk space constraint",
+                        error=error_message,
+                    )
+                    raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from e
+                if (
+                    fallback_search_body is not None
+                    and "unknown field [num_candidates]" in error_message.lower()
+                ):
+                    logger.warning(
+                        "OpenSearch cluster does not support num_candidates; retrying without it"
+                    )
+                    query_span.set(retried_without_num_candidates=True)
+                    try:
+                        results = await opensearch_client.search(
+                            index=get_index_name(),
+                            body=fallback_search_body,
+                            params=search_params,
+                        )
+                    except RequestError as retry_error:
+                        if is_disk_space_error(retry_error):
+                            logger.error(
+                                "OpenSearch retry blocked by disk space constraint",
+                                error=str(retry_error),
+                            )
+                            raise OpenSearchDiskSpaceError(
+                                DISK_SPACE_ERROR_MESSAGE
+                            ) from retry_error
+                        logger.error(
+                            "OpenSearch retry without num_candidates failed",
+                            error=str(retry_error),
+                            search_body=fallback_search_body,
+                        )
+                        raise
+                else:
+                    logger.error(
+                        "OpenSearch query failed", error=error_message, search_body=search_body
                     )
                     raise
-            else:
-                logger.error(
-                    "OpenSearch query failed", error=error_message, search_body=search_body
-                )
+            except OpenSearchDiskSpaceError:
                 raise
-        except OpenSearchDiskSpaceError:
-            raise
-        except Exception as e:
-            if is_disk_space_error(e):
-                logger.error(
-                    "OpenSearch query blocked by disk space constraint",
-                    error=str(e),
-                )
-                raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from e
-            logger.error("OpenSearch query failed", error=str(e), search_body=search_body)
-            # Re-raise the exception so the API returns the error to frontend
-            raise
+            except Exception as e:
+                if is_disk_space_error(e):
+                    logger.error(
+                        "OpenSearch query blocked by disk space constraint",
+                        error=str(e),
+                    )
+                    raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from e
+                logger.error("OpenSearch query failed", error=str(e), search_body=search_body)
+                # Re-raise the exception so the API returns the error to frontend
+                raise
+            query_span.set(hits=len(results["hits"]["hits"]), took_ms=results.get("took"))
 
         # Transform results (keep for backward compatibility)
         chunks = []
@@ -985,7 +1057,7 @@ class SearchService:
         set_search_limit(limit)
         set_score_threshold(score_threshold)
 
-        return await self.search_tool(query, embedding_model=embedding_model)
+        return await self.search_tool(query, embedding_model=embedding_model, source="api")
 
     # ------------------------------------------------------------------
     # Search-as-you-type suggestions

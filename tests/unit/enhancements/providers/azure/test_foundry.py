@@ -374,18 +374,6 @@ class TestCredentialForm:
 
         assert "api_key" in secret_field_keys("azure_ai")
 
-    def test_the_form_replaces_litellms_deployment_pinning_placeholder(self) -> None:
-        """LiteLLM's own `api_base` placeholder is a per-deployment Target URI.
-
-        Following it produces a provider that serves exactly one deployment:
-        every model selected resolves to the one baked into the URL.
-        """
-        from services.model_catalog import credential_fields
-
-        api_base = next(f for f in credential_fields("azure_ai") if f["key"] == "api_base")
-        assert "/openai/v1" in (api_base["placeholder"] or "")
-        assert "deployments/" not in (api_base["placeholder"] or "")
-
     def test_the_form_asks_only_for_what_this_release_consumes(self) -> None:
         """No field is offered that nothing reads.
 
@@ -401,19 +389,6 @@ class TestCredentialForm:
 
 
 class TestModelsUrl:
-    @pytest.mark.parametrize(
-        "api_base, expected",
-        [
-            (f"{RESOURCE}/openai/v1", f"{RESOURCE}/openai/v1/models"),
-            (f"{RESOURCE}/api/projects/p/openai/v1", f"{RESOURCE}/api/projects/p/openai/v1/models"),
-            # The legacy endpoint already *is* the listing path.
-            (f"{RESOURCE}/models", f"{RESOURCE}/models"),
-            (RESOURCE, f"{RESOURCE}/models"),
-        ],
-    )
-    def test_the_listing_path_is_not_doubled(self, api_base, expected) -> None:
-        assert foundry.models_url(api_base) == expected
-
     def test_both_auth_header_styles_are_sent(self) -> None:
         """litellm itself disagrees with itself here.
 
@@ -431,6 +406,55 @@ class TestModelsUrl:
 
 class TestLightweightHealthCheck:
     """The pre-save probe: authenticated, read-only, and never billed."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "api_base, listing_path",
+        [
+            (RESOURCE, "/openai/v1/models"),
+            (f"{RESOURCE}/models/", "/openai/v1/models"),
+            (f"{RESOURCE}/openai/v1", "/openai/v1/models"),
+            (
+                f"{RESOURCE}/api/projects/p/openai/v1",
+                "/api/projects/p/openai/v1/models",
+            ),
+        ],
+    )
+    async def test_polling_uses_the_listing_api_not_the_inference_base(
+        self, monkeypatch, api_base, listing_path
+    ) -> None:
+        import httpx
+
+        from api.provider_validation import validate_provider_setup
+
+        def serve(request: httpx.Request) -> httpx.Response:
+            if (
+                request.method == "GET"
+                and request.url.path == listing_path
+                and request.headers.get("api-key") == "k"
+                and not request.url.query
+            ):
+                return httpx.Response(200, json={"object": "list", "data": []})
+            return httpx.Response(
+                404, json={"error": {"code": "404", "message": "Resource not found"}}
+            )
+
+        client_type = httpx.AsyncClient
+        monkeypatch.setattr(
+            httpx,
+            "AsyncClient",
+            lambda **kwargs: client_type(transport=httpx.MockTransport(serve), **kwargs),
+        )
+        credentials = {"api_base": api_base, "api_key": "k", "api_version": "2024-05-01-preview"}
+
+        result = await validate_provider_setup(
+            provider="azure_ai",
+            llm_model="working-deployment",
+            credentials=foundry.litellm_credentials(credentials),
+            stored_credentials=credentials,
+        )
+
+        assert not result.model_probed
 
     @pytest.mark.asyncio
     async def test_a_good_endpoint_and_key_pass_without_an_inference_call(

@@ -270,3 +270,26 @@ async def test_the_dimension_probe_goes_through_the_gateway(monkeypatch) -> None
 
     assert await service._detect_embedding_dimensions("my-deployment", "azure_ai") == 1024
     assert calls == [{"model": "azure_ai:my-deployment", "input": ["dimension probe"]}]
+
+
+@pytest.mark.asyncio
+async def test_the_dimension_probe_is_traced_as_a_probe(monkeypatch) -> None:
+    """Otherwise it shows in traces as a one-input ingest embedding."""
+    from observability import tracing
+    from observability.tracing import gateway_trace_kwargs
+    from services import llm_gateway as gateway_mod
+    from services.langflow_file_service import LangflowFileService
+
+    monkeypatch.setattr(tracing, "_enabled", True)
+    names: list[str] = []
+
+    async def fake_embeddings(body, **_kwargs):
+        names.append(gateway_trace_kwargs("embedding", "ingest")["metadata"]["generation_name"])
+        return {"data": [{"embedding": [0.0] * 1024}]}
+
+    monkeypatch.setattr(gateway_mod, "embeddings", fake_embeddings)
+
+    service = LangflowFileService(docling_service=AsyncMock())
+
+    await service._detect_embedding_dimensions("my-deployment", "azure_ai")
+    assert names == ["embedding.dimension_probe"]

@@ -85,6 +85,18 @@ def test_an_unknown_provider_still_gets_a_usable_form() -> None:
     assert model_catalog.missing_required_fields("some-private-gateway", set()) == []
 
 
+def test_a_tls_verify_field_keeps_its_type_and_is_not_a_secret() -> None:
+    """The UI renders `tls_verify` as a switch, so normalizing must not turn it into text."""
+    fields = {field["key"]: field for field in model_catalog.credential_fields("rhoai")}
+    assert fields["ssl_verify"]["field_type"] == "tls_verify"
+    assert "ssl_verify" not in model_catalog.secret_field_keys("rhoai")
+
+
+def test_an_unrecognised_field_type_falls_back_to_text() -> None:
+    field = model_catalog._normalize_field({"key": "x", "field_type": "colour"})
+    assert field["field_type"] == "text"
+
+
 def test_openai_models_list_is_openai_compatible() -> None:
     payload = model_catalog.openai_models_list()
     assert payload["object"] == "list"

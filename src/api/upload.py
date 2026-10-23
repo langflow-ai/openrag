@@ -140,9 +140,15 @@ async def upload_context(
 
     jwt_token = user.jwt_token
 
-    doc_result = await document_service.process_upload_context(
-        file, filename, user_id=user_id, jwt_token=jwt_token
-    )
+    from services.docling_service import DoclingPayloadTooLarge
+    from utils.upload_limits import UploadTooLarge
+
+    try:
+        doc_result = await document_service.process_upload_context(
+            file, filename, user_id=user_id, jwt_token=jwt_token
+        )
+    except (UploadTooLarge, DoclingPayloadTooLarge) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=413)
 
     from config.settings import is_no_auth_mode
 
@@ -182,8 +188,15 @@ async def upload_options(
     """Return availability of upload features"""
     aws_enabled = bool(os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
     from config.settings import UPLOAD_BATCH_SIZE
+    from utils.upload_limits import max_upload_mb
 
-    return JSONResponse({"aws": aws_enabled, "upload_batch_size": UPLOAD_BATCH_SIZE})
+    return JSONResponse(
+        {
+            "aws": aws_enabled,
+            "upload_batch_size": UPLOAD_BATCH_SIZE,
+            "max_upload_mb": max_upload_mb(),
+        }
+    )
 
 
 async def upload_bucket(

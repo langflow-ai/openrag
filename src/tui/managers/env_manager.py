@@ -82,7 +82,10 @@ class EnvConfig:
     # Langfuse settings (optional)
     langfuse_secret_key: str = ""
     langfuse_public_key: str = ""
-    langfuse_host: str = ""
+    langfuse_base_url: str = ""
+    # Backend tracing to Langfuse (optional; empty = unset, backend default off)
+    openrag_tracing_enabled: str = ""
+    openrag_tracing_capture_content: str = ""
 
     # Langflow auth settings
     langflow_auto_login: str = "False"
@@ -244,7 +247,12 @@ class EnvManager:
             "OPENRAG_VERSION": "openrag_version",
             "LANGFUSE_SECRET_KEY": "langfuse_secret_key",  # pragma: allowlist secret
             "LANGFUSE_PUBLIC_KEY": "langfuse_public_key",  # pragma: allowlist secret
-            "LANGFUSE_HOST": "langfuse_host",
+            # Older name for LANGFUSE_BASE_URL: loaded so it's migrated on save.
+            # Listed first so LANGFUSE_BASE_URL wins when both are set.
+            "LANGFUSE_HOST": "langfuse_base_url",
+            "LANGFUSE_BASE_URL": "langfuse_base_url",
+            "OPENRAG_TRACING_ENABLED": "openrag_tracing_enabled",
+            "OPENRAG_TRACING_CAPTURE_CONTENT": "openrag_tracing_capture_content",
         }
 
     def _collect_preserved_env_lines(self) -> list[str]:
@@ -694,7 +702,12 @@ class EnvManager:
                 langfuse_vars = [
                     ("LANGFUSE_SECRET_KEY", self.config.langfuse_secret_key),
                     ("LANGFUSE_PUBLIC_KEY", self.config.langfuse_public_key),
-                    ("LANGFUSE_HOST", self.config.langfuse_host),
+                    ("LANGFUSE_BASE_URL", self.config.langfuse_base_url),
+                    ("OPENRAG_TRACING_ENABLED", self.config.openrag_tracing_enabled),
+                    (
+                        "OPENRAG_TRACING_CAPTURE_CONTENT",
+                        self.config.openrag_tracing_capture_content,
+                    ),
                 ]
 
                 langfuse_written = False
