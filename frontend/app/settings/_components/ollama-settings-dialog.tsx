@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   type AffectedEmbeddingModel,
   isEmbeddingProviderInUseError,
+  isEmbeddingUsageUnknownError,
   useUpdateSettingsMutation,
 } from "@/app/api/mutations/useUpdateSettingsMutation";
 import { useGetOllamaModelsQuery } from "@/app/api/queries/useGetModelsQuery";
@@ -46,6 +47,7 @@ const OllamaSettingsDialog = ({
   const [affectedModels, setAffectedModels] = useState<
     AffectedEmbeddingModel[] | undefined
   >(undefined);
+  const [embeddingUsageUnknown, setEmbeddingUsageUnknown] = useState(false);
   const router = useRouter();
 
   const { data: settings = {} } = useGetSettingsQuery({
@@ -114,11 +116,16 @@ const OllamaSettingsDialog = ({
       toast.success("Ollama configuration removed");
       setShowRemoveConfirm(false);
       setAffectedModels(undefined);
+      setEmbeddingUsageUnknown(false);
       setOpen(false);
     },
     onError: (err) => {
       if (isEmbeddingProviderInUseError(err)) {
+        setEmbeddingUsageUnknown(false);
         setAffectedModels(err.affectedModels);
+      } else if (isEmbeddingUsageUnknownError(err)) {
+        setAffectedModels(undefined);
+        setEmbeddingUsageUnknown(true);
       }
     },
   });
@@ -148,6 +155,7 @@ const OllamaSettingsDialog = ({
       onOpenChange={(o) => {
         setShowRemoveConfirm(false);
         setAffectedModels(undefined);
+        setEmbeddingUsageUnknown(false);
         setOpen(o);
       }}
     >
@@ -185,7 +193,8 @@ const OllamaSettingsDialog = ({
                 </motion.div>
               )}
               {removeMutation.isError &&
-                !isEmbeddingProviderInUseError(removeMutation.error) && (
+                !isEmbeddingProviderInUseError(removeMutation.error) &&
+                !isEmbeddingUsageUnknownError(removeMutation.error) && (
                   <motion.div
                     key="remove-error"
                     initial={{ opacity: 0, y: 10 }}
@@ -204,11 +213,12 @@ const OllamaSettingsDialog = ({
               onCancelRemove={() => {
                 setShowRemoveConfirm(false);
                 setAffectedModels(undefined);
+                setEmbeddingUsageUnknown(false);
               }}
               onConfirmRemove={() =>
                 removeMutation.mutate({
                   remove_ollama_config: true,
-                  force_remove: !!affectedModels,
+                  force_remove: !!affectedModels || embeddingUsageUnknown,
                 })
               }
               isRemovePending={removeMutation.isPending}
@@ -221,6 +231,7 @@ const OllamaSettingsDialog = ({
               isSavePending={settingsMutation.isPending}
               isValidating={isValidating}
               affectedModels={affectedModels}
+              embeddingUsageUnknown={embeddingUsageUnknown}
             />
           </form>
         </FormProvider>

@@ -30,6 +30,7 @@ type ModelProviderDialogFooterProps = {
   // are still referenced by indexed documents, pass the list here to render
   // a force-confirmation state.
   affectedModels?: AffectedEmbeddingModel[];
+  embeddingUsageUnknown?: boolean;
 };
 
 const ModelProviderDialogFooter = ({
@@ -46,13 +47,25 @@ const ModelProviderDialogFooter = ({
   isValidating,
   providerKey,
   affectedModels,
+  embeddingUsageUnknown,
 }: ModelProviderDialogFooterProps) => {
   if (showRemoveConfirm) {
     const hasAffected = !!affectedModels && affectedModels.length > 0;
+    const requiresForce = hasAffected || embeddingUsageUnknown;
     return (
       <DialogFooter className="mt-4 flex flex-col items-stretch gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 animate-in fade-in-0 slide-in-from-bottom-2 duration-150 sm:flex-row sm:items-center">
         <div className="min-w-0 flex-1 border-l-2 border-destructive pl-3 text-sm text-foreground">
-          {hasAffected ? (
+          {embeddingUsageUnknown ? (
+            <div className="flex flex-col gap-1">
+              <span>
+                Could not verify whether indexed documents use this provider.
+              </span>
+              <span className="text-xs opacity-80">
+                Retry after checking OpenSearch and legacy embedding mappings,
+                or remove anyway to accept possible semantic-search degradation.
+              </span>
+            </div>
+          ) : hasAffected ? (
             <div className="flex flex-col gap-1">
               <span>
                 Semantic search will break for documents embedded with:
@@ -96,7 +109,7 @@ const ModelProviderDialogFooter = ({
           >
             {isRemovePending
               ? "Removing..."
-              : hasAffected
+              : requiresForce
                 ? "Remove anyway"
                 : "Remove"}
           </Button>
