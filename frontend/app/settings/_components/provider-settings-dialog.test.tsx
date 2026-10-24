@@ -42,9 +42,9 @@ const catalog = {
         },
         {
           key: "ssl_verify",
-          label: "TLS certificate verification",
+          label: "Verify TLS certificates",
           required: false,
-          field_type: "text",
+          field_type: "tls_verify",
         },
       ],
       models: [],
@@ -526,5 +526,277 @@ describe("ProviderSettingsDialog credential target changes", () => {
 
     expect(await screen.findByText("API key is required")).toBeInTheDocument();
     expect(result.submitted).toBeUndefined();
+  });
+});
+
+const rhoaiCatalog = {
+  providers: [
+    {
+      key: "rhoai",
+      name: "Red Hat OpenShift AI",
+      // Catalogue order, as the backend publishes it: TLS before the limit.
+      credential_fields: [
+        {
+          key: "api_base",
+          label: "Chat endpoint",
+          required: true,
+          field_type: "text",
+        },
+        {
+          key: "embedding_api_base",
+          label: "Embeddings endpoint",
+          required: false,
+          field_type: "text",
+        },
+        {
+          key: "api_key",
+          label: "ServiceAccount token",
+          required: true,
+          field_type: "password",
+        },
+        {
+          key: "ssl_verify",
+          label: "Verify TLS certificates",
+          required: false,
+          field_type: "tls_verify",
+        },
+        {
+          key: "embedding_max_concurrency",
+          label: "Max concurrent embedding requests",
+          required: false,
+          field_type: "text",
+        },
+      ],
+      models: [],
+      embedding_models: [],
+    },
+  ],
+};
+
+describe("ProviderSettingsDialog Red Hat OpenShift AI", () => {
+  const rhoaiSaved = (credentialValues: Record<string, string> = {}) => ({
+    provider: "rhoai",
+    providerCatalog: rhoaiCatalog,
+    credentialValues: {
+      api_base: "https://chat.example.com/v1",
+      ...credentialValues,
+    },
+    secretFields: ["api_key"],
+    authMethod: "",
+  });
+  const embeddingsToggle = () =>
+    screen.getByRole("button", { name: "Embeddings" });
+  const advancedToggle = () =>
+    screen.getByRole("button", { name: "Advanced settings" });
+  const tlsSwitch = () =>
+    screen.getByRole("switch", { name: "Verify TLS certificates" });
+  const caPath = () =>
+    screen.getByRole("textbox", { name: "Custom CA bundle path" });
+
+  function expectInDocumentOrder(...elements: HTMLElement[]) {
+    for (let i = 1; i < elements.length; i++) {
+      expect(
+        elements[i - 1].compareDocumentPosition(elements[i]) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  }
+
+  it("shows only the chat endpoint and token up front", async () => {
+    renderDialog(rhoaiSaved());
+    const user = userEvent.setup();
+
+    const chat = await screen.findByLabelText(/^Chat endpoint/);
+    expectInDocumentOrder(
+      chat,
+      screen.getByLabelText(/^ServiceAccount token/),
+      embeddingsToggle(),
+      advancedToggle(),
+    );
+    expect(embeddingsToggle()).toHaveAttribute("aria-expanded", "false");
+    expect(advancedToggle()).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByLabelText(/^Embeddings endpoint/),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+
+    await user.click(embeddingsToggle());
+    await user.click(advancedToggle());
+
+    expectInDocumentOrder(
+      screen.getByLabelText(/^Embeddings endpoint/),
+      screen.getByLabelText(/^Max concurrent embedding requests/),
+      tlsSwitch(),
+      caPath(),
+    );
+    expect(tlsSwitch()).toBeChecked();
+    // The free-text field is replaced, never rendered alongside the switch.
+    expect(
+      screen.queryByRole("textbox", { name: /^Verify TLS certificates/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens Embeddings with a saved endpoint and treats editing it as a target change", async () => {
+    const result = renderDialog(
+      rhoaiSaved({ embedding_api_base: "https://embed.example.com/v1" }),
+    );
+    const user = userEvent.setup();
+
+    const endpoint = await screen.findByLabelText(/^Embeddings endpoint/);
+    expect(embeddingsToggle()).toHaveAttribute("aria-expanded", "true");
+    expect(advancedToggle()).toHaveAttribute("aria-expanded", "false");
+    expect(endpoint).toHaveValue("https://embed.example.com/v1");
+
+    await user.clear(endpoint);
+    await user.type(endpoint, "https://other-embed.example.com/v1");
+    expect(screen.getByText(REENTRY_HINT)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByText("ServiceAccount token is required"),
+    ).toBeInTheDocument();
+    expect(result.submitted).toBeUndefined();
+  });
+
+  it("saves false once verification is switched off and the token retyped", async () => {
+    const result = renderDialog(rhoaiSaved());
+    const user = userEvent.setup();
+
+    await screen.findByText(SAVED_HINT);
+    await user.click(advancedToggle());
+    await user.click(tlsSwitch());
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Certificate verification is disabled.",
+    );
+    // A changed TLS setting is a new credential target.
+    expect(screen.getByText(REENTRY_HINT)).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText(/^ServiceAccount token/),
+      "sha256~new-token",
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(result.submitted).toEqual({
+        provider_credentials: {
+          rhoai: {
+            api_base: "https://chat.example.com/v1",
+            api_key: "sha256~new-token",
+            ssl_verify: "false",
+          },
+        },
+      });
+    });
+  });
+
+  it("refuses to save a disabled TLS setting with the token kept", async () => {
+    const result = renderDialog(rhoaiSaved());
+    const user = userEvent.setup();
+
+    await screen.findByText(SAVED_HINT);
+    await user.click(advancedToggle());
+    await user.click(tlsSwitch());
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByText("ServiceAccount token is required"),
+    ).toBeInTheDocument();
+    expect(result.submitted).toBeUndefined();
+  });
+
+  it("removes a saved false once verification is switched back on", async () => {
+    const result = renderDialog(rhoaiSaved({ ssl_verify: "false" }));
+    const user = userEvent.setup();
+
+    // Opened by itself: a disabled TLS setting is never hidden.
+    const toggle = await screen.findByRole("switch", {
+      name: "Verify TLS certificates",
+    });
+    expect(advancedToggle()).toHaveAttribute("aria-expanded", "true");
+    expect(toggle).not.toBeChecked();
+
+    await user.click(toggle);
+    await user.type(
+      screen.getByLabelText(/^ServiceAccount token/),
+      "sha256~new-token",
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(result.submitted).toEqual({
+        provider_credentials: {
+          rhoai: {
+            api_base: "https://chat.example.com/v1",
+            api_key: "sha256~new-token",
+          },
+        },
+        provider_credential_removals: { rhoai: ["ssl_verify"] },
+      });
+    });
+  });
+
+  it("opens Advanced with a saved CA path and treats editing it as a target change", async () => {
+    renderDialog(rhoaiSaved({ ssl_verify: "/var/run/secrets/service-ca.crt" }));
+    const user = userEvent.setup();
+
+    await screen.findByRole("switch", { name: "Verify TLS certificates" });
+    expect(caPath()).toHaveValue("/var/run/secrets/service-ca.crt");
+    expect(screen.queryByText(REENTRY_HINT)).not.toBeInTheDocument();
+
+    await user.type(caPath(), "x");
+
+    expect(screen.getByText(REENTRY_HINT)).toBeInTheDocument();
+  });
+
+  it("opens Embeddings with a saved concurrency limit and saves a new one", async () => {
+    const result = renderDialog(rhoaiSaved({ embedding_max_concurrency: "4" }));
+    const user = userEvent.setup();
+
+    const limit = await screen.findByLabelText(
+      /^Max concurrent embedding requests/,
+    );
+    expect(limit).toHaveValue("4");
+    await user.clear(limit);
+    await user.type(limit, "16");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    // Not a credential target, so the saved token is kept.
+    await waitFor(() => {
+      expect(result.submitted).toEqual({
+        provider_credentials: {
+          rhoai: {
+            api_base: "https://chat.example.com/v1",
+            embedding_max_concurrency: "16",
+          },
+        },
+      });
+    });
+  });
+
+  it("keeps the saved token when verification is switched off and on again", async () => {
+    renderDialog(rhoaiSaved());
+    const user = userEvent.setup();
+
+    await screen.findByText(SAVED_HINT);
+    await user.click(advancedToggle());
+    await user.click(tlsSwitch());
+    await user.click(tlsSwitch());
+
+    expect(screen.queryByText(REENTRY_HINT)).not.toBeInTheDocument();
+    expect(screen.getByText(SAVED_HINT)).toBeInTheDocument();
+  });
+
+  it("restores the saved CA path when verification is switched back on after Advanced was collapsed", async () => {
+    renderDialog(rhoaiSaved({ ssl_verify: "/var/run/secrets/service-ca.crt" }));
+    const user = userEvent.setup();
+
+    await screen.findByRole("switch", { name: "Verify TLS certificates" });
+    await user.click(tlsSwitch());
+    await user.click(advancedToggle());
+    await user.click(advancedToggle());
+    await user.click(tlsSwitch());
+
+    expect(caPath()).toHaveValue("/var/run/secrets/service-ca.crt");
+    expect(screen.queryByText(REENTRY_HINT)).not.toBeInTheDocument();
   });
 });
