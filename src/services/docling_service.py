@@ -238,9 +238,13 @@ def _format_docling_error(payload: dict[str, Any]) -> str:
 PASSWORD_PROTECTED_PDF_DETAIL = "PDF is password-protected (Incorrect password)"
 
 # The trailer / xref-stream dictionary holding /Encrypt is never compressed, so a
-# byte scan finds it without a PDF library. Matches an indirect reference
-# (/Encrypt 5 0 R) or a direct dictionary (/Encrypt <<).
+# byte scan finds it without a PDF library. Applied only to the active trailer
+# dictionary (_active_trailer_dict): /Encrypt elsewhere in the file, such as page
+# text or an attached PDF, does not make the document encrypted. Matches an
+# indirect reference (/Encrypt 5 0 R) or a direct dictionary (/Encrypt <<).
 _PDF_ENCRYPT_RE = re.compile(rb"/Encrypt\s*(?:\d+\s+\d+\s+R|<<)")
+_STARTXREF_RE = re.compile(rb"startxref\s+(\d+)")
+_XREF_STREAM_OBJ_RE = re.compile(rb"\d+\s+\d+\s+obj\b")
 
 
 def is_docling_load_failure(message: str) -> bool:
@@ -248,9 +252,46 @@ def is_docling_load_failure(message: str) -> bool:
     return "could not load document" in message.lower()
 
 
+def _active_trailer_dict(content: bytes) -> bytes | None:
+    """Return the trailer or xref-stream dictionary that the final ``startxref`` names.
+
+    PDF encryption is declared only there. Incremental updates repeat /Encrypt in
+    the newest trailer, and a linearized file's final ``startxref`` points at the
+    first-page section, which carries the full trailer. Offsets are tried both from
+    the start of the file and from the ``%PDF-`` header, because some producers
+    write junk before the header. Returns ``None`` when the content is not a PDF or
+    the trailer cannot be located.
+    """
+    header = content.find(b"%PDF-", 0, 1024)
+    if header < 0:
+        return None
+    matches = list(_STARTXREF_RE.finditer(content, max(0, len(content) - 1024)))
+    if not matches:
+        logger.debug("No startxref found; not treating the PDF as encrypted")
+        return None
+    offset = int(matches[-1].group(1))
+    for start in dict.fromkeys((offset, offset + header)):
+        section = content[start:].lstrip()
+        if section.startswith(b"xref"):
+            # Classic table: the dictionary follows the `trailer` keyword.
+            trailer = section.find(b"trailer")
+            if trailer < 0:
+                logger.debug("Cross-reference table has no trailer", offset=start)
+                return None
+            end = section.find(b"startxref", trailer)
+            return section[trailer : end if end >= 0 else None]
+        if _XREF_STREAM_OBJ_RE.match(section):
+            # Xref stream: the dictionary precedes `stream`; the data is excluded.
+            end = section.find(b"stream")
+            return section[: end if end >= 0 else None]
+    logger.debug("startxref offset does not point at a cross-reference section", offset=offset)
+    return None
+
+
 def is_encrypted_pdf(content: bytes) -> bool:
-    """True when ``content`` is a PDF that declares an encryption dictionary."""
-    return b"%PDF-" in content[:1024] and _PDF_ENCRYPT_RE.search(content) is not None
+    """True when ``content`` is a PDF whose active trailer declares an encryption dictionary."""
+    trailer = _active_trailer_dict(content)
+    return trailer is not None and _PDF_ENCRYPT_RE.search(trailer) is not None
 
 
 def password_protected_pdf_error(message: str, content: bytes) -> str | None:
@@ -260,7 +301,8 @@ def password_protected_pdf_error(message: str, content: bytes) -> str | None:
     password". Later versions load through docling-parse first, which reports only
     "Failed to load document with key ...", so the reason has to be recovered from
     the bytes. This is checked only after docling failed to load the file: a PDF
-    with just an owner password also declares /Encrypt but converts fine.
+    with just an owner password also declares /Encrypt but converts fine. A file
+    whose trailer cannot be located keeps docling's own message.
     """
     if is_docling_load_failure(message) and is_encrypted_pdf(content):
         return PASSWORD_PROTECTED_PDF_DETAIL

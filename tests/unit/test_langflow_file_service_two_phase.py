@@ -118,11 +118,13 @@ async def test_docling_load_failure_on_encrypted_pdf_names_password_protection(
     langflow_service, mock_polling_service, file_task
 ):
     """Newer docling drops the PDFium reason; the bytes still show the PDF is encrypted."""
-    encrypted = (
-        "secret.pdf",
-        b"%PDF-1.7\ntrailer\n<< /Root 1 0 R /Encrypt 5 0 R >>\n%%EOF\n",
-        "application/pdf",
+    head = b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+    pdf = (
+        head
+        + b"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Root 1 0 R /Encrypt 5 0 R >>\n"
+        + b"startxref\n%d\n%%%%EOF\n" % len(head)
     )
+    encrypted = ("secret.pdf", pdf, "application/pdf")
     mock_polling_service.poll_until_ready.return_value = DoclingPollResult(
         outcome=PollOutcome.FAILED,
         detail=(
