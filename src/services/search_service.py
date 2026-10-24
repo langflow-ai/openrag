@@ -14,6 +14,20 @@ from config.settings import get_embedding_model, get_index_name, get_openrag_con
 from observability.spans import Span, trace_root, trace_span
 from services.llm_gateway import LlmGatewayError
 from services.llm_gateway import embeddings as gateway_embeddings
+from services.search_cache import (
+    QUERY_EMBEDDING_CACHE,
+    SPACES_CACHE,
+    SUGGEST_CACHE,
+    fingerprint,
+    normalize_embedding_text,
+    normalize_query,
+)
+from services.search_suggest import (
+    build_preview,
+    escape_wildcard,
+    extract_candidates,
+    normalize_suggest_query,
+)
 from utils.container_utils import transform_localhost_url
 from utils.embedding_fields import (
     INDEXED_EMBEDDING_ROUTE_PREFIX,
@@ -218,6 +232,79 @@ def _apply_exact_match_file_filter(
     return chunks, aggregations
 
 
+SUGGEST_HIT_LIMIT = 30
+SUGGEST_MAX_SUGGESTIONS = 4
+SUGGEST_MAX_FILES = 5
+SUGGEST_PREVIEW_FILES = 3
+
+_SUGGEST_FILTER_FIELDS = {
+    "data_sources": "filename",
+    "document_types": "mimetype",
+    "owners": "owner",
+    "connector_types": "connector_type",
+}
+
+
+def _filters_to_clauses(filters: dict[str, Any]) -> list[dict[str, Any]]:
+    """Translate frontend facet filters into OpenSearch filter clauses.
+
+    Unknown keys are ignored (an allowlist) so a caller cannot target
+    arbitrary index fields through the suggest endpoint.
+    """
+    clauses: list[dict[str, Any]] = []
+    for key, field_name in _SUGGEST_FILTER_FIELDS.items():
+        values = filters.get(key)
+        if not isinstance(values, list):
+            continue
+        values = [v for v in values if isinstance(v, str)]
+        if not values:
+            # Empty list means "match nothing", mirroring search_tool.
+            clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
+        elif len(values) == 1:
+            clauses.append({"term": {field_name: values[0]}})
+        else:
+            clauses.append({"terms": {field_name: values}})
+    return clauses
+
+
+def _group_suggest_files(
+    chunks: list[dict[str, Any]], query: str, *, allow_semantic: bool
+) -> list[dict[str, Any]]:
+    """Collapse ranked chunks into per-file rows; preview only the top few."""
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for chunk in chunks:
+        filename = chunk.get("filename")
+        if isinstance(filename, str) and filename:
+            grouped.setdefault(filename, []).append(chunk)
+
+    files: list[dict[str, Any]] = []
+    for rank, (filename, file_chunks) in enumerate(grouped.items()):
+        if rank >= SUGGEST_MAX_FILES:
+            break
+        preview = None
+        if rank < SUGGEST_PREVIEW_FILES:
+            candidates = (
+                build_preview(
+                    c.get("text"), c.get("highlights"), query, allow_semantic=allow_semantic
+                )
+                for c in file_chunks
+            )
+            previews = [p for p in candidates if p]
+            # A literal keyword match explains the hit better than a guess.
+            preview = next((p for p in previews if p["kind"] == "keyword"), None) or (
+                previews[0] if previews else None
+            )
+        files.append(
+            {
+                "filename": filename,
+                "mimetype": file_chunks[0].get("mimetype"),
+                "connector_type": file_chunks[0].get("connector_type"),
+                "preview": preview,
+            }
+        )
+    return files
+
+
 def _record_search_response(span: Span, response: dict[str, Any]) -> None:
     """What a search returned, for its trace: counts, scores and ids, never text."""
     results = response.get("results") or []
@@ -281,6 +368,48 @@ class SearchService:
                 os.environ.setdefault("OLLAMA_BASE_URL", fixed)
         except Exception as e:
             logger.warning("[SEARCH] Could not configure Ollama endpoint from config", error=str(e))
+
+    async def _discover_embedding_spaces(
+        self, opensearch_client, filter_clauses: list[dict[str, Any]]
+    ) -> list[EmbeddingSpace]:
+        """List the embedding spaces present in the (filtered) corpus."""
+        available_spaces: list[EmbeddingSpace] = []
+        seen_spaces: set[str] = set()
+        for legacy in (False, True):
+            after = None
+            while True:
+                agg_query = {
+                    "size": 0,
+                    "aggs": build_embedding_space_aggregation(
+                        size=EMBEDDING_SPACE_PAGE_SIZE,
+                        qualified_after=None if legacy else after,
+                        legacy_after=after if legacy else None,
+                        include_qualified=not legacy,
+                        include_legacy=legacy,
+                    ),
+                }
+                bool_query: dict[str, Any] = {}
+                if filter_clauses:
+                    bool_query["filter"] = filter_clauses
+                if legacy:
+                    bool_query["must_not"] = [{"exists": {"field": "embedding_space_id"}}]
+                if bool_query:
+                    agg_query["query"] = {"bool": bool_query}
+
+                agg_result = await opensearch_client.search(
+                    index=get_index_name(), body=agg_query, params={"terminate_after": 0}
+                )
+                for space in embedding_spaces_from_aggregation(agg_result):
+                    if space.space_id not in seen_spaces:
+                        seen_spaces.add(space.space_id)
+                        available_spaces.append(space)
+
+                qualified_after, legacy_after = embedding_space_after_keys(agg_result)
+                next_after = legacy_after if legacy else qualified_after
+                if not next_after or next_after == after:
+                    break
+                after = next_after
+        return available_spaces
 
     async def search_tool(
         self, query: str, embedding_model: str = None, *, source: str = "agent_tool"
@@ -402,41 +531,16 @@ class SearchService:
                             filter_clauses.append({"terms": {field_name: values}})
 
             try:
-                seen_spaces: set[str] = set()
-                for legacy in (False, True):
-                    after = None
-                    while True:
-                        agg_query = {
-                            "size": 0,
-                            "aggs": build_embedding_space_aggregation(
-                                size=EMBEDDING_SPACE_PAGE_SIZE,
-                                qualified_after=None if legacy else after,
-                                legacy_after=after if legacy else None,
-                                include_qualified=not legacy,
-                                include_legacy=legacy,
-                            ),
-                        }
-                        bool_query: dict[str, Any] = {}
-                        if filter_clauses:
-                            bool_query["filter"] = filter_clauses
-                        if legacy:
-                            bool_query["must_not"] = [{"exists": {"field": "embedding_space_id"}}]
-                        if bool_query:
-                            agg_query["query"] = {"bool": bool_query}
-
-                        agg_result = await opensearch_client.search(
-                            index=get_index_name(), body=agg_query, params={"terminate_after": 0}
-                        )
-                        for space in embedding_spaces_from_aggregation(agg_result):
-                            if space.space_id not in seen_spaces:
-                                seen_spaces.add(space.space_id)
-                                available_spaces.append(space)
-
-                        qualified_after, legacy_after = embedding_space_after_keys(agg_result)
-                        next_after = legacy_after if legacy else qualified_after
-                        if not next_after or next_after == after:
-                            break
-                        after = next_after
+                # Space discovery is several aggregation round-trips and the
+                # answer changes only when documents are (re)indexed, so reuse
+                # it briefly. Keyed per user because the client is per-user.
+                available_spaces = list(
+                    await SPACES_CACHE.get_or_compute(
+                        (user_id, fingerprint(filter_clauses)),
+                        lambda: self._discover_embedding_spaces(opensearch_client, filter_clauses),
+                        cacheable=bool,
+                    )
+                )
 
                 if not available_spaces:
                     # Fallback to configured model if no documents indexed yet
@@ -472,9 +576,7 @@ class SearchService:
                     ]
 
             # Parallelize embedding generation for all models
-            async def embed_with_space(
-                space: EmbeddingSpace,
-            ) -> tuple[EmbeddingSpace, list[float]]:
+            async def _embed_uncached(space: EmbeddingSpace) -> list[float]:
                 """Generate one query vector through its exact gateway route."""
                 delay = EMBED_RETRY_INITIAL_DELAY
                 attempts = 0
@@ -495,7 +597,7 @@ class SearchService:
                         embedding = data[0].get("embedding") if data else None
                         if embedding is None:
                             raise RuntimeError("Embedding provider returned no vector")
-                        return space, embedding
+                        return embedding
                     except LlmGatewayError:
                         # Configuration/provenance errors are deterministic;
                         # skip this space immediately and retain keyword search.
@@ -527,6 +629,17 @@ class SearchService:
                 raise RuntimeError(
                     f"Failed to embed with model {space.space_id}"
                 ) from last_exception
+
+            async def embed_with_space(
+                space: EmbeddingSpace,
+            ) -> tuple[EmbeddingSpace, list[float]]:
+                """Embed through the shared cache: retyped queries cost nothing,
+                and concurrent identical requests share one provider call."""
+                embedding = await QUERY_EMBEDDING_CACHE.get_or_compute(
+                    (space.route_model, normalize_embedding_text(query)),
+                    lambda: _embed_uncached(space),
+                )
+                return space, embedding
 
             # Run all embeddings in parallel, tolerating per-model failures so
             # one broken model (e.g. provider credentials removed after ingest)
@@ -945,3 +1058,213 @@ class SearchService:
         set_score_threshold(score_threshold)
 
         return await self.search_tool(query, embedding_model=embedding_model, source="api")
+
+    # ------------------------------------------------------------------
+    # Search-as-you-type suggestions
+    # ------------------------------------------------------------------
+
+    async def suggest(
+        self,
+        query: str,
+        user_id: str,
+        jwt_token: str | None = None,
+        filters: dict[str, Any] | None = None,
+        semantic: bool = False,
+        score_threshold: float = 0,
+    ) -> dict[str, Any]:
+        """Return query completions, matching files and one-line previews.
+
+        ``semantic=False`` is the cheap keyword phase meant to run on every
+        (debounced) keystroke. ``semantic=True`` additionally runs the hybrid
+        search (query embedding + KNN) and merges its hits in. Results are
+        cached per user, and a cached semantic payload also answers keyword
+        requests because it is a superset.
+        """
+        cleaned = normalize_suggest_query(query)
+        if not cleaned or not user_id:
+            return {"phase": "semantic" if semantic else "keyword", "query": cleaned,
+                    "suggestions": [], "files": []}  # fmt: skip
+
+        filters = filters or {}
+        # Semantic hits depend on the score threshold, so it is part of the key.
+        base_key = (user_id, normalize_query(cleaned), fingerprint(filters), score_threshold)
+        if not semantic:
+            upgraded = SUGGEST_CACHE.get((*base_key, True))
+            if upgraded is not None:
+                return upgraded
+
+        def _cacheable(payload: dict[str, Any]) -> bool:
+            # Never pin a degraded (provider warning) or failed response.
+            return not payload.get("warnings") and not payload.get("error")
+
+        return await SUGGEST_CACHE.get_or_compute(
+            (*base_key, semantic),
+            lambda: self._compute_suggestions(
+                cleaned, user_id, jwt_token, filters, semantic, score_threshold
+            ),
+            cacheable=_cacheable,
+        )
+
+    async def _compute_suggestions(
+        self,
+        query: str,
+        user_id: str,
+        jwt_token: str | None,
+        filters: dict[str, Any],
+        semantic: bool,
+        score_threshold: float,
+    ) -> dict[str, Any]:
+        opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+        filter_clauses = _filters_to_clauses(filters)
+
+        keyword_task = self._suggest_keyword_chunks(opensearch_client, query, filter_clauses)
+        warnings: list[dict[str, Any]] = []
+        chunks: list[dict[str, Any]]
+
+        if semantic:
+            hybrid_task = self.search(
+                query,
+                user_id=user_id,
+                jwt_token=jwt_token,
+                filters=filters,
+                limit=SUGGEST_HIT_LIMIT,
+                score_threshold=score_threshold,
+            )
+            keyword_chunks, hybrid = await asyncio.gather(keyword_task, hybrid_task)
+            if hybrid.get("error"):
+                return {"error": hybrid["error"]}
+            warnings = hybrid.get("warnings", [])
+            # Ranked hybrid hits first, then keyword-only hits (e.g. partial
+            # filename matches) that the hybrid query did not return.
+            chunks = list(hybrid.get("results", []))
+            seen_ids = {c.get("id") for c in chunks if c.get("id")}
+            chunks.extend(c for c in keyword_chunks if c.get("id") not in seen_ids)
+        else:
+            chunks = await keyword_task
+
+        candidates = extract_candidates([c.get("text") or "" for c in chunks], query)
+        suggestions = await self._count_suggestions(opensearch_client, candidates, filter_clauses)
+
+        payload: dict[str, Any] = {
+            "phase": "semantic" if semantic else "keyword",
+            "query": query,
+            "suggestions": suggestions,
+            "files": _group_suggest_files(chunks, query, allow_semantic=semantic),
+        }
+        if warnings:
+            payload["warnings"] = warnings
+        return payload
+
+    async def _suggest_keyword_chunks(
+        self, opensearch_client, query: str, filter_clauses: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Cheap lexical query: text (fuzzy + prefix) and partial filename."""
+        body: dict[str, Any] = {
+            "size": SUGGEST_HIT_LIMIT,
+            "_source": ["filename", "mimetype", "text", "connector_type"],
+            "query": {
+                "bool": {
+                    "should": [
+                        {
+                            "multi_match": {
+                                "query": query,
+                                "fields": ["text^2", "filename^1.5"],
+                                "type": "best_fields",
+                                "operator": "or",
+                                "fuzziness": "AUTO:4,7",
+                            }
+                        },
+                        {
+                            "match_phrase_prefix": {
+                                "text": {"query": query, "max_expansions": 50, "boost": 0.5}
+                            }
+                        },
+                        {
+                            "wildcard": {
+                                "filename": {
+                                    "value": f"*{escape_wildcard(query.lower())}*",
+                                    "case_insensitive": True,
+                                    "boost": 2.0,
+                                }
+                            }
+                        },
+                    ],
+                    "minimum_should_match": 1,
+                    "filter": filter_clauses,
+                }
+            },
+            "highlight": {
+                "type": "unified",
+                "fields": {
+                    "text": {
+                        "fragment_size": 160,
+                        "number_of_fragments": 1,
+                        "pre_tags": ["<mark>"],
+                        "post_tags": ["</mark>"],
+                    }
+                },
+                "require_field_match": False,
+            },
+        }
+        result = await opensearch_client.search(
+            index=get_index_name(), body=body, params={"terminate_after": 0}
+        )
+        chunks = []
+        for hit in result.get("hits", {}).get("hits", []):
+            source = hit.get("_source", {})
+            chunks.append(
+                {
+                    "id": hit.get("_id"),
+                    "filename": source.get("filename"),
+                    "mimetype": source.get("mimetype"),
+                    "connector_type": source.get("connector_type"),
+                    "text": source.get("text"),
+                    "highlights": hit.get("highlight", {}).get("text") or [],
+                }
+            )
+        return chunks
+
+    async def _count_suggestions(
+        self,
+        opensearch_client,
+        candidates: list[str],
+        filter_clauses: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Attach "N files / M chunks" to each candidate in a single request."""
+        if not candidates:
+            return []
+        body: dict[str, Any] = {
+            "size": 0,
+            "query": {"bool": {"filter": filter_clauses}} if filter_clauses else {"match_all": {}},
+            "aggs": {
+                "candidates": {
+                    "filters": {
+                        "filters": [
+                            {
+                                "match_phrase_prefix": {
+                                    "text": {"query": candidate, "max_expansions": 50}
+                                }
+                            }
+                            for candidate in candidates
+                        ]
+                    },
+                    "aggs": {"files": {"cardinality": {"field": "filename"}}},
+                }
+            },
+        }
+        result = await opensearch_client.search(
+            index=get_index_name(), body=body, params={"terminate_after": 0}
+        )
+        buckets = result.get("aggregations", {}).get("candidates", {}).get("buckets", [])
+        suggestions = []
+        for candidate, bucket in zip(candidates, buckets, strict=False):
+            chunks = bucket.get("doc_count", 0)
+            if chunks > 0:
+                suggestions.append(
+                    {
+                        "text": candidate,
+                        "files": bucket.get("files", {}).get("value", 0),
+                        "chunks": chunks,
+                    }
+                )
+        return suggestions[:SUGGEST_MAX_SUGGESTIONS]
