@@ -5,7 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from api.search import SuggestBody, suggest
+from api.search import SUGGEST_MAX_FILTER_VALUES, SuggestBody, suggest
+from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpaceError
 
 
 class _Service:
@@ -78,8 +79,48 @@ async def test_service_error_payload_becomes_generic_502():
     assert "embedding provider detail" not in response.body.decode()
 
 
+@pytest.mark.asyncio
+async def test_disk_space_error_maps_to_507():
+    response = await suggest(
+        SuggestBody(query="docling"),
+        search_service=_Service(exc=OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE)),
+        user=_user(),
+    )
+
+    assert response.status_code == 507
+    assert _body(response) == {"error": DISK_SPACE_ERROR_MESSAGE}
+
+
+@pytest.mark.asyncio
+async def test_missing_jwt_is_forwarded_as_none():
+    service = _Service({"phase": "keyword", "query": "docling", "suggestions": [], "files": []})
+
+    response = await suggest(
+        SuggestBody(query="docling"),
+        search_service=service,
+        user=SimpleNamespace(user_id="u1", jwt_token=None),
+    )
+
+    assert response.status_code == 200
+    assert service.calls[0][1]["jwt_token"] is None
+
+
 def test_request_bounds_are_enforced():
     with pytest.raises(ValueError):
         SuggestBody(query="x" * 201)
     with pytest.raises(ValueError):
         SuggestBody(query="ok", scoreThreshold=-1)
+    with pytest.raises(ValueError):
+        SuggestBody(query="ok", scoreThreshold=101)
+
+
+def test_filter_bounds_are_enforced():
+    SuggestBody(query="ok", filters={"owners": ["x"] * SUGGEST_MAX_FILTER_VALUES})
+    with pytest.raises(ValueError):
+        SuggestBody(query="ok", filters={"owners": ["x"] * (SUGGEST_MAX_FILTER_VALUES + 1)})
+    with pytest.raises(ValueError):
+        SuggestBody(query="ok", filters={f"k{i}": [] for i in range(11)})
+
+
+def test_score_threshold_is_accepted_by_camel_case_name():
+    assert SuggestBody.model_validate({"query": "ok", "scoreThreshold": 1.5}).scoreThreshold == 1.5

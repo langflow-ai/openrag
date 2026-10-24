@@ -80,6 +80,7 @@ export function KnowledgeSearchInput({
   const suggestions = useSearchSuggestionsBox({
     query: inputValue,
     filters: parsedFilterData?.filters,
+    scoreThreshold: parsedFilterData?.scoreThreshold,
     enabled: !controlled,
     onPickSuggestion: (text) => {
       setDraft(text);

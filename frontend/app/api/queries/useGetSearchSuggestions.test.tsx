@@ -17,6 +17,7 @@ interface SuggestRequest {
   query: string;
   semantic: boolean;
   filters: Record<string, string[]>;
+  scoreThreshold?: number;
 }
 
 function result(
@@ -103,6 +104,68 @@ describe("useSearchSuggestions", () => {
 
     await waitFor(() => expect(requests.length).toBeGreaterThan(0));
     expect(requests[0].filters).toEqual({ data_sources: ["a.pdf"] });
+  });
+
+  it("forwards the base score threshold on both phases", async () => {
+    const requests = serveSuggest();
+    renderHook(() => useSearchSuggestions("docling", undefined, true, 2.5), {
+      wrapper: createQueryWrapper(),
+    });
+
+    await waitFor(() => expect(requests.some((r) => r.semantic)).toBe(true));
+    expect(requests.map((r) => r.scoreThreshold)).toEqual(
+      expect.arrayContaining([2.5]),
+    );
+    expect(requests.every((r) => r.scoreThreshold === 2.5)).toBe(true);
+  });
+
+  it("lowers the threshold for a short single token like the main search", async () => {
+    const requests = serveSuggest();
+    renderHook(() => useSearchSuggestions("docl", undefined, true, 2.5), {
+      wrapper: createQueryWrapper(),
+    });
+
+    await waitFor(() => expect(requests.some((r) => r.semantic)).toBe(true));
+    expect(requests.every((r) => r.scoreThreshold === 1.0)).toBe(true);
+  });
+
+  it("reports an error when the keyword request fails and nothing is cached", async () => {
+    server.use(
+      http.post("/api/search/suggest", () =>
+        HttpResponse.json(
+          { error: "Suggestions unavailable" },
+          { status: 500 },
+        ),
+      ),
+    );
+    const { result: hook } = renderHook(
+      () => useSearchSuggestions("docling", undefined),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() => expect(hook.current.isError).toBe(true));
+    expect(hook.current.data).toBeUndefined();
+    expect(hook.current.isRefining).toBe(false);
+  });
+
+  it("keeps showing keyword results when only the semantic request fails", async () => {
+    server.use(
+      http.post("/api/search/suggest", async ({ request }) => {
+        const body = (await request.json()) as SuggestRequest;
+        if (body.semantic) {
+          return HttpResponse.json({ error: "x" }, { status: 502 });
+        }
+        return HttpResponse.json(result("keyword", body.query));
+      }),
+    );
+    const { result: hook } = renderHook(
+      () => useSearchSuggestions("docling", undefined),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() => expect(hook.current.data?.phase).toBe("keyword"));
+    await waitFor(() => expect(hook.current.isRefining).toBe(false));
+    expect(hook.current.isError).toBe(false);
   });
 
   it("only debounces after typing pauses, collapsing a burst into one keyword request", async () => {

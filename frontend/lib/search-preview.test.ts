@@ -121,6 +121,25 @@ describe("bestSentence", () => {
     ).toBe("First sentence is right here.");
   });
 
+  it("matches accented and non-Latin words the way the backend does", () => {
+    expect(
+      bestSentence(
+        "Nothing relevant lives in this first sentence. La cafétéria déjà ouverte sert du café.",
+        "café",
+      ),
+    ).toBe("La cafétéria déjà ouverte sert du café.");
+    expect(
+      bestSentence(
+        "Nothing relevant lives in this first sentence. 全文 検索 エンジン の 設計 と 実装 について 説明 する。",
+        "エンジン",
+      ),
+    ).toContain("エンジン");
+  });
+
+  it("returns null for blank text", () => {
+    expect(bestSentence("   ", "q")).toBeNull();
+  });
+
   it("truncates a very long sentence with an ellipsis", () => {
     const long = `${"word ".repeat(100)}end`;
     const result = bestSentence(long, "word") ?? "";

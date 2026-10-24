@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
+import { resolveScoreThreshold } from "@/app/api/queries/useGetSearchQuery";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { apiClient } from "@/lib/api-client";
+import { SEARCH_CONSTANTS } from "@/lib/constants";
 import {
   buildSearchPayloadFilters,
   type FilterInput,
@@ -44,11 +46,17 @@ async function fetchSuggestions(
   query: string,
   semantic: boolean,
   filters: FilterInput | undefined,
+  scoreThreshold: number,
   signal: AbortSignal,
 ): Promise<SearchSuggestResult> {
   const response = await apiClient.post(
     "/search/suggest",
-    { query, semantic, filters: buildSearchPayloadFilters(filters) ?? {} },
+    {
+      query,
+      semantic,
+      filters: buildSearchPayloadFilters(filters) ?? {},
+      scoreThreshold,
+    },
     { signal },
   );
   if (response.status < 200 || response.status >= 300) {
@@ -62,6 +70,8 @@ export interface UseSearchSuggestionsResult {
   /** True while the semantic refinement for the current text is still pending. */
   isRefining: boolean;
   isFetching: boolean;
+  /** The keyword request failed and there is nothing to show. */
+  isError: boolean;
 }
 
 /**
@@ -77,6 +87,7 @@ export function useSearchSuggestions(
   rawQuery: string,
   filters: FilterInput | undefined,
   enabled = true,
+  baseScoreThreshold: number = SEARCH_CONSTANTS.DEFAULT_SCORE_THRESHOLD,
 ): UseSearchSuggestionsResult {
   const trimmed = rawQuery.trim();
   const keywordQuery = useDebouncedValue(trimmed, SUGGEST_KEYWORD_DEBOUNCE_MS);
@@ -88,10 +99,14 @@ export function useSearchSuggestions(
 
   const filtersKey = JSON.stringify(buildSearchPayloadFilters(filters) ?? {});
 
+  const keywordThreshold = resolveScoreThreshold(
+    keywordQuery,
+    baseScoreThreshold,
+  );
   const keyword = useQuery({
     queryKey: ["search-suggest", "keyword", keywordQuery, filtersKey],
     queryFn: ({ signal }) =>
-      fetchSuggestions(keywordQuery, false, filters, signal),
+      fetchSuggestions(keywordQuery, false, filters, keywordThreshold, signal),
     enabled: enabled && keywordQuery.length >= SUGGEST_MIN_CHARS,
     staleTime: SUGGEST_STALE_TIME_MS,
     placeholderData: (previous) => previous,
@@ -100,20 +115,62 @@ export function useSearchSuggestions(
 
   const semanticEnabled =
     enabled && semanticQuery.length >= SUGGEST_SEMANTIC_MIN_CHARS;
+  const scoreThreshold = resolveScoreThreshold(
+    semanticQuery,
+    baseScoreThreshold,
+  );
   const semantic = useQuery({
-    queryKey: ["search-suggest", "semantic", semanticQuery, filtersKey],
+    queryKey: [
+      "search-suggest",
+      "semantic",
+      semanticQuery,
+      filtersKey,
+      scoreThreshold,
+    ],
     queryFn: ({ signal }) =>
-      fetchSuggestions(semanticQuery, true, filters, signal),
+      fetchSuggestions(semanticQuery, true, filters, scoreThreshold, signal),
     enabled: semanticEnabled,
     staleTime: SUGGEST_STALE_TIME_MS,
     retry: false,
   });
 
+  return {
+    ...mergePhases({
+      trimmed,
+      semanticQuery,
+      semanticEnabled,
+      keyword,
+      semantic,
+    }),
+    isFetching: keyword.isFetching || semantic.isFetching,
+  };
+}
+
+interface PhaseState {
+  data: SearchSuggestResult | undefined;
+  isError: boolean;
+  isFetching: boolean;
+}
+
+function mergePhases({
+  trimmed,
+  semanticQuery,
+  semanticEnabled,
+  keyword,
+  semantic,
+}: {
+  trimmed: string;
+  semanticQuery: string;
+  semanticEnabled: boolean;
+  keyword: PhaseState;
+  semantic: PhaseState;
+}): Omit<UseSearchSuggestionsResult, "isFetching"> {
   // Only trust a semantic result that matches the text currently shown, so a
   // late response for an older query never overwrites newer keyword results.
   const semanticCurrent =
     semantic.data && semanticQuery === trimmed ? semantic.data : undefined;
   const data = semanticCurrent ?? keyword.data;
+  const visibleData = trimmed.length >= SUGGEST_MIN_CHARS ? data : undefined;
 
   const isRefining =
     semanticEnabled &&
@@ -122,8 +179,8 @@ export function useSearchSuggestions(
     (semanticQuery !== trimmed || semantic.isFetching);
 
   return {
-    data: trimmed.length >= SUGGEST_MIN_CHARS ? data : undefined,
+    data: visibleData,
     isRefining,
-    isFetching: keyword.isFetching || semantic.isFetching,
+    isError: !visibleData && (keyword.isError || semantic.isError),
   };
 }

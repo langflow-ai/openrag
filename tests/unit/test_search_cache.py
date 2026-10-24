@@ -113,6 +113,35 @@ async def test_cancelled_waiter_does_not_cancel_the_shared_computation():
 
 
 @pytest.mark.asyncio
+async def test_cancelled_leader_does_not_cancel_waiters():
+    cache = SingleflightTTLCache(maxsize=8, ttl=60)
+    started = asyncio.Event()
+    gate = asyncio.Event()
+    calls = 0
+
+    async def compute():
+        nonlocal calls
+        calls += 1
+        started.set()
+        await gate.wait()
+        return "value"
+
+    leader = asyncio.create_task(cache.get_or_compute("k", compute))
+    await started.wait()
+    waiters = [asyncio.create_task(cache.get_or_compute("k", compute)) for _ in range(2)]
+    await asyncio.sleep(0)
+
+    leader.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await leader
+
+    gate.set()
+    assert await asyncio.gather(*waiters) == ["value", "value"]
+    assert calls == 2
+    assert cache.get("k") == "value"
+
+
+@pytest.mark.asyncio
 async def test_least_recently_used_entry_is_evicted_when_full():
     cache = SingleflightTTLCache(maxsize=2, ttl=60)
 

@@ -117,6 +117,22 @@ const getFileIdentity = (chunk: ChunkResult): string => {
   return "Untitled source";
 };
 
+/** Short single-token queries get a lower threshold so partial words still match. */
+export function resolveScoreThreshold(
+  query: string,
+  baseScoreThreshold: number,
+): number {
+  const normalized = query.trim();
+  const isShortSingleToken =
+    normalized !== "*" &&
+    normalized.length > 0 &&
+    normalized.length <= 4 &&
+    !normalized.includes(" ");
+  return isShortSingleToken
+    ? Math.min(baseScoreThreshold, 1.0)
+    : baseScoreThreshold;
+}
+
 export const useGetSearchQuery = (
   query: string,
   queryData?: ParsedQueryData | null,
@@ -143,14 +159,10 @@ export const useGetSearchQuery = (
 
       const baseScoreThreshold =
         queryData?.scoreThreshold ?? SEARCH_CONSTANTS.DEFAULT_SCORE_THRESHOLD;
-      const isShortSingleTokenQuery =
-        normalizedQuery !== "*" &&
-        normalizedQuery.length > 0 &&
-        normalizedQuery.length <= 4 &&
-        !normalizedQuery.includes(" ");
-      const dynamicScoreThreshold = isShortSingleTokenQuery
-        ? Math.min(baseScoreThreshold, 1.0)
-        : baseScoreThreshold;
+      const dynamicScoreThreshold = resolveScoreThreshold(
+        normalizedQuery,
+        baseScoreThreshold,
+      );
 
       const searchPayload: SearchPayload = {
         query: effectiveQuery,

@@ -1014,7 +1014,8 @@ class SearchService:
                     "suggestions": [], "files": []}  # fmt: skip
 
         filters = filters or {}
-        base_key = (user_id, normalize_query(cleaned), fingerprint(filters))
+        # Semantic hits depend on the score threshold, so it is part of the key.
+        base_key = (user_id, normalize_query(cleaned), fingerprint(filters), score_threshold)
         if not semantic:
             upgraded = SUGGEST_CACHE.get((*base_key, True))
             if upgraded is not None:

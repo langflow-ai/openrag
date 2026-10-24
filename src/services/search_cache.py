@@ -65,14 +65,21 @@ class SingleflightTTLCache:
         example a response carrying provider warnings) so a transient failure
         is not pinned for the whole TTL. Exceptions are never cached.
         """
-        hit = self._cache.get(key)
-        if hit is not None:
-            return hit
+        while True:
+            hit = self._cache.get(key)
+            if hit is not None:
+                return hit
 
-        pending = self._inflight.get(key)
-        if pending is not None:
-            # shield: a cancelled waiter must not cancel the shared future.
-            return await asyncio.shield(pending)
+            pending = self._inflight.get(key)
+            if pending is None:
+                break
+            try:
+                # shield: a cancelled waiter must not cancel the shared future.
+                return await asyncio.shield(pending)
+            except asyncio.CancelledError:
+                # Only the leader's cancellation is recoverable; take over.
+                if not pending.cancelled():
+                    raise
 
         future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
         self._inflight[key] = future

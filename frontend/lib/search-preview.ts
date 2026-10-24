@@ -11,7 +11,7 @@ import { getKnowledgeFileIdentity } from "@/lib/knowledge-table-state";
 
 export const PREVIEW_MAX_CHARS = 180;
 /** How many of the most relevant files get a preview line in the table. */
-export const TABLE_PREVIEW_FILE_COUNT = 3;
+const TABLE_PREVIEW_FILE_COUNT = 3;
 
 export interface SearchPreview {
   /** One line; `keyword` previews wrap matched terms in `<mark>`. */
@@ -100,7 +100,8 @@ export function bestSentence(text: string, query: string): string | null {
     .filter((sentence) => sentence.length >= 20);
   const candidates = sentences.length > 0 ? sentences : [cleaned];
 
-  const words = (value: string) => value.toLowerCase().match(/\w+/g) ?? [];
+  const words = (value: string) =>
+    value.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [];
   const queryWords = new Set(words(query));
   let best = candidates[0];
   let bestScore = -1;

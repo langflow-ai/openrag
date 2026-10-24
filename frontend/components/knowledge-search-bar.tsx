@@ -41,6 +41,7 @@ export const KnowledgeSearchBar = () => {
   const suggestions = useSearchSuggestionsBox({
     query: searchQueryInput,
     filters: parsedFilterData?.filters,
+    scoreThreshold: parsedFilterData?.scoreThreshold,
     enabled: true,
     onPickSuggestion: (text) => {
       setSearchQueryInput(text);

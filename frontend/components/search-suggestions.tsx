@@ -36,7 +36,7 @@ export type SuggestionItem =
     }
   | { kind: "file"; key: string; file: SuggestFile };
 
-export function buildSuggestionItems(
+function buildSuggestionItems(
   data: SearchSuggestResult | undefined,
 ): SuggestionItem[] {
   if (!data) return [];
@@ -62,6 +62,7 @@ interface UseSearchSuggestionsBoxOptions {
   query: string;
   filters: FilterInput | undefined;
   enabled: boolean;
+  scoreThreshold?: number;
   onPickSuggestion: (text: string) => void;
   onPickFile: (filename: string) => void;
 }
@@ -76,6 +77,7 @@ export function useSearchSuggestionsBox({
   query,
   filters,
   enabled,
+  scoreThreshold,
   onPickSuggestion,
   onPickFile,
 }: UseSearchSuggestionsBoxOptions) {
@@ -84,10 +86,11 @@ export function useSearchSuggestionsBox({
   const [dismissedQuery, setDismissedQuery] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
 
-  const { data, isRefining } = useSearchSuggestions(
+  const { data, isRefining, isError } = useSearchSuggestions(
     query,
     filters,
     enabled && focused,
+    scoreThreshold,
   );
   const items = useMemo(() => buildSuggestionItems(data), [data]);
 
@@ -97,18 +100,21 @@ export function useSearchSuggestionsBox({
     setActiveIndex(-1);
   }
 
+  // Compared trimmed: submitting commits the trimmed text, which would
+  // otherwise differ from the dismissed value and reopen the dropdown.
+  const trimmedQuery = query.trim();
   const open =
     enabled &&
     focused &&
-    query.trim().length >= SUGGEST_MIN_CHARS &&
-    dismissedQuery !== query;
+    trimmedQuery.length >= SUGGEST_MIN_CHARS &&
+    dismissedQuery !== trimmedQuery;
 
   const pick = (item: SuggestionItem) => {
     if (item.kind === "suggestion") {
       setDismissedQuery(item.text);
       onPickSuggestion(item.text);
     } else {
-      setDismissedQuery(query);
+      setDismissedQuery(trimmedQuery);
       onPickFile(item.file.filename);
     }
   };
@@ -128,7 +134,7 @@ export function useSearchSuggestionsBox({
       pick(items[activeIndex]);
     } else if (event.key === "Escape") {
       event.preventDefault();
-      setDismissedQuery(query);
+      setDismissedQuery(trimmedQuery);
     }
   };
 
@@ -136,17 +142,18 @@ export function useSearchSuggestionsBox({
 
   return {
     open,
-    dismiss: () => setDismissedQuery(query),
+    dismiss: () => setDismissedQuery(trimmedQuery),
     data,
     items,
     isRefining,
+    isError,
     activeIndex,
     setActiveIndex,
     pick,
     listId,
     optionId,
     onOpenChange: (next: boolean) => {
-      if (!next) setDismissedQuery(query);
+      if (!next) setDismissedQuery(trimmedQuery);
     },
     anchorProps: { "data-search-suggest-anchor": "" },
     inputProps: {
@@ -164,7 +171,7 @@ export function useSearchSuggestionsBox({
   };
 }
 
-export type SearchSuggestionsBox = ReturnType<typeof useSearchSuggestionsBox>;
+type SearchSuggestionsBox = ReturnType<typeof useSearchSuggestionsBox>;
 
 function MatchedText({ text, query }: { text: string; query: string }) {
   const { before, match, after } = splitOnQuery(text, query);
@@ -183,7 +190,10 @@ function countLabel(count: number, noun: string) {
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <div className="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground">
+    <div
+      role="presentation"
+      className="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground"
+    >
       {children}
     </div>
   );
@@ -307,13 +317,27 @@ export function SearchSuggestionsPopover({
           aria-label={`Search suggestions for ${trimmed}`}
           className="max-h-96 overflow-y-auto pb-1"
         >
-          {!box.data && (
-            <div className="px-3 py-3 text-sm text-muted-foreground">
+          {!box.data && !box.isError && (
+            <div
+              role="presentation"
+              className="px-3 py-3 text-sm text-muted-foreground"
+            >
               Searching…
             </div>
           )}
+          {box.isError && (
+            <div
+              role="presentation"
+              className="px-3 py-3 text-sm text-muted-foreground"
+            >
+              Suggestions unavailable. Press Enter to search.
+            </div>
+          )}
           {empty && (
-            <div className="px-3 py-3 text-sm text-muted-foreground">
+            <div
+              role="presentation"
+              className="px-3 py-3 text-sm text-muted-foreground"
+            >
               No suggestions. Press Enter to search.
             </div>
           )}

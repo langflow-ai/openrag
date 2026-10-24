@@ -236,6 +236,72 @@ async def test_degraded_semantic_response_is_not_cached(monkeypatch):
     assert calls == 2
 
 
+@pytest.mark.asyncio
+async def test_cache_is_keyed_by_score_threshold(monkeypatch):
+    opensearch = _OpenSearch()
+    service = _service({"u1": opensearch}, monkeypatch)
+    thresholds = []
+
+    async def fake_search(query, **kwargs):
+        thresholds.append(kwargs["score_threshold"])
+        return {"results": []}
+
+    monkeypatch.setattr(service, "search", fake_search)
+
+    await service.suggest("docling", user_id="u1", semantic=True, score_threshold=1.0)
+    await service.suggest("docling", user_id="u1", semantic=True, score_threshold=2.0)
+    await service.suggest("docling", user_id="u1", semantic=True, score_threshold=2.0)
+
+    assert thresholds == [1.0, 2.0]
+
+
+@pytest.mark.asyncio
+async def test_keyword_request_is_not_answered_by_other_threshold_semantic_cache(monkeypatch):
+    opensearch = _OpenSearch()
+    service = _service({"u1": opensearch}, monkeypatch)
+
+    async def fake_search(query, **kwargs):
+        return {"results": []}
+
+    monkeypatch.setattr(service, "search", fake_search)
+
+    await service.suggest("docling", user_id="u1", semantic=True, score_threshold=1.0)
+    await service.suggest("docling", user_id="u1", semantic=False, score_threshold=2.0)
+
+    assert opensearch.keyword_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_suggest_without_jwt_still_resolves_the_user_client(monkeypatch):
+    opensearch = _OpenSearch()
+    service = _service({"u1": opensearch}, monkeypatch)
+
+    result = await service.suggest("docling", user_id="u1", jwt_token=None)
+
+    assert result["files"]
+    assert opensearch.keyword_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_semantic_error_payload_is_returned_and_not_cached(monkeypatch):
+    opensearch = _OpenSearch()
+    service = _service({"u1": opensearch}, monkeypatch)
+    calls = 0
+
+    async def failing_search(query, **kwargs):
+        nonlocal calls
+        calls += 1
+        return {"error": "Authentication required"}
+
+    monkeypatch.setattr(service, "search", failing_search)
+
+    first = await service.suggest("docling", user_id="u1", semantic=True)
+    await service.suggest("docling", user_id="u1", semantic=True)
+
+    assert first == {"error": "Authentication required"}
+    assert calls == 2
+
+
 def test_filters_to_clauses_allowlists_fields():
     clauses = _filters_to_clauses(
         {
