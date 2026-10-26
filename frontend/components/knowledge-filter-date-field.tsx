@@ -2,7 +2,7 @@
 
 import { isAfter, isSameDay, startOfDay, subDays } from "date-fns";
 import { CalendarIcon, Check, ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Matcher } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -11,7 +11,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { type DateRangeValue, viewerTimeZone } from "@/lib/saved-date-range";
+import {
+  type DateRangeValue,
+  describeRange,
+  viewerTimeZone,
+} from "@/lib/saved-date-range";
 import { cn } from "@/lib/utils";
 
 const PRESET_DAYS = [30, 60, 90] as const;
@@ -27,26 +31,6 @@ function formatFieldDate(date: Date | undefined): string {
         year: "2-digit",
       })
     : "Select date";
-}
-
-function formatLabelDate(date: Date): string {
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-/** "A – B", a single day, or "From A" / "Until B" for a one-sided range. */
-export function describeRange(range: DateRangeValue | null): string | null {
-  if (range?.from && range.to) {
-    return isSameDay(range.from, range.to)
-      ? formatLabelDate(range.from)
-      : `${formatLabelDate(range.from)} – ${formatLabelDate(range.to)}`;
-  }
-  if (range?.from) return `From ${formatLabelDate(range.from)}`;
-  if (range?.to) return `Until ${formatLabelDate(range.to)}`;
-  return null;
 }
 
 type OptionId = "all" | `${number}` | "custom";
@@ -85,20 +69,20 @@ export function KnowledgeFilterDateField({
   const [draft, setDraft] = useState<DateRangeValue | null>(value);
   const [expanded, setExpanded] = useState<Field | null>(null);
   // False until the user changes the draft; Apply then keeps the range as saved.
-  const [edited, setEdited] = useState(false);
+  const edited = useRef(false);
 
   const handleOpenChange = (next: boolean) => {
     if (next) {
       setToday(startOfDay(new Date()));
       setDraft(value);
       setExpanded(null);
-      setEdited(false);
+      edited.current = false;
     }
     setOpen(next);
   };
 
   const update = (next: DateRangeValue | null) => {
-    setEdited(true);
+    edited.current = true;
     setDraft(next);
   };
 
@@ -158,7 +142,7 @@ export function KnowledgeFilterDateField({
   };
 
   const apply = () => {
-    if (edited) onChange(draft?.from || draft?.to ? draft : null);
+    if (edited.current) onChange(draft?.from || draft?.to ? draft : null);
     setOpen(false);
   };
 

@@ -25,10 +25,7 @@ import { Label } from "@/components/ui/label";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  savedDateRangeOf,
-  useKnowledgeFilter,
-} from "@/contexts/knowledge-filter-context";
+import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import { trackButton } from "@/lib/analytics";
 import type { FilterColor, IconKey } from "@/lib/filter-constants";
@@ -39,6 +36,7 @@ import {
   hasDateBounds,
   NO_DATE_RANGE,
   type SavedDateRange,
+  savedDateRangeOf,
 } from "@/lib/saved-date-range";
 
 interface AvailableFacets {

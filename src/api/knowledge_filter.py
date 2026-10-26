@@ -189,9 +189,9 @@ async def create_knowledge_filter(
 
     try:
         normalized_query_data = normalize_query_data(body.queryData)
-    except Exception as e:
-        logger.error(f"Failed to normalize query_data: {e}")
-        return JSONResponse({"error": f"Invalid queryData format: {str(e)}"}, status_code=400)
+    except Exception:
+        logger.error("Failed to normalize query_data", exc_info=True)
+        return JSONResponse({"error": "Invalid queryData format"}, status_code=400)
 
     jwt_token = user.jwt_token
 
@@ -274,9 +274,9 @@ async def update_knowledge_filter(
     query_data = body.queryData if body.queryData is not None else existing_filter["query_data"]
     try:
         normalized_query_data = normalize_query_data(query_data)
-    except Exception as e:
-        logger.error(f"Failed to normalize query_data: {e}")
-        return JSONResponse({"error": f"Invalid queryData format: {str(e)}"}, status_code=400)
+    except Exception:
+        logger.error("Failed to normalize query_data", exc_info=True)
+        return JSONResponse({"error": "Invalid queryData format"}, status_code=400)
 
     delete_result = await knowledge_filter_service.delete_knowledge_filter(
         filter_id, user_id=user.user_id, jwt_token=jwt_token

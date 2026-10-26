@@ -10,6 +10,7 @@
  * bounds are only recomputed (in the viewer's timezone) when the user edits it.
  */
 
+import { isSameDay } from "date-fns";
 import {
   toLocalDayEndISOString,
   toLocalDayKey,
@@ -168,4 +169,41 @@ export function foreignTimeZone(
 ): string | null {
   const tz = range?.context?.timezone;
   return tz && hasDateBounds(range) && tz !== viewerTimeZone() ? tz : null;
+}
+
+/** Saved range carried by parsed query data. */
+export function savedDateRangeOf(
+  parsed: {
+    filters: { created_after?: string; created_before?: string };
+    dateRangeContext?: DateRangeContext;
+  } | null,
+): SavedDateRange {
+  const createdAfter = parsed?.filters.created_after || undefined;
+  const createdBefore = parsed?.filters.created_before || undefined;
+  if (!createdAfter && !createdBefore) return NO_DATE_RANGE;
+  return {
+    ...(createdAfter && { createdAfter }),
+    ...(createdBefore && { createdBefore }),
+    ...(parsed?.dateRangeContext && { context: parsed.dateRangeContext }),
+  };
+}
+
+function formatLabelDate(date: Date): string {
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/** "A – B", a single day, or "From A" / "Until B" for a one-sided range. */
+export function describeRange(range: DateRangeValue | null): string | null {
+  if (range?.from && range.to) {
+    return isSameDay(range.from, range.to)
+      ? formatLabelDate(range.from)
+      : `${formatLabelDate(range.from)} – ${formatLabelDate(range.to)}`;
+  }
+  if (range?.from) return `From ${formatLabelDate(range.from)}`;
+  if (range?.to) return `Until ${formatLabelDate(range.to)}`;
+  return null;
 }

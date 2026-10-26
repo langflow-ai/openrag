@@ -21,6 +21,7 @@ import {
   NO_DATE_RANGE,
   parseSavedDateRange,
   type SavedDateRange,
+  savedDateRangeOf,
 } from "@/lib/saved-date-range";
 
 interface KnowledgeFilter {
@@ -85,20 +86,6 @@ interface KnowledgeFilterContextType {
    * saved bounds in any viewer timezone; a cleared range has neither bound.
    */
   effectiveDateRange: SavedDateRange;
-}
-
-/** Saved range carried by parsed query data. */
-export function savedDateRangeOf(
-  parsed: ParsedQueryData | null,
-): SavedDateRange {
-  const createdAfter = parsed?.filters.created_after || undefined;
-  const createdBefore = parsed?.filters.created_before || undefined;
-  if (!createdAfter && !createdBefore) return NO_DATE_RANGE;
-  return {
-    ...(createdAfter && { createdAfter }),
-    ...(createdBefore && { createdBefore }),
-    ...(parsed?.dateRangeContext && { context: parsed.dateRangeContext }),
-  };
 }
 
 const KnowledgeFilterContext = createContext<
