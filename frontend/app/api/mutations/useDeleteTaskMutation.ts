@@ -1,14 +1,15 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { TASKS_QUERY_KEY, type Task } from "@/app/api/queries/useGetTasksQuery";
+import { apiClient } from "@/lib/api-client";
 
 export function useDeleteTaskMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (taskId: string) => {
-      const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+      const res = await apiClient.delete(`/tasks/${taskId}`);
       if (res.status === 404) return;
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
+      if (res.status < 200 || res.status >= 300) {
+        const body = res.data;
         throw new Error(
           (body as { error?: string }).error ?? "Failed to delete task",
         );
@@ -29,15 +30,15 @@ export function useDeleteAllTerminalTasksMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (): Promise<string[]> => {
-      const res = await fetch("/api/tasks", { method: "DELETE" });
+      const res = await apiClient.delete<{ deleted_ids?: unknown }>("/tasks");
       if (res.status === 404) return [];
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
+      if (res.status < 200 || res.status >= 300) {
+        const body = res.data;
         throw new Error(
           (body as { error?: string }).error ?? "Failed to delete tasks",
         );
       }
-      const body = await res.json();
+      const body = res.data;
       if (
         !Array.isArray(body.deleted_ids) ||
         !body.deleted_ids.every((id: unknown) => typeof id === "string")

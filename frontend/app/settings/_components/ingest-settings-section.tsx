@@ -52,6 +52,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useRegisterDirty } from "@/contexts/unsaved-changes-context";
 import { trackButton } from "@/lib/analytics";
+import { apiClient } from "@/lib/api-client";
 import {
   DEFAULT_KNOWLEDGE_SETTINGS,
   OCR_LANGUAGE_OPTIONS,
@@ -617,32 +618,30 @@ export function IngestSettingsSection() {
       elementId: "restore-ingest-flow-button",
       namespace: "settings",
     });
-    fetch("/api/reset-flow/ingest", { method: "POST" })
-      .then((res) =>
-        res.text().then((text) => {
-          const body = text ? JSON.parse(text) : {};
-          if (!res.ok) {
-            throw new Error(
-              body.error ?? `HTTP ${res.status}: ${res.statusText}`,
-            );
-          }
-        }),
-      )
-      .then(() =>
-        // The flow reset above only replaces the Langflow graph. The knowledge
-        // settings (chunk size, OCR, etc.) live in a separate store, so restore
-        // must persist the defaults there too, or the form shows defaults that
-        // vanish on refresh while leaving Save stuck enabled against them.
-        updateSettingsMutation.mutateAsync({
-          chunk_size: DEFAULT_KNOWLEDGE_SETTINGS.chunk_size,
-          chunk_overlap: DEFAULT_KNOWLEDGE_SETTINGS.chunk_overlap,
-          table_structure: DEFAULT_KNOWLEDGE_SETTINGS.table_structure,
-          ocr: DEFAULT_KNOWLEDGE_SETTINGS.ocr,
-          ocr_languages: [...DEFAULT_KNOWLEDGE_SETTINGS.ocr_languages],
-          picture_descriptions: DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions,
-          disable_ingest_with_langflow: false,
-        }),
-      )
+    apiClient
+      .post("/reset-flow/ingest")
+      .then((res) => {
+        if (res.status < 200 || res.status >= 300) {
+          const body = res.data ?? {};
+          throw new Error(body.error ?? `HTTP ${res.status}`);
+        }
+        return (
+          // The flow reset above only replaces the Langflow graph. The knowledge
+          // settings (chunk size, OCR, etc.) live in a separate store, so restore
+          // must persist the defaults there too, or the form shows defaults that
+          // vanish on refresh while leaving Save stuck enabled against them.
+          updateSettingsMutation.mutateAsync({
+            chunk_size: DEFAULT_KNOWLEDGE_SETTINGS.chunk_size,
+            chunk_overlap: DEFAULT_KNOWLEDGE_SETTINGS.chunk_overlap,
+            table_structure: DEFAULT_KNOWLEDGE_SETTINGS.table_structure,
+            ocr: DEFAULT_KNOWLEDGE_SETTINGS.ocr,
+            ocr_languages: [...DEFAULT_KNOWLEDGE_SETTINGS.ocr_languages],
+            picture_descriptions:
+              DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions,
+            disable_ingest_with_langflow: false,
+          })
+        );
+      })
       .then(() => {
         setChunkSize(DEFAULT_KNOWLEDGE_SETTINGS.chunk_size);
         setChunkOverlap(DEFAULT_KNOWLEDGE_SETTINGS.chunk_overlap);

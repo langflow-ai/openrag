@@ -85,6 +85,18 @@ def test_an_unknown_provider_still_gets_a_usable_form() -> None:
     assert model_catalog.missing_required_fields("some-private-gateway", set()) == []
 
 
+def test_a_tls_verify_field_keeps_its_type_and_is_not_a_secret() -> None:
+    """The UI renders `tls_verify` as a switch, so normalizing must not turn it into text."""
+    fields = {field["key"]: field for field in model_catalog.credential_fields("rhoai")}
+    assert fields["ssl_verify"]["field_type"] == "tls_verify"
+    assert "ssl_verify" not in model_catalog.secret_field_keys("rhoai")
+
+
+def test_an_unrecognised_field_type_falls_back_to_text() -> None:
+    field = model_catalog._normalize_field({"key": "x", "field_type": "colour"})
+    assert field["field_type"] == "text"
+
+
 def test_openai_models_list_is_openai_compatible() -> None:
     payload = model_catalog.openai_models_list()
     assert payload["object"] == "list"
@@ -467,6 +479,51 @@ def test_the_shipped_config_keeps_broken_watsonx_models_out_of_live_inventory(
     assert not catalogued.intersection(excluded)
 
 
+def test_a_configured_vision_model_is_tagged_vision(monkeypatch, tmp_path) -> None:
+    """`vision_models` adds the capability the VLM picker filters on.
+
+    Applies to LiteLLM's own rows and to declared ones alike, and leaves every
+    other model's capabilities as the table had them.
+    """
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write_providers(
+            tmp_path,
+            "providers:\n  - name: openai\n    modes:\n      oss: true\n"
+            "    models:\n      - house-tuned-gpt\n"
+            "    vision_models:\n      - gpt-5.5-cyber\n      - house-tuned-*\n",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    models = {entry["model"]: entry for entry in model_catalog.catalog()["providers"][0]["models"]}
+    assert "vision" in models["gpt-5.5-cyber"]["capabilities"]
+    assert "reasoning" in models["gpt-5.5-cyber"]["capabilities"]
+    assert models["house-tuned-gpt"]["capabilities"] == ["vision"]
+    assert "vision" not in models["gpt-5.5-cyber-preview"].get("capabilities", [])
+
+
+def test_the_shipped_config_offers_watsonx_vision_models(monkeypatch) -> None:
+    """The VLM picker shows only `vision` models, so watsonx needs some.
+
+    Every watsonx id LiteLLM flags as vision is withdrawn and excluded; the
+    ones watsonx.ai serves with image input are tagged by the config instead.
+    """
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    vision = {
+        entry["model"]
+        for provider in model_catalog.catalog()["providers"]
+        if provider["key"] == "watsonx"
+        for entry in provider["models"]
+        if "vision" in entry.get("capabilities", [])
+    }
+    assert vision == {
+        "meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
+        "mistralai/mistral-small-3-1-24b-instruct-2503",
+    }
+
+
 def test_a_plain_name_also_excludes_its_regional_listings(monkeypatch, tmp_path) -> None:
     """Azure lists the same model per region; suppressing it means all of them."""
     monkeypatch.setenv(
@@ -504,13 +561,13 @@ def test_an_exclusion_without_a_wildcard_leaves_the_dated_snapshots(monkeypatch)
     because the fix is a single character in a YAML file and reads like a typo.
     """
     monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
-    exact = model_catalog._excluded("gpt-5.6-luna-2026-07-09", ("gpt-5.6-luna",))
-    wildcard = model_catalog._excluded("gpt-5.6-luna-2026-07-09", ("gpt-5.6-luna*",))
+    exact = model_catalog._matches("gpt-5.6-luna-2026-07-09", ("gpt-5.6-luna",))
+    wildcard = model_catalog._matches("gpt-5.6-luna-2026-07-09", ("gpt-5.6-luna*",))
 
     assert not exact
     assert wildcard
     # The wildcard keeps covering the regional forms the bare name covered.
-    assert model_catalog._excluded("us/gpt-5.6-luna", ("gpt-5.6-luna*",))
+    assert model_catalog._matches("us/gpt-5.6-luna", ("gpt-5.6-luna*",))
 
 
 def test_both_luna_generations_are_excluded_from_both_rows(monkeypatch) -> None:

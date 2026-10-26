@@ -1,6 +1,11 @@
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
-import { renderWithProviders, screen, userEvent } from "@/test-utils/render";
+import {
+  renderWithProviders,
+  screen,
+  userEvent,
+  waitFor,
+} from "@/test-utils/render";
 import { WatsonxSpaceSelect } from "./watsonx-space-select";
 
 describe("WatsonxSpaceSelect", () => {
@@ -63,6 +68,48 @@ describe("WatsonxSpaceSelect", () => {
 
     expect(attempts).toBe(2);
     expect(onValueChange).toHaveBeenCalledWith("space-prod");
+  });
+
+  it("sends a blank TLS setting so a saved one is not reused", async () => {
+    const requests: Array<{ credentials: Record<string, string> }> = [];
+    renderWithProviders(
+      <WatsonxSpaceSelect
+        credentials={{
+          api_base: "https://cpd.example.com",
+          username: "cpd-user",
+          api_key: "",
+          ssl_verify: "",
+        }}
+        hasSavedApiKey
+        value=""
+        onValueChange={vi.fn()}
+        idPrefix="test"
+      />,
+      {
+        handlers: [
+          http.post(
+            "/api/models/watsonx_onprem/spaces",
+            async ({ request }) => {
+              requests.push(
+                (await request.json()) as {
+                  credentials: Record<string, string>;
+                },
+              );
+              return HttpResponse.json({ spaces: [] });
+            },
+          ),
+        ],
+      },
+    );
+
+    await waitFor(() => expect(requests).toHaveLength(1));
+    // The blank secret is left out (the saved key is kept); the blank TLS
+    // setting is sent so the backend does not fill the saved one back in.
+    expect(requests[0].credentials).toEqual({
+      api_base: "https://cpd.example.com",
+      username: "cpd-user",
+      ssl_verify: "",
+    });
   });
 
   it("does not suggest disabling TLS when verification is already off", async () => {

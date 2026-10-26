@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { CloudFile, UnifiedCloudPicker } from "@/components/cloud-picker";
 import { useTask } from "@/contexts/task-context";
+import { apiClient } from "@/lib/api-client";
 
 // CloudFile interface is now imported from the unified cloud picker
 
@@ -42,15 +43,12 @@ export default function ConnectorsPage() {
         selected_files: selectedFiles.map((file) => file.id),
       };
 
-      const response = await fetch(`/api/connectors/${connector.type}/sync`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(syncBody),
-      });
+      const response = await apiClient.post(
+        `/connectors/${connector.type}/sync`,
+        syncBody,
+      );
 
-      const result = await response.json();
+      const result = response.data;
 
       if (response.status === 201) {
         const taskId = result.task_id;
@@ -65,7 +63,7 @@ export default function ConnectorsPage() {
             status: "started",
           });
         }
-      } else if (response.ok) {
+      } else if (response.status >= 200 && response.status < 300) {
         setSyncResult(result);
       } else {
         console.error("Sync failed:", result.error);

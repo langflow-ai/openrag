@@ -13,6 +13,7 @@
  */
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { apiClient } from "@/lib/api-client";
 import { authPresets, makeUser, withAuth } from "@/test-utils/fixtures/auth";
 import { renderWithProviders } from "@/test-utils/render";
 import { PLACEHOLDER_GREETING } from "./_types/types";
@@ -127,14 +128,30 @@ vi.mock("@/app/chat/_components/assistant-message", () => ({
   ),
 }));
 
-const { imeStateHolder, submitSpy } = vi.hoisted(() => ({
-  imeStateHolder: {
-    current: { composing: false, compositionEndedAt: 0, now: 0 },
-  },
-  submitSpy: vi.fn((event: { preventDefault: () => void }) => {
-    event.preventDefault();
-  }),
-}));
+const { imeStateHolder, submitSpy, chatCallbacks, uploadFileForContextMock } =
+  vi.hoisted(() => ({
+    imeStateHolder: {
+      current: { composing: false, compositionEndedAt: 0, now: 0 },
+    },
+    submitSpy: vi.fn((event: { preventDefault: () => void }) => {
+      event.preventDefault();
+    }),
+    chatCallbacks: {
+      onSubmit: undefined as
+        | ((event: { preventDefault: () => void }) => void | Promise<void>)
+        | undefined,
+      onFileSelected: undefined as ((file: File) => void) | undefined,
+    },
+    uploadFileForContextMock: vi.fn(),
+  }));
+
+vi.mock("@/lib/upload-utils", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/upload-utils")>();
+  return {
+    ...actual,
+    uploadFileForContext: uploadFileForContextMock,
+  };
+});
 
 vi.mock("@/app/chat/_components/chat-input", () => {
   const { forwardRef, useImperativeHandle } = require("react");
@@ -144,9 +161,15 @@ vi.mock("@/app/chat/_components/chat-input", () => {
         props: {
           onChange?: (value: string) => void;
           onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+          onSubmit?: (event: {
+            preventDefault: () => void;
+          }) => void | Promise<void>;
+          onFileSelected?: (file: File) => void;
         },
         ref: React.Ref<{ getImeState: () => unknown }>,
       ) => {
+        chatCallbacks.onSubmit = props.onSubmit;
+        chatCallbacks.onFileSelected = props.onFileSelected;
         useImperativeHandle(ref, () => ({
           focusInput() {},
           clickFileInput() {},
@@ -193,6 +216,7 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
       now: 0,
     };
     submitSpy.mockClear();
+    uploadFileForContextMock.mockReset();
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -297,6 +321,28 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
 
     expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(false);
     expect(submitSpy).toHaveBeenCalledOnce();
+  });
+
+  it("does not send a message when the attached upload fails", async () => {
+    vi.useRealTimers();
+    uploadFileForContextMock.mockRejectedValueOnce(new Error("too big"));
+    const post = vi.spyOn(apiClient, "post");
+    renderWithProviders(<ProtectedChatPage />, {
+      providers: ["auth"],
+      auth: authPresets.noAuthMode,
+    });
+
+    act(() => {
+      chatCallbacks.onFileSelected?.(
+        new File(["x"], "notes.pdf", { type: "application/pdf" }),
+      );
+    });
+    await act(async () => {
+      await chatCallbacks.onSubmit?.({ preventDefault() {} });
+    });
+
+    expect(uploadFileForContextMock).toHaveBeenCalledOnce();
+    expect(post).not.toHaveBeenCalled();
   });
 
   it("replaces the placeholder greeting after mount in no-auth mode", async () => {

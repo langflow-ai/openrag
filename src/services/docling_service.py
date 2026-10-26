@@ -1,6 +1,7 @@
 import asyncio
 import json
 import platform
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -51,6 +52,18 @@ class DoclingServeError(Exception):
 
 class DoclingTransientError(DoclingServeError):
     """Raised for errors that may resolve on retry (network failures, 5xx)."""
+
+
+class DoclingPayloadTooLarge(DoclingServeError):
+    """The proxy in front of docling-serve rejected the file body (HTTP 413).
+
+    ``str(self)`` is the line shown to users. ``operator_detail`` keeps the
+    internal endpoint for logs.
+    """
+
+    def __init__(self, message: str, *, operator_detail: str | None = None):
+        super().__init__(message)
+        self.operator_detail = operator_detail
 
 
 class DoclingTaskState(StrEnum):
@@ -112,6 +125,30 @@ OCR_LANGUAGE_CODES: dict[str, dict[str, str]] = {
         "ar": "ar",
     },
 }
+
+
+def strip_provider_prefix(model: str, provider: str) -> str:
+    """The bare model name from a possibly provider-tagged VLM id.
+
+    `knowledge.vlm_provider` and `knowledge.vlm_model` are separate fields, so
+    the model is usually already bare. It is not always: a tagged id can reach
+    here from config written by hand or carried over from a picker.
+
+    Both separators are accepted. `:` is the canonical one
+    (`llm_gateway.PROVIDER_SEPARATOR`, and the one embedding-space ids use);
+    `/` is the legacy form kept working elsewhere in the codebase. Only `/`
+    used to be stripped, so an id stored as `azure_ai:gpt-4o` was sent to the
+    provider with the prefix still attached — a model name no deployment has.
+    """
+    name = (model or "").strip()
+    key = (provider or "").strip().lower()
+    if not name or not key:
+        return name
+    for separator in (":", "/"):
+        prefix = f"{key}{separator}"
+        if name.lower().startswith(prefix):
+            return name[len(prefix) :]
+    return name
 
 
 def resolve_ocr_languages(engine: str, languages: list[str]) -> list[str]:
@@ -194,6 +231,96 @@ def _format_docling_error(payload: dict[str, Any]) -> str:
     if len(result) > DOCLING_ERROR_DETAIL_MAX_LENGTH:
         return f"{result[:DOCLING_ERROR_DETAIL_MAX_LENGTH]}..."
     return result
+
+
+# Keeps the "incorrect password" substring that task_service._infer_failure_metadata
+# maps to the user-facing password-protected message.
+PASSWORD_PROTECTED_PDF_DETAIL = "PDF is password-protected (Incorrect password)"
+
+# The trailer / xref-stream dictionary holding /Encrypt is never compressed, so a
+# byte scan finds it without a PDF library. Applied only to the active trailer
+# dictionary (_active_trailer_dict): /Encrypt elsewhere in the file, such as page
+# text or an attached PDF, does not make the document encrypted. Matches an
+# indirect reference (/Encrypt 5 0 R) or a direct dictionary (/Encrypt <<).
+_PDF_ENCRYPT_RE = re.compile(rb"/Encrypt\s*(?:\d+\s+\d+\s+R|<<)")
+_STARTXREF_RE = re.compile(rb"startxref\s+(\d+)")
+# What a startxref offset may point at: a classic `xref` table (group 1) or the
+# header of an indirect object that should be the xref stream.
+_XREF_SECTION_START_RE = re.compile(rb"\s*(?:(xref)|\d+\s+\d+\s+obj\b)")
+# The object's dictionary ends where its stream data or the object itself ends.
+_OBJ_DICT_END_RE = re.compile(rb"stream|endobj")
+_XREF_TYPE_RE = re.compile(rb"/Type\s*/XRef\b")
+
+
+def is_docling_load_failure(message: str) -> bool:
+    """True when docling reports that its backend could not open the document."""
+    return "could not load document" in message.lower()
+
+
+def _active_trailer_dict(content: bytes) -> bytes | None:
+    """Return the trailer or xref-stream dictionary that the final ``startxref`` names.
+
+    PDF encryption is declared only there. Incremental updates repeat /Encrypt in
+    the newest trailer, and a linearized file's final ``startxref`` points at the
+    first-page section, which carries the full trailer. Offsets are tried both from
+    the start of the file and from the ``%PDF-`` header, because some producers
+    write junk before the header. An object at the offset counts only if it is an
+    xref stream (``/Type /XRef``), so a stale offset in a damaged file cannot pick
+    up an unrelated dictionary. Returns ``None`` when the content is not a PDF or
+    the trailer cannot be located.
+
+    Searches ``content`` in place and slices out only the dictionary, because a
+    linearized file's offset is near the start and a tail copy would duplicate
+    almost the whole upload.
+    """
+    header = content.find(b"%PDF-", 0, 1024)
+    if header < 0:
+        return None
+    matches = list(_STARTXREF_RE.finditer(content, max(0, len(content) - 1024)))
+    if not matches:
+        logger.debug("No startxref found; not treating the PDF as encrypted")
+        return None
+    offset = int(matches[-1].group(1))
+    for start in dict.fromkeys((offset, offset + header)):
+        section = _XREF_SECTION_START_RE.match(content, start)
+        if section is None:
+            continue
+        if section.group(1):
+            # Classic table: the dictionary follows the `trailer` keyword.
+            trailer = content.find(b"trailer", section.end())
+            if trailer < 0:
+                logger.debug("Cross-reference table has no trailer", offset=start)
+                return None
+            end = content.find(b"startxref", trailer)
+            return content[trailer : end if end >= 0 else None]
+        # Xref stream: the dictionary precedes `stream`; the data is excluded.
+        dict_end = _OBJ_DICT_END_RE.search(content, section.end())
+        xref_dict = content[section.end() : dict_end.start() if dict_end else None]
+        if _XREF_TYPE_RE.search(xref_dict):
+            return xref_dict
+    logger.debug("startxref offset does not point at a cross-reference section", offset=offset)
+    return None
+
+
+def is_encrypted_pdf(content: bytes) -> bool:
+    """True when ``content`` is a PDF whose active trailer declares an encryption dictionary."""
+    trailer = _active_trailer_dict(content)
+    return trailer is not None and _PDF_ENCRYPT_RE.search(trailer) is not None
+
+
+def password_protected_pdf_error(message: str, content: bytes) -> str | None:
+    """Return the password-protected detail for a docling load failure on an encrypted PDF.
+
+    docling 2.108 pre-opened PDFs with pypdfium2, whose error read "Incorrect
+    password". Later versions load through docling-parse first, which reports only
+    "Failed to load document with key ...", so the reason has to be recovered from
+    the bytes. This is checked only after docling failed to load the file: a PDF
+    with just an owner password also declares /Encrypt but converts fine. A file
+    whose trailer cannot be located keeps docling's own message.
+    """
+    if is_docling_load_failure(message) and is_encrypted_pdf(content):
+        return PASSWORD_PROTECTED_PDF_DETAIL
+    return None
 
 
 def _extract_document_json_content(payload: dict[str, Any], *, task_id: str) -> dict[str, Any]:
@@ -311,6 +438,23 @@ class DoclingService:
             options["include_images"] = True
 
         # If picture descriptions are enabled, configure custom/local VLM model
+        #
+        # Trust boundary: every `picture_description_api` block below hands the
+        # provider's own credential to docling-serve, which then calls the model
+        # endpoint directly — OpenRAG is not in the path of that request and
+        # does not proxy it. This is how remote VLM has always worked here and
+        # is not specific to Azure, but it means docling-serve is inside the
+        # blast radius of any provider key configured for VLM. Two consequences
+        # worth keeping in mind:
+        #
+        # - these options must never be logged. The credential is a value in
+        #   `headers`, so logging the options dict, or echoing it into an error,
+        #   leaks the key. `DoclingServeError` messages below are written to
+        #   name the *field* that is wrong, never its value.
+        # - a short-lived credential would add an expiry problem on top of the
+        #   trust one, since docling-serve holds whatever it is given for the
+        #   life of the conversion. That is part of why Microsoft Entra
+        #   authentication is not wired through here; see the Azure branches.
         if is_pic_desc_enabled and knowledge_config.vlm_enabled:
             provider = knowledge_config.vlm_provider
             vlm_model = knowledge_config.vlm_model
@@ -395,12 +539,12 @@ class DoclingService:
                 if not (api_key and endpoint):
                     raise DoclingServeError(
                         "Docling VLM is enabled but the Azure provider is not configured "
-                        "(api key and endpoint are required)"
+                        "(an API key and endpoint are required)"
                     )
                 parsed = urlparse(endpoint)
                 if parsed.scheme.lower() != "https" or not parsed.netloc:
                     raise DoclingServeError("Azure VLM endpoint must use HTTPS")
-                deployment = vlm_model.removeprefix("azure/")
+                deployment = strip_provider_prefix(vlm_model, "azure")
                 url = (
                     f"{endpoint.rstrip('/')}/openai/deployments/{deployment}/chat/completions"
                     f"?api-version={api_version}"
@@ -415,27 +559,62 @@ class DoclingService:
                     "prompt": prompt,
                 }
             elif provider == "azure_ai":
-                # Azure AI Foundry, not the Azure OpenAI Service above: its
-                # api_base already points at the `/models` route and the chat
-                # endpoint hangs directly off it. Without this branch a Foundry
-                # VLM fell through to the OpenAI default and was called with
-                # OpenAI credentials it does not have.
+                # Azure AI Foundry, not the Azure OpenAI Service above. Which
+                # path the chat endpoint hangs off depends on which surface the
+                # operator configured, so the endpoint is classified rather
+                # than assumed — see `enhancements/providers/azure/foundry.py`.
+                # Without this branch a Foundry VLM fell through to the OpenAI
+                # default and was called with OpenAI credentials it does not
+                # have.
+                from enhancements.providers.azure import foundry
+
                 creds = config.providers.credential_values("azure_ai")
                 api_key = creds.get("api_key")
-                endpoint = creds.get("api_base")
+                endpoint = foundry.normalized_api_base(creds.get("api_base"))
                 api_version = creds.get("api_version")
                 if not (api_key and endpoint):
                     raise DoclingServeError(
                         "Docling VLM is enabled but the Azure AI Foundry provider is not "
-                        "configured (api key and endpoint are required)"
+                        "configured (an API key and endpoint are required)"
                     )
                 parsed = urlparse(endpoint)
                 if parsed.scheme.lower() != "https" or not parsed.netloc:
                     raise DoclingServeError("Azure AI Foundry VLM endpoint must use HTTPS")
-                model_id = vlm_model.removeprefix("azure_ai/")
-                url = f"{endpoint.rstrip('/')}/chat/completions"
-                if api_version:
+
+                profile = foundry.endpoint_profile(endpoint)
+                if profile == "unknown":
+                    raise DoclingServeError(
+                        f"Docling VLM cannot use this Azure AI Foundry endpoint. "
+                        f"{foundry.UNSUPPORTED_ENDPOINT_MESSAGE}"
+                    )
+                if profile == "legacy_deployment_uri":
+                    # A per-deployment Target URI. The gateway still routes this
+                    # shape, for installs configured before it was refused at
+                    # save time, but VLM cannot use it: the URI pins the call to
+                    # the one deployment baked into it, so the model chosen in
+                    # the picker is silently ignored. The version this API dates
+                    # itself with is dropped by normalization too, so the URL
+                    # built from it would be rejected upstream regardless —
+                    # refused here, where it can still be read as a
+                    # configuration error rather than an ingestion failure.
+                    raise DoclingServeError(
+                        f"Docling VLM cannot use this Azure AI Foundry endpoint. "
+                        f"{foundry.DEPLOYMENT_URI_MESSAGE}"
+                    )
+                chat_base = endpoint
+                if profile == "legacy_models" and not endpoint.rstrip("/").endswith("/models"):
+                    # The resource root on the legacy surface: inference hangs
+                    # off `/models`, which is what LiteLLM appends for the same
+                    # configuration. Appending it here keeps the VLM call and
+                    # the gateway call pointing at the same place.
+                    chat_base = f"{endpoint.rstrip('/')}/models"
+                url = f"{chat_base.rstrip('/')}/chat/completions"
+                # `api-version` dates the legacy API only; the v1 surface is
+                # versionless and ignores it at best.
+                if api_version and profile == "legacy_models":
                     url = f"{url}?api-version={api_version}"
+
+                model_id = strip_provider_prefix(vlm_model, "azure_ai")
                 options["picture_description_api"] = {
                     "url": url,
                     "headers": {"api-key": api_key},
@@ -487,6 +666,17 @@ class DoclingService:
         """
         Upload a file to Docling Serve asynchronously using direct multipart/form-data upload.
         """
+        from utils.upload_limits import (
+            docling_payload_too_large_message,
+            docling_rejected_size_message,
+            ensure_within_upload_limit,
+            format_byte_size,
+            max_upload_mb,
+        )
+
+        ensure_within_upload_limit(filename, len(file_content))
+        endpoint = f"{self.docling_url}/v1/convert/file/async"
+
         options = await self._build_docling_options_async(
             ocr_override=ocr,
             picture_descriptions_override=picture_descriptions,
@@ -516,24 +706,38 @@ class DoclingService:
             if should_close:
                 async with client:
                     response = await client.post(
-                        f"{self.docling_url}/v1/convert/file/async",
+                        endpoint,
                         files=files,
                         data=data,
                         headers=headers,
                     )
             else:
                 response = await client.post(
-                    f"{self.docling_url}/v1/convert/file/async",
+                    endpoint,
                     files=files,
                     data=data,
                     headers=headers,
                 )
 
+            if response.status_code == 413:
+                size_bytes = len(file_content)
+                raise DoclingPayloadTooLarge(
+                    docling_rejected_size_message(
+                        filename, format_byte_size(size_bytes), max_upload_mb()
+                    ),
+                    operator_detail=docling_payload_too_large_message(
+                        filename, size_bytes, endpoint
+                    ),
+                )
             response.raise_for_status()
             task = response.json()
             return task["task_id"]
         except Exception as e:
-            logger.error("Docling upload failed", filename=filename, error=str(e))
+            logger.error(
+                "Docling upload failed",
+                filename=filename,
+                error=getattr(e, "operator_detail", None) or str(e),
+            )
             raise
 
     async def get_docling_result_async(
@@ -738,8 +942,8 @@ class DoclingService:
             ocr=ocr,
             picture_descriptions=picture_descriptions,
         )
-        return await self.get_docling_result_async(
-            task_id, user_id=user_id, auth_header=auth_header
+        return await self._get_result_for_content(
+            task_id, file_bytes, user_id=user_id, auth_header=auth_header
         )
 
     async def convert_bytes(
@@ -755,6 +959,30 @@ class DoclingService:
         task_id = await self.upload_to_docling_direct_async(
             filename, content, user_id=user_id, auth_header=auth_header
         )
-        return await self.get_docling_result_async(
-            task_id, user_id=user_id, auth_header=auth_header
+        return await self._get_result_for_content(
+            task_id, content, user_id=user_id, auth_header=auth_header
         )
+
+    async def _get_result_for_content(
+        self,
+        task_id: str,
+        content: bytes,
+        *,
+        user_id: str | None,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        """Fetch the conversion result, naming a password-protected PDF on load failure."""
+        try:
+            return await self.get_docling_result_async(
+                task_id, user_id=user_id, auth_header=auth_header
+            )
+        except DoclingServeError as exc:
+            detail = password_protected_pdf_error(str(exc), content)
+            if detail is None:
+                raise
+            logger.warning(
+                "Docling could not load an encrypted PDF",
+                task_id=task_id,
+                docling_error=str(exc),
+            )
+            raise DoclingServeError(f"Docling processing failed: {detail}") from exc

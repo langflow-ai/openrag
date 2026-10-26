@@ -140,6 +140,111 @@ def test_custom_provider_payload_keeps_legacy_openai_secret():
     assert payload["openai"].credential_values["organization"] == "org-1"
 
 
+async def _vlm_gate_response(config, provider: str):
+    """Run `update_settings` with VLM on, returning whatever the gate answers."""
+    from unittest.mock import patch
+
+    from api.settings.endpoints import update_settings
+
+    config.edited = True
+    body = SettingsUpdateBody(
+        vlm_enabled=True,
+        vlm_provider=provider,
+        vlm_model=f"{provider}/gpt-4.1",
+    )
+    models_service = MagicMock()
+    models_service.validate_model_configured = AsyncMock(return_value=True)
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.config_manager.save_config_file", return_value=True),
+        patch("api.settings.endpoints.clients.refresh_patched_client", new_callable=AsyncMock),
+    ):
+        return await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=models_service,
+            rbac=rbac,
+        )
+
+
+def _error_text(response) -> str:
+    import json
+
+    return json.loads(bytes(response.body).decode())["error"]
+
+
+@pytest.mark.asyncio
+async def test_update_settings_vlm_configured_without_a_key_says_so():
+    """A provider can be fully configured and still have no API key.
+
+    Azure OpenAI requires only `api_base`, so a service-principal or Entra
+    configuration is `configured` with no key at all. docling-serve calls the
+    model endpoint itself and only ever builds an API-key header, so VLM still
+    cannot run — but telling the operator the provider "is not configured"
+    sends them to re-enter credentials that are already valid. The two gates
+    are separate so the message can name the real limitation.
+    """
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.providers.set_credentials(
+        "azure",
+        {
+            "api_base": "https://example.openai.azure.com",
+            "tenant_id": "t",
+            "client_id": "c",
+            "client_secret": "s",
+        },
+        auth_method="service_principal",
+    )
+    assert config.providers.custom["azure"].configured, "precondition: configured without a key"
+
+    response = await _vlm_gate_response(config, "azure")
+
+    assert response.status_code == 400
+    message = _error_text(response)
+    assert "authenticates with an API key" in message
+    assert "is not configured" not in message
+
+
+@pytest.mark.asyncio
+async def test_update_settings_vlm_unconfigured_provider_says_not_configured():
+    """The other half of the split: nothing is set, so the first gate answers."""
+    from config.config_manager import OpenRAGConfig
+
+    response = await _vlm_gate_response(OpenRAGConfig.from_dict({}), "azure_ai")
+
+    assert response.status_code == 400
+    message = _error_text(response)
+    assert "is not configured" in message
+    assert "authenticates with an API key" not in message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["azure", "azure_ai"])
+async def test_update_settings_vlm_azure_without_an_endpoint_is_not_configured(provider):
+    """Both Azure providers need an endpoint, whatever `configured` claims.
+
+    A config can carry `configured: true` with no `api_base` — the flag is
+    read from the file rather than recomputed — and neither provider can be
+    called without one.
+    """
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict(
+        {"providers": {"custom": {provider: {"configured": True, "credentials": {"api_key": "k"}}}}}
+    )
+
+    response = await _vlm_gate_response(config, provider)
+
+    assert response.status_code == 400
+    assert "is not configured" in _error_text(response)
+
+
 @pytest.mark.asyncio
 async def test_update_settings_vlm_azure_configured():
     """Test that update_settings allows enabling VLM with azure when azure credentials are configured."""
@@ -302,6 +407,56 @@ async def test_update_settings_rejects_invalid_azure_foundry_key_before_saving()
     assert b"Invalid subscription key" in response.body
     request.assert_awaited_once()
     save.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_settings_saves_the_auth_method_it_validated_for_a_mixed_case_key():
+    """The save must narrow by the same normalized key the probe used.
+
+    Regression: the save read `provider_auth_methods` by the lowercased
+    provider key, so `{"Azure": ...}` validated the new method but saved with
+    none — keeping the old method's secret and the old `auth_method`.
+    """
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    config.providers.set_credentials(
+        "azure",
+        {"api_key": "old-key", "api_base": "https://example.openai.azure.com"},
+        auth_method="api_key",
+    )
+    body = SettingsUpdateBody(
+        provider_credentials={"Azure": {"azure_ad_token": "new-token"}},
+        provider_auth_methods={"Azure": "entra_token"},
+    )
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.validate_provider_setup", new_callable=AsyncMock) as validate,
+        patch("api.settings.endpoints.config_manager.save_config_file", return_value=True) as save,
+        patch("api.settings.endpoints.clients.refresh_patched_client", new_callable=AsyncMock),
+    ):
+        response = await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    assert getattr(response, "status_code", 200) == 200
+    assert "api_key" not in validate.await_args.kwargs["credentials"]
+    save.assert_called_once()
+    saved = save.call_args[0][0].providers
+    assert saved.custom["azure"].auth_method == "entra_token"
+    assert saved.stored_credentials("azure") == {
+        "api_base": "https://example.openai.azure.com",
+        "azure_ad_token": "new-token",
+    }
 
 
 @pytest.mark.asyncio
@@ -713,6 +868,61 @@ async def test_onboarding_embedding_validation_receives_onprem_tls_policy():
 
 
 @pytest.mark.asyncio
+async def test_onboarding_narrows_credentials_by_auth_method_for_a_mixed_case_key():
+    """Onboarding must find `provider_auth_methods` under the normalized key.
+
+    Regression: a raw-key lookup gave `set_credentials` no method for
+    `{"WatsonX_OnPrem": ...}`, so the previous method's secrets were kept and
+    reached the validation probe.
+    """
+    from api.settings.endpoints import onboarding
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.providers.set_credentials(
+        "watsonx_onprem",
+        {"api_base": "https://cpd.example.com", "username": "cpd-user", "api_key": "old"},
+        auth_method="username_api_key",
+    )
+    body = OnboardingBody(
+        llm_provider="watsonx_onprem",
+        llm_model="ibm/granite-3-3-8b-instruct",
+        provider_credentials={"WatsonX_OnPrem": {"zen_api_key": "zen-key"}},
+        provider_auth_methods={"WatsonX_OnPrem": "zen_api_key"},
+    )
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.TelemetryClient.send_event",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "api.settings.endpoints.validate_provider_setup",
+            new_callable=AsyncMock,
+            side_effect=Exception("stop after validation arguments are captured"),
+        ) as validate,
+    ):
+        response = await onboarding(
+            body=body,
+            flows_service=MagicMock(),
+            session_manager=AsyncMock(),
+            document_service=MagicMock(),
+            models_service=MagicMock(),
+            task_service=MagicMock(),
+            langflow_file_service=MagicMock(),
+            knowledge_filter_service=MagicMock(),
+            user=MagicMock(spec=User),
+        )
+
+    assert response.status_code == 400
+    assert validate.await_args.kwargs["stored_credentials"] == {
+        "api_base": "https://cpd.example.com",
+        "zen_api_key": "zen-key",
+    }
+
+
+@pytest.mark.asyncio
 async def test_onboarding_caps_chunk_size_for_watsonx_onprem_embeddings():
     from api.settings.endpoints import onboarding
     from config.config_manager import OpenRAGConfig
@@ -861,3 +1071,92 @@ async def test_non_provider_settings_save_keeps_recorded_failures():
         assert provider_error_log.latest_failure("rhoai", "chat") == "still failing"
     finally:
         provider_error_log.clear()
+
+
+def _config_with_saved_rhoai_token():
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    config.providers.set_credentials(
+        "rhoai",
+        {
+            "api_base": "https://chat.host-a:8443/v1",
+            "api_key": "sha256~host-a-token",
+        },
+    )
+    return config
+
+
+@pytest.mark.asyncio
+async def test_update_settings_refuses_a_new_endpoint_without_the_token_before_probing():
+    """A blank secret means "keep the saved one" — but not for a new host. The
+    pre-save probe would otherwise send host A's token to host B."""
+    from api.settings.endpoints import update_settings
+
+    config = _config_with_saved_rhoai_token()
+    body = SettingsUpdateBody(
+        provider_credentials={"rhoai": {"api_base": "https://chat.host-b:8443/v1"}}
+    )
+    rbac = MagicMock()
+    rbac.has_permission = AsyncMock(return_value=True)
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch("api.settings.endpoints.validate_provider_setup", new_callable=AsyncMock) as validate,
+        patch("api.settings.endpoints.config_manager.save_config_file") as save,
+    ):
+        response = await update_settings(
+            body=body,
+            session_manager=AsyncMock(),
+            user=MagicMock(spec=User),
+            models_service=MagicMock(),
+            rbac=rbac,
+        )
+
+    assert response.status_code == 400
+    assert "Enter ServiceAccount token again" in _error_text(response)
+    validate.assert_not_awaited()
+    save.assert_not_called()
+    assert config.providers.stored_credentials("rhoai")["api_base"] == (
+        "https://chat.host-a:8443/v1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_onboarding_refuses_a_new_endpoint_without_the_token_before_probing():
+    from api.settings.endpoints import onboarding
+
+    config = _config_with_saved_rhoai_token()
+    body = OnboardingBody(
+        llm_provider="rhoai",
+        llm_model="granite-chat",
+        provider_credentials={"rhoai": {"api_base": "https://chat.host-b:8443/v1"}},
+    )
+
+    with (
+        patch("api.settings.endpoints.get_openrag_config", return_value=config),
+        patch(
+            "api.settings.endpoints.TelemetryClient.send_event",
+            new_callable=AsyncMock,
+        ),
+        patch("api.settings.endpoints.validate_provider_setup", new_callable=AsyncMock) as validate,
+    ):
+        response = await onboarding(
+            body=body,
+            flows_service=MagicMock(),
+            session_manager=AsyncMock(),
+            document_service=MagicMock(),
+            models_service=MagicMock(),
+            task_service=MagicMock(),
+            langflow_file_service=MagicMock(),
+            knowledge_filter_service=MagicMock(),
+            user=MagicMock(spec=User),
+        )
+
+    assert response.status_code == 400
+    assert "Enter ServiceAccount token again" in _error_text(response)
+    validate.assert_not_awaited()
+    assert config.providers.stored_credentials("rhoai")["api_base"] == (
+        "https://chat.host-a:8443/v1"
+    )
