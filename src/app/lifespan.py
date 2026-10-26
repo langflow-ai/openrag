@@ -201,6 +201,13 @@ async def run_startup(app: FastAPI):
             run_mode=get_run_mode(),
         )
 
+    # Backend LLM tracing to Langfuse (OPENRAG_TRACING_ENABLED, default off).
+    # Registered before any gateway call can run; misconfiguration warns and
+    # leaves the backend untraced rather than failing startup.
+    from observability.tracing import configure_tracing
+
+    configure_tracing()
+
     # Open the SQL engine on uvicorn's live loop (NOT the one used by
     # asyncio.run(create_app()) which closed already). All RBAC code
     # uses RBACService's lazy factory that reads db.engine.SessionLocal

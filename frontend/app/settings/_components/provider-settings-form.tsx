@@ -1,8 +1,17 @@
 import { useFormContext } from "react-hook-form";
 import { LabelWrapper } from "@/components/label-wrapper";
 import type { CatalogCredentialField } from "@/components/models/catalog-models";
+import {
+  AZURE_AUTH_GROUPS,
+  fieldsForKeys,
+  ON_PREM_AUTH_GROUPS,
+  rhoaiSectionsOpenByDefault,
+  SECRET_REENTRY_HINT,
+} from "@/components/models/provider-credentials";
+import { RhoaiCredentialSections } from "@/components/models/rhoai-credential-sections";
+import { TLS_VERIFY_FIELD_TYPE } from "@/components/models/tls-verification";
+import { TlsVerificationField } from "@/components/models/tls-verification-settings";
 import { WatsonxSpaceSelect } from "@/components/models/watsonx-space-select";
-import { WatsonxTlsSettings } from "@/components/models/watsonx-tls-settings";
 import {
   Accordion,
   AccordionContent,
@@ -16,29 +25,6 @@ export interface ProviderSettingsFormData {
   credentials: Record<string, string>;
 }
 
-const AZURE_AUTH_GROUPS = [
-  { key: "api_key", label: "API key", fields: ["api_key"] },
-  {
-    key: "entra_token",
-    label: "Microsoft Entra access token",
-    fields: ["azure_ad_token"],
-  },
-  {
-    key: "service_principal",
-    label: "Microsoft Entra service principal",
-    fields: ["tenant_id", "client_id", "client_secret"],
-  },
-] as const;
-
-const ON_PREM_AUTH_GROUPS = [
-  {
-    key: "username_api_key",
-    label: "Username + API key",
-    fields: ["username", "api_key"],
-  },
-  { key: "zen_api_key", label: "Zen API key", fields: ["zen_api_key"] },
-] as const;
-
 /**
  * Credential form for a provider with no bespoke dialog, rendered from the
  * field spec `/api/models/catalog` publishes for it. A provider added to
@@ -50,6 +36,8 @@ export function ProviderSettingsForm({
   providerName,
   fields,
   savedSecretFields,
+  reenterSecretFields = [],
+  savedCredentialValues,
   saveError,
   azureAuthMethod,
   onAzureAuthMethodChange,
@@ -59,7 +47,15 @@ export function ProviderSettingsForm({
   provider: string;
   providerName: string;
   fields: CatalogCredentialField[];
+  /**
+   * Saved secrets that may be reused. Empty once the endpoint or TLS setting
+   * changed: the backend no longer sends them to the new target.
+   */
   savedSecretFields: string[];
+  /** Saved secrets the chosen auth method needs typed again before Save. */
+  reenterSecretFields?: string[];
+  /** Saved non-secret values; decide which collapsed sections start open. */
+  savedCredentialValues?: Record<string, string>;
   saveError?: string | null;
   azureAuthMethod?: string;
   onAzureAuthMethodChange?: (method: string) => void;
@@ -74,6 +70,7 @@ export function ProviderSettingsForm({
   } = useFormContext<ProviderSettingsFormData>();
 
   const saved = new Set(savedSecretFields);
+  const reenter = new Set(reenterSecretFields);
   const credentials = watch("credentials");
 
   const renderField = (field: CatalogCredentialField) => {
@@ -95,14 +92,16 @@ export function ProviderSettingsForm({
       );
     }
 
-    if (provider === "watsonx_onprem" && field.key === "ssl_verify") {
+    if (field.field_type === TLS_VERIFY_FIELD_TYPE) {
       return (
-        <WatsonxTlsSettings
+        <TlsVerificationField
           key={field.key}
-          idPrefix="provider-watsonx-onprem"
-          value={watch("credentials.ssl_verify")}
+          field={field}
+          idPrefix={`provider-${provider}`}
+          value={watch(`credentials.${field.key}`)}
+          savedValue={savedCredentialValues?.[field.key] ?? ""}
           onValueChange={(value) =>
-            setValue("credentials.ssl_verify", value, { shouldDirty: true })
+            setValue(`credentials.${field.key}`, value, { shouldDirty: true })
           }
         />
       );
@@ -112,10 +111,12 @@ export function ProviderSettingsForm({
     const isSecret =
       field.field_type === "password" || field.field_type === "textarea";
     const hasSaved = isSecret && saved.has(field.key);
+    const needsReentry = reenter.has(field.key);
     // A stored secret is never sent back to the browser, so an empty box
     // means "keep what is saved" rather than "no value" — required only
-    // bites when nothing is stored yet.
-    const required = field.required && !hasSaved;
+    // bites when nothing is stored yet, or when the target changed and the
+    // backend would refuse to reuse the stored value.
+    const required = needsReentry || (field.required && !hasSaved);
 
     return (
       <div key={field.key} className="min-w-0 space-y-2">
@@ -130,7 +131,7 @@ export function ProviderSettingsForm({
               {...register(`credentials.${field.key}`, {
                 required: required ? `${field.label} is required` : false,
               })}
-              className={error ? "!border-destructive" : ""}
+              className={error ? "border-destructive!" : ""}
               id={`provider-field-${field.key}`}
               placeholder={
                 hasSaved ? "•••••••••" : (field.placeholder ?? undefined)
@@ -141,7 +142,7 @@ export function ProviderSettingsForm({
               {...register(`credentials.${field.key}`, {
                 required: required ? `${field.label} is required` : false,
               })}
-              className={error ? "!border-destructive" : ""}
+              className={error ? "border-destructive!" : ""}
               id={`provider-field-${field.key}`}
               type={field.field_type === "password" ? "password" : "text"}
               autoComplete={
@@ -158,10 +159,13 @@ export function ProviderSettingsForm({
             A value is already saved. Leave this blank to keep it.
           </p>
         )}
+        {needsReentry && (
+          <p className="text-sm text-muted-foreground">{SECRET_REENTRY_HINT}</p>
+        )}
         {error && (
           <p
             data-testid="provider-connection-error"
-            className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]"
+            className="text-sm text-destructive min-w-0 wrap-anywhere"
           >
             {error}
           </p>
@@ -207,12 +211,7 @@ export function ProviderSettingsForm({
                   )}
                 </AccordionTrigger>
                 <AccordionContent className="space-y-4">
-                  {group.fields
-                    .map((key) => fields.find((field) => field.key === key))
-                    .filter((field): field is CatalogCredentialField =>
-                      Boolean(field),
-                    )
-                    .map(renderField)}
+                  {fieldsForKeys(fields, group.fields).map(renderField)}
                 </AccordionContent>
               </AccordionItem>
             ))}
@@ -248,12 +247,7 @@ export function ProviderSettingsForm({
                   )}
                 </AccordionTrigger>
                 <AccordionContent className="space-y-4">
-                  {group.fields
-                    .map((key) => fields.find((field) => field.key === key))
-                    .filter((field): field is CatalogCredentialField =>
-                      Boolean(field),
-                    )
-                    .map(renderField)}
+                  {fieldsForKeys(fields, group.fields).map(renderField)}
                 </AccordionContent>
               </AccordionItem>
             ))}
@@ -267,13 +261,19 @@ export function ProviderSettingsForm({
             </AccordionItem>
           </Accordion>
         </>
+      ) : provider === "rhoai" ? (
+        <RhoaiCredentialSections
+          fields={fields}
+          renderField={renderField}
+          openByDefault={rhoaiSectionsOpenByDefault(savedCredentialValues)}
+        />
       ) : (
         fields.map(renderField)
       )}
       {saveError && (
         <p
           data-testid="provider-connection-error"
-          className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]"
+          className="text-sm text-destructive min-w-0 wrap-anywhere"
         >
           {saveError}
         </p>

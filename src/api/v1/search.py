@@ -18,6 +18,7 @@ from dependencies import (
     get_search_service,
     require_api_key_permission,
 )
+from observability.tracing import trace_context
 from session_manager import User
 from utils.logging_config import get_logger
 from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpaceError
@@ -73,14 +74,18 @@ async def search_endpoint(
     )
 
     try:
-        result = await search_service.search(
-            query,
-            user_id=user.user_id,
-            jwt_token=user.jwt_token,
-            filters=resolved_filters or {},
-            limit=resolved_limit,
-            score_threshold=resolved_score_threshold,
-        )
+        # The search trace records which saved filter was applied.
+        with trace_context(
+            attributes={"openrag.search.filter_id": body.filter_id} if body.filter_id else None
+        ):
+            result = await search_service.search(
+                query,
+                user_id=user.user_id,
+                jwt_token=user.jwt_token,
+                filters=resolved_filters or {},
+                limit=resolved_limit,
+                score_threshold=resolved_score_threshold,
+            )
 
         results = [
             {

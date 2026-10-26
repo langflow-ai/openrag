@@ -95,7 +95,7 @@ export function KnowledgeSearchInput({
     >
       <div
         className={cn(
-          "primary-input group/input min-h-10 !flex w-full items-center flex-nowrap focus-within:border-foreground transition-colors !p-[0.3rem]",
+          "primary-input group/input min-h-10 flex! w-full items-center flex-nowrap focus-within:border-foreground transition-colors p-[0.3rem]!",
           inputClassName,
         )}
       >
@@ -111,17 +111,17 @@ export function KnowledgeSearchInput({
             </span>
             <X
               aria-label="Remove filter"
-              className="h-4 w-4 flex-shrink-0 cursor-pointer"
+              className="h-4 w-4 shrink-0 cursor-pointer"
               onClick={() => setSelectedFilter(null)}
             />
           </div>
         )}
         <Search
-          className="h-4 w-4 ml-1 flex-shrink-0 text-placeholder-foreground"
+          className="h-4 w-4 ml-1 shrink-0 text-placeholder-foreground"
           strokeWidth={1.5}
         />
         <input
-          className="bg-transparent w-full h-full ml-2 focus:outline-none focus-visible:outline-none font-mono placeholder:font-mono"
+          className="bg-transparent w-full h-full ml-2 focus:outline-hidden focus-visible:outline-hidden font-mono placeholder:font-mono"
           name="search-query"
           id="search-query"
           type="text"
@@ -140,7 +140,7 @@ export function KnowledgeSearchInput({
         {showClear && (
           <Button
             variant="ghost"
-            className="h-full rounded-sm !px-1.5 !py-0"
+            className="h-full rounded-sm px-1.5! py-0!"
             type="button"
             onClick={handleClear}
           >
@@ -151,7 +151,7 @@ export function KnowledgeSearchInput({
           <Button
             variant="ghost"
             className={cn(
-              "h-full rounded-sm !px-1.5 !py-0 hidden group-focus-within/input:block",
+              "h-full rounded-sm px-1.5! py-0! hidden group-focus-within/input:block",
               inputValue && "block",
             )}
             type="submit"

@@ -1,15 +1,23 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { getSettings } from "@/app/api/queries/useGetSettingsQuery";
 
+/**
+ * Whether the step can be submitted. `credentialBlocker` is a reason the
+ * provider form reported (a saved secret to re-enter for a changed endpoint);
+ * the backend would refuse that Submit, so it is blocked here instead.
+ */
 export function canCompleteOnboarding({
   isEmbedding,
   llmModel,
   embeddingModel,
+  credentialBlocker = null,
 }: {
   isEmbedding: boolean;
   llmModel: string;
   embeddingModel: string;
+  credentialBlocker?: string | null;
 }): boolean {
+  if (credentialBlocker) return false;
   return isEmbedding ? !!embeddingModel : !!llmModel;
 }
 

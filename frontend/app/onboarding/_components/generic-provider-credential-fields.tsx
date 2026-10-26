@@ -1,22 +1,32 @@
 import type { ReactNode } from "react";
+import { LabelInput } from "@/components/label-input";
 import type { CatalogCredentialField } from "@/components/models/catalog-models";
+import {
+  AZURE_AUTH_GROUPS,
+  fieldsForKeys,
+  ON_PREM_AUTH_GROUPS,
+  type RhoaiSectionsOpen,
+  SECRET_REENTRY_HINT,
+} from "@/components/models/provider-credentials";
+import { RhoaiCredentialSections } from "@/components/models/rhoai-credential-sections";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import {
-  AZURE_AUTH_GROUPS,
-  fieldsForKeys,
-  ON_PREM_AUTH_GROUPS,
-} from "./generic-provider-credential-fields.helpers";
+
+const RHOAI_SECTIONS_CLOSED: RhoaiSectionsOpen = {
+  embeddings: false,
+  advanced: false,
+};
 
 export function GenericProviderCredentialFields({
   provider,
   fields,
   azureAuthMethod,
   onPremAuthMethod,
+  rhoaiOpenByDefault = RHOAI_SECTIONS_CLOSED,
   onAzureAuthMethodChange,
   onOnPremAuthMethodChange,
   renderField,
@@ -25,6 +35,8 @@ export function GenericProviderCredentialFields({
   fields: CatalogCredentialField[];
   azureAuthMethod: string;
   onPremAuthMethod: string;
+  /** Which RHOAI sections start open. */
+  rhoaiOpenByDefault?: RhoaiSectionsOpen;
   onAzureAuthMethodChange: (method: string) => void;
   onOnPremAuthMethodChange: (method: string) => void;
   renderField: (field: CatalogCredentialField) => ReactNode;
@@ -107,5 +119,61 @@ export function GenericProviderCredentialFields({
       </>
     );
   }
+  if (provider === "rhoai") {
+    return (
+      <RhoaiCredentialSections
+        fields={fields}
+        renderField={renderField}
+        openByDefault={rhoaiOpenByDefault}
+      />
+    );
+  }
   return <>{fields.map(renderField)}</>;
+}
+
+/**
+ * One catalogue-described credential input, with the hints for a saved secret
+ * that may be kept or must be entered again.
+ */
+export function GenericCredentialInput({
+  field,
+  id,
+  value,
+  hasSavedSecret,
+  needsReentry,
+  onChange,
+}: {
+  field: CatalogCredentialField;
+  id: string;
+  value: string;
+  /** A saved value for this key may be reused (the target is unchanged). */
+  hasSavedSecret: boolean;
+  needsReentry: boolean;
+  onChange: (value: string) => void;
+}) {
+  const isSecret =
+    field.field_type === "password" || field.field_type === "textarea";
+  const hasSaved = isSecret && hasSavedSecret;
+  return (
+    <div className="space-y-1">
+      <LabelInput
+        label={field.label}
+        helperText={field.tooltip ?? ""}
+        id={id}
+        type={field.field_type === "password" ? "password" : "text"}
+        required={field.required && !hasSaved}
+        placeholder={hasSaved ? "•••••••••" : (field.placeholder ?? undefined)}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {hasSaved && (
+        <p className="text-mmd text-muted-foreground">
+          A value is already saved. Leave this blank to keep it.
+        </p>
+      )}
+      {needsReentry && (
+        <p className="text-mmd text-muted-foreground">{SECRET_REENTRY_HINT}</p>
+      )}
+    </div>
+  );
 }

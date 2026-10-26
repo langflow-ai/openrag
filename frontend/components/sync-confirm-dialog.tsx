@@ -98,7 +98,7 @@ const DeletesAlert = ({
         <AlertTitle>
           {pluralize(totalOrphans, "file")} will be deleted
         </AlertTitle>
-        <AlertDescription className="col-start-2 block min-w-0 !text-[#ffced0]">
+        <AlertDescription className="col-start-2 block min-w-0 text-[#ffced0]!">
           <p>These files no longer exist at the source.</p>
           <ScrollArea className="mt-2 max-h-60 w-full">
             {isSyncAll ? (
@@ -136,7 +136,7 @@ const UnavailableAlert = ({ connectors }: { connectors: string[] }) => (
   <Alert>
     <AlertTriangle className="size-5" />
     <AlertTitle>Couldn&apos;t check for deletions</AlertTitle>
-    <AlertDescription className="col-start-2 block min-w-0 [text-wrap:pretty]">
+    <AlertDescription className="col-start-2 block min-w-0 text-pretty">
       <p>
         Files may be removed at the source without warning. Re-authenticate the
         affected connection and try again to see a full preview.
@@ -216,7 +216,7 @@ const RecheckAlert = ({
       <AlertTitle>
         {pluralize(totalRechecked, "file")} will be re-checked
       </AlertTitle>
-      <AlertDescription className="col-start-2 block min-w-0 [text-wrap:pretty]">
+      <AlertDescription className="col-start-2 block min-w-0 text-pretty">
         <p>
           Sync re-reads these files and updates the ones whose content changed.
         </p>
@@ -378,7 +378,7 @@ export const SyncConfirmDialog = ({
               <Alert>
                 <Check className="size-5" />
                 <AlertTitle>Nothing to change</AlertTitle>
-                <AlertDescription className="col-start-2 block min-w-0 [text-wrap:pretty]">
+                <AlertDescription className="col-start-2 block min-w-0 text-pretty">
                   {/* Only claim what the preview checked. It diffs the files
                       already in Knowledge against the source and never
                       enumerates new remote files — and sync would not ingest
