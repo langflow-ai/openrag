@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import json
+import os
+import ssl
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path  # noqa: TC003
@@ -329,6 +331,21 @@ class DoclingRemoteComponent(BaseFileComponent):
             return False
         return True
 
+    def _get_tls_verify(self) -> bool | ssl.SSLContext:
+        """Build the httpx ``verify`` value for Docling Serve (one-way TLS, no client cert).
+
+        When verification is on and DOCLING_SERVE_CA_CERT points at a CA bundle
+        (set by the operator when interpod TLS is enabled), trust that CA.
+        Otherwise keep the plain bool, so httpx uses its default CA bundle.
+        """
+        if not self._get_verify_ssl():
+            return False
+        ca_cert = os.getenv("DOCLING_SERVE_CA_CERT", "").strip()
+        # The operator sets "None" when interpod TLS is disabled.
+        if ca_cert and ca_cert.lower() != "none":
+            return ssl.create_default_context(cafile=ca_cert)
+        return True
+
     def _process_task_id(self) -> list[Data]:
         """Process an existing task by polling for status and retrieving results.
 
@@ -338,7 +355,7 @@ class DoclingRemoteComponent(BaseFileComponent):
         transformed_url = transform_localhost_url(self.api_url)
         base_url = f"{transformed_url}/v1"
 
-        with httpx.Client(headers=self._process_headers(), verify=self._get_verify_ssl()) as client:
+        with httpx.Client(headers=self._process_headers(), verify=self._get_tls_verify()) as client:
             result = self._poll_and_fetch_result(client, base_url, self.task_id)
             return [result] if result else []
 
@@ -383,7 +400,7 @@ class DoclingRemoteComponent(BaseFileComponent):
 
         processed_data: list[Data | None] = [None] * len(file_list)
         with (
-            httpx.Client(headers=self._process_headers(), verify=self._get_verify_ssl()) as client,
+            httpx.Client(headers=self._process_headers(), verify=self._get_tls_verify()) as client,
             ThreadPoolExecutor(max_workers=self.max_concurrency) as executor,
         ):
             futures: list[tuple[int, Future]] = []

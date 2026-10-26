@@ -29,6 +29,7 @@ from config.settings import (
     OPENRAG_BACKEND_ROUTER_HOST,
     OPENRAG_BACKEND_ROUTER_PORT,
     OPENRAG_BACKEND_ROUTER_UPSTREAM_URL,
+    _backend_tls_kwargs,
 )
 from utils.logging_config import get_logger
 
@@ -70,7 +71,9 @@ async def _proxy_ingest_chunks(request: Request) -> Response:
         key: value for key, value in request.headers.items() if key.lower() in _FORWARDED_HEADERS
     }
     try:
-        async with httpx.AsyncClient(timeout=_INGEST_UPSTREAM_TIMEOUT) as client:
+        async with httpx.AsyncClient(
+            timeout=_INGEST_UPSTREAM_TIMEOUT, **_backend_tls_kwargs()
+        ) as client:
             upstream = await client.post(upstream_url, content=body, headers=headers)
     except httpx.HTTPError as e:
         logger.error(
@@ -111,7 +114,7 @@ async def _proxy_llm_request(request: Request) -> Response:
     headers = {
         key: value for key, value in request.headers.items() if key.lower() in _FORWARDED_HEADERS
     }
-    client = httpx.AsyncClient(timeout=_LLM_UPSTREAM_TIMEOUT)
+    client = httpx.AsyncClient(timeout=_LLM_UPSTREAM_TIMEOUT, **_backend_tls_kwargs())
     try:
         upstream = await client.send(
             client.build_request(

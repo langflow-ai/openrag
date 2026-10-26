@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from config.settings import (
     DOCLING_HOST_IP,
     DOCLING_SERVE_URL,
-    DOCLING_SERVE_VERIFY_SSL,
+    _docling_tls_kwargs,
 )
 from dependencies import get_optional_user
 from session_manager import User
@@ -40,7 +40,7 @@ async def health(
             headers["Authorization"] = user.jwt_token
 
     try:
-        async with httpx.AsyncClient(verify=DOCLING_SERVE_VERIFY_SSL) as client:
+        async with httpx.AsyncClient(**_docling_tls_kwargs()) as client:
             response = await client.get(
                 health_url, headers=headers, timeout=_HEALTH_CHECK_TIMEOUT_S
             )
