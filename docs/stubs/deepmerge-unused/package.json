@@ -1,0 +1,8 @@
+{
+  "name": "openrag-docs-deepmerge-unused",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stands in for deepmerge, which @svgr/plugin-svgo 8.1.0 declares but never imports. Replaces it so CVE-2026-93753 has nothing to flag.",
+  "main": "index.js",
+  "license": "Apache-2.0"
+}

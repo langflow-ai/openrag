@@ -1,9 +1,11 @@
 import {
+  type QueryClient,
   type UseQueryOptions,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import type { CatalogModel } from "@/components/models/catalog-models";
+import { apiClient } from "@/lib/api-client";
 import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
 import { useGetSettingsQuery } from "./useGetSettingsQuery";
 
@@ -44,12 +46,15 @@ export interface IBMModelsParams {
 }
 
 async function throwModelsFetchError(
-  response: Response,
+  response: { data?: unknown },
   fallback: string,
 ): Promise<never> {
-  const data = await response.json().catch(() => ({}));
+  const data = response.data ?? {};
   const raw =
-    data && typeof data === "object" && typeof data.error === "string"
+    data &&
+    typeof data === "object" &&
+    "error" in data &&
+    typeof data.error === "string"
       ? data.error
       : fallback;
   throw new Error(formatProviderErrorMessage(raw));
@@ -72,13 +77,12 @@ export const useGetOpenAIModelsQuery = (
           body.api_key = apiKey;
         }
 
-        const response = await fetch("/api/models/openai", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (response.ok) {
-          return (await response.json()) as ModelsResponse;
+        const response = await apiClient.post<ModelsResponse>(
+          "/models/openai",
+          body,
+        );
+        if (response.status >= 200 && response.status < 300) {
+          return response.data;
         }
         return throwModelsFetchError(response, "Failed to fetch OpenAI models");
       },
@@ -108,13 +112,12 @@ export const useGetAnthropicModelsQuery = (
           body.api_key = apiKey;
         }
 
-        const response = await fetch("/api/models/anthropic", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (response.ok) {
-          return (await response.json()) as ModelsResponse;
+        const response = await apiClient.post<ModelsResponse>(
+          "/models/anthropic",
+          body,
+        );
+        if (response.status >= 200 && response.status < 300) {
+          return response.data;
         }
         return throwModelsFetchError(
           response,
@@ -141,14 +144,12 @@ export const useGetOllamaModelsQuery = (
     {
       queryKey: ["models", "ollama", endpoint] as const,
       queryFn: async (): Promise<ModelsResponse> => {
-        const url = new URL("/api/models/ollama", window.location.origin);
-        if (endpoint) {
-          url.searchParams.set("endpoint", endpoint);
-        }
-
-        const response = await fetch(url.toString());
-        if (response.ok) {
-          return (await response.json()) as ModelsResponse;
+        const path = endpoint
+          ? `/models/ollama?endpoint=${encodeURIComponent(endpoint)}`
+          : "/models/ollama";
+        const response = await apiClient.get<ModelsResponse>(path);
+        if (response.status >= 200 && response.status < 300) {
+          return response.data;
         }
         return throwModelsFetchError(response, "Failed to fetch Ollama models");
       },
@@ -197,13 +198,12 @@ export const useGetIBMModelsQuery = (
           body.api_key = apiKey;
         }
 
-        const response = await fetch("/api/models/ibm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (response.ok) {
-          return (await response.json()) as ModelsResponse;
+        const response = await apiClient.post<ModelsResponse>(
+          "/models/ibm",
+          body,
+        );
+        if (response.status >= 200 && response.status < 300) {
+          return response.data;
         }
         return throwModelsFetchError(response, "Failed to fetch IBM models");
       },
@@ -301,15 +301,49 @@ export interface CatalogProvider {
   model_placeholder: string | null;
   models: CatalogModel[];
   embedding_models: CatalogModel[];
+  /**
+   * Whether `POST /api/models/{key}/discover` can list what this provider
+   * serves from credentials that are not saved yet (cluster-hosted providers).
+   */
+  discovers_models?: boolean;
 }
 
 export interface ModelCatalogResponse {
   providers: CatalogProvider[];
 }
 
+const MODEL_CATALOG_QUERY_FILTERS = {
+  queryKey: ["models", "catalog"],
+  exact: true,
+} as const;
+
+/**
+ * Refetch the catalogue after a save that can change it — a cluster-hosted
+ * provider is listed with its *saved* credentials. Fire-and-forget, so the
+ * caller's mutation never waits on a slow cluster listing.
+ *
+ * Cancelling first matters: while the catalogue's first load is in flight
+ * (no data yet), invalidateQueries joins that pre-save request instead of
+ * starting a new one, and staleTime: Infinity would then keep its result for
+ * the tab's lifetime. Cancelling reverts the query to its pre-fetch state, so
+ * the invalidation is guaranteed a post-save fetch.
+ */
+export const refreshModelCatalog = (queryClient: QueryClient): void => {
+  void queryClient
+    .cancelQueries(MODEL_CATALOG_QUERY_FILTERS)
+    .then(() => queryClient.invalidateQueries(MODEL_CATALOG_QUERY_FILTERS))
+    .catch((error: unknown) => {
+      // Both calls swallow fetch errors themselves; this guards the chain.
+      console.warn(
+        `Failed to refresh the model catalogue after saving. Error: ${error}.`,
+      );
+    });
+};
+
 /**
  * LiteLLM's bundled model list, grouped by provider. Static for the tab's
- * lifetime — same as openrag-next's `/agent/model-catalog` fetch.
+ * lifetime — same as openrag-next's `/agent/model-catalog` fetch — except
+ * where a save refreshes it through `refreshModelCatalog`.
  */
 export const useGetModelCatalogQuery = (
   options?: Omit<UseQueryOptions<ModelCatalogResponse>, "queryKey" | "queryFn">,
@@ -318,11 +352,12 @@ export const useGetModelCatalogQuery = (
 
   return useQuery(
     {
-      queryKey: ["models", "catalog"] as const,
+      queryKey: MODEL_CATALOG_QUERY_FILTERS.queryKey,
       queryFn: async (): Promise<ModelCatalogResponse> => {
-        const response = await fetch("/api/models/catalog");
-        if (response.ok) {
-          return (await response.json()) as ModelCatalogResponse;
+        const response =
+          await apiClient.get<ModelCatalogResponse>("/models/catalog");
+        if (response.status >= 200 && response.status < 300) {
+          return response.data;
         }
         return throwModelsFetchError(
           response,

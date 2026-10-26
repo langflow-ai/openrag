@@ -93,12 +93,54 @@ describe("looksLikeProviderErrorContent", () => {
       ),
       false,
     );
+    assert.equal(
+      looksLikeProviderErrorContent(
+        "Unauthorized absence may be treated as disciplinary.",
+      ),
+      false,
+    );
+    assert.equal(
+      looksLikeProviderErrorContent(
+        "Unauthorized access to payroll records is prohibited.",
+      ),
+      false,
+    );
+  });
+
+  it("recognizes error-shaped unauthorized messages", () => {
+    assert.equal(looksLikeProviderErrorContent("Unauthorized"), true);
+    assert.equal(looksLikeProviderErrorContent("HTTP 401: Unauthorized"), true);
+    assert.equal(looksLikeProviderErrorContent("Error: unauthorized"), true);
+    assert.equal(
+      looksLikeProviderErrorContent("Unauthorized: Access token is expired"),
+      true,
+    );
   });
 
   it("flags IBM disabled API key messages", () => {
     assert.equal(
       looksLikeProviderErrorContent("Provided API key is disabled."),
       true,
+    );
+  });
+
+  /** Recognize relayed SDK dictionaries as errors even without credential markers. */
+  it("detects an OpenAI SDK error printed as a Python dict", () => {
+    assert.equal(
+      looksLikeProviderErrorContent(
+        `Error code: 400 - {'error': {'message': "This model's maximum context length is 512 tokens.", 'code': 'context_length_exceeded'}}`,
+      ),
+      true,
+    );
+  });
+
+  /** Allow ordinary assistant replies to contain dictionary examples. */
+  it("does not flag a reply that shows a dict with no error key", () => {
+    assert.equal(
+      looksLikeProviderErrorContent(
+        "Send {'message': 'hello', 'user': 'ana'} as the request body.",
+      ),
+      false,
     );
   });
 
@@ -187,5 +229,53 @@ describe("formatProviderErrorMessage", () => {
       formatProviderErrorMessage("Invalid API key {not-valid-json"),
       "Invalid API key",
     );
+  });
+
+  // The OpenAI SDK prints the body as a Python dict, which is how a gateway
+  // error reads once Langflow relays it. It used to collapse to "400 -".
+  const overflow =
+    "watsonx/intfloat/multilingual-e5-large: Invalid input argument for Model " +
+    "'intfloat/multilingual-e5-large': This model's maximum context length is 512 " +
+    "tokens. However, you requested 548 tokens in the input for embedding generation.";
+
+  /** Preserve the provider's diagnosis through SDK and Langflow wrappers. */
+  it("reads the message out of an OpenAI SDK error printed as a Python dict", () => {
+    assert.equal(
+      formatProviderErrorMessage(
+        `Error code: 400 - {'error': {'message': "${overflow}", 'type': 'invalid_request_error', 'code': 'context_length_exceeded'}}`,
+      ),
+      overflow,
+    );
+    assert.equal(
+      formatProviderErrorMessage(
+        `Error building Component OpenSearch: \n\nError code: 400 - {'error': {'message': "${overflow}", 'type': 'invalid_request_error'}}`,
+      ),
+      overflow,
+    );
+  });
+
+  /** Restore escaped apostrophes without losing embedded double quotes. */
+  it("unescapes a single-quoted Python message", () => {
+    assert.equal(
+      formatProviderErrorMessage(
+        "Error code: 404 - {'error': {'message': 'The model `x` doesn\\'t exist, said \"the API\"', 'type': 'api_error'}}",
+      ),
+      'The model `x` doesn\'t exist, said "the API"',
+    );
+  });
+
+  /** Keep an unreadable payload rather than reducing it to a bare status code. */
+  it("keeps the whole string when the prefix is only a status code", () => {
+    const raw = "Error code: 502 - {'error': <object at 0x1>}";
+    assert.equal(
+      formatProviderErrorMessage(raw),
+      "502 - {'error': <object at 0x1>}",
+    );
+  });
+
+  /** Leave prose mentioning a message field intact when it is not an error object. */
+  it("does not read a message out of prose that merely mentions one", () => {
+    const raw = "The reply had 'message': 'hello' in it";
+    assert.equal(formatProviderErrorMessage(raw), raw);
   });
 });
