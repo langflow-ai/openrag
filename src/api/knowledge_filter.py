@@ -43,7 +43,7 @@ def _error_response(result: dict) -> JSONResponse:
     return JSONResponse(result, status_code=500)
 
 
-_CALENDAR_DAY_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_CALENDAR_DAY_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", re.ASCII)
 _DATE_BOUND_KEYS = ("created_after", "created_before")
 _DATE_CONTEXT_KEYS = ("from", "to", "timezone")
 

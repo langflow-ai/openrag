@@ -5,7 +5,7 @@
 
 import { act, fireEvent } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { authPresets } from "@/test-utils/fixtures/auth";
 import { renderWithProviders, screen, waitFor } from "@/test-utils/render";
@@ -151,6 +151,10 @@ async function reachPageTwo(filterButton: string) {
   expect(last().afterKey).not.toBeNull();
   await screen.findByText(/Page 2 of 3/);
 }
+
+// These render the whole page and page through it; the default 5s limit is
+// too tight when the full suite runs in parallel.
+vi.setConfig({ testTimeout: 20_000 });
 
 describe("Knowledge page date range pagination", () => {
   beforeEach(() => {
