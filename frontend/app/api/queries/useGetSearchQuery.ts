@@ -128,6 +128,8 @@ export const useGetSearchQuery = (
     UseQueryOptions<SearchResult, Error, SearchResult, unknown[]>,
     "queryKey" | "queryFn"
   >,
+  // Effective UTC bounds from the caller. Saved dates inside `queryData` are
+  // deliberately not sent so a cleared temporary range cannot fall back to them.
   dateRange?: { createdAfter?: string; createdBefore?: string },
 ) => {
   const queryClient = useQueryClient();
@@ -164,7 +166,9 @@ export const useGetSearchQuery = (
       };
       if (queryData?.filters) {
         searchPayload.filters =
-          buildSearchPayloadFilters(queryData.filters) ?? undefined;
+          buildSearchPayloadFilters(queryData.filters, {
+            includeDates: false,
+          }) ?? undefined;
       }
       if (dateRange?.createdAfter) {
         searchPayload.created_after = dateRange.createdAfter;

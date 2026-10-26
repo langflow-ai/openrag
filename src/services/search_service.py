@@ -25,7 +25,7 @@ from utils.embedding_fields import (
     get_embedding_space_id,
 )
 from utils.logging_config import get_logger
-from utils.opensearch_queries import build_date_range_query
+from utils.opensearch_queries import build_filter_clauses
 
 logger = get_logger(__name__)
 
@@ -377,38 +377,9 @@ class SearchService:
 
         if not is_wildcard_match_all:
             # Build filter clauses first so we can use them in model detection
-            filter_clauses: list[dict[str, Any]] = []
-            if filters:
-                # Map frontend filter names to backend field names
-                field_mapping = {
-                    "data_sources": "filename",
-                    "document_types": "mimetype",
-                    "owners": "owner",
-                    "connector_types": "connector_type",
-                }
-
-                for filter_key, values in filters.items():
-                    if values is not None and isinstance(values, list):
-                        # Map frontend key to backend field name
-                        field_name = field_mapping.get(filter_key, filter_key)
-
-                        if len(values) == 0:
-                            # Empty array means "match nothing" - use impossible filter
-                            filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
-                        elif len(values) == 1:
-                            # Single value filter
-                            filter_clauses.append({"term": {field_name: values[0]}})
-                        else:
-                            # Multiple values filter
-                            filter_clauses.append({"terms": {field_name: values}})
-
-                date_range_clause = build_date_range_query(
-                    "indexed_time",
-                    gte=filters.get("created_after") or None,
-                    lte=filters.get("created_before") or None,
-                )
-                if date_range_clause is not None:
-                    filter_clauses.append(date_range_clause)
+            filter_clauses: list[dict[str, Any]] = build_filter_clauses(
+                filters, empty_list_matches_nothing=True
+            )
 
             try:
                 seen_spaces: set[str] = set()
@@ -573,38 +544,7 @@ class SearchService:
             )
         else:
             # Wildcard query - no embedding needed
-            filter_clauses = []
-            if filters:
-                # Map frontend filter names to backend field names
-                field_mapping = {
-                    "data_sources": "filename",
-                    "document_types": "mimetype",
-                    "owners": "owner",
-                    "connector_types": "connector_type",
-                }
-
-                for filter_key, values in filters.items():
-                    if values is not None and isinstance(values, list):
-                        # Map frontend key to backend field name
-                        field_name = field_mapping.get(filter_key, filter_key)
-
-                        if len(values) == 0:
-                            # Empty array means "match nothing" - use impossible filter
-                            filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
-                        elif len(values) == 1:
-                            # Single value filter
-                            filter_clauses.append({"term": {field_name: values[0]}})
-                        else:
-                            # Multiple values filter
-                            filter_clauses.append({"terms": {field_name: values}})
-
-                date_range_clause = build_date_range_query(
-                    "indexed_time",
-                    gte=filters.get("created_after") or None,
-                    lte=filters.get("created_before") or None,
-                )
-                if date_range_clause is not None:
-                    filter_clauses.append(date_range_clause)
+            filter_clauses = build_filter_clauses(filters, empty_list_matches_nothing=True)
 
         # Build query body
         if is_wildcard_match_all:

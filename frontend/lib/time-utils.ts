@@ -66,7 +66,7 @@ export function formatTaskTimestamp(
 }
 
 // Day bounds are the viewer's local calendar day, sent as UTC instants. The
-// "Date Uploaded" column renders indexed_time in local time too, so a file
+// "Date Ingested" column renders indexed_time in local time too, so a file
 // listed under a day is the file that day's filter returns, in any timezone.
 export function toLocalDayStartISOString(date: Date): string {
   const d = new Date(date);

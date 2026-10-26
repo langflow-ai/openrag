@@ -509,3 +509,42 @@ describe("buildActiveSourceOptions", () => {
     ).toEqual([]);
   });
 });
+
+describe("buildKnowledgeTableRows effective bounds", () => {
+  // Task rows take their indexed_time from the task's created_at.
+  const inFlight = (created_at: string) =>
+    taskFile({ filename: "new.pdf", status: "processing", created_at });
+
+  it("filters in-flight rows by the UTC bounds, not the display days", () => {
+    // Bounds saved in Los Angeles; display days are deliberately wrong for the
+    // viewer to prove only the bounds decide.
+    const bounds = {
+      createdAfter: "2026-10-07T07:00:00.000Z",
+      createdBefore: "2026-10-11T06:59:59.999999Z",
+    };
+    const rows = (time: string) =>
+      buildKnowledgeTableRows(
+        [],
+        [inFlight(time)],
+        false,
+        { from: new Date(2000, 0, 1), to: new Date(2000, 0, 1) },
+        bounds,
+      ).map((r) => r.filename);
+
+    expect(rows("2026-10-07T07:00:00.000Z")).toEqual(["new.pdf"]);
+    expect(rows("2026-10-11T06:59:59.000Z")).toEqual(["new.pdf"]);
+    expect(rows("2026-10-07T06:59:59.000Z")).toEqual([]);
+    expect(rows("2026-10-11T07:00:00.000Z")).toEqual([]);
+  });
+
+  it("applies no date filter once the bounds are cleared", () => {
+    const rows = buildKnowledgeTableRows(
+      [],
+      [inFlight("2020-01-01T00:00:00.000Z")],
+      false,
+      null,
+      {},
+    );
+    expect(rows.map((r) => r.filename)).toEqual(["new.pdf"]);
+  });
+});

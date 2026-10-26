@@ -1,12 +1,15 @@
 import json
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from api.files import _validate_date_range
 from dependencies import (
     get_knowledge_filter_service,
     get_monitor_service,
@@ -40,10 +43,79 @@ def _error_response(result: dict) -> JSONResponse:
     return JSONResponse(result, status_code=500)
 
 
+_CALENDAR_DAY_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_DATE_BOUND_KEYS = ("created_after", "created_before")
+_DATE_CONTEXT_KEYS = ("from", "to", "timezone")
+
+
+def _validate_calendar_day(value: Any, name: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be a YYYY-MM-DD string")
+    # Exact zero-padded form only: the range check compares these as strings.
+    if not _CALENDAR_DAY_RE.fullmatch(value):
+        raise ValueError(f"{name} must be a valid YYYY-MM-DD date")
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError as err:
+        raise ValueError(f"{name} must be a valid YYYY-MM-DD date") from err
+    return value
+
+
+def _normalize_date_range(data: dict, filters: dict) -> tuple[dict, dict | None]:
+    """Validate the optional saved date bounds and their display context.
+
+    Returns ``(bounds, context)``. ``bounds`` holds only the UTC bounds that are
+    set; ``context`` is the calendar days + IANA timezone used to restore the
+    picker, kept outside ``filters`` so it never reaches retrieval.
+    Raises ValueError for any malformed value.
+    """
+    bounds: dict[str, str] = {}
+    for key in _DATE_BOUND_KEYS:
+        value = filters.get(key)
+        if value is None or value == "":
+            continue
+        if not isinstance(value, str):
+            raise ValueError(f"{key} must be an ISO 8601 string")
+        bounds[key] = value
+    try:
+        _validate_date_range(bounds.get("created_after"), bounds.get("created_before"))
+    except HTTPException as err:
+        raise ValueError(str(err.detail)) from err
+
+    raw_context = data.get("date_range_context")
+    if raw_context is None:
+        return bounds, None
+    if not bounds:
+        # Context without bounds would describe a range that is not applied.
+        return bounds, None
+    if not isinstance(raw_context, dict):
+        raise ValueError("date_range_context must be an object")
+    context: dict[str, str] = {}
+    for key in ("from", "to"):
+        if raw_context.get(key) is not None:
+            context[key] = _validate_calendar_day(raw_context[key], f"date_range_context.{key}")
+    if "from" in context and "to" in context and context["from"] > context["to"]:
+        raise ValueError("date_range_context.from must be on or before date_range_context.to")
+    tz = raw_context.get("timezone")
+    if tz is not None:
+        try:
+            if not isinstance(tz, str) or not tz:
+                raise ValueError
+            ZoneInfo(tz)
+        except (ValueError, ZoneInfoNotFoundError, OSError) as err:
+            raise ValueError("date_range_context.timezone must be a valid IANA timezone") from err
+        context["timezone"] = tz
+    return bounds, context or None
+
+
 def normalize_query_data(query_data: str | dict) -> str:
     """
     Normalize query_data to ensure all required fields exist with defaults.
     This prevents frontend crashes when API-created filters have incomplete data.
+
+    Optional ``created_after``/``created_before`` bounds are validated and kept
+    inside ``filters``; filters saved without dates stay unrestricted.
+    Raises ValueError for malformed date data.
     """
     if isinstance(query_data, str):
         try:
@@ -60,6 +132,8 @@ def normalize_query_data(query_data: str | dict) -> str:
         "owners": filters.get("owners", ["*"]),
         "connector_types": filters.get("connector_types", ["*"]),
     }
+    bounds, date_context = _normalize_date_range(data, filters)
+    normalized_filters.update(bounds)
 
     normalized = {
         "query": data.get("query", ""),
@@ -69,6 +143,8 @@ def normalize_query_data(query_data: str | dict) -> str:
         "color": data.get("color", "zinc"),
         "icon": data.get("icon", "filter"),
     }
+    if date_context:
+        normalized["date_range_context"] = date_context
 
     return json.dumps(normalized)
 
@@ -195,6 +271,13 @@ async def update_knowledge_filter(
 
     existing_filter = existing_result["filter"]
 
+    query_data = body.queryData if body.queryData is not None else existing_filter["query_data"]
+    try:
+        normalized_query_data = normalize_query_data(query_data)
+    except Exception as e:
+        logger.error(f"Failed to normalize query_data: {e}")
+        return JSONResponse({"error": f"Invalid queryData format: {str(e)}"}, status_code=400)
+
     delete_result = await knowledge_filter_service.delete_knowledge_filter(
         filter_id, user_id=user.user_id, jwt_token=jwt_token
     )
@@ -202,13 +285,6 @@ async def update_knowledge_filter(
         return JSONResponse(
             {"error": "Failed to delete existing knowledge filter"}, status_code=500
         )
-
-    query_data = body.queryData if body.queryData is not None else existing_filter["query_data"]
-    try:
-        normalized_query_data = normalize_query_data(query_data)
-    except Exception as e:
-        logger.error(f"Failed to normalize query_data: {e}")
-        return JSONResponse({"error": f"Invalid queryData format: {str(e)}"}, status_code=400)
 
     updated_filter = {
         "id": filter_id,

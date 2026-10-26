@@ -27,6 +27,12 @@ import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { isDateRangeFilterEnabled } from "@/lib/date-range-filter";
 import {
+  type DateRangeValue,
+  foreignTimeZone,
+  type SavedDateRange,
+  viewerTimeZone,
+} from "@/lib/saved-date-range";
+import {
   toLocalDayEndISOString,
   toLocalDayKey,
   toLocalDayStartISOString,
@@ -93,6 +99,29 @@ function formatShortLabel(date: Date, today: Date): string {
   });
 }
 
+/** "A – B", a single day, or "From A" / "Until B" for a one-sided saved range. */
+function describeRange(
+  range: DateRangeValue | null,
+  format: (date: Date) => string,
+): string | null {
+  if (range?.from && range.to) {
+    return isSameDay(range.from, range.to)
+      ? format(range.from)
+      : `${format(range.from)} – ${format(range.to)}`;
+  }
+  if (range?.from) return `From ${format(range.from)}`;
+  if (range?.to) return `Until ${format(range.to)}`;
+  return null;
+}
+
+function earlierInstant(iso: string, other?: string): string {
+  return other && new Date(other) < new Date(iso) ? other : iso;
+}
+
+function laterInstant(iso: string, other?: string): string {
+  return other && new Date(other) > new Date(iso) ? other : iso;
+}
+
 function filterValues(values?: string[]) {
   const filtered = values?.filter((value) => value !== "*");
   return filtered && filtered.length > 0 ? filtered : undefined;
@@ -128,11 +157,26 @@ function DensityMark({
   );
 }
 
+/** Toolbar picker: edits the temporary range of the Knowledge page. */
 export function KnowledgeDateRangeFilter() {
+  const { dateRange, setDateRange, parsedFilterData, effectiveDateRange } =
+    useKnowledgeFilter();
+  const enabled = useDateRangeFilterEnabled();
+  if (!enabled) return null;
+  return (
+    <DateRangePicker
+      value={dateRange}
+      onChange={setDateRange}
+      facetFilters={parsedFilterData?.filters}
+      savedRange={effectiveDateRange}
+    />
+  );
+}
+
+export function useDateRangeFilterEnabled(): boolean {
   const { runMode } = useAuth();
   const isCloudBrand = useIsCloudBrand();
-  if (!isDateRangeFilterEnabled(runMode, { isCloudBrand })) return null;
-  return <DateRangeFilterPopover />;
+  return isDateRangeFilterEnabled(runMode, { isCloudBrand });
 }
 
 function useToday(open: boolean) {
@@ -327,13 +371,43 @@ function PopoverFooter({
   );
 }
 
-function DateRangeFilterPopover() {
-  const { dateRange, setDateRange, parsedFilterData } = useKnowledgeFilter();
+export interface DateRangePickerProps {
+  value: DateRangeValue | null;
+  onChange: (range: DateRangeValue | null) => void;
+  /** Facet selections that scope the upload-density marks (not the range itself). */
+  facetFilters?: {
+    data_sources?: string[];
+    document_types?: string[];
+    owners?: string[];
+    connector_types?: string[];
+  };
+  /**
+   * Bounds + timezone context behind `value`. While the user has not edited the
+   * range, upload counts use this timezone so they agree with retrieval.
+   */
+  savedRange?: SavedDateRange;
+}
+
+/**
+ * Controlled date-range picker. It owns only the popover draft; the caller
+ * decides what applying or clearing means (temporary toolbar range, or an
+ * unsaved draft inside the Knowledge Filter editor).
+ */
+export function DateRangePicker({
+  value: dateRange,
+  onChange,
+  facetFilters,
+  savedRange,
+}: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
   const [today, setToday] = useToday(open);
   const [draft, setDraft] = useState<DateRange | undefined>();
   const [month, setMonth] = useState<Date>(today);
   const [customDays, setCustomDays] = useState("");
+  // False until the user changes the draft; an unchanged Apply keeps the range as saved.
+  const [edited, setEdited] = useState(false);
+  const savedTimeZone = foreignTimeZone(savedRange);
+  const countInSavedZone = !edited && savedTimeZone !== null;
 
   // Cover the shown month, every preset (last month, or 29 days back when that
   // is earlier), and the draft start so typed/custom ranges count correctly.
@@ -343,15 +417,23 @@ function DateRangeFilterPopover() {
     subDays(today, 29),
     ...(draft?.from ? [startOfDay(draft.from)] : []),
   ]);
+  // An unedited saved range is counted in the zone it was saved in, over a
+  // window that includes its exact bounds; edits switch to the viewer's zone.
+  const windowStartISO = toLocalDayStartISOString(windowStart);
+  const windowEndISO = toLocalDayEndISOString(today);
   const { data: histogram } = useUploadHistogram(
     {
-      start: toLocalDayStartISOString(windowStart),
-      end: toLocalDayEndISOString(today),
-      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      connectorType: filterValues(parsedFilterData?.filters?.connector_types),
-      mimetype: filterValues(parsedFilterData?.filters?.document_types),
-      owner: filterValues(parsedFilterData?.filters?.owners),
-      dataSources: filterValues(parsedFilterData?.filters?.data_sources),
+      start: countInSavedZone
+        ? earlierInstant(windowStartISO, savedRange?.createdAfter)
+        : windowStartISO,
+      end: countInSavedZone
+        ? laterInstant(windowEndISO, savedRange?.createdBefore)
+        : windowEndISO,
+      tz: countInSavedZone && savedTimeZone ? savedTimeZone : viewerTimeZone(),
+      connectorType: filterValues(facetFilters?.connector_types),
+      mimetype: filterValues(facetFilters?.document_types),
+      owner: filterValues(facetFilters?.owners),
+      dataSources: filterValues(facetFilters?.data_sources),
     },
     { enabled: open },
   );
@@ -362,12 +444,13 @@ function DateRangeFilterPopover() {
       const freshToday = startOfDay(new Date());
       setToday(freshToday);
       setDraft(
-        dateRange?.from
+        dateRange?.from || dateRange?.to
           ? { from: dateRange.from, to: dateRange.to }
           : undefined,
       );
       setMonth(dateRange?.to ?? dateRange?.from ?? freshToday);
       setCustomDays("");
+      setEdited(false);
     }
     setOpen(next);
   };
@@ -383,17 +466,24 @@ function DateRangeFilterPopover() {
         : histogram.total
       : undefined;
 
-  const activePresetId = PRESETS.find((preset) => {
-    const range = preset.range(today);
-    if (!range || !draftRange) return !range && !draftRange;
-    return (
-      isSameDay(range.from, draftRange.from) &&
-      isSameDay(range.to, draftRange.to)
-    );
-  })?.id;
+  // A saved range with only one bound is shown as such until it is edited.
+  const openEndedUnedited =
+    !edited && Boolean(dateRange) && !(dateRange?.from && dateRange?.to);
+
+  const activePresetId = openEndedUnedited
+    ? undefined
+    : PRESETS.find((preset) => {
+        const presetRange = preset.range(today);
+        if (!presetRange || !draftRange) return !presetRange && !draftRange;
+        return (
+          isSameDay(presetRange.from, draftRange.from) &&
+          isSameDay(presetRange.to, draftRange.to)
+        );
+      })?.id;
 
   const handlePreset = (preset: Preset) => {
     const range = preset.range(today);
+    setEdited(true);
     setDraft(range ?? undefined);
     setCustomDays("");
     if (range) setMonth(range.to);
@@ -401,6 +491,7 @@ function DateRangeFilterPopover() {
 
   const handleCustomDays = (value: string) => {
     const digits = value.replace(/\D/g, "").slice(0, 4);
+    setEdited(true);
     setCustomDays(digits);
     const n = Math.min(Number.parseInt(digits, 10), MAX_CUSTOM_DAYS);
     if (!n) {
@@ -413,17 +504,20 @@ function DateRangeFilterPopover() {
   };
 
   const handleCalendarSelect = (next: DateRange | undefined) => {
+    setEdited(true);
     setCustomDays("");
     setDraft(next);
   };
 
   const handleApply = () => {
-    setDateRange(draftRange);
+    // Re-applying what was shown must not reinterpret it: an open-ended range
+    // has no second day to fill in, and the saved bounds stay as they are.
+    if (edited) onChange(draftRange);
     setOpen(false);
   };
 
   const handleClear = () => {
-    setDateRange(null);
+    onChange(null);
     setOpen(false);
   };
 
@@ -447,18 +541,18 @@ function DateRangeFilterPopover() {
     [days],
   );
 
-  const label = dateRange?.from
-    ? dateRange.to
-      ? `${formatDateLabel(dateRange.from)} – ${formatDateLabel(dateRange.to)}`
-      : formatDateLabel(dateRange.from)
-    : null;
+  const label = describeRange(dateRange, formatDateLabel);
 
-  const footerCount = presetCount(draftRange);
-  const footerRange = draftRange
-    ? isSameDay(draftRange.from, draftRange.to)
-      ? formatShortLabel(draftRange.from, today)
-      : `${formatShortLabel(draftRange.from, today)} – ${formatShortLabel(draftRange.to, today)}`
-    : "Any time";
+  // A saved one-sided range has no closed draftRange; describe it as it is.
+  const footerCount = openEndedUnedited ? undefined : presetCount(draftRange);
+  const footerRange = openEndedUnedited
+    ? (describeRange(dateRange, (d) => formatShortLabel(d, today)) ??
+      "Any time")
+    : draftRange
+      ? isSameDay(draftRange.from, draftRange.to)
+        ? formatShortLabel(draftRange.from, today)
+        : `${formatShortLabel(draftRange.from, today)} – ${formatShortLabel(draftRange.to, today)}`
+      : "Any time";
 
   return (
     <div className="flex h-full flex-shrink-0 items-stretch">
@@ -474,7 +568,7 @@ function DateRangeFilterPopover() {
             aria-label={label ?? "Filter by date range"}
           >
             <CalendarIcon className="h-4 w-4 flex-shrink-0 text-[var(--icon-primary)]" />
-            {/* The range label is wide; show it only once the bar has room for it. */}
+            {/* The range label is wide; in the toolbar show it only once the bar has room. */}
             <span className="hidden max-w-[16rem] truncate xl:inline">
               {label ?? "Date range"}
             </span>
@@ -503,6 +597,12 @@ function DateRangeFilterPopover() {
               onMonthChange={setMonth}
             />
           </div>
+          {savedTimeZone && (
+            <p className="border-t px-4 py-2 text-xs text-muted-foreground">
+              Saved in {savedTimeZone}. Days you pick here use your time zone (
+              {viewerTimeZone()}).
+            </p>
+          )}
           <PopoverFooter
             footerCount={footerCount}
             footerRange={footerRange}

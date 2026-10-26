@@ -55,11 +55,7 @@ import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
 } from "@/lib/knowledge-table-state";
-import {
-  parseTimestampMs,
-  toLocalDayEndISOString,
-  toLocalDayStartISOString,
-} from "@/lib/time-utils";
+import { parseTimestampMs } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
 import {
   DeleteConfirmationDialog,
@@ -431,6 +427,7 @@ function SearchPage() {
     selectedFilter,
     setSelectedSources,
     dateRange,
+    effectiveDateRange,
   } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
 
@@ -615,19 +612,18 @@ function SearchPage() {
   const effectiveSearchText =
     queryOverride.trim() || parsedFilterData?.query?.trim() || "";
   const hasActiveFilters = parsedFilterData?.filters
-    ? buildSearchPayloadFilters(parsedFilterData.filters) !== undefined
+    ? buildSearchPayloadFilters(parsedFilterData.filters, {
+        includeDates: false,
+      }) !== undefined
     : false;
   const isWildcardQuery =
     (effectiveSearchText === "" || effectiveSearchText === "*") &&
     !hasActiveFilters;
   const filterPageResetKey = buildFilterPageResetKey(parsedFilterData);
 
-  const createdAfter = dateRange?.from
-    ? toLocalDayStartISOString(dateRange.from)
-    : undefined;
-  const createdBefore = dateRange?.to
-    ? toLocalDayEndISOString(dateRange.to)
-    : undefined;
+  // Retrieval uses the effective UTC bounds as-is; `dateRange` is display-only.
+  const createdAfter = effectiveDateRange.createdAfter;
+  const createdBefore = effectiveDateRange.createdBefore;
 
   const {
     data: listFilesData,
@@ -757,6 +753,7 @@ function SearchPage() {
     taskFiles,
     Boolean(selectedFilter),
     dateRange,
+    { createdAfter, createdBefore },
   );
 
   const serverTotal = isWildcardQuery
@@ -952,7 +949,7 @@ function SearchPage() {
 
   const colIndexedTime: ColDef<File> = {
     field: "indexed_time",
-    headerName: "Date Uploaded",
+    headerName: "Date Ingested",
     ...(isCloudBrand ? { flex: 1.2, minWidth: 140 } : { minWidth: 130 }),
     sortable: true,
     comparator: serverSideComparator,
