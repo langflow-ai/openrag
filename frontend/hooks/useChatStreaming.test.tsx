@@ -356,6 +356,23 @@ describe("useChatStreaming", () => {
       expect(returned?.content).not.toContain("{");
     });
 
+    /** Surface the relayed provider diagnosis as a chat error instead of assistant text. */
+    it("treats a gateway error relayed as a Python dict as one", async () => {
+      serveStream([
+        textChunk(
+          `Error code: 400 - {'error': {'message': "This model's maximum context length is 512 tokens.", 'code': 'context_length_exceeded'}}`,
+        ),
+      ]);
+      const { result } = setup();
+
+      const returned = await send(result, { prompt: "p" });
+
+      expect(returned?.error).toBe(true);
+      expect(returned?.content).toBe(
+        "This model's maximum context length is 512 tokens.",
+      );
+    });
+
     it("stops loading after an error", async () => {
       server.use(
         http.post(ENDPOINT, () => HttpResponse.text("nope", { status: 500 })),

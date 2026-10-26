@@ -41,6 +41,33 @@ describe("canCompleteOnboarding", () => {
   });
 });
 
+describe("canCompleteOnboarding with a credential blocker", () => {
+  it("blocks Submit while the provider form reports a reason", () => {
+    assert.equal(
+      canCompleteOnboarding({
+        isEmbedding: false,
+        llmModel: "granite-chat",
+        embeddingModel: "",
+        credentialBlocker:
+          "Enter Token again: the endpoint or TLS setting changed.",
+      }),
+      false,
+    );
+  });
+
+  it("allows Submit once the reason is cleared", () => {
+    assert.equal(
+      canCompleteOnboarding({
+        isEmbedding: true,
+        llmModel: "",
+        embeddingModel: "granite-embedding",
+        credentialBlocker: null,
+      }),
+      true,
+    );
+  });
+});
+
 describe("shouldRollbackFailedOnboarding", () => {
   it("does not roll back an initial validation failure with no saved config", () => {
     assert.equal(shouldRollbackFailedOnboarding(false), false);

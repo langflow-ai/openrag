@@ -1,4 +1,5 @@
 import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 import { getApiError } from "@/lib/status-utils";
 
 export type ComponentState = "healthy" | "degraded" | "unhealthy" | "unknown";
@@ -33,12 +34,12 @@ export interface ConsoleStatusResponse {
 }
 
 async function fetchConsoleStatus(): Promise<ConsoleStatusResponse> {
-  const response = await fetch("/api/status");
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
+  const response = await apiClient.get<ConsoleStatusResponse>("/status");
+  if (response.status < 200 || response.status >= 300) {
+    const body = response.data;
     throw new Error(getApiError(body, response.status));
   }
-  return response.json() as Promise<ConsoleStatusResponse>;
+  return response.data;
 }
 
 export const useConsoleStatusQuery = (

@@ -47,7 +47,7 @@ export function ComponentDiagnoseModal({
             <p className="text-zinc-100">{data.summary}</p>
             {data.likely_cause && (
               <div>
-                <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                <p className="text-xxs uppercase tracking-wide text-zinc-500">
                   Likely cause
                 </p>
                 <p className="text-zinc-300 mt-0.5">{data.likely_cause}</p>
@@ -55,7 +55,7 @@ export function ComponentDiagnoseModal({
             )}
             {data.remediation.length > 0 && (
               <div>
-                <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                <p className="text-xxs uppercase tracking-wide text-zinc-500">
                   How to fix
                 </p>
                 <ul className="mt-1 space-y-1 list-disc list-inside text-zinc-300">
@@ -66,12 +66,12 @@ export function ComponentDiagnoseModal({
               </div>
             )}
             {data.target && (
-              <p className="text-[11px] text-zinc-500">
+              <p className="text-xxs text-zinc-500">
                 Endpoint: <span className="font-mono">{data.target}</span>
               </p>
             )}
             {data.last_error && (
-              <pre className="text-[11px] text-zinc-400 bg-zinc-800/60 rounded p-2 whitespace-pre-wrap break-all font-mono">
+              <pre className="text-xxs text-zinc-400 bg-zinc-800/60 rounded p-2 whitespace-pre-wrap break-all font-mono">
                 {data.last_error}
               </pre>
             )}

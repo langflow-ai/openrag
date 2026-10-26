@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 export interface ModelProviderEntry {
   name: string;
@@ -38,11 +39,12 @@ export const useGetModelProvidersQuery = (
       // two-field shape fetches the enriched response immediately.
       queryKey: ["models", "providers", "v2"] as const,
       queryFn: async (): Promise<ModelProvidersResponse> => {
-        const response = await fetch("/api/models/providers");
-        if (!response.ok) {
+        const response =
+          await apiClient.get<ModelProvidersResponse>("/models/providers");
+        if (response.status < 200 || response.status >= 300) {
           throw new Error("Failed to fetch the model providers");
         }
-        return (await response.json()) as ModelProvidersResponse;
+        return response.data;
       },
       // Run mode and the config file are fixed for the life of the backend
       // process, so this never goes stale within a session. Editing

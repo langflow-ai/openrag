@@ -14,6 +14,7 @@ from unittest.mock import Mock
 import pytest
 
 from models.tasks import DoclingPhaseStatus, FileTask, IngestionPhase, TaskStatus, UploadTask
+from services.docling_service import PASSWORD_PROTECTED_PDF_DETAIL
 from services.task_service import TaskService, _opensearch_failure_metadata
 
 # ---------------------------------------------------------------------------
@@ -57,6 +58,30 @@ def _store_task(task_service: TaskService, user_id: str, upload_task: UploadTask
 
 
 class TestInferFailureMetadata:
+    def test_upload_size_error_while_docling_is_still_pending(self, task_service):
+        message = (
+            '"report.pdf" (1.9 MB) was rejected by '
+            "https://docling-serve:5001/v1/convert/file/async with HTTP 413. "
+            "Raise that limit (nginx: client_max_body_size), or set "
+            "OPENRAG_MAX_UPLOAD_MB to the proxy's real limit."
+        )
+        ft = _make_file_task(
+            phase=IngestionPhase.DOCLING,
+            docling_status=DoclingPhaseStatus.PENDING,
+            error=f"Docling upload failed: {message}",
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["component"] == "docling"
+        assert meta["failure_phase"] == "parsing"
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert meta["user_facing_message"].startswith('"report.pdf" is 1.9 MB.')
+        assert "document-processing service" in meta["user_facing_message"]
+        assert "within the configured upload limit" in meta["user_facing_message"]
+        assert "OPENRAG_MAX_UPLOAD_MB" in meta["user_facing_message"]
+        assert "docling-serve" not in meta["user_facing_message"]
+        assert "client_max_body_size" not in meta["user_facing_message"]
+
     def test_docling_failed_status(self, task_service):
         ft = _make_file_task(docling_status=DoclingPhaseStatus.FAILED)
         meta = task_service._infer_failure_metadata(ft)
@@ -178,6 +203,31 @@ class TestInferFailureMetadata:
         assert "pdfium" not in msg.lower()
         assert "docling-parse" not in msg.lower()
         assert "cbfc231c" not in msg
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            # Langflow path (upload_and_ingest_file)
+            f"Docling conversion did not complete (failed): {PASSWORD_PROTECTED_PDF_DETAIL}",
+            # Non-Langflow path (DoclingService.convert_file / convert_bytes)
+            f"Docling processing failed: {PASSWORD_PROTECTED_PDF_DETAIL}",
+        ],
+    )
+    def test_backend_detected_password_protected_pdf_maps_to_clean_message(
+        self, task_service, error
+    ):
+        """docling >= 2.141 no longer names the reason; the backend's remap must still match."""
+        ft = _make_file_task(
+            phase=IngestionPhase.DOCLING,
+            docling_status=DoclingPhaseStatus.FAILED,
+            error=error,
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert meta["component"] == "docling"
+        assert meta["failure_phase"] == "parsing"
+        assert meta["user_facing_message"].startswith("This PDF is password-protected.")
 
     def test_langflow_empty_content_not_retryable(self, task_service):
         ft = _make_file_task(
@@ -311,6 +361,49 @@ class TestInferFailureMetadata:
         assert "error building component" not in meta["user_facing_message"].lower()
         assert "error running graph" not in meta["user_facing_message"].lower()
         assert "{" not in meta["user_facing_message"]
+
+    def test_chunk_too_long_for_the_embedding_model_is_user_actionable(self, task_service):
+        """Retrying resends the same chunk, so RETRYABLE would be a false promise."""
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error=(
+                "watsonx/intfloat/multilingual-e5-large: Invalid input argument for Model "
+                "'intfloat/multilingual-e5-large': This model's maximum context length is 512 "
+                "tokens. However, you requested 548 tokens in the input for embedding generation."
+            ),
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta == {
+            "component": "openrag",
+            "failure_phase": "embedding",
+            "user_facing_message": (
+                "A section of this document is longer than the embedding model accepts "
+                "(548 tokens; the limit is 512). Try a smaller chunk size or an embedding "
+                "model with a larger input limit, then retry ingestion."
+            ),
+            "actionable_by": "USER_ACTIONABLE",
+        }
+
+    @pytest.mark.parametrize(
+        ("error", "size"),
+        [
+            ("This model's maximum context length is 512 tokens.", " (the limit is 512 tokens)"),
+            ("Error code: 400 - {'error': {'code': 'context_length_exceeded'}}", ""),
+        ],
+    )
+    def test_chunk_too_long_states_only_the_counts_the_provider_gave(
+        self, task_service, error, size
+    ):
+        """Report embedding overflow as actionable using only known token counts."""
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW, docling_status=DoclingPhaseStatus.SUCCESS, error=error
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta["user_facing_message"].startswith(
+            f"A section of this document is longer than the embedding model accepts{size}. "
+        )
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
 
     def test_langflow_disconnect_with_api_key_text_prefers_credentials(self, task_service):
         ft = _make_file_task(
@@ -849,3 +942,37 @@ class TestGetTaskStatus2OpenSearchFailure:
         # ...but the raw error stays on the entry, which is the only way to
         # diagnose which OpenSearch operation actually failed.
         assert file_entry["error"].startswith("ConflictError(409, '{")
+
+
+class TestRejectedUploads:
+    def test_files_over_the_limit_stay_on_a_task(self, task_service):
+        task_id = task_service.record_rejected_uploads(
+            "user1",
+            [("huge.pdf", 5 * 1024 * 1024), ("big.pdf", 9 * 1024 * 1024)],
+        )
+
+        status = task_service.get_task_status2("user1", task_id)
+
+        assert status["status"] == "completed"
+        assert status["total_files"] == 2
+        assert status["failed_files"] == 2
+        assert status["successful_files"] == 0
+        names = {entry["filename"] for entry in status["files"].values()}
+        assert names == {"huge.pdf", "big.pdf"}
+        for entry in status["files"].values():
+            assert entry["status"] == "failed"
+            assert entry["actionable_by"] == "USER_ACTIONABLE"
+            assert "OPENRAG_MAX_UPLOAD_MB" in entry["user_facing_message"]
+
+    def test_later_rejections_join_the_same_task(self, task_service):
+        task_id = task_service.record_rejected_uploads("user1", [("huge.pdf", 5 * 1024 * 1024)])
+        task_service.record_rejected_uploads(
+            "user1",
+            [("big.pdf", 9 * 1024 * 1024)],
+            task_id=task_id,
+        )
+
+        status = task_service.get_task_status2("user1", task_id)
+
+        assert status["failed_files"] == 2
+        assert len(status["files"]) == 2
