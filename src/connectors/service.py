@@ -243,7 +243,8 @@ class ConnectorService:
         ingest_settings: dict[str, Any] | None = None,
         replace_duplicates: bool = False,
         shared: bool | None = False,
-        allow_anonymous_delete: bool = True,
+        *,
+        allow_anonymous_delete: bool,
     ) -> str:
         """
         Sync files from a connector connection using existing task tracking system.
@@ -258,6 +259,9 @@ class ConnectorService:
                            from being re-synced.
             ingest_settings: Optional UI-style dict (``embeddingModel``, ``chunkSize``, …)
                 forwarded to ``ConnectorFileProcessor``.
+            allow_anonymous_delete: The syncing user's resolved
+                ``knowledge:delete:anonymous``. No default; see
+                ``TaskProcessor.delete_document_by_filename``.
         """
         jwt_token = await self._get_effective_sync_jwt(user_id, jwt_token)
 
@@ -387,7 +391,8 @@ class ConnectorService:
         replace_duplicates: bool = False,
         preview_mode: bool = False,
         shared: bool | None = False,
-        allow_anonymous_delete: bool = True,
+        *,
+        allow_anonymous_delete: bool,
     ) -> str:
         """
         Sync specific files by their IDs (used for webhook-triggered syncs or manual selection).
@@ -402,6 +407,9 @@ class ConnectorService:
                        When provided, download URLs can be used directly without Graph API calls.
             ingest_settings: Optional UI-style dict (``embeddingModel``, ``chunkSize``, …) passed to
                 ``ConnectorFileProcessor`` when Langflow ingest is disabled.
+            allow_anonymous_delete: The syncing user's resolved
+                ``knowledge:delete:anonymous``. No default; see
+                ``TaskProcessor.delete_document_by_filename``.
         """
         jwt_token = await self._get_effective_sync_jwt(user_id, jwt_token)
 

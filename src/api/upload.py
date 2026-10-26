@@ -3,7 +3,7 @@ from typing import Annotated, Any
 from urllib.parse import urlparse
 
 import boto3
-from fastapi import Depends, File, Form, UploadFile
+from fastapi import Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -13,8 +13,10 @@ from dependencies import (
     get_docling_service,
     get_document_service,
     get_models_service,
+    get_rbac_service,
     get_session_manager,
     get_task_service,
+    has_effective_permission,
     require_all_permissions,
     require_permission,
 )
@@ -106,6 +108,9 @@ async def upload_path(
         jwt_token=jwt_token,
         owner_name=owner_name,
         owner_email=owner_email,
+        # This endpoint never replaces (replace_duplicates stays False), so no
+        # delete is attempted; False keeps it that way.
+        allow_anonymous_delete=False,
     )
 
     return JSONResponse(
@@ -135,9 +140,15 @@ async def upload_context(
 
     jwt_token = user.jwt_token
 
-    doc_result = await document_service.process_upload_context(
-        file, filename, user_id=user_id, jwt_token=jwt_token
-    )
+    from services.docling_service import DoclingPayloadTooLarge
+    from utils.upload_limits import UploadTooLarge
+
+    try:
+        doc_result = await document_service.process_upload_context(
+            file, filename, user_id=user_id, jwt_token=jwt_token
+        )
+    except (UploadTooLarge, DoclingPayloadTooLarge) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=413)
 
     from config.settings import is_no_auth_mode
 
@@ -177,17 +188,26 @@ async def upload_options(
     """Return availability of upload features"""
     aws_enabled = bool(os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
     from config.settings import UPLOAD_BATCH_SIZE
+    from utils.upload_limits import max_upload_mb
 
-    return JSONResponse({"aws": aws_enabled, "upload_batch_size": UPLOAD_BATCH_SIZE})
+    return JSONResponse(
+        {
+            "aws": aws_enabled,
+            "upload_batch_size": UPLOAD_BATCH_SIZE,
+            "max_upload_mb": max_upload_mb(),
+        }
+    )
 
 
 async def upload_bucket(
     body: UploadBucketBody,
+    request: Request,
     task_service: Annotated[Any, Depends(get_task_service)],
     models_service: Annotated[Any, Depends(get_models_service)],
     docling_service: Annotated[Any, Depends(get_docling_service)],
     session_manager: Annotated[Any, Depends(get_session_manager)],
     user: Annotated[User, Depends(require_permission("knowledge:upload"))],
+    rbac: Annotated[Any, Depends(get_rbac_service)],
 ):
     """Process all files from an S3 bucket URL"""
     if not os.getenv("AWS_ACCESS_KEY_ID") or not os.getenv("AWS_SECRET_ACCESS_KEY"):
@@ -242,6 +262,11 @@ async def upload_bucket(
         owner_name=owner_name,
         owner_email=owner_email,
         replace_duplicates=body.replace_duplicates,
+        # An S3 key that matches a shared (ownerless) document replaces it for
+        # the whole instance, so that takes the permission to delete one.
+        allow_anonymous_delete=await has_effective_permission(
+            request, user, rbac, "knowledge:delete:anonymous"
+        ),
     )
 
     task_id = await task_service.create_custom_task(task_user_id, keys, processor)

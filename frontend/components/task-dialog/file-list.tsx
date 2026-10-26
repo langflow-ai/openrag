@@ -118,8 +118,8 @@ export function TaskDialogFileList({
         ? cn(
             "rounded-none border-0 border-b-2",
             isActive
-              ? "border-[var(--border-border-interactive)] bg-muted text-foreground"
-              : "border-transparent bg-transparent text-muted-foreground hover:border-[var(--border-border-interactive)]",
+              ? "border-(--border-border-interactive) bg-muted text-foreground"
+              : "border-transparent bg-transparent text-muted-foreground hover:border-(--border-border-interactive)",
           )
         : cn(
             "border-0",

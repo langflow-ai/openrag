@@ -30,6 +30,7 @@ def _processor(replace_duplicates: bool) -> DocumentFileProcessor:
         jwt_token="mock-token",
         replace_duplicates=replace_duplicates,
         session_manager=MagicMock(),
+        allow_anonymous_delete=True,
     )
     # The index is empty as far as either file can tell: this is the window
     # where both of them are told the name is free.

@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { EndpointType } from "@/contexts/chat-context";
+import { apiClient } from "@/lib/api-client";
 
 interface DeleteSessionParams {
   sessionId: string;
@@ -25,18 +26,16 @@ export const useDeleteSessionMutation = (
 
   return useMutation<DeleteSessionResponse, Error, DeleteSessionParams>({
     mutationFn: async ({ sessionId }: DeleteSessionParams) => {
-      const response = await fetch(`/api/sessions/${sessionId}`, {
-        method: "DELETE",
-      });
+      const response = await apiClient.delete(`/sessions/${sessionId}`);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+      if (response.status < 200 || response.status >= 300) {
+        const errorData = response.data ?? {};
         throw new Error(
           errorData.error || `Failed to delete session: ${response.status}`,
         );
       }
 
-      return response.json();
+      return response.data;
     },
     onSettled: (_data, _error, variables) => {
       // Invalidate conversations query to refresh the list

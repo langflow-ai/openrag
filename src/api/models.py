@@ -1,4 +1,7 @@
 import re
+from collections.abc import Mapping
+from types import ModuleType
+from typing import Any, Literal
 
 import httpx
 from fastapi import Depends
@@ -9,9 +12,10 @@ from api.provider_validation import (
     is_provider_credential_error,
     sanitize_provider_error_content,
 )
+from config.config_manager import retargeted_credential_fields
 from config.settings import get_openrag_config
 from dependencies import get_models_service, require_permission
-from services.model_catalog import hide_excluded_live_models
+from services.model_catalog import hide_excluded_live_models, secret_field_keys
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -50,6 +54,87 @@ class IBMBody(BaseModel):
 class WatsonxOnPremSpacesBody(BaseModel):
     credentials: dict[str, str] = Field(default_factory=dict)
     auth_method: str | None = None
+
+
+class ModelDiscoveryBody(BaseModel):
+    credentials: dict[str, str] = Field(default_factory=dict)
+    auth_method: str | None = None
+    #: The one picker the caller shows; None lists both.
+    kind: Literal["chat", "embedding"] | None = None
+
+
+class InvalidAuthMethodError(ValueError):
+    """The form named an auth method its provider does not offer — a client error."""
+
+
+#: Client-safe text for a missing or unknown auth method. The enhancement
+#: hook's own message is logged, never returned.
+_INVALID_AUTH_METHOD_ERROR = "Choose a valid authentication method."
+
+
+def _draft_credentials(
+    enhancement: ModuleType, submitted: Mapping[str, str], auth_method: str | None
+) -> dict[str, Any]:
+    """Credentials a form has typed, completed from the stored ones where safe.
+
+    A secret the operator saved earlier is shown blank in the form, so the
+    stored value fills in whatever was not typed — but only while the form still
+    points at the same host. A changed endpoint or TLS setting drops every
+    stored value, so a saved token is never sent somewhere it was not saved for.
+    Only the fields the provider's form defines (for the chosen auth method,
+    where it has several) are kept.
+
+    An empty value means what it means on Submit: for a secret, "keep the saved
+    one"; for any other field, "cleared" — so the stored value is not filled
+    back in, and clearing a saved endpoint or TLS setting counts as a change.
+
+    Raises `InvalidAuthMethodError` when the provider rejects `auth_method`.
+    """
+    from enhancements.providers.registry import default_auth_method_for
+
+    config = get_openrag_config()
+    stored = config.providers.stored_credentials(enhancement.PROVIDER_KEY)
+    fields_for_auth_method = getattr(enhancement, "credential_fields_for_auth_method", None)
+    if callable(fields_for_auth_method):
+        stored_config = config.providers.get_provider_config(enhancement.PROVIDER_KEY)
+        method = (
+            auth_method
+            or getattr(stored_config, "auth_method", None)
+            or default_auth_method_for(enhancement.PROVIDER_KEY, stored)
+        )
+        if not method:
+            raise InvalidAuthMethodError("Choose an authentication method.")
+        try:
+            allowed = set(fields_for_auth_method(method))
+        except ValueError as exc:
+            raise InvalidAuthMethodError(str(exc)) from exc
+    else:
+        allowed = {str(field["key"]) for field in enhancement.CREDENTIAL_FIELDS}
+    secrets = secret_field_keys(enhancement.PROVIDER_KEY)
+    typed: dict[str, str] = {}
+    cleared: set[str] = set()
+    for name, value in submitted.items():
+        if name not in allowed:
+            continue
+        text = str(value).strip()
+        if text:
+            typed[name] = text
+        elif name not in secrets:
+            cleared.add(name)
+    # The same rule a save enforces (`set_credentials`), so discovery never
+    # reuses a secret that Submit would then refuse to.
+    retargeted = retargeted_credential_fields(stored, typed, cleared)
+    if retargeted:
+        # Names only: the values are endpoints, CA paths and possibly secrets.
+        logger.info(
+            "Draft credentials point at a new target; stored credentials are not reused",
+            provider=enhancement.PROVIDER_KEY,
+            fields=retargeted,
+        )
+        base: Mapping[str, str] = {}
+    else:
+        base = {name: value for name, value in stored.items() if name not in cleared}
+    return {name: value for name, value in {**base, **typed}.items() if name in allowed}
 
 
 def _models_error_response(exc: Exception) -> JSONResponse:
@@ -232,28 +317,7 @@ async def get_watsonx_onprem_spaces(
 
     request = body or WatsonxOnPremSpacesBody()
     try:
-        config = get_openrag_config()
-        stored_config = config.providers.get_provider_config(onprem.PROVIDER_KEY)
-        stored_credentials = config.providers.stored_credentials(onprem.PROVIDER_KEY)
-        auth_method = request.auth_method or getattr(stored_config, "auth_method", None)
-        if auth_method is None:
-            auth_method = (
-                "zen_api_key" if stored_credentials.get("zen_api_key") else "username_api_key"
-            )
-        allowed = onprem.credential_fields_for_auth_method(auth_method)
-        submitted = {
-            name: str(value).strip()
-            for name, value in request.credentials.items()
-            if name in allowed and str(value).strip()
-        }
-        target_changed = any(
-            name in submitted and submitted[name] != stored_credentials.get(name)
-            for name in ("api_base", "ssl_verify")
-        )
-        base = {} if target_changed else stored_credentials
-        credentials = {
-            name: value for name, value in {**base, **submitted}.items() if name in allowed
-        }
+        credentials = _draft_credentials(onprem, request.credentials, request.auth_method)
         spaces = await onprem.list_spaces(credentials)
         return JSONResponse(
             {"spaces": spaces},
@@ -274,10 +338,74 @@ async def get_watsonx_onprem_spaces(
         else:
             error = "Unable to list deployment spaces from the cluster."
         return JSONResponse({"error": error}, status_code=status_code)
+    except InvalidAuthMethodError as exc:
+        logger.warning(
+            "watsonx.ai on-prem space discovery named an unknown auth method",
+            detail=str(exc),
+        )
+        return JSONResponse({"error": _INVALID_AUTH_METHOD_ERROR}, status_code=400)
     except Exception as exc:
         logger.error("Failed to list watsonx.ai on-prem spaces", exc_info=exc)
         return JSONResponse(
             {"error": "Unable to list deployment spaces from the cluster."},
+            status_code=500,
+        )
+
+
+async def discover_provider_models(
+    provider: str,
+    body: ModelDiscoveryBody | None = None,
+    user: User = Depends(require_permission("providers:write")),
+):
+    """Models a cluster serves, asked with credentials that may not be saved yet.
+
+    POST /models/{provider}/discover. Onboarding calls this while the operator
+    is still filling the form: the catalogue only lists a cluster with *saved*
+    credentials, and a vLLM `--served-model-name` can be anything, so without it
+    the picker offers the configured fallback rather than what is deployed.
+
+    `kind` names the one picker the caller shows (each onboarding step shows
+    one), so a provider with a separate endpoint per kind asks only that one: an
+    unreachable embedding endpoint cannot stall the language step. Omitted, both
+    are asked.
+
+    Each half is null when that endpoint could not be listed or was not asked,
+    and the caller keeps the catalogue's rows for it.
+    """
+    from enhancements.providers.registry import list_cluster_models_for, model_discovery_for
+    from services.model_catalog import discovered_model_payload, supported_provider_keys
+
+    key = (provider or "").strip().lower()
+    enhancement = model_discovery_for(key)
+    if enhancement is None or key not in supported_provider_keys():
+        return JSONResponse(
+            {"error": "This provider cannot list its models."},
+            status_code=404,
+        )
+    request = body or ModelDiscoveryBody()
+    kind_label = request.kind or "both"
+    logger.info("Discovering provider models", provider=key, kind=kind_label)
+    try:
+        credentials = _draft_credentials(enhancement, request.credentials, request.auth_method)
+        listed = await list_cluster_models_for(enhancement, credentials, kind=request.kind)
+        return JSONResponse(
+            discovered_model_payload(key, listed),
+            headers={"Cache-Control": "no-store"},
+        )
+    except InvalidAuthMethodError as exc:
+        logger.warning(
+            "Model discovery named an unknown auth method",
+            provider=key,
+            kind=kind_label,
+            detail=str(exc),
+        )
+        return JSONResponse({"error": _INVALID_AUTH_METHOD_ERROR}, status_code=400)
+    except Exception as exc:
+        logger.error(
+            "Failed to discover provider models", provider=key, kind=kind_label, exc_info=exc
+        )
+        return JSONResponse(
+            {"error": "Unable to list models from the provider."},
             status_code=500,
         )
 

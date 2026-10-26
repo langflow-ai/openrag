@@ -4,7 +4,9 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { apiClient } from "@/lib/api-client";
 import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
+import { refreshModelCatalog } from "../queries/useGetModelsQuery";
 import { useUpdateOnboardingStateMutation } from "./useUpdateOnboardingStateMutation";
 
 export interface OnboardingVariables {
@@ -39,16 +41,13 @@ interface OnboardingResponse {
 async function submitOnboarding(
   variables: OnboardingVariables,
 ): Promise<OnboardingResponse> {
-  const response = await fetch("/api/onboarding", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(variables),
-  });
+  const response = await apiClient.post<OnboardingResponse>(
+    "/onboarding",
+    variables,
+  );
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
+  if (response.status < 200 || response.status >= 300) {
+    const error = (response.data ?? {}) as unknown as Record<string, unknown>;
     const raw =
       error && typeof error === "object" && typeof error.error === "string"
         ? error.error
@@ -56,7 +55,7 @@ async function submitOnboarding(
     throw new Error(formatProviderErrorMessage(raw));
   }
 
-  return response.json();
+  return response.data;
 }
 
 export const useOnboardingMutation = (
@@ -90,6 +89,12 @@ export const useOnboardingMutation = (
     onSettled: async (data, error, variables, onMutateResult, context) => {
       // Invalidate settings query to refetch updated onboarding state
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
+      // The catalogue lists a cluster-hosted provider with its saved
+      // credentials, which onboarding has just written. Not awaited: the
+      // catalogue route lists every cluster provider live, and the mutation
+      // stays pending until onSettled resolves, which would stall the
+      // embedding step's progress behind a slow cluster.
+      refreshModelCatalog(queryClient);
       await options?.onSettled?.(
         data,
         error,

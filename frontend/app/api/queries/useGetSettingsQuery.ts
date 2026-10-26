@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { FunctionCall } from "@/app/chat/_types/types";
+import { apiClient } from "@/lib/api-client";
 
 export interface AgentSettings {
   llm_model?: string;
@@ -112,9 +113,9 @@ export interface Settings {
 }
 
 export async function getSettings(): Promise<Settings> {
-  const response = await fetch("/api/settings");
-  if (response.ok) {
-    return await response.json();
+  const response = await apiClient.get<Settings>("/settings");
+  if (response.status >= 200 && response.status < 300) {
+    return response.data;
   } else {
     throw new Error("Failed to fetch settings");
   }

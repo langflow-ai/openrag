@@ -32,15 +32,17 @@ This guide will help you set up your development environment and start contribut
 
 ## Quickstart
 
-Get OpenRAG running in three commands:
+For active development, run the infrastructure in containers and the backend and frontend from your checkout:
 
 ```bash
 make check_tools  # Verify you have all prerequisites
 make setup        # Install dependencies and create .env
-make dev          # Start OpenRAG
+# Populate the required values in .env, then:
+make dev-local-cpu  # Start local development infrastructure
+# In separate terminals: make backend, make frontend, and make docling
 ```
 
-OpenRAG is now running locally on the following ports:
+OpenRAG is then running locally on the following ports:
 
 - **Frontend**: http://localhost:3000
 - **Langflow**: http://localhost:7860
@@ -155,27 +157,23 @@ You should see: `All required tools are installed.`
    make setup
    ```
 
-2. Configure the required environment variables before starting OpenRAG:
+2. Configure the required environment variables before starting OpenRAG. Start with `.env.example`; `make dev-local`, `make dev-local-cpu`, and the full-stack Make targets validate these values:
 
    ```env
-   OPENAI_API_KEY=
-   OPENSEARCH_PASSWORD=
    LANGFLOW_SUPERUSER=admin
    LANGFLOW_SUPERUSER_PASSWORD=
+   LANGFLOW_SECRET_KEY=
+   OPENSEARCH_PASSWORD=
    ```
 
+   Configure a model provider, such as `OPENAI_API_KEY`, as required for the functionality you want to use.
    The `OPENSEARCH_PASSWORD` must adhere to the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password).
 
-   If `LANGFLOW_SUPERUSER_PASSWORD` isn't set, then the Langflow instance starts without authentication enabled.
+   You can reuse the credentials and generated secrets from a `.env` created by the OpenRAG terminal UI. Do not reuse its `~/.openrag` path settings for checkout development: leave the repository-relative defaults in place for `OPENRAG_DOCUMENTS_PATH(S)`, `OPENRAG_KEYS_PATH`, `OPENRAG_FLOWS_PATH`, `OPENRAG_CONFIG_PATH`, `OPENRAG_DATA_PATH`, and `LANGFLOW_DATA_PATH`.
 
    For more information, see the [OpenRAG environment variables reference](https://docs.openr.ag/reference/configuration).
 
-3. Start OpenRAG using one of the options described in the next section.
-    ```bash
-    make dev      # With GPU support
-    # or
-    make dev-cpu  # CPU only
-    ```
+3. Start OpenRAG using one of the workflows described in the next section. For normal code changes, use [Local Development](#local-development-recommended-for-development).
 
 ---
 
@@ -184,13 +182,22 @@ You should see: `All required tools are installed.`
 There are multiple ways to start OpenRAG based on your use case:
 
 * Local development environment: Recommended for development.
-* Full Docker stack: Simple build that runs everything in containers. Not ideal for development. Best for testing the full system.
+* Full Docker stack: Run published images or build all images from the checkout. The latter is useful for testing the full system.
 * Branch development: Build OpenRAG with a fork or branch of the [Langflow repository](https://github.com/langflow-ai/langflow).
 * Docling only: Run the Docling service by itself.
 
-### Full Docker Stack (Simplest)
+### Keep terminal-managed versions and checked-out flows compatible
 
-Everything runs in containers. Best for testing the full system.
+When you run `uv run openrag` from this repository, the OpenRAG terminal UI reads the version from `pyproject.toml` (via the installed package metadata) and writes that value to `OPENRAG_VERSION` before it starts services. Docker Compose then uses that value to pull the OpenRAG images from Docker Hub.
+
+The flows used during development come from the checked-out source, not from those pulled images. Therefore, when starting services through `uv run openrag`, check out the release tag that matches the version in `pyproject.toml`. For example, a checkout containing version `0.5.0` must use the corresponding `0.5.0` release tag and images.
+
+> [!WARNING]
+> Do not run a newer or older branch's flows with a differently-versioned OpenRAG image. Flow components and their expected behavior can change between releases, so this mismatch can cause flows to fail or behave incorrectly.
+
+### Full Docker Stack (Published Images)
+
+Everything runs in containers using the image tag configured by `OPENRAG_VERSION` (or `OPENRAG_IMAGE_TAG`). This is convenient for running a released version, but it does not use local backend or frontend code.
 
 ```bash
 make dev          # Start with GPU support
@@ -198,15 +205,16 @@ make dev-cpu      # Start with CPU only
 make stop         # Stop and remove all containers
 ```
 
-### B) Local Development (Recommended for Development)
+### Local Development (Recommended for Development)
 
 > [!TIP]
 > This is the **recommended workflow** for active development. It provides faster code reloading and easier debugging.
 
-Run infrastructure in Docker, but backend/frontend locally for faster iteration.
+Run the infrastructure in Docker, but the backend and frontend from the current checkout. `make dev-local` and `make dev-local-cpu` rebuild the Langflow and OpenSearch images from the Dockerfiles in your branch, so the infrastructure stays aligned with the source you are developing.
 
 ```bash
-# Terminal 1: Start infrastructure (OpenSearch, Langflow, Dashboards)
+# Terminal 1: Start infrastructure (OpenSearch, Langflow, Dashboards).
+# Use make dev-local for GPU support.
 make dev-local-cpu
 
 # Terminal 2: Run backend locally
@@ -215,17 +223,68 @@ make backend
 # Terminal 3: Run frontend locally
 make frontend
 
-# Terminal 4 (optional): Start docling for document processing
+# Terminal 4: Start Docling for document processing
 make docling
 ```
 
-**Benefits:**
-- Faster code reloading
-- Direct access to logs and debugging
-- Easier testing and iteration
+The frontend automatically picks up changes. Restart `make backend` after backend changes.
 
 > [!TIP]
 > When running the backend with `make backend`, you can access the interactive API documentation at http://localhost:8000/docs.
+
+### Run two local OpenRAG instances
+
+Use this configuration only when you have **two separate clones** of the OpenRAG repository on the same machine and want to run both at the same time. Each clone has its own local files, including its Langflow database.
+
+> [!IMPORTANT]
+> Do not run two OpenRAG stacks from the same clone. Even with different ports and Compose project names, they share the local database and other state, so this configuration is unsupported.
+
+In the second clone, set a unique Compose project name and host ports in its `.env` file so its containers and services do not conflict with the first clone:
+
+```env
+# second OpenRAG clone: .env
+OPENRAG_BACKEND_PORT=8001
+COMPOSE_PROJECT_NAME=openrag-1
+
+FRONTEND_PORT=3001
+LANGFLOW_PORT=7861
+OPENSEARCH_PORT=9201
+OPENSEARCH_DASHBOARDS_PORT=5602
+OPENSEARCH_PERF_PORT=9601
+
+# Target the second frontend when running frontend end-to-end tests.
+BASE_URL=http://localhost:3001
+
+# Keep the Langflow link in the OpenRAG UI correct.
+LANGFLOW_PUBLIC_URL=http://localhost:7861
+```
+
+Start the second clone with the same local-development commands, from that clone's repository root:
+
+```bash
+make dev-local-cpu
+make backend
+make frontend
+```
+
+Both instances can use the same host Docling process; start it once with `make docling`.
+
+`BASE_URL` is used by the frontend end-to-end test tooling; it does not configure the running application.
+
+### Full Docker Stack (Build from This Checkout)
+
+To build and run every OpenRAG container from the current checkout, use a build target. The backend and frontend run in containers, so only Docling needs to be started separately on the host.
+
+```bash
+# GPU support
+make dev-build
+
+# Or CPU only
+make dev-build-cpu
+
+# In another terminal: start Docling
+make docling
+```
 
 ### C) Branch Development (Custom Langflow)
 
@@ -280,11 +339,12 @@ A quick-reference cheat sheet of the commands you'll reach for most while contri
 |---|---|
 | `make check_tools` | Verify Docker/Podman/Colima, Python, uv, Node.js, and npm are installed and meet version requirements. |
 | `make setup` | Install backend + frontend dependencies and scaffold `.env` from `.env.example`. Run once, and again after pulling changes that touch dependencies. |
-| `make dev` / `make dev-cpu` | Start the **full stack** in containers (GPU or CPU). Simplest option, best for just trying OpenRAG out — not ideal for iterating on code. |
-| `make dev-local-cpu` | Start **infra only** (OpenSearch, Dashboards, Langflow) in containers, with the backend/frontend run on the host. This is the recommended loop for active development — see [Local Development](#b-local-development-recommended-for-development). |
-| `make backend` | Run the FastAPI backend on the host (`uv run python src/main.py`), hot-reloading on code changes. Requires infra started via `make dev-local-cpu` first. |
-| `make frontend` | Run the Next.js frontend on the host (`npx next dev`), hot-reloading on code changes. |
-| `make docling` / `make docling-stop` | Start/stop the Docling service used for document parsing and OCR. |
+| `make dev` / `make dev-cpu` | Start the **full stack** from the configured published images (GPU or CPU). |
+| `make dev-build` / `make dev-build-cpu` | Build the complete stack from the current checkout, then run it in containers (GPU or CPU). Start Docling separately with `make docling`. |
+| `make dev-local` / `make dev-local-cpu` | Build and start **infra only** (OpenSearch, Dashboards, Langflow) with the source in the current checkout; run backend/frontend on the host. This is the recommended active-development loop — see [Local Development](#local-development-recommended-for-development). |
+| `make backend` | Run the FastAPI backend on the host (`uv run python src/main.py`). Restart it after backend changes. Requires infrastructure started via `make dev-local` or `make dev-local-cpu` first. |
+| `make frontend` | Run the Next.js frontend on the host (`npx next dev`), with automatic reload on changes. |
+| `make docling` / `make docling-stop` | Start/stop the host Docling service used for document parsing and OCR. |
 | `make dev-branch BRANCH=<name>` | Build and run the full stack with a custom Langflow branch instead of the published image — see [Branch Development](#c-branch-development-custom-langflow). |
 | `make stop` | Stop and remove all OpenRAG containers. |
 | `make clean` | Stop containers and delete volumes (data is wiped). |
@@ -351,13 +411,15 @@ make clear-os-data  # Clear OpenSearch data directory completely
 ### Full Factory Reset
 
 > [!CAUTION]
-> This will delete all data, containers, and volumes. Use only when you need a completely fresh start.
+> This stops and removes containers and volumes, then deletes local Langflow data, backend configuration and data, and generated JWT keys. Use only when you need a completely fresh start.
+
+Before resetting, stop any host `make backend` and `make frontend` processes with <kbd>Ctrl</kbd>+<kbd>C</kbd> in their terminals. `make factory-reset` stops the infrastructure containers, but it does not stop those host processes; leaving them running prevents the replacement backend and frontend from binding to their ports.
 
 ```bash
 make factory-reset  # Complete reset: containers, volumes, and data
 ```
 
-The reset also removes any legacy `opensearch-data` directory, so old OpenSearch index files do not linger after cleanup.
+After confirming the prompt, start the development workflow again with `make dev-local` or `make dev-local-cpu`, then run `make backend`, `make frontend`, and `make docling` in separate terminals.
 
 ---
 

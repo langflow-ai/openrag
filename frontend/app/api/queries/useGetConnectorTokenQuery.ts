@@ -1,4 +1,5 @@
 import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 interface TokenResponse {
   access_token: string;
@@ -26,18 +27,18 @@ export const useGetConnectorTokenQuery = (
         throw new Error("Connection ID is required for fetching token");
       }
 
-      let url = `/api/connectors/${connectorType}/token?connection_id=${connectionId}`;
+      let url = `/connectors/${connectorType}/token?connection_id=${connectionId}`;
       if (resource) {
         url += `&resource=${encodeURIComponent(resource)}`;
       }
 
-      const response = await fetch(url);
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+      const response = await apiClient.get<TokenResponse>(url);
+      if (response.status < 200 || response.status >= 300) {
+        const errorData = response.data ?? {};
         throw new Error(errorData.error || "Failed to fetch access token");
       }
 
-      return response.json();
+      return response.data;
     },
     enabled: !!connectorType && !!connectionId && (options?.enabled ?? true),
     staleTime: 1000 * 60 * 5, // 5 minutes

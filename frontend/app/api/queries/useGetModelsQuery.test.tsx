@@ -1,12 +1,19 @@
 /**
  * Tests for useGetModelsQuery.ts: the four per-provider model queries, the
- * provider-switching dispatcher, and the static model catalogue query.
+ * provider-switching dispatcher, the static model catalogue query, and the
+ * post-save catalogue refresh.
  */
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { server } from "@/test-utils/msw/server";
-import { createQueryWrapper, renderHook, waitFor } from "@/test-utils/render";
 import {
+  createQueryWrapper,
+  createTestQueryClient,
+  renderHook,
+  waitFor,
+} from "@/test-utils/render";
+import {
+  refreshModelCatalog,
   useGetAnthropicModelsQuery,
   useGetCurrentProviderModelsQuery,
   useGetIBMModelsQuery,
@@ -311,5 +318,82 @@ describe("useGetModelCatalogQuery", () => {
     expect(result.current.error?.message).toBe(
       "Failed to fetch the model catalogue",
     );
+  });
+});
+
+describe("refreshModelCatalog", () => {
+  const catalogWith = (model: string) => ({
+    providers: [
+      {
+        key: "rhoai",
+        name: "Red Hat OpenShift AI",
+        credential_fields: [],
+        model_placeholder: null,
+        models: [{ model, mode: "chat" }],
+        embedding_models: [],
+      },
+    ],
+  });
+
+  it("refetches even while the catalogue's first load is still in flight", async () => {
+    // Without the cancel, invalidation would join the pre-save request and
+    // staleTime: Infinity would keep its (stale) result indefinitely.
+    let catalogFetchCount = 0;
+    let releaseFirstLoad: () => void = () => {};
+    const firstLoadHeld = new Promise<void>((resolve) => {
+      releaseFirstLoad = resolve;
+    });
+    server.use(
+      http.get("/api/models/catalog", async () => {
+        catalogFetchCount += 1;
+        if (catalogFetchCount === 1) {
+          await firstLoadHeld;
+          return HttpResponse.json(catalogWith("granite-3.3-2b-instruct"));
+        }
+        return HttpResponse.json(catalogWith("gpt-oss-120b"));
+      }),
+    );
+
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(() => useGetModelCatalogQuery(), {
+      wrapper: createQueryWrapper({ queryClient }),
+    });
+
+    try {
+      await waitFor(() => expect(catalogFetchCount).toBe(1));
+      expect(result.current.data).toBeUndefined();
+
+      refreshModelCatalog(queryClient);
+
+      await waitFor(() => expect(catalogFetchCount).toBe(2));
+    } finally {
+      releaseFirstLoad();
+    }
+
+    await waitFor(() =>
+      expect(result.current.data?.providers[0].models[0].model).toBe(
+        "gpt-oss-120b",
+      ),
+    );
+    expect(result.current.isFetching).toBe(false);
+  });
+
+  it("warns instead of rejecting when the refresh itself fails", async () => {
+    const queryClient = createTestQueryClient();
+    const failure = new Error("cache unavailable");
+    vi.spyOn(queryClient, "cancelQueries").mockRejectedValueOnce(failure);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      refreshModelCatalog(queryClient);
+
+      await waitFor(() =>
+        expect(warn).toHaveBeenCalledWith(
+          "Failed to refresh the model catalogue after saving. Error: Error: cache unavailable.",
+        ),
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
