@@ -12,6 +12,7 @@ import {
   type IngestSettings,
   validateIngestSettingsOrToast,
 } from "@/components/cloud-picker/types";
+import { apiClient } from "@/lib/api-client";
 import { formatFileSize } from "@/lib/file-format";
 import { DuplicateHandlingDialog } from "./duplicate-handling-dialog";
 import { Badge } from "./ui/badge";
@@ -207,24 +208,16 @@ export function FileBrowserDialog({
 
     setIsCheckingDuplicates(true);
     try {
-      const checkResponse = await fetch(
-        `/api/connectors/${connectorType}/check-duplicates`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            connection_id: connectionId,
-            selected_files: filesPayload,
-          }),
-        },
+      const checkResponse = await apiClient.post(
+        `/connectors/${connectorType}/check-duplicates`,
+        { connection_id: connectionId, selected_files: filesPayload },
       );
 
-      if (!checkResponse.ok) {
+      if (checkResponse.status < 200 || checkResponse.status >= 300) {
         throw new Error(`Duplicate check failed: ${checkResponse.statusText}`);
       }
 
-      const checkData =
-        (await checkResponse.json()) as FileBrowserDuplicateCheckResponse;
+      const checkData = checkResponse.data as FileBrowserDuplicateCheckResponse;
       const duplicateNames = checkData.duplicate_names || [];
       const duplicateCount =
         typeof checkData.duplicate_count === "number"
@@ -245,10 +238,11 @@ export function FileBrowserDialog({
       setDuplicateDialogOpen(true);
     } catch (err) {
       console.error("[File Browser] Duplicate check failed:", err);
-      // Fallback: proceed without overwrite (backend will still skip
-      // exact-duplicate filenames on its own), unless we already know some
-      // selected files are stale re-ingests.
-      await submitSync(filesPayload, hasStale);
+      // Don't fall through to the sync: see shared-bucket-view. Ingesting
+      // without the answer silently skips every duplicate instead of asking.
+      toast.error("Could not check for existing files", {
+        description: "Nothing was ingested. Try again.",
+      });
     } finally {
       setIsCheckingDuplicates(false);
     }
@@ -472,13 +466,13 @@ function FileRow({
         </div>
       </div>
       {file.is_stale ? (
-        <Badge variant="outline" className="text-xs flex-shrink-0">
+        <Badge variant="outline" className="text-xs shrink-0">
           <RefreshCw className="h-3 w-3 mr-1" />
           Update available
         </Badge>
       ) : (
         file.is_ingested && (
-          <Badge variant="secondary" className="text-xs flex-shrink-0">
+          <Badge variant="secondary" className="text-xs shrink-0">
             <Check className="h-3 w-3 mr-1" />
             Ingested
           </Badge>

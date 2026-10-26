@@ -112,7 +112,7 @@ export function ComponentLogsModal({
                   </span>
                 </div>
                 {entry.detail && (
-                  <p className="text-[11px] text-zinc-400 mt-0.5 ml-0 break-all font-mono">
+                  <p className="text-xxs text-zinc-400 mt-0.5 ml-0 break-all font-mono">
                     {entry.detail}
                   </p>
                 )}
@@ -122,7 +122,7 @@ export function ComponentLogsModal({
         </div>
 
         <div className="px-4 py-2 border-t border-zinc-700/60">
-          <span className="text-[11px] text-zinc-500">
+          <span className="text-xxs text-zinc-500">
             {entries.length} entr{entries.length === 1 ? "y" : "ies"} (most
             recent 100)
           </span>

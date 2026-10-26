@@ -52,8 +52,8 @@ function Input({
         placeholder={placeholder}
         className={cn(
           "primary-input",
-          icon && "!pl-9",
-          (type === "password" || props.disabled) && "!pr-8",
+          icon && "pl-9!",
+          (type === "password" || props.disabled) && "pr-8!",
           icon ? inputClassName : className,
         )}
         ref={ref}

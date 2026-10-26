@@ -20,6 +20,7 @@ import {
 import { useTask } from "@/contexts/task-context";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
 import { trackProcessFailure, trackStartProcess } from "@/lib/analytics";
+import { apiClient } from "@/lib/api-client";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
 
 interface ConnectorDuplicateCheckResponse {
@@ -173,33 +174,26 @@ export default function UploadProviderPage() {
 
     setIsCheckingDuplicates(true);
     try {
-      const checkResponse = await fetch(
-        `/api/connectors/${connector.type}/check-duplicates`,
+      const checkResponse = await apiClient.post(
+        `/connectors/${connector.type}/check-duplicates`,
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            connection_id: connector.connectionId,
-            selected_files: selectedFiles.map((file) => ({
-              id: file.id,
-              name: file.name,
-              mimeType: file.mimeType,
-              downloadUrl: file.downloadUrl,
-              size: file.size,
-              isFolder: file.isFolder,
-            })),
-          }),
+          connection_id: connector.connectionId,
+          selected_files: selectedFiles.map((file) => ({
+            id: file.id,
+            name: file.name,
+            mimeType: file.mimeType,
+            downloadUrl: file.downloadUrl,
+            size: file.size,
+            isFolder: file.isFolder,
+          })),
         },
       );
 
-      if (!checkResponse.ok) {
+      if (checkResponse.status < 200 || checkResponse.status >= 300) {
         throw new Error(`Duplicate check failed: ${checkResponse.statusText}`);
       }
 
-      const checkData =
-        (await checkResponse.json()) as ConnectorDuplicateCheckResponse;
+      const checkData = checkResponse.data as ConnectorDuplicateCheckResponse;
       const duplicateNames = checkData.duplicate_names || [];
       const duplicateCount =
         typeof checkData.duplicate_count === "number"
@@ -223,8 +217,11 @@ export default function UploadProviderPage() {
       setDuplicateDialogOpen(true);
     } catch (err) {
       console.error("[Connector Sync] Duplicate check failed:", err);
-      // Fallback: proceed without overwrite
-      submitSync(connector, selectedFiles, false);
+      // Don't fall through to the sync: see shared-bucket-view. Ingesting
+      // without the answer silently skips every duplicate instead of asking.
+      toast.error("Could not check for existing files", {
+        description: "Nothing was ingested. Try again.",
+      });
     } finally {
       setIsCheckingDuplicates(false);
     }

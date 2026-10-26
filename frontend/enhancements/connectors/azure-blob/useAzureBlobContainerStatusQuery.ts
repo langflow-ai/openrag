@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 export interface AzureBlobContainerStatus {
   name: string;
@@ -9,15 +10,14 @@ export interface AzureBlobContainerStatus {
 async function fetchAzureBlobContainerStatus(
   connectionId: string,
 ): Promise<AzureBlobContainerStatus[]> {
-  const res = await fetch(
-    `/api/connectors/azure_blob/${connectionId}/container-status`,
+  const res = await apiClient.get<{ containers: AzureBlobContainerStatus[] }>(
+    `/connectors/azure_blob/${connectionId}/container-status`,
   );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
+  if (res.status < 200 || res.status >= 300) {
+    const err = (res.data ?? {}) as { error?: string };
     throw new Error(err.error || "Failed to fetch container status");
   }
-  const data = await res.json();
-  return data.containers as AzureBlobContainerStatus[];
+  return res.data.containers;
 }
 
 export function useAzureBlobContainerStatusQuery(

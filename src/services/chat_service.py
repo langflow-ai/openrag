@@ -933,8 +933,20 @@ class ChatService:
     async def delete_session(self, user_id: str, session_id: str):
         """Delete a session from both local storage and Langflow"""
         try:
-            # Delete from local conversation storage
+            # Resolve the complete, owned group before removing any associations.
             from agent import delete_user_conversation
+            from services.session_ownership_service import session_ownership_service
+
+            session_ids = await session_ownership_service.get_conversation_sessions(
+                user_id, session_id
+            )
+
+            # Attempt every upstream deletion first: local revocation failures
+            # must not erase JSON-only aliases before their cleanup is attempted.
+            upstream_results = [
+                await self._delete_langflow_session(owned_id) for owned_id in session_ids
+            ]
+            langflow_deleted = bool(upstream_results) and all(upstream_results)
 
             local_deleted = await delete_user_conversation(user_id, session_id)
 
@@ -944,9 +956,6 @@ class ChatService:
                     "not_found": True,
                     "error": "Conversation not found",
                 }
-
-            # Delete from Langflow using the monitor API (best-effort)
-            langflow_deleted = await self._delete_langflow_session(session_id)
 
             return {
                 "success": True,

@@ -16,6 +16,7 @@ import {
   getConnectorDescriptor,
   getConnectorDescriptors,
 } from "@/lib/connectors/registry";
+import { frontendUrl } from "@/lib/frontend-base-path";
 import ConnectorCard, { type Connector } from "./connector-card";
 import ConnectorsSkeleton from "./connectors-skeleton";
 import PluginSettingsDialog from "./plugin-settings-dialog";
@@ -70,7 +71,7 @@ export default function ConnectorCards() {
   const handleConnect = async (connector: Connector) => {
     connectMutation.mutate({
       connector: connector as unknown as QueryConnector,
-      redirectUri: `${window.location.origin}/auth/callback`,
+      redirectUri: frontendUrl("/auth/callback"),
     });
   };
 

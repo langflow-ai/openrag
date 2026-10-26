@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { apiClient } from "@/lib/api-client";
 import { type S3FormData, S3SettingsForm } from "./s3-settings-form";
 
 interface S3SettingsDialogProps {
@@ -83,11 +84,12 @@ export default function S3SettingsDialog({
         connection_id: defaults?.connection_id ?? undefined,
       });
 
-      const res = await fetch(
-        `/api/connectors/aws_s3/${result.connection_id}/buckets`,
+      const res = await apiClient.get(
+        `/connectors/aws_s3/${result.connection_id}/buckets`,
       );
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to list buckets");
+      const json = res.data;
+      if (res.status < 200 || res.status >= 300)
+        throw new Error(json.error || "Failed to list buckets");
 
       const fetchedBuckets: string[] = json.buckets;
       setBuckets(fetchedBuckets);
@@ -115,8 +117,8 @@ export default function S3SettingsDialog({
       const latestDefaults = await queryClient.fetchQuery({
         queryKey: ["s3-defaults"],
         queryFn: async () => {
-          const res = await fetch("/api/connectors/aws_s3/defaults");
-          return res.json();
+          const res = await apiClient.get("/connectors/aws_s3/defaults");
+          return res.data;
         },
         staleTime: 0,
       });

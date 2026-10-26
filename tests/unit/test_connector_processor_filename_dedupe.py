@@ -80,6 +80,7 @@ def _build_connector_processor(replace_duplicates: bool) -> ConnectorFileProcess
         document_service=document_service,
         models_service=MagicMock(),
         replace_duplicates=replace_duplicates,
+        allow_anonymous_delete=True,
     )
 
 

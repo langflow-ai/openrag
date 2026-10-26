@@ -29,7 +29,7 @@ export function TaskCollapsibleSection<T>({
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center justify-between text-left hover:bg-muted/60 transition-colors !mt-0 p-4 border-t border-muted"
+        className="w-full flex items-center justify-between text-left hover:bg-muted/60 transition-colors mt-0! p-4 border-t border-muted"
       >
         <h3 className="font-semibold text-sm flex items-center gap-2 text-muted-foreground">
           {title}

@@ -10,6 +10,7 @@
  *   formatAvgScoreLabel   — avg-score cell number / dash formatting
  *   formatChunkCountLabel — chunk-count cell number / dash formatting
  *   resolveDisplayStatus  — failed→cancelled promotion for cancelled files
+ *   getSourceIcon         — registry icon, url/docs, s3 and default fallbacks
  *
  * SearchPage render smoke-test — exercises the column-definition object
  * construction (colOwner, colChunks, colAvgScore, colStatus, colActions, …)
@@ -35,6 +36,7 @@ import ProtectedSearchPage, {
   getFileStatus,
   getOwnerLabel,
   getSkippedWarningText,
+  getSourceIcon,
   getStatusSortRank,
   isSkippedStatus,
   resolveActionsVariant,
@@ -67,6 +69,35 @@ describe("getStatusSortRank", () => {
     expect(getStatusSortRank("skipped")).toBeLessThan(
       getStatusSortRank("cancelled"),
     );
+  });
+});
+
+describe("getSourceIcon", () => {
+  const renderIcon = (connectorType?: string) =>
+    render(<>{getSourceIcon(connectorType)}</>).container.querySelector("svg");
+
+  it("uses the registry icon for a registered connector", () => {
+    const icon = renderIcon("google_drive");
+    expect(icon).toHaveClass("text-foreground", "shrink-0");
+  });
+
+  it("renders a muted globe for url and openrag_docs sources", () => {
+    for (const type of ["url", "openrag_docs"]) {
+      const icon = renderIcon(type);
+      expect(icon).toHaveClass("lucide-globe", "text-muted-foreground");
+    }
+  });
+
+  it("renders a cloud for legacy s3 sources", () => {
+    expect(renderIcon("s3")).toHaveClass("lucide-cloud", "shrink-0");
+  });
+
+  it("falls back to a muted file icon for unknown or missing types", () => {
+    for (const type of [undefined, "local"]) {
+      const icon = renderIcon(type);
+      expect(icon).toHaveClass("text-muted-foreground", "shrink-0");
+      expect(icon).not.toHaveClass("lucide-globe");
+    }
   });
 });
 
@@ -307,6 +338,27 @@ describe("StatusCellContent", () => {
     setRecentTasksExpanded: noop,
   };
 
+  it("renders a file skipped for a duplicate filename without crashing", () => {
+    // The row a blocked overwrite leaves behind: skipped, but not for
+    // duplicate_content, so it falls past SkippedStatusCell to the plain
+    // badge. "skipped" had no entry there, and the throw took the whole
+    // knowledge view down (tracker #92808).
+    render(
+      <TooltipProvider>
+        <StatusCellContent
+          {...baseProps}
+          data={f({
+            status: "skipped",
+            skip_reason: "duplicate_filename",
+            warning: "A file with this name already exists.",
+          })}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(screen.getByText("Skipped")).toBeTruthy();
+  });
+
   it("renders a StatusBadge for an active file", () => {
     render(
       <TooltipProvider>
@@ -325,6 +377,18 @@ describe("StatusCellContent", () => {
       </TooltipProvider>,
     );
     expect(container.textContent?.toLowerCase()).toContain("cancel");
+  });
+
+  it("renders a Skipped badge for skip reasons other than duplicate content", () => {
+    render(
+      <TooltipProvider>
+        <StatusCellContent
+          {...baseProps}
+          data={f({ status: "skipped", skip_reason: "duplicate_filename" })}
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.getByText("Skipped")).toBeInTheDocument();
   });
 
   it("renders the Refreshing indicator when hasOpenragRefreshCue and isOpenragDocsRow", () => {

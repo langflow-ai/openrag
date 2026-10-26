@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { apiClient } from "@/lib/api-client";
 import type {
   Connector,
   ConnectorsMutationContext,
@@ -16,20 +17,17 @@ export const useDisconnectConnectorMutation = () => {
 
   return useMutation({
     mutationFn: async (connector: Connector) => {
-      const response = await fetch(
-        `/api/connectors/${connector.type}/disconnect`,
-        {
-          method: "DELETE",
-        },
+      const response = await apiClient.delete(
+        `/connectors/${connector.type}/disconnect`,
       );
 
-      if (!response.ok) {
-        const result = await response.json();
+      if (response.status < 200 || response.status >= 300) {
+        const result = response.data ?? {};
         throw new Error(
           result.error || `Failed to disconnect ${connector.name}`,
         );
       }
-      return response.json();
+      return response.data;
     },
     onMutate: async (connector): Promise<ConnectorsMutationContext> => {
       await queryClient.cancelQueries(connectorsQueryFilter);

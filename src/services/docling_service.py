@@ -53,6 +53,18 @@ class DoclingTransientError(DoclingServeError):
     """Raised for errors that may resolve on retry (network failures, 5xx)."""
 
 
+class DoclingPayloadTooLarge(DoclingServeError):
+    """The proxy in front of docling-serve rejected the file body (HTTP 413).
+
+    ``str(self)`` is the line shown to users. ``operator_detail`` keeps the
+    internal endpoint for logs.
+    """
+
+    def __init__(self, message: str, *, operator_detail: str | None = None):
+        super().__init__(message)
+        self.operator_detail = operator_detail
+
+
 class DoclingTaskState(StrEnum):
     """Result of a single status check against Docling Serve."""
 
@@ -112,6 +124,30 @@ OCR_LANGUAGE_CODES: dict[str, dict[str, str]] = {
         "ar": "ar",
     },
 }
+
+
+def strip_provider_prefix(model: str, provider: str) -> str:
+    """The bare model name from a possibly provider-tagged VLM id.
+
+    `knowledge.vlm_provider` and `knowledge.vlm_model` are separate fields, so
+    the model is usually already bare. It is not always: a tagged id can reach
+    here from config written by hand or carried over from a picker.
+
+    Both separators are accepted. `:` is the canonical one
+    (`llm_gateway.PROVIDER_SEPARATOR`, and the one embedding-space ids use);
+    `/` is the legacy form kept working elsewhere in the codebase. Only `/`
+    used to be stripped, so an id stored as `azure_ai:gpt-4o` was sent to the
+    provider with the prefix still attached — a model name no deployment has.
+    """
+    name = (model or "").strip()
+    key = (provider or "").strip().lower()
+    if not name or not key:
+        return name
+    for separator in (":", "/"):
+        prefix = f"{key}{separator}"
+        if name.lower().startswith(prefix):
+            return name[len(prefix) :]
+    return name
 
 
 def resolve_ocr_languages(engine: str, languages: list[str]) -> list[str]:
@@ -311,6 +347,23 @@ class DoclingService:
             options["include_images"] = True
 
         # If picture descriptions are enabled, configure custom/local VLM model
+        #
+        # Trust boundary: every `picture_description_api` block below hands the
+        # provider's own credential to docling-serve, which then calls the model
+        # endpoint directly — OpenRAG is not in the path of that request and
+        # does not proxy it. This is how remote VLM has always worked here and
+        # is not specific to Azure, but it means docling-serve is inside the
+        # blast radius of any provider key configured for VLM. Two consequences
+        # worth keeping in mind:
+        #
+        # - these options must never be logged. The credential is a value in
+        #   `headers`, so logging the options dict, or echoing it into an error,
+        #   leaks the key. `DoclingServeError` messages below are written to
+        #   name the *field* that is wrong, never its value.
+        # - a short-lived credential would add an expiry problem on top of the
+        #   trust one, since docling-serve holds whatever it is given for the
+        #   life of the conversion. That is part of why Microsoft Entra
+        #   authentication is not wired through here; see the Azure branches.
         if is_pic_desc_enabled and knowledge_config.vlm_enabled:
             provider = knowledge_config.vlm_provider
             vlm_model = knowledge_config.vlm_model
@@ -395,12 +448,12 @@ class DoclingService:
                 if not (api_key and endpoint):
                     raise DoclingServeError(
                         "Docling VLM is enabled but the Azure provider is not configured "
-                        "(api key and endpoint are required)"
+                        "(an API key and endpoint are required)"
                     )
                 parsed = urlparse(endpoint)
                 if parsed.scheme.lower() != "https" or not parsed.netloc:
                     raise DoclingServeError("Azure VLM endpoint must use HTTPS")
-                deployment = vlm_model.removeprefix("azure/")
+                deployment = strip_provider_prefix(vlm_model, "azure")
                 url = (
                     f"{endpoint.rstrip('/')}/openai/deployments/{deployment}/chat/completions"
                     f"?api-version={api_version}"
@@ -415,27 +468,62 @@ class DoclingService:
                     "prompt": prompt,
                 }
             elif provider == "azure_ai":
-                # Azure AI Foundry, not the Azure OpenAI Service above: its
-                # api_base already points at the `/models` route and the chat
-                # endpoint hangs directly off it. Without this branch a Foundry
-                # VLM fell through to the OpenAI default and was called with
-                # OpenAI credentials it does not have.
+                # Azure AI Foundry, not the Azure OpenAI Service above. Which
+                # path the chat endpoint hangs off depends on which surface the
+                # operator configured, so the endpoint is classified rather
+                # than assumed — see `enhancements/providers/azure/foundry.py`.
+                # Without this branch a Foundry VLM fell through to the OpenAI
+                # default and was called with OpenAI credentials it does not
+                # have.
+                from enhancements.providers.azure import foundry
+
                 creds = config.providers.credential_values("azure_ai")
                 api_key = creds.get("api_key")
-                endpoint = creds.get("api_base")
+                endpoint = foundry.normalized_api_base(creds.get("api_base"))
                 api_version = creds.get("api_version")
                 if not (api_key and endpoint):
                     raise DoclingServeError(
                         "Docling VLM is enabled but the Azure AI Foundry provider is not "
-                        "configured (api key and endpoint are required)"
+                        "configured (an API key and endpoint are required)"
                     )
                 parsed = urlparse(endpoint)
                 if parsed.scheme.lower() != "https" or not parsed.netloc:
                     raise DoclingServeError("Azure AI Foundry VLM endpoint must use HTTPS")
-                model_id = vlm_model.removeprefix("azure_ai/")
-                url = f"{endpoint.rstrip('/')}/chat/completions"
-                if api_version:
+
+                profile = foundry.endpoint_profile(endpoint)
+                if profile == "unknown":
+                    raise DoclingServeError(
+                        f"Docling VLM cannot use this Azure AI Foundry endpoint. "
+                        f"{foundry.UNSUPPORTED_ENDPOINT_MESSAGE}"
+                    )
+                if profile == "legacy_deployment_uri":
+                    # A per-deployment Target URI. The gateway still routes this
+                    # shape, for installs configured before it was refused at
+                    # save time, but VLM cannot use it: the URI pins the call to
+                    # the one deployment baked into it, so the model chosen in
+                    # the picker is silently ignored. The version this API dates
+                    # itself with is dropped by normalization too, so the URL
+                    # built from it would be rejected upstream regardless —
+                    # refused here, where it can still be read as a
+                    # configuration error rather than an ingestion failure.
+                    raise DoclingServeError(
+                        f"Docling VLM cannot use this Azure AI Foundry endpoint. "
+                        f"{foundry.DEPLOYMENT_URI_MESSAGE}"
+                    )
+                chat_base = endpoint
+                if profile == "legacy_models" and not endpoint.rstrip("/").endswith("/models"):
+                    # The resource root on the legacy surface: inference hangs
+                    # off `/models`, which is what LiteLLM appends for the same
+                    # configuration. Appending it here keeps the VLM call and
+                    # the gateway call pointing at the same place.
+                    chat_base = f"{endpoint.rstrip('/')}/models"
+                url = f"{chat_base.rstrip('/')}/chat/completions"
+                # `api-version` dates the legacy API only; the v1 surface is
+                # versionless and ignores it at best.
+                if api_version and profile == "legacy_models":
                     url = f"{url}?api-version={api_version}"
+
+                model_id = strip_provider_prefix(vlm_model, "azure_ai")
                 options["picture_description_api"] = {
                     "url": url,
                     "headers": {"api-key": api_key},
@@ -487,6 +575,17 @@ class DoclingService:
         """
         Upload a file to Docling Serve asynchronously using direct multipart/form-data upload.
         """
+        from utils.upload_limits import (
+            docling_payload_too_large_message,
+            docling_rejected_size_message,
+            ensure_within_upload_limit,
+            format_byte_size,
+            max_upload_mb,
+        )
+
+        ensure_within_upload_limit(filename, len(file_content))
+        endpoint = f"{self.docling_url}/v1/convert/file/async"
+
         options = await self._build_docling_options_async(
             ocr_override=ocr,
             picture_descriptions_override=picture_descriptions,
@@ -516,24 +615,38 @@ class DoclingService:
             if should_close:
                 async with client:
                     response = await client.post(
-                        f"{self.docling_url}/v1/convert/file/async",
+                        endpoint,
                         files=files,
                         data=data,
                         headers=headers,
                     )
             else:
                 response = await client.post(
-                    f"{self.docling_url}/v1/convert/file/async",
+                    endpoint,
                     files=files,
                     data=data,
                     headers=headers,
                 )
 
+            if response.status_code == 413:
+                size_bytes = len(file_content)
+                raise DoclingPayloadTooLarge(
+                    docling_rejected_size_message(
+                        filename, format_byte_size(size_bytes), max_upload_mb()
+                    ),
+                    operator_detail=docling_payload_too_large_message(
+                        filename, size_bytes, endpoint
+                    ),
+                )
             response.raise_for_status()
             task = response.json()
             return task["task_id"]
         except Exception as e:
-            logger.error("Docling upload failed", filename=filename, error=str(e))
+            logger.error(
+                "Docling upload failed",
+                filename=filename,
+                error=getattr(e, "operator_detail", None) or str(e),
+            )
             raise
 
     async def get_docling_result_async(
