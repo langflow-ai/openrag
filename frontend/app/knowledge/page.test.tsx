@@ -574,4 +574,74 @@ describe("SearchPage — column-definition smoke-test", () => {
       ).not.toBeNull(),
     );
   });
+
+  describe("Failed documents button", () => {
+    const pageHandlers = (failures: unknown[]) => [
+      http.get("/api/files", () =>
+        HttpResponse.json({
+          files: [],
+          total: 0,
+          is_approximate: false,
+          page: 1,
+          page_size: 20,
+          after_key: null,
+        }),
+      ),
+      http.post("/api/search", () =>
+        HttpResponse.json({ files: [], warnings: [] }),
+      ),
+      http.get("/api/upload_options", () => HttpResponse.json({})),
+      http.get("/api/connectors", () => HttpResponse.json({ connectors: [] })),
+      http.get("/api/connectors/:name/defaults", () => HttpResponse.json({})),
+      http.get("/api/connectors/failed-ingestions", () =>
+        HttpResponse.json({ max_attempts: 3, failures }),
+      ),
+    ];
+
+    const failure = {
+      connector_type: "aws_s3",
+      file_id: "bucket::docs/broken.docx",
+      filename: "broken.docx",
+      last_error: "corrupt file",
+      attempt_count: 3,
+      skipped: true,
+      first_failed_at: "2026-01-01T00:00:00+00:00",
+      last_failed_at: "2026-01-02T00:00:00+00:00",
+    };
+
+    it("shows the count and opens the failed documents dialog", async () => {
+      setMockLocation({ pathname: "/knowledge" });
+
+      renderWithProviders(<ProtectedSearchPage />, {
+        providers: "all",
+        auth: authPresets.admin,
+        handlers: pageHandlers([failure]),
+      });
+
+      const button = await screen.findByRole("button", {
+        name: /failed documents \(1\)/i,
+      });
+      await userEvent.click(button);
+
+      expect(
+        await screen.findByRole("heading", { name: /^failed documents$/i }),
+      ).toBeInTheDocument();
+      expect(await screen.findByText("corrupt file")).toBeInTheDocument();
+    });
+
+    it("hides the button when nothing has failed", async () => {
+      setMockLocation({ pathname: "/knowledge" });
+
+      renderWithProviders(<ProtectedSearchPage />, {
+        providers: "all",
+        auth: authPresets.admin,
+        handlers: pageHandlers([]),
+      });
+
+      await screen.findByRole("heading", { name: /knowledge/i });
+      expect(
+        screen.queryByRole("button", { name: /failed documents/i }),
+      ).toBeNull();
+    });
+  });
 });
