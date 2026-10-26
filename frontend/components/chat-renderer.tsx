@@ -446,7 +446,7 @@ export function ChatRenderer({
 
       <main
         className={cn(
-          "overflow-hidden flex-1 min-w-0 flex items-center justify-center relative",
+          "overflow-auto flex-1 min-w-0 flex items-center justify-center relative",
           isSelectingChats && "relative",
         )}
       >
@@ -491,7 +491,7 @@ export function ChatRenderer({
           </>
         )}
         {isSelectingChats && (
-          <div className="absolute inset-0 z-10 backdrop-blur-sm bg-background/60 flex items-center justify-center">
+          <div className="absolute inset-0 z-10 backdrop-blur-xs bg-background/60 flex items-center justify-center">
             <div className="flex flex-col items-center gap-3 text-center px-8">
               <div className="p-4 rounded-xl bg-muted">
                 <File className="h-8 w-8 text-muted-foreground" />
@@ -525,7 +525,7 @@ export function ChatRenderer({
               : { width: "min(850px, 100vw)", height: "800px" }
           }
           className={cn(
-            "flex h-full w-full max-w-full max-h-full items-center justify-center overflow-y-auto overflow-x-hidden",
+            "flex h-full w-full max-w-full max-h-full items-center justify-center overflow-auto",
             !showLayout &&
               "max-h-[calc(100vh-190px)] shadow-[0px_2px_4px_-2px_#0000001A,0px_4px_6px_-1px_#0000001A]",
             showLayout && !isOnChatPage && "bg-background",
@@ -533,7 +533,7 @@ export function ChatRenderer({
         >
           <div
             className={cn(
-              "h-full bg-background w-full min-w-0 overflow-x-hidden",
+              "h-full bg-background w-full min-w-0",
               showLayout && !isOnChatPage && "p-6 container",
               showLayout && isSmallWidthPath && "max-w-content mx-auto",
               !showLayout && "p-0 py-2",

@@ -308,6 +308,94 @@ async def test_watsonx_space_listing_hides_upstream_error_details(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_watsonx_space_listing_infers_the_auth_method_from_a_saved_zen_key(monkeypatch):
+    from config.config_manager import (
+        AnthropicConfig,
+        GenericProviderConfig,
+        OllamaConfig,
+        OpenAIConfig,
+        ProvidersConfig,
+        WatsonXConfig,
+    )
+    from enhancements.providers.watsonx import onprem
+
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+        custom={
+            onprem.PROVIDER_KEY: GenericProviderConfig(
+                credentials={
+                    "api_base": "https://cpd.example.com",
+                    "zen_api_key": "saved-zen",
+                },
+                configured=True,
+            )
+        },
+    )
+    monkeypatch.setattr(
+        models_api,
+        "get_openrag_config",
+        lambda: SimpleNamespace(providers=providers),
+    )
+    seen = {}
+
+    async def _list_spaces(credentials):
+        seen.update(credentials)
+        return []
+
+    monkeypatch.setattr(onprem, "list_spaces", _list_spaces)
+
+    response = await models_api.get_watsonx_onprem_spaces(
+        body=models_api.WatsonxOnPremSpacesBody(credentials={"username": "typed-user"}),
+        user=SimpleNamespace(),
+    )
+
+    assert response.status_code == 200
+    # Zen fields apply, so the username typed for the other method is dropped.
+    assert seen == {"api_base": "https://cpd.example.com", "zen_api_key": "saved-zen"}
+
+
+@pytest.mark.asyncio
+async def test_watsonx_space_listing_rejects_an_unknown_auth_method(monkeypatch):
+    from config.config_manager import (
+        AnthropicConfig,
+        OllamaConfig,
+        OpenAIConfig,
+        ProvidersConfig,
+        WatsonXConfig,
+    )
+    from enhancements.providers.watsonx import onprem
+
+    providers = ProvidersConfig(
+        openai=OpenAIConfig(),
+        anthropic=AnthropicConfig(),
+        watsonx=WatsonXConfig(),
+        ollama=OllamaConfig(),
+    )
+    monkeypatch.setattr(
+        models_api,
+        "get_openrag_config",
+        lambda: SimpleNamespace(providers=providers),
+    )
+    list_spaces = AsyncMock(return_value=[])
+    monkeypatch.setattr(onprem, "list_spaces", list_spaces)
+
+    response = await models_api.get_watsonx_onprem_spaces(
+        body=models_api.WatsonxOnPremSpacesBody(
+            credentials={"api_base": "https://cpd.example.com"},
+            auth_method="bogus",
+        ),
+        user=SimpleNamespace(),
+    )
+
+    assert response.status_code == 400
+    assert json.loads(response.body) == {"error": models_api._INVALID_AUTH_METHOD_ERROR}
+    list_spaces.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_get_model_catalog_returns_only_supported_providers():
     """The catalogue publishes exactly what this run mode's config exposes.
 

@@ -9,6 +9,7 @@ import {
 } from "@/app/api/queries/useGetConnectorsQuery";
 import { useAuth } from "@/contexts/auth-context";
 import { useBrand } from "@/contexts/brand-context";
+import { apiClient } from "@/lib/api-client";
 import { IBM_THEME_DEV } from "@/lib/brand";
 
 function parseApiError(
@@ -46,20 +47,15 @@ export function DevRoleToggle() {
 
   const mutation = useMutation({
     mutationFn: async (role: string) => {
-      const response = await fetch("/api/users/me/dev-role", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role }),
-        credentials: "include",
-      });
-      if (!response.ok) {
-        const result = (await response.json().catch(() => ({}))) as Record<
-          string,
-          unknown
-        >;
+      const response = await apiClient.post<{ role?: string }>(
+        "/users/me/dev-role",
+        { role },
+      );
+      if (response.status < 200 || response.status >= 300) {
+        const result = (response.data ?? {}) as Record<string, unknown>;
         throw new Error(parseApiError(result, response.status));
       }
-      return response.json() as Promise<{ role?: string }>;
+      return response.data;
     },
     onSuccess: async (data) => {
       await Promise.all([
@@ -97,7 +93,7 @@ export function DevRoleToggle() {
           key={role.value}
           type="button"
           disabled={mutation.isPending}
-          className={`px-2 h-6 rounded-full text-[11px] font-medium transition-colors disabled:opacity-50 ${
+          className={`px-2 h-6 rounded-full text-xxs font-medium transition-colors disabled:opacity-50 ${
             currentRole === role.value
               ? "bg-blue-600 text-white"
               : "text-foreground hover:bg-blue-600 hover:text-white"

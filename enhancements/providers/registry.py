@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from types import ModuleType
 from typing import Any, Literal
 
+from enhancements.providers.azure import foundry
 from enhancements.providers.redhat import openshift_ai
 from enhancements.providers.watsonx import onprem
 
@@ -21,6 +22,7 @@ CallKind = Literal["chat", "embedding"]
 _ENHANCEMENTS: dict[str, ModuleType] = {
     onprem.PROVIDER_KEY: onprem,
     openshift_ai.PROVIDER_KEY: openshift_ai,
+    foundry.PROVIDER_KEY: foundry,
 }
 
 
@@ -30,12 +32,42 @@ def get(provider: str) -> ModuleType | None:
 
 
 def route_aliases() -> dict[str, str]:
-    """OpenRAG provider keys that LiteLLM must route under another key."""
+    """OpenRAG provider keys that LiteLLM must route under another key.
+
+    The *static* half of routing: one alias per provider, fixed at import. A
+    provider whose route depends on how it was configured declares
+    `litellm_route` as well — see `litellm_route_for`. This mapping is still
+    what that provider falls back to, so it must stay the safe default.
+    """
     return {
         key: enhancement.LITELLM_PROVIDER
         for key, enhancement in _ENHANCEMENTS.items()
         if hasattr(enhancement, "LITELLM_PROVIDER")
     }
+
+
+def litellm_route_for(provider: str, stored: Mapping[str, Any] | None) -> str | None:
+    """The LiteLLM key `provider` routes as *for this configuration*.
+
+    Most providers reach one API one way, and `LITELLM_PROVIDER` says which.
+    Azure AI Foundry does not: the endpoint an operator pastes decides which
+    LiteLLM transport can even produce a correct URL for it, so the route has
+    to be recomputed per configuration rather than fixed at import.
+
+    Returns `None` when `provider` has no enhancement or the enhancement has
+    nothing to say, leaving the caller on the static alias.
+    """
+    enhancement = get(provider)
+    if enhancement is None:
+        return None
+    resolve = getattr(enhancement, "litellm_route", None)
+    if resolve is None:
+        return getattr(enhancement, "LITELLM_PROVIDER", None)
+    # Deliberately not guarded. A hook that raises is reporting a configuration
+    # it cannot route, and quietly substituting the static alias would turn
+    # that into a wrong request rather than a clear error — the caller decides
+    # how to surface it.
+    return resolve(stored or {}) or None
 
 
 def credential_field_overrides() -> dict[str, list[dict[str, object]]]:
@@ -50,6 +82,39 @@ def credential_field_overrides() -> dict[str, list[dict[str, object]]]:
 def enhancements() -> tuple[ModuleType, ...]:
     """All registered enhancements, for generic catalogue refreshes."""
     return tuple(_ENHANCEMENTS.values())
+
+
+def model_discovery_for(provider: str) -> ModuleType | None:
+    """The enhancement that can list `provider`'s models from unsaved credentials.
+
+    The optional `list_cluster_models(credentials)` member of the contract: the
+    same listing `fetch_models()` caches, without the cache, for a form that is
+    asking what a cluster serves before anything is saved. None when the
+    provider has no enhancement or the enhancement cannot list its own models.
+    """
+    enhancement = get(provider)
+    if enhancement is None or not callable(getattr(enhancement, "list_cluster_models", None)):
+        return None
+    return enhancement
+
+
+async def list_cluster_models_for(
+    enhancement: ModuleType,
+    credentials: Mapping[str, Any],
+    *,
+    kind: CallKind | None = None,
+) -> Any:
+    """Call the module's `list_cluster_models`, narrowed to one picker if it can be.
+
+    `kind` follows the same rule as in `credentials_for`: it is passed only to a
+    module whose hook declares it. Red Hat OpenShift AI lists chat and embedding
+    models from two endpoints and uses it to ask only the one a picker needs; a
+    single-endpoint provider (watsonx.ai on-prem) lists everything at once and
+    is called without it. None asks for both pickers.
+    """
+    if kind is not None and _hook_accepts_kind(enhancement, "list_cluster_models"):
+        return await enhancement.list_cluster_models(credentials, kind=kind)
+    return await enhancement.list_cluster_models(credentials)
 
 
 def live_models_for(provider: str, kind: CallKind) -> tuple[str, ...] | None:
@@ -155,6 +220,25 @@ def embedding_concurrency_for(
     return limit
 
 
+def default_auth_method_for(provider: str, stored: Mapping[str, Any] | None) -> str | None:
+    """The authentication method to assume for `provider` when none was chosen.
+
+    The optional `default_auth_method(stored)` member of the enhancement
+    contract, for a provider whose form offers several methods. None when the
+    provider has no such hook, the hook fails (logged and ignored), or it
+    returns anything but a non-empty string.
+    """
+    hook = getattr(get(provider), "default_auth_method", None)
+    if not callable(hook):
+        return None
+    try:
+        method = hook(stored or {})
+    except Exception as exc:
+        _log_hook_failure(provider, "default_auth_method", exc)
+        return None
+    return method if isinstance(method, str) and method else None
+
+
 def _log_hook_failure(provider: str, hook: str, exc: Exception) -> None:
     from utils.logging_config import get_logger
 
@@ -185,20 +269,25 @@ def _accepts_kind(enhancement: ModuleType) -> bool:
     Cached per module: the answer is fixed for the life of the process, and
     this sits on the path of every gateway request.
     """
+    return _hook_accepts_kind(enhancement, "litellm_credentials")
+
+
+def _hook_accepts_kind(enhancement: ModuleType, hook: str) -> bool:
+    """Whether the module's `hook` takes a `kind` keyword."""
     try:
-        return "kind" in inspect.signature(enhancement.litellm_credentials).parameters
+        return "kind" in inspect.signature(getattr(enhancement, hook)).parameters
     except (TypeError, ValueError):
         # A C-implemented or otherwise unintrospectable callable. Assume the
         # base contract rather than risk a TypeError on a real call.
-        _log_signature_fallback(getattr(enhancement, "__name__", str(enhancement)))
+        _log_signature_fallback(getattr(enhancement, "__name__", str(enhancement)), hook)
         return False
 
 
-def _log_signature_fallback(module_name: str) -> None:
+def _log_signature_fallback(module_name: str, hook: str) -> None:
     from utils.logging_config import get_logger
 
     get_logger(__name__).debug(
-        "Could not inspect a provider enhancement's credential translation; "
-        "calling it without a call kind",
+        "Could not inspect a provider enhancement hook; calling it without a call kind",
         module=module_name,
+        hook=hook,
     )

@@ -178,14 +178,10 @@ class DocumentService:
         if not filename:
             filename = upload_file.filename or "uploaded_document"
 
-        # Stream file content into BytesIO
-        content = io.BytesIO()
-        while True:
-            chunk = await upload_file.read(1 << 20)  # 1MB chunks
-            if not chunk:
-                break
-            content.write(chunk)
-        content.seek(0)  # Reset to beginning for reading
+        from utils.upload_limits import read_upload_within_limit
+
+        # Stop once the file crosses the upload limit, before the rest is buffered.
+        content = io.BytesIO(await read_upload_within_limit(upload_file, filename))
 
         # Check if this is a .txt or .md file - use simple processing
         file_ext = os.path.splitext(filename)[1].lower()

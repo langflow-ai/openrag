@@ -104,7 +104,7 @@ async def test_uncapped_sync_takes_every_file_not_just_the_first_hundred():
     connector, requested_max_files = _internally_paginating_connector(total=150)
     service = _service(connector)
 
-    await service.sync_connector_files("conn-1", "alice")
+    await service.sync_connector_files("conn-1", "alice", allow_anonymous_delete=True)
 
     assert len(_processed_ids(service)) == 150
     # No cap was requested, so the connector was free to return everything.
@@ -116,7 +116,7 @@ async def test_explicit_max_files_still_caps():
     connector, requested_max_files = _internally_paginating_connector(total=150)
     service = _service(connector)
 
-    await service.sync_connector_files("conn-1", "alice", max_files=20)
+    await service.sync_connector_files("conn-1", "alice", max_files=20, allow_anonymous_delete=True)
 
     assert len(_processed_ids(service)) == 20
     assert requested_max_files == [20]
@@ -132,7 +132,7 @@ async def test_max_files_zero_lists_nothing():
     connector, requested_max_files = _internally_paginating_connector(total=150)
     service = _service(connector)
 
-    await service.sync_connector_files("conn-1", "alice", max_files=0)
+    await service.sync_connector_files("conn-1", "alice", max_files=0, allow_anonymous_delete=True)
 
     assert _processed_ids(service) == []
     assert requested_max_files == []
@@ -146,7 +146,7 @@ async def test_token_paginated_connector_is_followed_across_pages():
     connector, requested_tokens = _token_paginating_connector(pages)
     service = _service(connector)
 
-    await service.sync_connector_files("conn-1", "alice")
+    await service.sync_connector_files("conn-1", "alice", allow_anonymous_delete=True)
 
     assert len(_processed_ids(service)) == 5
     assert requested_tokens == [None, "1", "2"]
@@ -158,7 +158,7 @@ async def test_token_paginated_connector_continues_after_empty_page():
     connector, requested_tokens = _token_paginating_connector(pages)
     service = _service(connector)
 
-    await service.sync_connector_files("conn-1", "alice")
+    await service.sync_connector_files("conn-1", "alice", allow_anonymous_delete=True)
 
     assert _processed_ids(service) == ["b1::k0.pdf", "b1::k1.pdf"]
     assert requested_tokens == [None, "1"]
@@ -170,7 +170,7 @@ async def test_token_paginated_connector_stops_at_aggregate_max_files():
     connector, requested_tokens = _token_paginating_connector(pages)
     service = _service(connector)
 
-    await service.sync_connector_files("conn-1", "alice", max_files=20)
+    await service.sync_connector_files("conn-1", "alice", max_files=20, allow_anonymous_delete=True)
 
     assert _processed_ids(service) == [f"b1::k{i}.pdf" for i in range(20)]
     assert requested_tokens == [None, "1"]
@@ -194,7 +194,7 @@ async def test_camel_case_token_still_paginates():
     connector.list_files = AsyncMock(side_effect=list_files)
     service = _service(connector)
 
-    await service.sync_connector_files("conn-1", "alice")
+    await service.sync_connector_files("conn-1", "alice", allow_anonymous_delete=True)
 
     assert len(_processed_ids(service)) == 2
     assert calls == [None, "p2"]
@@ -211,6 +211,8 @@ async def test_filename_filter_matches_beyond_the_first_page():
     connector, _ = _internally_paginating_connector(total=150)
     service = _service(connector)
 
-    await service.sync_connector_files("conn-1", "alice", filename_filter={"k0.pdf", "k130.pdf"})
+    await service.sync_connector_files(
+        "conn-1", "alice", filename_filter={"k0.pdf", "k130.pdf"}, allow_anonymous_delete=True
+    )
 
     assert sorted(_processed_ids(service)) == ["b1::k0.pdf", "b1::k130.pdf"]
