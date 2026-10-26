@@ -1359,7 +1359,9 @@ class TaskService:
         if opensearch_meta:
             return opensearch_meta
 
-        if "incorrect password" in error.lower():  # for password protected pdf cases
+        # Password-protected PDFs. Newer docling no longer names the reason, so the
+        # backend recovers it from the file bytes (docling_service.password_protected_pdf_error).
+        if "incorrect password" in error.lower():
             return {
                 "component": "docling",
                 "failure_phase": "parsing",
