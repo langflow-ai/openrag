@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 export interface AzureBlobConfigurePayload {
   auth_mode: "connection_string" | "account_key";
@@ -15,13 +16,10 @@ export interface AzureBlobConfigurePayload {
 }
 
 async function configureAzureBlob(payload: AzureBlobConfigurePayload) {
-  const res = await fetch("/api/connectors/azure_blob/configure", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Failed to configure Azure Blob");
+  const res = await apiClient.post("/connectors/azure_blob/configure", payload);
+  const data = res.data ?? {};
+  if (res.status < 200 || res.status >= 300)
+    throw new Error(data.error || "Failed to configure Azure Blob");
   return data as { connection_id: string; status: string };
 }
 

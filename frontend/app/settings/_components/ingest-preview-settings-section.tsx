@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 import { IngestPreviewAutoOpenControl } from "@/components/ingest-preview-auto-open-control";
 import { IngestReviewDialog } from "@/components/ingest-review";
 import { Button } from "@/components/ui/button";
@@ -13,6 +12,7 @@ import {
   useIngestPreviewSettings,
 } from "@/hooks/use-ingest-preview-settings";
 import { createSampleDemoFile } from "@/lib/ingest-preview-demo";
+import { useRegisterSave } from "./ingest-save-context";
 
 const EMPTY_PREVIEW_FILES: File[] = [];
 
@@ -43,10 +43,15 @@ export function IngestPreviewSettingsSection() {
     [previewFile],
   );
 
-  const saveChanges = () => {
-    updateSettings({ autoOpen: draft.autoOpen });
-    toast.success("Ingest preview settings saved");
-  };
+  // The tab's single Save button drives this; it reports success for the whole
+  // tab, so this only persists.
+  useRegisterSave("ingest-preview", {
+    isDirty,
+    blocked: false,
+    save: () => {
+      updateSettings({ autoOpen: draft.autoOpen });
+    },
+  });
 
   const runSampleIngest = () => {
     setPreviewFile(createSampleDemoFile());
@@ -55,14 +60,12 @@ export function IngestPreviewSettingsSection() {
 
   return (
     <div className="space-y-0" data-testid="ingest-preview-settings">
-      <div className="flex items-center justify-between gap-4 py-4">
-        <div className="flex-1 min-w-0">
-          <Label className="text-base font-medium">
+      <div className="flex items-center justify-between gap-12 border-b border-border py-6">
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <Label className="text-base font-semibold">
             Auto-open ingest preview
           </Label>
-          <p className="text-sm text-muted-foreground mt-1">
-            {autoOpenDescription}
-          </p>
+          <p className="text-sm text-muted-foreground">{autoOpenDescription}</p>
         </div>
         <IngestPreviewAutoOpenControl
           value={draft.autoOpen}
@@ -71,25 +74,20 @@ export function IngestPreviewSettingsSection() {
         />
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2 pt-6">
+      <div className="flex items-center justify-between gap-8 py-6">
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <p className="text-base font-semibold">Sample ingest</p>
+          <p className="text-sm text-muted-foreground">
+            Test out the document parser.
+          </p>
+        </div>
         <Button
           type="button"
           variant="outline"
-          size="sm"
           onClick={runSampleIngest}
           data-testid="ingest-preview-run-sample"
         >
-          Run a sample ingest
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          className="min-w-[120px]"
-          onClick={saveChanges}
-          disabled={!isDirty}
-          data-testid="ingest-preview-save"
-        >
-          Save changes
+          Run sample ingest
         </Button>
       </div>
 

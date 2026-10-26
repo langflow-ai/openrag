@@ -114,6 +114,58 @@ async def test_langflow_not_invoked_on_docling_failure(
 
 
 @pytest.mark.asyncio
+async def test_docling_load_failure_on_encrypted_pdf_names_password_protection(
+    langflow_service, mock_polling_service, file_task
+):
+    """Newer docling drops the PDFium reason; the bytes still show the PDF is encrypted."""
+    head = b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+    pdf = (
+        head
+        + b"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Root 1 0 R /Encrypt 5 0 R >>\n"
+        + b"startxref\n%d\n%%%%EOF\n" % len(head)
+    )
+    encrypted = ("secret.pdf", pdf, "application/pdf")
+    mock_polling_service.poll_until_ready.return_value = DoclingPollResult(
+        outcome=PollOutcome.FAILED,
+        detail=(
+            "Docling result unavailable after SUCCESS status: Docling processing failed: "
+            "docling-parse could not load document 8fc525: "
+            "Failed to load document with key key=8fc525"
+        ),
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        await langflow_service.upload_and_ingest_file(
+            file_tuple=encrypted,
+            docling_polling_service=mock_polling_service,
+            file_task=file_task,
+        )
+
+    message = str(exc_info.value)
+    assert message.startswith("Docling conversion did not complete (failed): ")
+    assert "Incorrect password" in message
+    assert "with key" not in message
+    assert langflow_service.run_ingestion_flow.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_docling_load_failure_on_unencrypted_pdf_keeps_docling_detail(
+    langflow_service, mock_polling_service, file_tuple, file_task
+):
+    detail = "docling-parse could not load document 8fc525: Failed to load document with key k"
+    mock_polling_service.poll_until_ready.return_value = DoclingPollResult(
+        outcome=PollOutcome.FAILED, detail=detail
+    )
+
+    with pytest.raises(Exception, match="Failed to load document with key k"):
+        await langflow_service.upload_and_ingest_file(
+            file_tuple=file_tuple,
+            docling_polling_service=mock_polling_service,
+            file_task=file_task,
+        )
+
+
+@pytest.mark.asyncio
 async def test_langflow_not_invoked_on_docling_expired(
     langflow_service, mock_polling_service, file_tuple, file_task
 ):
@@ -215,8 +267,7 @@ def test_processor_default_polling_service_is_none():
 
     lf_svc = LangflowFileService(docling_service=AsyncMock())
     processor = LangflowFileProcessor(
-        langflow_file_service=lf_svc,
-        session_manager=None,
+        langflow_file_service=lf_svc, session_manager=None, allow_anonymous_delete=True
     )
     assert processor.docling_polling_service is None
 
@@ -231,39 +282,34 @@ def test_processor_accepts_injected_polling_service():
         langflow_file_service=lf_svc,
         session_manager=None,
         docling_polling_service=injected,
+        allow_anonymous_delete=True,
     )
     assert processor.docling_polling_service is injected
 
 
 @pytest.mark.asyncio
 async def test_langflow_preflight_detects_embedding_dimensions_with_probe(monkeypatch):
-    class FakeEmbeddings:
-        def __init__(self):
-            self.calls = []
+    calls: list[tuple[str, list]] = []
 
-        async def create(self, model, input):
-            self.calls.append((model, input))
-            return SimpleNamespace(data=[SimpleNamespace(embedding=[0.1] * 7)])
+    async def fake_embeddings(body, **_kwargs):
+        calls.append((body["model"], body["input"]))
+        return {"data": [{"embedding": [0.1] * 7}]}
 
-    fake_embeddings = FakeEmbeddings()
-    fake_client = SimpleNamespace(embeddings=fake_embeddings)
-
-    async def fake_get_litellm_model_name(self, model_name, provider=None, strict=False):
-        assert model_name == "provider/model"
-        assert provider == "provider"
-        return "provider/provider/model"
-
-    monkeypatch.setattr("config.settings.clients._patched_async_client", fake_client)
-    monkeypatch.setattr(
-        "services.models_service.ModelsService.get_litellm_model_name",
-        fake_get_litellm_model_name,
-    )
+    monkeypatch.setattr("services.llm_gateway.embeddings", fake_embeddings)
 
     svc = LangflowFileService(docling_service=AsyncMock())
 
     assert await svc._detect_embedding_dimensions("provider/model", "provider") == 7
     assert await svc._detect_embedding_dimensions("provider/model", "provider") == 7
-    assert fake_embeddings.calls == [("provider/provider/model", ["dimension probe"])]
+    # One call for two invocations: the probe is cached per provider+model.
+    # The id is provider-tagged with `:` so the gateway routes it to the
+    # provider the caller named rather than to the configured default.
+    #
+    # `provider/model` is the legacy tagged spelling of the same id, so the
+    # tag is replaced rather than stacked. Asserting `provider:provider/model`
+    # here, as this did, encoded the double-tagging bug: the gateway strips
+    # the colon tag and would ask LiteLLM for `provider/provider/model`.
+    assert calls == [("provider:model", ["dimension probe"])]
 
 
 @pytest.mark.asyncio
@@ -325,6 +371,7 @@ async def test_task_service_threads_polling_service_to_processor(monkeypatch):
         file_paths=["/tmp/x.pdf"],
         langflow_file_service=AsyncMock(),
         session_manager=AsyncMock(),
+        allow_anonymous_delete=True,
     )
 
     assert captured["docling_polling_service"] is injected

@@ -75,7 +75,7 @@ export function KnowledgeFilterList({
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       <div className="px-3 flex-1 min-h-0 flex flex-col">
-        <div className="flex-shrink-0">
+        <div className="shrink-0">
           <div className="flex items-center justify-between mb-3 mr-2 ml-4">
             <h3 className="text-xs font-medium text-muted-foreground">
               Knowledge Filters
@@ -91,11 +91,11 @@ export function KnowledgeFilterList({
           </div>
           <div className="overflow-y-auto scrollbar-hide space-y-1">
             {loading ? (
-              <div className="text-[13px] text-muted-foreground p-2 ml-2">
+              <div className="text-mmd text-muted-foreground p-2 ml-2">
                 Loading...
               </div>
             ) : filters.length === 0 ? (
-              <div className="text-[13px] text-muted-foreground pb-2 pt-3 ml-4">
+              <div className="text-mmd text-muted-foreground pb-2 pt-3 ml-4">
                 No saved filters
               </div>
             ) : (

@@ -1,5 +1,9 @@
+import asyncio
 import uuid
+from contextlib import aclosing
 from typing import Any
+
+import anyio
 
 from config.config_manager import DEFAULT_SYSTEM_PROMPT
 from services.conversation_persistence_service import conversation_persistence
@@ -91,13 +95,10 @@ async def _persist_error_conversation(
 
     from services.session_ownership_service import session_ownership_service
 
+    if not await session_ownership_service.claim_session(user_id, store_id):
+        raise RuntimeError("Unable to establish chat session ownership")
     conversation_state["last_activity"] = datetime.now()
     await store_conversation_thread(user_id, store_id, conversation_state)
-    try:
-        await session_ownership_service.claim_session(user_id, store_id)
-        logger.debug(f"Claimed session {store_id} for user {user_id} after stream error")
-    except Exception as e:
-        logger.warning(f"Failed to claim session ownership after stream error: {e}")
 
 
 def _stream_error_chunk(message: str, response_id: str | None = None) -> bytes:
@@ -228,6 +229,7 @@ async def async_response_stream(
 ):
     logger.info("User prompt received", prompt=prompt)
 
+    response = None
     try:
         # Build request parameters
         request_params = {
@@ -422,6 +424,10 @@ async def async_response_stream(
     except Exception:
         logger.exception("[AGENT] Streaming failed")
         raise
+    finally:
+        if response is not None:
+            with anyio.CancelScope(shield=True):
+                await response.close()
 
 
 # Generic async response function for non-streaming
@@ -494,15 +500,18 @@ async def async_stream(
     previous_response_id: str = None,
     log_prefix: str = "response",
 ):
-    async for chunk in async_response_stream(
-        client,
-        prompt,
-        model,
-        extra_headers=extra_headers,
-        previous_response_id=previous_response_id,
-        log_prefix=log_prefix,
-    ):
-        yield chunk
+    async with aclosing(
+        async_response_stream(
+            client,
+            prompt,
+            model,
+            extra_headers=extra_headers,
+            previous_response_id=previous_response_id,
+            log_prefix=log_prefix,
+        )
+    ) as stream:
+        async for chunk in stream:
+            yield chunk
 
 
 # Async langflow function (non-streaming only)
@@ -718,6 +727,7 @@ async def async_chat_stream(
             await _persist_error_conversation(user_id, store_id, conversation_state)
         except Exception as store_error:
             logger.error(f"Failed to store error conversation: {store_error}")
+            store_id = None
         yield _stream_error_chunk(display_text, store_id)
 
 
@@ -850,17 +860,12 @@ async def async_langflow_chat(
 
     # Store the conversation thread with its response_id
     if response_id:
+        from services.session_ownership_service import session_ownership_service
+
+        if not await session_ownership_service.claim_session(user_id, response_id):
+            raise RuntimeError("Unable to establish chat session ownership")
         conversation_state["last_activity"] = datetime.now()
         await store_conversation_thread(user_id, response_id, conversation_state)
-
-        # Claim session ownership for this user
-        try:
-            from services.session_ownership_service import session_ownership_service
-
-            await session_ownership_service.claim_session(user_id, response_id)
-            logger.debug(f"Claimed session {response_id} for user {user_id}")
-        except Exception as e:
-            logger.warning(f"Failed to claim session ownership: {e}")
 
         logger.debug(
             "Stored langflow conversation thread",
@@ -894,6 +899,16 @@ async def async_langflow_chat_stream(
     # conversation_id keeps the OpenRAG sidebar thread; previous_response_id chains
     # the Langflow session. After errors the client omits previous_response_id.
     thread_id = conversation_id or previous_response_id
+    if not _conversation_thread_in_memory(user_id, thread_id):
+        # Clients may continue using the latest Langflow id without a sidebar id.
+        thread_id = next(
+            (
+                stored_id
+                for stored_id, state in active_conversations.get(user_id, {}).items()
+                if thread_id and thread_id in state.get("response_ids", [])
+            ),
+            thread_id,
+        )
     previous_loaded_from_memory = _conversation_thread_in_memory(user_id, thread_id)
     conversation_state = get_conversation_thread(user_id, thread_id)
 
@@ -915,30 +930,74 @@ async def async_langflow_chat_stream(
     usage_data = None
     collected_chunks = []  # Store all chunks for function call data
     error_occurred = False
+    store_id = None
+    claimed_ids: set[str] = set()
+    turn_finished = False
+
+    async def persist_stream_state(*session_ids, mint_if_missing=False):
+        nonlocal store_id
+        from services.session_ownership_service import session_ownership_service
+
+        if store_id is None:
+            store_id = _resolve_conversation_store_id(
+                response_id,
+                thread_id,
+                previous_loaded_from_memory=previous_loaded_from_memory,
+                mint_if_missing=mint_if_missing,
+            )
+        if store_id is None:
+            return
+        for session_id in dict.fromkeys((store_id, *session_ids)):
+            if not session_id or session_id in claimed_ids:
+                continue
+            if not await session_ownership_service.claim_session(
+                user_id, session_id, conversation_id=store_id
+            ):
+                raise RuntimeError("Unable to establish chat session ownership")
+            claimed_ids.add(session_id)
+            response_ids = conversation_state.setdefault("response_ids", [])
+            if session_id not in response_ids:
+                response_ids.append(session_id)
+        conversation_state["last_activity"] = datetime.now()
+        await store_conversation_thread(user_id, store_id, conversation_state)
+
+    upstream = async_stream(
+        langflow_client,
+        prompt,
+        flow_id,
+        extra_headers=extra_headers,
+        previous_response_id=langflow_previous_response_id,
+        log_prefix="langflow",
+    )
 
     try:
-        async for chunk in async_stream(
-            langflow_client,
-            prompt,
-            flow_id,
-            extra_headers=extra_headers,
-            previous_response_id=langflow_previous_response_id,
-            log_prefix="langflow",
-        ):
+        async for chunk in upstream:
             # Extract text content to build full response for history
+            chunk_ids = []
             try:
                 import json
 
                 chunk_data = json.loads(chunk.decode("utf-8"))
                 collected_chunks.append(chunk_data)  # Collect all chunk data
 
+                # Own every response/session ID callers can use for continuation,
+                # not tool item IDs. OpenAI events may nest the ID in response.
+                response_obj = chunk_data.get("response")
+                if not isinstance(response_obj, dict):
+                    response_obj = {}
+                chunk_ids = [
+                    value
+                    for value in (
+                        chunk_data.get("id"),
+                        chunk_data.get("response_id"),
+                        response_obj.get("id"),
+                    )
+                    if isinstance(value, str) and value
+                ]
+                if chunk_ids:
+                    response_id = chunk_ids[0]
                 if "delta" in chunk_data and "content" in chunk_data["delta"]:
                     full_response += chunk_data["delta"]["content"]
-                # Extract response_id from chunk
-                if "id" in chunk_data:
-                    response_id = chunk_data["id"]
-                elif "response_id" in chunk_data:
-                    response_id = chunk_data["response_id"]
 
                 # Check for error status. Do not forward bare Langflow error
                 # chunks — they often lack a useful message and the client would
@@ -972,6 +1031,10 @@ async def async_langflow_chat_stream(
                     usage_data = response_obj.get("usage")
             except Exception:
                 pass
+            # This await must stay outside the permissive JSON parser above.
+            # Persist/claim BEFORE yielding the first occurrence of any ID.
+            if any(session_id not in claimed_ids for session_id in chunk_ids):
+                await persist_stream_state(*chunk_ids)
             yield chunk
 
         from api.provider_validation import (
@@ -994,16 +1057,8 @@ async def async_langflow_chat_stream(
                     "error": True,
                 }
             )
-            store_id = _resolve_conversation_store_id(
-                response_id,
-                thread_id,
-                previous_loaded_from_memory=previous_loaded_from_memory,
-                mint_if_missing=True,
-            )
-            try:
-                await _persist_error_conversation(user_id, store_id, conversation_state)
-            except Exception as store_error:
-                logger.error(f"Failed to store error conversation: {store_error}")
+            turn_finished = True
+            await persist_stream_state(response_id, mint_if_missing=True)
             yield _stream_error_chunk(display_text, store_id)
             return
 
@@ -1020,20 +1075,29 @@ async def async_langflow_chat_stream(
                 assistant_message["response_data"] = {"usage": usage_data}
             conversation_state["messages"].append(assistant_message)
 
-        persist_id = _resolve_conversation_store_id(
-            response_id,
-            thread_id,
-            previous_loaded_from_memory=previous_loaded_from_memory,
-        )
-        if persist_id:
-            conversation_state["last_activity"] = datetime.now()
-            await store_conversation_thread(user_id, persist_id, conversation_state)
+        turn_finished = True
+        await persist_stream_state(response_id)
+    except (asyncio.CancelledError, GeneratorExit):
+        # Disconnects do not run the normal tail and are not provider failures.
+        # Keep exactly one partial assistant turn and propagate cancellation;
+        # never replay the prompt or synthesize a terminal event to a dead client.
+        with anyio.CancelScope(shield=True):
+            if not turn_finished and full_response:
+                conversation_state["messages"].append(
+                    {
+                        "role": "assistant",
+                        "content": full_response,
+                        "response_id": response_id,
+                        "timestamp": datetime.now(),
+                        "chunks": collected_chunks,
+                        "interrupted": True,
+                    }
+                )
             try:
-                from services.session_ownership_service import session_ownership_service
-
-                await session_ownership_service.claim_session(user_id, persist_id)
-            except Exception as e:
-                logger.warning(f"Failed to claim session ownership: {e}")
+                await persist_stream_state(response_id)
+            except Exception:
+                logger.exception("Failed to store interrupted Langflow turn")
+        raise
     except Exception as e:
         logger.error(f"Error in langflow chat stream: {e}", exc_info=True)
         from api.provider_validation import resolve_chat_stream_error_message_async
@@ -1051,17 +1115,16 @@ async def async_langflow_chat_stream(
                 "error": True,
             }
         )
-        store_id = _resolve_conversation_store_id(
-            response_id,
-            thread_id,
-            previous_loaded_from_memory=previous_loaded_from_memory,
-            mint_if_missing=True,
-        )
+        error_store_id = None
         try:
-            await _persist_error_conversation(user_id, store_id, conversation_state)
+            await persist_stream_state(response_id, mint_if_missing=True)
+            error_store_id = store_id
         except Exception as store_error:
             logger.error(f"Failed to store error conversation: {store_error}")
-        yield _stream_error_chunk(display_text, store_id)
+        yield _stream_error_chunk(display_text, error_store_id)
+    finally:
+        with anyio.CancelScope(shield=True):
+            await upstream.aclose()
 
 
 async def delete_user_conversation(user_id: str, response_id: str) -> bool:
@@ -1075,31 +1138,18 @@ async def delete_user_conversation(user_id: str, response_id: str) -> bool:
         Exception — on unexpected storage errors so callers can distinguish
                     a confirmed "not found" from a backend failure.
     """
-    deleted = False
+    from services.session_ownership_service import session_ownership_service
 
-    # Delete from in-memory storage (cannot raise)
-    if user_id in active_conversations and response_id in active_conversations[user_id]:
-        del active_conversations[user_id][response_id]
-        logger.debug(f"Deleted conversation {response_id} from memory for user {user_id}")
+    session_ids = await session_ownership_service.get_conversation_sessions(user_id, response_id)
+    if not session_ids:
+        return False
+    canonical_id = session_ids[0]
+    # Revoke ALL durable aliases before removing the local index. Failures must
+    # reach the caller, not turn into a successful delete with reusable IDs.
+    await session_ownership_service.release_conversation_sessions(user_id, session_ids)
+    deleted = await conversation_persistence.delete_conversation_thread(user_id, canonical_id)
+    if canonical_id in active_conversations.get(user_id, {}):
+        del active_conversations[user_id][canonical_id]
         deleted = True
-
-    # Delete from persistent storage — let real errors propagate to the caller
-    conversation_deleted = await conversation_persistence.delete_conversation_thread(
-        user_id, response_id
-    )
-    if conversation_deleted:
-        logger.debug(
-            f"Deleted conversation {response_id} from persistent storage for user {user_id}"
-        )
-        deleted = True
-
-    # Release session ownership (best-effort; never masks storage errors above)
-    try:
-        from services.session_ownership_service import session_ownership_service
-
-        await session_ownership_service.release_session(user_id, response_id)
-        logger.debug(f"Released session ownership for {response_id} for user {user_id}")
-    except Exception as e:
-        logger.warning(f"Failed to release session ownership: {e}")
 
     return deleted

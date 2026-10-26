@@ -1,5 +1,6 @@
 """Provider validation utilities for testing API keys and models during onboarding."""
 
+import ast
 import asyncio
 import json
 import re
@@ -53,8 +54,19 @@ _PROVIDER_CREDENTIAL_ERROR_MARKERS = (
     "could not authenticate",
 )
 
+# ``unauthorized`` is a reliable signal in provider exceptions, but ordinary
+# assistant replies can use it in policy language ("unauthorized absence" or
+# "unauthorized access").  Content needs an error-shaped use of the word.
+_UNAUTHORIZED_PROVIDER_ERROR_CONTENT_RE = re.compile(
+    r"(?:\berror\b[:\s]*|\b(?:401|403)\b[:\s]*)unauthorized\b"
+    r"|^\s*unauthorized\s*(?:[.!]?\s*$|:)",
+    re.IGNORECASE,
+)
 
-_PROVIDER_ERROR_CONTENT_MARKERS = _PROVIDER_CREDENTIAL_ERROR_MARKERS + (
+
+_PROVIDER_ERROR_CONTENT_MARKERS = tuple(
+    marker for marker in _PROVIDER_CREDENTIAL_ERROR_MARKERS if marker != "unauthorized"
+) + (
     "rate limit",
     "rate_limit",
     "permission denied",
@@ -65,25 +77,29 @@ _PROVIDER_ERROR_CONTENT_MARKERS = _PROVIDER_CREDENTIAL_ERROR_MARKERS + (
 
 
 def _extract_balanced_json_object(text: str) -> str | None:
-    """Return the first top-level `{...}` substring, ignoring trailing junk."""
+    """Return the first top-level `{...}` substring, ignoring trailing junk.
+
+    Either quote opens a string: the OpenAI SDK prints an error body as a
+    Python dict, which quotes with `'` wherever the text allows.
+    """
     start = text.find("{")
     if start < 0:
         return None
     depth = 0
-    in_string = False
+    quote = ""
     escape = False
     for i in range(start, len(text)):
         ch = text[i]
-        if in_string:
+        if quote:
             if escape:
                 escape = False
             elif ch == "\\":
                 escape = True
-            elif ch == '"':
-                in_string = False
+            elif ch == quote:
+                quote = ""
             continue
-        if ch == '"':
-            in_string = True
+        if ch in "\"'":
+            quote = ch
         elif ch == "{":
             depth += 1
         elif ch == "}":
@@ -219,13 +235,23 @@ def is_provider_stale_connection_error(exc: BaseException | None) -> bool:
 
 
 #: Markers for a prompt that does not fit the model's context window. That is a
-#: property of one request — a long conversation, a lot of retrieved text — and
-#: says nothing about whether the provider is serving.
+#: property of one request — a long conversation, a lot of retrieved text, an
+#: oversized chunk sent for embedding — and says nothing about whether the
+#: provider is serving.
 _CONTEXT_WINDOW_ERROR_MARKERS = (
     "maximum context length",
     "context_length_exceeded",
     "contextwindowexceeded",
     "prompt is too long",
+    # The wordings LiteLLM itself recognises (ExceptionCheckers
+    # .is_error_str_context_window_exceeded), for the providers whose errors it
+    # does not already raise as ContextWindowExceededError.
+    "exceed context limit",
+    "maximum context limit",
+    "longer than the model's context length",
+    "input tokens exceed the configured limit",
+    "exceeds the available context size",
+    "exceeds the maximum number of tokens allowed",
 )
 
 
@@ -235,6 +261,44 @@ def is_context_window_error(text: str | BaseException | None) -> bool:
         return False
     lowered = (str(text) if not isinstance(text, str) else text).lower()
     return any(marker in lowered for marker in _CONTEXT_WINDOW_ERROR_MARKERS)
+
+
+_CONTEXT_LIMIT_RE = re.compile(r"maximum context length is (\d+)", re.IGNORECASE)
+#: Tried in order: vLLM's chat wording also says "requested 0 output tokens",
+#: which is not the size of the prompt.
+_CONTEXT_REQUESTED_RES = (
+    re.compile(r"prompt contains (?:at least )?(\d+) input tokens", re.IGNORECASE),
+    re.compile(r"resulted in (\d+) tokens", re.IGNORECASE),
+    re.compile(r"requested (\d+) tokens", re.IGNORECASE),
+)
+#: Anthropic: "prompt is too long: 210000 tokens > 200000 maximum".
+_CONTEXT_COMPARISON_RE = re.compile(r"(\d+) tokens > (\d+) maximum", re.IGNORECASE)
+
+
+def context_window_token_counts(
+    text: str | BaseException | None,
+) -> tuple[int | None, int | None]:
+    """The `(limit, requested)` token counts a context-window error states.
+
+    Either is None when the provider did not say. Callers use the pair to tell
+    how far over the limit an input was, so a wrong number is worse than none:
+    only wordings that name the quantity outright are read.
+    """
+    if text is None:
+        return None, None
+    message = str(text) if not isinstance(text, str) else text
+    comparison = _CONTEXT_COMPARISON_RE.search(message)
+    if comparison:
+        return int(comparison.group(2)), int(comparison.group(1))
+    limit = _CONTEXT_LIMIT_RE.search(message)
+    requested = next(
+        (found for pattern in _CONTEXT_REQUESTED_RES if (found := pattern.search(message))),
+        None,
+    )
+    return (
+        int(limit.group(1)) if limit else None,
+        int(requested.group(1)) if requested else None,
+    )
 
 
 _GENERIC_UPSTREAM_ERROR_MARKERS = (
@@ -256,6 +320,9 @@ def is_generic_upstream_error(text: str | BaseException | None) -> bool:
     return lowered in generics
 
 
+_ERROR_OBJECT_KEY_RE = re.compile(r"[\"'](?:error|errormessage|errorcode|errors)[\"']")
+
+
 def looks_like_provider_error_content(text: str | None) -> bool:
     """True when assistant text looks like a provider/auth failure rather than a normal reply."""
     if not text or not text.strip():
@@ -266,15 +333,13 @@ def looks_like_provider_error_content(text: str | None) -> bool:
     if is_generic_upstream_error(content):
         return True
     lowered = content.lower()
-    if any(marker in lowered for marker in _PROVIDER_ERROR_CONTENT_MARKERS):
-        return True
-    # Raw provider payloads often embed JSON error objects.
-    if "{" in content and (
-        '"error"' in lowered
-        or '"errormessage"' in lowered
-        or '"errorcode"' in lowered
-        or '"errors"' in lowered
+    if any(marker in lowered for marker in _PROVIDER_ERROR_CONTENT_MARKERS) or (
+        _UNAUTHORIZED_PROVIDER_ERROR_CONTENT_RE.search(lowered)
     ):
+        return True
+    # Raw provider payloads often embed an error object: as JSON, or as the
+    # Python dict the OpenAI SDK prints (`Error code: 400 - {'error': {...}}`).
+    if "{" in content and _ERROR_OBJECT_KEY_RE.search(lowered):
         return True
     return False
 
@@ -297,7 +362,10 @@ def sanitize_provider_error_content(text: str | BaseException | None) -> str:
         # Strip the first JSON object as a last resort.
         json_start = cleaned.find("{")
         prefix = cleaned[:json_start].rstrip(": ").strip()
-        return prefix or "An error occurred while generating a response."
+        # "Error code: 502 - {...}" leaves "502 -", which names no cause at all.
+        if not any(ch.isalpha() for ch in prefix):
+            return "An error occurred while generating a response."
+        return prefix
     return cleaned
 
 
@@ -626,11 +694,25 @@ async def resolve_chat_stream_error_message_async(
     return cleaned
 
 
+def _load_error_body(error_text: str) -> Any:
+    """Parse an error body sent as JSON or printed as a Python literal.
+
+    The OpenAI SDK formats its exceptions as `Error code: 400 - {'error': ...}`,
+    a dict repr that `json.loads` rejects. That is the form a gateway error
+    takes by the time Langflow relays it.
+    """
+    try:
+        return json.loads(error_text)
+    except ValueError:
+        if not error_text.lstrip().startswith("{"):
+            raise
+        return ast.literal_eval(error_text)
+
+
 def _parse_json_error_message(error_text: str) -> str:
     """Parse JSON error message and extract just the message field."""
     try:
-        # Try to parse as JSON
-        error_data = json.loads(error_text)
+        error_data = _load_error_body(error_text)
 
         if isinstance(error_data, dict):
             # WatsonX format: {"errors": [{"code": "...", "message": "..."}], ...}
@@ -663,7 +745,7 @@ def _parse_json_error_message(error_text: str) -> str:
             # Generic format: {"detail": "..."}
             if "detail" in error_data:
                 return error_data["detail"]
-    except (json.JSONDecodeError, ValueError, TypeError):
+    except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
         pass
 
     # Return original text if not JSON or can't parse
@@ -932,7 +1014,8 @@ async def _test_litellm_provider(
     """Validate arbitrary providers through the same LiteLLM adapter used at runtime."""
     import litellm
 
-    from services.llm_gateway import with_stale_connection_retry
+    from observability.tracing import gateway_trace_kwargs
+    from services.llm_gateway import LlmGatewayError, with_stale_connection_retry
     from services.model_catalog import litellm_provider_key
 
     model = embedding_model or llm_model
@@ -940,7 +1023,11 @@ async def _test_litellm_provider(
         raise ValueError("A model is required to validate the provider")
     # Same aliasing the gateway applies, so the probe hits the route the real
     # call will: `watsonx_onprem/<model>` is not a prefix LiteLLM can resolve.
-    litellm_model = f"{litellm_provider_key(provider)}/{model}"
+    try:
+        route = litellm_provider_key(provider, credentials)
+    except ValueError as exc:
+        raise LlmGatewayError(str(exc), 400) from exc
+    litellm_model = f"{route}/{model}"
     # And the same retry: a dead pooled connection is not a provider failure,
     # and reporting one would block a save or raise the banner for nothing.
     if embedding_model:
@@ -956,6 +1043,7 @@ async def _test_litellm_provider(
                 input=["OpenRAG provider validation"],
                 **credentials,
                 **(runtime_kwargs or {}),
+                **gateway_trace_kwargs("embedding", "provider_check", provider=provider),
             ),
             provider=provider,
             model=litellm_model,
@@ -969,6 +1057,7 @@ async def _test_litellm_provider(
             max_tokens=4,
             **credentials,
             **(runtime_kwargs or {}),
+            **gateway_trace_kwargs("chat", "provider_check", provider=provider),
         ),
         provider=provider,
         model=litellm_model,

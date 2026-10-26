@@ -20,6 +20,7 @@ import {
   isProviderConfigured,
   LLM_PROVIDER_ORDER,
   orderProviders,
+  requiresExplicitModelSelection,
 } from "./model-helpers";
 
 describe("orderProviders", () => {
@@ -190,5 +191,18 @@ describe("canRemoveProvider", () => {
     assert.equal(canRemoveProvider(custom, "watsonx"), true);
     assert.equal(canRemoveProvider(custom, "azure"), true);
     assert.equal(canRemoveProvider(custom, "anthropic"), true);
+  });
+});
+
+describe("requiresExplicitModelSelection", () => {
+  it("covers both Azure providers, whose deployment names are operator-chosen", () => {
+    assert.equal(requiresExplicitModelSelection("azure"), true);
+    assert.equal(requiresExplicitModelSelection("azure_ai"), true);
+  });
+
+  it("does not stop other providers defaulting to their top-ranked model", () => {
+    assert.equal(requiresExplicitModelSelection("openai"), false);
+    assert.equal(requiresExplicitModelSelection("anthropic"), false);
+    assert.equal(requiresExplicitModelSelection(undefined), false);
   });
 });

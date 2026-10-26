@@ -19,7 +19,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Run npm audit
         working-directory: ${{ matrix.directory }}
@@ -47,14 +47,35 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v7
         with:
-          python-version: '3.11'
+          python-version: '3.13'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.0.1
 
       - name: Install pip-audit
         run: pip install pip-audit
+
+      - name: Export locked requirements
+        working-directory: ${{ matrix.directory }}
+        run: uv export --frozen --no-hashes --no-emit-project -o "$RUNNER_TEMP/requirements.txt"
 
       - name: Run pip-audit
         working-directory: ${{ matrix.directory }}
         run: |
           echo "::group::Python Audit for ${{ matrix.directory }}"
-          pip-audit --desc || echo "::warning::pip-audit found vulnerabilities in ${{ matrix.directory }}"
+          report="$RUNNER_TEMP/pip-audit.txt"
+          status=0
+          pip-audit --no-deps --disable-pip -r "$RUNNER_TEMP/requirements.txt" --desc -o "$report" || status=$?
+          # pip-audit exits 1 both when it finds vulnerabilities and when it errors.
+          # A run that finds vulnerabilities writes the report; an error does not.
+          if [ "$status" -ne 0 ]; then
+            if [ ! -s "$report" ]; then
+              echo "::error::pip-audit failed to run for ${{ matrix.directory }}"
+              exit 1
+            fi
+            cat "$report"
+            echo "::warning::pip-audit found vulnerabilities in ${{ matrix.directory }}"
+          else
+            echo "No known vulnerabilities found"
+          fi
           echo "::endgroup::"

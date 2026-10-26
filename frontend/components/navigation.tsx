@@ -376,16 +376,16 @@ export function Navigation({
 
   return (
     <div className="flex flex-col h-full bg-background">
-      <div className="px-4 py-2 flex-shrink-0">
+      <div className="px-4 py-2 shrink-0">
         <div className="space-y-1">
           {routes.map((route) => {
             const isDisabled = loading && !route.active;
             const tabClassName = cn(
-              "text-[13px] group flex p-3 w-full justify-start font-medium transition-all",
+              "text-mmd group flex p-3 w-full justify-start font-medium transition-all",
               isDisabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
               isCloudBrand
                 ? route.active
-                  ? "border-l-[3px] border-l-primary bg-[var(--layered-select-bg)] text-foreground rounded-r-lg"
+                  ? "border-l-[3px] border-l-primary bg-(--layered-select-bg) text-foreground rounded-r-lg"
                   : cn(
                       "border-l-[3px] border-l-transparent text-foreground rounded-lg",
                       !isDisabled &&
@@ -394,7 +394,7 @@ export function Navigation({
                 : cn(
                     "rounded-lg",
                     route.active
-                      ? "bg-accent text-accent-foreground shadow-sm"
+                      ? "bg-accent text-accent-foreground shadow-xs"
                       : "text-foreground",
                     !isDisabled &&
                       "hover:bg-accent hover:text-accent-foreground",
@@ -448,7 +448,7 @@ export function Navigation({
       {isOnChatPage && (
         <div className="flex-1 min-h-0 flex flex-col px-4">
           {/* Conversations Section */}
-          <div className="flex-shrink-0">
+          <div className="shrink-0">
             <div className="flex items-center justify-between mb-3 mx-3">
               <h3 className="text-xs font-medium text-muted-foreground">
                 Conversations
@@ -508,7 +508,7 @@ export function Navigation({
                   {conversations.length === 0 &&
                   !isConversationsLoading &&
                   !placeholderConversation ? (
-                    <div className="text-[13px] text-muted-foreground py-2 pl-3">
+                    <div className="text-mmd text-muted-foreground py-2 pl-3">
                       No conversations yet
                     </div>
                   ) : (
@@ -635,7 +635,7 @@ export function Navigation({
                                     selection.toggle(conversation.response_id)
                                   }
                                   onClick={(e) => e.stopPropagation()}
-                                  className="mr-2 flex-shrink-0"
+                                  className="mr-2 shrink-0"
                                 />
                               )}
                               <div className="text-sm font-medium text-foreground truncate">
@@ -665,7 +665,7 @@ export function Navigation({
                                   asChild
                                 >
                                   <div
-                                    className="opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 data-[state=open]:text-foreground transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground ml-2 flex-shrink-0 cursor-pointer"
+                                    className="opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 data-[state=open]:text-foreground transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground ml-2 shrink-0 cursor-pointer"
                                     title="More options"
                                     onClick={(e) => {
                                       e.stopPropagation();
@@ -705,7 +705,7 @@ export function Navigation({
               )}
             </div>
             {(newConversationFiles?.length ?? 0) !== 0 && (
-              <div className="flex-shrink-0 mt-4">
+              <div className="shrink-0 mt-4">
                 <div className="flex items-center justify-between mb-3 mx-3">
                   <h3 className="text-xs font-medium text-muted-foreground">
                     Files
@@ -727,7 +727,7 @@ export function Navigation({
             )}
           </div>
           {selection.isSelecting && (
-            <div className="flex-shrink-0 py-3 border-t mx-3">
+            <div className="shrink-0 py-3 border-t mx-3">
               <div className="flex items-center justify-between pb-1 text-xs text-muted-foreground">
                 <span>{selection.count} selected</span>
                 <span>of {conversations.length}</span>
