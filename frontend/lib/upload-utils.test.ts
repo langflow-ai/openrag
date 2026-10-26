@@ -7,7 +7,13 @@ import {
 } from "@/test-utils/msw/multipart";
 import { server } from "@/test-utils/msw/server";
 import {
+  countSentDuplicates,
   duplicateCheck,
+  folderUploadSuccessText,
+  getMaxUploadBytes,
+  packUploadBatches,
+  resetUploadLimitCache,
+  uploadFailureText,
   uploadFile,
   uploadFileForContext,
   uploadFiles,
@@ -49,6 +55,12 @@ function captureForm(path: string, respond: () => Response) {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  resetUploadLimitCache();
+  server.use(
+    http.get("/api/upload_options", () =>
+      HttpResponse.json({ upload_batch_size: 25, max_upload_mb: 100 }),
+    ),
+  );
 });
 
 describe("uploadFileForContext", () => {
@@ -124,6 +136,36 @@ describe("uploadFileForContext", () => {
     );
     await expect(uploadFileForContext(txt(), "/chat", null)).rejects.toThrow(
       "no response_id",
+    );
+  });
+
+  it("shows a non-JSON 413 body instead of the raw page", async () => {
+    server.use(
+      http.post(UPLOAD_CONTEXT, () =>
+        HttpResponse.text(
+          "<html><body><h1>413 Request Entity Too Large</h1></body></html>",
+          { status: 413 },
+        ),
+      ),
+    );
+
+    await expect(uploadFileForContext(txt(), "/chat", null)).rejects.toThrow(
+      "413 Request Entity Too Large",
+    );
+    await expect(
+      uploadFileForContext(txt(), "/chat", null),
+    ).rejects.not.toThrow(/<html>/);
+  });
+
+  it("reads an error field from a JSON failure body", async () => {
+    server.use(
+      http.post(UPLOAD_CONTEXT, () =>
+        HttpResponse.json({ error: "disk full" }, { status: 500 }),
+      ),
+    );
+
+    await expect(uploadFileForContext(txt(), "/chat", null)).rejects.toThrow(
+      "disk full",
     );
   });
 
@@ -243,10 +285,208 @@ describe("uploadFiles", () => {
     );
   });
 
+  it("shows a non-JSON 413 body instead of a parse error", async () => {
+    server.use(
+      http.post(UPLOAD_INGEST, () =>
+        HttpResponse.text(
+          "<html><body><h1>413 Request Entity Too Large</h1></body></html>",
+          { status: 413 },
+        ),
+      ),
+    );
+
+    await expect(uploadFiles([txt()])).rejects.toThrow(
+      "413 Request Entity Too Large",
+    );
+    resetUploadLimitCache();
+    await expect(uploadFile(txt())).rejects.toThrow(
+      "413 Request Entity Too Large",
+    );
+  });
+
+  it("rejects an oversized file before upload", async () => {
+    resetUploadLimitCache();
+    let posted = false;
+    server.use(
+      http.get("/api/upload_options", () =>
+        HttpResponse.json({ max_upload_mb: 1 }),
+      ),
+      http.post(UPLOAD_INGEST, () => {
+        posted = true;
+        return HttpResponse.json({ task_id: "should-not-run" });
+      }),
+    );
+
+    const big = new File([new Uint8Array(1024 * 1024 + 1)], "big.pdf");
+
+    await expect(uploadFile(big)).rejects.toThrow(/big\.pdf/);
+    await expect(uploadFile(big)).rejects.toThrow("OPENRAG_MAX_UPLOAD_MB");
+    expect(posted).toBe(false);
+  });
+
+  it("falls back to 100 MB when the options payload has no limit", async () => {
+    resetUploadLimitCache();
+    server.use(
+      http.get("/api/upload_options", () =>
+        HttpResponse.json({ upload_batch_size: 25 }),
+      ),
+    );
+    const overDefault = new File([new Uint8Array(1)], "huge.pdf");
+    Object.defineProperty(overDefault, "size", {
+      value: 100 * 1024 * 1024 + 1,
+    });
+
+    await expect(uploadFile(overDefault)).rejects.toThrow(/huge\.pdf/);
+  });
+
+  it("uses the default limit when the limit lookup fails", async () => {
+    resetUploadLimitCache();
+    let posted = false;
+    server.use(
+      http.get("/api/upload_options", () => HttpResponse.error()),
+      http.post(UPLOAD_INGEST, () => {
+        posted = true;
+        return HttpResponse.json({ id: "f-ok" });
+      }),
+    );
+
+    await expect(uploadFile(txt())).resolves.toMatchObject({ fileId: "f-ok" });
+    expect(posted).toBe(true);
+
+    resetUploadLimitCache();
+    posted = false;
+    const overDefault = new File([new Uint8Array(1)], "huge.pdf");
+    Object.defineProperty(overDefault, "size", {
+      value: 100 * 1024 * 1024 + 1,
+    });
+    await expect(uploadFile(overDefault)).rejects.toThrow(/huge\.pdf/);
+    expect(posted).toBe(false);
+  });
+
+  it("retries the limit lookup after a fallback", async () => {
+    resetUploadLimitCache();
+    server.use(http.get("/api/upload_options", () => HttpResponse.error()));
+    await expect(getMaxUploadBytes()).resolves.toBe(100 * 1024 * 1024);
+
+    server.use(
+      http.get("/api/upload_options", () =>
+        HttpResponse.json({ upload_batch_size: 25 }, { status: 500 }),
+      ),
+    );
+    await expect(getMaxUploadBytes()).resolves.toBe(100 * 1024 * 1024);
+
+    server.use(
+      http.get("/api/upload_options", () =>
+        HttpResponse.json({ max_upload_mb: 1 }),
+      ),
+    );
+    await expect(getMaxUploadBytes()).resolves.toBe(1024 * 1024);
+
+    server.use(
+      http.get("/api/upload_options", () =>
+        HttpResponse.json({ max_upload_mb: 5 }),
+      ),
+    );
+    await expect(getMaxUploadBytes()).resolves.toBe(1024 * 1024);
+  });
+
   it("throws when a successful response carries no task id", async () => {
     server.use(http.post(UPLOAD_INGEST, () => HttpResponse.json({})));
 
     await expect(uploadFiles([txt()])).rejects.toThrow("no task ID returned");
+  });
+});
+
+describe("uploadFailureText", () => {
+  it("shows the size error instead of asking for a retry", () => {
+    const message =
+      '"notes.pdf" is 2.0 MB. The upload limit is 1 MB (OPENRAG_MAX_UPLOAD_MB).';
+
+    expect(uploadFailureText(new Error(message))).toBe(message);
+  });
+
+  it("keeps a retry hint when the failure has no message", () => {
+    expect(uploadFailureText(new Error("  "))).toBe(
+      "Failed to process document. Please try again.",
+    );
+    expect(uploadFailureText("nope")).toBe(
+      "Failed to process document. Please try again.",
+    );
+  });
+});
+
+describe("countSentDuplicates", () => {
+  it("does not count a duplicate that was skipped for size", () => {
+    expect(countSentDuplicates(["a.pdf", "b.pdf"], ["a.pdf", "huge.pdf"])).toBe(
+      1,
+    );
+  });
+});
+
+describe("folderUploadSuccessText", () => {
+  it("counts only the files that were sent and names the skipped ones", () => {
+    expect(
+      folderUploadSuccessText(3, 2, "Successfully processed 3 file(s)"),
+    ).toBe("Successfully processed 3 file(s), skipped 2 over the upload limit");
+  });
+
+  it("stays quiet when every file was over the limit", () => {
+    expect(
+      folderUploadSuccessText(0, 2, "Successfully processed 0 file(s)"),
+    ).toBeNull();
+  });
+
+  it("keeps the other skip reasons", () => {
+    expect(
+      folderUploadSuccessText(1, 0, "Processed 1 file(s)", [
+        "skipped 4 duplicate(s)",
+      ]),
+    ).toBe("Processed 1 file(s), skipped 4 duplicate(s)");
+  });
+});
+
+describe("packUploadBatches", () => {
+  function sized(name: string, size: number) {
+    const file = new File([new Uint8Array(1)], name);
+    Object.defineProperty(file, "size", { value: size });
+    return file;
+  }
+
+  it("keeps each batch under the byte budget and drops oversized files", () => {
+    const { batches, oversized } = packUploadBatches(
+      [
+        sized("a.pdf", 600),
+        sized("b.pdf", 600),
+        sized("c.pdf", 100),
+        sized("huge.pdf", 2000),
+      ],
+      25,
+      1000,
+    );
+
+    expect(oversized.map((file) => file.name)).toEqual(["huge.pdf"]);
+    expect(batches.map((batch) => batch.map((file) => file.name))).toEqual([
+      ["a.pdf"],
+      ["b.pdf", "c.pdf"],
+    ]);
+    for (const batch of batches) {
+      const total = batch.reduce((sum, file) => sum + file.size, 0);
+      expect(total).toBeLessThanOrEqual(1000);
+    }
+  });
+
+  it("also splits when the file count is reached first", () => {
+    const { batches, oversized } = packUploadBatches(
+      [sized("a.pdf", 10), sized("b.pdf", 10), sized("c.pdf", 10)],
+      2,
+      1000,
+    );
+
+    expect(oversized).toEqual([]);
+    expect(batches.map((batch) => batch.map((file) => file.name))).toEqual([
+      ["a.pdf", "b.pdf"],
+      ["c.pdf"],
+    ]);
   });
 });
 

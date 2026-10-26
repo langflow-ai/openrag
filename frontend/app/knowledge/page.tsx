@@ -106,21 +106,19 @@ function pruneNonDeletableGridSelection(
 }
 
 // Function to get the appropriate icon for a connector type
-function getSourceIcon(connectorType?: string) {
+export function getSourceIcon(connectorType?: string) {
   if (connectorType) {
     const Icon = getConnectorDescriptor(connectorType)?.Icon;
-    if (Icon) return <Icon className="h-4 w-4 text-foreground flex-shrink-0" />;
+    if (Icon) return <Icon className="h-4 w-4 text-foreground shrink-0" />;
   }
   switch (connectorType) {
     case "openrag_docs":
     case "url":
-      return <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />;
+      return <Globe className="h-4 w-4 text-muted-foreground shrink-0" />;
     case "s3":
-      return <Cloud className="h-4 w-4 text-foreground flex-shrink-0" />;
+      return <Cloud className="h-4 w-4 text-foreground shrink-0" />;
     default:
-      return (
-        <FileIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-      );
+      return <FileIcon className="h-4 w-4 text-muted-foreground shrink-0" />;
   }
 }
 
@@ -201,7 +199,7 @@ export function SkippedStatusCell({ warning }: { warning?: string }) {
       <TooltipContent
         side="top"
         align="end"
-        className="max-w-80 whitespace-pre-wrap break-words"
+        className="max-w-80 whitespace-pre-wrap wrap-break-word"
       >
         {warningText}
       </TooltipContent>
@@ -368,7 +366,7 @@ export function StatusCellContent({
         <TooltipContent
           side="top"
           align="end"
-          className="max-w-80 whitespace-pre-wrap break-words"
+          className="max-w-80 whitespace-pre-wrap wrap-break-word"
         >
           {data.error}
         </TooltipContent>
@@ -384,11 +382,7 @@ export function StatusCellContent({
     return <SkippedStatusCell warning={data?.warning} />;
   }
 
-  return (
-    <StatusBadge
-      status={status as import("@/components/ui/status-badge").Status}
-    />
-  );
+  return <StatusBadge status={status} />;
 }
 
 export function resolveActionsVariant(
@@ -820,6 +814,7 @@ function SearchPage() {
     setSelectedRows((current) =>
       sameFileSelection(current, nextSelected) ? current : nextSelected,
     );
+    api.refreshCells({ force: true });
   }, [gridRowsSelectionKey, isDeletableKnowledgeRow, getGridApi]);
 
   // ── Shared column fragments ──────────────────────────────────────────────
@@ -829,6 +824,11 @@ function SearchPage() {
       headerName: "Source",
       sortable: true,
       comparator: serverSideComparator,
+      valueGetter: (params: ValueGetterParams<File>) =>
+        `${params.data?.filename ?? ""}::${params.data?.status ?? "active"}`,
+      valueFormatter: (params: ValueFormatterParams<File>) =>
+        params.data?.filename ??
+        (typeof params.value === "string" ? params.value.split("::")[0] : "-"),
       checkboxSelection: (params: CheckboxSelectionCallbackParams<File>) =>
         isDeletableKnowledgeRow(params?.data),
       headerCheckboxSelection: true,
@@ -836,6 +836,9 @@ function SearchPage() {
         ? { flex: 2.2, minWidth: 260 }
         : { initialFlex: 2, minWidth: 220 }),
       cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
+        const filename =
+          data?.filename ??
+          (typeof value === "string" ? value.split("::")[0] : "");
         const status = data?.status || "active";
         const isActive = status === "active";
         const showOpenragSourceAnimation =
@@ -859,9 +862,7 @@ function SearchPage() {
               )}
               onClick={() => {
                 if (!isActive) return;
-                router.push(
-                  buildChunksUrl(data?.filename ?? "", effectiveSearchText),
-                );
+                router.push(buildChunksUrl(filename, effectiveSearchText));
               }}
             >
               {getSourceIcon(data?.connector_type)}
@@ -875,11 +876,11 @@ function SearchPage() {
                         : "text-foreground",
                     )}
                   >
-                    {value}
+                    {filename}
                   </span>
                 </TooltipTrigger>
                 <TooltipContent side="top" align="start">
-                  {value}
+                  {filename}
                 </TooltipContent>
               </Tooltip>
             </button>
@@ -1187,7 +1188,7 @@ function SearchPage() {
           </div>
         ) : (
           /* Search Input Area */
-          <div className="flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
+          <div className="flex items-center shrink-0 flex-wrap-reverse gap-3 mb-6">
             {!isNarrow && (
               <KnowledgeSearchInput placeholder="Search your documents..." />
             )}
@@ -1195,7 +1196,7 @@ function SearchPage() {
             <Button
               type="button"
               variant="outline"
-              className="rounded-lg flex-shrink-0"
+              className="rounded-lg shrink-0"
               disabled={
                 syncAllConnectorsMutation.isPending ||
                 syncAllPreviewMutation.isPending
@@ -1219,7 +1220,7 @@ function SearchPage() {
               <Button
                 type="button"
                 variant="outline"
-                className="rounded-lg flex-shrink-0"
+                className="rounded-lg shrink-0"
                 disabled={refreshOpenragDocsMutation.isPending}
                 onClick={async () => {
                   trackButton({
@@ -1252,7 +1253,7 @@ function SearchPage() {
               <Button
                 type="button"
                 variant="destructive"
-                className="rounded-lg flex-shrink-0"
+                className="rounded-lg shrink-0"
                 onClick={() => setShowBulkDeleteDialog(true)}
               >
                 Delete

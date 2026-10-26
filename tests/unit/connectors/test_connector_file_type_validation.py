@@ -57,7 +57,11 @@ async def test_sync_specific_files_does_not_raise_on_incompatible_type():
 
     # Verify that calling sync_specific_files succeeds (no ValueError raised!)
     task_id = await service.sync_specific_files(
-        connection_id="conn-id", user_id="user-id", file_ids=["folder-id"], jwt_token="jwt"
+        connection_id="conn-id",
+        user_id="user-id",
+        file_ids=["folder-id"],
+        jwt_token="jwt",
+        allow_anonymous_delete=True,
     )
 
     assert task_id == "dummy-task-id"
@@ -83,6 +87,7 @@ async def test_connector_file_processor_fails_incompatible_file():
         jwt_token="jwt",
         document_service=MagicMock(),
         models_service=MagicMock(),
+        allow_anonymous_delete=True,
     )
 
     upload_task = UploadTask(task_id="task-id", total_files=1)

@@ -49,3 +49,19 @@ async def test_a_non_hop_token_records_no_purpose(monkeypatch):
 
     assert user is api_user
     assert not hasattr(request.state, "llm_hop_purpose")
+
+
+@pytest.mark.asyncio
+async def test_a_hop_token_records_its_run_id():
+    """Each Langflow run mints its own hop token; its id groups the run's calls in traces."""
+    service = LangflowLlmTokenService(secret=SECRET, ttl_seconds=60)
+    first = _request(service.create_token(user_id="alice", purpose=HOP_PURPOSE_CHAT))
+    second = _request(service.create_token(user_id="alice", purpose=HOP_PURPOSE_CHAT))
+
+    for request in (first, second):
+        await dependencies.get_llm_proxy_user(
+            request, token_service=service, api_key_service=None, session_manager=None
+        )
+
+    assert first.state.llm_hop_run_id
+    assert first.state.llm_hop_run_id != second.state.llm_hop_run_id

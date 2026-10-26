@@ -1,6 +1,608 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@plugin "@tailwindcss/forms" {
+  strategy: class;
+}
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@utility container {
+  margin-inline: auto;
+  @media (width >= --theme(--breakpoint-sm)) {
+    max-width: none;
+  }
+  @media (width >= 1400px) {
+    max-width: 1400px;
+  }
+  @media (width >= 1500px) {
+    max-width: 1500px;
+  }
+}
+
+@theme {
+  --container-content: 960px;
+  --container-task-dialog: var(--task-dialog-width);
+
+  --height-task-dialog: var(--task-dialog-max-height);
+
+  --min-height-header: var(--header-height);
+
+  --max-height-task-dialog: var(--task-dialog-max-height);
+
+  --width-task-dialog: var(--task-dialog-width);
+  --width-task-dialog-file-type: var(--task-dialog-file-type-width);
+
+  --z-index-task-dialog-menu: var(--z-task-dialog-menu);
+
+  --breakpoint-xl: 1200px;
+  --breakpoint-2xl: 1400px;
+  --breakpoint-3xl: 1500px;
+
+  --animate-toast-shake: toast-shake 0.4s ease-in-out;
+  --animate-overlayShow: overlayShow 400ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-contentShow: contentShow 400ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-wiggle: wiggle 150ms ease-in-out 1;
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-shimmer: shimmer 3s ease-in-out infinite;
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-background: hsl(var(--background));
+  --color-background-dark: hsl(var(--background-dark));
+
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-primary-hover: hsl(var(--primary-hover));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-secondary-hover: hsl(var(--secondary-hover));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-accent-emerald: hsl(var(--accent-emerald));
+  --color-accent-emerald-foreground: hsl(var(--accent-emerald-foreground));
+
+  --color-accent-pink: hsl(var(--accent-pink));
+  --color-accent-pink-foreground: hsl(var(--accent-pink-foreground));
+
+  --color-accent-amber: hsl(var(--accent-amber));
+  --color-accent-amber-foreground: hsl(var(--accent-amber-foreground));
+
+  --color-brand-amber-10: hsl(var(--brand-amber) / 0.1);
+  --color-brand-amber-30: hsl(var(--brand-amber) / 0.3);
+  --color-brand-amber: hsl(var(--brand-amber));
+
+  --color-accent-purple: hsl(var(--accent-purple));
+  --color-accent-purple-foreground: hsl(var(--accent-purple-foreground));
+
+  --color-accent-indigo: hsl(var(--accent-indigo));
+  --color-accent-indigo-foreground: hsl(var(--accent-indigo-foreground));
+
+  --color-accent-red: hsl(var(--accent-red));
+  --color-accent-red-foreground: hsl(var(--accent-red-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-canvas: hsl(var(--canvas));
+  --color-layer-contextual: hsl(var(--layer-contextual));
+  --color-task-dialog-oss: hsl(var(--task-dialog-oss-bg));
+  --color-task-dialog-oss-selected: hsl(var(--task-dialog-oss-selected));
+  --color-layer-contextual-foreground: hsl(var(--layer-contextual-foreground));
+  --color-border-subtle-contextual: hsl(
+    var(--border-subtle-background-contextual)
+  );
+  --color-text-text-01: hsl(var(--text-text-01));
+  --color-link-primary: hsl(var(--link-primary));
+  --color-button-tertiary: hsl(var(--button-tertiary));
+  --color-component-icon: var(--component-icon);
+  --color-flow-icon: var(--flow-icon);
+  --color-placeholder-foreground: hsl(var(--placeholder-foreground));
+  --color-placeholder: hsl(var(--placeholder));
+
+  --color-function-call-header: var(--function-call-header);
+  --color-function-call-header-hover: var(--function-call-header-hover);
+
+  --color-badge: hsl(var(--badge));
+  --color-badge-foreground: hsl(var(--badge-foreground));
+
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+
+  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+
+  --color-failure-soft: var(--failure-soft);
+  --color-failure-pill: var(--failure-pill);
+  --color-failure-file: var(--failure-file);
+  --color-failure-log: var(--failure-log);
+  --color-failure-message: var(--failure-message);
+  --color-failure-scroll: var(--failure-scroll);
+  --color-failure-muted: var(--failure-muted);
+  --color-failure-component-cause: hsl(var(--failure-component-cause));
+
+  --color-task-status-failed: hsl(var(--task-status-failed-bg));
+  --color-task-status-failed-foreground: hsl(var(--task-status-failed-fg));
+
+  --color-task-status-partial: hsl(var(--task-status-partial-bg));
+  --color-task-status-partial-foreground: hsl(var(--task-status-partial-fg));
+
+  --color-task-status-complete: hsl(var(--task-status-complete-bg));
+  --color-task-status-complete-foreground: hsl(var(--task-status-complete-fg));
+
+  --spacing-mmd: 13px;
+  --spacing-task-dialog-error-indent: var(--task-dialog-error-indent);
+  --spacing-task-dialog-error-indent-cloud: var(
+    --task-dialog-error-indent-cloud
+  );
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --text-xxs: 11px;
+  --text-mmd: 13px;
+
+  @keyframes toast-shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    20% {
+      transform: translateX(-6px);
+    }
+    40% {
+      transform: translateX(6px);
+    }
+    60% {
+      transform: translateX(-4px);
+    }
+    80% {
+      transform: translateX(4px);
+    }
+  }
+  @keyframes overlayShow {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes contentShow {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.95);
+      clip-path: inset(50% 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+      clip-path: inset(0% 0);
+    }
+  }
+  @keyframes wiggle {
+    0%,
+    100% {
+      transform: scale(100%);
+    }
+    50% {
+      transform: scale(120%);
+    }
+  }
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+  @keyframes shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+}
+
+/*
+  Inline so utilities resolve these against the runtime variables of the same
+  name (set by next/font and the theme blocks below) instead of referencing
+  themselves.
+*/
+@theme inline {
+  --radius-mmd: var(--radius-mmd);
+
+  --font-sans:
+    var(--font-sans), ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono:
+    var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  --font-chivo:
+    var(--font-chivo), ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-ibm-plex-sans:
+    var(--font-ibm-plex-sans), ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+/*
+  Tailwind v4 dropped `cursor: pointer` on buttons; keep the v3 behaviour.
+*/
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility truncate-multiline {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@utility custom-scroll {
+  &::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  &::-webkit-scrollbar-track {
+    background-color: hsl(var(--muted));
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 999px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--placeholder-foreground));
+  }
+}
+
+@utility primary-input {
+  display: block;
+  width: 100%;
+  height: 40px;
+  border-radius: 0.375rem;
+  border: 1px solid hsl(var(--input));
+  background-color: hsl(var(--background));
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  font-size: 0.875rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  transition-property:
+    color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+  &::placeholder {
+    color: hsl(var(--muted-foreground));
+  }
+  &:hover {
+    border-color: hsl(var(--muted-foreground));
+  }
+  &:focus {
+    border-color: hsl(var(--foreground));
+    outline: none;
+    box-shadow: none;
+  }
+  &:focus::placeholder {
+    color: transparent;
+  }
+  &:disabled {
+    pointer-events: none;
+    cursor: not-allowed;
+    background-color: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+  }
+}
+
+@utility app-grid-arrangement {
+  --nav-width: 280px;
+  --right-panel-width: 0px;
+  --header-height: 54px;
+
+  &.notifications-open,
+  &.filters-open {
+    --right-panel-width: 320px;
+  }
+  display: grid;
+  height: 100%;
+  width: 100%;
+  grid-template-rows:
+    auto
+    var(--header-height)
+    1fr;
+  grid-template-columns:
+    var(--nav-width)
+    1fr
+    var(--right-panel-width);
+  grid-template-areas:
+    "banner banner banner"
+    "header header header"
+    "nav main right-panel";
+  transition: grid-template-columns 0.25s ease-in-out;
+}
+
+@utility header-start-display {
+  @apply flex items-center gap-2;
+}
+
+@utility header-end-division {
+  @apply flex justify-end px-2;
+}
+
+@utility header-end-display {
+  @apply ml-auto mr-2 flex items-center gap-5;
+}
+
+@utility header-github-link {
+  @apply inline-flex h-8 items-center justify-center rounded-md border border-input px-2 text-sm font-medium text-muted-foreground shadow-xs ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
+}
+
+@utility header-notifications {
+  @apply absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive;
+}
+
+@utility header-menu-bar {
+  @apply flex items-center rounded-md py-1 text-sm font-medium;
+}
+
+@utility header-menu-bar-display {
+  @apply flex max-w-[110px] cursor-pointer items-center gap-2 lg:max-w-[150px];
+}
+
+@utility header-menu-flow-name {
+  @apply flex-1 truncate;
+}
+
+@utility header-menu-options {
+  @apply mr-2 h-4 w-4;
+}
+
+@utility side-bar-arrangement {
+  @apply flex h-full w-[18rem] flex-col overflow-hidden border-r scrollbar-hide;
+}
+
+@utility side-bar-search-div-placement {
+  @apply relative mx-auto flex items-center py-3;
+}
+
+@utility side-bar-components-icon {
+  @apply h-6 w-4 text-ring;
+}
+
+@utility side-bar-components-text {
+  @apply w-full truncate pr-1 text-xs text-foreground;
+}
+
+@utility side-bar-components-div-form {
+  @apply flex w-full items-center justify-between rounded-md rounded-l-none border border-l-0 border-dashed border-ring px-3 py-1 text-sm;
+}
+
+@utility side-bar-components-border {
+  @apply cursor-grab rounded-l-md border-l-8;
+}
+
+@utility side-bar-components-gap {
+  @apply flex flex-col gap-2 p-2;
+}
+
+@utility side-bar-components-div-arrangement {
+  @apply w-full overflow-auto pb-10 scrollbar-hide;
+}
+
+@utility side-bar-button-size {
+  @apply h-5 w-5;
+
+  &:hover {
+    @apply hover:text-accent-foreground;
+  }
+}
+
+@utility side-bar-buttons-arrangement {
+  @apply mb-2 mt-2 flex w-full items-center justify-between gap-2 px-2;
+}
+
+@utility side-bar-button {
+  @apply flex w-full;
+}
+
+@utility components-disclosure-arrangement {
+  @apply -mt-px flex w-full select-none items-center justify-between border-y border-y-input bg-primary-foreground px-3 py-2;
+}
+
+@utility components-disclosure-title {
+  @apply flex items-center text-sm text-primary;
+}
+
+@utility toolbar-wrapper {
+  @apply flex h-10 items-center gap-1 rounded-xl border border-border bg-background p-1 shadow-xs;
+}
+
+@utility playground-btn-flow-toolbar {
+  @apply relative inline-flex h-8 w-full items-center justify-center gap-1.5 rounded px-3 py-1.5 text-sm font-normal transition-all duration-500 ease-in-out;
+}
+
+@utility input-search {
+  @apply primary-input mx-2 pr-7;
+}
+
+@utility github-star-link {
+  /* GitHub Star Button */
+  @apply inline-flex h-8 items-center rounded-md text-sm font-medium text-muted-foreground shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+}
+
+@utility github-star-content {
+  @apply flex items-center px-2 pr-1;
+}
+
+@utility github-star-icon {
+  @apply h-4 w-4;
+}
+
+@utility github-star-text {
+  @apply ml-1;
+}
+
+@utility github-star-count-section {
+  @apply border-l bg-muted/80 px-2 py-1;
+}
+
+@utility github-star-display {
+  @apply flex items-center gap-1;
+}
+
+@utility github-star-count-icon {
+  @apply h-3 w-3 fill-current;
+}
+
+@utility github-star-count {
+  @apply text-xs font-medium text-foreground;
+}
+
+@utility github-star-loading {
+  @apply flex items-center justify-center;
+}
+
+@utility github-star-skeleton {
+  @apply h-3 w-8 animate-pulse bg-muted-foreground/20 rounded;
+}
+
+@utility github-star-error {
+  @apply text-xs text-muted-foreground;
+}
+
+@utility discord-link {
+  /* Discord Link */
+  @apply inline-flex h-8 items-center rounded-md text-sm font-medium shadow-xs transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  background-color: #5865f2;
+  border-color: #5865f2;
+  color: white;
+
+  &:hover {
+    @apply opacity-90;
+  }
+}
+
+@utility discord-content {
+  @apply flex items-center px-2 pr-1;
+}
+
+@utility discord-icon {
+  @apply flex items-center justify-center;
+}
+
+@utility discord-text {
+  @apply ml-1;
+}
+
+@utility discord-member-section {
+  @apply border-l border-white/20 bg-black/10 px-2 py-1;
+}
+
+@utility discord-member-display {
+  @apply flex items-center gap-1;
+}
+
+@utility discord-member-icon {
+  @apply h-3 w-3;
+}
+
+@utility discord-member-count {
+  @apply text-xs font-medium;
+}
+
+@utility discord-loading {
+  @apply flex items-center justify-center;
+}
+
+@utility discord-skeleton {
+  @apply h-3 w-8 animate-pulse bg-white/20 rounded;
+}
+
+@utility discord-error {
+  @apply text-xs opacity-70;
+}
+
+@utility prose {
+  & :where(strong):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+    @apply text-current;
+  }
+
+  & :where(a):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+    @apply text-current;
+  }
+}
+
+@utility box-shadow-inner {
+  &::after {
+    content: " ";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    pointer-events: none;
+    background: linear-gradient(to top, hsl(var(--background)), transparent);
+    display: block;
+    width: 100%;
+    height: 30px;
+  }
+}
+
+@utility thinking-dots {
+  &::after {
+    content: ".";
+    animation: thinking-dots 1.4s steps(3, end) infinite;
+  }
+}
 
 @layer base {
   :root {
@@ -237,260 +839,6 @@
     --radius: 0rem; /* IBM theme dialogs (Carbon design system style) */
   }
 
-  /* IBM dialog chrome follows light/dark theme tokens (not always-dark Carbon). */
-  [data-theme="ibm"] [data-slot="dialog-content"],
-  [data-theme="ibm"] [role="dialog"] {
-    border-radius: 0 !important;
-    background-color: hsl(var(--background)) !important;
-    border: none !important;
-    color: hsl(var(--foreground)) !important;
-    padding: 0 !important;
-    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.5) !important;
-  }
-
-  [data-theme="ibm"] [data-slot="dialog-content"] > button[class*="absolute"],
-  [data-theme="ibm"] [role="dialog"] > button[class*="absolute"] {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    top: 0.75rem !important;
-    right: 0.75rem !important;
-    width: 1.5rem !important;
-    height: 1.5rem !important;
-    padding: 0 !important;
-    border-radius: 0 !important;
-    color: hsl(var(--foreground)) !important;
-    opacity: 0.75 !important;
-    transition:
-      background-color 0.1s ease,
-      opacity 0.1s ease !important;
-  }
-
-  [data-theme="ibm"]
-    [data-slot="dialog-content"]
-    > button[class*="absolute"]:hover,
-  [data-theme="ibm"] [role="dialog"] > button[class*="absolute"]:hover {
-    opacity: 1 !important;
-    background-color: hsl(var(--muted)) !important;
-  }
-
-  [data-theme="ibm"] [data-slot="dialog-content"] form {
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
-  }
-
-  /* Non-form dialogs (delete confirm, etc.): inset body between header and footer. */
-  [data-theme="ibm"]
-    [data-slot="dialog-content"]
-    > :not([data-slot="dialog-header"]):not([data-slot="dialog-footer"]):not(
-      button
-    ):not(form) {
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
-  }
-
-  /* Task dialog manages its own layout padding. */
-  [data-theme="ibm"] [data-slot="dialog-content"].h-task-dialog > div {
-    padding-left: 0;
-    padding-right: 0;
-  }
-
-  [data-theme="ibm"]
-    [data-slot="dialog-content"]
-    form
-    [data-slot="dialog-header"],
-  [data-theme="ibm"]
-    [data-slot="dialog-content"]
-    form
-    [data-slot="dialog-footer"] {
-    margin-left: -1.5rem !important;
-    margin-right: -1.5rem !important;
-  }
-
-  [data-theme="ibm"] [data-slot="dialog-header"] {
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    margin-top: 0 !important;
-    padding-left: 1.5rem !important;
-    padding-right: 1.5rem !important;
-    padding-top: 1.5rem !important;
-    padding-bottom: 1rem !important;
-    border-bottom: 1px solid hsl(var(--border)) !important;
-  }
-
-  [data-theme="ibm"] [data-slot="dialog-title"] {
-    font-size: 1.25rem !important;
-    font-weight: 400 !important;
-    color: hsl(var(--foreground)) !important;
-  }
-
-  [data-theme="ibm"] [data-slot="dialog-description"] {
-    font-size: 0.875rem !important;
-    color: hsl(var(--muted-foreground)) !important;
-    font-weight: 400 !important;
-    margin-top: 0.25rem !important;
-  }
-
-  [data-theme="ibm"] [data-slot="dialog-footer"] {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 1px !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    margin-bottom: 0 !important;
-    margin-top: 1rem !important;
-  }
-
-  /* Confirmation / alert dialogs without body content: remove header bottom border and footer top margin */
-  [data-theme="ibm"]
-    [data-slot="dialog-header"]:has(+ [data-slot="dialog-footer"]) {
-    border-bottom: none !important;
-    padding-bottom: 1.5rem !important;
-  }
-
-  [data-theme="ibm"] [data-slot="dialog-header"] + [data-slot="dialog-footer"] {
-    margin-top: 0 !important;
-  }
-
-  /*
-   * Carbon 3-button footer (e.g. Remove + Cancel + Save): a 2-column grid
-   * wraps the third action onto a new row. Use 4 columns so tertiary sits
-   * at 25% left and secondary/primary occupy 25% each on the right.
-   */
-  [data-theme="ibm"] [data-slot="dialog-footer"]:has(> :nth-child(3)) {
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-    background-color: hsl(var(--background)) !important;
-  }
-
-  [data-theme="ibm"]
-    [data-slot="dialog-footer"]:has(> :nth-child(3))
-    > :nth-child(1) {
-    grid-column: 1;
-    margin: 0 !important;
-  }
-
-  [data-theme="ibm"]
-    [data-slot="dialog-footer"]:has(> :nth-child(3))
-    > :nth-child(2) {
-    grid-column: 3;
-  }
-
-  [data-theme="ibm"]
-    [data-slot="dialog-footer"]:has(> :nth-child(3))
-    > :nth-child(3) {
-    grid-column: 4;
-  }
-
-  /* Tooltip wrappers (Remove) must fill the tertiary cell. */
-  [data-theme="ibm"] [data-slot="dialog-footer"] > span {
-    display: flex;
-    width: 100%;
-    min-height: 4rem;
-    margin: 0 !important;
-  }
-
-  /* Task dialog: flush footer; match task surface tokens. */
-  [data-theme="ibm"] [data-slot="dialog-content"].h-task-dialog {
-    background-color: hsl(var(--layer-contextual)) !important;
-    color: hsl(var(--layer-contextual-foreground)) !important;
-  }
-
-  [data-theme="ibm"]
-    [data-slot="dialog-content"].h-task-dialog
-    [data-slot="dialog-footer"] {
-    margin-top: 0 !important;
-    background-color: hsl(var(--layer-contextual)) !important;
-  }
-
-  [data-theme="ibm"] [data-slot="dialog-footer"] > button,
-  [data-theme="ibm"] [data-slot="dialog-footer"] > span button {
-    width: 100% !important;
-    height: 4rem !important;
-    margin: 0 !important;
-    border: 0 !important;
-    border-width: 0 !important;
-    border-radius: 0 !important;
-    outline: none !important;
-    box-shadow: none !important;
-    font-size: 0.875rem !important;
-    font-weight: 400 !important;
-    justify-content: flex-start !important;
-    align-items: flex-start !important;
-    padding: 1rem 0 0 1rem !important;
-  }
-
-  /* Tertiary (Remove) is full-bleed; match form/header 1.5rem text inset. */
-  [data-theme="ibm"] [data-slot="dialog-footer"] > span button {
-    padding-left: 1.5rem !important;
-  }
-
-  [data-theme="ibm"] [data-slot="dialog-footer"] > button:first-of-type {
-    background-color: #6f6f6f !important;
-    color: #ffffff !important;
-  }
-
-  [data-theme="ibm"] [data-slot="dialog-footer"] > button:first-of-type:hover {
-    background-color: #525252 !important;
-    border: 0 !important;
-    outline: none !important;
-  }
-
-  [data-theme="ibm"]
-    [data-slot="dialog-footer"]
-    > button:first-of-type:hover:not(:focus-visible) {
-    box-shadow: none !important;
-  }
-
-  [data-theme="ibm"] [data-slot="dialog-footer"] > button:last-of-type {
-    background-color: #0f62fe !important;
-    color: #ffffff !important;
-  }
-
-  [data-theme="ibm"] [data-slot="dialog-footer"] > button:last-of-type:hover {
-    background-color: #0353e9 !important;
-    border: 0 !important;
-    outline: none !important;
-  }
-
-  [data-theme="ibm"]
-    [data-slot="dialog-footer"]
-    > button:last-of-type:hover:not(:focus-visible) {
-    box-shadow: none !important;
-  }
-
-  /* Single-button footer: primary action sits on the right side (column 2). */
-  [data-theme="ibm"] [data-slot="dialog-footer"] > button:only-child,
-  [data-theme="ibm"] [data-slot="dialog-footer"] > span:only-child,
-  [data-theme="ibm"]
-    [data-slot="dialog-footer"]:has(> :only-child)
-    > :only-child {
-    grid-column: 2 !important;
-    background-color: #0f62fe !important;
-    color: #ffffff !important;
-  }
-
-  [data-theme="ibm"] [data-slot="dialog-footer"] > button:only-child:hover,
-  [data-theme="ibm"]
-    [data-slot="dialog-footer"]:has(> :only-child)
-    > :only-child:hover,
-  [data-theme="ibm"]
-    [data-slot="dialog-footer"]
-    > span:only-child
-    button:hover {
-    background-color: #0353e9 !important;
-    border: 0 !important;
-    outline: none !important;
-  }
-
-  /* After hover resets: restore a visible focus ring (matches Button focus-visible:ring). */
-  [data-theme="ibm"] [data-slot="dialog-footer"] > button:focus-visible,
-  [data-theme="ibm"] [data-slot="dialog-footer"] > span button:focus-visible {
-    outline: none !important;
-    box-shadow:
-      0 0 0 2px hsl(var(--background)),
-      0 0 0 4px hsl(var(--ring)) !important;
-  }
-
   [data-theme="ibm"] {
     /* Chat (IBM) */
     --chat-surface-bg: hsl(var(--background));
@@ -533,16 +881,6 @@
     --task-status-partial-fg: 46 100% 90%; /* #fff1c8 */
     --task-status-complete-bg: 137 73% 22%; /* #0e6027 */
     --task-status-complete-fg: 135 59% 80%; /* #a7f0ba */
-  }
-
-  /* IBM: match OSS switch colors — black track when checked, white thumb always */
-  [data-theme="ibm"] [role="switch"][data-state="checked"] {
-    background-color: hsl(var(--foreground));
-  }
-  [data-theme="ibm"]
-    [role="switch"][data-state="unchecked"]
-    > span[data-state="unchecked"] {
-    background-color: hsl(var(--foreground));
   }
 
   /* IBM Dark */
@@ -636,230 +974,6 @@
     --task-status-complete-fg: 135 59% 80%; /* #a7f0ba */
   }
 
-  /* IBM Settings: section titles (productive heading-04); beats CardTitle utilities */
-  [data-theme="ibm"] .ibm-settings-section-title {
-    color: hsl(var(--text-text-01));
-    font-family: inherit;
-    font-size: 28px !important;
-    font-weight: 400 !important;
-    line-height: 36px !important;
-    font-style: normal;
-    letter-spacing: 0;
-  }
-
-  [data-theme="ibm"] .ibm-section-title {
-    color: hsl(var(--text-text-01));
-    font-family: inherit;
-    font-size: 28px !important;
-    font-weight: 400 !important;
-    line-height: 36px !important;
-    font-style: normal;
-    letter-spacing: 0;
-  }
-
-  /* IBM settings: line-variant tabs — transparent default, blue active/hover */
-  [data-theme="ibm"]
-    .ibm-settings-page
-    [data-slot="tabs-list"][data-variant="line"]
-    [data-slot="tabs-trigger"] {
-    border-width: 0;
-    border-bottom-width: 2px;
-    border-bottom-style: solid;
-    border-bottom-color: transparent;
-    background: transparent;
-    color: hsl(var(--text-text-01));
-    font-size: 14px;
-    font-weight: 400;
-    line-height: 18px;
-    letter-spacing: 0.16px;
-
-    &:hover {
-      border-bottom-color: var(--border-border-interactive);
-    }
-
-    &[data-state="active"] {
-      border-bottom-color: var(--border-border-interactive);
-      font-weight: 600 !important;
-    }
-  }
-
-  /* IBM Settings: inline links (Link/link-primary) */
-  [data-theme="ibm"] .ibm-settings-page a[href] {
-    color: hsl(var(--link-primary));
-  }
-
-  [data-theme="ibm"] .ibm-settings-page a[href]:hover {
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-
-  /* IBM Carbon Design System: Input fields styling */
-  [data-theme="ibm"] .primary-input {
-    border: none;
-    border-radius: 0;
-    border-bottom: 2px solid hsl(var(--input));
-    background-color: hsl(var(--layer-contextual));
-    /* Explicit color so dialog `color: #f4f4f4` does not win over light input backgrounds */
-    color: hsl(var(--layer-contextual-foreground));
-  }
-
-  [data-theme="ibm"].dark .primary-input {
-    background-color: hsl(var(--layer-contextual));
-  }
-
-  [data-theme="ibm"] .primary-input:hover {
-    border-bottom-color: hsl(var(--foreground));
-  }
-
-  [data-theme="ibm"] .primary-input:focus {
-    border-bottom-color: hsl(var(--primary));
-  }
-
-  /* IBM Carbon Design System: Placeholder text uses secondary color #C6C6C6 */
-  [data-theme="ibm"] .primary-input::placeholder {
-    color: hsl(var(--muted-foreground));
-  }
-
-  /* IBM Carbon Design System: Select/Combobox styling (ModelSelector buttons) */
-  [data-theme="ibm"] .ibm-settings-page button[role="combobox"] {
-    border: none;
-    border-radius: 0;
-    border-bottom: 2px solid hsl(var(--input));
-    background-color: hsl(var(--layer-contextual));
-  }
-
-  [data-theme="ibm"]
-    .ibm-settings-page
-    button[role="combobox"]:hover:not(:disabled) {
-    border-bottom-color: hsl(var(--foreground));
-    background-color: hsl(var(--layer-contextual));
-  }
-
-  [data-theme="ibm"] .ibm-settings-page button[role="combobox"]:focus {
-    border-bottom-color: hsl(var(--primary));
-  }
-
-  /* IBM Carbon Design System: Regular Select trigger styling */
-  [data-theme="ibm"] .ibm-settings-page [data-radix-select-trigger] {
-    border: none;
-    border-radius: 0;
-    border-bottom: 2px solid hsl(var(--input));
-    background-color: hsl(var(--card));
-  }
-
-  [data-theme="ibm"]
-    .ibm-settings-page
-    [data-radix-select-trigger]:hover:not(:disabled) {
-    border-bottom-color: hsl(var(--foreground));
-    background-color: hsl(var(--card));
-  }
-
-  [data-theme="ibm"] .ibm-settings-page [data-radix-select-trigger]:focus {
-    border-bottom-color: hsl(var(--primary));
-  }
-
-  /* IBM Carbon Design System: Flatten cards in settings page */
-  [data-theme="ibm"] .ibm-settings-page .rounded-xl {
-    border-color: transparent;
-    background-color: transparent;
-    box-shadow: none;
-  }
-
-  /* IBM chat nudges / quick actions */
-  [data-theme="ibm"] .ibm-chat-bubble {
-    border-color: var(--chat-surface-border);
-  }
-
-  [data-theme="ibm"].dark .ibm-chat-bubble {
-    background-color: #262626;
-  }
-
-  [data-theme="ibm"] .rounded-2xl {
-    border-radius: 0;
-  }
-
-  [data-theme="ibm"] .rounded-xl {
-    border-radius: 0;
-  }
-
-  /*
-   * IBM chat page only: body copy #000 (light) / #fff (dark) via tokens.
-   * Scoped so OSS and non-chat IBM surfaces keep existing --foreground.
-   */
-  [data-theme="ibm"] .ibm-chat-page {
-    --ibm-chat-text: 0 0% 0%;
-    --foreground: var(--ibm-chat-text);
-    --muted-foreground: var(--ibm-chat-text);
-  }
-
-  [data-theme="ibm"].dark .ibm-chat-page {
-    --ibm-chat-text: 0 0% 100%;
-    --foreground: var(--ibm-chat-text);
-    --muted-foreground: var(--ibm-chat-text);
-  }
-
-  [data-theme="ibm"] .ibm-chat-page .markdown.prose {
-    color: hsl(var(--ibm-chat-text));
-  }
-
-  [data-theme="ibm"] .ibm-chat-page .markdown.prose a {
-    color: hsl(var(--primary));
-  }
-
-  [data-theme="ibm"] .fc-card {
-    background-color: #eaeff6;
-  }
-
-  [data-theme="ibm"] .fc-card pre,
-  [data-theme="ibm"] .fc-card .fc-value,
-  [data-theme="ibm"] .fc-card .fc-result {
-    background-color: rgba(120, 169, 255, 0.2); /* #78A9FF at 20% */
-  }
-
-  [data-theme="ibm"]:not(.dark) .fc-card .fc-id {
-    color: #0f62fe;
-  }
-
-  [data-theme="ibm"].dark .fc-card {
-    background-color: #1d2431;
-  }
-
-  [data-theme="ibm"]:not(.dark) .chat-submit {
-    background-color: transparent;
-    color: #161616;
-  }
-
-  [data-theme="ibm"]:not(.dark) .chat-submit:hover:not(:disabled) {
-    background-color: #e8e8e8;
-  }
-
-  [data-theme="ibm"].dark .chat-submit {
-    background-color: transparent;
-    color: #f4f4f4;
-  }
-
-  [data-theme="ibm"].dark .chat-submit:hover:not(:disabled) {
-    background-color: rgba(141, 141, 141, 0.4);
-  }
-
-  [data-theme="ibm"]:not(.dark) .fc-status-completed {
-    background-color: #a7f0ba;
-    color: #0e6027;
-    border-color: #a7f0ba;
-  }
-
-  [data-theme="ibm"].dark .fc-status-completed {
-    background-color: #0e6027;
-    color: #a7f0ba;
-    border-color: #0e6027;
-  }
-
-  [data-theme="ibm"].dark .fc-card pre,
-  [data-theme="ibm"].dark .fc-card .fc-value,
-  [data-theme="ibm"].dark .fc-card .fc-result {
-    background-color: rgba(15, 98, 254, 0.2); /* #0F62FE at 20% */
-  }
-
   * {
     @apply border-border;
   }
@@ -873,262 +987,501 @@
   }
 }
 
+/*
+  IBM theme overrides. These stay outside @layer so they keep beating
+  utilities, as they did in Tailwind v3 where @layer compiled to plain CSS and
+  their extra specificity decided. In v4 @layer is a native cascade layer, and
+  any utility would override a rule in `base` regardless of specificity.
+*/
+/* IBM dialog chrome follows light/dark theme tokens (not always-dark Carbon). */
+[data-theme="ibm"] [data-slot="dialog-content"],
+[data-theme="ibm"] [role="dialog"] {
+  border-radius: 0 !important;
+  background-color: hsl(var(--background)) !important;
+  border: none !important;
+  color: hsl(var(--foreground)) !important;
+  padding: 0 !important;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.5) !important;
+}
+
+[data-theme="ibm"] [data-slot="dialog-content"] > button[class*="absolute"],
+[data-theme="ibm"] [role="dialog"] > button[class*="absolute"] {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  top: 0.75rem !important;
+  right: 0.75rem !important;
+  width: 1.5rem !important;
+  height: 1.5rem !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  color: hsl(var(--foreground)) !important;
+  opacity: 0.75 !important;
+  transition:
+    background-color 0.1s ease,
+    opacity 0.1s ease !important;
+}
+
+[data-theme="ibm"]
+  [data-slot="dialog-content"]
+  > button[class*="absolute"]:hover,
+[data-theme="ibm"] [role="dialog"] > button[class*="absolute"]:hover {
+  opacity: 1 !important;
+  background-color: hsl(var(--muted)) !important;
+}
+
+[data-theme="ibm"] [data-slot="dialog-content"] form {
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+/* Non-form dialogs (delete confirm, etc.): inset body between header and footer. */
+[data-theme="ibm"]
+  [data-slot="dialog-content"]
+  > :not([data-slot="dialog-header"]):not([data-slot="dialog-footer"]):not(
+    button
+  ):not(form) {
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+/* Task dialog manages its own layout padding. */
+[data-theme="ibm"] [data-slot="dialog-content"].h-task-dialog > div {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+[data-theme="ibm"]
+  [data-slot="dialog-content"]
+  form
+  [data-slot="dialog-header"],
+[data-theme="ibm"]
+  [data-slot="dialog-content"]
+  form
+  [data-slot="dialog-footer"] {
+  margin-left: -1.5rem !important;
+  margin-right: -1.5rem !important;
+}
+
+[data-theme="ibm"] [data-slot="dialog-header"] {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  margin-top: 0 !important;
+  padding-left: 1.5rem !important;
+  padding-right: 1.5rem !important;
+  padding-top: 1.5rem !important;
+  padding-bottom: 1rem !important;
+  border-bottom: 1px solid hsl(var(--border)) !important;
+}
+
+[data-theme="ibm"] [data-slot="dialog-title"] {
+  font-size: 1.25rem !important;
+  font-weight: 400 !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+[data-theme="ibm"] [data-slot="dialog-description"] {
+  font-size: 0.875rem !important;
+  color: hsl(var(--muted-foreground)) !important;
+  font-weight: 400 !important;
+  margin-top: 0.25rem !important;
+}
+
+[data-theme="ibm"] [data-slot="dialog-footer"] {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 1px !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  margin-bottom: 0 !important;
+  margin-top: 1rem !important;
+}
+
+/* Confirmation / alert dialogs without body content: remove header bottom border and footer top margin */
+[data-theme="ibm"]
+  [data-slot="dialog-header"]:has(+ [data-slot="dialog-footer"]) {
+  border-bottom: none !important;
+  padding-bottom: 1.5rem !important;
+}
+
+[data-theme="ibm"] [data-slot="dialog-header"] + [data-slot="dialog-footer"] {
+  margin-top: 0 !important;
+}
+
+/*
+ * Carbon 3-button footer (e.g. Remove + Cancel + Save): a 2-column grid
+ * wraps the third action onto a new row. Use 4 columns so tertiary sits
+ * at 25% left and secondary/primary occupy 25% each on the right.
+ */
+[data-theme="ibm"] [data-slot="dialog-footer"]:has(> :nth-child(3)) {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  background-color: hsl(var(--background)) !important;
+}
+
+[data-theme="ibm"]
+  [data-slot="dialog-footer"]:has(> :nth-child(3))
+  > :nth-child(1) {
+  grid-column: 1;
+  margin: 0 !important;
+}
+
+[data-theme="ibm"]
+  [data-slot="dialog-footer"]:has(> :nth-child(3))
+  > :nth-child(2) {
+  grid-column: 3;
+}
+
+[data-theme="ibm"]
+  [data-slot="dialog-footer"]:has(> :nth-child(3))
+  > :nth-child(3) {
+  grid-column: 4;
+}
+
+/* Tooltip wrappers (Remove) must fill the tertiary cell. */
+[data-theme="ibm"] [data-slot="dialog-footer"] > span {
+  display: flex;
+  width: 100%;
+  min-height: 4rem;
+  margin: 0 !important;
+}
+
+/* Task dialog: flush footer; match task surface tokens. */
+[data-theme="ibm"] [data-slot="dialog-content"].h-task-dialog {
+  background-color: hsl(var(--layer-contextual)) !important;
+  color: hsl(var(--layer-contextual-foreground)) !important;
+}
+
+[data-theme="ibm"]
+  [data-slot="dialog-content"].h-task-dialog
+  [data-slot="dialog-footer"] {
+  margin-top: 0 !important;
+  background-color: hsl(var(--layer-contextual)) !important;
+}
+
+[data-theme="ibm"] [data-slot="dialog-footer"] > button,
+[data-theme="ibm"] [data-slot="dialog-footer"] > span button {
+  width: 100% !important;
+  height: 4rem !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-width: 0 !important;
+  border-radius: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  font-size: 0.875rem !important;
+  font-weight: 400 !important;
+  justify-content: flex-start !important;
+  align-items: flex-start !important;
+  padding: 1rem 0 0 1rem !important;
+}
+
+/* Tertiary (Remove) is full-bleed; match form/header 1.5rem text inset. */
+[data-theme="ibm"] [data-slot="dialog-footer"] > span button {
+  padding-left: 1.5rem !important;
+}
+
+[data-theme="ibm"] [data-slot="dialog-footer"] > button:first-of-type {
+  background-color: #6f6f6f !important;
+  color: #ffffff !important;
+}
+
+[data-theme="ibm"] [data-slot="dialog-footer"] > button:first-of-type:hover {
+  background-color: #525252 !important;
+  border: 0 !important;
+  outline: none !important;
+}
+
+[data-theme="ibm"]
+  [data-slot="dialog-footer"]
+  > button:first-of-type:hover:not(:focus-visible) {
+  box-shadow: none !important;
+}
+
+[data-theme="ibm"] [data-slot="dialog-footer"] > button:last-of-type {
+  background-color: #0f62fe !important;
+  color: #ffffff !important;
+}
+
+[data-theme="ibm"] [data-slot="dialog-footer"] > button:last-of-type:hover {
+  background-color: #0353e9 !important;
+  border: 0 !important;
+  outline: none !important;
+}
+
+[data-theme="ibm"]
+  [data-slot="dialog-footer"]
+  > button:last-of-type:hover:not(:focus-visible) {
+  box-shadow: none !important;
+}
+
+/* Single-button footer: primary action sits on the right side (column 2). */
+[data-theme="ibm"] [data-slot="dialog-footer"] > button:only-child,
+[data-theme="ibm"] [data-slot="dialog-footer"] > span:only-child,
+[data-theme="ibm"]
+  [data-slot="dialog-footer"]:has(> :only-child)
+  > :only-child {
+  grid-column: 2 !important;
+  background-color: #0f62fe !important;
+  color: #ffffff !important;
+}
+
+[data-theme="ibm"] [data-slot="dialog-footer"] > button:only-child:hover,
+[data-theme="ibm"]
+  [data-slot="dialog-footer"]:has(> :only-child)
+  > :only-child:hover,
+[data-theme="ibm"] [data-slot="dialog-footer"] > span:only-child button:hover {
+  background-color: #0353e9 !important;
+  border: 0 !important;
+  outline: none !important;
+}
+
+/* After hover resets: restore a visible focus ring (matches Button focus-visible:ring). */
+[data-theme="ibm"] [data-slot="dialog-footer"] > button:focus-visible,
+[data-theme="ibm"] [data-slot="dialog-footer"] > span button:focus-visible {
+  outline: none !important;
+  box-shadow:
+    0 0 0 2px hsl(var(--background)),
+    0 0 0 4px hsl(var(--ring)) !important;
+}
+
+/* IBM: match OSS switch colors — black track when checked, white thumb always */
+[data-theme="ibm"] [role="switch"][data-state="checked"] {
+  background-color: hsl(var(--foreground));
+}
+[data-theme="ibm"]
+  [role="switch"][data-state="unchecked"]
+  > span[data-state="unchecked"] {
+  background-color: hsl(var(--foreground));
+}
+
+/* IBM Settings: section titles (productive heading-04); beats CardTitle utilities */
+[data-theme="ibm"] .ibm-settings-section-title {
+  color: hsl(var(--text-text-01));
+  font-family: inherit;
+  font-size: 28px !important;
+  font-weight: 400 !important;
+  line-height: 36px !important;
+  font-style: normal;
+  letter-spacing: 0;
+}
+
+[data-theme="ibm"] .ibm-section-title {
+  color: hsl(var(--text-text-01));
+  font-family: inherit;
+  font-size: 28px !important;
+  font-weight: 400 !important;
+  line-height: 36px !important;
+  font-style: normal;
+  letter-spacing: 0;
+}
+
+/* IBM settings: line-variant tabs — transparent default, blue active/hover */
+[data-theme="ibm"]
+  .ibm-settings-page
+  [data-slot="tabs-list"][data-variant="line"]
+  [data-slot="tabs-trigger"] {
+  border-width: 0;
+  border-bottom-width: 2px;
+  border-bottom-style: solid;
+  border-bottom-color: transparent;
+  background: transparent;
+  color: hsl(var(--text-text-01));
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 18px;
+  letter-spacing: 0.16px;
+
+  &:hover {
+    border-bottom-color: var(--border-border-interactive);
+  }
+
+  &[data-state="active"] {
+    border-bottom-color: var(--border-border-interactive);
+    font-weight: 600 !important;
+  }
+}
+
+/* IBM Settings: inline links (Link/link-primary) — tabs are links too, but
+   they use the blue underline border, not text-decoration */
+[data-theme="ibm"] .ibm-settings-page a[href]:not([data-slot="tabs-trigger"]) {
+  color: hsl(var(--link-primary));
+}
+
+[data-theme="ibm"]
+  .ibm-settings-page
+  a[href]:not([data-slot="tabs-trigger"]):hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* IBM Carbon Design System: Input fields styling */
+[data-theme="ibm"] .primary-input {
+  border: none;
+  border-radius: 0;
+  border-bottom: 2px solid hsl(var(--input));
+  background-color: hsl(var(--layer-contextual));
+  /* Explicit color so dialog `color: #f4f4f4` does not win over light input backgrounds */
+  color: hsl(var(--layer-contextual-foreground));
+}
+
+[data-theme="ibm"].dark .primary-input {
+  background-color: hsl(var(--layer-contextual));
+}
+
+[data-theme="ibm"] .primary-input:hover {
+  border-bottom-color: hsl(var(--foreground));
+}
+
+[data-theme="ibm"] .primary-input:focus {
+  border-bottom-color: hsl(var(--primary));
+}
+
+/* IBM Carbon Design System: Placeholder text uses secondary color #C6C6C6 */
+[data-theme="ibm"] .primary-input::placeholder {
+  color: hsl(var(--muted-foreground));
+}
+
+/* IBM Carbon Design System: Select/Combobox styling (ModelSelector buttons) */
+[data-theme="ibm"] .ibm-settings-page button[role="combobox"] {
+  border: none;
+  border-radius: 0;
+  border-bottom: 2px solid hsl(var(--input));
+  background-color: hsl(var(--layer-contextual));
+}
+
+[data-theme="ibm"]
+  .ibm-settings-page
+  button[role="combobox"]:hover:not(:disabled) {
+  border-bottom-color: hsl(var(--foreground));
+  background-color: hsl(var(--layer-contextual));
+}
+
+[data-theme="ibm"] .ibm-settings-page button[role="combobox"]:focus {
+  border-bottom-color: hsl(var(--primary));
+}
+
+/* IBM Carbon Design System: Regular Select trigger styling */
+[data-theme="ibm"] .ibm-settings-page [data-radix-select-trigger] {
+  border: none;
+  border-radius: 0;
+  border-bottom: 2px solid hsl(var(--input));
+  background-color: hsl(var(--card));
+}
+
+[data-theme="ibm"]
+  .ibm-settings-page
+  [data-radix-select-trigger]:hover:not(:disabled) {
+  border-bottom-color: hsl(var(--foreground));
+  background-color: hsl(var(--card));
+}
+
+[data-theme="ibm"] .ibm-settings-page [data-radix-select-trigger]:focus {
+  border-bottom-color: hsl(var(--primary));
+}
+
+/* IBM Carbon Design System: Flatten cards in settings page */
+[data-theme="ibm"] .ibm-settings-page .rounded-xl {
+  border-color: transparent;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+/* IBM chat nudges / quick actions */
+[data-theme="ibm"] .ibm-chat-bubble {
+  border-color: var(--chat-surface-border);
+}
+
+[data-theme="ibm"].dark .ibm-chat-bubble {
+  background-color: #262626;
+}
+
+[data-theme="ibm"] .rounded-2xl {
+  border-radius: 0;
+}
+
+[data-theme="ibm"] .rounded-xl {
+  border-radius: 0;
+}
+
+/*
+ * IBM chat page only: body copy #000 (light) / #fff (dark) via tokens.
+ * Scoped so OSS and non-chat IBM surfaces keep existing --foreground.
+ */
+[data-theme="ibm"] .ibm-chat-page {
+  --ibm-chat-text: 0 0% 0%;
+  --foreground: var(--ibm-chat-text);
+  --muted-foreground: var(--ibm-chat-text);
+}
+
+[data-theme="ibm"].dark .ibm-chat-page {
+  --ibm-chat-text: 0 0% 100%;
+  --foreground: var(--ibm-chat-text);
+  --muted-foreground: var(--ibm-chat-text);
+}
+
+[data-theme="ibm"] .ibm-chat-page .markdown.prose {
+  color: hsl(var(--ibm-chat-text));
+}
+
+[data-theme="ibm"] .ibm-chat-page .markdown.prose a {
+  color: hsl(var(--primary));
+}
+
+[data-theme="ibm"] .fc-card {
+  background-color: #eaeff6;
+}
+
+[data-theme="ibm"] .fc-card pre,
+[data-theme="ibm"] .fc-card .fc-value,
+[data-theme="ibm"] .fc-card .fc-result {
+  background-color: rgba(120, 169, 255, 0.2); /* #78A9FF at 20% */
+}
+
+[data-theme="ibm"]:not(.dark) .fc-card .fc-id {
+  color: #0f62fe;
+}
+
+[data-theme="ibm"].dark .fc-card {
+  background-color: #1d2431;
+}
+
+[data-theme="ibm"]:not(.dark) .chat-submit {
+  background-color: transparent;
+  color: #161616;
+}
+
+[data-theme="ibm"]:not(.dark) .chat-submit:hover:not(:disabled) {
+  background-color: #e8e8e8;
+}
+
+[data-theme="ibm"].dark .chat-submit {
+  background-color: transparent;
+  color: #f4f4f4;
+}
+
+[data-theme="ibm"].dark .chat-submit:hover:not(:disabled) {
+  background-color: rgba(141, 141, 141, 0.4);
+}
+
+[data-theme="ibm"]:not(.dark) .fc-status-completed {
+  background-color: #a7f0ba;
+  color: #0e6027;
+  border-color: #a7f0ba;
+}
+
+[data-theme="ibm"].dark .fc-status-completed {
+  background-color: #0e6027;
+  color: #a7f0ba;
+  border-color: #0e6027;
+}
+
+[data-theme="ibm"].dark .fc-card pre,
+[data-theme="ibm"].dark .fc-card .fc-value,
+[data-theme="ibm"].dark .fc-card .fc-result {
+  background-color: rgba(15, 98, 254, 0.2); /* #0F62FE at 20% */
+}
+
 @layer components {
-  .app-grid-arrangement {
-    --nav-width: 280px;
-    --right-panel-width: 0px;
-    --header-height: 54px;
-
-    &.notifications-open,
-    &.filters-open {
-      --right-panel-width: 320px;
-    }
-    display: grid;
-    height: 100%;
-    width: 100%;
-    grid-template-rows:
-      auto
-      var(--header-height)
-      1fr;
-    grid-template-columns:
-      var(--nav-width)
-      1fr
-      var(--right-panel-width);
-    grid-template-areas:
-      "banner banner banner"
-      "header header header"
-      "nav main right-panel";
-    transition: grid-template-columns 0.25s ease-in-out;
-  }
-
-  .header-start-display {
-    @apply flex items-center gap-2;
-  }
-
-  .header-end-division {
-    @apply flex justify-end px-2;
-  }
-
-  .header-end-display {
-    @apply ml-auto mr-2 flex items-center gap-5;
-  }
-
-  .header-github-link {
-    @apply inline-flex h-8 items-center justify-center rounded-md border border-input px-2 text-sm font-medium text-muted-foreground shadow-sm ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
-  }
-
-  .header-notifications {
-    @apply absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive;
-  }
-
-  .header-menu-bar {
-    @apply flex items-center rounded-md py-1 text-sm font-medium;
-  }
-
-  .header-menu-bar-display {
-    @apply flex max-w-[110px] cursor-pointer items-center gap-2 lg:max-w-[150px];
-  }
-
-  .header-menu-flow-name {
-    @apply flex-1 truncate;
-  }
-
-  .header-menu-options {
-    @apply mr-2 h-4 w-4;
-  }
-
-  .side-bar-arrangement {
-    @apply flex h-full w-[18rem] flex-col overflow-hidden border-r scrollbar-hide;
-  }
-
-  .side-bar-search-div-placement {
-    @apply relative mx-auto flex items-center py-3;
-  }
-
-  .side-bar-components-icon {
-    @apply h-6 w-4 text-ring;
-  }
-
-  .side-bar-components-text {
-    @apply w-full truncate pr-1 text-xs text-foreground;
-  }
-
-  .side-bar-components-div-form {
-    @apply flex w-full items-center justify-between rounded-md rounded-l-none border border-l-0 border-dashed border-ring px-3 py-1 text-sm;
-  }
-
-  .side-bar-components-border {
-    @apply cursor-grab rounded-l-md border-l-8;
-  }
-
-  .side-bar-components-gap {
-    @apply flex flex-col gap-2 p-2;
-  }
-
-  .side-bar-components-div-arrangement {
-    @apply w-full overflow-auto pb-10 scrollbar-hide;
-  }
-
-  .side-bar-button-size {
-    @apply h-5 w-5;
-  }
-
-  .side-bar-button-size:hover {
-    @apply hover:text-accent-foreground;
-  }
-
-  .side-bar-buttons-arrangement {
-    @apply mb-2 mt-2 flex w-full items-center justify-between gap-2 px-2;
-  }
-
-  .side-bar-button {
-    @apply flex w-full;
-  }
-
-  .components-disclosure-arrangement {
-    @apply -mt-px flex w-full select-none items-center justify-between border-y border-y-input bg-primary-foreground px-3 py-2;
-  }
-
-  .components-disclosure-title {
-    @apply flex items-center text-sm text-primary;
-  }
-
-  .toolbar-wrapper {
-    @apply flex h-10 items-center gap-1 rounded-xl border border-border bg-background p-1 shadow-sm;
-  }
-
-  .playground-btn-flow-toolbar {
-    @apply relative inline-flex h-8 w-full items-center justify-center gap-1.5 rounded px-3 py-1.5 text-sm font-normal transition-all duration-500 ease-in-out;
-  }
-
-  .input-search {
-    @apply primary-input mx-2 pr-7;
-  }
-
-  /* GitHub Star Button */
-  .github-star-link {
-    @apply inline-flex h-8 items-center rounded-md text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
-  }
-
-  .github-star-content {
-    @apply flex items-center px-2 pr-1;
-  }
-
-  .github-star-icon {
-    @apply h-4 w-4;
-  }
-
-  .github-star-text {
-    @apply ml-1;
-  }
-
-  .github-star-count-section {
-    @apply border-l bg-muted/80 px-2 py-1;
-  }
-
-  .github-star-display {
-    @apply flex items-center gap-1;
-  }
-
-  .github-star-count-icon {
-    @apply h-3 w-3 fill-current;
-  }
-
-  .github-star-count {
-    @apply text-xs font-medium text-foreground;
-  }
-
-  .github-star-loading {
-    @apply flex items-center justify-center;
-  }
-
-  .github-star-skeleton {
-    @apply h-3 w-8 animate-pulse bg-muted-foreground/20 rounded;
-  }
-
-  .github-star-error {
-    @apply text-xs text-muted-foreground;
-  }
-
-  /* Discord Link */
-  .discord-link {
-    @apply inline-flex h-8 items-center rounded-md text-sm font-medium shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
-    background-color: #5865f2;
-    border-color: #5865f2;
-    color: white;
-  }
-
-  .discord-link:hover {
-    @apply opacity-90;
-  }
-
-  .discord-content {
-    @apply flex items-center px-2 pr-1;
-  }
-
-  .discord-icon {
-    @apply flex items-center justify-center;
-  }
-
-  .discord-text {
-    @apply ml-1;
-  }
-
-  .discord-member-section {
-    @apply border-l border-white/20 bg-black/10 px-2 py-1;
-  }
-
-  .discord-member-display {
-    @apply flex items-center gap-1;
-  }
-
-  .discord-member-icon {
-    @apply h-3 w-3;
-  }
-
-  .discord-member-count {
-    @apply text-xs font-medium;
-  }
-
-  .discord-loading {
-    @apply flex items-center justify-center;
-  }
-
-  .discord-skeleton {
-    @apply h-3 w-8 animate-pulse bg-white/20 rounded;
-  }
-
-  .discord-error {
-    @apply text-xs opacity-70;
-  }
-
-  .prose
-    :where(strong):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
-    @apply text-current;
-  }
-
-  .prose :where(a):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
-    @apply text-current;
-  }
-
-  .box-shadow-inner::after {
-    content: " ";
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    pointer-events: none;
-    background: linear-gradient(to top, hsl(var(--background)), transparent);
-    display: block;
-    width: 100%;
-    height: 30px;
-  }
-
-  .thinking-dots::after {
-    content: ".";
-    animation: thinking-dots 1.4s steps(3, end) infinite;
-  }
-
   @keyframes thinking-dots {
     0% {
       content: ".";

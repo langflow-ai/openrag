@@ -108,9 +108,29 @@ def test_the_form_asks_for_two_endpoints_a_token_and_a_ca() -> None:
     assert fields["api_base"]["field_type"] == "text"
     assert fields["embedding_api_base"]["field_type"] == "text"
     assert fields["api_key"]["field_type"] == "password"
-    assert fields["ssl_verify"]["field_type"] == "text"
+    # The form renders it as a switch (labelled by `label`) plus a CA path
+    # (helped by `tooltip`), so the tooltip no longer says to type `false`, and
+    # blank — no `default_value` — is what "verify" is stored as.
+    assert fields["ssl_verify"]["field_type"] == "tls_verify"
+    assert fields["ssl_verify"]["label"] == "Verify TLS certificates"
+    assert "`false`" not in fields["ssl_verify"]["tooltip"]
+    assert fields["ssl_verify"]["required"] is False
+    assert fields["ssl_verify"]["default_value"] is None
     assert fields["embedding_max_concurrency"]["field_type"] == "text"
     assert fields["embedding_max_concurrency"]["required"] is False
+
+
+def test_the_tooltips_keep_the_guidance_an_operator_needs() -> None:
+    """The non-obvious setup and failure hints stay in the form, not only in the docs."""
+    fields = {field["key"]: field for field in model_catalog.credential_fields(PROVIDER)}
+
+    # A laptop reaches the cluster through a Route or a port-forward.
+    assert "oc port-forward" in fields["api_base"]["tooltip"]
+    # A slow CPU-served model needs a lower limit, or kube-rbac-proxy answers 502.
+    assert "Lower to 4" in fields["embedding_max_concurrency"]["tooltip"]
+    assert "502" in fields["embedding_max_concurrency"]["tooltip"]
+    # "Leave blank" lives in the Embeddings section hint, so it is not repeated here.
+    assert "blank" not in fields["embedding_api_base"]["tooltip"]
 
 
 def test_only_the_token_is_encrypted_at_rest() -> None:
@@ -878,6 +898,214 @@ async def test_incomplete_credentials_are_not_taken_to_the_network(monkeypatch) 
     assert await rhoai.fetch_models({"api_base": CHAT_BASE}) is None
 
 
+@pytest.mark.asyncio
+async def test_draft_discovery_lists_each_endpoint(monkeypatch) -> None:
+    """Onboarding asks before anything is saved; each endpoint fills its own picker."""
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning(
+            {
+                f"{CHAT_BASE}/models": _Response(200, _models_body("gpt-oss-120b")),
+                f"{EMBED_BASE}/models": _Response(200, _models_body(EMBED_MODEL)),
+            },
+            seen,
+        ),
+    )
+
+    models = await rhoai.list_cluster_models(_stored())
+
+    assert models == rhoai.ClusterModels(chat=("gpt-oss-120b",), embedding=(EMBED_MODEL,))
+    assert seen["headers"]["Authorization"] == f"Bearer {TOKEN}"
+
+
+@pytest.mark.asyncio
+async def test_draft_discovery_on_one_endpoint_fills_both_pickers(monkeypatch) -> None:
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning({f"{CHAT_BASE}/models": _Response(200, _models_body("solo"))}, seen),
+    )
+
+    models = await rhoai.list_cluster_models(_stored(embedding_api_base=None))
+
+    assert models == rhoai.ClusterModels(chat=("solo",), embedding=("solo",))
+    assert seen["urls"] == [f"{CHAT_BASE}/models"]
+
+
+@pytest.mark.asyncio
+async def test_draft_discovery_leaves_a_failed_half_unknown(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning(
+            {
+                f"{CHAT_BASE}/models": _Response(200, _models_body(CHAT_MODEL)),
+                f"{EMBED_BASE}/models": _Response(401, {"error": {"message": "nope"}}),
+            }
+        ),
+    )
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _no_retry)
+
+    models = await rhoai.list_cluster_models(_stored())
+
+    assert models == rhoai.ClusterModels(chat=(CHAT_MODEL,), embedding=None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kind, asked, expected",
+    [
+        ("chat", CHAT_BASE, rhoai.ClusterModels(chat=(CHAT_MODEL,), embedding=None)),
+        ("embedding", EMBED_BASE, rhoai.ClusterModels(chat=None, embedding=(EMBED_MODEL,))),
+    ],
+)
+async def test_draft_discovery_for_one_picker_asks_only_its_endpoint(
+    monkeypatch, kind, asked, expected
+) -> None:
+    """Each onboarding step shows one picker; the other endpoint is not its concern."""
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning(
+            {
+                f"{CHAT_BASE}/models": _Response(200, _models_body(CHAT_MODEL)),
+                f"{EMBED_BASE}/models": _Response(200, _models_body(EMBED_MODEL)),
+            },
+            seen,
+        ),
+    )
+
+    models = await rhoai.list_cluster_models(_stored(), kind=kind)
+
+    assert models == expected
+    assert seen["urls"] == [f"{asked}/models"]
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_embedding_endpoint_does_not_hold_up_the_chat_picker(
+    monkeypatch,
+) -> None:
+    """The review case: chat answers at once, so its step must not wait out the
+    embedding endpoint's retries."""
+
+    async def _hang_on_embedding(method, url, *, client, **kwargs):
+        if url.startswith(EMBED_BASE):
+            raise AssertionError("the embedding endpoint should not be asked")
+        return await client.request(method, url, **kwargs)
+
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning({f"{CHAT_BASE}/models": _Response(200, _models_body(CHAT_MODEL))}),
+    )
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _hang_on_embedding)
+
+    models = await rhoai.list_cluster_models(_stored(), kind="chat")
+
+    assert models == rhoai.ClusterModels(chat=(CHAT_MODEL,), embedding=None)
+
+
+@pytest.mark.asyncio
+async def test_draft_discovery_for_one_picker_on_a_shared_endpoint_fills_both(
+    monkeypatch,
+) -> None:
+    """One endpoint serves both, so asking it for one picker answers the other too."""
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning({f"{CHAT_BASE}/models": _Response(200, _models_body("solo"))}, seen),
+    )
+
+    models = await rhoai.list_cluster_models(_stored(embedding_api_base=None), kind="embedding")
+
+    assert models == rhoai.ClusterModels(chat=("solo",), embedding=("solo",))
+    assert seen["urls"] == [f"{CHAT_BASE}/models"]
+
+
+@pytest.mark.asyncio
+async def test_draft_discovery_never_touches_the_catalogue_cache(monkeypatch) -> None:
+    """`cached_models()` feeds every picker, so a draft cluster's listing must not
+    replace the saved cluster's — nor be dropped by it."""
+    other = "https://draft-chat.svc:8443/v1"
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_returning(
+            {
+                f"{CHAT_BASE}/models": _Response(200, _models_body(CHAT_MODEL)),
+                f"{EMBED_BASE}/models": _Response(200, _models_body(EMBED_MODEL)),
+                f"{other}/models": _Response(200, _models_body("draft-model")),
+            }
+        ),
+    )
+    await rhoai.fetch_models(_stored())
+    saved = rhoai.cached_models()
+
+    draft = await rhoai.list_cluster_models(_stored(api_base=other, embedding_api_base=None))
+
+    assert draft.chat == ("draft-model",)
+    assert rhoai.cached_models() == saved
+
+
+@pytest.mark.asyncio
+async def test_draft_discovery_retries_less_than_the_catalogue(monkeypatch) -> None:
+    """Onboarding has someone watching the picker; the catalogue can wait out a rollout."""
+    calls: list[int] = []
+
+    async def _count(method, url, *, client, max_retries=2, **kwargs):
+        calls.append(max_retries)
+        return _Response(200, _models_body(CHAT_MODEL))
+
+    monkeypatch.setattr("httpx.AsyncClient", _client_returning({}))
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _count)
+
+    await rhoai.list_cluster_models(_stored())
+    assert calls == [rhoai.DISCOVERY_MAX_RETRIES] * 2
+    assert rhoai.DISCOVERY_MAX_RETRIES < 2
+
+    calls.clear()
+    rhoai.forget_models()
+    await rhoai.fetch_models(_stored())
+    assert calls == [2, 2]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("lister", ["list_cluster_models", "fetch_models"])
+async def test_both_endpoints_are_asked_at_once(monkeypatch, lister) -> None:
+    """One after the other, a mistyped host's timeouts would add up — for the
+    onboarding form and the catalogue alike, since both list through one helper."""
+    import asyncio
+
+    arrived: list[str] = []
+    both_asked = asyncio.Event()
+
+    async def _barrier(method, url, *, client, **kwargs):
+        arrived.append(url)
+        if len(arrived) == 2:
+            both_asked.set()
+        # Asked one at a time, the first call never sees the second arrive.
+        await asyncio.wait_for(both_asked.wait(), timeout=1)
+        model = CHAT_MODEL if url.startswith(CHAT_BASE) else EMBED_MODEL
+        return _Response(200, _models_body(model))
+
+    monkeypatch.setattr("httpx.AsyncClient", _client_returning({}))
+    monkeypatch.setattr(rhoai, "_http_request_with_retry", _barrier)
+
+    models = await getattr(rhoai, lister)(_stored())
+
+    assert models == rhoai.ClusterModels(chat=(CHAT_MODEL,), embedding=(EMBED_MODEL,))
+
+
+@pytest.mark.asyncio
+async def test_draft_discovery_with_incomplete_credentials_makes_no_request(monkeypatch) -> None:
+    def _explode(**kwargs):
+        raise AssertionError("no HTTP call should be made")
+
+    monkeypatch.setattr("httpx.AsyncClient", _explode)
+
+    unknown = rhoai.ClusterModels(chat=None, embedding=None)
+    assert await rhoai.list_cluster_models({"api_key": TOKEN}) == unknown
+    assert await rhoai.list_cluster_models({"api_base": CHAT_BASE}) == unknown
+
+
 @pytest.mark.parametrize(
     "body, expected",
     [
@@ -1333,15 +1561,18 @@ async def test_missing_credentials_say_what_is_missing(monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("run_mode", ["oss", "on_prem", "saas"])
-def test_it_is_hidden_everywhere_as_shipped(monkeypatch, run_mode) -> None:
-    """Its endpoints and token are deployment-specific, so it is turned on with
+@pytest.mark.parametrize(
+    ("run_mode", "visible"), [("oss", False), ("on_prem", True), ("saas", False)]
+)
+def test_it_is_offered_only_on_prem_as_shipped(monkeypatch, run_mode, visible) -> None:
+    """It runs inside the customer's own OpenShift cluster, so it is offered in
+    on-prem deployments only; elsewhere it is turned on with
     OPENRAG_MODEL_PROVIDERS_CONFIG rather than offered to everyone."""
     monkeypatch.delenv("OPENRAG_MODEL_PROVIDERS_CONFIG", raising=False)
     monkeypatch.setenv("OPENRAG_RUN_MODE", run_mode)
     model_providers.reload()
 
-    assert PROVIDER not in model_providers.visible_provider_keys()
+    assert (PROVIDER in model_providers.visible_provider_keys()) is visible
 
 
 def test_a_deployment_can_offer_it_with_a_config_override(tmp_path, monkeypatch) -> None:
