@@ -207,6 +207,12 @@ def _xref_stream_pdf(entries: bytes, data: bytes) -> bytes:
     return head + xref + b"startxref\n%d\n%%%%EOF\n" % len(head)
 
 
+def _stale_startxref_pdf(objects: bytes) -> bytes:
+    """PDF whose ``startxref`` names the first of ``objects`` rather than an xref section."""
+    head = b"%PDF-1.5\n"
+    return head + objects + b"startxref\n%d\n%%%%EOF\n" % len(head)
+
+
 _CATALOG = b"1 0 obj\n<< /Type /Catalog >>\nendobj\n"
 _ENCRYPTED_PDF = _pdf(_CATALOG, b"trailer\n<< /Root 1 0 R /Encrypt 5 0 R /Size 6 >>")
 _PLAIN_PDF = _pdf(_CATALOG, b"trailer\n<< /Root 1 0 R >>")
@@ -255,6 +261,28 @@ _PLAIN_PDF_WITH_ENCRYPT_TEXT = _pdf(
             b"%PDF-1.7\ntrailer\n<< /Encrypt 5 0 R >>\nstartxref\n3\n%%EOF\n",
             False,
             id="startxref-points-at-garbage",
+        ),
+        pytest.param(
+            _stale_startxref_pdf(b"3 0 obj\n<< /Type /Filespec /Encrypt 5 0 R >>\nendobj\n"),
+            False,
+            id="startxref-points-at-non-xref-object",
+        ),
+        pytest.param(
+            # The non-xref dictionary ends at `endobj`; the later xref stream's
+            # /Type /XRef and /Encrypt must not be read as belonging to it.
+            _stale_startxref_pdf(
+                b"3 0 obj\n<< /Type /Filespec >>\nendobj\n"
+                b"9 0 obj\n<< /Type /XRef /Encrypt 5 0 R /Length 3 >>\nstream\nabc\n"
+                b"endstream\nendobj\n"
+            ),
+            False,
+            id="startxref-points-at-object-before-xref-stream",
+        ),
+        pytest.param(
+            # Offsets are relative to the header, as in the classic junk case.
+            b"JUNK\n" + _xref_stream_pdf(b"/Encrypt 5 0 R", b"abc"),
+            True,
+            id="xref-stream-junk-before-header",
         ),
         pytest.param(b"not a pdf /Encrypt 5 0 R startxref 0", False, id="not-a-pdf"),
     ],

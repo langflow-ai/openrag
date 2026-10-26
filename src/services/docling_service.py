@@ -244,7 +244,12 @@ PASSWORD_PROTECTED_PDF_DETAIL = "PDF is password-protected (Incorrect password)"
 # indirect reference (/Encrypt 5 0 R) or a direct dictionary (/Encrypt <<).
 _PDF_ENCRYPT_RE = re.compile(rb"/Encrypt\s*(?:\d+\s+\d+\s+R|<<)")
 _STARTXREF_RE = re.compile(rb"startxref\s+(\d+)")
-_XREF_STREAM_OBJ_RE = re.compile(rb"\d+\s+\d+\s+obj\b")
+# What a startxref offset may point at: a classic `xref` table (group 1) or the
+# header of an indirect object that should be the xref stream.
+_XREF_SECTION_START_RE = re.compile(rb"\s*(?:(xref)|\d+\s+\d+\s+obj\b)")
+# The object's dictionary ends where its stream data or the object itself ends.
+_OBJ_DICT_END_RE = re.compile(rb"stream|endobj")
+_XREF_TYPE_RE = re.compile(rb"/Type\s*/XRef\b")
 
 
 def is_docling_load_failure(message: str) -> bool:
@@ -259,8 +264,14 @@ def _active_trailer_dict(content: bytes) -> bytes | None:
     the newest trailer, and a linearized file's final ``startxref`` points at the
     first-page section, which carries the full trailer. Offsets are tried both from
     the start of the file and from the ``%PDF-`` header, because some producers
-    write junk before the header. Returns ``None`` when the content is not a PDF or
+    write junk before the header. An object at the offset counts only if it is an
+    xref stream (``/Type /XRef``), so a stale offset in a damaged file cannot pick
+    up an unrelated dictionary. Returns ``None`` when the content is not a PDF or
     the trailer cannot be located.
+
+    Searches ``content`` in place and slices out only the dictionary, because a
+    linearized file's offset is near the start and a tail copy would duplicate
+    almost the whole upload.
     """
     header = content.find(b"%PDF-", 0, 1024)
     if header < 0:
@@ -271,19 +282,22 @@ def _active_trailer_dict(content: bytes) -> bytes | None:
         return None
     offset = int(matches[-1].group(1))
     for start in dict.fromkeys((offset, offset + header)):
-        section = content[start:].lstrip()
-        if section.startswith(b"xref"):
+        section = _XREF_SECTION_START_RE.match(content, start)
+        if section is None:
+            continue
+        if section.group(1):
             # Classic table: the dictionary follows the `trailer` keyword.
-            trailer = section.find(b"trailer")
+            trailer = content.find(b"trailer", section.end())
             if trailer < 0:
                 logger.debug("Cross-reference table has no trailer", offset=start)
                 return None
-            end = section.find(b"startxref", trailer)
-            return section[trailer : end if end >= 0 else None]
-        if _XREF_STREAM_OBJ_RE.match(section):
-            # Xref stream: the dictionary precedes `stream`; the data is excluded.
-            end = section.find(b"stream")
-            return section[: end if end >= 0 else None]
+            end = content.find(b"startxref", trailer)
+            return content[trailer : end if end >= 0 else None]
+        # Xref stream: the dictionary precedes `stream`; the data is excluded.
+        dict_end = _OBJ_DICT_END_RE.search(content, section.end())
+        xref_dict = content[section.end() : dict_end.start() if dict_end else None]
+        if _XREF_TYPE_RE.search(xref_dict):
+            return xref_dict
     logger.debug("startxref offset does not point at a cross-reference section", offset=offset)
     return None
 
