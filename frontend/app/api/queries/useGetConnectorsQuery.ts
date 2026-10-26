@@ -194,6 +194,8 @@ export const useGetConnectorsQuery = (
           description: string;
           icon: string;
           available?: boolean;
+          config_fields?: ConnectorConfigField[];
+          browse_capability?: string;
         }
       >;
     }>("/connectors");
