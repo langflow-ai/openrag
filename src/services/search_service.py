@@ -422,8 +422,8 @@ class SearchService:
             embedding_model (str): Optional override for embedding model.
                                   If not provided, uses the current embedding
                                   model from configuration.
-            source (str): Who is searching, for the trace: ``agent_tool`` or
-                          ``api`` (see ``search``).
+            source (str): Who is searching, for the trace: ``agent_tool``,
+                          ``api`` or ``suggest`` (see ``search``).
 
         Returns:
             dict (str, Any): {"results": [chunks]} on success
@@ -1031,12 +1031,15 @@ class SearchService:
         limit: int = 10,
         score_threshold: float = 0,
         embedding_model: str = None,
+        *,
+        source: str = "api",
     ) -> dict[str, Any]:
         """Public search method for API endpoints
 
         Args:
             embedding_model: Embedding model to use for search (defaults to the
                 currently configured embedding model)
+            source: Trace tag distinguishing who is searching (see ``search_tool``)
         """
         # Set auth context if provided (for direct API calls)
         from config.settings import is_no_auth_mode
@@ -1057,7 +1060,7 @@ class SearchService:
         set_search_limit(limit)
         set_score_threshold(score_threshold)
 
-        return await self.search_tool(query, embedding_model=embedding_model, source="api")
+        return await self.search_tool(query, embedding_model=embedding_model, source=source)
 
     # ------------------------------------------------------------------
     # Search-as-you-type suggestions
@@ -1129,6 +1132,7 @@ class SearchService:
                 filters=filters,
                 limit=SUGGEST_HIT_LIMIT,
                 score_threshold=score_threshold,
+                source="suggest",
             )
             keyword_chunks, hybrid = await asyncio.gather(keyword_task, hybrid_task)
             if hybrid.get("error"):

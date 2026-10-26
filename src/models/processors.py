@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from observability.spans import trace_root, trace_span
+from services.search_cache import invalidate_corpus_caches
 from session_manager import AnonymousUser
 from utils.document_processing import (
     extract_relevant,
@@ -1239,6 +1240,7 @@ class ConnectorFileProcessor(TaskProcessor):
                         },
                     },
                 )
+                invalidate_corpus_caches()
             except Exception as e:
                 logger.warning(
                     "Failed to reconcile owner fields for skipped duplicate",

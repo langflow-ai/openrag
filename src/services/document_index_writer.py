@@ -14,6 +14,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from services.search_cache import invalidate_corpus_caches
 from utils.embedding_fields import ensure_embedding_field_exists, get_embedding_space_id
 from utils.embeddings import create_index_body
 from utils.group_acl import unique_acl_principal_labels, unique_acl_principals
@@ -156,10 +157,14 @@ class DocumentIndexWriter:
                 )
             )
 
-        result = await self._bulk_with_retry(client, bulk_body, refresh=refresh)
-        self._raise_for_bulk_errors(result)
-        if final:
-            await self._refresh(index_name)
+        try:
+            result = await self._bulk_with_retry(client, bulk_body, refresh=refresh)
+            self._raise_for_bulk_errors(result)
+            if final:
+                await self._refresh(index_name)
+        finally:
+            # Even a failed batch may have written some chunks.
+            invalidate_corpus_caches()
 
         logger.info(
             "Indexed document chunks",
@@ -198,6 +203,7 @@ class DocumentIndexWriter:
             conflicts="proceed",
         )
         deleted = int(response.get("deleted", 0)) if isinstance(response, dict) else 0
+        invalidate_corpus_caches()
         logger.info(
             "Deleted failed ingest run chunks",
             index_name=resolved_index,

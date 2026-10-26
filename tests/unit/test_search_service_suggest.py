@@ -256,6 +256,39 @@ async def test_cache_is_keyed_by_score_threshold(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_semantic_suggest_tags_its_search_trace_as_suggest(monkeypatch):
+    opensearch = _OpenSearch()
+    service = _service({"u1": opensearch}, monkeypatch)
+    sources = []
+
+    async def fake_search_tool(query, embedding_model=None, *, source):
+        sources.append(source)
+        return {"results": []}
+
+    monkeypatch.setattr(service, "search_tool", fake_search_tool)
+
+    await service.suggest("docling", user_id="u1", semantic=True)
+
+    assert sources == ["suggest"]
+
+
+@pytest.mark.asyncio
+async def test_search_defaults_its_trace_source_to_api(monkeypatch):
+    service = _service({"u1": _OpenSearch()}, monkeypatch)
+    sources = []
+
+    async def fake_search_tool(query, embedding_model=None, *, source):
+        sources.append(source)
+        return {"results": []}
+
+    monkeypatch.setattr(service, "search_tool", fake_search_tool)
+
+    await service.search("docling", user_id="u1")
+
+    assert sources == ["api"]
+
+
+@pytest.mark.asyncio
 async def test_keyword_request_is_not_answered_by_other_threshold_semantic_cache(monkeypatch):
     opensearch = _OpenSearch()
     service = _service({"u1": opensearch}, monkeypatch)

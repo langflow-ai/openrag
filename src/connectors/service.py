@@ -3,6 +3,7 @@ from typing import Any
 from opensearchpy.exceptions import NotFoundError
 
 from config.settings import get_index_name
+from services.search_cache import invalidate_corpus_caches
 from utils.file_utils import clean_connector_filename
 from utils.logging_config import get_logger
 
@@ -207,6 +208,7 @@ class ConnectorService:
                     },
                 },
             )
+            invalidate_corpus_caches()
             logger.debug(f"Updated metadata for document {document.id}")
         except Exception as e:
             # A missing index means the chunks aren't where this write expects

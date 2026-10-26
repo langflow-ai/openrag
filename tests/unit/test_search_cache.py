@@ -4,9 +4,11 @@ import asyncio
 
 import pytest
 
+from services import search_cache
 from services.search_cache import (
     SingleflightTTLCache,
     fingerprint,
+    invalidate_corpus_caches,
     normalize_embedding_text,
     normalize_query,
 )
@@ -161,3 +163,44 @@ def test_key_normalization():
     # Embedding text keeps case: it can change the vector.
     assert normalize_embedding_text("  Docling   Serve ") == "Docling Serve"
     assert fingerprint({"b": [1], "a": [2]}) == fingerprint({"a": [2], "b": [1]})
+
+
+@pytest.mark.asyncio
+async def test_result_computed_across_a_clear_is_not_stored():
+    cache = SingleflightTTLCache(maxsize=8, ttl=60)
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = 0
+
+    async def slow_stale():
+        nonlocal calls
+        calls += 1
+        started.set()
+        await release.wait()
+        return "stale"
+
+    async def fresh():
+        nonlocal calls
+        calls += 1
+        return "fresh"
+
+    leader = asyncio.create_task(cache.get_or_compute("k", slow_stale))
+    await started.wait()
+    cache.clear()
+    release.set()
+    assert await leader == "stale"
+
+    assert await cache.get_or_compute("k", fresh) == "fresh"
+    assert calls == 2
+
+
+def test_invalidate_corpus_caches_keeps_query_embeddings():
+    search_cache.QUERY_EMBEDDING_CACHE.set("q", [0.1])
+    search_cache.SPACES_CACHE.set("s", ["space"])
+    search_cache.SUGGEST_CACHE.set("g", {"files": []})
+
+    invalidate_corpus_caches()
+
+    assert search_cache.QUERY_EMBEDDING_CACHE.get("q") == [0.1]
+    assert search_cache.SPACES_CACHE.get("s") is None
+    assert search_cache.SUGGEST_CACHE.get("g") is None

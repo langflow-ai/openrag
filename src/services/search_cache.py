@@ -41,6 +41,9 @@ class SingleflightTTLCache:
     def __init__(self, maxsize: int, ttl: float) -> None:
         self._cache: TTLCache[Hashable, Any] = TTLCache(maxsize=maxsize, ttl=ttl)
         self._inflight: dict[Hashable, asyncio.Future[Any]] = {}
+        # Bumped by clear() so a computation that began before a clear cannot
+        # store its (now stale) result after it.
+        self._generation = 0
 
     def get(self, key: Hashable) -> Any | None:
         return self._cache.get(key)
@@ -49,6 +52,7 @@ class SingleflightTTLCache:
         self._cache[key] = value
 
     def clear(self) -> None:
+        self._generation += 1
         self._cache.clear()
         self._inflight.clear()
 
@@ -83,6 +87,7 @@ class SingleflightTTLCache:
 
         future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
         self._inflight[key] = future
+        generation = self._generation
         try:
             value = await compute()
         except asyncio.CancelledError:
@@ -94,7 +99,7 @@ class SingleflightTTLCache:
             future.exception()
             raise
         else:
-            if cacheable(value):
+            if generation == self._generation and cacheable(value):
                 self._cache[key] = value
             future.set_result(value)
             return value
@@ -130,3 +135,13 @@ def normalize_query(query: str) -> str:
 def fingerprint(value: Any) -> str:
     """Stable, hashable representation of filter clauses / filter dicts."""
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def invalidate_corpus_caches() -> None:
+    """Drop results that depend on what is indexed.
+
+    Query embeddings are kept: a vector depends only on the model and the
+    text, and it is the one cache that saves a paid provider call.
+    """
+    SPACES_CACHE.clear()
+    SUGGEST_CACHE.clear()
