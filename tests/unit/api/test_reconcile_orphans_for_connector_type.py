@@ -429,7 +429,9 @@ async def test_sharepoint_onprem_reconcile_only_deletes_confirmed_file_404(monke
 
     assert result == ["deleted"]
     assert connector.is_definitively_missing.await_count == 2
-    shoulds = client.search.await_args.kwargs["body"]["query"]["bool"]["filter"][0]["bool"]["should"]
+    shoulds = client.search.await_args.kwargs["body"]["query"]["bool"]["filter"][0]["bool"][
+        "should"
+    ]
     assert {tuple(next(iter(term["terms"].values()))) for term in shoulds} == {("deleted",)}
     assert write_client.delete.await_args.kwargs["id"] == "chunk-deleted"
 

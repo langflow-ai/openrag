@@ -303,19 +303,27 @@ def register_internal_routes(app: FastAPI):
         cls.register_routes(app)
     app.add_api_route(
         "/connectors/{connector_type}/plugin-defaults",
-        plugin_connectors.plugin_defaults, methods=["GET"], tags=["internal"],
+        plugin_connectors.plugin_defaults,
+        methods=["GET"],
+        tags=["internal"],
     )
     app.add_api_route(
         "/connectors/{connector_type}/plugin-test",
-        plugin_connectors.plugin_test, methods=["POST"], tags=["internal"],
+        plugin_connectors.plugin_test,
+        methods=["POST"],
+        tags=["internal"],
     )
     app.add_api_route(
         "/connectors/{connector_type}/plugin-configure",
-        plugin_connectors.plugin_configure, methods=["POST"], tags=["internal"],
+        plugin_connectors.plugin_configure,
+        methods=["POST"],
+        tags=["internal"],
     )
     app.add_api_route(
         "/connectors/{connector_type}/{connection_id}/picker/children",
-        plugin_connectors.plugin_picker_children, methods=["GET"], tags=["internal"],
+        plugin_connectors.plugin_picker_children,
+        methods=["GET"],
+        tags=["internal"],
     )
     app.add_api_route(
         "/connectors/{connector_type}/sync",

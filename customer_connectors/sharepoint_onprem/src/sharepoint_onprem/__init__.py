@@ -49,8 +49,15 @@ def _untoken(value):
 
 def _origin(url, *, allow_query=False):
     parts = urlsplit(url)
-    if (parts.scheme != "https" or not parts.hostname or parts.username or parts.password
-            or (parts.query and not allow_query) or parts.fragment or parts.port == 0):
+    if (
+        parts.scheme != "https"
+        or not parts.hostname
+        or parts.username
+        or parts.password
+        or (parts.query and not allow_query)
+        or parts.fragment
+        or parts.port == 0
+    ):
         raise ValueError("SharePoint requires an approved HTTPS origin")
     return f"https://{parts.netloc.lower()}"
 
@@ -58,7 +65,7 @@ def _origin(url, *, allow_query=False):
 def _segments(path):
     if not isinstance(path, str) or "#" in path or "%" in path:
         raise ValueError("SharePoint Server REST path requires ResourcePath for '#' or '%' names")
-    if ("\\" in path or "?" in path or any(ord(char) < 32 for char in path)):
+    if "\\" in path or "?" in path or any(ord(char) < 32 for char in path):
         raise ValueError("Invalid SharePoint path")
     segments = path.strip("/").split("/")
     if any(segment in ("", ".", "..") for segment in segments):
@@ -67,7 +74,11 @@ def _segments(path):
 
 
 def _safe_relative(path):
-    if not isinstance(path, str) or not path.startswith("/") or path != "/" + "/".join(_segments(path)):
+    if (
+        not isinstance(path, str)
+        or not path.startswith("/")
+        or path != "/" + "/".join(_segments(path))
+    ):
         raise ValueError("Invalid SharePoint server-relative path")
     return path
 
@@ -106,7 +117,12 @@ class SharePointOnPremConnector(BaseConnector):
         {"name": "username", "label": "Username", "type": "secret", "required": True},
         {"name": "password", "label": "Password", "type": "secret", "required": True},
         {"name": "domain", "label": "NTLM domain", "type": "text", "required": False},
-        {"name": "site_paths", "label": "Site paths (one per line, relative to server URL)", "type": "text", "required": True},
+        {
+            "name": "site_paths",
+            "label": "Site paths (one per line, relative to server URL)",
+            "type": "text",
+            "required": True,
+        },
     )
 
     @classmethod
@@ -156,7 +172,9 @@ class SharePointOnPremConnector(BaseConnector):
                 sites.append(site)
         if not sites or len(sites) > 200:
             raise ValueError("Expected 1–200 explicit site paths")
-        if not all(isinstance(self.config.get(k), str) and self.config[k] for k in ("username", "password")):
+        if not all(
+            isinstance(self.config.get(k), str) and self.config[k] for k in ("username", "password")
+        ):
             raise ValueError("Username and password are required")
         ca_bundle = os.environ.get("OPENRAG_SHAREPOINT_CA_BUNDLE")
         if ca_bundle is not None:
@@ -175,7 +193,9 @@ class SharePointOnPremConnector(BaseConnector):
         if not isinstance(domain, str) or "\\" in domain or "@" in domain:
             raise ValueError("Invalid NTLM domain")
         username = self.config["username"]
-        session.auth = HttpNtlmAuth(f"{domain}\\{username}" if domain else username, self.config["password"])
+        session.auth = HttpNtlmAuth(
+            f"{domain}\\{username}" if domain else username, self.config["password"]
+        )
         return session
 
     def _request(self, session, url, *, params=None, limit=_MAX_METADATA_BYTES):
@@ -183,8 +203,15 @@ class SharePointOnPremConnector(BaseConnector):
         if _origin(url) != self._approved_origin:
             raise ValueError("SharePoint request outside approved origin")
         try:
-            with session.get(url, params=params, headers={"Accept": "application/json;odata=verbose"},
-                             timeout=_TIMEOUT, stream=True, verify=self._ca_bundle or True, allow_redirects=False) as response:
+            with session.get(
+                url,
+                params=params,
+                headers={"Accept": "application/json;odata=verbose"},
+                timeout=_TIMEOUT,
+                stream=True,
+                verify=self._ca_bundle or True,
+                allow_redirects=False,
+            ) as response:
                 status = response.status_code
                 if status in (401, 403):
                     raise PermissionError("SharePoint denied access")
@@ -221,7 +248,12 @@ class SharePointOnPremConnector(BaseConnector):
 
     def _folder_endpoint(self, path, collection):
         # Escape OData string literals before URL encoding. Never use a browser URL.
-        return "GetFolderByServerRelativeUrl('" + quote(path.replace("'", "''"), safe="/") + "')/" + collection
+        return (
+            "GetFolderByServerRelativeUrl('"
+            + quote(path.replace("'", "''"), safe="/")
+            + "')/"
+            + collection
+        )
 
     def _file_endpoint(self, path):
         return "GetFileByServerRelativeUrl('" + quote(path.replace("'", "''"), safe="/") + "')"
@@ -229,8 +261,11 @@ class SharePointOnPremConnector(BaseConnector):
     def _page(self, session, site, endpoint, params, continuation=None):
         base_url = self._url(site, endpoint)
         if continuation is not None:
-            if (not isinstance(continuation, dict) or len(continuation) != 1
-                    or next(iter(continuation)) not in ("$skiptoken", "$skip")):
+            if (
+                not isinstance(continuation, dict)
+                or len(continuation) != 1
+                or next(iter(continuation)) not in ("$skiptoken", "$skip")
+            ):
                 raise ValueError("Invalid SharePoint continuation")
             value = next(iter(continuation.values()))
             if not isinstance(value, str) or not value or len(value) > 4096:
@@ -241,10 +276,17 @@ class SharePointOnPremConnector(BaseConnector):
             raise ValueError("Invalid SharePoint REST page")
         if len(response["results"]) > int(params["$top"]):
             raise ValueError("SharePoint REST page exceeds requested size")
-        next_url = response.get("__next") or response.get("@odata.nextLink") or response.get("odata.nextLink")
+        next_url = (
+            response.get("__next")
+            or response.get("@odata.nextLink")
+            or response.get("odata.nextLink")
+        )
         next_page = None
         if next_url:
-            if not isinstance(next_url, str) or _origin(next_url, allow_query=True) != self._approved_origin:
+            if (
+                not isinstance(next_url, str)
+                or _origin(next_url, allow_query=True) != self._approved_origin
+            ):
                 raise ValueError("SharePoint continuation left approved origin")
             parts = urlsplit(next_url)
             if unquote(parts.path) != unquote(urlsplit(base_url).path):
@@ -265,9 +307,12 @@ class SharePointOnPremConnector(BaseConnector):
 
     def _libraries(self, session, site):
         endpoint = "lists"
-        params = {"$select": "Id,Title,Hidden,BaseTemplate,RootFolder/ServerRelativeUrl",
-                  "$expand": "RootFolder", "$filter": "BaseTemplate eq 101 and Hidden eq false",
-                  "$top": str(_PAGE_SIZE)}
+        params = {
+            "$select": "Id,Title,Hidden,BaseTemplate,RootFolder/ServerRelativeUrl",
+            "$expand": "RootFolder",
+            "$filter": "BaseTemplate eq 101 and Hidden eq false",
+            "$top": str(_PAGE_SIZE),
+        }
         continuation = None
         seen = set()
         roots = {}
@@ -303,7 +348,7 @@ class SharePointOnPremConnector(BaseConnector):
         kind, site, *rest = data
         if not isinstance(site, str) or site not in self._sites:
             raise ValueError("Identifier outside configured SharePoint sites")
-        if (kind == "s" and rest == []):
+        if kind == "s" and rest == []:
             return data
         if not rest or not isinstance(rest[0], str) or not _inside(rest[0], site):
             raise ValueError("Identifier outside configured SharePoint sites")
@@ -329,15 +374,22 @@ class SharePointOnPremConnector(BaseConnector):
         if value is None:
             return {"parent": parent, "phase": "folders", "continuation": None}
         data = _untoken(value)
-        if (not isinstance(data, dict) or data.get("parent") != parent
-                or data.get("phase") not in ("sites", "libraries", "folders", "files")
-                or set(data) != {"parent", "phase", "continuation"}):
+        if (
+            not isinstance(data, dict)
+            or data.get("parent") != parent
+            or data.get("phase") not in ("sites", "libraries", "folders", "files")
+            or set(data) != {"parent", "phase", "continuation"}
+        ):
             raise ValueError("Invalid SharePoint picker cursor")
         return data
 
     def _list_children(self, parent_id, cursor, page_size):
         self._settings()
-        if not isinstance(page_size, int) or isinstance(page_size, bool) or not 1 <= page_size <= _PAGE_SIZE:
+        if (
+            not isinstance(page_size, int)
+            or isinstance(page_size, bool)
+            or not 1 <= page_size <= _PAGE_SIZE
+        ):
             raise ValueError("SharePoint page_size must be between 1 and 200")
         with self._session() as session:
             if parent_id is None:
@@ -345,12 +397,30 @@ class SharePointOnPremConnector(BaseConnector):
                 if state["phase"] not in ("folders", "sites"):
                     raise ValueError("Invalid SharePoint picker cursor")
                 offset = state["continuation"] or 0
-                if not isinstance(offset, int) or isinstance(offset, bool) or not 0 <= offset <= len(self._sites):
+                if (
+                    not isinstance(offset, int)
+                    or isinstance(offset, bool)
+                    or not 0 <= offset <= len(self._sites)
+                ):
                     raise ValueError("Invalid SharePoint picker cursor")
-                items = self._sites[offset:offset + page_size]
+                items = self._sites[offset : offset + page_size]
                 new_offset = offset + len(items)
-                return {"nodes": [{"id": _token(["s", site]), "parent_id": None, "kind": "folder", "name": site.rsplit("/", 1)[-1]} for site in items],
-                        "next_cursor": _token({"parent": None, "phase": "sites", "continuation": new_offset}) if new_offset < len(self._sites) else None}
+                return {
+                    "nodes": [
+                        {
+                            "id": _token(["s", site]),
+                            "parent_id": None,
+                            "kind": "folder",
+                            "name": site.rsplit("/", 1)[-1],
+                        }
+                        for site in items
+                    ],
+                    "next_cursor": _token(
+                        {"parent": None, "phase": "sites", "continuation": new_offset}
+                    )
+                    if new_offset < len(self._sites)
+                    else None,
+                }
             identity = self._decode_id(parent_id, session=session)
             kind, site = identity[:2]
             state = self._cursor(cursor, parent_id)
@@ -359,10 +429,15 @@ class SharePointOnPremConnector(BaseConnector):
             if kind == "s":
                 if state["phase"] not in ("folders", "libraries"):
                     raise ValueError("Invalid SharePoint picker cursor")
-                params = {"$select": "Id,Title,Hidden,BaseTemplate,RootFolder/ServerRelativeUrl",
-                          "$expand": "RootFolder", "$filter": "BaseTemplate eq 101 and Hidden eq false",
-                          "$top": str(page_size)}
-                entries, continuation = self._page(session, site, "lists", params, state["continuation"])
+                params = {
+                    "$select": "Id,Title,Hidden,BaseTemplate,RootFolder/ServerRelativeUrl",
+                    "$expand": "RootFolder",
+                    "$filter": "BaseTemplate eq 101 and Hidden eq false",
+                    "$top": str(page_size),
+                }
+                entries, continuation = self._page(
+                    session, site, "lists", params, state["continuation"]
+                )
                 nodes = []
                 for entry in entries:
                     if entry.get("Hidden"):
@@ -371,8 +446,21 @@ class SharePointOnPremConnector(BaseConnector):
                     if isinstance(path, str):
                         _safe_relative(path)
                         if _inside(path, site):
-                            nodes.append({"id": _token(["l", site, path]), "parent_id": parent_id, "kind": "folder", "name": entry.get("Title") or path.rsplit("/", 1)[-1]})
-                next_cursor = _token({"parent": parent_id, "phase": "libraries", "continuation": continuation}) if continuation else None
+                            nodes.append(
+                                {
+                                    "id": _token(["l", site, path]),
+                                    "parent_id": parent_id,
+                                    "kind": "folder",
+                                    "name": entry.get("Title") or path.rsplit("/", 1)[-1],
+                                }
+                            )
+                next_cursor = (
+                    _token(
+                        {"parent": parent_id, "phase": "libraries", "continuation": continuation}
+                    )
+                    if continuation
+                    else None
+                )
                 return {"nodes": nodes, "next_cursor": next_cursor}
             library = identity[2]
             parent_path = library if kind == "l" else identity[3]
@@ -383,18 +471,31 @@ class SharePointOnPremConnector(BaseConnector):
             continuation = state["continuation"]
             while len(nodes) < page_size:
                 collection = "Folders" if phase == "folders" else "Files"
-                select = "Name,ServerRelativeUrl,TimeLastModified" if phase == "folders" else "Name,ServerRelativeUrl,Length,TimeLastModified"
+                select = (
+                    "Name,ServerRelativeUrl,TimeLastModified"
+                    if phase == "folders"
+                    else "Name,ServerRelativeUrl,Length,TimeLastModified"
+                )
                 params = {"$select": select, "$top": str(page_size - len(nodes))}
-                entries, continuation = self._page(session, site, self._folder_endpoint(parent_path, collection), params, continuation)
+                entries, continuation = self._page(
+                    session,
+                    site,
+                    self._folder_endpoint(parent_path, collection),
+                    params,
+                    continuation,
+                )
                 for entry in entries:
                     path = entry.get("ServerRelativeUrl")
                     if isinstance(path, str):
                         _safe_relative(path)
                     if not isinstance(path, str) or path.rsplit("/", 1)[0] != parent_path:
                         continue  # Do not expose an out-of-scope server response.
-                    item = {"id": _token(["d" if phase == "folders" else "f", site, library, path]),
-                            "parent_id": parent_id, "kind": "folder" if phase == "folders" else "file",
-                            "name": entry.get("Name") or path.rsplit("/", 1)[-1]}
+                    item = {
+                        "id": _token(["d" if phase == "folders" else "f", site, library, path]),
+                        "parent_id": parent_id,
+                        "kind": "folder" if phase == "folders" else "file",
+                        "name": entry.get("Name") or path.rsplit("/", 1)[-1],
+                    }
                     if entry.get("TimeLastModified"):
                         item["modified_time"] = entry["TimeLastModified"]
                     if phase == "files" and entry.get("Length") is not None:
@@ -405,9 +506,16 @@ class SharePointOnPremConnector(BaseConnector):
                 if phase == "files":
                     return {"nodes": nodes, "next_cursor": None}
                 phase = "files"
-            return {"nodes": nodes, "next_cursor": _token({"parent": parent_id, "phase": phase, "continuation": continuation})}
+            return {
+                "nodes": nodes,
+                "next_cursor": _token(
+                    {"parent": parent_id, "phase": phase, "continuation": continuation}
+                ),
+            }
 
-    async def list_children(self, parent_id: str | None = None, cursor: str | None = None, page_size: int = 100) -> dict:
+    async def list_children(
+        self, parent_id: str | None = None, cursor: str | None = None, page_size: int = 100
+    ) -> dict:
         return await asyncio.to_thread(self._list_children, parent_id, cursor, page_size)
 
     async def authenticate(self):
@@ -417,6 +525,7 @@ class SharePointOnPremConnector(BaseConnector):
                 for site in self._sites:
                     self._json(session, self._url(site, "")[:-1], params={"$select": "Id"})
                     self._libraries(session, site)
+
         try:
             await asyncio.to_thread(probe)
         except PermissionError:
@@ -435,8 +544,12 @@ class SharePointOnPremConnector(BaseConnector):
             cursor = None
         else:
             state = _untoken(page_token)
-            if (not isinstance(state, dict) or set(state) != {"queue", "cursor"}
-                    or not isinstance(state["queue"], list) or not state["queue"]):
+            if (
+                not isinstance(state, dict)
+                or set(state) != {"queue", "cursor"}
+                or not isinstance(state["queue"], list)
+                or not state["queue"]
+            ):
                 raise ValueError("Invalid SharePoint inventory cursor")
             queue, cursor = deque(state["queue"]), state["cursor"]
         files = []
@@ -446,8 +559,14 @@ class SharePointOnPremConnector(BaseConnector):
             pages += 1
             for node in result["nodes"]:
                 if node["kind"] == "file":
-                    files.append({"id": node["id"], "name": node["name"], "size": node.get("size"),
-                                  "modified_time": node.get("modified_time")})
+                    files.append(
+                        {
+                            "id": node["id"],
+                            "name": node["name"],
+                            "size": node.get("size"),
+                            "modified_time": node.get("modified_time"),
+                        }
+                    )
                 else:
                     queue.append(node["id"])
             cursor = result["next_cursor"]
@@ -464,7 +583,8 @@ class SharePointOnPremConnector(BaseConnector):
                 if kind != "f":
                     return False
                 self._json(
-                    session, self._url(site, self._file_endpoint(path)),
+                    session,
+                    self._url(site, self._file_endpoint(path)),
                     params={"$select": "ServerRelativeUrl"},
                 )
                 return False  # A successful response, even if malformed, is not a deletion signal.
@@ -489,21 +609,39 @@ class SharePointOnPremConnector(BaseConnector):
                 raise ValueError("Only SharePoint file identifiers can be downloaded")
             _, site, library, path = identity
             endpoint = self._file_endpoint(path)
-            metadata = self._json(session, self._url(site, endpoint), params={"$select": "Name,ServerRelativeUrl,Length,TimeLastModified,TimeCreated,ETag"})
+            metadata = self._json(
+                session,
+                self._url(site, endpoint),
+                params={
+                    "$select": "Name,ServerRelativeUrl,Length,TimeLastModified,TimeCreated,ETag"
+                },
+            )
             if not isinstance(metadata, dict) or metadata.get("ServerRelativeUrl") != path:
                 raise ValueError("SharePoint file metadata left configured scope")
             if int(metadata.get("Length", -1)) > _MAX_FILE_BYTES:
                 raise ValueError("SharePoint file exceeds size limit")
-            content = self._request(session, self._url(site, endpoint + "/$value"), limit=_MAX_FILE_BYTES)
+            content = self._request(
+                session, self._url(site, endpoint + "/$value"), limit=_MAX_FILE_BYTES
+            )
         filename = metadata.get("Name") or path.rsplit("/", 1)[-1]
         modified = _date(metadata.get("TimeLastModified"))
         return ConnectorDocument(
-            id=file_id, filename=self.filename_for_index(file_id, filename),
+            id=file_id,
+            filename=self.filename_for_index(file_id, filename),
             mimetype=mimetypes.guess_type(filename)[0] or "application/octet-stream",
-            content=content, source_url=self._server + quote(path, safe="/"),
+            content=content,
+            source_url=self._server + quote(path, safe="/"),
             acl=DocumentACL(owner=owner, allowed_users=[owner]),
-            modified_time=modified, created_time=_date(metadata.get("TimeCreated")) if metadata.get("TimeCreated") else modified,
-            metadata={"size": len(content), "site_path": site, "library_path": library, "content_etag": metadata.get("ETag")},
+            modified_time=modified,
+            created_time=_date(metadata.get("TimeCreated"))
+            if metadata.get("TimeCreated")
+            else modified,
+            metadata={
+                "size": len(content),
+                "site_path": site,
+                "library_path": library,
+                "content_etag": metadata.get("ETag"),
+            },
         )
 
     async def get_file_content(self, file_id: str) -> ConnectorDocument:

@@ -6,6 +6,7 @@ top-level `enhancements/` package (loaded best-effort — absence is fine).
 Shared code (`connection_manager`, settings endpoints, etc.) should look up
 connector classes via this module instead of hard-coding imports/branches.
 """
+
 import inspect
 import os
 import re
@@ -37,7 +38,11 @@ def _load_plugins() -> tuple[type[BaseConnector], ...]:
     if _plugin_connectors is not None:
         return _plugin_connectors
 
-    allowed = {name.strip() for name in os.getenv("OPENRAG_CONNECTOR_PLUGINS", "").split(",") if name.strip()}
+    allowed = {
+        name.strip()
+        for name in os.getenv("OPENRAG_CONNECTOR_PLUGINS", "").split(",")
+        if name.strip()
+    }
     if not allowed:
         _plugin_connectors = ()
         return _plugin_connectors
@@ -52,7 +57,9 @@ def _load_plugins() -> tuple[type[BaseConnector], ...]:
     plugins: list[type[BaseConnector]] = []
     for name in sorted(allowed):
         if not _PLUGIN_TYPE.fullmatch(name):
-            raise RuntimeError(f"Invalid OPENRAG_CONNECTOR_PLUGINS entry {name!r}: use lowercase connector types")
+            raise RuntimeError(
+                f"Invalid OPENRAG_CONNECTOR_PLUGINS entry {name!r}: use lowercase connector types"
+            )
         matches = selected[name]
         if not matches:
             raise RuntimeError(
@@ -60,19 +67,30 @@ def _load_plugins() -> tuple[type[BaseConnector], ...]:
                 f"an {PLUGIN_ENTRY_POINT_GROUP} entry point, or remove it from OPENRAG_CONNECTOR_PLUGINS"
             )
         if len(matches) != 1:
-            raise RuntimeError(f"Duplicate {PLUGIN_ENTRY_POINT_GROUP} entry points for enabled connector {name!r}")
+            raise RuntimeError(
+                f"Duplicate {PLUGIN_ENTRY_POINT_GROUP} entry points for enabled connector {name!r}"
+            )
         if name in existing:
-            raise RuntimeError(f"Connector plugin {name!r} collides with a built-in or enhancement connector")
+            raise RuntimeError(
+                f"Connector plugin {name!r} collides with a built-in or enhancement connector"
+            )
 
         try:
             cls = matches[0].load()
         except Exception as exc:
-            raise RuntimeError(f"Failed to load enabled connector plugin {name!r} from {matches[0].value}") from exc
+            raise RuntimeError(
+                f"Failed to load enabled connector plugin {name!r} from {matches[0].value}"
+            ) from exc
         if not isinstance(cls, type) or not issubclass(cls, BaseConnector):
             raise RuntimeError(f"Connector plugin {name!r} must export a BaseConnector subclass")
         if cls.CONNECTOR_TYPE != name or cls.CONNECTOR_KIND != "bucket":
-            raise RuntimeError(f"Connector plugin {name!r} must declare CONNECTOR_TYPE={name!r} and CONNECTOR_KIND='bucket'")
-        if type(getattr(cls, "CONNECTOR_API_VERSION", None)) is not int or cls.CONNECTOR_API_VERSION != 1:
+            raise RuntimeError(
+                f"Connector plugin {name!r} must declare CONNECTOR_TYPE={name!r} and CONNECTOR_KIND='bucket'"
+            )
+        if (
+            type(getattr(cls, "CONNECTOR_API_VERSION", None)) is not int
+            or cls.CONNECTOR_API_VERSION != 1
+        ):
             raise RuntimeError(
                 f"Connector plugin {name!r} must declare CONNECTOR_API_VERSION=1 "
                 f"for {PLUGIN_ENTRY_POINT_GROUP}"
