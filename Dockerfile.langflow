@@ -87,7 +87,6 @@ RUN pip install --no-cache-dir \
 COPY --from=lxml-build /wheels /tmp/lxml-wheels
 RUN pip install --no-cache-dir --no-deps --force-reinstall /tmp/lxml-wheels/lxml-*.whl
 
-COPY flows/ /app/flows/
 COPY custom_components/ /app/custom_components/
 
 # Switch to root so the entrypoint can correct bind-mount permissions at
