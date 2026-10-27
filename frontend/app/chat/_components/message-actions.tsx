@@ -1,12 +1,18 @@
-import { ThumbsDown, ThumbsUp } from "lucide-react";
+import { RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
 interface MessageActionsProps {
   trackFeedback: (feedback: "like" | "dislike") => void;
+  onRetry?: () => void;
+  disabled?: boolean;
 }
 
-const MessageActions = ({ trackFeedback }: MessageActionsProps) => {
+const MessageActions = ({
+  trackFeedback,
+  onRetry,
+  disabled,
+}: MessageActionsProps) => {
   const [feedbackSelected, setFeedbackSelected] = useState<
     "like" | "dislike" | null
   >(null);
@@ -19,6 +25,17 @@ const MessageActions = ({ trackFeedback }: MessageActionsProps) => {
 
   return (
     <div className="flex space-x-2">
+      {onRetry && (
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label="Retry"
+          onClick={onRetry}
+          disabled={disabled}
+        >
+          <RotateCcw className="h-4 w-4" />
+        </Button>
+      )}
       <Button
         variant="outline"
         size="icon"
