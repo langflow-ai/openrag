@@ -1661,7 +1661,13 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 }
                 for future in as_completed(futures):
                     idx = futures[future]
-                    vectors[idx] = future.result()
+                    try:
+                        vectors[idx] = future.result()
+                    except Exception as e:  # noqa: BLE001
+                        logger.error(
+                            f"Embedding failed for chunk {idx}, skipping: {e}",
+                            error=str(e),
+                        )
 
         if not vectors:
             self.log(f"No vectors generated from documents for model {embedding_model}.")

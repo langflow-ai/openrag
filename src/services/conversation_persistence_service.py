@@ -20,7 +20,7 @@ import json
 import os
 import threading
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from config.paths import get_data_file
@@ -159,6 +159,57 @@ class ConversationPersistenceService:
             db_deleted = await self._db_delete(response_id, user_id)
             deleted = deleted or db_deleted
 
+        return deleted
+
+    async def prune_stale_conversations(self, ttl_days: int) -> int:
+        """Delete conversations that have had no activity for *ttl_days* days.
+
+        Covers all active storage modes:
+        - ``db`` / ``hybrid``: bulk DELETE via the DB repo.
+        - ``files`` / ``hybrid``: removes matching entries from the in-memory
+          JSON store and persists to disk.
+
+        Returns the total number of conversations deleted across all stores.
+        """
+        deleted = 0
+        cutoff = datetime.now(timezone.utc) - timedelta(days=ttl_days)
+
+        if file_writes_enabled():
+            stale_keys: list[tuple[str, str]] = []
+            for user_id, user_convs in self._conversations.items():
+                for resp_id, payload in user_convs.items():
+                    last_activity_raw = payload.get("last_activity")
+                    if last_activity_raw:
+                        try:
+                            la = datetime.fromisoformat(str(last_activity_raw))
+                            if la.tzinfo is None:
+                                la = la.replace(tzinfo=timezone.utc)
+                            if la < cutoff:
+                                stale_keys.append((user_id, resp_id))
+                        except (TypeError, ValueError):
+                            pass
+
+            for user_id, resp_id in stale_keys:
+                del self._conversations[user_id][resp_id]
+                deleted += 1
+
+            if stale_keys:
+                await self._save_conversations()
+
+        if db_writes_enabled():
+            from db.repositories import ConversationRepo
+
+            sess_factory = self._resolve_session_factory()
+            if sess_factory is not None:
+                try:
+                    async with sess_factory() as session:
+                        n = await ConversationRepo(session).delete_stale(ttl_days)
+                        await session.commit()
+                        deleted += n
+                except Exception as exc:  # noqa: BLE001
+                    logger.error("DB prune_stale_conversations failed", error=str(exc))
+
+        logger.info("Conversation pruning completed", ttl_days=ttl_days, deleted=deleted)
         return deleted
 
     async def clear_user_conversations(self, user_id: str) -> None:
