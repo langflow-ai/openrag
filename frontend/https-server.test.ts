@@ -1,4 +1,9 @@
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import {
+  type ChildProcess,
+  type SpawnOptions,
+  spawn,
+  spawnSync,
+} from "node:child_process";
 import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
@@ -33,10 +38,17 @@ async function createFixture() {
 }
 
 function launch(directory: string, env: Record<string, string>) {
-  const child = spawn("node", ["https-server.js"], {
+  const options: SpawnOptions = {
     cwd: directory,
-    env: { PATH: process.env.PATH ?? "", ...env },
-  });
+    // Next augments ProcessEnv with a required NODE_ENV, so retain it while
+    // keeping the child environment deliberately limited to the test inputs.
+    env: {
+      ...env,
+      PATH: process.env.PATH ?? "",
+      NODE_ENV: process.env.NODE_ENV ?? "test",
+    },
+  };
+  const child = spawn("node", ["https-server.js"], options);
   children.push(child);
   return child;
 }
