@@ -20,7 +20,7 @@ import json
 import os
 import threading
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 from config.paths import get_data_file
@@ -172,7 +172,7 @@ class ConversationPersistenceService:
         Returns the total number of conversations deleted across all stores.
         """
         deleted = 0
-        cutoff = datetime.now(timezone.utc) - timedelta(days=ttl_days)
+        cutoff = datetime.now(UTC) - timedelta(days=ttl_days)
 
         if file_writes_enabled():
             stale_keys: list[tuple[str, str]] = []
@@ -183,7 +183,7 @@ class ConversationPersistenceService:
                         try:
                             la = datetime.fromisoformat(str(last_activity_raw))
                             if la.tzinfo is None:
-                                la = la.replace(tzinfo=timezone.utc)
+                                la = la.replace(tzinfo=UTC)
                             if la < cutoff:
                                 stale_keys.append((user_id, resp_id))
                         except (TypeError, ValueError):
