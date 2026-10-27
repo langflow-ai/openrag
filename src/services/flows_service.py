@@ -1,7 +1,8 @@
 import asyncio
+import hashlib
 import json
 import os
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from cachetools import LRUCache
@@ -25,6 +26,60 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 logger = get_logger(__name__)
 
 _UNSET = object()
+
+
+def flow_signature(flow_data: dict[str, Any]) -> str:
+    """Identify one shipped version of a flow file."""
+    canonical = json.dumps(flow_data, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def flow_component_fingerprint(flow_data: dict[str, Any]) -> str:
+    """Identify which components a flow runs and how they are connected.
+
+    Field values are left out so that settings OpenRAG writes into a flow
+    (models, chunk size, prompts) never make two copies of a flow differ.
+    """
+    data = flow_data.get("data") or {}
+    nodes = []
+    for node in data.get("nodes") or []:
+        node_data = node.get("data") or {}
+        metadata = (node_data.get("node") or {}).get("metadata") or {}
+        nodes.append(
+            [
+                node.get("id") or "",
+                node_data.get("type") or "",
+                metadata.get("module") or "",
+                metadata.get("code_hash") or "",
+            ]
+        )
+    edges = []
+    for edge in data.get("edges") or []:
+        edge_data = edge.get("data") or {}
+        edges.append(
+            [
+                edge.get("source") or "",
+                (edge_data.get("sourceHandle") or {}).get("name") or "",
+                edge.get("target") or "",
+                (edge_data.get("targetHandle") or {}).get("fieldName") or "",
+            ]
+        )
+    canonical = json.dumps({"nodes": sorted(nodes), "edges": sorted(edges)})
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def record_applied_flow_signatures(signatures: dict[str, str]) -> None:
+    """Persist which shipped flow versions are now in Langflow."""
+    if not signatures:
+        return
+    from config.config_manager import config_manager
+
+    config = config_manager.get_config()
+    config.flows.applied_signatures.update(signatures)
+    try:
+        config_manager.save_config_file(config, preserve_edited=True)
+    except Exception as e:
+        logger.warning(f"Failed to persist applied flow signatures: {e}")
 
 
 class FlowsService:
@@ -580,6 +635,7 @@ class FlowsService:
 
             if response.status_code == 200:
                 await self._lock_flow(flow_id)
+                record_applied_flow_signatures({flow_type: flow_signature(flow_data)})
                 try:
                     res_json = response.json()
                     project_id = res_json.get("folder_id")
@@ -889,15 +945,29 @@ class FlowsService:
         self, flow_type: str, flow_id: str, flow_data: dict[str, Any] | None = None
     ) -> dict[str, Any] | None:
         """
-        Check if a flow has a newer version on disk compared to Langflow.
-        Returns flow update info dict if an update is available, None otherwise.
+        Check if OpenRAG ships a different version of a flow than the one it last
+        wrote to Langflow. Returns flow update info dict if an update is available,
+        None otherwise.
+
+        Timestamps are not compared: every settings save rewrites the flow in
+        Langflow, which would make an older flow look newer than the shipped file.
         """
         if not flow_id:
             return None
         flow_path = self._find_flow_file_by_id(flow_id)
         if not flow_path or not os.path.exists(flow_path):
             return None
-        local_mtime = os.path.getmtime(flow_path)
+        try:
+            with open(flow_path, encoding="utf-8") as f:
+                shipped = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.error(f"Failed to read flow file {flow_path} for update check: {e}")
+            return None
+        shipped_signature = flow_signature(shipped)
+
+        recorded = get_openrag_config().flows.applied_signatures.get(flow_type)
+        if recorded == shipped_signature:
+            return None
 
         if flow_data is None:
             try:
@@ -909,27 +979,19 @@ class FlowsService:
                 logger.error(f"Failed to fetch flow {flow_id} for update check: {e}")
                 return None
 
-        langflow_updated_at_str = flow_data.get("updated_at")
-        langflow_mtime: float = 0.0
-        if langflow_updated_at_str:
-            if langflow_updated_at_str.endswith("Z"):
-                langflow_updated_at_str = langflow_updated_at_str[:-1] + "+00:00"
-            try:
-                dt = datetime.fromisoformat(langflow_updated_at_str)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=UTC)
-                langflow_mtime = dt.timestamp()
-            except ValueError:
-                pass
+        # Installs from before signatures were recorded: Langflow already runs the
+        # shipped flow if it has the same components and connections.
+        if recorded is None:
+            running = flow_component_fingerprint(flow_data)
+            if running == flow_component_fingerprint(shipped):
+                record_applied_flow_signatures({flow_type: shipped_signature})
+                return None
 
-        if local_mtime > langflow_mtime + 1.0:
-            is_locked = flow_data.get("locked", False)
-            return {
-                "flow_type": flow_type,
-                "flow_id": flow_id,
-                "is_custom": not is_locked,
-            }
-        return None
+        return {
+            "flow_type": flow_type,
+            "flow_id": flow_id,
+            "is_custom": not flow_data.get("locked", False),
+        }
 
     async def ensure_flows_exist(self) -> set[str]:
         """
@@ -948,9 +1010,8 @@ class FlowsService:
             ("ingest", LANGFLOW_INGEST_FLOW_ID),
             ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
         ]
-        created_flow_types: set[str] = set()
 
-        async def ensure_single_flow_exists(flow_type, flow_id):
+        async def ensure_single_flow_exists(flow_type, flow_id) -> tuple[str, str] | None:
             if not flow_id:
                 return None
             try:
@@ -997,7 +1058,7 @@ class FlowsService:
                             await enable_mcp_none_for_project(project_id)
                     except Exception as err:
                         logger.warning(f"Failed to check MCP project auth for {flow_type}: {err}")
-                    return flow_type
+                    return flow_type, flow_signature(flow_data)
                 else:
                     logger.warning(
                         f"Failed to create {flow_type} flow (ID: {flow_id}): "
@@ -1010,7 +1071,9 @@ class FlowsService:
 
         tasks = [ensure_single_flow_exists(ft, fi) for ft, fi in flow_configs]
         results = await asyncio.gather(*tasks)
-        created_flow_types = {r for r in results if r is not None}
+        created = dict(r for r in results if r is not None)
+        created_flow_types = set(created)
+        record_applied_flow_signatures(created)
 
         if created_flow_types:
             try:
