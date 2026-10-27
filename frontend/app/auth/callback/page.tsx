@@ -158,6 +158,13 @@ function AuthCallbackContent() {
           }
           return result as CallbackResult;
         })
+        .catch((error: unknown) => {
+          // Runs even if every page instance has unmounted, so a failed code
+          // isn't later reported as "already used".
+          exchanges.delete(code!);
+          sessionStorage.removeItem(callbackKey);
+          throw error;
+        })
         .finally(() => {
           queryClient.invalidateQueries({
             queryKey: ["connectors"],
@@ -210,7 +217,6 @@ function AuthCallbackContent() {
         });
         cleanupOAuthStorage();
         localStorage.removeItem("test_connection_return_tab");
-        sessionStorage.removeItem(callbackKey);
       },
     );
 

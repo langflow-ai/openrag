@@ -95,6 +95,45 @@ describe("AuthCallbackPage", () => {
     expect(sessionStorage.getItem(`callback_processed_${code}`)).toBeNull();
   });
 
+  it("clears the dedupe state when the exchange fails after unmount", async () => {
+    const code = crypto.randomUUID();
+    setCallbackLocation(code);
+    let failRequest!: () => void;
+    const requestFailed = new Promise<void>((resolve) => {
+      failRequest = resolve;
+    });
+
+    const view = renderWithProviders(<AuthCallbackPage />, {
+      providers: ["auth"],
+      handlers: [
+        http.post("/api/auth/callback", async () => {
+          callbackRequests += 1;
+          await requestFailed;
+          return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+        }),
+      ],
+    });
+    await waitFor(() => expect(callbackRequests).toBe(1));
+    view.unmount();
+    failRequest();
+
+    await waitFor(() =>
+      expect(sessionStorage.getItem(`callback_processed_${code}`)).toBeNull(),
+    );
+
+    // The rejected exchange isn't reused: a remount reports the backend's error,
+    // not "already used".
+    renderWithProviders(<AuthCallbackPage />, {
+      providers: ["auth"],
+      handlers: [
+        http.post("/api/auth/callback", () =>
+          HttpResponse.json({ error: "invalid_grant" }, { status: 400 }),
+        ),
+      ],
+    });
+    expect(await screen.findByText("invalid_grant")).toBeInTheDocument();
+  });
+
   it("shows an error instead of spinning when the code was already used", async () => {
     const code = crypto.randomUUID();
     setCallbackLocation(code);
