@@ -18,9 +18,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import tempfile
 import threading
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from config.paths import get_data_file
@@ -63,15 +64,28 @@ class ConversationPersistenceService:
         return {}
 
     def _save_conversations_sync(self) -> None:
+        """Write to a temp file then atomically replace storage_file.
+
+        Takes a shallow snapshot of ``_conversations`` under ``self.lock``
+        so the lock is not held during the (potentially slow) file I/O.
+        This ensures a failed write (disk full, serialisation error, etc.)
+        leaves the existing store intact rather than truncating it.
+        """
         with self.lock:
-            with open(self.storage_file, "w", encoding="utf-8") as f:
-                json.dump(
-                    self._conversations,
-                    f,
-                    indent=2,
-                    ensure_ascii=False,
-                    default=str,
-                )
+            snapshot = {uid: dict(convs) for uid, convs in self._conversations.items()}
+
+        dir_ = os.path.dirname(self.storage_file)
+        fd, tmp_path = tempfile.mkstemp(dir=dir_, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(snapshot, f, indent=2, ensure_ascii=False, default=str)
+            os.replace(tmp_path, self.storage_file)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     async def _save_conversations(self) -> None:
         loop = asyncio.get_event_loop()
@@ -124,10 +138,20 @@ class ConversationPersistenceService:
         serialized = self._serialize_datetime(conversation_state)
 
         if file_writes_enabled():
-            if user_id not in self._conversations:
-                self._conversations[user_id] = {}
-            self._conversations[user_id][response_id] = serialized
-            await self._save_conversations()
+            with self.lock:
+                if user_id not in self._conversations:
+                    self._conversations[user_id] = {}
+                self._conversations[user_id][response_id] = serialized
+            try:
+                await self._save_conversations()  # snapshots under lock internally
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "Failed to persist conversation to disk",
+                    user_id=user_id,
+                    response_id=response_id,
+                    error=str(exc),
+                )
+                # Save failure is observable via log; do not block the DB write.
 
         if db_writes_enabled():
             await self._db_upsert(user_id, response_id, serialized)
@@ -167,36 +191,46 @@ class ConversationPersistenceService:
           JSON store and persists to disk.
 
         Returns the total number of conversations deleted across all stores.
+        Raises ``ValueError`` for negative *ttl_days*.
         """
+        if ttl_days < 0:
+            raise ValueError(f"ttl_days must be non-negative, got {ttl_days}")
+
         deleted = 0
-        # Cutoff in local time to match the naive timestamps produced by
-        # datetime.now() in agent.py.  Aware timestamps (post-migration) are
-        # converted to local time before comparison so both paths agree.
-        local_tz = datetime.now(UTC).astimezone().tzinfo
+        # Use local naive time to match the naive timestamps produced by
+        # datetime.now() in agent.py.  Each aware timestamp is individually
+        # converted to local naive time via astimezone() so Python picks the
+        # correct local UTC offset for that instant rather than relying on a
+        # single cached tzinfo object.
         cutoff_local = datetime.now() - timedelta(days=ttl_days)
 
         if file_writes_enabled():
             stale_keys: list[tuple[str, str]] = []
-            for user_id, user_convs in self._conversations.items():
-                for resp_id, payload in user_convs.items():
-                    last_activity_raw = payload.get("last_activity")
-                    if last_activity_raw:
-                        try:
-                            la = datetime.fromisoformat(str(last_activity_raw))
-                            # Aware timestamps: convert to local naive for comparison.
-                            # Naive timestamps: already local (written by agent.py).
-                            if la.tzinfo is not None:
-                                la = la.astimezone(local_tz).replace(tzinfo=None)
-                            if la < cutoff_local:
-                                stale_keys.append((user_id, resp_id))
-                        except (TypeError, ValueError):
-                            pass
+            with self.lock:
+                for user_id, user_convs in self._conversations.items():
+                    for resp_id, payload in user_convs.items():
+                        last_activity_raw = payload.get("last_activity")
+                        if last_activity_raw:
+                            try:
+                                la = datetime.fromisoformat(str(last_activity_raw))
+                                # Aware timestamps: convert to local naive per-timestamp.
+                                # Naive timestamps: already local (written by agent.py).
+                                if la.tzinfo is not None:
+                                    la = la.astimezone().replace(tzinfo=None)
+                                if la < cutoff_local:
+                                    stale_keys.append((user_id, resp_id))
+                            except (TypeError, ValueError):
+                                pass
+
+                if stale_keys:
+                    # Snapshot payloads before deletion so we can restore on save failure.
+                    snapshot = {
+                        (uid, rid): self._conversations[uid][rid] for uid, rid in stale_keys
+                    }
+                    for user_id, resp_id in stale_keys:
+                        del self._conversations[user_id][resp_id]
 
             if stale_keys:
-                # Snapshot payloads before deletion so we can restore on save failure.
-                snapshot = {(uid, rid): self._conversations[uid][rid] for uid, rid in stale_keys}
-                for user_id, resp_id in stale_keys:
-                    del self._conversations[user_id][resp_id]
                 try:
                     await self._save_conversations()
                     deleted += len(stale_keys)
@@ -204,8 +238,9 @@ class ConversationPersistenceService:
                     logger.error("Failed to persist conversation pruning to disk", error=str(exc))
                     # Restore deleted entries so in-memory state stays consistent
                     # with what is on disk — they were not actually pruned.
-                    for (user_id, resp_id), payload in snapshot.items():
-                        self._conversations.setdefault(user_id, {})[resp_id] = payload
+                    with self.lock:
+                        for (user_id, resp_id), payload in snapshot.items():
+                            self._conversations.setdefault(user_id, {})[resp_id] = payload
 
         if db_writes_enabled():
             from db.repositories import ConversationRepo

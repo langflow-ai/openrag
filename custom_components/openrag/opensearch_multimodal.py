@@ -1570,6 +1570,9 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         )
         logger.debug(f"Is IBM/watsonx embedding: {is_ibm}")
 
+        failed: set[int] = set()
+        keep: list[int] = list(range(len(texts)))
+
         if is_ibm:
             # Hand the full batch to the SDK and let it batch/throttle/retry.
             # Retry attempts and base backoff are tunable via the SDK's own
@@ -1654,7 +1657,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             max_workers = min(max(len(texts), 1), 8)
             logger.debug(f"Using parallel processing with {max_workers} workers")
 
-            failed: set[int] = set()
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
                     executor.submit(embed_chunk_with_retry, chunk, idx): idx
@@ -1672,13 +1674,23 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                         failed.add(idx)
 
             if failed:
+                if len(failed) == len(texts):
+                    msg = (
+                        f"All {len(texts)} chunks failed to embed with model "
+                        f"'{embedding_model}'; aborting ingestion."
+                    )
+                    self.log(msg)
+                    raise RuntimeError(msg)
                 # Drop failed indices from all three collections so they stay aligned.
+                # Preserve each chunk's original index as the ingest ID suffix so
+                # document IDs remain tied to the original chunk positions.
                 keep = [i for i in range(len(texts)) if i not in failed]
                 texts = [texts[i] for i in keep]
                 metadatas = [metadatas[i] for i in keep] if metadatas else metadatas
                 vectors = [vectors[i] for i in keep]
 
         if not vectors:
+            # Empty input batch — nothing to ingest, return normally.
             self.log(f"No vectors generated from documents for model {embedding_model}.")
             return
 
@@ -1765,13 +1777,27 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         logger.info(f"Will store embeddings in field: {dynamic_field_name}")
         logger.info(f"Will tag documents with embedding_model: {embedding_model}")
 
-        # Use the bulk ingestion with model tracking
+        # Use the bulk ingestion with model tracking.
+        # Pass ids derived from original chunk positions so document IDs are
+        # stable even when some chunks were filtered out due to embed failures.
+        # Build stable document IDs from the original chunk positions so IDs are
+        # unchanged when some chunks were filtered out due to embed failures.
+        import uuid as _uuid
+        chunk_ids: list[str] = []
+        for i, m in zip(keep, metadatas or [{}] * len(keep), strict=True):
+            doc_id = str(m.get("document_id") or "").strip()
+            if doc_id and doc_id.lower() != "none":
+                chunk_ids.append(f"{doc_id}_{i}")
+            else:
+                chunk_ids.append(str(_uuid.uuid4()))
+
         return_ids = self._bulk_ingest_embeddings(
             client=client,
             index_name=self.index_name,
             embeddings=vectors,
             texts=texts,
             metadatas=metadatas,
+            ids=chunk_ids if chunk_ids else None,
             vector_field=dynamic_field_name,  # Use dynamic field name
             text_field="text",
             embedding_model=embedding_model,  # Track the model
