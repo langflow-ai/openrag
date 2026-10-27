@@ -91,7 +91,11 @@ class SharePointServer:
             )
             folder = folder.replace("''", "'")
             if folder == LIBRARY and collection == "Folders":
-                items = [{"Name": "team", "ServerRelativeUrl": LIBRARY + "/team"}]
+                # SharePoint lists the library's view pages/templates folder first.
+                items = [
+                    {"Name": "Forms", "ServerRelativeUrl": LIBRARY + "/Forms"},
+                    {"Name": "team", "ServerRelativeUrl": LIBRARY + "/team"},
+                ]
                 if self.duplicate_folder:
                     items.append({"Name": "other", "ServerRelativeUrl": LIBRARY + "/other"})
             elif folder == LIBRARY + "/team" and collection == "Folders":
@@ -323,6 +327,39 @@ def test_operator_allowlist_and_response_limits(connector, monkeypatch):
     server.response = oversized
     with pytest.raises(ValueError, match="size limit"):
         run(adapter.get_file_content(file_id))
+
+
+def test_plain_http_root_site_requires_explicit_insecure_opt_in(monkeypatch):
+    origin = "http://sharepoint.example.test"
+    requested = []
+
+    def get(session, url, *, params, **options):
+        requested.append(urlsplit(url).path)
+        if url == origin + "/_api/web/lists":
+            library = {
+                "Title": "Docs",
+                "Hidden": False,
+                "RootFolder": {"ServerRelativeUrl": "/Docs"},
+            }
+            payload = {"d": {"results": [library]}}
+        else:
+            payload = {"d": {"Id": "root"}}
+        return SharePointServer.response(200, payload)
+
+    monkeypatch.setattr(requests.Session, "get", get)
+    monkeypatch.setenv("OPENRAG_SHAREPOINT_ALLOWED_ORIGINS", origin)
+    config = {"root_url": origin, "username": "u", "password": "p", "site_paths": "/"}
+    with pytest.raises(ValueError, match="HTTPS"):
+        run(SharePointOnPremConnector(config).authenticate())
+    assert requested == []
+    monkeypatch.setenv("OPENRAG_SHAREPOINT_ALLOW_INSECURE_HTTP", "true")
+    adapter = SharePointOnPremConnector(config)
+    assert run(adapter.authenticate()) is True
+    site = run(adapter.list_children())["nodes"]
+    assert [node["name"] for node in site] == ["Root site"]
+    libraries = run(adapter.list_children(site[0]["id"]))["nodes"]
+    assert [node["name"] for node in libraries] == ["Docs"]
+    assert requested[0] == "/_api/web"
 
 
 def test_explicit_operator_ca_bundle_is_used_without_environment_proxies(
