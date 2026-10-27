@@ -1783,6 +1783,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         # Build stable document IDs from the original chunk positions so IDs are
         # unchanged when some chunks were filtered out due to embed failures.
         import uuid as _uuid
+
         chunk_ids: list[str] = []
         for i, m in zip(keep, metadatas or [{}] * len(keep), strict=True):
             doc_id = str(m.get("document_id") or "").strip()
