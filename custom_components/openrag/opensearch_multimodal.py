@@ -1571,7 +1571,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         logger.debug(f"Is IBM/watsonx embedding: {is_ibm}")
 
         failed: set[int] = set()
-        keep: list[int] = list(range(len(texts)))
 
         if is_ibm:
             # Hand the full batch to the SDK and let it batch/throttle/retry.
@@ -1674,20 +1673,16 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                         failed.add(idx)
 
             if failed:
-                if len(failed) == len(texts):
-                    msg = (
-                        f"All {len(texts)} chunks failed to embed with model "
-                        f"'{embedding_model}'; aborting ingestion."
-                    )
-                    self.log(msg)
-                    raise RuntimeError(msg)
-                # Drop failed indices from all three collections so they stay aligned.
-                # Preserve each chunk's original index as the ingest ID suffix so
-                # document IDs remain tied to the original chunk positions.
-                keep = [i for i in range(len(texts)) if i not in failed]
-                texts = [texts[i] for i in keep]
-                metadatas = [metadatas[i] for i in keep] if metadatas else metadatas
-                vectors = [vectors[i] for i in keep]
+                # Abort before any write. Direct writes carry no ingest_run_id,
+                # so backend cleanup could not remove survivors, and a partial
+                # document would stay searchable and be mistaken for a duplicate.
+                msg = (
+                    f"Embedding failed for {len(failed)} of {len(texts)} chunks with model "
+                    f"'{embedding_model}' (chunk indices: {sorted(failed)}); "
+                    "aborting ingestion so no partial document is indexed."
+                )
+                self.log(msg)
+                raise RuntimeError(msg)
 
         if not vectors:
             # Empty input batch — nothing to ingest, return normally.
@@ -1777,12 +1772,11 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         logger.info(f"Will store embeddings in field: {dynamic_field_name}")
         logger.info(f"Will tag documents with embedding_model: {embedding_model}")
 
-        # Build stable document IDs from the original chunk positions so IDs are
-        # unchanged when some chunks were filtered out due to embed failures.
+        # Build stable document IDs from the chunk positions.
         import uuid as _uuid
 
         chunk_ids: list[str] = []
-        for i, m in zip(keep, metadatas or [{}] * len(keep), strict=True):
+        for i, m in enumerate(metadatas or [{}] * len(texts)):
             doc_id = str(m.get("document_id") or "").strip()
             if doc_id and doc_id.lower() != "none":
                 chunk_ids.append(f"{doc_id}_{i}")
@@ -1810,18 +1804,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             f"Ingestion complete: Successfully indexed {len(return_ids)} documents with model '{embedding_model}'"
         )
         self.log(f"Successfully indexed {len(return_ids)} documents with model {embedding_model}.")
-
-        if failed:
-            # Surviving chunks were indexed, but the document is incomplete.
-            # Raise so Langflow reports the run as failed: the backend then
-            # marks the file FAILED and removes this ingest run's chunks, so a
-            # partial document is never treated as complete (or as a duplicate).
-            msg = (
-                f"Partial ingest: {len(failed)} of {len(failed) + len(keep)} chunks failed "
-                f"to embed with model '{embedding_model}' (chunk indices: {sorted(failed)})."
-            )
-            self.log(msg)
-            raise RuntimeError(msg)
 
     # ---------- helpers for filters ----------
     def _is_placeholder_term(self, term_obj: dict) -> bool:

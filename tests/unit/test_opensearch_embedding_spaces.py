@@ -395,15 +395,15 @@ def test_ingest_normalizes_kangxi_radicals_before_embedding_and_indexing(
     assert indexed == ["11 月 27 日 ( 木 )"]
 
 
-def test_partial_embed_failure_indexes_survivors_then_fails_the_ingest(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("use_callback", [True, False], ids=["callback", "direct_write"])
+def test_partial_embed_failure_aborts_before_any_write(
+    monkeypatch: pytest.MonkeyPatch, use_callback: bool
 ) -> None:
-    """A document with missing chunks must not be reported as ingested.
+    """A document with a missing chunk must never be indexed, in either mode.
 
-    Failed chunks are skipped and the rest are indexed, but the component then
-    raises so Langflow reports the run as failed. The backend marks the file
-    FAILED and deletes the run's chunks, so a partial document is never treated
-    as complete or as a duplicate on re-upload.
+    Direct writes carry no ingest_run_id, so the backend cannot clean up
+    survivors afterwards; a partial document would stay searchable and be
+    mistaken for a duplicate. The component therefore fails before writing.
     """
     module = _load_opensearch_module(monkeypatch)
 
@@ -425,22 +425,30 @@ def test_partial_embed_failure_indexes_survivors_then_fails_the_ingest(
                 raise ValueError("embedding backend rejected the chunk")
             return [[0.1, 0.2] for _ in texts]
 
-    component = _component(module, client=object(), embedding=_Embedding())
+    class _Indices:
+        def exists(self, **kwargs):
+            raise AssertionError("index must not be touched")
+
+        create = put_mapping = get_mapping = exists
+
+    class _Client:
+        indices = _Indices()
+
+        def index(self, **kwargs):
+            raise AssertionError("direct write must not happen")
+
+    component = _component(module, client=_Client(), embedding=_Embedding())
     component.embedding_model_name = ""
     component.docs_metadata = []
     component._prepare_ingest_data = lambda: [_Doc("ok-0"), _Doc("bad"), _Doc("ok-2")]
-    component._openrag_ingest_callback_config = lambda: ("url", "token", "task")
-    indexed: dict[str, list] = {}
+    if use_callback:
+        component._openrag_ingest_callback_config = lambda: ("url", "token", "task")
+    else:
+        component._openrag_ingest_callback_config = lambda: None
+    writes: list[dict] = []
+    component._bulk_ingest_embeddings = lambda **kwargs: writes.append(kwargs)
 
-    def _bulk_ingest(**kwargs):
-        indexed["texts"] = kwargs["texts"]
-        indexed["ids"] = kwargs["ids"]
-        return kwargs["ids"]
+    with pytest.raises(RuntimeError, match=r"Embedding failed for 1 of 3 chunks"):
+        component._add_documents_to_vector_store(_Client())
 
-    component._bulk_ingest_embeddings = _bulk_ingest
-
-    with pytest.raises(RuntimeError, match=r"Partial ingest: 1 of 3 chunks"):
-        component._add_documents_to_vector_store(object())
-
-    assert indexed["texts"] == ["ok-0", "ok-2"]
-    assert indexed["ids"] == ["doc_0", "doc_2"]
+    assert writes == []
