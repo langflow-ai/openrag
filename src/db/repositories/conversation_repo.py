@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
@@ -94,7 +95,7 @@ class ConversationRepo:
         Returns the number of rows deleted.
         """
         cutoff = datetime.now(UTC) - timedelta(days=ttl_days)
-        result = await self.session.execute(
+        result: CursorResult = await self.session.execute(  # type: ignore[assignment]
             delete(Conversation).where(col(Conversation.last_activity) < cutoff)
         )
         await self.session.flush()
