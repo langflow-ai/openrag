@@ -1811,6 +1811,18 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         )
         self.log(f"Successfully indexed {len(return_ids)} documents with model {embedding_model}.")
 
+        if failed:
+            # Surviving chunks were indexed, but the document is incomplete.
+            # Raise so Langflow reports the run as failed: the backend then
+            # marks the file FAILED and removes this ingest run's chunks, so a
+            # partial document is never treated as complete (or as a duplicate).
+            msg = (
+                f"Partial ingest: {len(failed)} of {len(failed) + len(keep)} chunks failed "
+                f"to embed with model '{embedding_model}' (chunk indices: {sorted(failed)})."
+            )
+            self.log(msg)
+            raise RuntimeError(msg)
+
     # ---------- helpers for filters ----------
     def _is_placeholder_term(self, term_obj: dict) -> bool:
         # term_obj like {"filename": "__IMPOSSIBLE_VALUE__"}

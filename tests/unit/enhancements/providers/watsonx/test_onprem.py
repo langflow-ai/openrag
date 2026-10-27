@@ -253,8 +253,17 @@ def test_a_scopeless_cluster_call_carries_no_null_space_id(monkeypatch) -> None:
     LiteLLM 1.84 refuses the call locally and, past that, serialises the absent
     space as `"space_id": null`. Both are wrong for that install.
     """
-    # A developer's `.env` may define a cloud project that LiteLLM would pick up.
-    for var in ("WATSONX_PROJECT_ID", "WATSONX_SPACE_ID", "WATSONX_DEPLOYMENT_SPACE_ID"):
+    # A developer's `.env` or a CI runner may define a scope that LiteLLM falls
+    # back to; these are every alias its watsonx `_get_api_params` reads.
+    for var in (
+        "WATSONX_PROJECT_ID",
+        "WX_PROJECT_ID",
+        "PROJECT_ID",
+        "WATSONX_DEPLOYMENT_SPACE_ID",
+        "WATSONX_SPACE_ID",
+        "WX_SPACE_ID",
+        "SPACE_ID",
+    ):
         monkeypatch.delenv(var, raising=False)
     watsonx_onprem.install_litellm_compatibility()
 

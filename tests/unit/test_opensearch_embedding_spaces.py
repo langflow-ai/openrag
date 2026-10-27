@@ -1,4 +1,5 @@
 import importlib
+import json
 import sys
 from types import ModuleType, SimpleNamespace
 
@@ -392,3 +393,54 @@ def test_ingest_normalizes_kangxi_radicals_before_embedding_and_indexing(
 
     assert embedding.embedded == ["11 月 27 日 ( 木 )"]
     assert indexed == ["11 月 27 日 ( 木 )"]
+
+
+def test_partial_embed_failure_indexes_survivors_then_fails_the_ingest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A document with missing chunks must not be reported as ingested.
+
+    Failed chunks are skipped and the rest are indexed, but the component then
+    raises so Langflow reports the run as failed. The backend marks the file
+    FAILED and deletes the run's chunks, so a partial document is never treated
+    as complete or as a duplicate on re-upload.
+    """
+    module = _load_opensearch_module(monkeypatch)
+
+    class _Doc:
+        text_key = "text"
+        default_value = ""
+
+        def __init__(self, text):
+            self._text = text
+
+        def model_dump_json(self):
+            return json.dumps({"text": self._text, "document_id": "doc"})
+
+    class _Embedding:
+        model = "text-embedding-3-small"
+
+        def embed_documents(self, texts):
+            if texts == ["bad"]:
+                raise ValueError("embedding backend rejected the chunk")
+            return [[0.1, 0.2] for _ in texts]
+
+    component = _component(module, client=object(), embedding=_Embedding())
+    component.embedding_model_name = ""
+    component.docs_metadata = []
+    component._prepare_ingest_data = lambda: [_Doc("ok-0"), _Doc("bad"), _Doc("ok-2")]
+    component._openrag_ingest_callback_config = lambda: ("url", "token", "task")
+    indexed: dict[str, list] = {}
+
+    def _bulk_ingest(**kwargs):
+        indexed["texts"] = kwargs["texts"]
+        indexed["ids"] = kwargs["ids"]
+        return kwargs["ids"]
+
+    component._bulk_ingest_embeddings = _bulk_ingest
+
+    with pytest.raises(RuntimeError, match=r"Partial ingest: 1 of 3 chunks"):
+        component._add_documents_to_vector_store(object())
+
+    assert indexed["texts"] == ["ok-0", "ok-2"]
+    assert indexed["ids"] == ["doc_0", "doc_2"]
