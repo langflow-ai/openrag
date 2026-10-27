@@ -20,7 +20,7 @@ from langchain_core.documents import Document
 
 BUNDLE = Path("custom_components/openrag")
 SOURCE = BUNDLE / "split_text.py"
-NODE_TYPE = "OpenRAGSplitText"
+NODE_TYPE = "ext:openrag:OpenRAGSplitTextComponent@extra"
 FLOWS_WITH_SPLITTER = ("ingestion_flow.json", "openrag_url_mcp.json")
 
 
