@@ -65,4 +65,35 @@ describe("runtime connector catalog", () => {
       screen.getByRole("textbox", { name: "Root URL" }),
     ).toBeInTheDocument();
   });
+
+  it("shows the built-in icon a plugin names instead of the unknown placeholder", async () => {
+    renderWithProviders(<ConnectorCards />, {
+      providers: ["auth", "brand", "tooltip"],
+      auth: authPresets.rbacDisabled,
+      handlers: [
+        http.get("/api/connectors", () =>
+          HttpResponse.json({
+            connectors: {
+              sharepoint_onprem: {
+                name: "SharePoint Server",
+                description: "Browse your private SharePoint Server",
+                icon: "sharepoint",
+                kind: "bucket",
+                available: true,
+                browse_capability: "hierarchical",
+                config_fields: [],
+              },
+            },
+          }),
+        ),
+        http.get("/api/connectors/sharepoint_onprem/status", () =>
+          HttpResponse.json({ connections: [] }),
+        ),
+      ],
+    });
+    expect(
+      await screen.findByText("Browse your private SharePoint Server"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("?")).not.toBeInTheDocument();
+  });
 });

@@ -44,17 +44,24 @@ export default function ConnectorCards() {
   const connectMutation = useConnectConnectorMutation();
   const disconnectMutation = useDisconnectConnectorMutation();
 
-  const getConnectorIcon = useCallback((connectorType: string) => {
-    const Icon = getConnectorDescriptor(connectorType)?.Icon;
-    if (!Icon) {
-      return (
-        <div className="w-8 h-8 bg-gray-500 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
-          ?
-        </div>
-      );
-    }
-    return <Icon />;
-  }, []);
+  const getConnectorIcon = useCallback(
+    (connectorType: string, icon?: string) => {
+      // Plugins have no built-in descriptor; they name a built-in icon instead.
+      const Icon = (
+        getConnectorDescriptor(connectorType) ??
+        (icon ? getConnectorDescriptor(icon) : undefined)
+      )?.Icon;
+      if (!Icon) {
+        return (
+          <div className="w-8 h-8 bg-gray-500 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
+            ?
+          </div>
+        );
+      }
+      return <Icon />;
+    },
+    [],
+  );
 
   const connectors = queryConnectors.reduce<Connector[]>((acc, c) => {
     // Keep OAuth connectors regardless of availability
@@ -62,7 +69,7 @@ export default function ConnectorCards() {
     if (c.requiresOAuth || c.available !== false) {
       acc.push({
         ...c,
-        icon: getConnectorIcon(c.type),
+        icon: getConnectorIcon(c.type, c.icon),
       } as Connector);
     }
     return acc;

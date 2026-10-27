@@ -158,7 +158,8 @@ export default function UploadProviderPage() {
     );
   };
 
-  const getProviderDisplayName = () => descriptor?.name ?? provider;
+  const getProviderDisplayName = () =>
+    descriptor?.name ?? connector?.name ?? provider;
 
   const handleSync = async (connector: {
     connectionId?: string;

@@ -1,6 +1,7 @@
 """SharePoint Server REST connector. Only explicitly configured sites are discoverable.
 
-Requires OPENRAG_SHAREPOINT_ALLOWED_ORIGINS to contain the server's HTTPS origin.
+Requires OPENRAG_SHAREPOINT_ALLOWED_ORIGINS to contain the server's HTTPS origin
+(plain HTTP only with OPENRAG_SHAREPOINT_ALLOW_INSECURE_HTTP=true, for test farms).
 IDs encode server-relative paths, but are not authorization tokens: every use is
 checked against configured sites and the server's current document libraries.
 """
@@ -47,10 +48,17 @@ def _untoken(value):
     return decoded
 
 
+def _schemes():
+    # Plain HTTP exposes NTLM exchanges and document content on the wire; it is an
+    # explicit operator opt-in for isolated test farms, never a fallback.
+    insecure = os.environ.get("OPENRAG_SHAREPOINT_ALLOW_INSECURE_HTTP", "").strip().lower()
+    return ("https", "http") if insecure == "true" else ("https",)
+
+
 def _origin(url, *, allow_query=False):
     parts = urlsplit(url)
     if (
-        parts.scheme != "https"
+        parts.scheme not in _schemes()
         or not parts.hostname
         or parts.username
         or parts.password
@@ -59,7 +67,7 @@ def _origin(url, *, allow_query=False):
         or parts.port == 0
     ):
         raise ValueError("SharePoint requires an approved HTTPS origin")
-    return f"https://{parts.netloc.lower()}"
+    return f"{parts.scheme}://{parts.netloc.lower()}"
 
 
 def _segments(path):
@@ -167,7 +175,9 @@ class SharePointOnPremConnector(BaseConnector):
         for line in paths.splitlines():
             if not line.strip():
                 continue
-            site = base + "/" + "/".join(_segments(line.strip()))
+            # "/" nominates the root site collection of root_url.
+            relative = line.strip()
+            site = base + ("/" + "/".join(_segments(relative)) if relative != "/" else "")
             if site not in sites:
                 sites.append(site)
         if not sites or len(sites) > 200:
@@ -411,7 +421,7 @@ class SharePointOnPremConnector(BaseConnector):
                             "id": _token(["s", site]),
                             "parent_id": None,
                             "kind": "folder",
-                            "name": site.rsplit("/", 1)[-1],
+                            "name": site.rsplit("/", 1)[-1] or "Root site",
                         }
                         for site in items
                     ],
@@ -490,6 +500,8 @@ class SharePointOnPremConnector(BaseConnector):
                         _safe_relative(path)
                     if not isinstance(path, str) or path.rsplit("/", 1)[0] != parent_path:
                         continue  # Do not expose an out-of-scope server response.
+                    if phase == "folders" and path == library + "/Forms":
+                        continue  # Library view pages and templates, not documents.
                     item = {
                         "id": _token(["d" if phase == "folders" else "f", site, library, path]),
                         "parent_id": parent_id,

@@ -117,6 +117,11 @@ describe("plugin upload", () => {
       ],
     });
     const user = userEvent.setup();
+    expect(
+      await screen.findByRole("heading", {
+        name: "Add from SharePoint Server",
+      }),
+    ).toBeInTheDocument();
     await user.click(
       await screen.findByRole("checkbox", { name: "Select first.pdf" }),
     );
