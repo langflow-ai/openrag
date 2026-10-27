@@ -194,10 +194,7 @@ class ConversationPersistenceService:
 
             if stale_keys:
                 # Snapshot payloads before deletion so we can restore on save failure.
-                snapshot = {
-                    (uid, rid): self._conversations[uid][rid]
-                    for uid, rid in stale_keys
-                }
+                snapshot = {(uid, rid): self._conversations[uid][rid] for uid, rid in stale_keys}
                 for user_id, resp_id in stale_keys:
                     del self._conversations[user_id][resp_id]
                 try:
