@@ -46,6 +46,10 @@ class ConversationPersistenceService:
         self.storage_file = storage_file or get_data_file("conversations.json")
         os.makedirs(os.path.dirname(self.storage_file), exist_ok=True)
         self.lock = threading.Lock()
+        # Serialises whole saves (snapshot -> write -> replace) so an older
+        # snapshot can never replace a newer one. Kept separate from ``lock``
+        # so mutators are not blocked during file I/O.
+        self._save_lock = threading.Lock()
         self._session_factory = session_factory
         self._conversations: dict[str, dict[str, Any]] = self._load_conversations()
 
@@ -71,21 +75,22 @@ class ConversationPersistenceService:
         This ensures a failed write (disk full, serialisation error, etc.)
         leaves the existing store intact rather than truncating it.
         """
-        with self.lock:
-            snapshot = {uid: dict(convs) for uid, convs in self._conversations.items()}
+        with self._save_lock:
+            with self.lock:
+                snapshot = {uid: dict(convs) for uid, convs in self._conversations.items()}
 
-        dir_ = os.path.dirname(self.storage_file)
-        fd, tmp_path = tempfile.mkstemp(dir=dir_, suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(snapshot, f, indent=2, ensure_ascii=False, default=str)
-            os.replace(tmp_path, self.storage_file)
-        except Exception:
+            dir_ = os.path.dirname(self.storage_file)
+            fd, tmp_path = tempfile.mkstemp(dir=dir_, suffix=".tmp")
             try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-            raise
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(snapshot, f, indent=2, ensure_ascii=False, default=str)
+                os.replace(tmp_path, self.storage_file)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
 
     async def _save_conversations(self) -> None:
         loop = asyncio.get_event_loop()

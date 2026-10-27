@@ -247,12 +247,15 @@ def test_an_id_both_watsonx_rows_serve_is_never_handed_to_its_prefix(monkeypatch
     assert split_model_id(model) == (None, model)
 
 
-def test_a_scopeless_cluster_call_carries_no_null_space_id() -> None:
+def test_a_scopeless_cluster_call_carries_no_null_space_id(monkeypatch) -> None:
     """The lightweight engine uses neither a project nor a space.
 
     LiteLLM 1.84 refuses the call locally and, past that, serialises the absent
     space as `"space_id": null`. Both are wrong for that install.
     """
+    # A developer's `.env` may define a cloud project that LiteLLM would pick up.
+    for var in ("WATSONX_PROJECT_ID", "WATSONX_SPACE_ID", "WATSONX_DEPLOYMENT_SPACE_ID"):
+        monkeypatch.delenv(var, raising=False)
     watsonx_onprem.install_litellm_compatibility()
 
     from litellm.llms.watsonx.chat.handler import _get_api_params

@@ -1777,12 +1777,10 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         logger.info(f"Will store embeddings in field: {dynamic_field_name}")
         logger.info(f"Will tag documents with embedding_model: {embedding_model}")
 
-        # Use the bulk ingestion with model tracking.
-        # Pass ids derived from original chunk positions so document IDs are
-        # stable even when some chunks were filtered out due to embed failures.
         # Build stable document IDs from the original chunk positions so IDs are
         # unchanged when some chunks were filtered out due to embed failures.
         import uuid as _uuid
+
         chunk_ids: list[str] = []
         for i, m in zip(keep, metadatas or [{}] * len(keep), strict=True):
             doc_id = str(m.get("document_id") or "").strip()
