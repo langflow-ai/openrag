@@ -20,7 +20,7 @@ import json
 import os
 import threading
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from config.paths import get_data_file
@@ -63,18 +63,15 @@ class ConversationPersistenceService:
         return {}
 
     def _save_conversations_sync(self) -> None:
-        try:
-            with self.lock:
-                with open(self.storage_file, "w", encoding="utf-8") as f:
-                    json.dump(
-                        self._conversations,
-                        f,
-                        indent=2,
-                        ensure_ascii=False,
-                        default=str,
-                    )
-        except Exception as exc:  # noqa: BLE001
-            logger.error(f"Error saving conversations: {exc}")
+        with self.lock:
+            with open(self.storage_file, "w", encoding="utf-8") as f:
+                json.dump(
+                    self._conversations,
+                    f,
+                    indent=2,
+                    ensure_ascii=False,
+                    default=str,
+                )
 
     async def _save_conversations(self) -> None:
         loop = asyncio.get_event_loop()
@@ -172,7 +169,11 @@ class ConversationPersistenceService:
         Returns the total number of conversations deleted across all stores.
         """
         deleted = 0
-        cutoff = datetime.now(UTC) - timedelta(days=ttl_days)
+        # Cutoff in local time to match the naive timestamps produced by
+        # datetime.now() in agent.py.  Aware timestamps (post-migration) are
+        # converted to local time before comparison so both paths agree.
+        local_tz = datetime.now(UTC).astimezone().tzinfo
+        cutoff_local = datetime.now() - timedelta(days=ttl_days)
 
         if file_writes_enabled():
             stale_keys: list[tuple[str, str]] = []
@@ -182,19 +183,32 @@ class ConversationPersistenceService:
                     if last_activity_raw:
                         try:
                             la = datetime.fromisoformat(str(last_activity_raw))
-                            if la.tzinfo is None:
-                                la = la.replace(tzinfo=UTC)
-                            if la < cutoff:
+                            # Aware timestamps: convert to local naive for comparison.
+                            # Naive timestamps: already local (written by agent.py).
+                            if la.tzinfo is not None:
+                                la = la.astimezone(local_tz).replace(tzinfo=None)
+                            if la < cutoff_local:
                                 stale_keys.append((user_id, resp_id))
                         except (TypeError, ValueError):
                             pass
 
-            for user_id, resp_id in stale_keys:
-                del self._conversations[user_id][resp_id]
-                deleted += 1
-
             if stale_keys:
-                await self._save_conversations()
+                # Snapshot payloads before deletion so we can restore on save failure.
+                snapshot = {
+                    (uid, rid): self._conversations[uid][rid]
+                    for uid, rid in stale_keys
+                }
+                for user_id, resp_id in stale_keys:
+                    del self._conversations[user_id][resp_id]
+                try:
+                    await self._save_conversations()
+                    deleted += len(stale_keys)
+                except Exception as exc:  # noqa: BLE001
+                    logger.error("Failed to persist conversation pruning to disk", error=str(exc))
+                    # Restore deleted entries so in-memory state stays consistent
+                    # with what is on disk — they were not actually pruned.
+                    for (user_id, resp_id), payload in snapshot.items():
+                        self._conversations.setdefault(user_id, {})[resp_id] = payload
 
         if db_writes_enabled():
             from db.repositories import ConversationRepo

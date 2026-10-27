@@ -1654,6 +1654,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             max_workers = min(max(len(texts), 1), 8)
             logger.debug(f"Using parallel processing with {max_workers} workers")
 
+            failed: set[int] = set()
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
                     executor.submit(embed_chunk_with_retry, chunk, idx): idx
@@ -1668,6 +1669,14 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                             f"Embedding failed for chunk {idx}, skipping: {e}",
                             error=str(e),
                         )
+                        failed.add(idx)
+
+            if failed:
+                # Drop failed indices from all three collections so they stay aligned.
+                keep = [i for i in range(len(texts)) if i not in failed]
+                texts = [texts[i] for i in keep]
+                metadatas = [metadatas[i] for i in keep] if metadatas else metadatas
+                vectors = [vectors[i] for i in keep]
 
         if not vectors:
             self.log(f"No vectors generated from documents for model {embedding_model}.")
