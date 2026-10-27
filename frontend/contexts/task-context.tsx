@@ -429,13 +429,22 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                   mappedStatus = "processing";
               }
 
-              const fileError = (() => {
-                const resolved = resolveTaskFileError(
-                  fileInfoEntry,
-                  mappedStatus === "failed" ? currentTask.error : undefined,
-                );
-                return resolved === "Unknown error" ? undefined : resolved;
-              })();
+              // A completed file can carry a result warning (e.g. text in a
+              // language not selected for OCR); that is not an error.
+              const fileError =
+                mappedStatus === "active"
+                  ? undefined
+                  : (() => {
+                      const resolved = resolveTaskFileError(
+                        fileInfoEntry,
+                        mappedStatus === "failed"
+                          ? currentTask.error
+                          : undefined,
+                      );
+                      return resolved === "Unknown error"
+                        ? undefined
+                        : resolved;
+                    })();
 
               // Extract skip reason and warning from result (set by the backend).
               // Only surface duplicate-specific UI for duplicate_content skips;
@@ -448,13 +457,15 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                         | undefined
                     )?.reason as string | undefined)
                   : undefined;
+              const resultWarning = (
+                fileInfoEntry.result as Record<string, unknown> | undefined
+              )?.warning;
               const fileWarning =
-                mappedStatus === "skipped" &&
-                skipReason === "duplicate_content" &&
-                typeof (fileInfoEntry.result as Record<string, unknown>)
-                  ?.warning === "string"
-                  ? ((fileInfoEntry.result as Record<string, unknown>)
-                      .warning as string)
+                typeof resultWarning === "string" &&
+                ((mappedStatus === "skipped" &&
+                  skipReason === "duplicate_content") ||
+                  mappedStatus === "active")
+                  ? resultWarning
                   : undefined;
 
               setFiles((prevFiles) => {

@@ -382,6 +382,32 @@ export function StatusCellContent({
     return <SkippedStatusCell warning={data?.warning} />;
   }
 
+  if (status === "active" && data?.warning) {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <StatusBadge status={status} />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="inline-flex text-amber-600 dark:text-amber-400"
+              aria-label={`Ingest warning: ${data.warning}`}
+            >
+              <AlertTriangle className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent
+            side="top"
+            align="end"
+            className="max-w-80 whitespace-pre-wrap wrap-break-word"
+          >
+            {data.warning}
+          </TooltipContent>
+        </Tooltip>
+      </span>
+    );
+  }
+
   return <StatusBadge status={status} />;
 }
 
