@@ -697,6 +697,59 @@ describe("TaskProvider — skipped files (duplicate detection)", () => {
   });
 });
 
+describe("TaskProvider — completed files with a warning", () => {
+  it("keeps the warning on a completed file without treating it as an error", async () => {
+    const qc = createTestQueryClient();
+    const warning =
+      "This file contains Korean text, which isn't selected under OCR languages.";
+
+    let callCount = 0;
+    const runningTask: Task = makeTask({
+      task_id: "task-ocr",
+      status: "running",
+      files: { "scan.pdf": { status: "running", error: "" } },
+    });
+    const completedTask: Task = {
+      ...runningTask,
+      status: "completed",
+      successful_files: 1,
+      failed_files: 0,
+      files: {
+        "scan.pdf": {
+          status: "completed",
+          error: "",
+          result: { status: "indexed", id: "doc-1", warning },
+        },
+      },
+    };
+
+    server.use(
+      http.get("/api/tasks/enhanced", () => {
+        callCount++;
+        return HttpResponse.json({
+          tasks: [callCount === 1 ? runningTask : completedTask],
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useTask(), { wrapper: wrapper(qc) });
+
+    await waitFor(() => expect(callCount).toBeGreaterThanOrEqual(2), {
+      timeout: 5000,
+    });
+
+    await waitFor(
+      () => {
+        const f = result.current.files.find((f) => f.task_id === "task-ocr");
+        expect(f?.status).toBe("active");
+        expect(f?.warning).toBe(warning);
+        expect(f?.error).toBeUndefined();
+      },
+      { timeout: 5000 },
+    );
+  }, 15000);
+});
+
 describe("TaskProvider — source-deleted overlays", () => {
   it("does not create a knowledge overlay for a source-deleted file", async () => {
     const qc = createTestQueryClient();

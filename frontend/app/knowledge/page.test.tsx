@@ -370,6 +370,37 @@ describe("StatusCellContent", () => {
     expect(document.body.firstChild).toBeTruthy();
   });
 
+  it("flags an active file that finished with a warning", async () => {
+    const warning =
+      "This file contains Korean text, which isn't selected under OCR languages.";
+    const user = userEvent.setup();
+    render(
+      <TooltipProvider>
+        <StatusCellContent
+          {...baseProps}
+          data={f({ status: "active", warning })}
+        />
+      </TooltipProvider>,
+    );
+
+    const trigger = screen.getByRole("button", { name: /ingest warning/i });
+    await user.hover(trigger);
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(warning);
+  });
+
+  it("shows no warning control for an active file without a warning", () => {
+    render(
+      <TooltipProvider>
+        <StatusCellContent {...baseProps} data={f({ status: "active" })} />
+      </TooltipProvider>,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /ingest warning/i }),
+    ).toBeNull();
+  });
+
   it("renders the cancelled StatusBadge for a cancelled file", () => {
     const { container } = render(
       <TooltipProvider>

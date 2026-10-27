@@ -23,6 +23,7 @@ from utils.file_utils import (
 from utils.filename_claims import claim_holder, filename_claims
 from utils.hash_utils import hash_id
 from utils.logging_config import get_logger
+from utils.ocr_language_hints import ocr_language_warning
 from utils.opensearch_queries import build_owned_filename_query, build_replace_filename_query
 
 from .tasks import FileTask, TaskStatus, UploadTask
@@ -33,6 +34,32 @@ DOCLING_PARSER_LABEL = "Docling Serve 1.20.0"
 TEXT_PARSER_LABEL = "Text Parser"
 
 DUPLICATE_FILENAME_WARNING = "A file with this name already exists."
+
+# Indexed chunks read back for the OCR language check on Langflow ingests.
+OCR_LANGUAGE_SAMPLE_CHUNKS = 50
+
+
+def _document_id_query(field: str, value: str) -> dict[str, Any]:
+    """Match a document's chunks by an id field.
+
+    Some deployments' indices predate connector_file_id's addition to the
+    explicit mapping (config/settings.py), so OpenSearch dynamically mapped it
+    as analyzed `text` (with a `.keyword` multi-field) instead of the intended
+    `keyword` type. A plain term query against such a field tokenizes the query
+    value and rarely matches the raw id, so also match its `.keyword`
+    multi-field. document_id has always been explicitly `keyword` since index
+    creation and never has this issue.
+    """
+    if field == "connector_file_id":
+        return {
+            "bool": {
+                "should": [
+                    {"term": {field: value}},
+                    {"term": {f"{field}.keyword": value}},
+                ]
+            }
+        }
+    return {"term": {field: value}}
 
 
 def _docling_counts(doc: Any) -> dict[str, int]:
@@ -141,26 +168,7 @@ class TaskProcessor:
         """
         max_retries = 3
         retry_delay = 1.0
-
-        # Some deployments' indices predate connector_file_id's addition to the
-        # explicit mapping (config/settings.py), so OpenSearch dynamically
-        # mapped it as analyzed `text` (with a `.keyword` multi-field) instead
-        # of the intended `keyword` type. A plain term query against such a
-        # field tokenizes the query value and rarely matches the raw id, so
-        # also match its `.keyword` multi-field. document_id has always been
-        # explicitly `keyword` since index creation and never has this issue.
-        query: dict[str, Any]
-        if field == "connector_file_id":
-            query = {
-                "bool": {
-                    "should": [
-                        {"term": {field: file_hash}},
-                        {"term": {f"{field}.keyword": file_hash}},
-                    ]
-                }
-            }
-        else:
-            query = {"term": {field: file_hash}}
+        query = _document_id_query(field, file_hash)
 
         for attempt in range(max_retries):
             try:
@@ -214,6 +222,44 @@ class TaskProcessor:
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
         return on_error == "assume_exists"
+
+    async def _indexed_ocr_language_warning(
+        self,
+        document_id: str,
+        opensearch_client,
+        *,
+        ocr_enabled: bool,
+        field: str = "document_id",
+    ) -> str | None:
+        """Warning for text in a language not selected for OCR, read back from
+        a sample of the document's indexed chunks.
+
+        For the Langflow paths, where the backend never holds the parsed text.
+        A hint only: any failure is logged and the ingest result is unchanged.
+        """
+        if not ocr_enabled:
+            return None
+        try:
+            response = await opensearch_client.search(
+                index=get_index_name(),
+                body={
+                    "size": OCR_LANGUAGE_SAMPLE_CHUNKS,
+                    "_source": ["text"],
+                    "query": _document_id_query(field, document_id),
+                },
+            )
+        except Exception as e:
+            logger.warning(
+                "Could not sample chunks for the OCR language check",
+                document_id=document_id,
+                error=str(e),
+            )
+            return None
+        texts = [
+            hit.get("_source", {}).get("text") or ""
+            for hit in response.get("hits", {}).get("hits", [])
+        ]
+        return ocr_language_warning(texts, get_openrag_config().knowledge.ocr_languages)
 
     async def check_filename_exists(
         self,
@@ -880,7 +926,16 @@ class TaskProcessor:
                 index.set(chunks_indexed=len(index_chunks))
 
             ingest_trace.set(status="indexed", chunks=len(index_chunks))
-            return {"status": "indexed", "id": file_hash}
+            result = {"status": "indexed", "id": file_hash}
+            # Unset per-request OCR falls back to config, as in Docling.
+            ocr_enabled = ocr if ocr is not None else getattr(config.knowledge, "ocr", False)
+            if slim_doc["parser"] == DOCLING_PARSER_LABEL and ocr_enabled:
+                warning = ocr_language_warning(
+                    texts, getattr(config.knowledge, "ocr_languages", None) or []
+                )
+                if warning:
+                    result["warning"] = warning
+            return result
 
     async def process_item(self, upload_task: UploadTask, item: Any, file_task: FileTask) -> None:
         """
@@ -1613,6 +1668,14 @@ class ConnectorFileProcessor(TaskProcessor):
                             self.jwt_token,
                             indexed_filename=file_task.filename,
                         )
+                        warning = await self._indexed_ocr_language_warning(
+                            document.id,
+                            _verification_client(opensearch_client),
+                            ocr_enabled=bool(effective_ingest_settings.get("ocr")),
+                            field="connector_file_id",
+                        )
+                        if warning:
+                            result = {**result, "warning": warning}
                 else:
                     # Standard OpenRAG processing pipeline (process_document_standard)
                     standard_kwargs: dict[str, Any] = {}
@@ -1978,6 +2041,14 @@ class LangflowFileProcessor(TaskProcessor):
                 file_task.updated_at = time.time()
                 upload_task.failed_files += 1
             else:
+                warning = await self._indexed_ocr_language_warning(
+                    file_hash,
+                    _verification_client(opensearch_client),
+                    ocr_enabled=bool(effective_settings.get("ocr")),
+                )
+                if warning:
+                    result = {**(result or {}), "warning": warning}
+
                 # Update task with success
                 file_task.status = TaskStatus.COMPLETED
                 file_task.result = result
