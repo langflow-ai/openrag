@@ -31,6 +31,15 @@ def env_manager(tmp_path):
     return EnvManager(env_file=tmp_path / ".env")
 
 
+@pytest.fixture(autouse=True)
+def _restore_easyocr_threshold_env(monkeypatch):
+    """load_existing_env() runs load_dotenv(override=True), exporting every saved
+    value. The backend reads this one at call time, so it would leak into later tests.
+    """
+    monkeypatch.setenv("DOCLING_EASYOCR_CONFIDENCE_THRESHOLD", "")
+    monkeypatch.delenv("DOCLING_EASYOCR_CONFIDENCE_THRESHOLD")
+
+
 # ---------------------------------------------------------------------------
 # save_env_file
 # ---------------------------------------------------------------------------
@@ -294,6 +303,52 @@ class TestBackendTracingSettings:
         (langfuse,) = [s for s in CONFIG_SECTIONS if s.name == "Langfuse"]
         env_vars = {f.env_var for f in langfuse.fields}
         assert {"OPENRAG_TRACING_ENABLED", "OPENRAG_TRACING_CAPTURE_CONTENT"} <= env_vars
+
+
+class TestEasyocrConfidenceThreshold:
+    """The TUI launches docling-serve with custom OCR config allowed, so it opts in."""
+
+    def test_new_env_file_sets_default_threshold(self, env_manager, tmp_path):
+        from tui.managers.env_manager import EnvManager
+
+        env_manager.config.opensearch_password = "OpenSearchPass123!"
+        env_manager.config.langflow_superuser_password = "LangflowPass123!"
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            assert env_manager.save_env_file() is True
+
+        reloaded = EnvManager(env_file=tmp_path / ".env")
+        reloaded.config.docling_easyocr_confidence_threshold = "unset"
+        reloaded.load_existing_env()
+        assert reloaded.config.docling_easyocr_confidence_threshold == "0.3"
+
+    def test_operator_value_round_trips(self, env_manager, tmp_path):
+        from tui.managers.env_manager import EnvManager
+
+        env_manager.config.opensearch_password = "OpenSearchPass123!"
+        env_manager.config.langflow_superuser_password = "LangflowPass123!"
+        env_manager.config.docling_easyocr_confidence_threshold = "0.4"
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            assert env_manager.save_env_file() is True
+
+        content = (tmp_path / ".env").read_text()
+        assert content.count("DOCLING_EASYOCR_CONFIDENCE_THRESHOLD=") == 1
+
+        reloaded = EnvManager(env_file=tmp_path / ".env")
+        reloaded.load_existing_env()
+        assert reloaded.config.docling_easyocr_confidence_threshold == "0.4"
+
+    def test_cleared_threshold_is_not_written(self, env_manager, tmp_path):
+        """Blank opts out, for a docling-serve the TUI did not launch."""
+        env_manager.config.opensearch_password = "OpenSearchPass123!"
+        env_manager.config.langflow_superuser_password = "LangflowPass123!"
+        env_manager.config.docling_easyocr_confidence_threshold = ""
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            assert env_manager.save_env_file() is True
+
+        assert "DOCLING_EASYOCR_CONFIDENCE_THRESHOLD" not in (tmp_path / ".env").read_text()
 
 
 class TestLangfuseBaseUrl:

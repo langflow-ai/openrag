@@ -15,6 +15,27 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def docling_serve_env(base: dict[str, str]) -> dict[str, str]:
+    """Environment for the docling-serve process, on top of `base`.
+
+    Values already present in `base` win over these defaults.
+    """
+    env = dict(base)
+
+    # Disable PyTorch model compilation to prevent Dynamo/AttributeError issues on CPU/Mac
+    env["TORCH_COMPILE_DISABLE"] = "1"
+    env["TORCH_DYNAMO_DISABLE"] = "1"
+
+    env.setdefault("DOCLING_SERVE_ENG_RAY_TENANT_ID_HEADER", "X-Docling-Tenant-Id")
+    env.setdefault("DOCLING_SERVE_ENABLE_REMOTE_SERVICES", "true")
+    env.setdefault("DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG", "true")
+    # The backend sends a custom easyocr config when
+    # DOCLING_EASYOCR_CONFIDENCE_THRESHOLD is set; without this flag
+    # docling-serve fails every such task.
+    env.setdefault("DOCLING_SERVE_ALLOW_CUSTOM_OCR_CONFIG", "true")
+    return env
+
+
 class DoclingManager:
     """Manages local docling serve instance as external process."""
 
@@ -336,19 +357,7 @@ class DoclingManager:
             self._log_file_path.parent.mkdir(parents=True, exist_ok=True)
             log_file = open(self._log_file_path, "w")
 
-            env = os.environ.copy()
-
-            # Disable PyTorch model compilation to prevent Dynamo/AttributeError issues on CPU/Mac
-            env["TORCH_COMPILE_DISABLE"] = "1"
-            env["TORCH_DYNAMO_DISABLE"] = "1"
-
-            # Add docling serve environment variables
-            if "DOCLING_SERVE_ENG_RAY_TENANT_ID_HEADER" not in env:
-                env["DOCLING_SERVE_ENG_RAY_TENANT_ID_HEADER"] = "X-Docling-Tenant-Id"
-            if "DOCLING_SERVE_ENABLE_REMOTE_SERVICES" not in env:
-                env["DOCLING_SERVE_ENABLE_REMOTE_SERVICES"] = "true"
-            if "DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG" not in env:
-                env["DOCLING_SERVE_ALLOW_CUSTOM_VLM_CONFIG"] = "true"
+            env = docling_serve_env(dict(os.environ))
 
             self._process = subprocess.Popen(
                 cmd,

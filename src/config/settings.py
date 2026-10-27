@@ -548,6 +548,33 @@ def get_jwt_verify_signature() -> bool:
 
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
 
+
+def get_easyocr_confidence_threshold() -> float | None:
+    """Minimum confidence for easyocr text, or None for docling's default (0.5).
+
+    easyocr scores long CJK and Arabic lines well below 0.5, so docling drops
+    them silently. Lowering the threshold is sent to docling-serve as a custom
+    OCR config, which docling-serve refuses (failing every OCR task) unless it
+    runs with DOCLING_SERVE_ALLOW_CUSTOM_OCR_CONFIG=true. That is why this is
+    opt-in, and why an invalid value is ignored rather than sent.
+    """
+    raw = os.getenv("DOCLING_EASYOCR_CONFIDENCE_THRESHOLD", "").strip()
+    if not raw:
+        return None
+    try:
+        threshold = float(raw)
+    except ValueError:
+        threshold = None
+    # The comparison is also false for NaN.
+    if threshold is None or not 0 < threshold <= 1:
+        logger.warning(
+            "Ignoring DOCLING_EASYOCR_CONFIDENCE_THRESHOLD: expected a number in (0, 1]",
+            value=raw,
+        )
+        return None
+    return threshold
+
+
 # Hugging Face cache root override (standard HF_HOME env var). Used to locate
 # locally downloaded VLM weights; falls back to ~/.cache/huggingface when unset.
 HF_HOME = os.getenv("HF_HOME")
