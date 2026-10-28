@@ -35,7 +35,12 @@ def is_langflow_server(argv: list[str]) -> bool:
 def preload_openai_resources() -> None:
     """Import ``openai.resources`` now; on failure, warn and let Langflow start."""
     try:
+        # openai 3.x made ``openai.resources`` itself lazy, so name the modules
+        # the components race on rather than relying on the package import.
         import openai.resources  # noqa: F401
+        import openai.resources.beta  # noqa: F401
+        import openai.resources.chat  # noqa: F401
+        import openai.resources.embeddings  # noqa: F401
     except Exception as exc:  # never block Langflow from starting
         sys.stderr.write(f"Warning: could not preload openai.resources: {exc}\n")
 
