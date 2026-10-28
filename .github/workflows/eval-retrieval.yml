@@ -10,6 +10,11 @@ name: Retrieval Eval
 # reaches main through a normal pull request.
 
 on:
+  # TEMPORARY: runs the workflow once on this branch to prove it end to end,
+  # because a manual workflow is not listed until it is on the default branch.
+  # Remove this block (revert the commit that added it) before merging.
+  push:
+    branches: [feat/2478-eval-manual-workflow]
   workflow_dispatch:
     inputs:
       max_recall_drop:
