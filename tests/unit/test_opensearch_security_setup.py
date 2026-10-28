@@ -1,3 +1,5 @@
+import asyncio
+import copy
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -201,3 +203,176 @@ async def test_setup_opensearch_security_missing_files():
     with patch("os.path.exists", return_value=False):
         with pytest.raises(FileNotFoundError):
             await setup_opensearch_security(mock_client)
+
+
+def _conflict_error():
+    from opensearchpy.exceptions import ConflictError
+
+    return ConflictError(
+        409,
+        '{"status":"CONFLICT","message":"[rolesmapping]: version conflict, required seqNo '
+        '[77], primary term [5]. current document has seqNo [81] and primary term [6]"}',
+    )
+
+
+async def _run_setup(mock_client):
+    with (
+        patch("os.path.exists", return_value=True),
+        patch("builtins.open", MagicMock()),
+        patch("yaml.safe_load", side_effect=[_sample_roles(), _sample_mappings()]),
+        patch("utils.opensearch_utils.asyncio.sleep", AsyncMock()) as sleep_mock,
+    ):
+        await setup_opensearch_security(mock_client)
+    return sleep_mock
+
+
+@pytest.mark.asyncio
+async def test_setup_opensearch_security_retries_mapping_put_on_version_conflict():
+    """Issue #1981: a concurrent rolesmapping write (409) is re-read, re-merged and retried."""
+    mock_client = MagicMock()
+    puts = []
+    state = {
+        "mappings": {
+            "openrag_user_acl_role": {"users": ["acl-user"], "backend_roles": ["openrag_user"]},
+        },
+        "conflicted": False,
+    }
+
+    async def perform_request(method, path, **kwargs):
+        if method == "GET" and path == "/_plugins/_security/api/rolesmapping":
+            return copy.deepcopy(state["mappings"])
+        if method == "PUT" and path.endswith("/rolesmapping/openrag_user_acl_role"):
+            puts.append(kwargs["body"])
+            if not state["conflicted"]:
+                # Another writer (e.g. startup vs onboarding) lands first.
+                state["conflicted"] = True
+                state["mappings"]["openrag_user_acl_role"]["users"].append("concurrent-user")
+                raise _conflict_error()
+        return {"status": "OK"}
+
+    mock_client.transport.perform_request = AsyncMock(side_effect=perform_request)
+    mock_client.cluster.health = AsyncMock(return_value={"status": "green"})
+
+    sleep_mock = await _run_setup(mock_client)
+
+    assert len(puts) == 2
+    assert puts[0]["users"] == ["acl-user"]
+    # The retry merges the configured mapping with the freshly re-read principals.
+    assert puts[1]["users"] == ["acl-user", "concurrent-user"]
+    assert puts[1]["backend_roles"] == ["openrag_user"]
+    sleep_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_setup_opensearch_security_retries_all_access_put_on_version_conflict():
+    """The all_access mapping is re-read on retry so a concurrent admin is not dropped."""
+    mock_client = MagicMock()
+    puts = []
+    all_access = {"users": ["existing-admin"], "backend_roles": ["admin"]}
+
+    async def perform_request(method, path, **kwargs):
+        if method == "GET" and path == "/_plugins/_security/api/rolesmapping":
+            return {}
+        if method == "GET" and path == "/_plugins/_security/api/rolesmapping/all_access":
+            return {"all_access": copy.deepcopy(all_access)}
+        if method == "PUT" and path.endswith("/rolesmapping/all_access"):
+            puts.append(kwargs["body"])
+            if len(puts) == 1:
+                all_access["users"].append("tenant-admin")
+                raise _conflict_error()
+        return {"status": "OK"}
+
+    mock_client.transport.perform_request = AsyncMock(side_effect=perform_request)
+    mock_client.cluster.health = AsyncMock(return_value={"status": "green"})
+
+    await _run_setup(mock_client)
+
+    assert len(puts) == 2
+    assert puts[1]["users"] == ["admin", "existing-admin", "tenant-admin"]
+
+
+@pytest.mark.asyncio
+async def test_setup_opensearch_security_retries_role_put_on_version_conflict():
+    mock_client = MagicMock()
+    role_puts = []
+
+    async def perform_request(method, path, **kwargs):
+        if method == "PUT" and path.endswith("/roles/openrag_user_role"):
+            role_puts.append(kwargs["body"])
+            if len(role_puts) == 1:
+                raise _conflict_error()
+        return {}
+
+    mock_client.transport.perform_request = AsyncMock(side_effect=perform_request)
+    mock_client.cluster.health = AsyncMock(return_value={"status": "green"})
+
+    await _run_setup(mock_client)
+
+    assert len(role_puts) == 2
+
+
+@pytest.mark.asyncio
+async def test_setup_opensearch_security_gives_up_after_bounded_conflict_retries():
+    from opensearchpy.exceptions import ConflictError
+
+    from utils.opensearch_utils import SECURITY_API_CONFLICT_MAX_ATTEMPTS
+
+    mock_client = MagicMock()
+    mapping_puts = []
+
+    async def perform_request(method, path, **kwargs):
+        if method == "PUT" and path.endswith("/rolesmapping/openrag_user_acl_role"):
+            mapping_puts.append(kwargs["body"])
+            raise _conflict_error()
+        return {}
+
+    mock_client.transport.perform_request = AsyncMock(side_effect=perform_request)
+    mock_client.cluster.health = AsyncMock(return_value={"status": "green"})
+
+    with pytest.raises(ConflictError):
+        await _run_setup(mock_client)
+
+    assert len(mapping_puts) == SECURITY_API_CONFLICT_MAX_ATTEMPTS
+
+
+@pytest.mark.asyncio
+async def test_setup_opensearch_security_serializes_concurrent_runs():
+    """Issue #1981: concurrent in-process runs (startup + onboarding) must not interleave writes."""
+    events = []
+
+    def make_client(name):
+        mock_client = MagicMock()
+
+        async def perform_request(method, path, **kwargs):
+            events.append((name, "enter", method))
+            # Yield so an unserialized concurrent run gets scheduled mid-request.
+            await asyncio.sleep(0)
+            events.append((name, "exit", method))
+            return {}
+
+        mock_client.transport.perform_request = AsyncMock(side_effect=perform_request)
+        mock_client.cluster.health = AsyncMock(return_value={"status": "green"})
+        return mock_client
+
+    with (
+        patch("os.path.exists", return_value=True),
+        patch("builtins.open", MagicMock()),
+        patch(
+            "yaml.safe_load",
+            side_effect=[_sample_roles(), _sample_mappings(), _sample_roles(), _sample_mappings()],
+        ),
+    ):
+        await asyncio.gather(
+            setup_opensearch_security(make_client("startup")),
+            setup_opensearch_security(make_client("onboarding")),
+        )
+
+    writes = [(name, phase) for name, phase, method in events if method == "PUT"]
+    first, second = writes[0][0], next(name for name, _ in writes if name != writes[0][0])
+    last_first_write = max(i for i, (name, _) in enumerate(writes) if name == first)
+    first_second_write = min(i for i, (name, _) in enumerate(writes) if name == second)
+    assert last_first_write < first_second_write
+    # Stronger: no request of one run starts while the other run is still in flight.
+    assert [name for name, _, _ in events] == sorted(
+        (name for name, _, _ in events), key=[first, second].index
+    )
