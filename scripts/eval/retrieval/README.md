@@ -192,9 +192,10 @@ against.
 ## Run it from GitHub Actions
 
 The **Retrieval Eval** workflow ([`eval-retrieval.yml`](../../../.github/workflows/eval-retrieval.yml))
-runs the harness on a fresh stack built from the branch you pick. It runs only
-when someone starts it. It never runs on a push or a pull request, and it is
-not a required check.
+runs the harness on a fresh stack built from the branch you pick and compares
+it with the tracked [`baseline.json`](baseline.json). It runs only when someone
+starts it. It never runs on a push or a pull request, and it is not a required
+check.
 
 To start it, open the **Actions** tab, choose **Retrieval Eval**, click **Run
 workflow**, pick a branch and fill in the inputs. Or from the command line:
@@ -208,23 +209,48 @@ branch, so this works after the workflow has been merged.
 
 | Input | Meaning |
 |---|---|
-| `baseline_run_id` | The ID of an earlier **Retrieval Eval** run, the number at the end of its URL. The run downloads that run's results and compares against them. Leave it empty to only record scores. |
-| `max_recall_drop` | Fail the run if average recall at the compared cutoff falls by more than this, for example `0.02` for two points. Needs `baseline_run_id`. Leave it empty to report without failing. |
+| `max_recall_drop` | Fail the run if average recall at the compared cutoff falls by more than this below the baseline, for example `0.02` for two points. Leave it empty to report without failing. |
+| `update_baseline` | If the run improves on the baseline, commit the new `baseline.json` to the selected branch. Refused on the default branch. |
+| `min_gain` | Average recall must rise by more than this to count as an improvement. Default `0.01`, so run-to-run noise does not raise the baseline. |
 
 Each run writes the summary to the run's page and uploads `results.json` and
-`summary.md` as the `retrieval-eval-results` artifact, kept for 90 days. To
-create a baseline, run the workflow with no inputs and note its run ID. To
-check a change, run it on the changed branch with that ID as `baseline_run_id`.
+`summary.md` as the `retrieval-eval-results` artifact, kept for 90 days.
+
+### The tracked baseline
+
+`baseline.json` is committed to the repository and is the reference for every
+run. It changes only through `update_baseline`:
+
+1. Run the workflow on your branch with `update_baseline` ticked.
+2. If average recall rose by more than `min_gain`, the workflow commits the new
+   `baseline.json` to your branch. Otherwise it leaves the file alone and says
+   why in the run summary.
+3. Merge the branch in a pull request. The reviewer sees the new scores in the
+   diff.
+
+The workflow never commits to the default branch, so a baseline change is
+always reviewed. A run is not promoted when it is not like for like with the
+baseline (a different corpus, question file, cutoffs or stack settings),
+because a higher number would not mean better search. To start over after such
+a change, for example a new embedding model, delete `baseline.json` and run
+with `update_baseline`. With no baseline, the first run becomes the baseline.
+
+The same logic is available locally:
+
+```bash
+uv run run_eval.py promote results/results.json baseline.json --min-gain 0.01
+```
+
+It exits with 0 when it wrote the baseline and 3 when it left it alone.
 
 The stack uses the embedding provider and model set by the repository's
 `EMBEDDING_PROVIDER` and `EMBEDDING_MODEL` secrets, the same as the end-to-end
-tests. Scores from different models are not comparable, so make a new baseline
-whenever those change. The comparison warns when the settings of the two runs
-differ.
+tests. Scores from different models are not comparable, and the comparison
+warns when the settings of the two runs differ.
 
 The harness gives the same stack slightly different scores from run to run (see
-[Repeatability](#repeatability)). Set `max_recall_drop` above that noise or the
-run will fail on unchanged code.
+[Repeatability](#repeatability)). Set `max_recall_drop` and `min_gain` above that
+noise, or runs will fail, or the baseline will creep up, on unchanged code.
 
 ## How questions are scored
 

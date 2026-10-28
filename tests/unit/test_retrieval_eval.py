@@ -648,3 +648,76 @@ def test_run_rejects_an_unusable_max_recall_drop(extra_args: list[str], message:
 
     assert completed.returncode == 2
     assert message in completed.stderr
+
+
+# --- baseline promotion ----------------------------------------------------
+
+
+def _results_with_recall(recall: float, **run_overrides: Any) -> dict[str, Any]:
+    return make_results([make_query("q", recall, recall, recall, 1)], **run_overrides)
+
+
+def test_promotion_accepts_the_first_baseline() -> None:
+    promoted, reason = report.promotion_decision(None, _results_with_recall(0.5))
+
+    assert promoted
+    assert "no baseline" in reason
+
+
+@pytest.mark.parametrize(
+    ("baseline_recall", "current_recall", "min_gain", "expected"),
+    [
+        (0.5, 0.75, 0.0, True),
+        (0.5, 0.5, 0.0, False),
+        (0.75, 0.5, 0.0, False),
+        (0.5, 0.55, 0.1, False),
+        (0.5, 0.75, 0.1, True),
+    ],
+)
+def test_promotion_requires_a_gain_above_the_minimum(
+    baseline_recall: float, current_recall: float, min_gain: float, expected: bool
+) -> None:
+    promoted, _ = report.promotion_decision(
+        _results_with_recall(baseline_recall), _results_with_recall(current_recall), min_gain
+    )
+
+    assert promoted is expected
+
+
+def test_promotion_refuses_runs_that_are_not_comparable() -> None:
+    promoted, reason = report.promotion_decision(
+        _results_with_recall(0.5), _results_with_recall(1.0, corpus_hash="e" * 64)
+    )
+
+    assert not promoted
+    assert "not comparable" in reason
+
+
+def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    script = Path(__file__).resolve().parents[2] / "scripts/eval/retrieval/run_eval.py"
+    return subprocess.run(
+        [sys.executable, str(script), *args], capture_output=True, text=True, check=False
+    )
+
+
+def test_promote_writes_the_baseline_only_on_improvement(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.json"
+    low, high = tmp_path / "low.json", tmp_path / "high.json"
+    low.write_text(json.dumps(_results_with_recall(0.5)), encoding="utf-8")
+    high.write_text(json.dumps(_results_with_recall(1.0)), encoding="utf-8")
+
+    first = _run_cli("promote", str(low), str(baseline))
+    assert first.returncode == 0
+    assert json.loads(baseline.read_text(encoding="utf-8")) == json.loads(low.read_text())
+
+    same = _run_cli("promote", str(low), str(baseline))
+    assert same.returncode == 3
+    assert "Baseline not updated" in same.stdout
+
+    better = _run_cli("promote", str(high), str(baseline))
+    assert better.returncode == 0
+    assert json.loads(baseline.read_text(encoding="utf-8")) == json.loads(high.read_text())
+
+    worse = _run_cli("promote", str(low), str(baseline))
+    assert worse.returncode == 3
+    assert json.loads(baseline.read_text(encoding="utf-8")) == json.loads(high.read_text())

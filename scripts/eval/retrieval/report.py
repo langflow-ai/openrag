@@ -255,6 +255,30 @@ def recall_drop(diff: Mapping[str, Any]) -> float:
     return max(0.0, -diff["aggregate"][name]["delta"])
 
 
+def promotion_decision(
+    baseline: Mapping[str, Any] | None,
+    current: Mapping[str, Any],
+    min_gain: float = 0.0,
+) -> tuple[bool, str]:
+    """Whether ``current`` should replace ``baseline`` as the reference.
+
+    Yes when there is no baseline yet, or when average recall at the compared
+    cutoff rose by more than ``min_gain``. A pair that is not like for like
+    (different corpus, questions, cutoffs or stack settings) is never promoted,
+    because the gain would not mean the search got better.
+    """
+    if baseline is None:
+        return True, "no baseline yet"
+    diff = diff_results(baseline, current)
+    if diff["warnings"]:
+        return False, "the runs are not comparable: " + " ".join(diff["warnings"])
+    name = diff["compare_metrics"][0]
+    gain = diff["aggregate"][name]["delta"]
+    if gain > min_gain:
+        return True, f"average {name} rose by {gain:.3f}"
+    return False, f"average {name} changed by {gain:+.3f}, which is not above {min_gain:.3f}"
+
+
 def _cell(text: object) -> str:
     return str(text).replace("|", "\\|").replace("\n", " ")
 

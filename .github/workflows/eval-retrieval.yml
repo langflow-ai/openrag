@@ -3,22 +3,35 @@ name: Retrieval Eval
 # Manual only. Nothing here runs on a push or a pull request: someone starts it
 # from the Actions tab (or `gh workflow run eval-retrieval.yml`) when they want
 # to measure search quality. See scripts/eval/retrieval/README.md.
+#
+# Each run is compared with the tracked scripts/eval/retrieval/baseline.json.
+# That file changes only when a run asks for it (update_baseline), improved on
+# it, and ran on a branch other than the default one, so the new baseline
+# reaches main through a normal pull request.
 
 on:
   workflow_dispatch:
     inputs:
-      baseline_run_id:
-        description: >-
-          Run ID of an earlier "Retrieval Eval" run to compare against (the number at the
-          end of its URL). Leave empty to just record scores, for example to create a baseline.
-        required: false
-        type: string
       max_recall_drop:
         description: >-
           Fail the run if average recall at the compared cutoff falls by more than this
-          (0.02 = two points). Needs a baseline run ID. Leave empty to only report.
+          (0.02 = two points) below the tracked baseline. Leave empty to only report.
         required: false
         type: string
+      update_baseline:
+        description: >-
+          If this run improves on the tracked baseline, commit the new baseline.json to
+          the selected branch. Refused on the default branch.
+        required: false
+        type: boolean
+        default: false
+      min_gain:
+        description: >-
+          Average recall must rise by more than this to count as an improvement. Keeps
+          run-to-run noise from raising the baseline.
+        required: false
+        type: string
+        default: "0.01"
 
 permissions:
   contents: read
@@ -62,28 +75,31 @@ jobs:
     name: Retrieval eval
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    # write is used only by the "Update the tracked baseline" step, which
+    # runs when update_baseline is set.
     permissions:
-      contents: read
-      actions: read
+      contents: write
     steps:
       - name: Validate inputs
         env:
-          BASELINE_RUN_ID: ${{ inputs.baseline_run_id }}
           MAX_RECALL_DROP: ${{ inputs.max_recall_drop }}
+          MIN_GAIN: ${{ inputs.min_gain }}
+          UPDATE_BASELINE: ${{ inputs.update_baseline }}
+          REF_NAME: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          if [ -n "$BASELINE_RUN_ID" ] && ! printf '%s' "$BASELINE_RUN_ID" | grep -Eq '^[0-9]+$'; then
-            echo "::error::baseline_run_id must be a number (the run ID from the run's URL)"
+          number='^[0-9]+(\.[0-9]+)?$'
+          if [ -n "$MAX_RECALL_DROP" ] && ! printf '%s' "$MAX_RECALL_DROP" | grep -Eq "$number"; then
+            echo "::error::max_recall_drop must be a non-negative number such as 0.02"
             exit 1
           fi
-          if [ -n "$MAX_RECALL_DROP" ]; then
-            if ! printf '%s' "$MAX_RECALL_DROP" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
-              echo "::error::max_recall_drop must be a non-negative number such as 0.02"
-              exit 1
-            fi
-            if [ -z "$BASELINE_RUN_ID" ]; then
-              echo "::error::max_recall_drop needs a baseline_run_id to compare against"
-              exit 1
-            fi
+          if ! printf '%s' "$MIN_GAIN" | grep -Eq "$number"; then
+            echo "::error::min_gain must be a non-negative number such as 0.01"
+            exit 1
+          fi
+          if [ "$UPDATE_BASELINE" = "true" ] && [ "$REF_NAME" = "$DEFAULT_BRANCH" ]; then
+            echo "::error::update_baseline is refused on ${DEFAULT_BRANCH}. Run it on a branch and merge the result in a pull request."
+            exit 1
           fi
 
       - name: Checkout
@@ -111,15 +127,6 @@ jobs:
 
       - name: Check the corpus and questions
         run: make eval-validate
-
-      - name: Download baseline results
-        if: ${{ inputs.baseline_run_id != '' }}
-        uses: actions/download-artifact@v7
-        with:
-          name: retrieval-eval-results
-          path: ${{ runner.temp }}/baseline
-          run-id: ${{ inputs.baseline_run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build images from this ref
         run: |
@@ -178,18 +185,17 @@ jobs:
       - name: Run the retrieval eval
         env:
           OPENRAG_URL: http://localhost:3000
-          BASELINE_RUN_ID: ${{ inputs.baseline_run_id }}
           MAX_RECALL_DROP: ${{ inputs.max_recall_drop }}
-          BASELINE_DIR: ${{ runner.temp }}/baseline
         run: |
           set -euo pipefail
-          args=""
-          if [ -n "$MAX_RECALL_DROP" ]; then
-            args="--max-recall-drop ${MAX_RECALL_DROP}"
-          fi
-          if [ -n "$BASELINE_RUN_ID" ]; then
-            make eval-run BASELINE="${BASELINE_DIR}/results.json" EVAL_ARGS="${args}"
+          if [ -f scripts/eval/retrieval/baseline.json ]; then
+            args=""
+            if [ -n "$MAX_RECALL_DROP" ]; then
+              args="--max-recall-drop ${MAX_RECALL_DROP}"
+            fi
+            make eval-run BASELINE=baseline.json EVAL_ARGS="${args}"
           else
+            echo "::warning::scripts/eval/retrieval/baseline.json does not exist yet, so nothing was compared. Run with update_baseline on a branch to create it."
             make eval-run
           fi
 
@@ -202,7 +208,36 @@ jobs:
             echo "The eval did not produce a summary." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # The next run can pass this run's ID as baseline_run_id.
+      - name: Update the tracked baseline
+        if: ${{ inputs.update_baseline }}
+        env:
+          MIN_GAIN: ${{ inputs.min_gain }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          # Exit status 3 means "not an improvement", which is not a failure, so
+          # read the status instead of letting the shell stop on it.
+          set +e
+          cd scripts/eval/retrieval
+          uv run run_eval.py promote results/results.json baseline.json --min-gain "$MIN_GAIN" > /tmp/promote.txt
+          status=$?
+          set -e
+          cat /tmp/promote.txt
+          {
+            echo "### Baseline"
+            cat /tmp/promote.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" = "3" ]; then
+            exit 0
+          elif [ "$status" != "0" ]; then
+            exit "$status"
+          fi
+          cd "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/eval/retrieval/baseline.json
+          git commit -m "chore: update the retrieval eval baseline"
+          git push origin "HEAD:refs/heads/${REF_NAME}"
+
       - name: Upload results
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
