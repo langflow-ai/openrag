@@ -107,8 +107,6 @@ def test_docker_compose_seeds_openrag_llm_token_placeholder():
 def test_flows_reference_opensearch_by_canonical_extension_id():
     """A bare class-name reference gets hijacked by Langflow's migration table."""
     for path in sorted(Path("flows").glob("*.json")):
-        if path.name == "component_index.json":
-            continue
         flow = json.loads(path.read_text(encoding="utf-8"))
         for node in flow.get("data", {}).get("nodes", []):
             node_type = node.get("data", {}).get("type")
@@ -215,8 +213,6 @@ def test_flows_embed_the_current_proxy_component_sources():
         expected_hash = hashlib.sha256(source.encode("utf-8")).hexdigest()[:12]
 
         for path in sorted(Path("flows").glob("*.json")):
-            if path.name == "component_index.json":
-                continue
             flow = json.loads(path.read_text(encoding="utf-8"))
             for node in flow.get("data", {}).get("nodes", []):
                 if node.get("data", {}).get("type") != node_type:
