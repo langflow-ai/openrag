@@ -275,3 +275,74 @@ async def test_files_only_clear_failure_is_logged_not_durable(
 
     assert "alice" not in svc._conversations
     assert "r-1" in json.loads(storage_path.read_text())["alice"]
+
+
+# ---------------------------------------------------------------------------
+# 4. A failed prune must not resurrect a conversation deleted meanwhile
+# ---------------------------------------------------------------------------
+
+
+async def _pause_then_fail_first_save(svc):
+    """Make the prune's save block until released, then fail; later saves succeed."""
+    save_started = asyncio.Event()
+    release_save = asyncio.Event()
+    real_save = svc._save_conversations
+    calls = 0
+
+    async def save():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            save_started.set()
+            await release_save.wait()
+            raise OSError("disk full")
+        await real_save()
+
+    svc._save_conversations = save
+    return save_started, release_save
+
+
+@pytest.mark.asyncio
+async def test_failed_prune_does_not_resurrect_an_explicitly_deleted_conversation(
+    monkeypatch, storage_path, session_factory
+):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
+    svc = _svc(storage_path, session_factory)
+    await svc.store_conversation_thread("alice", "old", _payload("old", age_days=90))
+    save_started, release_save = await _pause_then_fail_first_save(svc)
+
+    prune = asyncio.create_task(svc.prune_stale_conversations(30))
+    await save_started.wait()
+    # The prune has removed "old" from memory and is stuck in its save. An
+    # explicit delete now finds nothing to remove from the file store.
+    delete = asyncio.create_task(svc.delete_conversation_thread("alice", "old"))
+    await asyncio.sleep(0)  # let the delete run as far as it can
+    release_save.set()
+    await prune
+    assert await delete is True
+
+    assert "old" not in svc._conversations.get("alice", {})
+    assert "old" not in await svc.get_user_conversations("alice")
+    assert "old" not in await _db_ids(session_factory)
+
+
+@pytest.mark.asyncio
+async def test_failed_prune_does_not_resurrect_a_cleared_user(
+    monkeypatch, storage_path, session_factory
+):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
+    svc = _svc(storage_path, session_factory)
+    await svc.store_conversation_thread("alice", "old", _payload("old", age_days=90))
+    save_started, release_save = await _pause_then_fail_first_save(svc)
+
+    prune = asyncio.create_task(svc.prune_stale_conversations(30))
+    await save_started.wait()
+    clear = asyncio.create_task(svc.clear_user_conversations("alice"))
+    await asyncio.sleep(0)
+    release_save.set()
+    await prune
+    await clear
+
+    assert not svc._conversations.get("alice")
+    assert await svc.get_user_conversations("alice") == {}
+    assert await _db_ids(session_factory) == set()

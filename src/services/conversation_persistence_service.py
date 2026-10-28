@@ -50,6 +50,10 @@ class ConversationPersistenceService:
         # snapshot can never replace a newer one. Kept separate from ``lock``
         # so mutators are not blocked during file I/O.
         self._save_lock = threading.Lock()
+        # Serialises the JSON-store mutations that prune can roll back (prune,
+        # explicit delete, clear), so a failed prune can never resurrect an
+        # entry that was deleted while its save was in flight.
+        self._file_mutation_lock = asyncio.Lock()
         self._session_factory = session_factory
         self._conversations: dict[str, dict[str, Any]] = self._load_conversations()
 
@@ -184,20 +188,24 @@ class ConversationPersistenceService:
         deleted = False
 
         if file_writes_enabled():
-            with self.lock:
-                user_convs = self._conversations.get(user_id)
-                removed = user_convs is not None and user_convs.pop(response_id, None) is not None
-            if removed:
-                deleted = True
-                try:
-                    await self._save_conversations()
-                except Exception as exc:  # noqa: BLE001
-                    logger.error(
-                        "Failed to persist conversation deletion to disk",
-                        user_id=user_id,
-                        response_id=response_id,
-                        error=str(exc),
+            # Waits for an in-flight prune, so its rollback cannot undo this.
+            async with self._file_mutation_lock:
+                with self.lock:
+                    user_convs = self._conversations.get(user_id)
+                    removed = (
+                        user_convs is not None and user_convs.pop(response_id, None) is not None
                     )
+                if removed:
+                    deleted = True
+                    try:
+                        await self._save_conversations()
+                    except Exception as exc:  # noqa: BLE001
+                        logger.error(
+                            "Failed to persist conversation deletion to disk",
+                            user_id=user_id,
+                            response_id=response_id,
+                            error=str(exc),
+                        )
 
         if db_writes_enabled():
             db_deleted = await self._db_delete(response_id, user_id)
@@ -212,6 +220,11 @@ class ConversationPersistenceService:
         - ``db`` / ``hybrid``: bulk DELETE via the DB repo.
         - ``files`` / ``hybrid``: removes matching entries from the in-memory
           JSON store and persists to disk.
+
+        The JSON-store part is serialised with ``delete_conversation_thread`` and
+        ``clear_user_conversations``: if its save fails and entries are rolled
+        back, a delete issued meanwhile waits and then removes the restored
+        entry, so a deleted conversation is never resurrected.
 
         Returns the total number of conversations deleted across all stores.
         Raises ``ValueError`` unless *ttl_days* >= 1, before touching memory,
@@ -230,44 +243,8 @@ class ConversationPersistenceService:
         cutoff_local = datetime.now() - timedelta(days=ttl_days)
 
         if file_writes_enabled():
-            stale_keys: list[tuple[str, str]] = []
-            with self.lock:
-                for user_id, user_convs in self._conversations.items():
-                    for resp_id, payload in user_convs.items():
-                        last_activity_raw = payload.get("last_activity")
-                        if last_activity_raw:
-                            try:
-                                la = datetime.fromisoformat(str(last_activity_raw))
-                                # Aware timestamps: convert to local naive per-timestamp.
-                                # Naive timestamps: already local (written by agent.py).
-                                if la.tzinfo is not None:
-                                    la = la.astimezone().replace(tzinfo=None)
-                                if la < cutoff_local:
-                                    stale_keys.append((user_id, resp_id))
-                            except (TypeError, ValueError):
-                                pass
-
-                if stale_keys:
-                    # Snapshot payloads before deletion so we can restore on save failure.
-                    snapshot = {
-                        (uid, rid): self._conversations[uid][rid] for uid, rid in stale_keys
-                    }
-                    for user_id, resp_id in stale_keys:
-                        del self._conversations[user_id][resp_id]
-
-            if stale_keys:
-                try:
-                    await self._save_conversations()
-                    deleted += len(stale_keys)
-                except Exception as exc:  # noqa: BLE001
-                    logger.error("Failed to persist conversation pruning to disk", error=str(exc))
-                    # Restore deleted entries so in-memory state stays consistent
-                    # with what is on disk — they were not actually pruned.
-                    # setdefault: an entry stored again while the save was
-                    # in flight is newer than our snapshot and must win.
-                    with self.lock:
-                        for (user_id, resp_id), payload in snapshot.items():
-                            self._conversations.setdefault(user_id, {}).setdefault(resp_id, payload)
+            async with self._file_mutation_lock:
+                deleted += await self._prune_file_store(cutoff_local)
 
         if db_writes_enabled():
             from db.repositories import ConversationRepo
@@ -285,6 +262,55 @@ class ConversationPersistenceService:
         logger.info("Conversation pruning completed", ttl_days=ttl_days, deleted=deleted)
         return deleted
 
+    async def _prune_file_store(self, cutoff_local: datetime) -> int:
+        """Drop entries older than *cutoff_local* from the JSON store.
+
+        Returns how many were pruned (0 if the save failed and the entries were
+        rolled back). The caller holds ``_file_mutation_lock``, so no explicit
+        delete or clear can interleave with the rollback.
+        """
+        stale_keys: list[tuple[str, str]] = []
+        snapshot: dict[tuple[str, str], Any] = {}
+        with self.lock:
+            for user_id, user_convs in self._conversations.items():
+                for resp_id, payload in user_convs.items():
+                    last_activity_raw = payload.get("last_activity")
+                    if last_activity_raw:
+                        try:
+                            la = datetime.fromisoformat(str(last_activity_raw))
+                            # Aware timestamps: convert to local naive per-timestamp.
+                            # Naive timestamps: already local (written by agent.py).
+                            if la.tzinfo is not None:
+                                la = la.astimezone().replace(tzinfo=None)
+                            if la < cutoff_local:
+                                stale_keys.append((user_id, resp_id))
+                        except (TypeError, ValueError):
+                            pass
+
+            if stale_keys:
+                # Snapshot payloads before deletion so we can restore on save failure.
+                snapshot = {(uid, rid): self._conversations[uid][rid] for uid, rid in stale_keys}
+                for user_id, resp_id in stale_keys:
+                    del self._conversations[user_id][resp_id]
+
+        if not stale_keys:
+            return 0
+
+        try:
+            await self._save_conversations()
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to persist conversation pruning to disk", error=str(exc))
+            # Restore deleted entries so in-memory state stays consistent
+            # with what is on disk — they were not actually pruned.
+            # setdefault: an entry stored again while the save was in flight
+            # is newer than our snapshot and must win. Explicit deletes cannot
+            # interleave here: they wait on _file_mutation_lock.
+            with self.lock:
+                for (user_id, resp_id), payload in snapshot.items():
+                    self._conversations.setdefault(user_id, {}).setdefault(resp_id, payload)
+            return 0
+        return len(stale_keys)
+
     async def clear_user_conversations(self, user_id: str) -> None:
         """Delete every conversation for *user_id* from every active store.
 
@@ -293,17 +319,19 @@ class ConversationPersistenceService:
         mode: until a later save succeeds, the on-disk copy survives a restart.
         """
         if file_writes_enabled():
-            with self.lock:
-                removed = self._conversations.pop(user_id, None) is not None
-            if removed:
-                try:
-                    await self._save_conversations()
-                except Exception as exc:  # noqa: BLE001
-                    logger.error(
-                        "Failed to persist user conversation clear to disk",
-                        user_id=user_id,
-                        error=str(exc),
-                    )
+            # Waits for an in-flight prune, so its rollback cannot undo this.
+            async with self._file_mutation_lock:
+                with self.lock:
+                    removed = self._conversations.pop(user_id, None) is not None
+                if removed:
+                    try:
+                        await self._save_conversations()
+                    except Exception as exc:  # noqa: BLE001
+                        logger.error(
+                            "Failed to persist user conversation clear to disk",
+                            user_id=user_id,
+                            error=str(exc),
+                        )
 
         if db_writes_enabled():
             await self._db_delete_all(user_id)
