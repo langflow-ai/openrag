@@ -15,6 +15,8 @@ on:
     paths:
       - 'src/**'
       - 'tests/**'
+      # tests/unit/test_retrieval_eval.py covers the harness in this directory.
+      - 'scripts/eval/**'
       - 'custom_components/**'
       - 'flows/**'
       - 'config/**'
