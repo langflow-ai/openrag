@@ -37,6 +37,7 @@ def _knowledge_config(*, ocr: bool, table_structure: bool, picture_descriptions:
 def _document_service(docling_result: dict) -> tuple[DocumentService, AsyncMock]:
     client = AsyncMock(spec=httpx.AsyncClient)
     upload_response = MagicMock(spec=httpx.Response)
+    upload_response.status_code = 200
     upload_response.json.return_value = {"task_id": "task-1"}
     upload_response.raise_for_status.return_value = None
     client.post.return_value = upload_response
