@@ -8,7 +8,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from services.docling_service import DoclingPayloadTooLarge, DoclingServeError, DoclingService
+from services.docling_service import (
+    PASSWORD_PROTECTED_PDF_DETAIL,
+    DoclingPayloadTooLarge,
+    DoclingServeError,
+    DoclingService,
+    is_encrypted_pdf,
+    password_protected_pdf_error,
+)
 from utils.upload_limits import UploadTooLarge
 
 # Shape of a /v1/result body for a password-protected PDF: the task ran to
@@ -164,6 +171,196 @@ async def test_poll_result_surfaces_conversion_failure_from_result_payload(
     assert message.startswith("Docling processing failed: ")
     assert "Incorrect password" in message
     assert "missing document.json_content" not in message
+
+
+# ── Password-protected PDFs on newer docling ───────────────────────
+
+# docling >= 2.141 loads through docling-parse first, whose load failure no longer
+# names the reason (seen on CPD, tracker #99817).
+_DOCLING_PARSE_LOAD_FAILURE = (
+    "Docling processing failed: docling-parse could not load document 8fc525: "
+    "Failed to load document with key key=8fc525"
+)
+_XREF_TABLE = b"xref\n0 1\n0000000000 65535 f \n"
+
+
+def _pdf(body: bytes, trailer: bytes, *, junk: bytes = b"") -> bytes:
+    """Minimal classic-xref PDF; with ``junk``, offsets are relative to the header."""
+    head = b"%PDF-1.7\n" + body
+    return junk + head + _XREF_TABLE + trailer + b"\nstartxref\n%d\n%%%%EOF\n" % len(head)
+
+
+def _append_revision(pdf: bytes, body: bytes, trailer: bytes) -> bytes:
+    """Append an incremental update whose trailer becomes the active one."""
+    head = pdf + body
+    return head + _XREF_TABLE + trailer + b"\nstartxref\n%d\n%%%%EOF\n" % len(head)
+
+
+def _xref_stream_pdf(entries: bytes, data: bytes) -> bytes:
+    """Minimal PDF whose active cross-reference section is an xref stream."""
+    head = b"%PDF-1.5\n"
+    xref = b"9 0 obj\n<< /Type /XRef %s /Length %d >>\nstream\n%s\nendstream\nendobj\n" % (
+        entries,
+        len(data),
+        data,
+    )
+    return head + xref + b"startxref\n%d\n%%%%EOF\n" % len(head)
+
+
+def _stale_startxref_pdf(objects: bytes) -> bytes:
+    """PDF whose ``startxref`` names the first of ``objects`` rather than an xref section."""
+    head = b"%PDF-1.5\n"
+    return head + objects + b"startxref\n%d\n%%%%EOF\n" % len(head)
+
+
+_CATALOG = b"1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+_ENCRYPTED_PDF = _pdf(_CATALOG, b"trailer\n<< /Root 1 0 R /Encrypt 5 0 R /Size 6 >>")
+_PLAIN_PDF = _pdf(_CATALOG, b"trailer\n<< /Root 1 0 R >>")
+# Unencrypted, but a content stream shows the literal text "/Encrypt 1 0 R".
+_PLAIN_PDF_WITH_ENCRYPT_TEXT = _pdf(
+    _CATALOG + b"4 0 obj\n<< /Length 25 >>\nstream\nBT (/Encrypt 1 0 R) Tj ET\nendstream\nendobj\n",
+    b"trailer\n<< /Root 1 0 R >>",
+)
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        pytest.param(_ENCRYPTED_PDF, True, id="classic-trailer-encrypted"),
+        pytest.param(
+            _xref_stream_pdf(b"/Encrypt << /Filter /Standard >>", b"abc"),
+            True,
+            id="xref-stream-encrypted",
+        ),
+        pytest.param(
+            _append_revision(
+                _ENCRYPTED_PDF,
+                b"2 0 obj\n<< /Type /Page >>\nendobj\n",
+                b"trailer\n<< /Root 1 0 R /Prev %d /Encrypt 5 0 R /Size 6 >>"
+                % _ENCRYPTED_PDF.index(b"xref"),
+            ),
+            True,
+            id="incremental-update-encrypted",
+        ),
+        pytest.param(
+            _pdf(_CATALOG, b"trailer\n<< /Root 1 0 R /Encrypt 5 0 R >>", junk=b"JUNK\n"),
+            True,
+            id="junk-before-header",
+        ),
+        pytest.param(_PLAIN_PDF, False, id="classic-trailer-plain"),
+        pytest.param(_PLAIN_PDF_WITH_ENCRYPT_TEXT, False, id="encrypt-in-content-stream"),
+        pytest.param(
+            _xref_stream_pdf(b"", b"/Encrypt 1 0 R"), False, id="encrypt-in-xref-stream-data"
+        ),
+        pytest.param(
+            b"%PDF-1.7\n" + _CATALOG + b"trailer\n<< /Root 1 0 R /Encrypt 5 0 R >>\n",
+            False,
+            id="truncated-no-startxref",
+        ),
+        pytest.param(
+            b"%PDF-1.7\ntrailer\n<< /Encrypt 5 0 R >>\nstartxref\n3\n%%EOF\n",
+            False,
+            id="startxref-points-at-garbage",
+        ),
+        pytest.param(
+            _stale_startxref_pdf(b"3 0 obj\n<< /Type /Filespec /Encrypt 5 0 R >>\nendobj\n"),
+            False,
+            id="startxref-points-at-non-xref-object",
+        ),
+        pytest.param(
+            # The non-xref dictionary ends at `endobj`; the later xref stream's
+            # /Type /XRef and /Encrypt must not be read as belonging to it.
+            _stale_startxref_pdf(
+                b"3 0 obj\n<< /Type /Filespec >>\nendobj\n"
+                b"9 0 obj\n<< /Type /XRef /Encrypt 5 0 R /Length 3 >>\nstream\nabc\n"
+                b"endstream\nendobj\n"
+            ),
+            False,
+            id="startxref-points-at-object-before-xref-stream",
+        ),
+        pytest.param(
+            # Offsets are relative to the header, as in the classic junk case.
+            b"JUNK\n" + _xref_stream_pdf(b"/Encrypt 5 0 R", b"abc"),
+            True,
+            id="xref-stream-junk-before-header",
+        ),
+        pytest.param(b"not a pdf /Encrypt 5 0 R startxref 0", False, id="not-a-pdf"),
+    ],
+)
+def test_is_encrypted_pdf(content, expected):
+    assert is_encrypted_pdf(content) is expected
+
+
+def test_password_protected_pdf_error_needs_load_failure_and_encryption():
+    assert (
+        password_protected_pdf_error(_DOCLING_PARSE_LOAD_FAILURE, _ENCRYPTED_PDF)
+        == PASSWORD_PROTECTED_PDF_DETAIL
+    )
+    # A corrupt but unencrypted PDF keeps docling's own message.
+    assert password_protected_pdf_error(_DOCLING_PARSE_LOAD_FAILURE, _PLAIN_PDF) is None
+    # An owner-password-only PDF that failed for another reason is not relabelled.
+    assert (
+        password_protected_pdf_error("Docling processing failed: OCR crashed", _ENCRYPTED_PDF)
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_convert_bytes_names_password_protected_pdf(docling_service):
+    with (
+        patch.object(
+            docling_service, "upload_to_docling_direct_async", AsyncMock(return_value="t1")
+        ),
+        patch.object(
+            docling_service,
+            "get_docling_result_async",
+            AsyncMock(side_effect=DoclingServeError(_DOCLING_PARSE_LOAD_FAILURE)),
+        ),
+        pytest.raises(DoclingServeError) as exc_info,
+    ):
+        await docling_service.convert_bytes(_ENCRYPTED_PDF, "secret.pdf")
+
+    assert str(exc_info.value) == f"Docling processing failed: {PASSWORD_PROTECTED_PDF_DETAIL}"
+    assert str(exc_info.value.__cause__) == _DOCLING_PARSE_LOAD_FAILURE
+
+
+@pytest.mark.asyncio
+async def test_convert_bytes_keeps_docling_error_when_encrypt_appears_outside_trailer(
+    docling_service,
+):
+    """Literal /Encrypt text in page content must not relabel an unrelated load failure."""
+    with (
+        patch.object(
+            docling_service, "upload_to_docling_direct_async", AsyncMock(return_value="t1")
+        ),
+        patch.object(
+            docling_service,
+            "get_docling_result_async",
+            AsyncMock(side_effect=DoclingServeError(_DOCLING_PARSE_LOAD_FAILURE)),
+        ),
+        pytest.raises(DoclingServeError) as exc_info,
+    ):
+        await docling_service.convert_bytes(_PLAIN_PDF_WITH_ENCRYPT_TEXT, "about-pdf.pdf")
+
+    assert str(exc_info.value) == _DOCLING_PARSE_LOAD_FAILURE
+
+
+@pytest.mark.asyncio
+async def test_convert_file_keeps_docling_error_for_unencrypted_pdf(docling_service, tmp_path):
+    pdf = tmp_path / "broken.pdf"
+    pdf.write_bytes(_PLAIN_PDF)
+    with (
+        patch.object(
+            docling_service, "upload_to_docling_direct_async", AsyncMock(return_value="t1")
+        ),
+        patch.object(
+            docling_service,
+            "get_docling_result_async",
+            AsyncMock(side_effect=DoclingServeError(_DOCLING_PARSE_LOAD_FAILURE)),
+        ),
+        pytest.raises(DoclingServeError, match="Failed to load document with key"),
+    ):
+        await docling_service.convert_file(str(pdf))
 
 
 @pytest.mark.asyncio
