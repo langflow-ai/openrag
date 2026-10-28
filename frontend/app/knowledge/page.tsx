@@ -23,6 +23,7 @@ import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { trackButton } from "@/lib/analytics";
 import { isFileCancelled } from "@/lib/task-error-display";
+import { useFailedIngestionsQuery } from "../api/queries/useFailedIngestionsQuery";
 import {
   EMPTY_SEARCH_RESULT,
   type File,
@@ -34,6 +35,7 @@ import "@/components/AgGrid/registerAgGridModules";
 import "@/components/AgGrid/agGridStyles.css";
 import { toast } from "sonner";
 import { CancelIngestionButton } from "@/components/cancel-ingestion-button";
+import { FailedDocumentsDialog } from "@/components/failed-documents-dialog";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
 import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-bar";
 import { KnowledgePaginationFooter } from "@/components/knowledge-pagination-footer";
@@ -446,6 +448,9 @@ function SearchPage() {
   const syncAllPreviewMutation = useSyncAllConnectorsPreview();
   const refreshOpenragDocsMutation = useRefreshOpenragDocs();
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [failedDocsOpen, setFailedDocsOpen] = useState(false);
+  const { data: failedIngestions } = useFailedIngestionsQuery();
+  const failedDocsCount = failedIngestions?.failures.length ?? 0;
   const [syncPreview, setSyncPreview] = useState<SyncAllPreviewResponse | null>(
     null,
   );
@@ -1216,6 +1221,24 @@ function SearchPage() {
                 </>
               )}
             </Button>
+            {failedDocsCount > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-lg shrink-0"
+                onClick={() => {
+                  trackButton({
+                    CTA: "Failed Documents",
+                    elementId: "failed-documents-button",
+                    namespace: "knowledge",
+                  });
+                  setFailedDocsOpen(true);
+                }}
+              >
+                <AlertTriangle className="h-4 w-4 mr-2" />
+                Failed documents ({failedDocsCount})
+              </Button>
+            )}
             <RequirePermission perm="config:write">
               <Button
                 type="button"
@@ -1400,6 +1423,11 @@ function SearchPage() {
         <p className="my-2">Documents to be deleted:</p>
         {formatFilesToDelete(selectedRows)}
       </DeleteConfirmationDialog>
+
+      <FailedDocumentsDialog
+        open={failedDocsOpen}
+        onOpenChange={setFailedDocsOpen}
+      />
 
       <SyncConfirmDialog
         open={syncDialogOpen}

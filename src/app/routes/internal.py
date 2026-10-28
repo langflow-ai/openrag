@@ -318,6 +318,20 @@ def register_internal_routes(app: FastAPI):
         methods=["POST"],
         tags=["internal"],
     )
+    # Failed-ingestion registry (list / retry). Static paths, so they must not be
+    # swallowed by a /connectors/{connector_type}/... route registered after them.
+    app.add_api_route(
+        "/connectors/failed-ingestions",
+        connectors.list_failed_ingestions,
+        methods=["GET"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/connectors/failed-ingestions/clear",
+        connectors.clear_failed_ingestions,
+        methods=["POST"],
+        tags=["internal"],
+    )
     app.add_api_route(
         "/connectors/sync-all",
         connectors.sync_all_connectors,

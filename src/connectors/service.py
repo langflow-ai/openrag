@@ -519,6 +519,17 @@ class ConnectorService:
         from services.document_service import DocumentService
 
         # Use expanded_file_ids which has folders already expanded
+        # Combine file_infos and expanded_files_info
+        all_infos = (file_infos or []) + expanded_files_info
+
+        # Source version (etag, modified_time) of each file, so a failure is
+        # recorded against the version that failed.
+        file_versions = {
+            f["id"]: (f.get("etag"), f.get("modified_time"))
+            for f in all_infos
+            if f.get("id") and (f.get("etag") or f.get("modified_time"))
+        }
+
         processor = ConnectorFileProcessor(
             self,
             connection_id,
@@ -538,13 +549,12 @@ class ConnectorService:
             connector_type=connector.CONNECTOR_TYPE,
             shared=shared,
             allow_anonymous_delete=allow_anonymous_delete,
+            file_versions=file_versions,
         )
 
         # Create custom task using TaskService
         original_filenames = {}
 
-        # Combine file_infos and expanded_files_info
-        all_infos = (file_infos or []) + expanded_files_info
         if all_infos:
             original_filenames = {
                 f["id"]: clean_connector_filename(
