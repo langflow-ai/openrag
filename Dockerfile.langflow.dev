@@ -64,6 +64,12 @@ WORKDIR /app
 RUN uv sync --frozen --no-dev --no-editable --extra postgresql
 RUN uv pip uninstall litellm ragstack-ai-knowledge-store
 
+# Preload openai.resources at `langflow run` startup to avoid a concurrent
+# lazy-import deadlock when flows build their components (#2436).
+COPY scripts/langflow_sitecustomize.py /tmp/langflow_sitecustomize.py
+RUN install -m 644 /tmp/langflow_sitecustomize.py \
+    "$(/app/.venv/bin/python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')/sitecustomize.py"
+
 COPY custom_components/ /app/custom_components/
 
 # Expose ports
