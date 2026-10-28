@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import sys
 import time
 
 import pytest
@@ -24,17 +25,30 @@ def tui_dir(tmp_path, monkeypatch):
     return tmp_path
 
 
-@pytest.fixture
-def running_server():
-    """A detached process standing in for docling-serve. It's not our child, so
-    it doesn't linger as a zombie once killed."""
+def _spawn_detached(command: str) -> int:
+    """Start `command` detached. It's not our child, so it doesn't linger as a
+    zombie once killed."""
     out = subprocess.run(
-        ["sh", "-c", "sleep 60 >/dev/null 2>&1 & echo $!"],
+        ["sh", "-c", f"{command} >/dev/null 2>&1 & echo $!"],
         capture_output=True,
         text=True,
         check=True,
     )
-    pid = int(out.stdout.strip())
+    return int(out.stdout.strip())
+
+
+@pytest.fixture
+def running_server():
+    """A process standing in for docling-serve: its command line names it."""
+    pid = _spawn_detached(f"{sys.executable} -c 'import time; time.sleep(60)' docling-serve run")
+    yield pid
+    if _alive(pid):
+        os.kill(pid, 9)
+
+
+@pytest.fixture
+def unrelated_process():
+    pid = _spawn_detached("sleep 60")
     yield pid
     if _alive(pid):
         os.kill(pid, 9)
@@ -67,6 +81,17 @@ def test_stops_a_server_launched_by_an_older_tui(tui_dir, running_server):
     manager = dm.DoclingManager()
 
     assert _wait_gone(running_server)
+    assert not manager.is_running()
+    assert not (tui_dir / ".docling.pid").exists()
+
+
+def test_leaves_alone_an_unrelated_process_that_reused_the_pid(tui_dir, unrelated_process):
+    """docling-serve died and the OS gave its PID to something else."""
+    (tui_dir / ".docling.pid").write_text(str(unrelated_process))
+
+    manager = dm.DoclingManager()
+
+    assert _alive(unrelated_process)
     assert not manager.is_running()
     assert not (tui_dir / ".docling.pid").exists()
 

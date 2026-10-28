@@ -136,7 +136,12 @@ class DoclingManager:
         """Try to recover connection to existing docling-serve process from PID file."""
         pid = self._load_pid()
         if pid is not None:
-            if self._is_process_running(pid) and not self._launched_with_current_settings():
+            command = self._command_line(pid) if self._is_process_running(pid) else None
+            if command is not None and "docling-serve" not in command:
+                # docling-serve died and the OS gave its PID to another process.
+                self._add_log_entry(f"Stale PID file found (PID: {pid} is not docling-serve)")
+                self._clear_pid_file()
+            elif command is not None and not self._launched_with_current_settings():
                 self._stop_outdated_process(pid)
             elif self._is_process_running(pid):
                 self._add_log_entry(f"Recovered existing docling-serve process (PID: {pid})")
@@ -148,6 +153,19 @@ class DoclingManager:
             else:
                 self._add_log_entry(f"Stale PID file found (PID: {pid} not running)")
                 self._clear_pid_file()
+
+    def _command_line(self, pid: int) -> str | None:
+        """The process's command line, or None when it can't be read."""
+        try:
+            result = subprocess.run(
+                ["ps", "-p", str(pid), "-o", "command="],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return result.stdout.strip() if result.returncode == 0 else None
 
     def _launched_with_current_settings(self) -> bool:
         try:
