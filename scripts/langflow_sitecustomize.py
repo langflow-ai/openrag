@@ -1,4 +1,4 @@
-"""Installed as ``sitecustomize`` in the OpenRAG Langflow image (#2436).
+"""Installed as ``sitecustomize`` in the OpenRAG Langflow images (#2436).
 
 Langflow builds a flow's components concurrently in worker threads, and the
 OpenRAG LLM and Embeddings components both create ``openai.OpenAI`` clients.
@@ -12,9 +12,10 @@ Langflow starts.
 
 Importing ``openai.resources`` once at process startup, before any threads
 exist, removes the race. Python imports ``sitecustomize`` automatically, so this
-covers every way the image starts Langflow (the Dockerfile ``CMD`` and the Helm
-``command:`` override). It only runs for ``langflow run`` so other Python
-processes in the container don't pay the import cost.
+covers every way the images start Langflow (the Dockerfile ``CMD``, the Helm
+``command:`` override and the dev image's ``uv run langflow run``). It only runs
+for ``langflow run`` so other Python processes in the container don't pay the
+import cost.
 """
 
 from __future__ import annotations
