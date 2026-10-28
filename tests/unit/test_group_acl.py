@@ -491,6 +491,55 @@ async def test_dls_principal_service_disabled_refresh_cache_does_not_retain_lock
 
 
 @pytest.mark.asyncio
+async def test_dls_principal_change_drops_that_users_cached_suggestions():
+    from services import search_cache
+    from services.dls_principal_service import DLSPrincipalService
+    from session_manager import User
+
+    current_principals = ["u:test:user-1", "g:test:engineering"]
+
+    class ConnectionManager:
+        async def list_connections(self, user_id=None):
+            return []
+
+        def get_auth_user_principals(self, user):
+            return list(current_principals)
+
+    class ConnectorService:
+        connection_manager = ConnectionManager()
+
+    class Indices:
+        async def exists(self, index):
+            return True
+
+    class OpenSearchClient:
+        indices = Indices()
+
+        async def index(self, **kwargs):
+            return None
+
+    service = DLSPrincipalService(
+        ConnectorService(), opensearch_client=OpenSearchClient(), refresh_ttl_seconds=0
+    )
+    user = User(user_id="user-1", email=None, name=None, provider="test")
+    other_key = ("user-2", "docling", "{}", 0, True)
+    user_key = ("user-1", "docling", "{}", 0, True)
+
+    await service.refresh_user_principals(user)
+    search_cache.SUGGEST_CACHE.set(user_key, {"files": ["old.pdf"]})
+    search_cache.SUGGEST_CACHE.set(other_key, {"files": ["other.pdf"]})
+
+    await service.refresh_user_principals(user)
+    assert search_cache.SUGGEST_CACHE.get(user_key) == {"files": ["old.pdf"]}
+
+    current_principals.remove("g:test:engineering")
+    await service.refresh_user_principals(user)
+
+    assert search_cache.SUGGEST_CACHE.get(user_key) is None
+    assert search_cache.SUGGEST_CACHE.get(other_key) == {"files": ["other.pdf"]}
+
+
+@pytest.mark.asyncio
 async def test_dls_principal_service_skips_connector_lookup_without_opensearch_client(monkeypatch):
     from services.dls_principal_service import DLSPrincipalService
     from session_manager import User

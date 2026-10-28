@@ -2,9 +2,13 @@ import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { useEffect } from "react";
+import { toast } from "sonner";
 import { describe, expect, it, vi } from "vitest";
 import type { KnowledgeFilter } from "@/app/api/queries/useGetFiltersSearchQuery";
-import type { SearchSuggestResult } from "@/app/api/queries/useGetSearchSuggestions";
+import {
+  type SearchSuggestResult,
+  SUGGEST_MAX_CHARS,
+} from "@/app/api/queries/useGetSearchSuggestions";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { server } from "@/test-utils/msw/server";
 import { renderWithProviders } from "@/test-utils/render";
@@ -141,6 +145,21 @@ describe("KnowledgeSearchInput suggestions", () => {
       expect(screen.queryByRole("listbox")).not.toBeInTheDocument(),
     );
     expect(screen.getByTestId("committed")).toHaveTextContent("docl");
+  });
+
+  it("stops accepting characters at the cap and shows an error popup", async () => {
+    serveSuggest();
+    const errorToast = vi.spyOn(toast, "error").mockReturnValue("toast");
+    const { user, input } = renderInput();
+    await user.click(input);
+
+    await user.type(input, "a".repeat(SUGGEST_MAX_CHARS + 1));
+
+    expect(input).toHaveValue("a".repeat(SUGGEST_MAX_CHARS));
+    expect(errorToast).toHaveBeenCalledWith(
+      `Search is limited to ${SUGGEST_MAX_CHARS} characters.`,
+      expect.anything(),
+    );
   });
 
   it("does not suggest in controlled mode, where results filter live", async () => {

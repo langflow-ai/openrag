@@ -204,3 +204,32 @@ def test_invalidate_corpus_caches_keeps_query_embeddings():
     assert search_cache.QUERY_EMBEDDING_CACHE.get("q") == [0.1]
     assert search_cache.SPACES_CACHE.get("s") is None
     assert search_cache.SUGGEST_CACHE.get("g") is None
+
+
+def test_invalidate_user_suggestions_only_drops_that_user():
+    search_cache.SUGGEST_CACHE.set(("u1", "docling", "{}", 0, True), {"files": ["a"]})
+    search_cache.SUGGEST_CACHE.set(("u2", "docling", "{}", 0, True), {"files": ["b"]})
+
+    search_cache.invalidate_user_suggestions("u1")
+
+    assert search_cache.SUGGEST_CACHE.get(("u1", "docling", "{}", 0, True)) is None
+    assert search_cache.SUGGEST_CACHE.get(("u2", "docling", "{}", 0, True)) == {"files": ["b"]}
+
+
+@pytest.mark.asyncio
+async def test_discard_where_keeps_an_inflight_computation_from_storing():
+    cache = SingleflightTTLCache(maxsize=8, ttl=60)
+    release = asyncio.Event()
+
+    async def compute():
+        await release.wait()
+        return "stale"
+
+    leader = asyncio.create_task(cache.get_or_compute(("u1", "q"), compute))
+    await asyncio.sleep(0)
+
+    cache.discard_where(lambda key: key[0] == "u1")
+    release.set()
+    assert await leader == "stale"
+
+    assert cache.get(("u1", "q")) is None

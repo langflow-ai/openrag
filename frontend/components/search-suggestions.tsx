@@ -6,8 +6,10 @@ import {
   useMemo,
   useState,
 } from "react";
+import { toast } from "sonner";
 import {
   type SearchSuggestResult,
+  SUGGEST_MAX_CHARS,
   SUGGEST_MIN_CHARS,
   type SuggestFile,
   useSearchSuggestions,
@@ -25,6 +27,20 @@ import {
 import type { FilterInput } from "@/lib/filter-normalization";
 import { splitOnQuery } from "@/lib/search-preview";
 import { cn } from "@/lib/utils";
+
+/**
+ * Clamp typed or pasted search text to the suggestion length cap and tell the
+ * user when input was dropped. The fixed toast id keeps held keys from stacking
+ * popups.
+ */
+export function limitSearchInput(value: string): string {
+  const characters = [...value];
+  if (characters.length <= SUGGEST_MAX_CHARS) return value;
+  toast.error(`Search is limited to ${SUGGEST_MAX_CHARS} characters.`, {
+    id: "search-query-limit",
+  });
+  return characters.slice(0, SUGGEST_MAX_CHARS).join("");
+}
 
 export type SuggestionItem =
   | {

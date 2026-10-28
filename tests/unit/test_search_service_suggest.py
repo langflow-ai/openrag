@@ -301,7 +301,24 @@ async def test_keyword_request_is_not_answered_by_other_threshold_semantic_cache
     await service.suggest("docling", user_id="u1", semantic=True, score_threshold=1.0)
     await service.suggest("docling", user_id="u1", semantic=False, score_threshold=2.0)
 
-    assert opensearch.keyword_calls == 2
+    assert opensearch.keyword_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_semantic_suggest_skips_keyword_query_when_threshold_is_set(monkeypatch):
+    opensearch = _OpenSearch()
+    service = _service({"u1": opensearch}, monkeypatch)
+
+    async def fake_search(query, **kwargs):
+        return {"results": []}
+
+    monkeypatch.setattr(service, "search", fake_search)
+
+    await service.suggest("docling", user_id="u1", semantic=True, score_threshold=1.0)
+    assert opensearch.keyword_calls == 0
+
+    await service.suggest("other", user_id="u1", semantic=True)
+    assert opensearch.keyword_calls == 1
 
 
 @pytest.mark.asyncio

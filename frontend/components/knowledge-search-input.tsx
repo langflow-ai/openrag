@@ -8,6 +8,7 @@ import { buildChunksUrl } from "@/lib/chunks-url";
 import { cn } from "@/lib/utils";
 import { filterAccentClasses } from "./knowledge-filter-panel";
 import {
+  limitSearchInput,
   SearchSuggestionsPopover,
   useSearchSuggestionsBox,
 } from "./search-suggestions";
@@ -158,7 +159,7 @@ export function KnowledgeSearchInput({
                 // File-scoped panels filter as you type / paste.
                 onSearch(next);
               } else {
-                setDraft(next);
+                setDraft(limitSearchInput(next));
               }
             }}
           />

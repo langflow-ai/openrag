@@ -10,6 +10,7 @@ import {
 import {
   type SearchSuggestResult,
   SUGGEST_KEYWORD_DEBOUNCE_MS,
+  SUGGEST_MAX_CHARS,
   useSearchSuggestions,
 } from "./useGetSearchSuggestions";
 
@@ -191,5 +192,45 @@ describe("useSearchSuggestions", () => {
       .filter((r) => !r.semantic)
       .map((r) => r.query);
     expect(keywordQueries).toEqual(["docli"]);
+  });
+
+  it("truncates over-long input to the server's length cap", async () => {
+    const requests = serveSuggest();
+    const { result: hook } = renderHook(
+      () => useSearchSuggestions("a".repeat(150), undefined),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() =>
+      expect(hook.current.data?.query).toBe("a".repeat(SUGGEST_MAX_CHARS)),
+    );
+    expect(requests.every((r) => r.query.length === SUGGEST_MAX_CHARS)).toBe(
+      true,
+    );
+  });
+
+  it("collapses internal whitespace so equivalent input shares one request", async () => {
+    const requests = serveSuggest();
+    const { result: hook } = renderHook(
+      () => useSearchSuggestions("  open   rag ", undefined),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() => expect(hook.current.data?.query).toBe("open rag"));
+    expect(requests.every((r) => r.query === "open rag")).toBe(true);
+  });
+
+  it("hides the previous query's suggestions while the new query debounces", async () => {
+    serveSuggest();
+    const { result: hook, rerender } = renderHook(
+      ({ q }) => useSearchSuggestions(q, undefined),
+      { wrapper: createQueryWrapper(), initialProps: { q: "docling" } },
+    );
+    await waitFor(() => expect(hook.current.data?.query).toBe("docling"));
+
+    rerender({ q: "docker" });
+    expect(hook.current.data).toBeUndefined();
+
+    await waitFor(() => expect(hook.current.data?.query).toBe("docker"));
   });
 });

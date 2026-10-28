@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { KnowledgeDropdown } from "./knowledge-dropdown";
 import { filterAccentClasses } from "./knowledge-filter-panel";
 import {
+  limitSearchInput,
   SearchSuggestionsPopover,
   useSearchSuggestionsBox,
 } from "./search-suggestions";
@@ -158,7 +159,7 @@ export const KnowledgeSearchBar = () => {
               placeholder="Search knowledge"
               value={searchQueryInput}
               onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                setSearchQueryInput(e.target.value)
+                setSearchQueryInput(limitSearchInput(e.target.value))
               }
               className="h-full w-full bg-transparent text-sm text-foreground placeholder:text-[hsl(var(--placeholder))] focus:outline-hidden focus:ring-0"
             />

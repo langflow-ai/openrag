@@ -1120,11 +1120,15 @@ class SearchService:
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
         filter_clauses = _filters_to_clauses(filters)
 
-        keyword_task = self._suggest_keyword_chunks(opensearch_client, query, filter_clauses)
         warnings: list[dict[str, Any]] = []
         chunks: list[dict[str, Any]]
 
         if semantic:
+            # The separate keyword query cannot honor the hybrid score threshold, so
+            # it is skipped when one is set to avoid resurrecting rejected files.
+            keyword_task = self._suggest_keyword_chunks(
+                opensearch_client, query, filter_clauses, skip=score_threshold > 0
+            )
             hybrid_task = self.search(
                 query,
                 user_id=user_id,
@@ -1144,7 +1148,7 @@ class SearchService:
             seen_ids = {c.get("id") for c in chunks if c.get("id")}
             chunks.extend(c for c in keyword_chunks if c.get("id") not in seen_ids)
         else:
-            chunks = await keyword_task
+            chunks = await self._suggest_keyword_chunks(opensearch_client, query, filter_clauses)
 
         candidates = extract_candidates([c.get("text") or "" for c in chunks], query)
         suggestions = await self._count_suggestions(opensearch_client, candidates, filter_clauses)
@@ -1160,9 +1164,16 @@ class SearchService:
         return payload
 
     async def _suggest_keyword_chunks(
-        self, opensearch_client, query: str, filter_clauses: list[dict[str, Any]]
+        self,
+        opensearch_client,
+        query: str,
+        filter_clauses: list[dict[str, Any]],
+        *,
+        skip: bool = False,
     ) -> list[dict[str, Any]]:
         """Cheap lexical query: text (fuzzy + prefix) and partial filename."""
+        if skip:
+            return []
         body: dict[str, Any] = {
             "size": SUGGEST_HIT_LIMIT,
             "_source": ["filename", "mimetype", "text", "connector_type"],

@@ -13,6 +13,8 @@ export const SUGGEST_KEYWORD_DEBOUNCE_MS = 180;
 /** Wait before the embedding-backed request (a partial word has no meaning). */
 export const SUGGEST_SEMANTIC_DEBOUNCE_MS = 450;
 export const SUGGEST_MIN_CHARS = 2;
+/** Matches the server's MAX_QUERY_LENGTH; longer input is truncated there. */
+export const SUGGEST_MAX_CHARS = 100;
 export const SUGGEST_SEMANTIC_MIN_CHARS = 3;
 const SUGGEST_STALE_TIME_MS = 30_000;
 
@@ -89,7 +91,12 @@ export function useSearchSuggestions(
   enabled = true,
   baseScoreThreshold: number = SEARCH_CONSTANTS.DEFAULT_SCORE_THRESHOLD,
 ): UseSearchSuggestionsResult {
-  const trimmed = rawQuery.trim();
+  // Mirror the server's normalization (whitespace collapse, length cap) so the
+  // returned query matches what was typed and equivalent inputs share a cache
+  // entry. Spread to count code points like the server does.
+  const trimmed = [...rawQuery.trim().replace(/\s+/g, " ")]
+    .slice(0, SUGGEST_MAX_CHARS)
+    .join("");
   const keywordQuery = useDebouncedValue(trimmed, SUGGEST_KEYWORD_DEBOUNCE_MS);
   const atWordBoundary = rawQuery.endsWith(" ");
   const semanticQuery = useDebouncedValue(
@@ -109,7 +116,6 @@ export function useSearchSuggestions(
       fetchSuggestions(keywordQuery, false, filters, keywordThreshold, signal),
     enabled: enabled && keywordQuery.length >= SUGGEST_MIN_CHARS,
     staleTime: SUGGEST_STALE_TIME_MS,
-    placeholderData: (previous) => previous,
     retry: false,
   });
 
@@ -137,6 +143,7 @@ export function useSearchSuggestions(
   return {
     ...mergePhases({
       trimmed,
+      keywordQuery,
       semanticQuery,
       semanticEnabled,
       keyword,
@@ -154,22 +161,26 @@ interface PhaseState {
 
 function mergePhases({
   trimmed,
+  keywordQuery,
   semanticQuery,
   semanticEnabled,
   keyword,
   semantic,
 }: {
   trimmed: string;
+  keywordQuery: string;
   semanticQuery: string;
   semanticEnabled: boolean;
   keyword: PhaseState;
   semantic: PhaseState;
 }): Omit<UseSearchSuggestionsResult, "isFetching"> {
-  // Only trust a semantic result that matches the text currently shown, so a
-  // late response for an older query never overwrites newer keyword results.
+  // Only trust results that match the text currently shown, so a late response
+  // or a still-debouncing query never displays another search's suggestions.
   const semanticCurrent =
     semantic.data && semanticQuery === trimmed ? semantic.data : undefined;
-  const data = semanticCurrent ?? keyword.data;
+  const keywordCurrent =
+    keyword.data && keywordQuery === trimmed ? keyword.data : undefined;
+  const data = semanticCurrent ?? keywordCurrent;
   const visibleData = trimmed.length >= SUGGEST_MIN_CHARS ? data : undefined;
 
   const isRefining =

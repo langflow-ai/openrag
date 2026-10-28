@@ -56,6 +56,14 @@ class SingleflightTTLCache:
         self._cache.clear()
         self._inflight.clear()
 
+    def discard_where(self, predicate: Callable[[Hashable], bool]) -> None:
+        """Drop matching entries and keep in-flight computations from storing."""
+        self._generation += 1
+        for key in [key for key in self._cache if predicate(key)]:
+            del self._cache[key]
+        for key in [key for key in self._inflight if predicate(key)]:
+            del self._inflight[key]
+
     async def get_or_compute(
         self,
         key: Hashable,
@@ -135,6 +143,11 @@ def normalize_query(query: str) -> str:
 def fingerprint(value: Any) -> str:
     """Stable, hashable representation of filter clauses / filter dicts."""
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def invalidate_user_suggestions(user_id: str) -> None:
+    """Drop one user's cached suggestions (keys start with the user id)."""
+    SUGGEST_CACHE.discard_where(lambda key: key[0] == user_id)
 
 
 def invalidate_corpus_caches() -> None:
