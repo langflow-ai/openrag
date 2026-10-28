@@ -145,7 +145,9 @@ async def test_wildcard_query_ignores_the_threshold(monkeypatch):
 
     body = os_client.bodies[-1]
     assert "min_score" not in body
-    assert body["query"] == {"match_all": {}}
+    assert body["query"]["bool"]["filter"] == [
+        {"bool": {"must_not": [{"terms": {"record_kind": ["web_page_manifest", "web_source"]}}]}}
+    ]
 
 
 @pytest.mark.asyncio
@@ -181,3 +183,20 @@ async def test_knowledge_source_search_keeps_website_page_chunks_for_parent_aggr
         clause.get("bool", {}).get("must_not") == [{"exists": {"field": "web_page_id"}}]
         for clause in filters
     )
+
+
+@pytest.mark.asyncio
+async def test_chunk_search_excludes_website_manifests_but_not_page_chunks(monkeypatch):
+    """RAG/chunk searches must not retrieve metadata-only website records."""
+    os_client = _OpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+
+    await service.search_tool("baseball")
+
+    filters = os_client.bodies[-1]["query"]["bool"]["filter"]
+    assert {"terms": {"record_kind": ["web_page_manifest", "web_source"]}} in [
+        clause["bool"]["must_not"][0]
+        for clause in filters
+        if clause.get("bool", {}).get("must_not")
+    ]

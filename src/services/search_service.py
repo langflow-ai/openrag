@@ -42,6 +42,7 @@ _SEARCH_FILTER_FIELDS = {
     "web_source_ids": "web_source_id",
 }
 _MAPPING_COMPATIBLE_FILTER_FIELDS = {"web_source_id"}
+_CHUNK_SEARCH_EXCLUDED_RECORD_KINDS = {"web_source", "web_page_manifest"}
 
 
 # Variable used to store the active instance for the tool wrapper
@@ -82,6 +83,31 @@ def _build_search_filter_clauses(filters: dict[str, Any] | None) -> list[dict[st
         else:
             clauses.append({"terms": {field_name: values}})
     return clauses
+
+
+def _add_result_mode_filter(
+    filter_clauses: list[dict[str, Any]], result_mode: str
+) -> list[dict[str, Any]]:
+    """Keep metadata-only website records out of normal chunk retrieval.
+
+    URL sources and their durable page manifests share the document index with
+    searchable website-page chunks. They intentionally contain no body text or
+    embedding, so returning them from ordinary search or RAG creates empty
+    context. The Knowledge view has its own result mode and projection paths,
+    while ``chunks`` includes real ``web_page`` chunks as usual.
+    """
+    if result_mode != "chunks":
+        return filter_clauses
+    return [
+        *filter_clauses,
+        {
+            "bool": {
+                "must_not": [
+                    {"terms": {"record_kind": sorted(_CHUNK_SEARCH_EXCLUDED_RECORD_KINDS)}}
+                ]
+            }
+        },
+    ]
 
 
 def _is_exact_token_query(query: str) -> bool:
@@ -405,11 +431,13 @@ class SearchService:
             get_score_threshold,
             get_search_filters,
             get_search_limit,
+            get_search_result_mode,
         )
 
         filters = get_search_filters() or {}
         limit = get_search_limit()
         score_threshold = get_score_threshold()
+        result_mode = get_search_result_mode()
         # Detect wildcard request ("*") to return global facets/stats without semantic search
         is_wildcard_match_all = isinstance(query, str) and query.strip() == "*"
 
@@ -422,7 +450,9 @@ class SearchService:
 
         if not is_wildcard_match_all:
             # Build filter clauses first so we can use them in model detection
-            filter_clauses = _build_search_filter_clauses(filters)
+            filter_clauses = _add_result_mode_filter(
+                _build_search_filter_clauses(filters), result_mode
+            )
 
             try:
                 seen_spaces: set[str] = set()
@@ -587,7 +617,9 @@ class SearchService:
             )
         else:
             # Wildcard query - no embedding needed
-            filter_clauses = _build_search_filter_clauses(filters)
+            filter_clauses = _add_result_mode_filter(
+                _build_search_filter_clauses(filters), result_mode
+            )
 
         # Build query body
         if is_wildcard_match_all:
