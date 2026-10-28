@@ -308,12 +308,17 @@ export interface OpenRAGClientOptions {
    *  Optional when using IBM auth — pass credentials via extraHeaders instead. */
   apiKey?: string;
   /** Additional headers forwarded on every request. Used in IBM auth mode
-   *  to pass X-Username and X-Api-Key from the user's MCP config. */
+   *  to pass X-Username and X-Api-Key from the user's MCP config. An X-Api-Key
+   *  here (any casing) takes precedence over apiKey / OPENRAG_API_KEY. */
   extraHeaders?: Record<string, string>;
   /** Base URL for the API. Falls back to OPENRAG_URL env var. */
   baseUrl?: string;
   /** Request timeout in milliseconds (default 30000). */
   timeout?: number;
+  /** Custom fetch implementation used for every request (default: global fetch).
+   *  Use it to trust a private CA programmatically, e.g. a fetch bound to an
+   *  undici Agent with `connect: { ca }`. NODE_EXTRA_CA_CERTS also works. */
+  fetch?: typeof fetch;
 }
 
 // Request types

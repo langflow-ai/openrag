@@ -45,6 +45,34 @@ client = OpenRAGClient(
 )
 ```
 
+### IBM authentication
+
+IBM deployments authenticate with `X-Username` / `X-Api-Key` headers. Pass them via
+`extra_headers`; an `X-Api-Key` there (any casing) takes precedence over `api_key` and
+`OPENRAG_API_KEY`, so the key is sent exactly once.
+
+```python
+client = OpenRAGClient(
+    base_url="https://cpd.example.com/openrag-fe",
+    extra_headers={"X-Username": "jdoe", "X-Api-Key": "..."},
+)
+```
+
+### Private certificate authorities
+
+Deployments with a cluster-internal CA (for example IBM Software Hub / CPD) fail TLS
+verification with `CERTIFICATE_VERIFY_FAILED`, because the SDK trusts the `certifi` CAs
+and does not read the OS keychain. Either point `SSL_CERT_FILE` at a bundle that
+contains the CA, or pass the CA file to the client; it is trusted in addition to the
+default CAs:
+
+```python
+client = OpenRAGClient(base_url="https://cpd.example.com/openrag-fe", verify="ca.crt")
+```
+
+`verify` also accepts an `ssl.SSLContext`, or `False` to disable verification (not
+recommended). When you pass your own `http_client`, configure verification on it.
+
 ## Chat
 
 ### Non-streaming
