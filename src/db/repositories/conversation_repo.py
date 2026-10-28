@@ -92,8 +92,13 @@ class ConversationRepo:
     async def delete_stale(self, ttl_days: int) -> int:
         """Delete conversations whose ``last_activity`` is older than *ttl_days*.
 
-        Returns the number of rows deleted.
+        Returns the number of rows deleted. Raises ``ValueError`` unless
+        *ttl_days* >= 1: zero would delete nearly everything and a negative
+        value would push the cutoff into the future, so neither is accepted.
         """
+        if ttl_days < 1:
+            raise ValueError(f"ttl_days must be at least 1, got {ttl_days}")
+
         cutoff = datetime.now(UTC) - timedelta(days=ttl_days)
         result: CursorResult = await self.session.execute(  # type: ignore[assignment]
             delete(Conversation).where(col(Conversation.last_activity) < cutoff)

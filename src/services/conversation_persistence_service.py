@@ -173,13 +173,31 @@ class ConversationPersistenceService:
         return self._conversations.get(user_id, {}).get(response_id, {})
 
     async def delete_conversation_thread(self, user_id: str, response_id: str) -> bool:
+        """Delete one conversation from every active store.
+
+        The file save is best-effort, like ``store_conversation_thread``: a
+        failure is logged and the DB delete still runs in hybrid mode. In
+        ``files`` mode a failed save means the entry is gone from memory but
+        still on disk; the next successful save rewrites the file from memory
+        and removes it, but a restart before then brings it back.
+        """
         deleted = False
 
         if file_writes_enabled():
-            if user_id in self._conversations and response_id in self._conversations[user_id]:
-                del self._conversations[user_id][response_id]
-                await self._save_conversations()
+            with self.lock:
+                user_convs = self._conversations.get(user_id)
+                removed = user_convs is not None and user_convs.pop(response_id, None) is not None
+            if removed:
                 deleted = True
+                try:
+                    await self._save_conversations()
+                except Exception as exc:  # noqa: BLE001
+                    logger.error(
+                        "Failed to persist conversation deletion to disk",
+                        user_id=user_id,
+                        response_id=response_id,
+                        error=str(exc),
+                    )
 
         if db_writes_enabled():
             db_deleted = await self._db_delete(response_id, user_id)
@@ -196,10 +214,12 @@ class ConversationPersistenceService:
           JSON store and persists to disk.
 
         Returns the total number of conversations deleted across all stores.
-        Raises ``ValueError`` for negative *ttl_days*.
+        Raises ``ValueError`` unless *ttl_days* >= 1, before touching memory,
+        disk or the DB: zero would delete nearly every conversation and a
+        negative value would move the cutoff into the future.
         """
-        if ttl_days < 0:
-            raise ValueError(f"ttl_days must be non-negative, got {ttl_days}")
+        if ttl_days < 1:
+            raise ValueError(f"ttl_days must be at least 1, got {ttl_days}")
 
         deleted = 0
         # Use local naive time to match the naive timestamps produced by
@@ -243,9 +263,11 @@ class ConversationPersistenceService:
                     logger.error("Failed to persist conversation pruning to disk", error=str(exc))
                     # Restore deleted entries so in-memory state stays consistent
                     # with what is on disk — they were not actually pruned.
+                    # setdefault: an entry stored again while the save was
+                    # in flight is newer than our snapshot and must win.
                     with self.lock:
                         for (user_id, resp_id), payload in snapshot.items():
-                            self._conversations.setdefault(user_id, {})[resp_id] = payload
+                            self._conversations.setdefault(user_id, {}).setdefault(resp_id, payload)
 
         if db_writes_enabled():
             from db.repositories import ConversationRepo
@@ -264,9 +286,24 @@ class ConversationPersistenceService:
         return deleted
 
     async def clear_user_conversations(self, user_id: str) -> None:
-        if file_writes_enabled() and user_id in self._conversations:
-            del self._conversations[user_id]
-            await self._save_conversations()
+        """Delete every conversation for *user_id* from every active store.
+
+        File-save failures are logged, not raised, so the DB delete still runs.
+        Same durability caveat as ``delete_conversation_thread`` in ``files``
+        mode: until a later save succeeds, the on-disk copy survives a restart.
+        """
+        if file_writes_enabled():
+            with self.lock:
+                removed = self._conversations.pop(user_id, None) is not None
+            if removed:
+                try:
+                    await self._save_conversations()
+                except Exception as exc:  # noqa: BLE001
+                    logger.error(
+                        "Failed to persist user conversation clear to disk",
+                        user_id=user_id,
+                        error=str(exc),
+                    )
 
         if db_writes_enabled():
             await self._db_delete_all(user_id)

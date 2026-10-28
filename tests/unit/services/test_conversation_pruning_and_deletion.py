@@ -1,0 +1,277 @@
+"""Pruning TTL validation, prune rollback races, and file-save failure handling."""
+
+import asyncio
+import json
+import sys
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlmodel import SQLModel
+
+ROOT = Path(__file__).resolve().parent.parent.parent.parent
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+import db.models  # noqa: E402,F401
+from db.repositories import ConversationRepo  # noqa: E402
+from services.conversation_persistence_service import (  # noqa: E402
+    ConversationPersistenceService,
+)
+
+
+@pytest_asyncio.fixture
+async def session_factory():
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    yield factory
+    await engine.dispose()
+
+
+@pytest.fixture
+def storage_path(tmp_path):
+    return tmp_path / "conversations.json"
+
+
+def _svc(storage_path, session_factory) -> ConversationPersistenceService:
+    return ConversationPersistenceService(
+        storage_file=str(storage_path),
+        session_factory=session_factory,
+    )
+
+
+def _payload(response_id="r-1", title="Hello", *, age_days=0) -> dict:
+    last_activity = datetime.now() - timedelta(days=age_days)
+    return {
+        "response_id": response_id,
+        "title": title,
+        "endpoint": "chat",
+        "previous_response_id": None,
+        "filter_id": None,
+        "total_messages": 1,
+        "last_activity": last_activity.isoformat(),
+    }
+
+
+async def _seed_db(session_factory, response_id: str, *, user_id="alice", age_days=0) -> None:
+    async with session_factory() as session:
+        await ConversationRepo(session).upsert(
+            response_id=response_id,
+            user_id=user_id,
+            title="db row",
+            last_activity=datetime.now(UTC) - timedelta(days=age_days),
+        )
+        await session.commit()
+
+
+async def _db_ids(session_factory) -> set[str]:
+    async with session_factory() as session:
+        rows = await ConversationRepo(session).list_for_user("alice")
+    return {row.response_id for row in rows}
+
+
+async def _failing_save() -> None:
+    raise OSError("disk full")
+
+
+# ---------------------------------------------------------------------------
+# 1. ttl_days must be >= 1
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ttl_days", [0, -1, -30])
+async def test_service_rejects_non_positive_ttl_and_changes_nothing(
+    monkeypatch, storage_path, session_factory, ttl_days
+):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
+    svc = _svc(storage_path, session_factory)
+    await svc.store_conversation_thread("alice", "old", _payload("old", age_days=90))
+    await _seed_db(session_factory, "old-db", age_days=90)
+    on_disk_before = storage_path.read_text()
+    memory_before = json.loads(json.dumps(svc._conversations))
+
+    with pytest.raises(ValueError, match="at least 1"):
+        await svc.prune_stale_conversations(ttl_days)
+
+    assert svc._conversations == memory_before
+    assert storage_path.read_text() == on_disk_before
+    assert "old-db" in await _db_ids(session_factory)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ttl_days", [0, -1, -30])
+async def test_repo_rejects_non_positive_ttl_and_deletes_nothing(session_factory, ttl_days):
+    await _seed_db(session_factory, "old-db", age_days=90)
+
+    async with session_factory() as session:
+        with pytest.raises(ValueError, match="at least 1"):
+            await ConversationRepo(session).delete_stale(ttl_days)
+
+    assert await _db_ids(session_factory) == {"old-db"}
+
+
+@pytest.mark.asyncio
+async def test_positive_ttl_prunes_old_and_keeps_recent(monkeypatch, storage_path, session_factory):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
+    svc = _svc(storage_path, session_factory)
+    await svc.store_conversation_thread("alice", "old", _payload("old", age_days=90))
+    await svc.store_conversation_thread("alice", "recent", _payload("recent", age_days=1))
+    await _seed_db(session_factory, "old-db", age_days=90)
+    await _seed_db(session_factory, "recent-db", age_days=1)
+
+    deleted = await svc.prune_stale_conversations(30)
+
+    assert deleted >= 2
+    assert set(svc._conversations["alice"]) == {"recent"}
+    assert set(json.loads(storage_path.read_text())["alice"]) == {"recent"}
+    ids = await _db_ids(session_factory)
+    assert "old-db" not in ids
+    assert "recent-db" in ids
+
+
+# ---------------------------------------------------------------------------
+# 2. Failed-prune rollback must not clobber concurrent updates
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_failed_prune_rollback_keeps_a_newer_concurrent_version(
+    monkeypatch, storage_path, session_factory
+):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
+    svc = _svc(storage_path, session_factory)
+    stale = _payload("old", title="stale version", age_days=90)
+    svc._conversations = {"alice": {"old": stale}}
+
+    save_started = asyncio.Event()
+    release_save = asyncio.Event()
+    calls = 0
+
+    async def save():
+        nonlocal calls
+        calls += 1
+        if calls == 1:  # the prune's own save: pause, then fail
+            save_started.set()
+            await release_save.wait()
+            raise OSError("disk full")
+
+    svc._save_conversations = save
+
+    prune = asyncio.create_task(svc.prune_stale_conversations(30))
+    await save_started.wait()
+    # Pruning has removed the entry and is blocked in its save; a newer
+    # version of the same conversation is stored meanwhile.
+    assert "old" not in svc._conversations["alice"]
+    newer = _payload("old", title="newer version", age_days=0)
+    await svc.store_conversation_thread("alice", "old", newer)
+    release_save.set()
+
+    assert await prune == 0
+    assert svc._conversations["alice"]["old"]["title"] == "newer version"
+
+
+@pytest.mark.asyncio
+async def test_failed_prune_rollback_restores_an_unchanged_entry(
+    monkeypatch, storage_path, session_factory
+):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
+    svc = _svc(storage_path, session_factory)
+    stale = _payload("old", title="stale version", age_days=90)
+    svc._conversations = {"alice": {"old": stale}}
+    svc._save_conversations = _failing_save
+
+    assert await svc.prune_stale_conversations(30) == 0
+
+    assert svc._conversations["alice"]["old"] == stale
+
+
+# ---------------------------------------------------------------------------
+# 3. File-save failures must not skip the DB delete
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_still_deletes_from_db_when_file_save_fails(
+    monkeypatch, storage_path, session_factory
+):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
+    svc = _svc(storage_path, session_factory)
+    await svc.store_conversation_thread("alice", "r-1", _payload("r-1"))
+    assert "r-1" in await _db_ids(session_factory)
+    svc._save_conversations = _failing_save
+
+    deleted = await svc.delete_conversation_thread("alice", "r-1")
+
+    assert deleted is True
+    assert "r-1" not in await _db_ids(session_factory)
+    assert "r-1" not in svc._conversations.get("alice", {})
+
+
+@pytest.mark.asyncio
+async def test_clear_user_still_deletes_from_db_when_file_save_fails(
+    monkeypatch, storage_path, session_factory
+):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
+    svc = _svc(storage_path, session_factory)
+    await svc.store_conversation_thread("alice", "r-1", _payload("r-1"))
+    await svc.store_conversation_thread("alice", "r-2", _payload("r-2"))
+    assert await _db_ids(session_factory) == {"r-1", "r-2"}
+    svc._save_conversations = _failing_save
+
+    await svc.clear_user_conversations("alice")
+
+    assert await _db_ids(session_factory) == set()
+    assert "alice" not in svc._conversations
+
+
+@pytest.mark.asyncio
+async def test_files_only_delete_failure_is_logged_not_durable(
+    monkeypatch, storage_path, session_factory
+):
+    """In files mode a failed save leaves the entry on disk.
+
+    The exception is swallowed so callers are not broken, but nothing was
+    removed from disk: a restart before another successful save brings the
+    conversation back. A later successful save rewrites the file from memory.
+    """
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
+    svc = _svc(storage_path, session_factory)
+    await svc.store_conversation_thread("alice", "r-1", _payload("r-1"))
+    await svc.store_conversation_thread("alice", "r-2", _payload("r-2"))
+    real_save = svc._save_conversations
+    svc._save_conversations = _failing_save
+
+    assert await svc.delete_conversation_thread("alice", "r-1") is True
+
+    assert "r-1" not in svc._conversations["alice"]
+    assert set(json.loads(storage_path.read_text())["alice"]) == {"r-1", "r-2"}
+    reloaded = _svc(storage_path, session_factory)
+    assert "r-1" in reloaded._conversations["alice"]
+
+    svc._save_conversations = real_save
+    await svc._save_conversations()
+    assert set(json.loads(storage_path.read_text())["alice"]) == {"r-2"}
+
+
+@pytest.mark.asyncio
+async def test_files_only_clear_failure_is_logged_not_durable(
+    monkeypatch, storage_path, session_factory
+):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
+    svc = _svc(storage_path, session_factory)
+    await svc.store_conversation_thread("alice", "r-1", _payload("r-1"))
+    svc._save_conversations = _failing_save
+
+    await svc.clear_user_conversations("alice")
+
+    assert "alice" not in svc._conversations
+    assert "r-1" in json.loads(storage_path.read_text())["alice"]
