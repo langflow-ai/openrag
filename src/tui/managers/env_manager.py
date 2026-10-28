@@ -23,6 +23,10 @@ from ..utils.validation import (
 
 logger = get_logger(__name__)
 
+# Settings where a blank value is a choice (it turns the feature off) rather than
+# "not set", so loading keeps it instead of falling back to the default.
+BLANK_ALLOWED_ENV_KEYS = frozenset({"DOCLING_EASYOCR_CONFIDENCE_THRESHOLD"})
+
 
 @dataclass
 class EnvConfig:
@@ -318,7 +322,7 @@ class EnvManager:
         # This works whether values came from .env file or existing environment variables
         for env_key, attr_name in attr_map.items():
             value = os.environ.get(env_key, "")
-            if value:
+            if value or (env_key in BLANK_ALLOWED_ENV_KEYS and env_key in os.environ):
                 setattr(self.config, attr_name, value)
 
         return loaded_from_file
@@ -630,11 +634,11 @@ class EnvManager:
                 f.write(
                     f"INGEST_SAMPLE_DATA={self._quote_env_value(self.config.ingest_sample_data)}\n"
                 )
-                if self.config.docling_easyocr_confidence_threshold:
-                    f.write(
-                        "DOCLING_EASYOCR_CONFIDENCE_THRESHOLD="
-                        f"{self._quote_env_value(self.config.docling_easyocr_confidence_threshold)}\n"
-                    )
+                # Written even when blank, so the opt-out survives a reload.
+                f.write(
+                    "DOCLING_EASYOCR_CONFIDENCE_THRESHOLD="
+                    f"{self._quote_env_value(self.config.docling_easyocr_confidence_threshold)}\n"
+                )
                 f.write("\n")
 
                 # Langflow auth settings

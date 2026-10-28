@@ -14,6 +14,12 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# Recorded next to the PID file when the TUI launches docling-serve. Bump it when
+# docling_serve_env changes in a way the backend depends on, so a server left
+# running by an older TUI is replaced instead of reused. "2": custom OCR config
+# allowed.
+DOCLING_LAUNCH_VERSION = "2"
+
 
 def docling_serve_env(base: dict[str, str]) -> dict[str, str]:
     """Environment for the docling-serve process, on top of `base`.
@@ -67,6 +73,7 @@ class DoclingManager:
 
         self._tui_dir = get_tui_dir()
         self._pid_file = self._tui_dir / ".docling.pid"
+        self._launch_file = self._tui_dir / ".docling.launch"
         self._log_file_path = self._tui_dir / "docling-serve.log"
 
         # Log storage - simplified, no queue
@@ -90,6 +97,7 @@ class DoclingManager:
         """Save the process PID to a file for persistence across sessions."""
         try:
             self._pid_file.write_text(str(pid))
+            self._launch_file.write_text(DOCLING_LAUNCH_VERSION)
             self._add_log_entry(f"Saved PID {pid} to {self._pid_file}")
         except Exception as e:
             self._add_log_entry(f"Failed to save PID file: {e}")
@@ -108,6 +116,7 @@ class DoclingManager:
     def _clear_pid_file(self) -> None:
         """Remove the PID file."""
         try:
+            self._launch_file.unlink(missing_ok=True)
             if self._pid_file.exists():
                 self._pid_file.unlink()
                 self._add_log_entry("Cleared PID file")
@@ -127,7 +136,9 @@ class DoclingManager:
         """Try to recover connection to existing docling-serve process from PID file."""
         pid = self._load_pid()
         if pid is not None:
-            if self._is_process_running(pid):
+            if self._is_process_running(pid) and not self._launched_with_current_settings():
+                self._stop_outdated_process(pid)
+            elif self._is_process_running(pid):
                 self._add_log_entry(f"Recovered existing docling-serve process (PID: {pid})")
                 # Mark as external process since we didn't start it in this session
                 self._external_process = True
@@ -137,6 +148,30 @@ class DoclingManager:
             else:
                 self._add_log_entry(f"Stale PID file found (PID: {pid} not running)")
                 self._clear_pid_file()
+
+    def _launched_with_current_settings(self) -> bool:
+        try:
+            return self._launch_file.read_text().strip() == DOCLING_LAUNCH_VERSION
+        except OSError:
+            return False
+
+    def _stop_outdated_process(self, pid: int) -> None:
+        """Stop a docling-serve an older TUI launched with different settings, so
+        the next start launches one with the current settings."""
+        self._add_log_entry(
+            f"Stopping docling-serve (PID: {pid}) launched by an older OpenRAG with "
+            "different settings; it will be started again with the current ones"
+        )
+        try:
+            os.kill(pid, 15)  # SIGTERM
+            deadline = time.monotonic() + 10
+            while self._is_process_running(pid) and time.monotonic() < deadline:
+                time.sleep(0.1)
+            if self._is_process_running(pid):
+                os.kill(pid, 9)  # SIGKILL
+        except OSError as e:
+            self._add_log_entry(f"Error stopping outdated docling-serve: {e}")
+        self._clear_pid_file()
 
     def _add_log_entry(self, message: str) -> None:
         """Add a log entry to the buffer (thread-safe)."""

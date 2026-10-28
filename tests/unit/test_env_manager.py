@@ -339,8 +339,11 @@ class TestEasyocrConfidenceThreshold:
         reloaded.load_existing_env()
         assert reloaded.config.docling_easyocr_confidence_threshold == "0.4"
 
-    def test_cleared_threshold_is_not_written(self, env_manager, tmp_path):
-        """Blank opts out, for a docling-serve the TUI did not launch."""
+    def test_cleared_threshold_stays_cleared(self, env_manager, tmp_path):
+        """Blank opts out, for a docling-serve the TUI did not launch. The opt-out
+        has to survive a reload, which would otherwise restore the default."""
+        from tui.managers.env_manager import EnvManager
+
         env_manager.config.opensearch_password = "OpenSearchPass123!"
         env_manager.config.langflow_superuser_password = "LangflowPass123!"
         env_manager.config.docling_easyocr_confidence_threshold = ""
@@ -348,7 +351,21 @@ class TestEasyocrConfidenceThreshold:
         with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
             assert env_manager.save_env_file() is True
 
-        assert "DOCLING_EASYOCR_CONFIDENCE_THRESHOLD" not in (tmp_path / ".env").read_text()
+        assert "DOCLING_EASYOCR_CONFIDENCE_THRESHOLD=" in (tmp_path / ".env").read_text()
+
+        reloaded = EnvManager(env_file=tmp_path / ".env")
+        reloaded.load_existing_env()
+        assert reloaded.config.docling_easyocr_confidence_threshold == ""
+
+    def test_env_file_without_the_setting_gets_default(self, tmp_path):
+        """Installs from before the setting existed pick up the default."""
+        from tui.managers.env_manager import EnvManager
+
+        (tmp_path / ".env").write_text("OPENSEARCH_PASSWORD=OpenSearchPass123!\n")
+
+        reloaded = EnvManager(env_file=tmp_path / ".env")
+        reloaded.load_existing_env()
+        assert reloaded.config.docling_easyocr_confidence_threshold == "0.3"
 
 
 class TestLangfuseBaseUrl:
