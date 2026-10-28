@@ -413,13 +413,9 @@ async def run(args: argparse.Namespace) -> int:
     for path in written:
         print(f"  {path}")
     if diff is not None and args.max_recall_drop is not None:
-        drop = report.recall_drop(diff)
-        if drop > args.max_recall_drop:
-            print(
-                f"error: average {diff['compare_metrics'][0]} fell by {drop:.3f}, "
-                f"more than the allowed {args.max_recall_drop:.3f}",
-                file=sys.stderr,
-            )
+        failure = report.recall_gate_failure(diff, args.max_recall_drop)
+        if failure:
+            print(f"error: {failure}", file=sys.stderr)
             return 1
     return 0
 
@@ -452,6 +448,8 @@ def promote(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "promote" and args.min_gain < 0:
+        parser.error("--min-gain must not be negative")
     if args.command == "run" and args.max_recall_drop is not None:
         if args.max_recall_drop < 0:
             parser.error("--max-recall-drop must not be negative")

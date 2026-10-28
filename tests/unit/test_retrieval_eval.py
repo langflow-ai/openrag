@@ -721,3 +721,59 @@ def test_promote_writes_the_baseline_only_on_improvement(tmp_path: Path) -> None
     worse = _run_cli("promote", str(low), str(baseline))
     assert worse.returncode == 3
     assert json.loads(baseline.read_text(encoding="utf-8")) == json.loads(high.read_text())
+
+
+# --- review follow-ups -------------------------------------------------------
+
+
+def test_recall_gate_fails_when_the_runs_are_not_comparable() -> None:
+    baseline = _results_with_recall(0.5)
+    current = _results_with_recall(0.5, corpus_hash="e" * 64)
+
+    failure = report.recall_gate_failure(report.diff_results(baseline, current), 0.02)
+
+    assert failure is not None
+    assert "not comparable" in failure
+
+
+@pytest.mark.parametrize(
+    ("current_recall", "fails"),
+    [(0.5, False), (0.49, False), (0.45, True), (1.0, False)],
+)
+def test_recall_gate_fails_only_on_a_drop_above_the_limit(
+    current_recall: float, fails: bool
+) -> None:
+    diff = report.diff_results(_results_with_recall(0.5), _results_with_recall(current_recall))
+
+    assert (report.recall_gate_failure(diff, 0.02) is not None) is fails
+
+
+@pytest.mark.parametrize("missing", ["current", "baseline"])
+def test_promotion_refuses_a_run_without_recorded_settings(missing: str) -> None:
+    baseline, current = _results_with_recall(0.5), _results_with_recall(1.0)
+    (current if missing == "current" else baseline)["settings"] = None
+
+    promoted, reason = report.promotion_decision(baseline, current)
+
+    assert not promoted
+    assert "settings" in reason
+
+
+def test_promotion_refuses_a_first_baseline_without_recorded_settings() -> None:
+    current = _results_with_recall(0.5)
+    current["settings"] = None
+
+    promoted, reason = report.promotion_decision(None, current)
+
+    assert not promoted
+    assert "settings" in reason
+
+
+def test_promote_rejects_a_negative_min_gain(tmp_path: Path) -> None:
+    results = tmp_path / "results.json"
+    results.write_text(json.dumps(_results_with_recall(0.5)), encoding="utf-8")
+
+    completed = _run_cli("promote", str(results), str(tmp_path / "b.json"), "--min-gain", "-0.1")
+
+    assert completed.returncode == 2
+    assert "--min-gain must not be negative" in completed.stderr

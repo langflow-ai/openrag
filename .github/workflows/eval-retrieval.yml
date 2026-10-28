@@ -31,7 +31,7 @@ on:
           run-to-run noise from raising the baseline.
         required: false
         type: string
-        default: "0.01"
+        default: "0.025"
 
 permissions:
   contents: read
@@ -83,7 +83,7 @@ jobs:
       - name: Validate inputs
         env:
           MAX_RECALL_DROP: ${{ inputs.max_recall_drop }}
-          MIN_GAIN: ${{ inputs.min_gain }}
+          MIN_GAIN: ${{ inputs.min_gain || '0.025' }}
           UPDATE_BASELINE: ${{ inputs.update_baseline }}
           REF_NAME: ${{ github.ref_name }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -94,7 +94,7 @@ jobs:
             exit 1
           fi
           if ! printf '%s' "$MIN_GAIN" | grep -Eq "$number"; then
-            echo "::error::min_gain must be a non-negative number such as 0.01"
+            echo "::error::min_gain must be a non-negative number such as 0.025"
             exit 1
           fi
           if [ "$UPDATE_BASELINE" = "true" ] && [ "$REF_NAME" = "$DEFAULT_BRANCH" ]; then
@@ -211,7 +211,7 @@ jobs:
       - name: Update the tracked baseline
         if: ${{ inputs.update_baseline }}
         env:
-          MIN_GAIN: ${{ inputs.min_gain }}
+          MIN_GAIN: ${{ inputs.min_gain || '0.025' }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           # Exit status 3 means "not an improvement", which is not a failure, so

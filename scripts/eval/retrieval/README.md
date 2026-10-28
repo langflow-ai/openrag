@@ -185,15 +185,17 @@ To tell a real change from this noise:
   question.
 - For the steadiest numbers, use a stack that holds no other documents.
 
-No baseline is committed. Scores depend on the embedding model and settings of
-the stack that produced them, so create the baseline on the same stack you test
-against.
+Scores depend on the embedding model and settings of the stack that produced
+them, so create the baseline on the same stack you test against. The GitHub
+Actions workflow keeps a tracked baseline for its own stack; see
+[Run it from GitHub Actions](#run-it-from-github-actions).
 
 ## Run it from GitHub Actions
 
 The **Retrieval Eval** workflow ([`eval-retrieval.yml`](../../../.github/workflows/eval-retrieval.yml))
 runs the harness on a fresh stack built from the branch you pick and compares
-it with the tracked [`baseline.json`](baseline.json). It runs only when someone
+it with the tracked `baseline.json` in this directory, which exists once the
+first run has created it. It runs only when someone
 starts it. It never runs on a push or a pull request, and it is not a required
 check.
 
@@ -211,7 +213,7 @@ branch, so this works after the workflow has been merged.
 |---|---|
 | `max_recall_drop` | Fail the run if average recall at the compared cutoff falls by more than this below the baseline, for example `0.02` for two points. Leave it empty to report without failing. |
 | `update_baseline` | If the run improves on the baseline, commit the new `baseline.json` to the selected branch. Refused on the default branch. |
-| `min_gain` | Average recall must rise by more than this to count as an improvement. Default `0.01`, so run-to-run noise does not raise the baseline. |
+| `min_gain` | Average recall must rise by more than this to count as an improvement. Default `0.025`. One of the 83 questions flipping moves average recall by about 0.012, so a lower value lets noise raise the baseline. |
 
 Each run writes the summary to the run's page and uploads `results.json` and
 `summary.md` as the `retrieval-eval-results` artifact, kept for 90 days.
@@ -229,8 +231,8 @@ run. It changes only through `update_baseline`:
    diff.
 
 The workflow never commits to the default branch, so a baseline change is
-always reviewed. A run is not promoted when it is not like for like with the
-baseline (a different corpus, question file, cutoffs or stack settings),
+always reviewed. A run is not promoted when it did not record the stack settings, or
+when it is not like for like with the baseline (a different corpus, question file, cutoffs or stack settings),
 because a higher number would not mean better search. To start over after such
 a change, for example a new embedding model, delete `baseline.json` and run
 with `update_baseline`. With no baseline, the first run becomes the baseline.
@@ -238,7 +240,7 @@ with `update_baseline`. With no baseline, the first run becomes the baseline.
 The same logic is available locally:
 
 ```bash
-uv run run_eval.py promote results/results.json baseline.json --min-gain 0.01
+uv run run_eval.py promote results/results.json baseline.json --min-gain 0.025
 ```
 
 It exits with 0 when it wrote the baseline and 3 when it left it alone.

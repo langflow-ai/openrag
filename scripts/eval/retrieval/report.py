@@ -255,6 +255,25 @@ def recall_drop(diff: Mapping[str, Any]) -> float:
     return max(0.0, -diff["aggregate"][name]["delta"])
 
 
+def recall_gate_failure(diff: Mapping[str, Any], max_drop: float) -> str | None:
+    """Why the recall gate fails, or None when it passes.
+
+    The gate fails when the runs are not like for like, because a score that
+    held up between two different setups says nothing about the search.
+    """
+    if diff["warnings"]:
+        return "the runs are not comparable, so recall cannot be checked: " + " ".join(
+            diff["warnings"]
+        )
+    drop = recall_drop(diff)
+    if drop > max_drop:
+        return (
+            f"average {diff['compare_metrics'][0]} fell by {drop:.3f}, "
+            f"more than the allowed {max_drop:.3f}"
+        )
+    return None
+
+
 def promotion_decision(
     baseline: Mapping[str, Any] | None,
     current: Mapping[str, Any],
@@ -265,10 +284,19 @@ def promotion_decision(
     Yes when there is no baseline yet, or when average recall at the compared
     cutoff rose by more than ``min_gain``. A pair that is not like for like
     (different corpus, questions, cutoffs or stack settings) is never promoted,
-    because the gain would not mean the search got better.
+    because the gain would not mean the search got better. A run that did not
+    record the stack settings is never promoted either, since later runs could
+    not tell whether they match it.
     """
+    if not current.get("settings"):
+        return False, "this run did not record the stack settings, so it cannot be a baseline"
     if baseline is None:
         return True, "no baseline yet"
+    if not baseline.get("settings"):
+        return (
+            False,
+            "the baseline did not record the stack settings, so the runs cannot be compared",
+        )
     diff = diff_results(baseline, current)
     if diff["warnings"]:
         return False, "the runs are not comparable: " + " ".join(diff["warnings"])
