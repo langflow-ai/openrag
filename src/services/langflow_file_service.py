@@ -141,15 +141,17 @@ class LangflowFileService:
         # mapping's vector width, so it has to reach the same endpoint the real
         # embedding call will. The direct client resolved credentials from
         # process-global environment instead of from config.
+        from observability.tracing import trace_context
         from services.llm_gateway import embeddings as gateway_embeddings
         from services.llm_gateway import qualified_model_id
 
-        response = await gateway_embeddings(
-            {
-                "model": qualified_model_id(embedding_provider, embedding_model),
-                "input": ["dimension probe"],
-            }
-        )
+        with trace_context(purpose="dimension_probe"):
+            response = await gateway_embeddings(
+                {
+                    "model": qualified_model_id(embedding_provider, embedding_model),
+                    "input": ["dimension probe"],
+                }
+            )
         data = response.get("data") or []
         if not data:
             raise RuntimeError("Embedding provider returned no data for dimension probe")
@@ -1176,9 +1178,18 @@ class LangflowFileService:
                         "elapsed_seconds": round(poll_result.elapsed_seconds, 2),
                     },
                 )
+                from services.docling_service import password_protected_pdf_error
+
+                detail = poll_result.detail
+                if (
+                    poll_result.outcome == PollOutcome.FAILED
+                    and detail
+                    and isinstance(content, bytes)
+                ):
+                    detail = password_protected_pdf_error(detail, content) or detail
                 raise Exception(
                     f"Docling conversion did not complete ({poll_result.outcome.value}): "
-                    f"{poll_result.detail or 'no detail provided'}"
+                    f"{detail or 'no detail provided'}"
                 )
 
             if file_task is not None:

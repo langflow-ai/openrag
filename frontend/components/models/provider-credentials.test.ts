@@ -4,6 +4,8 @@ import {
   authMethodCredentialKeys,
   clearedSavedCredentialKeys,
   credentialTargetChanged,
+  groupRhoaiFields,
+  rhoaiSectionsOpenByDefault,
   secretsToReenter,
 } from "./provider-credentials";
 
@@ -181,5 +183,101 @@ describe("secretsToReenter", () => {
         true,
       ),
     ).toEqual(["api_key"]);
+  });
+});
+
+describe("groupRhoaiFields", () => {
+  const field = (key: string) => ({
+    key,
+    label: key,
+    required: false,
+    field_type: "text",
+  });
+  const keys = (fields: Array<{ key: string }>) => fields.map((f) => f.key);
+
+  it("puts the chat endpoint and token up front and the rest in sections", () => {
+    // Catalogue order deliberately differs from the display order.
+    const grouped = groupRhoaiFields([
+      field("ssl_verify"),
+      field("embedding_max_concurrency"),
+      field("api_key"),
+      field("embedding_api_base"),
+      field("api_base"),
+    ]);
+
+    expect(keys(grouped.primary)).toEqual(["api_base", "api_key"]);
+    expect(keys(grouped.embeddings)).toEqual([
+      "embedding_api_base",
+      "embedding_max_concurrency",
+    ]);
+    expect(keys(grouped.advanced)).toEqual(["ssl_verify"]);
+  });
+
+  it("shows a field no group names up front instead of dropping it", () => {
+    const grouped = groupRhoaiFields([
+      field("api_base"),
+      field("new_backend_field"),
+      field("ssl_verify"),
+    ]);
+
+    expect(keys(grouped.primary)).toEqual(["api_base", "new_backend_field"]);
+    expect(keys(grouped.embeddings)).toEqual([]);
+    expect(keys(grouped.advanced)).toEqual(["ssl_verify"]);
+  });
+
+  it("skips fields the catalogue does not publish", () => {
+    expect(groupRhoaiFields([field("api_base")])).toEqual({
+      primary: [field("api_base")],
+      embeddings: [],
+      advanced: [],
+    });
+    expect(groupRhoaiFields([])).toEqual({
+      primary: [],
+      embeddings: [],
+      advanced: [],
+    });
+  });
+});
+
+describe("rhoaiSectionsOpenByDefault", () => {
+  it.each([
+    [undefined, { embeddings: false, advanced: false }],
+    [{}, { embeddings: false, advanced: false }],
+    [
+      { api_base: "https://chat.example.com/v1" },
+      { embeddings: false, advanced: false },
+    ],
+    [
+      { embedding_api_base: "https://embed.example.com/v1" },
+      { embeddings: true, advanced: false },
+    ],
+    [{ embedding_max_concurrency: "4" }, { embeddings: true, advanced: false }],
+    [
+      { embedding_api_base: " ", embedding_max_concurrency: "  " },
+      { embeddings: false, advanced: false },
+    ],
+    [{ ssl_verify: "" }, { embeddings: false, advanced: false }],
+    [{ ssl_verify: "true" }, { embeddings: false, advanced: false }],
+    [{ ssl_verify: "false" }, { embeddings: false, advanced: true }],
+    [
+      { ssl_verify: "/var/run/secrets/ca.crt" },
+      { embeddings: false, advanced: true },
+    ],
+    [
+      { embedding_api_base: "https://embed.example.com/v1", ssl_verify: "0" },
+      { embeddings: true, advanced: true },
+    ],
+  ])("opens for %j → %j", (saved, expected) => {
+    expect(rhoaiSectionsOpenByDefault(saved)).toEqual(expected);
+  });
+
+  it("opens Embeddings in the onboarding embedding step whatever is saved", () => {
+    expect(rhoaiSectionsOpenByDefault({}, { isEmbedding: true })).toEqual({
+      embeddings: true,
+      advanced: false,
+    });
+    expect(
+      rhoaiSectionsOpenByDefault(undefined, { isEmbedding: false }),
+    ).toEqual({ embeddings: false, advanced: false });
   });
 });

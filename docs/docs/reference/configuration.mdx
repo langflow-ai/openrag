@@ -284,9 +284,9 @@ For better security, it is recommended to set `LANGFLOW_SUPERUSER_PASSWORD` so t
 | `LANGFLOW_SUPERUSER` | `admin` | Username for the Langflow administrator user. |
 | `LANGFLOW_SUPERUSER_PASSWORD` | Not set | Langflow administrator password. If this variable isn't set, then the Langflow server starts _without_ authentication enabled. It is recommended to set `LANGFLOW_SUPERUSER_PASSWORD` so the [Langflow server starts with authentication enabled](https://docs.langflow.org/api-keys-and-authentication#start-a-langflow-server-with-authentication-enabled). |
 | `LANGFLOW_CHAT_FLOW_ID`, `LANGFLOW_INGEST_FLOW_ID`, `NUDGES_FLOW_ID`, `LANGFLOW_URL_INGEST_FLOW_ID` | Built-in flow IDs | These variables are set automatically to the IDs of the chat, Docling ingestion, URL ingestion, and nudges [flows](/agents). The default values are found in [`.env.example`](https://github.com/langflow-ai/openrag/blob/main/.env.example). Only change these values if you want to replace a built-in flow with your own custom flow. The flow JSON must be present in your version of the OpenRAG codebase. For example, if you [deploy self-managed services](/docker), you can add the flow JSON to your local clone of the OpenRAG repository before deploying OpenRAG. |
-| `LANGFUSE_SECRET_KEY` | Not set | Optional Langfuse secret key to enable the [Langflow integration with Langfuse](https://docs.langflow.org/integrations-langfuse). |
-| `LANGFUSE_PUBLIC_KEY` | Not set | Optional Langfuse public key to enable the [Langflow integration with Langfuse](https://docs.langflow.org/integrations-langfuse). |
-| `LANGFUSE_HOST` | Not set | Leave empty for Langfuse Cloud. Required for self-hosted Langfuse deployments if `LANGFUSE_SECRET_KEY` and `LANGFUSE_PUBLIC_KEY` are set. The address must be relative to the OpenRAG container deployment. For example, `http://localhost:3002` or `http://host.docker.internal:3000`. |
+| `LANGFUSE_SECRET_KEY` | Not set | Optional Langfuse secret key to enable the [Langflow integration with Langfuse](https://docs.langflow.org/integrations-langfuse). Also used by [backend tracing](#backend-langfuse-tracing) when it's enabled. |
+| `LANGFUSE_PUBLIC_KEY` | Not set | Optional Langfuse public key to enable the [Langflow integration with Langfuse](https://docs.langflow.org/integrations-langfuse). Also used by [backend tracing](#backend-langfuse-tracing) when it's enabled. |
+| `LANGFUSE_BASE_URL` | Not set | The URL of your Langfuse instance, as shown in your Langfuse project's setup steps. For example, `https://cloud.langfuse.com` (EU), `https://us.cloud.langfuse.com` (US), or a self-hosted address. Self-hosted addresses must be relative to the OpenRAG container deployment, such as `http://localhost:3002` or `http://host.docker.internal:3000`. Langflow doesn't trace unless this is set. `LANGFUSE_HOST` is accepted as an older name for this variable. |
 | `LANGFLOW_TIMEOUT` | `2400` | Total Langflow HTTP timeout limit in seconds. Increase this value if you experience timeouts when ingesting very large PDFs. See also [`INGESTION_TIMEOUT`](#document-processing-settings).|
 | `LANGFLOW_CONNECT_TIMEOUT` | `30` | Langflow HTTP connection timeout limit in seconds. Increase this value if you experience timeouts when ingesting very large PDFs. |
 | `LANGFLOW_KEY` | Automatically generated | A Langflow API key to run flows with Langflow API calls. Because Langflow API keys are server-specific, allow OpenRAG to generate this key initially. You can create additional Langflow API keys after deploying OpenRAG. |
@@ -416,3 +416,30 @@ These variables don't affect the backend, and they aren't used by Kubernetes dep
 `make instana-agent-up` starts a privileged container in the host PID namespace with access to the Docker socket, which is effectively root access to the host.
 It's intended for local development machines only. Don't run it on a shared or production host.
 :::
+
+### Backend tracing with Langfuse {#backend-langfuse-tracing}
+
+OpenRAG Backend can send a trace to [Langfuse](https://langfuse.com) for every model call it makes, both embeddings and chat completions, for every provider.
+This includes calls that Langflow flows make through the backend's model gateway.
+Each trace records the model, provider, latency, token usage, cost where the provider reports it, and the error for failed calls.
+
+Backend tracing is off by default. It uses the same `LANGFUSE_*` keys as the [Langflow integration with Langfuse](#langflow-settings), so backend and Langflow traces land in the same Langfuse project.
+
+To enable it, set the Langfuse keys and `OPENRAG_TRACING_ENABLED=true` in your `.env` file, then [restart the OpenRAG services](/manage-services):
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=https://cloud.langfuse.com  # or https://us.cloud.langfuse.com, or your self-hosted URL
+OPENRAG_TRACING_ENABLED=true
+```
+
+In Kubernetes, set `backend.tracing.enabled: true` in the Helm chart, which reuses the keys under `langflow.langfuse`. With the operator, set the same variables in the backend's `spec.env`.
+
+By default, traces carry metadata only. Prompts, completions, and the document text sent for embedding are replaced with `redacted-by-litellm` before the trace leaves the backend.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENRAG_TRACING_ENABLED` | `false` | Whether OpenRAG Backend sends traces to Langfuse. Requires `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY`. If either key is missing, the backend logs a warning and runs untraced. The tracing dependencies are an optional extra: the backend container image includes them, and a backend run from source needs `uv sync --extra tracing`. Read at startup, so changes require a backend restart. |
+| `OPENRAG_TRACING_CAPTURE_CONTENT` | `false` | Whether traces include prompts, completions, and embedding inputs. Embedding inputs are your document text, so enable this only when that content may leave your deployment. |
+| `OPENRAG_TRACING_ALLOW_CONTENT_IN_SAAS` | `false` | In `OPENRAG_RUN_MODE=saas`, content capture also requires this variable. Has no effect in other run modes. |

@@ -1,7 +1,6 @@
-from typing import Optional
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 
 from db.models import Permission
 
@@ -16,8 +15,6 @@ class PermissionRepo:
         )
         return list(result.scalars().all())
 
-    async def get_by_name(self, name: str) -> Optional[Permission]:
-        result = await self.session.execute(
-            select(Permission).where(Permission.name == name)
-        )
+    async def get_by_name(self, name: str) -> Permission | None:
+        result = await self.session.execute(select(Permission).where(col(Permission.name) == name))
         return result.scalar_one_or_none()

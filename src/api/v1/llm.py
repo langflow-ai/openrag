@@ -10,6 +10,7 @@ from fastapi import Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from dependencies import require_llm_proxy_any_permission, require_llm_proxy_permission
+from observability.tracing import trace_context
 from services.langflow_llm_token_service import HOP_PURPOSE_CHAT
 from services.llm_gateway import LlmGatewayError, chat_completions, embeddings
 from services.model_catalog import (
@@ -113,6 +114,24 @@ async def _read_json_body(request: Request) -> dict[str, Any] | JSONResponse:
     return body
 
 
+def _trace_caller(request: Request, user: User, *, api_purpose: str | None = None):
+    """Label the gateway calls this request makes: Langflow run or API caller.
+
+    ``api_purpose`` overrides the gateway's purpose for API callers only;
+    Langflow runs keep the gateway's (their hop token says chat or ingest).
+    """
+    run_id = getattr(request.state, "llm_hop_run_id", None)
+    if not run_id:
+        return trace_context(source="api", user_id=user.user_id, purpose=api_purpose)
+    hop_purpose = getattr(request.state, "llm_hop_purpose", None)
+    return trace_context(
+        source="langflow",
+        user_id=user.user_id,
+        session_id=run_id,
+        attributes={"openrag.langflow_run_purpose": hop_purpose} if hop_purpose else None,
+    )
+
+
 async def chat_completions_endpoint(
     request: Request,
     user: User = Depends(_chat_use),
@@ -122,7 +141,10 @@ async def chat_completions_endpoint(
     if isinstance(body, JSONResponse):
         return body
     try:
-        result = await chat_completions(body)
+        # The provider call starts here even when streaming, so the label
+        # covers it; the stream is only read after the block exits.
+        with _trace_caller(request, user):
+            result = await chat_completions(body)
     except LlmGatewayError as exc:
         return _gateway_error(exc)
     if body.get("stream"):
@@ -150,7 +172,10 @@ async def embeddings_endpoint(
     # behind a bulk ingest at a concurrency-limited provider.
     interactive = getattr(request.state, "llm_hop_purpose", None) == HOP_PURPOSE_CHAT
     try:
-        result = await embeddings(body, interactive=interactive)
+        # A non-interactive call here isn't necessarily ingestion: the gateway
+        # would label an API caller's embeddings `ingest`.
+        with _trace_caller(request, user, api_purpose="api"):
+            result = await embeddings(body, interactive=interactive)
     except LlmGatewayError as exc:
         return _gateway_error(exc)
     return JSONResponse(result)
