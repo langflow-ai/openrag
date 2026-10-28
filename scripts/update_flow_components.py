@@ -106,7 +106,7 @@ def update_flow(
 
 def iter_flow_files(flows_dir: Path) -> Iterable[Path]:
     for path in sorted(flows_dir.glob("*.json")):
-        if path.is_file() and path.name != "component_index.json":
+        if path.is_file():
             yield path
 
 
