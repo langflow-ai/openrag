@@ -1127,7 +1127,7 @@ async def test_onboarding_keeps_chunk_size_for_model_only_update_of_other_provid
     ],
 )
 def test_cap_watsonx_onprem_onboarding_chunk_size(provider, chunk_size, chunk_overlap, expected):
-    from api.settings.endpoints import _cap_watsonx_onprem_onboarding_chunk_size
+    from api.settings.helpers import _cap_watsonx_onprem_onboarding_chunk_size
     from config.config_manager import OpenRAGConfig
 
     knowledge = OpenRAGConfig.from_dict({}).knowledge

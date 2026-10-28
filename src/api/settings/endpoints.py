@@ -20,6 +20,7 @@ from api.provider_validation import (
 )
 from api.settings.helpers import (
     _affected_embedding_models,
+    _cap_watsonx_onprem_onboarding_chunk_size,
     _create_openrag_docs_filter,
     _default_embedding_model,
     _default_llm_model,
@@ -115,8 +116,6 @@ from utils.version_utils import OPENRAG_VERSION
 
 logger = get_logger(__name__)
 
-WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE = 500
-
 
 def _provider_key(provider: str | None) -> str:
     """Normalize a provider name the way credential storage does.
@@ -127,30 +126,6 @@ def _provider_key(provider: str | None) -> str:
     "gemini".
     """
     return (provider or "").strip().lower()
-
-
-def _cap_watsonx_onprem_onboarding_chunk_size(knowledge) -> int | None:
-    """Cap the chunk size for watsonx.ai on-prem embeddings during onboarding.
-
-    Keys off the effective embedding provider on `knowledge`, so the cap also
-    applies when a request changes only the embedding model. Returns the chunk
-    size it was reduced to, or None when nothing changed.
-    """
-    if (
-        _provider_key(knowledge.embedding_provider) != "watsonx_onprem"
-        or knowledge.chunk_size <= WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
-    ):
-        return None
-
-    knowledge.chunk_size = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
-    if knowledge.chunk_overlap >= WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE:
-        knowledge.chunk_overlap = 200
-    logger.info(
-        "Reduced chunk size for watsonx.ai on-prem embedding compatibility",
-        chunk_size=knowledge.chunk_size,
-        chunk_overlap=knowledge.chunk_overlap,
-    )
-    return WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
 
 
 def _custom_providers_for_settings(openrag_config) -> dict[str, GenericProviderConfig]:
