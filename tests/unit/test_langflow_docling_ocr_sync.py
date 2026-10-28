@@ -19,7 +19,10 @@ async def test_langflow_sync_includes_ocr_languages():
     flows_service = MagicMock()
     flows_service.update_flow_docling_preset = AsyncMock()
 
-    with patch("services.docling_service.platform.system", return_value="Linux"):
+    with (
+        patch("services.docling_service.platform.system", return_value="Linux"),
+        patch("services.docling_service.get_easyocr_confidence_threshold", return_value=None),
+    ):
         await _update_langflow_docling_settings(config, flows_service)
 
     _, opts = flows_service.update_flow_docling_preset.call_args.args
