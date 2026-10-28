@@ -3805,7 +3805,15 @@
                 "trigger_icon": "Table",
                 "trigger_text": "Open table",
                 "type": "table",
-                "value": []
+                "value": [
+                  {
+                    "__load_from_db_fields": {
+                      "value": true
+                    },
+                    "key": "Authorization",
+                    "value": "JWT"
+                  }
+                ]
               },
               "api_url": {
                 "_input_type": "StrInput",
