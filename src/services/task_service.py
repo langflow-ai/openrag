@@ -208,6 +208,22 @@ def _context_window_failure_metadata(error: str) -> dict | None:
     }
 
 
+def _embedding_dimension_failure_metadata(error: str) -> dict | None:
+    """Classify an embedding field whose stored dimension differs from the model's."""
+    from utils.embedding_fields import EMBEDDING_DIMENSION_MISMATCH_MARKER
+
+    if EMBEDDING_DIMENSION_MISMATCH_MARKER not in error:
+        return None
+    # The exception text is already written for the user; drop any wrapper prefix.
+    message = error[error.index(EMBEDDING_DIMENSION_MISMATCH_MARKER) :]
+    return {
+        "component": "opensearch",
+        "failure_phase": "indexing",
+        "user_facing_message": message,
+        "actionable_by": "USER_ACTIONABLE",
+    }
+
+
 def _is_transient_connectivity_error(error: str) -> bool:
     lowered = error.lower()
     return any(marker in lowered for marker in _TRANSIENT_CONNECTIVITY_ERROR_MARKERS)
@@ -1495,6 +1511,12 @@ class TaskService:
                 "user_facing_message": msg,
                 "actionable_by": "USER_ACTIONABLE",
             }
+
+        # Before the duplicate-file check: switching an embedding model's dimension
+        # is an index problem, not a duplicate upload.
+        dimension_meta = _embedding_dimension_failure_metadata(error)
+        if dimension_meta:
+            return dimension_meta
 
         if "already exists" in error:
             return {

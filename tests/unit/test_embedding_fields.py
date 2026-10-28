@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 
 from utils.embedding_fields import (
+    EmbeddingDimensionMismatchError,
     build_embedding_space_aggregation,
     build_knn_vector_field,
     embedding_space_after_keys,
@@ -277,13 +278,21 @@ class TestEnsureEmbeddingFieldExistsDimension:
         indices = _FakeIndices({self.FIELD: build_knn_vector_field(3072)})
         client = SimpleNamespace(indices=indices)
 
-        with pytest.raises(RuntimeError) as excinfo:
+        with pytest.raises(EmbeddingDimensionMismatchError) as excinfo:
             await ensure_embedding_field_exists(client, "text-embedding-3-large", "documents", 1024)
 
-        message = str(excinfo.value)
+        error = excinfo.value
+        assert (error.field_name, error.existing_dimension, error.requested_dimension) == (
+            self.FIELD,
+            3072,
+            1024,
+        )
+        message = str(error)
         assert self.FIELD in message
         assert "3072" in message
         assert "1024" in message
+        # The task classifier reads "already exists" as a duplicate file upload.
+        assert "already exists" not in message
         assert indices.put_calls == []
 
     @pytest.mark.asyncio
@@ -313,8 +322,11 @@ class TestEnsureEmbeddingFieldExistsDimension:
         )
         client = SimpleNamespace(indices=indices)
 
-        with pytest.raises(RuntimeError, match="dimension 3072, but 1024"):
+        with pytest.raises(EmbeddingDimensionMismatchError) as excinfo:
             await ensure_embedding_field_exists(client, "text-embedding-3-large", "documents", 1024)
+
+        assert excinfo.value.existing_dimension == 3072
+        assert excinfo.value.requested_dimension == 1024
 
     @pytest.mark.asyncio
     async def test_missing_field_is_created_with_requested_dimension(self) -> None:
