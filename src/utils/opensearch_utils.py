@@ -19,9 +19,11 @@ ALL_ACCESS_ROLE = "all_access"
 ROLE_MAPPING_PRINCIPAL_FIELDS = {"users", "hosts", "backend_roles", "and_backend_roles"}
 
 # The security plugin stores all roles (and all role mappings) in one config
-# document, so any concurrent security API write -- e.g. startup and onboarding
-# both running setup_opensearch_security -- makes a PUT fail with a 409 version
-# conflict. Such writes are re-read and retried a bounded number of times.
+# document, so any concurrent security API write makes a PUT fail with a 409
+# version conflict. Runs of setup_opensearch_security in this process (startup,
+# lifespan bootstrap, onboarding's init_index) are serialized by
+# _SECURITY_SETUP_LOCK; writes from other replicas or processes can still
+# conflict, so those are re-read and retried a bounded number of times.
 SECURITY_API_CONFLICT_MAX_ATTEMPTS = 5
 SECURITY_API_CONFLICT_BASE_DELAY = 0.2
 
@@ -384,7 +386,25 @@ async def graceful_opensearch_shutdown(opensearch_client: AsyncOpenSearch) -> No
         logger.error("Error during graceful OpenSearch shutdown", error=str(e))
 
 
+# Not re-entrant: setup_opensearch_security must not call itself.
+_SECURITY_SETUP_LOCK = asyncio.Lock()
+
+
 async def setup_opensearch_security(
+    opensearch_client: AsyncOpenSearch,
+    admin_username: str | None = None,
+) -> None:
+    """Setup OpenSearch roles and roles mapping, one run at a time per process.
+
+    Startup and onboarding can both call this concurrently; overlapping runs
+    would race on the same security config document. See
+    ``_setup_opensearch_security`` for the steps.
+    """
+    async with _SECURITY_SETUP_LOCK:
+        await _setup_opensearch_security(opensearch_client, admin_username)
+
+
+async def _setup_opensearch_security(
     opensearch_client: AsyncOpenSearch,
     admin_username: str | None = None,
 ) -> None:

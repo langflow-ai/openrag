@@ -1,3 +1,4 @@
+import asyncio
 import copy
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -332,3 +333,46 @@ async def test_setup_opensearch_security_gives_up_after_bounded_conflict_retries
         await _run_setup(mock_client)
 
     assert len(mapping_puts) == SECURITY_API_CONFLICT_MAX_ATTEMPTS
+
+
+@pytest.mark.asyncio
+async def test_setup_opensearch_security_serializes_concurrent_runs():
+    """Issue #1981: concurrent in-process runs (startup + onboarding) must not interleave writes."""
+    events = []
+
+    def make_client(name):
+        mock_client = MagicMock()
+
+        async def perform_request(method, path, **kwargs):
+            events.append((name, "enter", method))
+            # Yield so an unserialized concurrent run gets scheduled mid-request.
+            await asyncio.sleep(0)
+            events.append((name, "exit", method))
+            return {}
+
+        mock_client.transport.perform_request = AsyncMock(side_effect=perform_request)
+        mock_client.cluster.health = AsyncMock(return_value={"status": "green"})
+        return mock_client
+
+    with (
+        patch("os.path.exists", return_value=True),
+        patch("builtins.open", MagicMock()),
+        patch(
+            "yaml.safe_load",
+            side_effect=[_sample_roles(), _sample_mappings(), _sample_roles(), _sample_mappings()],
+        ),
+    ):
+        await asyncio.gather(
+            setup_opensearch_security(make_client("startup")),
+            setup_opensearch_security(make_client("onboarding")),
+        )
+
+    writes = [(name, phase) for name, phase, method in events if method == "PUT"]
+    first, second = writes[0][0], next(name for name, _ in writes if name != writes[0][0])
+    last_first_write = max(i for i, (name, _) in enumerate(writes) if name == first)
+    first_second_write = min(i for i, (name, _) in enumerate(writes) if name == second)
+    assert last_first_write < first_second_write
+    # Stronger: no request of one run starts while the other run is still in flight.
+    assert [name for name, _, _ in events] == sorted(
+        (name for name, _, _ in events), key=[first, second].index
+    )
