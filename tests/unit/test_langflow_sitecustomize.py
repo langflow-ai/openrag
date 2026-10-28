@@ -1,13 +1,15 @@
 """Langflow image sitecustomize preloads openai.resources for `langflow run` (#2436)."""
 
 import importlib.util
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-SCRIPT = Path("scripts/langflow_sitecustomize.py")
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "langflow_sitecustomize.py"
 
 
 def _load():
@@ -60,7 +62,7 @@ def test_preload_prevents_concurrent_lazy_import_deadlock(tmp_path):
     race = tmp_path / "race.py"
     race.write_text(
         "import importlib.util, sys, threading\n"
-        f"spec = importlib.util.spec_from_file_location('sc', {str(SCRIPT.resolve())!r})\n"
+        f"spec = importlib.util.spec_from_file_location('sc', {str(SCRIPT)!r})\n"
         "sc = importlib.util.module_from_spec(spec); spec.loader.exec_module(sc)\n"
         "import openai\n"
         "sc.preload_openai_resources()\n"
@@ -82,3 +84,34 @@ def test_preload_prevents_concurrent_lazy_import_deadlock(tmp_path):
             [sys.executable, str(race)], capture_output=True, text=True, timeout=60
         )
         assert result.stdout.strip() == "ok", result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(("arg", "preloaded"), [("run", True), ("--version", False)])
+def test_sitecustomize_preloads_only_for_langflow_run(tmp_path, arg, preloaded):
+    """Installed as sitecustomize, the preload runs at interpreter startup for
+    `langflow run` (before the entry point's own code) and not otherwise."""
+    pytest.importorskip("openai")
+    site_dir = tmp_path / "site"
+    site_dir.mkdir()
+    shutil.copy(SCRIPT, site_dir / "sitecustomize.py")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    entry = bin_dir / "langflow"
+    entry.write_text(
+        "import sys\n"
+        "print(sys.modules['sitecustomize'].__file__)\n"
+        "print('openai.resources' in sys.modules, 'openai.resources.chat' in sys.modules)\n"
+    )
+    # PYTHONPATH entries precede site-packages, so this copy wins over any
+    # sitecustomize already installed in the environment.
+    env = {**os.environ, "PYTHONPATH": str(site_dir)}
+
+    result = subprocess.run(
+        [sys.executable, str(entry), arg], capture_output=True, text=True, timeout=60, env=env
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        str(site_dir / "sitecustomize.py"),
+        f"{preloaded} {preloaded}",
+    ]

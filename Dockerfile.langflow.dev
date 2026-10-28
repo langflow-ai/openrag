@@ -106,6 +106,13 @@ RUN lxml_version="$(uv pip show --python /app/.venv/bin/python lxml | awk '/^Ver
         --no-binary lxml "lxml==${lxml_version}"
 
 COPY flows/ /app/flows/
+
+# Preload openai.resources at `langflow run` startup to avoid a concurrent
+# lazy-import deadlock when flows build their components (#2436).
+COPY scripts/langflow_sitecustomize.py /tmp/langflow_sitecustomize.py
+RUN install -m 644 /tmp/langflow_sitecustomize.py \
+    "$(/app/.venv/bin/python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')/sitecustomize.py"
+
 COPY custom_components/ /app/custom_components/
 
 # Match the production image's bind-mount permission handling. The entrypoint
