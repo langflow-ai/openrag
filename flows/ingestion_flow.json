@@ -5036,7 +5036,7 @@
                 "info": "",
                 "list": false,
                 "list_add_label": "Add More",
-                "load_from_db": true,
+                "load_from_db": false,
                 "name": "username",
                 "override_skip": false,
                 "placeholder": "",
@@ -5047,7 +5047,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "OPENRAG_INGEST_URL"
+                "value": "admin"
               },
               "vector_field": {
                 "_input_type": "StrInput",
