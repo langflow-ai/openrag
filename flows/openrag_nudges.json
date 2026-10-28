@@ -2901,7 +2901,7 @@
   "endpoint_name": null,
   "id": "ebc01d31-1976-46ce-a385-b0240327226c",
   "is_component": false,
-  "last_tested_version": "1.12.7",
+  "last_tested_version": "1.12.8",
   "locked": true,
   "name": "OpenRAG OpenSearch Nudges Flow",
   "tags": [
