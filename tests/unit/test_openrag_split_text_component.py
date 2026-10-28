@@ -141,7 +141,7 @@ def test_separators_try_the_configured_one_first_without_duplicates(component_mo
 def test_component_type_differs_from_langflow_builtin():
     """Restricted Langflow swaps drifted code of a known built-in type for its own copy."""
     source = SOURCE.read_text(encoding="utf-8")
-    assert f'name = "{NODE_TYPE}"' in source
+    assert 'name = "OpenRAGSplitText"' in source
     assert 'display_name: str = "Split Text"' in source
 
 
