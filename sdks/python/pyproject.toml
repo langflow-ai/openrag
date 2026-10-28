@@ -35,6 +35,7 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
+    "trustme>=1.1.0",
 ]
 
 [project.urls]

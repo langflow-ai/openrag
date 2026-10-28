@@ -46,6 +46,39 @@ const client = new OpenRAGClient({
 });
 ```
 
+### IBM authentication
+
+IBM deployments authenticate with `X-Username` / `X-Api-Key` headers. Pass them via
+`extraHeaders`; an `X-Api-Key` there (any casing) takes precedence over `apiKey` and
+`OPENRAG_API_KEY`, so the key is sent exactly once.
+
+```typescript
+const client = new OpenRAGClient({
+  baseUrl: "https://cpd.example.com/openrag-fe",
+  extraHeaders: { "X-Username": "jdoe", "X-Api-Key": "..." },
+});
+```
+
+### Private certificate authorities
+
+Deployments with a cluster-internal CA (for example IBM Software Hub / CPD) fail with
+`self-signed certificate in certificate chain` in Node.js. Start Node with
+`NODE_EXTRA_CA_CERTS=/path/to/ca.crt`, or pass a `fetch` that trusts the CA:
+
+```typescript
+import { readFileSync } from "node:fs";
+import { Agent, fetch as undiciFetch } from "undici";
+
+const dispatcher = new Agent({ connect: { ca: readFileSync("ca.crt") } });
+const client = new OpenRAGClient({
+  baseUrl: "https://cpd.example.com/openrag-fe",
+  fetch: (input, init) => undiciFetch(input, { ...init, dispatcher }),
+});
+```
+
+`connect.ca` replaces Node's default CAs for that agent, which is fine when the client
+only talks to the OpenRAG deployment.
+
 ## Chat
 
 ### Non-streaming
