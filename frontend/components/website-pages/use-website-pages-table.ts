@@ -49,8 +49,7 @@ export function useWebsitePagesTable(
     { refetchInterval: 5000 },
     {
       groupBy: "document_id",
-      resultMode:
-        search.trim() && search.trim() !== "*" ? "chunks" : "website_pages",
+      resultMode: "website_pages",
     },
   );
 

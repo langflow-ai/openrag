@@ -107,7 +107,7 @@ describe("WebsitePagesView", () => {
     );
     expect(searchPayload).toMatchObject({
       query: "baseball",
-      resultMode: "chunks",
+      resultMode: "website_pages",
     });
     expect(tableProps.current).not.toBeNull();
     await waitFor(() => expect(taskRequests).toBeGreaterThan(0));

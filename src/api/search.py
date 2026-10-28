@@ -16,6 +16,12 @@ from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpace
 
 logger = get_logger(__name__)
 
+# OpenSearch's default result window caps a single ranked search at 10,000
+# hits. Knowledge-source results are grouped after the ranked search, so use
+# progressively larger candidate sets (up to that window) before applying the
+# caller's result limit.
+_MAX_KNOWLEDGE_SOURCE_CANDIDATES = 10_000
+
 
 class SearchBody(BaseModel):
     query: str
@@ -125,8 +131,14 @@ async def _aggregate_website_page_matches(
 async def _website_page_search_result(
     body: SearchBody,
     user: User,
+    search_service=None,
 ) -> dict[str, Any]:
-    """List durable child-page manifests, including zero-chunk pages."""
+    """Search durable child-page manifests, including zero-chunk pages.
+
+    Manifest matches cover page URL and title, while indexed chunks cover page
+    content. Both are projected from the manifest so page-table rows always
+    carry durable page metadata such as status and page ID.
+    """
     source_ids = body.filters.get("web_source_ids")
     if not isinstance(source_ids, list) or len(source_ids) != 1 or not source_ids[0]:
         raise HTTPException(422, "website_pages search requires one web_source_ids filter")
@@ -135,9 +147,74 @@ async def _website_page_search_result(
     if source is None or source.get("owner_id") != user.user_id:
         raise HTTPException(404, "Website source not found")
 
-    pages = await list_page_manifests(source_id, body.query)
-    results = [_website_page_chunk(page) for page in pages]
+    query = body.query.strip()
+    all_pages = await list_page_manifests(source_id)
+    matching_pages = (
+        await list_page_manifests(source_id, query) if query and query != "*" else all_pages
+    )
+    pages_by_id = {str(page["web_page_id"]): page for page in all_pages if page.get("web_page_id")}
+    results_by_page_id = {
+        str(page["web_page_id"]): _website_page_chunk(page)
+        for page in matching_pages
+        if page.get("web_page_id")
+    }
+
+    if query and query != "*" and search_service is not None:
+        content_matches = await search_service.search(
+            body.query,
+            user_id=user.user_id,
+            jwt_token=user.jwt_token,
+            filters=body.filters,
+            limit=body.limit,
+            score_threshold=body.scoreThreshold,
+            result_mode="chunks",
+        )
+        for match in content_matches.get("results", []):
+            page_id = match.get("web_page_id")
+            page = pages_by_id.get(str(page_id)) if page_id else None
+            if page is None:
+                continue
+            result = results_by_page_id.setdefault(str(page_id), _website_page_chunk(page))
+            if (score := match.get("score")) is not None and score > result["score"]:
+                result["score"] = score
+                result["highlights"] = match.get("highlights", [])
+
+    results = list(results_by_page_id.values())
     return {"results": results, "total": len(results)}
+
+
+async def _search_knowledge_sources(
+    body: SearchBody,
+    search_service: Any,
+    user: User,
+) -> dict[str, Any]:
+    """Gather and group enough ranked hits before enforcing ``body.limit``."""
+    requested_limit = max(body.limit, 0)
+    candidate_limit = min(max(requested_limit * 10, 100), _MAX_KNOWLEDGE_SOURCE_CANDIDATES)
+
+    while True:
+        result = await search_service.search(
+            body.query,
+            user_id=user.user_id,
+            jwt_token=user.jwt_token,
+            filters=body.filters,
+            limit=candidate_limit,
+            score_threshold=body.scoreThreshold,
+            result_mode=body.resultMode,
+        )
+        raw_results = result.get("results", [])
+        grouped_results = await _aggregate_website_page_matches(raw_results, user)
+
+        if (
+            len(grouped_results) >= requested_limit
+            or len(raw_results) < candidate_limit
+            or candidate_limit == _MAX_KNOWLEDGE_SOURCE_CANDIDATES
+        ):
+            result["results"] = grouped_results[:requested_limit]
+            result["total"] = len(result["results"])
+            return result
+
+        candidate_limit = min(candidate_limit * 2, _MAX_KNOWLEDGE_SOURCE_CANDIDATES)
 
 
 async def search(
@@ -163,7 +240,9 @@ async def search(
         )
 
         if body.resultMode == "website_pages":
-            result = await _website_page_search_result(body, user)
+            result = await _website_page_search_result(body, user, search_service)
+        elif body.resultMode == "knowledge_sources":
+            result = await _search_knowledge_sources(body, search_service, user)
         else:
             result = await search_service.search(
                 body.query,
@@ -174,11 +253,6 @@ async def search(
                 score_threshold=body.scoreThreshold,
                 result_mode=body.resultMode,
             )
-            if body.resultMode == "knowledge_sources":
-                result["results"] = await _aggregate_website_page_matches(
-                    result.get("results", []), user
-                )
-                result["total"] = len(result["results"])
         return JSONResponse(result, status_code=200)
     except HTTPException:
         raise

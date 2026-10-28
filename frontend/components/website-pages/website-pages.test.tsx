@@ -155,7 +155,7 @@ describe("website page data", () => {
     );
     expect(requests.at(-1)).toMatchObject({
       query: "guide",
-      resultMode: "chunks",
+      resultMode: "website_pages",
       filters: { web_source_ids: ["source-1"] },
     });
     expect(table.result.current.currentPage).toBe(1);

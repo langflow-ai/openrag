@@ -861,6 +861,13 @@ class TaskProcessor:
             ]
 
             with trace_span("ingest.index") as index:
+                # This guard is intentionally outside the stale-cleanup handler.
+                # A URL source can be deleted while its crawl is still processing;
+                # in that case indexing must stop rather than recreating chunks for
+                # the deleted source.
+                if before_index_write is not None:
+                    await before_index_write()
+
                 # Clear stale chunks from a prior indexing of this document. Chunks are
                 # stored under ids {file_hash}_{i}; if the new chunk count is lower
                 # than the prior one, trailing chunks would otherwise survive the
@@ -868,8 +875,6 @@ class TaskProcessor:
                 # DLS-safe: enumerate visible chunk ids with the scoped user client,
                 # then delete concrete ids with the trusted backend client.
                 try:
-                    if before_index_write is not None:
-                        await before_index_write()
                     from utils.opensearch_delete import (
                         collect_visible_document_ids,
                         delete_document_ids,
