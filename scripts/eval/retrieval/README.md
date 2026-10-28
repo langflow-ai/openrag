@@ -149,6 +149,9 @@ regressed first, then the ones that improved, then the change in each average.
 For every changed question it shows the rank of each expected file before and
 after.
 
+To make a run exit with status 1 when average recall falls too far, add
+`--max-recall-drop 0.02` (two points) next to `--baseline`. It is off by default.
+
 To compare two results files without running anything:
 
 ```bash
@@ -185,6 +188,43 @@ To tell a real change from this noise:
 No baseline is committed. Scores depend on the embedding model and settings of
 the stack that produced them, so create the baseline on the same stack you test
 against.
+
+## Run it from GitHub Actions
+
+The **Retrieval Eval** workflow ([`eval-retrieval.yml`](../../../.github/workflows/eval-retrieval.yml))
+runs the harness on a fresh stack built from the branch you pick. It runs only
+when someone starts it. It never runs on a push or a pull request, and it is
+not a required check.
+
+To start it, open the **Actions** tab, choose **Retrieval Eval**, click **Run
+workflow**, pick a branch and fill in the inputs. Or from the command line:
+
+```bash
+gh workflow run eval-retrieval.yml --ref my-branch
+```
+
+GitHub lists a manually started workflow only once its file is on the default
+branch, so this works after the workflow has been merged.
+
+| Input | Meaning |
+|---|---|
+| `baseline_run_id` | The ID of an earlier **Retrieval Eval** run, the number at the end of its URL. The run downloads that run's results and compares against them. Leave it empty to only record scores. |
+| `max_recall_drop` | Fail the run if average recall at the compared cutoff falls by more than this, for example `0.02` for two points. Needs `baseline_run_id`. Leave it empty to report without failing. |
+
+Each run writes the summary to the run's page and uploads `results.json` and
+`summary.md` as the `retrieval-eval-results` artifact, kept for 90 days. To
+create a baseline, run the workflow with no inputs and note its run ID. To
+check a change, run it on the changed branch with that ID as `baseline_run_id`.
+
+The stack uses the embedding provider and model set by the repository's
+`EMBEDDING_PROVIDER` and `EMBEDDING_MODEL` secrets, the same as the end-to-end
+tests. Scores from different models are not comparable, so make a new baseline
+whenever those change. The comparison warns when the settings of the two runs
+differ.
+
+The harness gives the same stack slightly different scores from run to run (see
+[Repeatability](#repeatability)). Set `max_recall_drop` above that noise or the
+run will fail on unchanged code.
 
 ## How questions are scored
 

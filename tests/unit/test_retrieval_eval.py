@@ -606,3 +606,45 @@ def test_run_rejects_a_fetch_limit_below_the_largest_cutoff(fetch_limit: str) ->
 
     assert completed.returncode == 2
     assert "--fetch-limit must be at least the largest --k value (5)" in completed.stderr
+
+
+# --- recall-drop gate --------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("current_recall", "expected_drop"),
+    [(0.0, 1.0), (1.0, 0.0)],
+)
+def test_recall_drop_reports_a_fall_and_ignores_a_gain(
+    current_recall: float, expected_drop: float
+) -> None:
+    baseline = make_results([make_query("q", 1.0, 1.0, 1.0, 1)])
+    current = make_results([make_query("q", current_recall, 1.0, 1.0, 1)])
+
+    assert report.recall_drop(report.diff_results(baseline, current)) == pytest.approx(
+        expected_drop
+    )
+
+    improved = make_results([make_query("q", 0.0, 0.0, 0.0, None)])
+    gain = make_results([make_query("q", 1.0, 1.0, 1.0, 1)])
+    assert report.recall_drop(report.diff_results(improved, gain)) == 0.0
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "message"),
+    [
+        (["--max-recall-drop", "0.02"], "--max-recall-drop needs --baseline"),
+        (["--max-recall-drop", "-0.1", "--baseline", "b.json"], "must not be negative"),
+    ],
+)
+def test_run_rejects_an_unusable_max_recall_drop(extra_args: list[str], message: str) -> None:
+    script = Path(__file__).resolve().parents[2] / "scripts/eval/retrieval/run_eval.py"
+    completed = subprocess.run(
+        [sys.executable, str(script), "run", "--validate-only", *extra_args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 2
+    assert message in completed.stderr

@@ -249,6 +249,12 @@ def diff_results(
     }
 
 
+def recall_drop(diff: Mapping[str, Any]) -> float:
+    """How far the average recall fell at the compared cutoff; 0 if it held or rose."""
+    name = diff["compare_metrics"][0]
+    return max(0.0, -diff["aggregate"][name]["delta"])
+
+
 def _cell(text: object) -> str:
     return str(text).replace("|", "\\|").replace("\n", " ")
 

@@ -1,0 +1,239 @@
+name: Retrieval Eval
+
+# Manual only. Nothing here runs on a push or a pull request: someone starts it
+# from the Actions tab (or `gh workflow run eval-retrieval.yml`) when they want
+# to measure search quality. See scripts/eval/retrieval/README.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_run_id:
+        description: >-
+          Run ID of an earlier "Retrieval Eval" run to compare against (the number at the
+          end of its URL). Leave empty to just record scores, for example to create a baseline.
+        required: false
+        type: string
+      max_recall_drop:
+        description: >-
+          Fail the run if average recall at the compared cutoff falls by more than this
+          (0.02 = two points). Needs a baseline run ID. Leave empty to only report.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.13"
+  OPENRAG_VERSION: eval-${{ github.sha }}
+  LANGFLOW_SUPERUSER: "admin"
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+  AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+  AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION || '2024-02-01' }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  WATSONX_API_KEY: ${{ secrets.WATSONX_API_KEY }}
+  WATSONX_ENDPOINT: ${{ secrets.WATSONX_ENDPOINT }}
+  WATSONX_PROJECT_ID: ${{ secrets.WATSONX_PROJECT_ID }}
+  OLLAMA_ENDPOINT: ${{ secrets.OLLAMA_ENDPOINT }}
+  # The embedding model decides the scores, so it is the same one test-ci.yml
+  # uses. Scores from different models are not comparable.
+  LLM_PROVIDER: ${{ secrets.LLM_PROVIDER || 'azure' }}
+  EMBEDDING_PROVIDER: ${{ secrets.EMBEDDING_PROVIDER || 'azure' }}
+  LLM_MODEL: ${{ secrets.LLM_MODEL || 'gpt-4.1' }}
+  EMBEDDING_MODEL: ${{ secrets.EMBEDDING_MODEL || 'text-embedding-3-small' }}
+  LANGFLOW_AUTO_LOGIN: "True"
+  LANGFLOW_NEW_USER_IS_ACTIVE: "True"
+  LANGFLOW_ENABLE_SUPERUSER_CLI: "True"
+  LANGFLOW_CHAT_FLOW_ID: ${{ vars.LANGFLOW_CHAT_FLOW_ID || '1098eea1-6649-4e1d-aed1-b77249fb8dd0' }}
+  LANGFLOW_INGEST_FLOW_ID: ${{ vars.LANGFLOW_INGEST_FLOW_ID || '5488df7c-b93f-4f87-a446-b67028bc0813' }}
+  NUDGES_FLOW_ID: ${{ vars.NUDGES_FLOW_ID || 'ebc01d31-1976-46ce-a385-b0240327226c' }}
+  LANGFLOW_URL_INGEST_FLOW_ID: ${{ vars.LANGFLOW_URL_INGEST_FLOW_ID || '72c3d17c-2dac-4a73-b48a-6518473d7830' }}
+  # No-auth mode, so the run can create its own API key. Startup ingest is
+  # off so default documents do not end up in the index being measured.
+  GOOGLE_OAUTH_CLIENT_ID: ""
+  GOOGLE_OAUTH_CLIENT_SECRET: ""
+  DISABLE_STARTUP_INGEST: "true"
+  # Single-node test cluster never reaches the multi-node readiness counts
+  OPENSEARCH_NODE_COUNT_CHECK_ENABLED: "false"
+
+jobs:
+  eval:
+    name: Retrieval eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Validate inputs
+        env:
+          BASELINE_RUN_ID: ${{ inputs.baseline_run_id }}
+          MAX_RECALL_DROP: ${{ inputs.max_recall_drop }}
+        run: |
+          if [ -n "$BASELINE_RUN_ID" ] && ! printf '%s' "$BASELINE_RUN_ID" | grep -Eq '^[0-9]+$'; then
+            echo "::error::baseline_run_id must be a number (the run ID from the run's URL)"
+            exit 1
+          fi
+          if [ -n "$MAX_RECALL_DROP" ]; then
+            if ! printf '%s' "$MAX_RECALL_DROP" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
+              echo "::error::max_recall_drop must be a non-negative number such as 0.02"
+              exit 1
+            fi
+            if [ -z "$BASELINE_RUN_ID" ]; then
+              echo "::error::max_recall_drop needs a baseline_run_id to compare against"
+              exit 1
+            fi
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Throwaway passwords for the stack this run starts and then deletes, so
+      # no password is stored in the repository.
+      - name: Generate stack passwords
+        run: |
+          set -euo pipefail
+          for name in OPENSEARCH_PASSWORD LANGFLOW_SUPERUSER_PASSWORD; do
+            value="Ea1#$(openssl rand -hex 16)"
+            echo "::add-mask::${value}"
+            echo "${name}=${value}" >> "$GITHUB_ENV"
+          done
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: latest
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Check the corpus and questions
+        run: make eval-validate
+
+      - name: Download baseline results
+        if: ${{ inputs.baseline_run_id != '' }}
+        uses: actions/download-artifact@v7
+        with:
+          name: retrieval-eval-results
+          path: ${{ runner.temp }}/baseline
+          run-id: ${{ inputs.baseline_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build images from this ref
+        run: |
+          for image in opensearch backend frontend langflow; do
+            if [ "$image" = "opensearch" ]; then
+              dockerfile=Dockerfile
+            else
+              dockerfile="Dockerfile.${image}"
+            fi
+            docker build -f "$dockerfile" -t "langflowai/openrag-${image}:${OPENRAG_VERSION}" .
+          done
+
+      - name: Start the stack
+        env:
+          CI: "true"
+        run: |
+          chmod +x scripts/setup-e2e.sh
+          ./scripts/setup-e2e.sh
+
+      - name: Onboard the stack and create an API key
+        run: |
+          set -euo pipefail
+          base_url="http://localhost:3000"
+
+          payload="$(jq -n \
+            --arg llm_provider "$LLM_PROVIDER" \
+            --arg embedding_provider "$EMBEDDING_PROVIDER" \
+            --arg llm_model "$LLM_MODEL" \
+            --arg embedding_model "$EMBEDDING_MODEL" \
+            --arg azure_key "${AZURE_OPENAI_API_KEY:-}" \
+            --arg azure_base "${AZURE_OPENAI_ENDPOINT:-}" \
+            --arg azure_version "${AZURE_OPENAI_API_VERSION:-}" \
+            '{llm_provider: $llm_provider, embedding_provider: $embedding_provider,
+              llm_model: $llm_model, embedding_model: $embedding_model}
+             + (if $azure_key != "" and $azure_base != ""
+                then {provider_credentials: {azure: {api_key: $azure_key, api_base: $azure_base, api_version: $azure_version}}}
+                else {} end)')"
+
+          status="$(curl -sS --max-time 120 -o /tmp/onboarding.json -w '%{http_code}' \
+            -X POST "${base_url}/api/onboarding" -H 'Content-Type: application/json' -d "$payload")"
+          if [ "$status" != "200" ] && [ "$status" != "204" ]; then
+            echo "::error::Onboarding failed with HTTP ${status}"
+            exit 1
+          fi
+
+          api_key="$(curl -sS --max-time 60 --fail \
+            -X POST "${base_url}/api/keys" -H 'Content-Type: application/json' \
+            -d '{"name": "Retrieval Eval"}' | jq -r '.api_key')"
+          if [ -z "$api_key" ] || [ "$api_key" = "null" ]; then
+            echo "::error::Could not create an API key"
+            exit 1
+          fi
+          echo "::add-mask::${api_key}"
+          echo "OPENRAG_API_KEY=${api_key}" >> "$GITHUB_ENV"
+
+      - name: Run the retrieval eval
+        env:
+          OPENRAG_URL: http://localhost:3000
+          BASELINE_RUN_ID: ${{ inputs.baseline_run_id }}
+          MAX_RECALL_DROP: ${{ inputs.max_recall_drop }}
+          BASELINE_DIR: ${{ runner.temp }}/baseline
+        run: |
+          set -euo pipefail
+          args=""
+          if [ -n "$MAX_RECALL_DROP" ]; then
+            args="--max-recall-drop ${MAX_RECALL_DROP}"
+          fi
+          if [ -n "$BASELINE_RUN_ID" ]; then
+            make eval-run BASELINE="${BASELINE_DIR}/results.json" EVAL_ARGS="${args}"
+          else
+            make eval-run
+          fi
+
+      - name: Publish summary
+        if: ${{ always() }}
+        run: |
+          if [ -f scripts/eval/retrieval/results/summary.md ]; then
+            cat scripts/eval/retrieval/results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "The eval did not produce a summary." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # The next run can pass this run's ID as baseline_run_id.
+      - name: Upload results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: retrieval-eval-results
+          path: scripts/eval/retrieval/results/
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Collect service logs on failure
+        if: failure()
+        run: |
+          mkdir -p service-logs
+          docker logs openrag-opensearch > service-logs/opensearch.log 2>&1 || true
+          docker logs openrag-backend > service-logs/backend.log 2>&1 || true
+          docker logs openrag-frontend > service-logs/frontend.log 2>&1 || true
+          docker logs openrag-langflow > service-logs/langflow.log 2>&1 || true
+          cp ~/.openrag/tui/docling-serve.log service-logs/docling.log 2>&1 || true
+
+      - name: Upload service logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: eval-service-logs
+          path: service-logs/
+          retention-days: 7
+
+      - name: Teardown infrastructure
+        if: ${{ always() }}
+        run: |
+          make docling-stop || true
+          docker rm -f openrag-backend-proxy 2>/dev/null || true
+          make clean || true
+          docker system prune -f || true
