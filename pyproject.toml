@@ -98,6 +98,8 @@ dev = [
     "mypy>=2.0.0",
     # The tracing extra, so its unit tests (tests/unit/observability) run.
     "langfuse>=4.16,<5",
+    # Used by the Langflow Split Text component, so its unit tests run the real splitter.
+    "langchain-text-splitters>=1.1.2,<2",
 ]
 
 [project.scripts]
