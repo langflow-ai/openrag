@@ -7,30 +7,33 @@
  *   SkippedStatusCell     — renders the amber "Duplicate" badge with tooltip
  *   buildChunksUrl        — URL construction for the chunks navigation link
  *   getOwnerLabel         — owner display label preference order
- *   formatAvgScoreLabel   — avg-score cell number / dash formatting
+ *   compareRelevance      — relevance column sort comparator
+ *   RelevanceCellContent  — renders High/Medium/Low badge with breakdown tooltip
  *   formatChunkCountLabel — chunk-count cell number / dash formatting
  *   resolveDisplayStatus  — failed→cancelled promotion for cancelled files
  *   getSourceIcon         — registry icon, url/docs, s3 and default fallbacks
  *
  * SearchPage render smoke-test — exercises the column-definition object
- * construction (colOwner, colChunks, colAvgScore, colStatus, colActions, …)
+ * construction (colOwner, colChunks, colRelevance, colStatus, colActions, …)
  * which runs every time the component mounts.
  */
 
 import { render, screen } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
-import type { File } from "@/app/api/queries/useGetSearchQuery";
+import {
+  type File,
+  RELEVANCE_HIDE_THRESHOLD,
+} from "@/app/api/queries/useGetSearchQuery";
+import { getRelevanceReasoning } from "@/components/relevance-signal-icon";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { authPresets } from "@/test-utils/fixtures/auth";
 import { renderWithProviders, userEvent, waitFor } from "@/test-utils/render";
 import { setMockLocation } from "@/test-utils/router";
 import ProtectedSearchPage, {
-  AvgScoreCellContent,
   buildChunksUrl,
-  compareAvgScore,
+  compareRelevance,
   compareStatusRank,
-  formatAvgScoreLabel,
   formatChunkCountLabel,
   formatSizeLabel,
   getFileStatus,
@@ -38,7 +41,9 @@ import ProtectedSearchPage, {
   getSkippedWarningText,
   getSourceIcon,
   getStatusSortRank,
+  isLowRelevanceFile,
   isSkippedStatus,
+  RelevanceCellContent,
   resolveActionsVariant,
   resolveDisplayStatus,
   SkippedStatusCell,
@@ -210,19 +215,6 @@ describe("getOwnerLabel", () => {
   });
 });
 
-describe("formatAvgScoreLabel", () => {
-  it("formats a number to two decimal places", () => {
-    expect(formatAvgScoreLabel(0.8765)).toBe("0.88");
-    expect(formatAvgScoreLabel(1)).toBe("1.00");
-  });
-
-  it("returns a dash for non-numeric values", () => {
-    expect(formatAvgScoreLabel(undefined)).toBe("-");
-    expect(formatAvgScoreLabel(null)).toBe("-");
-    expect(formatAvgScoreLabel("0.9")).toBe("-");
-  });
-});
-
 describe("formatChunkCountLabel", () => {
   it("converts a defined count to its string representation", () => {
     expect(formatChunkCountLabel(42)).toBe("42");
@@ -265,22 +257,22 @@ describe("formatSizeLabel", () => {
   });
 });
 
-describe("compareAvgScore", () => {
+describe("compareRelevance", () => {
   it("returns a positive number when valueA > valueB", () => {
-    expect(compareAvgScore(0.9, 0.5)).toBeGreaterThan(0);
+    expect(compareRelevance(0.9, 0.5)).toBeGreaterThan(0);
   });
 
   it("returns a negative number when valueA < valueB", () => {
-    expect(compareAvgScore(0.3, 0.8)).toBeLessThan(0);
+    expect(compareRelevance(0.3, 0.8)).toBeLessThan(0);
   });
 
   it("returns 0 for equal values", () => {
-    expect(compareAvgScore(0.5, 0.5)).toBe(0);
+    expect(compareRelevance(0.5, 0.5)).toBe(0);
   });
 
   it("treats undefined as 0", () => {
-    expect(compareAvgScore(undefined, 0)).toBe(0);
-    expect(compareAvgScore(0.5, undefined)).toBeGreaterThan(0);
+    expect(compareRelevance(undefined, 0)).toBe(0);
+    expect(compareRelevance(0.5, undefined)).toBeGreaterThan(0);
   });
 });
 
@@ -508,23 +500,139 @@ describe("compareStatusRank", () => {
   });
 });
 
-describe("AvgScoreCellContent", () => {
-  it("renders a formatted score label", () => {
+describe("RelevanceCellContent", () => {
+  function makeFile(overrides: Partial<File>): File {
+    return {
+      filename: "test.pdf",
+      mimetype: "application/pdf",
+      source_url: "",
+      size: 0,
+      connector_type: "local",
+      ...overrides,
+    };
+  }
+
+  it("renders '91%' badge for a high-tier file with maxScore 0.914", () => {
     const { container } = render(
       <TooltipProvider>
-        <AvgScoreCellContent value={0.875} />
+        <RelevanceCellContent
+          data={makeFile({
+            relevanceTier: "high",
+            maxScore: 0.914,
+            chunkTiers: { high: 2, medium: 1, low: 0 },
+            chunkCount: 3,
+          })}
+        />
       </TooltipProvider>,
     );
-    expect(container.textContent).toContain("0.88");
+    expect(container.textContent).toContain("91%");
+    expect(container.textContent).not.toContain("High");
   });
 
-  it("renders a dash when value is not a number", () => {
+  it("renders '50%' badge for a medium-tier file with maxScore 0.5", () => {
     const { container } = render(
       <TooltipProvider>
-        <AvgScoreCellContent value={undefined} />
+        <RelevanceCellContent
+          data={makeFile({
+            relevanceTier: "medium",
+            maxScore: 0.5,
+            chunkTiers: { high: 0, medium: 1, low: 1 },
+            chunkCount: 2,
+          })}
+        />
       </TooltipProvider>,
     );
-    expect(container.textContent).toContain("-");
+    expect(container.textContent).toContain("50%");
+    expect(container.textContent).not.toContain("Medium");
+  });
+
+  it("renders '12%' badge for a low-tier file with maxScore 0.123", () => {
+    const { container } = render(
+      <TooltipProvider>
+        <RelevanceCellContent
+          data={makeFile({
+            relevanceTier: "low",
+            maxScore: 0.123,
+            chunkTiers: { high: 0, medium: 0, low: 2 },
+            chunkCount: 2,
+          })}
+        />
+      </TooltipProvider>,
+    );
+    expect(container.textContent).toContain("12%");
+    expect(container.textContent).not.toContain("Low");
+  });
+
+  it("renders an em-dash when no relevanceTier is set", () => {
+    const { container } = render(
+      <TooltipProvider>
+        <RelevanceCellContent data={makeFile({})} />
+      </TooltipProvider>,
+    );
+    expect(container.textContent).toContain("—");
+  });
+
+  it("renders an em-dash when data is undefined", () => {
+    const { container } = render(
+      <TooltipProvider>
+        <RelevanceCellContent />
+      </TooltipProvider>,
+    );
+    expect(container.textContent).toContain("—");
+  });
+
+  it("calculates systematic reasoning factors with keyword and meaning breakdown", () => {
+    const file = makeFile({
+      relevanceTier: "high",
+      maxScore: 0.88,
+      chunks: [
+        {
+          filename: "test.pdf",
+          mimetype: "application/pdf",
+          page: 1,
+          text: "Sample text with keywords",
+          highlights: [
+            "<mark>keyword</mark> 1",
+            "<mark>keyword</mark> 2",
+            "<mark>keyword</mark> 3",
+          ],
+          score: 0.88,
+        },
+      ],
+      chunkCount: 1,
+    });
+    const breakdown = getRelevanceReasoning(file);
+    expect(breakdown.title).toBe("Why it's ranked High");
+    expect(breakdown.keywordMentionCount).toBe(3);
+    expect(breakdown.keywordTier).toBe("high");
+    expect(breakdown.meaningTier).toBe("high");
+    expect(breakdown.reasoning).toBeTruthy();
+  });
+});
+
+describe("isLowRelevanceFile", () => {
+  const file = (maxScore?: number) => ({ filename: "a.pdf", maxScore }) as File;
+
+  it("is true below the hide threshold", () => {
+    expect(isLowRelevanceFile(file(0))).toBe(true);
+    expect(isLowRelevanceFile(file(0.01))).toBe(true);
+    expect(isLowRelevanceFile(file(RELEVANCE_HIDE_THRESHOLD - 0.001))).toBe(
+      true,
+    );
+  });
+
+  it("is false at or above the hide threshold", () => {
+    expect(isLowRelevanceFile(file(RELEVANCE_HIDE_THRESHOLD))).toBe(false);
+    expect(isLowRelevanceFile(file(0.5))).toBe(false);
+    expect(isLowRelevanceFile(file(1))).toBe(false);
+  });
+
+  it("is false when the file has no score", () => {
+    expect(isLowRelevanceFile(file(undefined))).toBe(false);
+  });
+
+  it("uses a 10% cutoff", () => {
+    expect(RELEVANCE_HIDE_THRESHOLD).toBe(0.1);
   });
 });
 
@@ -532,7 +640,7 @@ describe("SearchPage — column-definition smoke-test", () => {
   /**
    * Rendering the page (even with no data) exercises the body of SearchPage,
    * which creates all column-definition objects (colSource, colSize, colType,
-   * colOwner, colChunks, colAvgScore, colStatus, colActions, columnDefs).
+   * colOwner, colChunks, colRelevance, colStatus, colActions, columnDefs).
    * That's enough to hit the property-declaration lines that V8 tracks as
    * executable.  Cell-renderer closure bodies run only when ag-grid paints a
    * real cell, which jsdom cannot do — those branches are covered by the pure-
@@ -573,5 +681,87 @@ describe("SearchPage — column-definition smoke-test", () => {
         screen.queryByRole("heading", { name: /knowledge/i }),
       ).not.toBeNull(),
     );
+  });
+});
+
+describe("SearchPage — low-relevance banner", () => {
+  const searchChunk = (filename: string, score: number) => ({
+    filename,
+    mimetype: "application/pdf",
+    page: 1,
+    text: `text of ${filename}`,
+    score,
+  });
+
+  async function renderAndSearch(results: ReturnType<typeof searchChunk>[]) {
+    setMockLocation({ pathname: "/knowledge" });
+
+    renderWithProviders(<ProtectedSearchPage />, {
+      providers: "all",
+      auth: authPresets.admin,
+      handlers: [
+        http.get("/api/files", () =>
+          HttpResponse.json({
+            files: [],
+            total: 0,
+            is_approximate: false,
+            page: 1,
+            page_size: 20,
+            after_key: null,
+          }),
+        ),
+        http.post("/api/search", () =>
+          HttpResponse.json({ results, warnings: [] }),
+        ),
+        http.get("/api/upload_options", () => HttpResponse.json({})),
+        http.get("/api/connectors", () =>
+          HttpResponse.json({ connectors: [] }),
+        ),
+        http.get("/api/connectors/:name/defaults", () => HttpResponse.json({})),
+      ],
+    });
+
+    const input = await screen.findByPlaceholderText(
+      "Search your documents...",
+    );
+    await userEvent.type(input, "term{Enter}");
+  }
+
+  it("hides files below 10% by default and reveals them from the banner", async () => {
+    // Normalised: best.pdf = 1.0, middle.pdf = 0.5, worst.pdf = 0.0
+    await renderAndSearch([
+      searchChunk("best.pdf", 4),
+      searchChunk("middle.pdf", 3),
+      searchChunk("worst.pdf", 2),
+    ]);
+
+    const banner = await screen.findByText("1 file below 10% relevance hidden");
+    expect(banner).toBeInTheDocument();
+    expect(screen.queryByText("worst.pdf")).not.toBeInTheDocument();
+
+    await userEvent.click(banner);
+
+    expect(
+      await screen.findByText(
+        "Showing files including those below 10% relevance",
+      ),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("worst.pdf")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Hide low-relevance"));
+
+    expect(
+      await screen.findByText("1 file below 10% relevance hidden"),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText("worst.pdf")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("does not render the banner when no file is below 10%", async () => {
+    await renderAndSearch([searchChunk("only.pdf", 4)]);
+
+    expect(await screen.findByText("only.pdf")).toBeInTheDocument();
+    expect(screen.queryByText(/below 10% relevance/)).not.toBeInTheDocument();
   });
 });
