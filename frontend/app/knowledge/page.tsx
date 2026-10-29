@@ -5,29 +5,38 @@ import {
   type CheckboxSelectionCallbackParams,
   type ColDef,
   type ColumnState,
-  type GetRowIdParams,
-  themeQuartz,
   type ValueFormatterParams,
   type ValueGetterParams,
 } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
-import { AlertTriangle, Cloud, FileIcon, Globe, RefreshCw } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
+import {
+  AlertTriangle,
+  ChevronRight,
+  Cloud,
+  FileIcon,
+  RefreshCw,
+} from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { KnowledgeDataTable } from "@/components/knowledge-data-table";
+import { KnowledgeUrlIcon } from "@/components/knowledge-url-icon";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
-import { Button } from "@/components/ui/button";
 import { useOpenTaskMenu } from "@/contexts/console-status-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
-import { trackButton } from "@/lib/analytics";
 import { isFileCancelled } from "@/lib/task-error-display";
 import {
   EMPTY_SEARCH_RESULT,
   type File,
   RELEVANCE_HIDE_THRESHOLD,
-  type RelevanceTier,
   type SearchResult,
   useGetSearchQuery,
 } from "../api/queries/useGetSearchQuery";
@@ -56,9 +65,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { WebsitePagesView } from "@/components/website-pages-view";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
-import { formatFileSize, getFileTypeLabel } from "@/lib/file-format";
+import { formatFileSize } from "@/lib/file-format";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import {
   buildKnowledgeTableRows,
@@ -70,14 +80,8 @@ import {
   DeleteConfirmationDialog,
   formatFilesToDelete,
 } from "../../components/delete-confirmation-dialog";
-import { SyncConfirmDialog } from "../../components/sync-confirm-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
-import { useRefreshOpenragDocs } from "../api/mutations/useRefreshOpenragDocs";
-import {
-  type SyncAllPreviewResponse,
-  useSyncAllConnectors,
-  useSyncAllConnectorsPreview,
-} from "../api/mutations/useSyncConnector";
+import { useDeleteWebsiteSourcePageMutation } from "../api/mutations/useWebsiteSourceMutation";
 
 function sameFileSelection(a: File[], b: File[]): boolean {
   if (a.length !== b.length) {
@@ -117,14 +121,14 @@ function pruneNonDeletableGridSelection(
 
 // Function to get the appropriate icon for a connector type
 export function getSourceIcon(connectorType?: string) {
+  if (connectorType === "openrag_docs" || connectorType === "url") {
+    return <KnowledgeUrlIcon className="h-4 w-4 text-muted-foreground" />;
+  }
   if (connectorType) {
     const Icon = getConnectorDescriptor(connectorType)?.Icon;
     if (Icon) return <Icon className="h-4 w-4 text-foreground shrink-0" />;
   }
   switch (connectorType) {
-    case "openrag_docs":
-    case "url":
-      return <Globe className="h-4 w-4 text-muted-foreground shrink-0" />;
     case "s3":
       return <Cloud className="h-4 w-4 text-foreground shrink-0" />;
     default:
@@ -228,6 +232,10 @@ export function getOwnerLabel(file?: File): string {
   return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
 }
 
+export function formatAvgScoreLabel(value: unknown): string {
+  return typeof value === "number" ? value.toFixed(2) : "-";
+}
+
 export function formatChunkCountLabel(chunkCount?: number): string {
   return chunkCount?.toString() ?? "-";
 }
@@ -244,7 +252,7 @@ export function formatSizeLabel(value: unknown): string {
   return value ? formatFileSize(value as number) : "-";
 }
 
-/** No-op comparator for columns sorted server-side. */
+/** Always returns 0 — passed to ag-grid columns whose ordering is server-side. */
 export function serverSideComparator(): number {
   return 0;
 }
@@ -278,6 +286,21 @@ export function buildChunksUrl(
   }
   return `/knowledge/chunks?${params.toString()}`;
 }
+
+export function buildWebsitePagesUrl(
+  sourceId: string,
+  effectiveSearchText: string,
+): string {
+  const params = new URLSearchParams({ website: sourceId });
+  const trimmed = effectiveSearchText.trim();
+  if (trimmed && trimmed !== "*") {
+    params.set("q", trimmed);
+  }
+  return `/knowledge?${params.toString()}`;
+}
+
+const AVG_SCORE_TOOLTIP =
+  "Average relevance score across the matched chunks of this file. Higher means a stronger match — sort by this column to rank results by relevance.";
 
 export function RelevanceCellContent({ data }: { data?: File }) {
   const tier = data?.relevanceTier;
@@ -380,6 +403,22 @@ export function RelevanceCellContent({ data }: { data?: File }) {
             )}
           </div>
         </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function AvgScoreCellContent({ value }: { value: unknown }) {
+  const label = formatAvgScoreLabel(value);
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded cursor-default">
+          {label}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-56 text-center">
+        {AVG_SCORE_TOOLTIP}
       </TooltipContent>
     </Tooltip>
   );
@@ -526,6 +565,7 @@ function SearchPage() {
     setSelectedSources,
   } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
+  const [showLowRelevance, setShowLowRelevance] = useState(false);
 
   const [sortBy, setSortBy] = useState<string>("filename");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
@@ -542,15 +582,7 @@ function SearchPage() {
   const seenFailedFileKeysRef = useRef<Set<string>>(new Set());
 
   const deleteDocumentMutation = useDeleteDocument();
-  const syncAllConnectorsMutation = useSyncAllConnectors();
-  const syncAllPreviewMutation = useSyncAllConnectorsPreview();
-  const refreshOpenragDocsMutation = useRefreshOpenragDocs();
-  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
-  const [syncPreview, setSyncPreview] = useState<SyncAllPreviewResponse | null>(
-    null,
-  );
-
-  const [showLowRelevance, setShowLowRelevance] = useState(false);
+  const deleteWebsiteSourceMutation = useDeleteWebsiteSourcePageMutation();
   const [currentPage, setCurrentPage] = useState(1);
   const [currentPageSize, setCurrentPageSize] = useState(25);
 
@@ -560,45 +592,6 @@ function SearchPage() {
   if (!cursorCacheRef.current) {
     cursorCacheRef.current = new Map();
   }
-
-  const handleOpenSyncDialog = useCallback(async () => {
-    setSyncPreview(null);
-    setSyncDialogOpen(true);
-    try {
-      const preview = await syncAllPreviewMutation.mutateAsync();
-      setSyncPreview(preview);
-    } catch (error) {
-      setSyncDialogOpen(false);
-      toast.error(
-        error instanceof Error ? error.message : "Failed to preview sync",
-      );
-    }
-  }, [syncAllPreviewMutation]);
-
-  const handleConfirmSync = useCallback(async () => {
-    try {
-      const result = await syncAllConnectorsMutation.mutateAsync();
-      if (result.status === "no_files") {
-        toast.info(
-          result.message ||
-            "No cloud files to sync. Add files from cloud connectors first.",
-        );
-      } else if (
-        result.synced_connectors &&
-        result.synced_connectors.length > 0
-      ) {
-        toast.success(
-          `Sync started for ${result.synced_connectors.join(", ")}. Check task notifications for progress.`,
-        );
-      } else if (result.errors && result.errors.length > 0) {
-        toast.error("Some connectors failed to sync");
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to sync connectors",
-      );
-    }
-  }, [syncAllConnectorsMutation]);
 
   useEffect(() => {
     refreshTasks();
@@ -751,17 +744,15 @@ function SearchPage() {
     isLoading: isSearchLoading,
     error: searchError,
     isError: isSearchError,
-  } = useGetSearchQuery(queryOverride, parsedFilterData, {
-    enabled: !isWildcardQuery,
-  });
+  } = useGetSearchQuery(
+    queryOverride,
+    parsedFilterData,
+    { enabled: !isWildcardQuery },
+    { resultMode: "knowledge_sources" },
+  );
 
-  const { files: allSearchFiles, warnings: searchWarnings } =
+  const { files: searchFiles, warnings: searchWarnings } =
     searchData as SearchResult;
-
-  const lowRelevanceCount = allSearchFiles.filter(isLowRelevanceFile).length;
-  const searchFiles = showLowRelevance
-    ? allSearchFiles
-    : allSearchFiles.filter((file) => !isLowRelevanceFile(file));
 
   const isLoading = isWildcardQuery ? isListFilesLoading : isSearchLoading;
 
@@ -818,8 +809,7 @@ function SearchPage() {
       );
     });
   });
-  const hasOpenragRefreshCue =
-    refreshOpenragDocsMutation.isPending || hasOpenragRefreshCueFromTasks;
+  const hasOpenragRefreshCue = hasOpenragRefreshCueFromTasks;
 
   // Show toast notification for search errors
   useEffect(() => {
@@ -842,19 +832,25 @@ function SearchPage() {
   const fileResults = buildKnowledgeTableRows(
     effectiveData,
     taskFiles,
-    Boolean(selectedFilter) || !isWildcardQuery,
+    Boolean(selectedFilter),
   );
 
   const serverTotal = isWildcardQuery
     ? (listFilesData?.total ?? 0)
     : searchFiles.length;
-  const gridRows: File[] = fileResults;
+
+  const hiddenLowRelevanceFiles = !isWildcardQuery
+    ? fileResults.filter(isLowRelevanceFile)
+    : [];
+  const gridRows: File[] =
+    !isWildcardQuery && !showLowRelevance
+      ? fileResults.filter((f) => !isLowRelevanceFile(f))
+      : fileResults;
   const totalPages = Math.max(1, Math.ceil(serverTotal / currentPageSize));
 
   useEffect(() => {
     cursorCacheRef.current = new Map();
     setCurrentPage(1);
-    setShowLowRelevance(false);
   }, [effectiveSearchText, filterPageResetKey]);
 
   // when the server responds with an after_key for page N, cache it as the cursor for page N+1
@@ -948,21 +944,40 @@ function SearchPage() {
           (typeof value === "string" ? value.split("::")[0] : "");
         const status = data?.status || "active";
         const isActive = status === "active";
+        const isParentWebsiteSource =
+          data?.connector_type === "url" &&
+          Boolean(data.web_source_id) &&
+          !data.web_page_id;
         const showOpenragSourceAnimation =
           isOpenragDocsRow(data) && hasOpenragRefreshCue;
         return (
           <div className="flex items-center overflow-hidden w-full min-w-0 h-full">
+            <div
+              className={`transition-opacity duration-200 ${
+                isActive ? "w-0" : "w-7"
+              }`}
+            ></div>
             <button
               type="button"
               className={cn(
                 "flex items-center gap-2 text-left flex-1 overflow-hidden transition-colors",
-                "[.ag-row-processing_&]:pl-7",
-                isCloudBrand
-                  ? "cursor-pointer hover:text-primary [.ag-row-processing_&]:cursor-default [.ag-row-processing_&]:hover:text-foreground"
-                  : "cursor-pointer hover:text-blue-600 [.ag-row-processing_&]:cursor-default [.ag-row-processing_&]:hover:text-foreground",
+                isActive
+                  ? isCloudBrand
+                    ? "cursor-pointer hover:text-primary"
+                    : "cursor-pointer hover:text-blue-600"
+                  : "cursor-default",
               )}
               onClick={() => {
                 if (!isActive) return;
+                if (data?.connector_type === "url" && data.web_source_id) {
+                  router.push(
+                    buildWebsitePagesUrl(
+                      data.web_source_id,
+                      effectiveSearchText,
+                    ),
+                  );
+                  return;
+                }
                 router.push(buildChunksUrl(filename, effectiveSearchText));
               }}
             >
@@ -984,6 +999,12 @@ function SearchPage() {
                   {filename}
                 </TooltipContent>
               </Tooltip>
+              {isParentWebsiteSource && (
+                <ChevronRight
+                  aria-hidden="true"
+                  className="ml-auto size-5 shrink-0 text-link-primary"
+                />
+              )}
             </button>
           </div>
         );
@@ -1016,8 +1037,6 @@ function SearchPage() {
     ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
     cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
     sortable: true,
-    valueFormatter: (params: ValueFormatterParams<File>) =>
-      getFileTypeLabel(params.value),
   };
 
   const colOwner: ColDef<File> = {
@@ -1046,7 +1065,7 @@ function SearchPage() {
       formatChunkCountLabel(params.data?.chunkCount),
   };
 
-  const colRelevance: ColDef<File> = {
+  const colAvgScore: ColDef<File> = {
     field: "maxScore",
     headerName: "Relevance",
     hide: isWildcardQuery,
@@ -1109,6 +1128,10 @@ function SearchPage() {
           <KnowledgeActionsDropdown
             filename={data?.filename || ""}
             connectorType={data?.connector_type}
+            webSourceId={data?.web_source_id}
+            webPageId={data?.web_page_id}
+            webChildCount={data?.web_child_count}
+            searchQuery={effectiveSearchText}
           />
         );
       }
@@ -1124,14 +1147,14 @@ function SearchPage() {
 
   // ── Layout-aware column sets ─────────────────────────────────────────────
   const columnDefs: ColDef<File>[] = isNarrow
-    ? [colSource, colChunks, colRelevance, colStatus, colActions]
+    ? [colSource, colChunks, colAvgScore, colStatus, colActions]
     : [
         colSource,
         colSize,
         colType,
         colOwner,
         colChunks,
-        colRelevance,
+        colAvgScore,
         colStatus,
         colActions,
       ];
@@ -1165,9 +1188,13 @@ function SearchPage() {
     try {
       const deleteResults = await Promise.allSettled(
         rowsToDelete.map((row) =>
-          deleteDocumentMutation.mutateAsync({
-            filename: resolveDeleteFilename(row),
-          }),
+          row.web_source_id
+            ? deleteWebsiteSourceMutation.mutateAsync({
+                sourceId: row.web_source_id,
+              })
+            : deleteDocumentMutation.mutateAsync({
+                filename: resolveDeleteFilename(row),
+              }),
         ),
       );
 
@@ -1180,18 +1207,7 @@ function SearchPage() {
       ]);
 
       const deleted = deleteResults.filter(
-        (
-          result,
-        ): result is PromiseFulfilledResult<
-          Awaited<ReturnType<typeof deleteDocumentMutation.mutateAsync>>
-        > =>
-          result.status === "fulfilled" &&
-          (result.value.deleted_chunks || 0) > 0,
-      );
-      const noChunks = deleteResults.filter(
-        (result) =>
-          result.status === "fulfilled" &&
-          (result.value.deleted_chunks || 0) === 0,
+        (result) => result.status === "fulfilled",
       );
       const failed = deleteResults.filter(
         (result): result is PromiseRejectedResult =>
@@ -1201,16 +1217,6 @@ function SearchPage() {
       if (deleted.length > 0) {
         toast.success(
           `Deleted ${deleted.length} document${deleted.length > 1 ? "s" : ""}`,
-        );
-      } else if (failed.length === 0) {
-        toast.warning(
-          "No document chunks were deleted. Files may be missing or not deletable in your current context.",
-        );
-      }
-
-      if (noChunks.length > 0 && deleted.length > 0) {
-        toast.warning(
-          `${noChunks.length} selected file${noChunks.length > 1 ? "s had" : " had"} no matching chunks.`,
         );
       }
 
@@ -1290,82 +1296,10 @@ function SearchPage() {
             </div>
           </div>
         ) : (
-          /* Search Input Area */
-          <div className="flex items-center shrink-0 flex-wrap-reverse gap-3 mb-6">
-            {!isNarrow && (
-              <KnowledgeSearchInput placeholder="Search your documents..." />
-            )}
-
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-lg shrink-0"
-              disabled={
-                syncAllConnectorsMutation.isPending ||
-                syncAllPreviewMutation.isPending
-              }
-              onClick={handleOpenSyncDialog}
-            >
-              {syncAllConnectorsMutation.isPending ||
-              syncAllPreviewMutation.isPending ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Sync
-                </>
-              )}
-            </Button>
-            <RequirePermission perm="config:write">
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-lg shrink-0"
-                disabled={refreshOpenragDocsMutation.isPending}
-                onClick={async () => {
-                  trackButton({
-                    CTA: "Fetch Latest Docs",
-                    elementId: "fetch-latest-docs-button",
-                    namespace: "knowledge",
-                  });
-                  try {
-                    toast.info("Refreshing OpenRAG docs...");
-                    const result =
-                      await refreshOpenragDocsMutation.mutateAsync();
-                    toast.success(result.message);
-                  } catch (error) {
-                    toast.error(
-                      error instanceof Error
-                        ? error.message
-                        : "Failed to refresh OpenRAG docs",
-                    );
-                  }
-                }}
-              >
-                {refreshOpenragDocsMutation.isPending ? (
-                  <>Refreshing docs...</>
-                ) : (
-                  <>Fetch latest docs</>
-                )}
-              </Button>
-            </RequirePermission>
-            {selectedRows.length > 0 && (
-              <Button
-                type="button"
-                variant="destructive"
-                className="rounded-lg shrink-0"
-                onClick={() => setShowBulkDeleteDialog(true)}
-              >
-                Delete
-              </Button>
-            )}
-            <div className="ml-auto">
-              <KnowledgeDropdown />
-            </div>
-          </div>
+          <KnowledgeSearchBar
+            selectedCount={selectedRows.length}
+            onDeleteSelected={() => setShowBulkDeleteDialog(true)}
+          />
         )}
         {!isWildcardQuery && searchWarnings.length > 0 && (
           <div className="mb-4 flex flex-col gap-2">
@@ -1404,91 +1338,36 @@ function SearchPage() {
             })}
           </div>
         )}
-        {isCloudBrand ? (
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <AgGridReact
-              className="w-full h-full border"
-              columnDefs={columnDefs as ColDef<File>[]}
-              defaultColDef={defaultColDef}
-              loading={isLoading || deleteDocumentMutation.isPending}
-              ref={gridRef}
-              theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
-              rowData={gridRows}
-              rowSelection="multiple"
-              rowClassRules={{
-                "ag-row-processing": (p) => p.data?.status === "processing",
-              }}
-              getRowId={(params: GetRowIdParams<File>) =>
-                getFileIdentity(params.data)
-              }
-              isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
-              domLayout="normal"
-              onGridReady={handleGridReady}
-              onGridPreDestroyed={handleGridPreDestroyed}
-              onSelectionChanged={onSelectionChanged}
-              onSortChanged={onSortChanged}
-              headerHeight={64}
-              rowHeight={64}
-              noRowsOverlayComponent={() => (
-                <div className="text-center pb-[45px]">
-                  <div className="text-lg text-primary font-semibold">
-                    No knowledge
-                  </div>
-                  <div className="text-sm mt-1 text-muted-foreground">
-                    Add files from local or your preferred cloud.
-                  </div>
-                </div>
-              )}
-            />
-          </div>
-        ) : (
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <AgGridReact
-              className="w-full h-full"
-              columnDefs={columnDefs as ColDef<File>[]}
-              defaultColDef={defaultColDef}
-              loading={isLoading || deleteDocumentMutation.isPending}
-              ref={gridRef}
-              theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
-              rowData={gridRows}
-              rowSelection="multiple"
-              rowMultiSelectWithClick={false}
-              suppressRowClickSelection={true}
-              rowClassRules={{
-                "ag-row-processing": (p) => p.data?.status === "processing",
-              }}
-              getRowId={(params: GetRowIdParams<File>) =>
-                getFileIdentity(params.data)
-              }
-              isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
-              domLayout="normal"
-              onGridReady={handleGridReady}
-              onGridPreDestroyed={handleGridPreDestroyed}
-              onSelectionChanged={onSelectionChanged}
-              onSortChanged={onSortChanged}
-              noRowsOverlayComponent={() => (
-                <div className="text-center pb-[45px]">
-                  <div className="text-lg text-primary font-semibold">
-                    No knowledge
-                  </div>
-                  <div className="text-sm mt-1 text-muted-foreground">
-                    Add files from local or your preferred cloud.
-                  </div>
-                </div>
-              )}
+        <KnowledgeDataTable
+          rows={gridRows}
+          columnDefs={columnDefs}
+          defaultColDef={defaultColDef}
+          loading={
+            isLoading ||
+            deleteDocumentMutation.isPending ||
+            deleteWebsiteSourceMutation.isPending
+          }
+          gridRef={gridRef}
+          isCloudBrand={isCloudBrand}
+          rowSelection="multiple"
+          getRowId={(params) => getFileIdentity(params.data)}
+          isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
+          onGridReady={handleGridReady}
+          onGridPreDestroyed={handleGridPreDestroyed}
+          onSelectionChanged={onSelectionChanged}
+          onSortChanged={onSortChanged}
+        />
+
+        {hiddenLowRelevanceFiles.length > 0 && (
+          <div className="mt-2">
+            <LowRelevanceBanner
+              showingAll={showLowRelevance}
+              hiddenMessage={`${hiddenLowRelevanceFiles.length} file${hiddenLowRelevanceFiles.length > 1 ? "s" : ""} below 10% relevance hidden`}
+              shownMessage="Showing files including those below 10% relevance"
+              onToggle={() => setShowLowRelevance((prev) => !prev)}
             />
           </div>
         )}
-
-        {!isWildcardQuery && lowRelevanceCount > 0 && (
-          <LowRelevanceBanner
-            showingAll={showLowRelevance}
-            shownMessage="Showing files including those below 10% relevance"
-            hiddenMessage={`${lowRelevanceCount} file${lowRelevanceCount !== 1 ? "s" : ""} below 10% relevance hidden`}
-            onToggle={() => setShowLowRelevance((prev) => !prev)}
-          />
-        )}
-
         <KnowledgePaginationFooter
           currentPage={currentPage}
           currentPageSize={currentPageSize}
@@ -1509,7 +1388,10 @@ function SearchPage() {
         description={`Are you sure you want to delete ${selectedRows.length} document${selectedRows.length > 1 ? "s" : ""}?`}
         confirmText={selectedRows.length > 1 ? "Delete all" : "Delete"}
         onConfirm={handleBulkDelete}
-        isLoading={deleteDocumentMutation.isPending}
+        isLoading={
+          deleteDocumentMutation.isPending ||
+          deleteWebsiteSourceMutation.isPending
+        }
       >
         <p className="my-2">
           This will remove all chunks and data associated with these documents.
@@ -1518,28 +1400,33 @@ function SearchPage() {
         <p className="my-2">Documents to be deleted:</p>
         {formatFilesToDelete(selectedRows)}
       </DeleteConfirmationDialog>
-
-      <SyncConfirmDialog
-        open={syncDialogOpen}
-        onOpenChange={setSyncDialogOpen}
-        onConfirm={handleConfirmSync}
-        isLoading={syncAllPreviewMutation.isPending || syncPreview === null}
-        isSyncing={syncAllConnectorsMutation.isPending}
-        isSyncAll
-        orphansByType={syncPreview?.orphans_by_type}
-        orphansAvailableByType={syncPreview?.orphans_available_by_type}
-        updatesByType={syncPreview?.updates_by_type}
-        updatesAvailableByType={syncPreview?.updates_available_by_type}
-        syncedCountByType={syncPreview?.synced_count_by_type}
-      />
     </>
+  );
+}
+
+function ProtectedSearchPageContent() {
+  const searchParams = useSearchParams();
+  const websiteId = searchParams.get("website");
+  const websiteSearch = searchParams.get("q") ?? "";
+  return (
+    <ProtectedRoute>
+      {websiteId ? (
+        <WebsitePagesView
+          key={`${websiteId}:${websiteSearch}`}
+          sourceId={websiteId}
+          initialSearch={websiteSearch}
+        />
+      ) : (
+        <SearchPage />
+      )}
+    </ProtectedRoute>
   );
 }
 
 export default function ProtectedSearchPage() {
   return (
-    <ProtectedRoute>
-      <SearchPage />
-    </ProtectedRoute>
+    <Suspense fallback={null}>
+      <ProtectedSearchPageContent />
+    </Suspense>
   );
 }

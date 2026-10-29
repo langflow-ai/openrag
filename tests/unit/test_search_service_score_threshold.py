@@ -1,16 +1,19 @@
 """
-Unit tests for how services/search_service.py applies the score threshold.
+Unit tests for search query structure after the hybrid-search refactor.
 
-OpenSearch DLS adds its role query to every user-scoped search as a
-constant-score clause, so a top-level min_score is met by every visible hit.
-The threshold must therefore sit inside the query, on the hybrid score.
+With the normalization processor, OpenSearch returns scores in [0, 1] and
+the frontend applies the relevance threshold via min-max normalisation.
+The backend no longer wraps queries in function_score/min_score; instead it
+emits a hybrid query and attaches the normalization pipeline param.
 
 Verifies:
-- a positive threshold wraps the hybrid query in function_score.min_score
-- no top-level min_score is sent
-- threshold 0 falls back to the default threshold; with no default it is not wrapped
-- wildcard queries are not wrapped
-- the num_candidates retry still strips num_candidates inside the wrapper
+- a positive threshold does NOT produce a top-level or inner min_score
+- the hybrid query structure is used when embeddings are available
+- keyword-only fallback uses bool/should (no pipeline)
+- wildcard queries use match_all / bool-filter (no pipeline)
+- the num_candidates retry still strips num_candidates inside the hybrid clause
+- knowledge_source result mode keeps website page chunks for parent aggregation
+- chunk result mode excludes website manifests (record_kind filter)
 """
 
 from types import SimpleNamespace
@@ -18,7 +21,13 @@ from types import SimpleNamespace
 import pytest
 from opensearchpy.exceptions import RequestError
 
-from auth_context import set_auth_context, set_score_threshold, set_search_filters, set_search_limit
+from auth_context import (
+    set_auth_context,
+    set_score_threshold,
+    set_search_filters,
+    set_search_limit,
+    set_search_result_mode,
+)
 from services.search_service import SearchService
 
 
@@ -87,18 +96,18 @@ def _set_context(score_threshold: float) -> None:
     set_search_filters({})
     set_search_limit(100)
     set_score_threshold(score_threshold)
+    set_search_result_mode("chunks")
 
 
 def _knn_params(query: dict) -> list[dict]:
-    """Extract kNN parameters from a hybrid query with or without a score wrapper."""
-    hybrid = query.get("function_score", {}).get("query", query)
-    knn_queries = hybrid["bool"]["should"][0]["dis_max"]["queries"]
+    """Extract kNN parameters from the hybrid query's semantic dis_max clause."""
+    knn_queries = query["hybrid"]["queries"][0]["dis_max"]["queries"]
     return [params for knn in knn_queries for params in knn["knn"].values()]
 
 
 @pytest.mark.asyncio
-async def test_positive_threshold_applies_inside_the_query(monkeypatch):
-    """Verify a positive threshold filters the hybrid score inside function_score."""
+async def test_positive_threshold_does_not_produce_min_score(monkeypatch):
+    """With hybrid+normalization, score filtering is the frontend's job — no min_score in body."""
     os_client = _OpenSearch()
     service = _make_service(os_client, monkeypatch)
     _set_context(1.0)
@@ -107,16 +116,14 @@ async def test_positive_threshold_applies_inside_the_query(monkeypatch):
 
     body = os_client.bodies[-1]
     assert "min_score" not in body
-    function_score = body["query"]["function_score"]
-    assert function_score["min_score"] == 1.0
-    assert "functions" not in function_score
-    assert function_score["query"]["bool"]["minimum_should_match"] == 1
+    assert "function_score" not in body["query"]
+    assert "hybrid" in body["query"]
 
 
 @pytest.mark.asyncio
-async def test_zero_threshold_without_default_leaves_the_query_unwrapped(monkeypatch):
-    """Verify a zero threshold and no default leave the hybrid query unwrapped."""
-    monkeypatch.setattr("services.search_service.DEFAULT_SEARCH_SCORE_THRESHOLD", 0)
+async def test_zero_threshold_without_default_uses_hybrid_query(monkeypatch):
+    """Zero threshold still produces the hybrid query when embeddings are available."""
+    monkeypatch.setattr("config.search_constants.DEFAULT_SEARCH_SCORE_THRESHOLD", 0)
     os_client = _OpenSearch()
     service = _make_service(os_client, monkeypatch)
     _set_context(0)
@@ -126,13 +133,13 @@ async def test_zero_threshold_without_default_leaves_the_query_unwrapped(monkeyp
     body = os_client.bodies[-1]
     assert "min_score" not in body
     assert "function_score" not in body["query"]
-    assert "bool" in body["query"]
+    assert "hybrid" in body["query"]
 
 
 @pytest.mark.asyncio
-async def test_zero_threshold_falls_back_to_the_default(monkeypatch):
-    """Verify a zero request threshold applies the default inside function_score."""
-    monkeypatch.setattr("services.search_service.DEFAULT_SEARCH_SCORE_THRESHOLD", 0.37)
+async def test_zero_threshold_with_default_still_uses_hybrid_query(monkeypatch):
+    """Default threshold presence does not re-introduce min_score wrapping."""
+    monkeypatch.setattr("config.search_constants.DEFAULT_SEARCH_SCORE_THRESHOLD", 0.1)
     os_client = _OpenSearch()
     service = _make_service(os_client, monkeypatch)
     _set_context(0)
@@ -141,20 +148,23 @@ async def test_zero_threshold_falls_back_to_the_default(monkeypatch):
 
     body = os_client.bodies[-1]
     assert "min_score" not in body
-    assert body["query"]["function_score"]["min_score"] == 0.37
+    assert "function_score" not in body["query"]
+    assert "hybrid" in body["query"]
 
 
 @pytest.mark.asyncio
-async def test_explicit_threshold_overrides_the_default(monkeypatch):
-    """Verify a positive request threshold wins over the default."""
-    monkeypatch.setattr("services.search_service.DEFAULT_SEARCH_SCORE_THRESHOLD", 0.37)
+async def test_explicit_threshold_does_not_wrap_hybrid_query(monkeypatch):
+    """Positive explicit threshold leaves the hybrid query unwrapped."""
+    monkeypatch.setattr("config.search_constants.DEFAULT_SEARCH_SCORE_THRESHOLD", 0.1)
     os_client = _OpenSearch()
     service = _make_service(os_client, monkeypatch)
     _set_context(1.0)
 
     await service.search_tool("MCP")
 
-    assert os_client.bodies[-1]["query"]["function_score"]["min_score"] == 1.0
+    body = os_client.bodies[-1]
+    assert "function_score" not in body["query"]
+    assert "hybrid" in body["query"]
 
 
 @pytest.mark.asyncio
@@ -168,12 +178,14 @@ async def test_wildcard_query_ignores_the_threshold(monkeypatch):
 
     body = os_client.bodies[-1]
     assert "min_score" not in body
-    assert body["query"] == {"match_all": {}}
+    assert body["query"]["bool"]["filter"] == [
+        {"bool": {"must_not": [{"terms": {"record_kind": ["web_page_manifest", "web_source"]}}]}}
+    ]
 
 
 @pytest.mark.asyncio
-async def test_num_candidates_retry_keeps_the_threshold(monkeypatch):
-    """Verify a retry removes unsupported num_candidates while preserving the threshold."""
+async def test_num_candidates_retry_keeps_the_hybrid_structure(monkeypatch):
+    """Verify a retry removes unsupported num_candidates while preserving the hybrid query."""
     os_client = _OpenSearch(reject_num_candidates=True)
     service = _make_service(os_client, monkeypatch)
     _set_context(1.0)
@@ -183,5 +195,43 @@ async def test_num_candidates_retry_keeps_the_threshold(monkeypatch):
     first, retry = os_client.bodies
     assert all("num_candidates" in params for params in _knn_params(first["query"]))
     assert all("num_candidates" not in params for params in _knn_params(retry["query"]))
-    assert retry["query"]["function_score"]["min_score"] == 1.0
+    # The retry still uses hybrid, not function_score
+    assert "hybrid" in retry["query"]
+    assert "function_score" not in retry["query"]
     assert "min_score" not in retry
+
+
+@pytest.mark.asyncio
+async def test_knowledge_source_search_keeps_website_page_chunks_for_parent_aggregation(
+    monkeypatch,
+):
+    """The API folds page hits into their source after SearchService ranks them."""
+    os_client = _OpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+    set_search_result_mode("knowledge_sources")
+
+    await service.search_tool("baseball")
+
+    filters = os_client.bodies[-1]["query"]["hybrid"].get("filter", [])
+    assert not any(
+        clause.get("bool", {}).get("must_not") == [{"exists": {"field": "web_page_id"}}]
+        for clause in filters
+    )
+
+
+@pytest.mark.asyncio
+async def test_chunk_search_excludes_website_manifests_but_not_page_chunks(monkeypatch):
+    """RAG/chunk searches must not retrieve metadata-only website records."""
+    os_client = _OpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+
+    await service.search_tool("baseball")
+
+    filters = os_client.bodies[-1]["query"]["hybrid"].get("filter", [])
+    assert {"terms": {"record_kind": ["web_page_manifest", "web_source"]}} in [
+        clause["bool"]["must_not"][0]
+        for clause in filters
+        if clause.get("bool", {}).get("must_not")
+    ]

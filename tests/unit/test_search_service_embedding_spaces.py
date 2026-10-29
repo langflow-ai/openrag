@@ -91,7 +91,7 @@ async def test_backend_search_queries_exact_and_legacy_embedding_providers(monke
     set_search_filters({})
     set_search_limit(10)
     set_score_threshold(0)
-    monkeypatch.setattr("services.search_service.DEFAULT_SEARCH_SCORE_THRESHOLD", 0)
+    monkeypatch.setattr("config.search_constants.DEFAULT_SEARCH_SCORE_THRESHOLD", 0)
 
     await service.search_tool("needle", embedding_model="text-embedding-3-small")
 
@@ -100,9 +100,10 @@ async def test_backend_search_queries_exact_and_legacy_embedding_providers(monke
         "space:azure_ai:embed-v2",
         "legacy:text-embedding-3-small",
     ]
-    knn_queries = opensearch.final_body["query"]["bool"]["should"][0]["dis_max"]["queries"]
+    knn_queries = opensearch.final_body["query"]["hybrid"]["queries"][0]["dis_max"]["queries"]
     assert [next(iter(query["knn"])) for query in knn_queries] == [
         "chunk_embedding_azure_text_embedding_3_small",
         "chunk_embedding_azure_ai_embed_v2",
         "chunk_embedding_text_embedding_3_small",
     ]
+    assert {"document_id", "web_source_id", "web_page_id"} <= set(opensearch.final_body["_source"])
