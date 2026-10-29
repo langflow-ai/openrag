@@ -6,6 +6,7 @@ import pytest
 
 OPENRAG_MCP_SERVER_NAME = "lf-starter_project"
 LANGFLOW_GLOBAL_VAR_PREFIX = "x-langflow-global-var-"
+MCP_CREDENTIAL_MASK = "********"
 
 
 async def _wait_for_langflow_client(timeout_s: float = 60.0):
@@ -63,12 +64,13 @@ def _extract_server_headers(server_config: dict[str, Any]) -> dict[str, str]:
     return headers
 
 
-def _assert_has_required_global_headers(headers: dict[str, str]) -> None:
+def _assert_has_redacted_required_global_headers(headers: dict[str, str]) -> None:
     from services.langflow_mcp_service import REQUIRED_MCP_HEADERS
 
-    for key, expected_val in REQUIRED_MCP_HEADERS.items():
-        assert headers.get(key) == expected_val, (
-            f"Expected header {key}={expected_val!r} in MCP server headers, got {headers.get(key)!r}"
+    for key in REQUIRED_MCP_HEADERS:
+        assert headers.get(key) == MCP_CREDENTIAL_MASK, (
+            f"Expected required MCP header {key} to be redacted in the Langflow response, "
+            f"got {headers.get(key)!r}"
         )
 
 
@@ -102,7 +104,7 @@ async def test_openrag_mcp_server_url_is_patched_without_persisting_request_glob
             f"MCP server URLs were not rewritten to LANGFLOW_URL={expected_base!r}: {urls}"
         )
 
-    _assert_has_required_global_headers(_extract_server_headers(server_config))
+    _assert_has_redacted_required_global_headers(_extract_server_headers(server_config))
 
 
 @pytest.mark.asyncio
