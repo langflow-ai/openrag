@@ -1,3 +1,5 @@
+import searchScoring from "../../src/config/search_scoring.json";
+
 export const RUN_MODE = {
   OSS: "oss",
   SAAS: "saas",
@@ -58,12 +60,15 @@ export const UI_CONSTANTS = {
   MAX_SYSTEM_PROMPT_CHARS: 5500,
 } as const;
 
+/** Re-export the shared scoring config so consumers have a typed handle. */
+export const SEARCH_SCORING = searchScoring;
+
 /**
  * Search Constants
  */
 export const SEARCH_CONSTANTS = {
   WILDCARD_QUERY_LIMIT: 10000,
-  DEFAULT_SCORE_THRESHOLD: 0.37,
+  DEFAULT_SCORE_THRESHOLD: searchScoring.score_threshold,
 } as const;
 
 export const ANIMATION_DURATION = 0.4;

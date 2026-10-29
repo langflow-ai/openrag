@@ -10,7 +10,7 @@ from agentd.tool_decorator import tool
 
 from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
-from config.search_constants import DEFAULT_SEARCH_SCORE_THRESHOLD
+from config.search_constants import HYBRID_PIPELINE_NAME
 from config.settings import get_embedding_model, get_index_name, get_openrag_config
 from observability.spans import Span, trace_root, trace_span
 from services.llm_gateway import LlmGatewayError
@@ -698,70 +698,61 @@ class SearchService:
                 knn_queries_count=len(knn_queries),
             )
 
-            # Hybrid search (semantic + keyword) when embeddings are available;
-            # keyword-only fallback when none succeeded. When falling back, bump
-            # the multi_match boost so keyword scoring isn't artificially damped.
-            should_clauses = []
-            if knn_queries:
-                should_clauses.append(
-                    {
-                        "dis_max": {
-                            "tie_breaker": 0.0,  # Take only the best match, no blending
-                            "boost": 0.7,  # 70% weight for semantic search
-                            "queries": knn_queries,
+            # Hybrid search: use the normalization processor pipeline when
+            # embeddings are available so k-NN and BM25 scores are normalized
+            # to [0,1] independently before being combined with the configured
+            # weights. Falls back to keyword-only (plain bool) when no embedding
+            # succeeded, since the hybrid query type requires at least one
+            # neural sub-clause.
+            keyword_clauses = [
+                {
+                    "multi_match": {
+                        "query": _keyword_query(query),
+                        "fields": ["text^2", "filename^1.5"],
+                        "type": "best_fields",
+                        "operator": "or",
+                        "minimum_should_match": "2<75%",
+                        "fuzziness": "AUTO:4,7",
+                    }
+                },
+                {
+                    # Prefix fallback for partial input (e.g. "vita" -> "vitamin").
+                    "match_phrase_prefix": {
+                        "text": {
+                            "query": query,
+                            "max_expansions": 50,
+                            "boost": 0.25,
                         }
                     }
-                )
-            should_clauses.extend(
-                [
-                    {
-                        "multi_match": {
-                            "query": _keyword_query(query),
-                            "fields": ["text^2", "filename^1.5"],
-                            "type": "best_fields",
-                            "operator": "or",
-                            "minimum_should_match": "2<75%",
-                            "fuzziness": "AUTO:4,7",
-                            "boost": 0.3 if knn_queries else 1.0,
-                        }
-                    },
-                    {
-                        # Prefix fallback for partial input (e.g. "vita" -> "vitamin").
-                        # Avoid bool_prefix here because our current mappings are:
-                        # - text: standard "text" (not search_as_you_type / edge-ngram)
-                        # - filename: "keyword"
-                        # match_phrase_prefix with a bounded expansion is safer.
-                        "match_phrase_prefix": {
-                            "text": {
-                                "query": query,
-                                "max_expansions": 50,
-                                "boost": 0.25,
-                            }
-                        }
-                    },
-                ]
-            )
+                },
+            ]
 
-            query_block = {
-                "bool": {
-                    "should": should_clauses,
-                    "minimum_should_match": 1,
-                    "filter": all_filters,
+            if knn_queries:
+                # hybrid query: normalization processor handles score blending.
+                # Filters are pushed into the hybrid clause directly so DLS can
+                # still wrap the top-level query without breaking the pipeline.
+                semantic_clause = {
+                    "dis_max": {
+                        "tie_breaker": 0.0,
+                        "queries": knn_queries,
+                    }
                 }
-            }
-
-            # Apply the threshold to the hybrid score itself. A top-level
-            # min_score also counts the constant-score clause OpenSearch DLS
-            # adds to every user-scoped search, which lifts every visible hit
-            # over the threshold and turns the filter off.
-            effective_score_threshold = (
-                score_threshold if score_threshold > 0 else DEFAULT_SEARCH_SCORE_THRESHOLD
-            )
-            if effective_score_threshold > 0:
                 query_block = {
-                    "function_score": {
-                        "query": query_block,
-                        "min_score": effective_score_threshold,
+                    "hybrid": {
+                        "queries": [semantic_clause, *keyword_clauses],
+                        "filter": all_filters if all_filters else None,
+                    }
+                }
+                # Remove None filter key so OpenSearch doesn't choke on it
+                if query_block["hybrid"]["filter"] is None:
+                    del query_block["hybrid"]["filter"]
+            else:
+                # Keyword-only fallback: plain bool, no pipeline needed
+                query_block = {
+                    "bool": {
+                        "should": keyword_clauses,
+                        "minimum_should_match": 1,
+                        "filter": all_filters,
                     }
                 }
 
@@ -816,9 +807,8 @@ class SearchService:
         if not is_wildcard_match_all and query_embeddings:
             try:
                 fallback_search_body = copy.deepcopy(search_body)
-                hybrid_query = fallback_search_body["query"]
-                hybrid_query = hybrid_query.get("function_score", {}).get("query", hybrid_query)
-                knn_query_blocks = hybrid_query["bool"]["should"][0]["dis_max"]["queries"]
+                # hybrid query structure: {"hybrid": {"queries": [semantic_clause, ...]}}
+                knn_query_blocks = fallback_search_body["query"]["hybrid"]["queries"][0]["dis_max"]["queries"]
                 for query_candidate in knn_query_blocks:
                     knn_section = query_candidate.get("knn")
                     if isinstance(knn_section, dict):
@@ -849,7 +839,11 @@ class SearchService:
             is_disk_space_error,
         )
 
-        search_params = {"terminate_after": 0}
+        search_params: dict[str, Any] = {"terminate_after": 0}
+        # Attach the normalization pipeline only for hybrid queries. Keyword-only
+        # fallback and wildcard queries don't use it.
+        if not is_wildcard_match_all and query_embeddings:
+            search_params["search_pipeline"] = HYBRID_PIPELINE_NAME
 
         with trace_span("search.query", knn_fields=len(query_embeddings), size=limit) as query_span:
             try:

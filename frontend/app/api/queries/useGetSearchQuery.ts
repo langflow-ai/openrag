@@ -5,7 +5,7 @@ import {
 } from "@tanstack/react-query";
 import type { ParsedQueryData } from "@/contexts/knowledge-filter-context";
 import { apiClient, isRequestCancelled } from "@/lib/api-client";
-import { SEARCH_CONSTANTS } from "@/lib/constants";
+import { SEARCH_CONSTANTS, SEARCH_SCORING } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 
 export interface SearchPayload {
@@ -113,9 +113,9 @@ const EMPTY_SEARCH_RESULT: SearchResult = { files: [], warnings: [] };
 export { EMPTY_SEARCH_RESULT };
 
 /** Min-max normalised score thresholds for bucketing chunks into High / Medium / Low tiers. */
-export const RELEVANCE_HIDE_THRESHOLD = 0.1;
-export const RELEVANCE_HIGH_THRESHOLD = 0.65;
-export const RELEVANCE_MED_THRESHOLD = 0.35;
+export const RELEVANCE_HIDE_THRESHOLD = SEARCH_SCORING.relevance_hide_threshold;
+export const RELEVANCE_HIGH_THRESHOLD = SEARCH_SCORING.relevance_high_threshold;
+export const RELEVANCE_MED_THRESHOLD = SEARCH_SCORING.relevance_med_threshold;
 
 const getFileIdentity = (chunk: ChunkResult): string => {
   const normalizedFilename = chunk.filename?.trim();

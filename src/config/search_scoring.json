@@ -1,0 +1,14 @@
+{
+  "_comment": "Single source of truth for search scoring thresholds. Edit here; both backend (search_constants.py) and frontend (lib/constants.ts) read this file.",
+
+  "hybrid_pipeline_name": "openrag_hybrid_pipeline",
+
+  "score_threshold": 0.1,
+
+  "semantic_weight": 0.7,
+  "keyword_weight": 0.3,
+
+  "relevance_high_threshold": 0.65,
+  "relevance_med_threshold": 0.35,
+  "relevance_hide_threshold": 0.1
+}
