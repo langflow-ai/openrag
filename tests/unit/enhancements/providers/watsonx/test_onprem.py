@@ -48,7 +48,10 @@ def _chat_api_params(params: dict[str, Any], model: str):
     """
     from litellm.llms.watsonx.chat import handler
 
-    get_api_params = getattr(handler, "get_api_params", None) or handler._get_api_params
+    legacy_helper_name = "_get_api_params"
+    get_api_params = getattr(handler, "get_api_params", None) or getattr(
+        handler, legacy_helper_name
+    )
     return get_api_params(params=params, model=model)
 
 
