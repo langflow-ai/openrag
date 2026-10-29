@@ -129,6 +129,13 @@ interface OneDriveFile {
   };
 }
 
+export interface ConnectorConfigField {
+  name: string;
+  label: string;
+  type: "text" | "secret";
+  required: boolean;
+}
+
 export interface Connector {
   id: string;
   name: string;
@@ -143,6 +150,9 @@ export interface Connector {
   selectedFiles?: GoogleDriveFile[] | OneDriveFile[];
   available?: boolean;
   requiresOAuth?: boolean;
+  kind?: "oauth" | "bucket";
+  configFields?: ConnectorConfigField[];
+  browseCapability?: string;
 }
 
 interface Connection {
@@ -184,6 +194,8 @@ export const useGetConnectorsQuery = (
           description: string;
           icon: string;
           available?: boolean;
+          config_fields?: ConnectorConfigField[];
+          browse_capability?: string;
         }
       >;
     }>("/connectors");
@@ -230,6 +242,9 @@ export const useGetConnectorsQuery = (
               clientId: activeConnection.client_id,
               baseUrl: activeConnection.base_url,
               available: connectorData.available,
+              kind: connectorData.kind,
+              configFields: connectorData.config_fields,
+              browseCapability: connectorData.browse_capability,
               requiresOAuth,
             } as Connector;
           }
@@ -250,6 +265,9 @@ export const useGetConnectorsQuery = (
           connectionId,
           available: connectorData.available,
           requiresOAuth,
+          kind: connectorData.kind,
+          configFields: connectorData.config_fields,
+          browseCapability: connectorData.browse_capability,
         } as Connector;
       }),
     );

@@ -99,6 +99,36 @@ def _bucket_sync_service(remote_files, task_id="task-x"):
     return service
 
 
+@pytest.mark.asyncio
+async def test_sharepoint_onprem_duplicate_check_uses_index_name_not_picker_basename(monkeypatch):
+    from api import connectors as connectors_api
+
+    monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
+    session_manager, client = _session_manager_finding("report--sp-first.pdf")
+    connector = SimpleNamespace(
+        CONNECTOR_TYPE="sharepoint_onprem",
+        filename_for_index=lambda file_id, name: f"report--sp-{file_id}.pdf",
+        cfg=None,
+    )
+    result = await connectors_api._classify_connector_duplicates(
+        connector=connector,
+        selected_files_raw=[
+            {"id": "first", "name": "report.pdf", "mimeType": "application/pdf"},
+            {"id": "second", "name": "report.pdf", "mimeType": "application/pdf"},
+        ],
+        session_manager=session_manager,
+        user_id="alice",
+        jwt_token=None,
+    )
+    assert result["duplicate_count"] == 1
+    assert result["total_files"] == 2
+    assert [file["id"] for file in result["duplicate_files"]] == ["first"]
+    assert [file["id"] for file in result["non_duplicate_files"]] == ["second"]
+    assert result["duplicate_names"] == ["report.pdf"]
+    asked = client.search.await_args.kwargs["body"]["query"]["terms"]["filename"]
+    assert "report.pdf" not in asked
+
+
 # ---------------------------------------------------------------------------
 # _classify_bucket_connector_duplicates — what the confirm dialog is told
 # ---------------------------------------------------------------------------
@@ -732,12 +762,13 @@ async def test_sync_without_a_requested_connection_takes_the_first_working(monke
 
 
 @pytest.mark.asyncio
-async def test_a_requested_connection_that_cannot_authenticate_falls_back(monkeypatch):
-    """Ordering rather than hard selection: an unusable connection behaves as it
-    did before, rather than failing later inside the connector."""
+async def test_a_requested_connection_that_cannot_authenticate_never_falls_back(monkeypatch):
+    """An explicit ID must not sync a different account when auth expires."""
     remote_files = [{"id": "b::a.pdf", "name": "a.pdf", "modified_time": None}]
     service = _two_connection_service(remote_files, broken_first=True)
 
-    await _sync_with_connection(service, "conn-1", monkeypatch)
+    response = await _sync_with_connection(service, "conn-1", monkeypatch)
 
-    assert service.sync_specific_files.await_args.args[0] == "conn-2"
+    assert response.status_code == 404
+    service.sync_specific_files.assert_not_awaited()
+    service.get_connector.assert_awaited_once_with("conn-1")
