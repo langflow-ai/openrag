@@ -416,10 +416,6 @@
         },
         "dragging": false,
         "id": "Prompt Template-Wo6kR",
-        "measured": {
-          "height": 80,
-          "width": 192
-        },
         "position": {
           "x": 1153.5888851298432,
           "y": 1486.860784211668
@@ -722,10 +718,6 @@
         },
         "dragging": false,
         "id": "ChatInput-7W1BE",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
         "position": {
           "x": 847.7008874324687,
           "y": 1560.6273308605132
@@ -763,20 +755,20 @@
             "icon": "MessagesSquare",
             "legacy": false,
             "metadata": {
-              "code_hash": "84009527d08c",
+              "code_hash": "0aab1c78e1dc",
               "dependencies": {
                 "dependencies": [
                   {
                     "name": "orjson",
-                    "version": "3.11.8"
+                    "version": "3.11.9"
                   },
                   {
                     "name": "fastapi",
-                    "version": "0.135.1"
+                    "version": "0.139.2"
                   },
                   {
                     "name": "lfx",
-                    "version": null
+                    "version": "1.12.8"
                   }
                 ],
                 "total_dependencies": 3
@@ -810,6 +802,7 @@
               "clean_data": {
                 "_input_type": "BoolInput",
                 "advanced": true,
+                "api_editable": false,
                 "display_name": "Basic Clean Data",
                 "dynamic": false,
                 "info": "Whether to clean data before converting to string.",
@@ -829,6 +822,7 @@
               },
               "code": {
                 "advanced": true,
+                "api_editable": false,
                 "dynamic": true,
                 "fileTypes": [],
                 "file_path": "",
@@ -843,11 +837,12 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "from collections.abc import Generator\nfrom typing import Any\n\nimport orjson\nfrom fastapi.encoders import jsonable_encoder\n\nfrom lfx.base.io.chat import ChatComponent\nfrom lfx.helpers.data import safe_convert\nfrom lfx.inputs.inputs import BoolInput, DropdownInput, HandleInput, MessageTextInput\nfrom lfx.schema.data import Data\nfrom lfx.schema.dataframe import DataFrame\nfrom lfx.schema.message import Message\nfrom lfx.schema.properties import Source\nfrom lfx.template.field.base import Output\nfrom lfx.utils.constants import (\n    MESSAGE_SENDER_AI,\n    MESSAGE_SENDER_NAME_AI,\n    MESSAGE_SENDER_USER,\n)\n\n\nclass ChatOutput(ChatComponent):\n    display_name = \"Chat Output\"\n    description = \"Display a chat message in the Playground.\"\n    documentation: str = \"https://docs.langflow.org/chat-input-and-output\"\n    icon = \"MessagesSquare\"\n    name = \"ChatOutput\"\n    minimized = True\n\n    inputs = [\n        HandleInput(\n            name=\"input_value\",\n            display_name=\"Inputs\",\n            info=\"Message to be passed as output.\",\n            input_types=[\"Data\", \"JSON\", \"DataFrame\", \"Table\", \"Message\"],\n            required=True,\n        ),\n        BoolInput(\n            name=\"should_store_message\",\n            display_name=\"Store Messages\",\n            info=\"Store the message in the history.\",\n            value=True,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"sender\",\n            display_name=\"Sender Type\",\n            options=[MESSAGE_SENDER_AI, MESSAGE_SENDER_USER],\n            value=MESSAGE_SENDER_AI,\n            advanced=True,\n            info=\"Type of sender.\",\n        ),\n        MessageTextInput(\n            name=\"sender_name\",\n            display_name=\"Sender Name\",\n            info=\"Name of the sender.\",\n            value=MESSAGE_SENDER_NAME_AI,\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"session_id\",\n            display_name=\"Session ID\",\n            info=\"The session ID of the chat. If empty, the current session ID parameter will be used.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"context_id\",\n            display_name=\"Context ID\",\n            info=\"The context ID of the chat. Adds an extra layer to the local memory.\",\n            value=\"\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"data_template\",\n            display_name=\"Data Template\",\n            value=\"{text}\",\n            advanced=True,\n            info=\"Template to convert Data to Text. If left empty, it will be dynamically set to the Data's text key.\",\n        ),\n        BoolInput(\n            name=\"clean_data\",\n            display_name=\"Basic Clean Data\",\n            value=True,\n            advanced=True,\n            info=\"Whether to clean data before converting to string.\",\n        ),\n    ]\n    outputs = [\n        Output(\n            display_name=\"Output Message\",\n            name=\"message\",\n            method=\"message_response\",\n        ),\n    ]\n\n    def _build_source(self, id_: str | None, display_name: str | None, source: str | None) -> Source:\n        source_dict = {}\n        if id_:\n            source_dict[\"id\"] = id_\n        if display_name:\n            source_dict[\"display_name\"] = display_name\n        if source:\n            # Handle case where source is a ChatOpenAI object\n            if hasattr(source, \"model_name\"):\n                source_dict[\"source\"] = source.model_name\n            elif hasattr(source, \"model\"):\n                source_dict[\"source\"] = str(source.model)\n            else:\n                source_dict[\"source\"] = str(source)\n        return Source(**source_dict)\n\n    async def message_response(self) -> Message:\n        # First convert the input to string if needed\n        text = self.convert_to_string()\n\n        # Get source properties\n        source, _, display_name, source_id = self.get_properties_from_source_component()\n\n        # Create or use existing Message object\n        if isinstance(self.input_value, Message) and not self.is_connected_to_chat_input():\n            message = self.input_value\n            # Update message properties\n            message.text = text\n            # Preserve existing session_id from the incoming message if it exists\n            existing_session_id = message.session_id\n        else:\n            message = Message(text=text)\n            existing_session_id = None\n\n        # Set message properties\n        message.sender = self.sender\n        message.sender_name = self.sender_name\n        # Preserve session_id from incoming message, or use component/graph session_id\n        message.session_id = (\n            self.session_id or existing_session_id or (self.graph.session_id if hasattr(self, \"graph\") else None) or \"\"\n        )\n        message.context_id = self.context_id\n        message.flow_id = self.graph.flow_id if hasattr(self, \"graph\") else None\n        message.properties.source = self._build_source(source_id, display_name, source)\n\n        # Store message if needed\n        if message.session_id and self.should_store_message:\n            stored_message = await self.send_message(message)\n            self.message.value = stored_message\n            message = stored_message\n\n        # Set accumulated token usage from all upstream LLM vertices.\n        # This must happen AFTER send_message() because streaming captures\n        # usage from chunks and would overwrite accumulated totals.\n        if hasattr(self, \"_vertex\") and self._vertex is not None:\n            accumulated_usage = self._vertex._accumulate_upstream_token_usage()  # noqa: SLF001\n            if accumulated_usage:\n                message.properties.usage = accumulated_usage\n                if self.should_store_message and message.get_id():\n                    message = await self._update_stored_message(message)\n                    await self._send_message_event(message, id_=message.get_id())\n\n        self.status = message\n        return message\n\n    def _serialize_data(self, data: Data) -> str:\n        \"\"\"Serialize Data object to JSON string.\"\"\"\n        # Convert data.data to JSON-serializable format\n        serializable_data = jsonable_encoder(data.data)\n        # Serialize with orjson, enabling pretty printing with indentation\n        json_bytes = orjson.dumps(serializable_data, option=orjson.OPT_INDENT_2)\n        # Convert bytes to string and wrap in Markdown code blocks\n        return \"```json\\n\" + json_bytes.decode(\"utf-8\") + \"\\n```\"\n\n    def _validate_input(self) -> None:\n        \"\"\"Validate the input data and raise ValueError if invalid.\"\"\"\n        if self.input_value is None:\n            msg = \"Input data cannot be None\"\n            raise ValueError(msg)\n        if isinstance(self.input_value, list) and not all(\n            isinstance(item, Message | Data | DataFrame | str) for item in self.input_value\n        ):\n            invalid_types = [\n                type(item).__name__\n                for item in self.input_value\n                if not isinstance(item, Message | Data | DataFrame | str)\n            ]\n            msg = f\"Expected Data or DataFrame or Message or str, got {invalid_types}\"\n            raise TypeError(msg)\n        if not isinstance(\n            self.input_value,\n            Message | Data | DataFrame | str | list | Generator | type(None),\n        ):\n            type_name = type(self.input_value).__name__\n            msg = f\"Expected Data or DataFrame or Message or str, Generator or None, got {type_name}\"\n            raise TypeError(msg)\n\n    def convert_to_string(self) -> str | Generator[Any, None, None]:\n        \"\"\"Convert input data to string with proper error handling.\"\"\"\n        self._validate_input()\n        if isinstance(self.input_value, list):\n            clean_data: bool = getattr(self, \"clean_data\", False)\n            return \"\\n\".join([safe_convert(item, clean_data=clean_data) for item in self.input_value])\n        if isinstance(self.input_value, Generator):\n            return self.input_value\n        return safe_convert(self.input_value)\n"
+                "value": "from collections.abc import Generator\nfrom typing import Any\n\nimport orjson\nfrom fastapi.encoders import jsonable_encoder\n\nfrom lfx.base.io.chat import ChatComponent\nfrom lfx.helpers.data import safe_convert\nfrom lfx.inputs.inputs import BoolInput, DropdownInput, HandleInput, MessageTextInput\nfrom lfx.schema.data import Data\nfrom lfx.schema.dataframe import DataFrame\nfrom lfx.schema.message import Message\nfrom lfx.schema.properties import Source\nfrom lfx.template.field.base import Output\nfrom lfx.utils.constants import (\n    MESSAGE_SENDER_AI,\n    MESSAGE_SENDER_NAME_AI,\n    MESSAGE_SENDER_USER,\n)\n\n\nclass ChatOutput(ChatComponent):\n    display_name = \"Chat Output\"\n    description = \"Display a chat message in the Playground.\"\n    documentation: str = \"https://docs.langflow.org/chat-input-and-output\"\n    icon = \"MessagesSquare\"\n    name = \"ChatOutput\"\n    minimized = True\n\n    inputs = [\n        HandleInput(\n            name=\"input_value\",\n            display_name=\"Inputs\",\n            info=\"Message to be passed as output.\",\n            input_types=[\"Data\", \"JSON\", \"DataFrame\", \"Table\", \"Message\"],\n            required=True,\n        ),\n        BoolInput(\n            name=\"should_store_message\",\n            display_name=\"Store Messages\",\n            info=\"Store the message in the history.\",\n            value=True,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"sender\",\n            display_name=\"Sender Type\",\n            options=[MESSAGE_SENDER_AI, MESSAGE_SENDER_USER],\n            value=MESSAGE_SENDER_AI,\n            advanced=True,\n            info=\"Type of sender.\",\n        ),\n        MessageTextInput(\n            name=\"sender_name\",\n            display_name=\"Sender Name\",\n            info=\"Name of the sender.\",\n            value=MESSAGE_SENDER_NAME_AI,\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"session_id\",\n            display_name=\"Session ID\",\n            info=\"The session ID of the chat. If empty, the current session ID parameter will be used.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"context_id\",\n            display_name=\"Context ID\",\n            info=\"The context ID of the chat. Adds an extra layer to the local memory.\",\n            value=\"\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"data_template\",\n            display_name=\"Data Template\",\n            value=\"{text}\",\n            advanced=True,\n            info=\"Template to convert Data to Text. If left empty, it will be dynamically set to the Data's text key.\",\n        ),\n        BoolInput(\n            name=\"clean_data\",\n            display_name=\"Basic Clean Data\",\n            value=True,\n            advanced=True,\n            info=\"Whether to clean data before converting to string.\",\n        ),\n    ]\n    outputs = [\n        Output(\n            display_name=\"Output Message\",\n            name=\"message\",\n            method=\"message_response\",\n        ),\n    ]\n\n    def _build_source(self, id_: str | None, display_name: str | None, source: str | None) -> Source:\n        source_dict = {}\n        if id_:\n            source_dict[\"id\"] = id_\n        if display_name:\n            source_dict[\"display_name\"] = display_name\n        if source:\n            # Handle case where source is a ChatOpenAI object\n            if hasattr(source, \"model_name\"):\n                source_dict[\"source\"] = source.model_name\n            elif hasattr(source, \"model\"):\n                source_dict[\"source\"] = str(source.model)\n            else:\n                source_dict[\"source\"] = str(source)\n        return Source(**source_dict)\n\n    async def message_response(self) -> Message:\n        # First convert the input to string if needed\n        text = self.convert_to_string()\n\n        # Get source properties\n        source, _, display_name, source_id = self.get_properties_from_source_component()\n\n        # Create or use existing Message object\n        if isinstance(self.input_value, Message) and not self.is_connected_to_chat_input():\n            message = self.input_value\n            # Update message properties\n            message.text = text\n            # Preserve existing session_id from the incoming message if it exists\n            existing_session_id = message.session_id\n        else:\n            message = Message(text=text)\n            existing_session_id = None\n\n        # Set message properties\n        message.sender = self.sender\n        message.sender_name = self.sender_name\n        # Preserve session_id from incoming message, or use component/graph session_id\n        message.session_id = (\n            self.session_id or existing_session_id or (self.graph.session_id if hasattr(self, \"graph\") else None) or \"\"\n        )\n        message.context_id = self.context_id\n        message.flow_id = self.graph.flow_id if hasattr(self, \"graph\") else None\n        message.properties.source = self._build_source(source_id, display_name, source)\n\n        # Store message if needed\n        if message.session_id and self.should_store_message:\n            stored_message = await self.send_message(message)\n            self.message.value = stored_message\n            message = stored_message\n\n        # Set accumulated token usage from all upstream LLM vertices.\n        # This must happen AFTER send_message() because streaming captures\n        # usage from chunks and would overwrite accumulated totals.\n        if hasattr(self, \"_vertex\") and self._vertex is not None:\n            accumulated_usage = self._vertex._accumulate_upstream_token_usage()  # noqa: SLF001\n            if accumulated_usage:\n                message.properties.usage = accumulated_usage\n                if self.should_store_message and message.get_id():\n                    message = await self._update_stored_message(message)\n                    await self._send_message_event(message, id_=message.get_id())\n\n        self.status = message\n        return message\n\n    def _serialize_data(self, data: Data) -> str:\n        \"\"\"Serialize Data object to JSON string.\"\"\"\n        # Convert data.data to JSON-serializable format\n        serializable_data = jsonable_encoder(data.data)\n        # Serialize with orjson, enabling pretty printing with indentation\n        json_bytes = orjson.dumps(serializable_data, option=orjson.OPT_INDENT_2)\n        # Convert bytes to string and wrap in Markdown code blocks\n        return \"```json\\n\" + json_bytes.decode(\"utf-8\") + \"\\n```\"\n\n    def _validate_input(self) -> None:\n        \"\"\"Validate the input data and raise ValueError if invalid.\"\"\"\n        if self.input_value is None:\n            msg = \"Input data cannot be None\"\n            raise ValueError(msg)\n        if isinstance(self.input_value, list) and not all(\n            isinstance(item, Message | Data | DataFrame | str) for item in self.input_value\n        ):\n            invalid_types = [\n                type(item).__name__\n                for item in self.input_value\n                if not isinstance(item, Message | Data | DataFrame | str)\n            ]\n            msg = f\"Expected Data or DataFrame or Message or str, got {invalid_types}\"\n            raise TypeError(msg)\n        if not isinstance(\n            self.input_value,\n            Message | Data | DataFrame | str | list | Generator | type(None),\n        ):\n            type_name = type(self.input_value).__name__\n            msg = f\"Expected Data or DataFrame or Message or str, Generator or None, got {type_name}\"\n            raise TypeError(msg)\n\n    def convert_to_string(self) -> str | Generator[Any, None, None]:\n        \"\"\"Convert input data to string with proper error handling.\"\"\"\n        self._validate_input()\n        clean_data: bool = getattr(self, \"clean_data\", False)\n        if isinstance(self.input_value, list):\n            return \"\\n\".join([safe_convert(item, clean_data=clean_data) for item in self.input_value])\n        if isinstance(self.input_value, Generator):\n            return self.input_value\n        return safe_convert(self.input_value, clean_data=clean_data)\n"
               },
               "context_id": {
                 "_input_type": "MessageTextInput",
                 "advanced": true,
+                "api_editable": false,
                 "display_name": "Context ID",
                 "dynamic": false,
                 "info": "The context ID of the chat. Adds an extra layer to the local memory.",
@@ -873,6 +868,7 @@
               "data_template": {
                 "_input_type": "MessageTextInput",
                 "advanced": true,
+                "api_editable": false,
                 "display_name": "Data Template",
                 "dynamic": false,
                 "info": "Template to convert Data to Text. If left empty, it will be dynamically set to the Data's text key.",
@@ -898,6 +894,7 @@
               "input_value": {
                 "_input_type": "HandleInput",
                 "advanced": false,
+                "api_editable": false,
                 "display_name": "Inputs",
                 "dynamic": false,
                 "info": "Message to be passed as output.",
@@ -924,6 +921,7 @@
               "sender": {
                 "_input_type": "DropdownInput",
                 "advanced": true,
+                "api_editable": false,
                 "combobox": false,
                 "dialog_inputs": {},
                 "display_name": "Sender Type",
@@ -951,6 +949,7 @@
               "sender_name": {
                 "_input_type": "MessageTextInput",
                 "advanced": true,
+                "api_editable": false,
                 "display_name": "Sender Name",
                 "dynamic": false,
                 "info": "Name of the sender.",
@@ -976,6 +975,7 @@
               "session_id": {
                 "_input_type": "MessageTextInput",
                 "advanced": true,
+                "api_editable": false,
                 "display_name": "Session ID",
                 "dynamic": false,
                 "info": "The session ID of the chat. If empty, the current session ID parameter will be used.",
@@ -1001,6 +1001,7 @@
               "should_store_message": {
                 "_input_type": "BoolInput",
                 "advanced": true,
+                "api_editable": false,
                 "display_name": "Store Messages",
                 "dynamic": false,
                 "info": "Store the message in the history.",
@@ -1026,10 +1027,6 @@
         },
         "dragging": false,
         "id": "ChatOutput-axewE",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
         "position": {
           "x": 1746.4377826023422,
           "y": 1516.674256662252
@@ -1188,10 +1185,6 @@
         },
         "dragging": false,
         "id": "TextInput-BG2U3",
-        "measured": {
-          "height": 129,
-          "width": 192
-        },
         "position": {
           "x": -64.9892298542755,
           "y": 1521.7195088276985
@@ -1394,10 +1387,6 @@
         },
         "dragging": false,
         "id": "ParserComponent-x6BS7",
-        "measured": {
-          "height": 80,
-          "width": 192
-        },
         "position": {
           "x": 851.661470235947,
           "y": 1429.639922711361
@@ -2325,10 +2314,6 @@
         },
         "dragging": false,
         "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-yrQui",
-        "measured": {
-          "height": 134,
-          "width": 192
-        },
         "position": {
           "x": 427.43787902817417,
           "y": 1385.8198377353997
@@ -2531,10 +2516,6 @@
         },
         "dragging": false,
         "id": "OpenAICompatibleEmbedding-CdOpv",
-        "measured": {
-          "height": 52,
-          "width": 192
-        },
         "position": {
           "x": -59.381270855785424,
           "y": 1384.3606108469412
@@ -2572,7 +2553,7 @@
             "icon": "OpenRAG",
             "legacy": false,
             "metadata": {
-              "code_hash": "31b36c673cfe",
+              "code_hash": "e14b7d411507",
               "dependencies": {
                 "dependencies": [
                   {
@@ -2687,7 +2668,7 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "\"\"\"OpenAI-compatible chat model that talks to the OpenRAG LLM proxy.\n\nLangflow never holds upstream vendor keys. At runtime OpenRAG injects:\n\n- ``OPENRAG_LLM_TOKEN`` — short-lived hop token (Authorization Bearer)\n- ``OPENRAG_LLM_BASE_URL`` — the backend's ``/v1`` base or the router's\n  private unversioned base\n- ``SELECTED_LANGUAGE_MODEL`` — configured chat model id\n\n``ChatOpenAI`` posts to ``{base_url}/chat/completions``. The backend gateway\nthen calls the real vendor (OpenAI, Anthropic, Watsonx, Ollama, or any other\nLiteLLM provider). Embeddings use the same base URL and hop token; see\n``openai_compatible_embedding.py``.\n\"\"\"\n\nfrom __future__ import annotations\n\nfrom typing import Any\n\nfrom langchain_openai import ChatOpenAI\nfrom lfx.base.models.model import LCModelComponent\nfrom lfx.field_typing.constants import LanguageModel\nfrom lfx.field_typing.range_spec import RangeSpec\nfrom lfx.inputs.inputs import BoolInput, StrInput\nfrom lfx.io import IntInput, MessageInput, MultilineInput, SecretStrInput, SliderInput\n\n# Names must match src/api/settings/langflow_sync.py + src/utils/langflow_headers.py\nOPENRAG_LLM_BASE_URL_VAR = \"OPENRAG_LLM_BASE_URL\"\nOPENRAG_LLM_TOKEN_VAR = \"OPENRAG_LLM_TOKEN\"\nSELECTED_LANGUAGE_MODEL_VAR = \"SELECTED_LANGUAGE_MODEL\"\n\n\ndef _as_str(value: object) -> str | None:\n    if value is None:\n        return None\n    getter = getattr(value, \"get_secret_value\", None)\n    if callable(getter):\n        value = getter()\n    text = str(value).strip()\n    return text or None\n\n\nclass OpenAICompatibleLLMComponent(LCModelComponent):\n    display_name = \"OpenRAG LLM\"\n    description = (\n        \"Chat model via OpenRAG's OpenAI-compatible proxy. \"\n        \"Base URL and hop token come from global variables at runtime.\"\n    )\n    icon = \"OpenRAG\"\n    name = \"OpenAICompatibleLLM\"\n\n    inputs = [\n        MessageInput(\n            name=\"input_value\",\n            display_name=\"Input\",\n            info=\"The input text to send to the model\",\n        ),\n        MultilineInput(\n            name=\"system_message\",\n            display_name=\"System Message\",\n            info=\"A system message that helps set the behavior of the assistant\",\n            advanced=False,\n        ),\n        BoolInput(\n            name=\"stream\",\n            display_name=\"Stream\",\n            info=\"Whether to stream the response\",\n            value=False,\n            advanced=True,\n        ),\n        StrInput(\n            name=\"model_name\",\n            display_name=\"Model Name\",\n            info=\"Chat model id. Bound to SELECTED_LANGUAGE_MODEL at runtime.\",\n            value=SELECTED_LANGUAGE_MODEL_VAR,\n            load_from_db=True,\n        ),\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"OpenRAG LLM Token\",\n            info=\"Hop token from OPENRAG_LLM_TOKEN. OpenRAG injects this per Langflow run.\",\n            value=OPENRAG_LLM_TOKEN_VAR,\n            required=False,\n            load_from_db=True,\n        ),\n        StrInput(\n            name=\"api_base\",\n            display_name=\"OpenAI API Base\",\n            info=(\n                \"Bound to OPENRAG_LLM_BASE_URL at runtime. It is either the public \"\n                \"/v1 base or the private router base. Same URL as embeddings.\"\n            ),\n            value=OPENRAG_LLM_BASE_URL_VAR,\n            load_from_db=True,\n        ),\n        SliderInput(\n            name=\"temperature\",\n            display_name=\"Temperature\",\n            value=0.1,\n            info=\"Controls randomness in responses\",\n            range_spec=RangeSpec(min=0, max=1, step=0.01),\n            advanced=True,\n        ),\n        IntInput(\n            name=\"max_tokens\",\n            display_name=\"Max Tokens\",\n            info=\"Maximum number of tokens to generate. Leave empty for the model default.\",\n            advanced=True,\n        ),\n        IntInput(\n            name=\"seed\",\n            display_name=\"Seed\",\n            info=\"The seed controls the reproducibility of the job.\",\n            advanced=True,\n            value=1,\n        ),\n    ]\n\n    def build_model(self) -> LanguageModel:\n        api_key = _as_str(self.api_key)\n        api_base = _as_str(self.api_base)\n        if api_base:\n            api_base = api_base.rstrip(\"/\")\n\n        kwargs: dict[str, Any] = {\n            \"model\": self.model_name,\n            \"api_key\": api_key,\n            \"base_url\": api_base or None,\n            \"streaming\": bool(getattr(self, \"stream\", False)),\n        }\n        max_tokens = getattr(self, \"max_tokens\", None)\n        if max_tokens:\n            kwargs[\"max_tokens\"] = max_tokens\n        temperature = getattr(self, \"temperature\", None)\n        if temperature is not None:\n            kwargs[\"temperature\"] = temperature\n        seed = getattr(self, \"seed\", None)\n        if seed is not None:\n            kwargs[\"seed\"] = seed\n        return ChatOpenAI(**kwargs)\n"
+                "value": "\"\"\"OpenAI-compatible chat model that talks to the OpenRAG LLM proxy.\n\nLangflow never holds upstream vendor keys. At runtime OpenRAG injects:\n\n- ``OPENRAG_LLM_TOKEN`` — short-lived hop token (Authorization Bearer)\n- ``OPENRAG_LLM_BASE_URL`` — the backend's ``/v1`` base or the router's\n  private unversioned base\n- ``SELECTED_LANGUAGE_MODEL`` — configured chat model id\n\n``ChatOpenAI`` posts to ``{base_url}/chat/completions``. The backend gateway\nthen calls the real vendor (OpenAI, Anthropic, Watsonx, Ollama, or any other\nLiteLLM provider). Embeddings use the same base URL and hop token; see\n``openai_compatible_embedding.py``.\n\"\"\"\n\nfrom __future__ import annotations\n\nfrom typing import Any\n\nfrom langchain_openai import ChatOpenAI\nfrom lfx.base.models.model import LCModelComponent\nfrom lfx.field_typing.constants import LanguageModel\nfrom lfx.field_typing.range_spec import RangeSpec\nfrom lfx.inputs.inputs import BoolInput, StrInput\nfrom lfx.io import IntInput, MessageInput, MultilineInput, SecretStrInput, SliderInput\n\n# Names must match src/api/settings/langflow_sync.py + src/utils/langflow_headers.py\nOPENRAG_LLM_BASE_URL_VAR = \"OPENRAG_LLM_BASE_URL\"\nOPENRAG_LLM_TOKEN_VAR = \"OPENRAG_LLM_TOKEN\"\nSELECTED_LANGUAGE_MODEL_VAR = \"SELECTED_LANGUAGE_MODEL\"\n\n\ndef _as_str(value: object) -> str | None:\n    if value is None:\n        return None\n    getter = getattr(value, \"get_secret_value\", None)\n    if callable(getter):\n        value = getter()\n    text = str(value).strip()\n    return text or None\n\n\nclass OpenAICompatibleLLMComponent(LCModelComponent):\n    display_name = \"OpenRAG LLM\"\n    description = (\n        \"Chat model via OpenRAG's OpenAI-compatible proxy. \"\n        \"Base URL and hop token come from global variables at runtime.\"\n    )\n    icon = \"OpenRAG\"\n    name = \"OpenAICompatibleLLM\"\n\n    inputs = [\n        MessageInput(\n            name=\"input_value\",\n            display_name=\"Input\",\n            info=\"The input text to send to the model\",\n        ),\n        MultilineInput(\n            name=\"system_message\",\n            display_name=\"System Message\",\n            info=\"A system message that helps set the behavior of the assistant\",\n            advanced=False,\n        ),\n        BoolInput(\n            name=\"stream\",\n            display_name=\"Stream\",\n            info=\"Whether to stream the response\",\n            value=False,\n            advanced=True,\n        ),\n        StrInput(\n            name=\"model_name\",\n            display_name=\"Model Name\",\n            info=\"Chat model id. Bound to SELECTED_LANGUAGE_MODEL at runtime.\",\n            value=SELECTED_LANGUAGE_MODEL_VAR,\n            load_from_db=True,\n        ),\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"OpenRAG LLM Token\",\n            info=\"Hop token from OPENRAG_LLM_TOKEN. OpenRAG injects this per Langflow run.\",\n            value=OPENRAG_LLM_TOKEN_VAR,\n            required=False,\n            load_from_db=True,\n        ),\n        StrInput(\n            name=\"api_base\",\n            display_name=\"OpenAI API Base\",\n            info=(\n                \"Bound to OPENRAG_LLM_BASE_URL at runtime. It is either the public \"\n                \"/v1 base or the private router base. Same URL as embeddings.\"\n            ),\n            value=OPENRAG_LLM_BASE_URL_VAR,\n            load_from_db=True,\n        ),\n        SliderInput(\n            name=\"temperature\",\n            display_name=\"Temperature\",\n            value=0.1,\n            info=\"Controls randomness in responses\",\n            range_spec=RangeSpec(min=0, max=1, step=0.01),\n            advanced=True,\n        ),\n        IntInput(\n            name=\"max_tokens\",\n            display_name=\"Max Tokens\",\n            info=\"Maximum number of tokens to generate. Leave empty for the model default.\",\n            advanced=True,\n        ),\n        IntInput(\n            name=\"seed\",\n            display_name=\"Seed\",\n            info=\"The seed controls the reproducibility of the job.\",\n            advanced=True,\n            value=1,\n        ),\n    ]\n\n    def build_model(self) -> LanguageModel:\n        api_key = _as_str(self.api_key)\n        api_base = _as_str(self.api_base)\n        if api_base:\n            api_base = api_base.rstrip(\"/\")\n\n        kwargs: dict[str, Any] = {\n            \"model\": self.model_name,\n            \"api_key\": api_key,\n            \"base_url\": api_base or None,\n            \"streaming\": bool(getattr(self, \"stream\", False)),\n            # The gateway serves only /chat/completions. Left unset, ChatOpenAI\n            # switches some models (e.g. gpt-6* with tools) to the Responses\n            # API, which the gateway lacks and whose client rejects `seed`.\n            \"use_responses_api\": False,\n        }\n        max_tokens = getattr(self, \"max_tokens\", None)\n        if max_tokens:\n            kwargs[\"max_tokens\"] = max_tokens\n        temperature = getattr(self, \"temperature\", None)\n        if temperature is not None:\n            kwargs[\"temperature\"] = temperature\n        seed = getattr(self, \"seed\", None)\n        if seed is not None:\n            kwargs[\"seed\"] = seed\n        return ChatOpenAI(**kwargs)\n"
               },
               "input_value": {
                 "_input_type": "MessageInput",
@@ -2870,10 +2851,6 @@
         },
         "dragging": false,
         "id": "OpenAICompatibleLLM-0PA0e",
-        "measured": {
-          "height": 80,
-          "width": 192
-        },
         "position": {
           "x": 1465.188148380901,
           "y": 1500.6561249291267
@@ -2883,16 +2860,16 @@
       }
     ],
     "viewport": {
-      "x": 62.972880126394784,
-      "y": -487.04165750950597,
-      "zoom": 0.6467039747513049
+      "x": -32.13162615756107,
+      "y": -436.5092869506609,
+      "zoom": 0.5926192448490153
     }
   },
   "description": "OpenRAG OpenSearch Nudges generator, based on the OpenSearch documents and the chat history.",
   "endpoint_name": null,
   "id": "ebc01d31-1976-46ce-a385-b0240327226c",
   "is_component": false,
-  "last_tested_version": "1.12.0",
+  "last_tested_version": "1.12.8",
   "locked": true,
   "name": "OpenRAG OpenSearch Nudges Flow",
   "tags": [

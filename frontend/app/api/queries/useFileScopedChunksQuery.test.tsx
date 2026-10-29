@@ -2,7 +2,10 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test-utils/msw/server";
 import { createQueryWrapper, renderHook, waitFor } from "@/test-utils/render";
-import { useFileScopedChunksQuery } from "./useFileScopedChunksQuery";
+import {
+  useDocumentScopedChunksQuery,
+  useFileScopedChunksQuery,
+} from "./useFileScopedChunksQuery";
 import type { ChunkResult } from "./useGetSearchQuery";
 
 function chunk(overrides: Partial<ChunkResult> = {}): ChunkResult {
@@ -125,56 +128,49 @@ describe("useFileScopedChunksQuery", () => {
     expect(result.current.file?.chunks?.[0]?.highlights).toBeDefined();
   });
 
-  it("merges highlights and uses hlFile scores when globalFile is not cached", async () => {
-    // Without a global search cache entry (direct navigation / no knowledge-page search),
-    // scores come from hlFile once the highlight fetch has settled — so the direct-nav
-    // path still shows relevance badges rather than a blank panel.
-    // Highlights are merged from hlFile too.
-    const CHUNK_ID = "chunk-abc";
+  it("merges highlights without dropping non-matching chunks", async () => {
     server.use(
       http.post("/api/search", async ({ request }) => {
         const body = (await request.json()) as { query: string };
-        if (body.query === "*") {
-          return HttpResponse.json({
-            results: [
-              chunk({
-                filename: "test.pdf",
-                text: "hello world",
-                chunk_id: CHUNK_ID,
-                score: 1.0,
-              }),
-            ],
-            warnings: [],
-          });
-        }
-        // keyword search — returns highlights but no global cache entry exists
         return HttpResponse.json({
-          results: [
-            chunk({
-              filename: "test.pdf",
-              text: "hello world",
-              chunk_id: CHUNK_ID,
-              score: 0.42,
-              highlights: ["<mark>hello</mark> world"],
-            }),
-          ],
+          results:
+            body.query === "*"
+              ? [
+                  chunk({
+                    filename: "test.pdf",
+                    chunk_id: "one",
+                    text: "match",
+                  }),
+                  chunk({
+                    filename: "test.pdf",
+                    chunk_id: "two",
+                    text: "other",
+                  }),
+                ]
+              : [
+                  chunk({
+                    filename: "test.pdf",
+                    chunk_id: "one",
+                    text: "match",
+                    highlights: ["<mark>match</mark>"],
+                  }),
+                ],
           warnings: [],
         });
       }),
     );
 
     const { result } = renderHook(
-      () => useFileScopedChunksQuery("test.pdf", "hello"),
+      () => useFileScopedChunksQuery("test.pdf", "match"),
       { wrapper: createQueryWrapper() },
     );
 
     await waitFor(() => expect(result.current.isFetching).toBe(false));
-    // Score comes from hlFile once hlSettled — single-chunk result normalises to 1.0.
-    expect(result.current.file?.chunks?.[0]?.score).toBeGreaterThan(0);
-    // Highlights are merged from hlFile.
+    expect(result.current.file?.chunks).toHaveLength(2);
     expect(result.current.file?.chunks?.[0]?.highlights).toEqual([
-      "<mark>hello</mark> world",
+      "<mark>match</mark>",
     ]);
+    expect(result.current.file?.chunks?.[1]?.highlights).toEqual([]);
   });
 
   it("finds the matching file from multiple files in response", async () => {
@@ -259,5 +255,65 @@ describe("useFileScopedChunksQuery", () => {
       expect(result.current.file?.filename).toBe("found.pdf");
       expect((result.current.file?.chunkCount ?? 0) > 0).toBe(true);
     });
+  });
+});
+
+describe("useDocumentScopedChunksQuery", () => {
+  it("merges highlights by stable document id without removing other chunks", async () => {
+    const requests: { query: string; documentIds?: string[] }[] = [];
+    server.use(
+      http.post("/api/search", async ({ request }) => {
+        const body = (await request.json()) as {
+          query: string;
+          filters?: { document_ids?: string[] };
+        };
+        requests.push({
+          query: body.query,
+          documentIds: body.filters?.document_ids,
+        });
+        return HttpResponse.json({
+          results:
+            body.query === "*"
+              ? [
+                  chunk({
+                    document_id: "page-1",
+                    chunk_id: "one",
+                    text: "match",
+                  }),
+                  chunk({
+                    document_id: "page-1",
+                    chunk_id: "two",
+                    text: "other",
+                  }),
+                ]
+              : [
+                  chunk({
+                    document_id: "page-1",
+                    chunk_id: "one",
+                    text: "match",
+                    highlights: ["<mark>match</mark>"],
+                  }),
+                ],
+          warnings: [],
+        });
+      }),
+    );
+
+    const { result } = renderHook(
+      () => useDocumentScopedChunksQuery("page-1", "match"),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    expect(requests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ query: "*", documentIds: ["page-1"] }),
+        expect.objectContaining({ query: "match", documentIds: ["page-1"] }),
+      ]),
+    );
+    expect(result.current.file?.chunks).toHaveLength(2);
+    expect(result.current.file?.chunks?.[0]?.highlights).toEqual([
+      "<mark>match</mark>",
+    ]);
   });
 });

@@ -26,10 +26,9 @@ FROM registry.access.redhat.com/ubi10/nodejs-24-minimal AS builder
 WORKDIR /opt/app-root/src
 USER 0
 
-# Next.js inlines basePath into browser bundles, so it has to be supplied when
-# this image is built rather than only at container runtime.
-ARG OPENRAG_FRONTEND_BASE_PATH
-ENV OPENRAG_FRONTEND_BASE_PATH=${OPENRAG_FRONTEND_BASE_PATH}
+# Restrict the placeholder to container image builds. The entrypoint replaces
+# it in a writable per-pod copy of the assets before starting the server.
+ENV OPENRAG_FRONTEND_RUNTIME_BASE_PATH=true
 
 COPY --from=deps /opt/app-root/src/node_modules ./node_modules
 COPY --from=deps /opt/app-root/src/stubs ./stubs
@@ -47,12 +46,6 @@ FROM registry.access.redhat.com/ubi10/nodejs-24-minimal AS runtime
 WORKDIR /opt/app-root/src
 USER 0
 
-# Next.js evaluates next.config.ts again when `next start` launches. Keep the
-# same build-time base path available in the runtime stage so the server-side
-# config agrees with the paths compiled into `.next`.
-ARG OPENRAG_FRONTEND_BASE_PATH
-
-
 # The npm CLI is only needed to install and build, so the runtime stage drops
 # it. Its bundled dependencies (e.g. undici via node-gyp) otherwise ship in the
 # image and get flagged by scanners (CVE-2026-15157, CVE-2026-16728,
@@ -62,8 +55,7 @@ RUN microdnf update -y \
     && microdnf clean all && rm -rf /var/cache/yum
 
 ENV NODE_ENV=production \
-    NEXT_TELEMETRY_DISABLED=1 \
-    OPENRAG_FRONTEND_BASE_PATH=${OPENRAG_FRONTEND_BASE_PATH}
+    NEXT_TELEMETRY_DISABLED=1
 
 # CWE-426 fix: explicitly set PATH so system-owned directories are always resolved
 # first. App venv dirs are appended last so they cannot shadow system binaries.
@@ -71,18 +63,13 @@ ENV NODE_ENV=production \
 # to the front.
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/app-root/bin:/opt/app-root/src/bin:/opt/app-root/src/.local/bin
 
-COPY --from=builder --chown=1001:0 /opt/app-root/src/package*.json ./
-COPY --from=builder --chown=1001:0 /opt/app-root/src/stubs ./stubs
-COPY --from=builder --chown=1001:0 /opt/app-root/src/.next ./.next
+COPY --from=builder --chown=1001:0 /opt/app-root/src/.next/standalone ./
+COPY --from=builder --chown=1001:0 /opt/app-root/src/.next/static ./.next/static
 COPY --from=builder --chown=1001:0 /opt/app-root/src/public ./public
-COPY --from=builder --chown=1001:0 /opt/app-root/src/node_modules ./node_modules
-COPY --from=builder --chown=1001:0 /opt/app-root/src/next.config.* ./
-COPY --from=builder --chown=1001:0 /opt/app-root/src/postcss.config.* ./
-COPY --from=builder --chown=1001:0 /opt/app-root/src/tailwind.config.* ./
-COPY --from=builder --chown=1001:0 /opt/app-root/src/biome.json* ./
+COPY --chown=1001:0 frontend/entrypoint.sh ./entrypoint.sh
 
 EXPOSE 3000 9090
 USER 1001
 
-# Run Next.js directly with node: npm is not installed in this stage.
-CMD ["node", "node_modules/next/dist/bin/next", "start"]
+ENTRYPOINT ["./entrypoint.sh"]
+CMD ["node", "server.js"]

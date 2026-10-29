@@ -99,7 +99,7 @@ async def test_image_only_placeholder_succeeds_but_empty_document_fails(
         assert indexed == {}
         return
 
-    assert result == {"status": "indexed", "id": "image-hash"}
+    assert result == {"status": "indexed", "id": "image-hash", "chunk_count": 1}
     # Provider-tagged so the gateway routes to the provider the processor
     # resolved, not to whatever happens to be the configured default.
     assert embedding_calls == [

@@ -8,6 +8,7 @@ import {
   RELEVANCE_HIGH_THRESHOLD,
   RELEVANCE_MED_THRESHOLD,
   type SearchPayload,
+  type SearchResultDisplayOptions,
   useGetSearchQuery,
 } from "./useGetSearchQuery";
 
@@ -26,7 +27,7 @@ function chunk(overrides: Partial<ChunkResult> = {}): ChunkResult {
     filename: "a.pdf",
     mimetype: "application/pdf",
     page: 1,
-    text: "term body",
+    text: "body",
     score: 1,
     ...overrides,
   };
@@ -63,10 +64,17 @@ function serveSearch(body: Record<string, unknown>, status = 200) {
   return seen;
 }
 
-async function runSearch(query: string, data?: ParsedQueryData | null) {
-  const rendered = renderHook(() => useGetSearchQuery(query, data), {
-    wrapper: createQueryWrapper(),
-  });
+async function runSearch(
+  query: string,
+  data?: ParsedQueryData | null,
+  displayOptions?: SearchResultDisplayOptions,
+) {
+  const rendered = renderHook(
+    () => useGetSearchQuery(query, data, undefined, displayOptions),
+    {
+      wrapper: createQueryWrapper(),
+    },
+  );
   await waitFor(() =>
     expect(
       rendered.result.current.isSuccess || rendered.result.current.isError,
@@ -117,11 +125,16 @@ describe("useGetSearchQuery", () => {
       expect(seen.payload?.limit).toBe(7);
     });
 
-    it("preserves the score threshold for all queries", async () => {
+    it("caps the score threshold for short single-token queries", async () => {
       const seen = serveSearch({ results: [] });
-      await runSearch("acme", queryData({ scoreThreshold: 1.25 }));
-      expect(seen.payload?.scoreThreshold).toBe(1.25);
 
+      // Regression: "tune search relevance for partial and unique queries".
+      await runSearch("acme", queryData({ scoreThreshold: 1.25 }));
+
+      expect(seen.payload?.scoreThreshold).toBe(1.0);
+    });
+
+    it("leaves the threshold alone for longer or multi-word queries", async () => {
       const longQuery = serveSearch({ results: [] });
       await runSearch("quarterly", queryData({ scoreThreshold: 1.25 }));
       expect(longQuery.payload?.scoreThreshold).toBe(1.25);
@@ -129,6 +142,14 @@ describe("useGetSearchQuery", () => {
       const multiWord = serveSearch({ results: [] });
       await runSearch("a b", queryData({ scoreThreshold: 1.25 }));
       expect(multiWord.payload?.scoreThreshold).toBe(1.25);
+    });
+
+    it("does not raise a threshold already below the cap", async () => {
+      const seen = serveSearch({ results: [] });
+
+      await runSearch("acme", queryData({ scoreThreshold: 0.4 }));
+
+      expect(seen.payload?.scoreThreshold).toBe(0.4);
     });
 
     it("omits filters entirely when every dimension is empty", async () => {
@@ -160,6 +181,30 @@ describe("useGetSearchQuery", () => {
       });
     });
 
+    it("preserves a URL source scope and website-page result mode", async () => {
+      const seen = serveSearch({ results: [] });
+
+      await runSearch(
+        "",
+        queryData({
+          filters: {
+            data_sources: [],
+            document_types: [],
+            owners: [],
+            connector_types: [],
+            web_source_ids: ["source-123"],
+          },
+        }),
+        { groupBy: "document_id", resultMode: "website_pages" },
+      );
+
+      expect(seen.payload).toMatchObject({
+        query: "*",
+        resultMode: "website_pages",
+        filters: { web_source_ids: ["source-123"] },
+      });
+    });
+
     it("treats a '*' dimension as unfiltered", async () => {
       const seen = serveSearch({ results: [] });
 
@@ -180,24 +225,32 @@ describe("useGetSearchQuery", () => {
   });
 
   describe("grouping chunks into files", () => {
-    // Pure min-max: norm(raw) = (raw - globalMin) / (globalMax - globalMin)
-    // Zero-spread (all identical scores) → every chunk maps to 1.0
-    function norm(raw: number, globalMin: number, globalMax: number) {
-      const spread = globalMax - globalMin;
-      return spread > 0 ? (raw - globalMin) / spread : 1;
-    }
-
-    it("groups chunks by filename and computes maxScore / relevanceTier / chunkTiers", async () => {
-      // a.pdf: [4.0, 2.0]   b.pdf: [1.5]
-      // globalMin=1.5, globalMax=4.0, spread=2.5
-      // norm(4.0) = (4.0-1.5)/2.5 = 1.0  → High
-      // norm(2.0) = (2.0-1.5)/2.5 = 0.2  → Low
-      // norm(1.5) = (1.5-1.5)/2.5 = 0.0  → Low
+    it("keeps URL pages with duplicate titles separate by document id", async () => {
       serveSearch({
         results: [
-          chunk({ filename: "a.pdf", score: 4.0 }),
-          chunk({ filename: "a.pdf", score: 2.0 }),
-          chunk({ filename: "b.pdf", score: 1.5 }),
+          chunk({ filename: "Guide", document_id: "page-a" }),
+          chunk({ filename: "Guide", document_id: "page-b" }),
+        ],
+      });
+
+      const { result } = await runSearch("", queryData(), {
+        groupBy: "document_id",
+      });
+
+      expect(result.current.data?.files).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ filename: "Guide", document_id: "page-a" }),
+          expect.objectContaining({ filename: "Guide", document_id: "page-b" }),
+        ]),
+      );
+    });
+
+    it("groups chunks by filename and averages their scores", async () => {
+      serveSearch({
+        results: [
+          chunk({ filename: "a.pdf", score: 2 }),
+          chunk({ filename: "a.pdf", score: 4 }),
+          chunk({ filename: "b.pdf", score: 1 }),
         ],
       });
 
@@ -205,81 +258,41 @@ describe("useGetSearchQuery", () => {
 
       const files = result.current.data?.files ?? [];
       expect(files).toHaveLength(2);
-
-      const aPdf = files[0];
-      expect(aPdf.filename).toBe("a.pdf");
-      expect(aPdf.chunkCount).toBe(2);
-      expect(aPdf.maxScore).toBeCloseTo(norm(4.0, 1.5, 4.0));
-      expect(aPdf.relevanceTier).toBe("high");
-      expect(aPdf.chunkTiers).toMatchObject({ high: 1, medium: 0, low: 1 });
-
-      const bPdf = files[1];
-      expect(bPdf.filename).toBe("b.pdf");
-      expect(bPdf.maxScore).toBeCloseTo(norm(1.5, 1.5, 4.0));
-      expect(bPdf.relevanceTier).toBe("low");
-      expect(bPdf.chunkTiers).toMatchObject({ high: 0, medium: 0, low: 1 });
-    });
-
-    it("single result — maps to High (100%) via min-max", async () => {
-      // Only one chunk: globalMin = globalMax → zero-spread → 1.0
-      // This is correct: it IS the best (and only) match for this query.
-      serveSearch({
-        results: [chunk({ filename: "a.pdf", score: 1.26 })],
+      expect(files[0]).toMatchObject({
+        filename: "a.pdf",
+        chunkCount: 2,
+        avgScore: 3,
       });
-
-      const { result } = await runSearch("term");
-
-      const file = result.current.data?.files[0];
-      expect(file?.maxScore).toBe(1.0);
-      expect(file?.relevanceTier).toBe("high");
+      expect(files[1]).toMatchObject({ filename: "b.pdf", chunkCount: 1 });
     });
 
-    it("zero-spread — all identical scores map to High (100%)", async () => {
-      // All chunks same score → spread = 0 → every chunk normalises to 1.0
+    it("uses the backend chunk count for a website page", async () => {
       serveSearch({
         results: [
-          chunk({ filename: "a.pdf", score: 3.5 }),
-          chunk({ filename: "a.pdf", score: 3.5 }),
+          chunk({
+            filename: "Guide",
+            document_id: "page-a",
+            chunk_count: 12,
+          }),
+          chunk({
+            filename: "Guide",
+            document_id: "page-a",
+            chunk_count: 12,
+          }),
         ],
       });
 
-      const { result } = await runSearch("term");
-
-      const file = result.current.data?.files[0];
-      expect(file?.maxScore).toBe(1.0);
-      expect(file?.relevanceTier).toBe("high");
-      expect(file?.chunkTiers).toMatchObject({ high: 2, medium: 0, low: 0 });
-    });
-
-    it("best chunk reaches High, worst reaches Low across files", async () => {
-      // a.pdf has the global max, b.pdf has the global min
-      // norm(4.0) = 1.0 → High;  norm(1.5) = 0.0 → Low
-      serveSearch({
-        results: [
-          chunk({ filename: "a.pdf", score: 4.0 }),
-          chunk({ filename: "b.pdf", score: 1.5 }),
-        ],
+      const { result } = await runSearch("", queryData(), {
+        groupBy: "document_id",
+        resultMode: "website_pages",
       });
 
-      const { result } = await runSearch("term");
-
-      const files = result.current.data?.files ?? [];
-      expect(files.find((f) => f.filename === "a.pdf")?.relevanceTier).toBe(
-        "high",
-      );
-      expect(files.find((f) => f.filename === "b.pdf")?.relevanceTier).toBe(
-        "low",
-      );
+      expect(result.current.data?.files[0]).toMatchObject({
+        document_id: "page-a",
+        chunkCount: 12,
+      });
     });
 
-    it("exposes tier threshold constants", () => {
-      expect(RELEVANCE_HIGH_THRESHOLD).toBeGreaterThan(RELEVANCE_MED_THRESHOLD);
-      expect(RELEVANCE_HIGH_THRESHOLD).toBeLessThanOrEqual(1);
-      expect(RELEVANCE_MED_THRESHOLD).toBeGreaterThanOrEqual(0);
-    });
-  });
-
-  describe("grouping chunks (continued)", () => {
     it("falls back to source_url, then to Untitled source (#1609)", async () => {
       serveSearch({
         results: [
@@ -384,6 +397,104 @@ describe("useGetSearchQuery", () => {
 
       expect(result.current.data).toEqual({ files: [], warnings: [] });
     });
+  });
+
+  // Pure min-max: norm(raw) = (raw - globalMin) / (globalMax - globalMin)
+  // Zero-spread (all identical scores) → every chunk maps to 1.0
+  function norm(raw: number, globalMin: number, globalMax: number) {
+    const spread = globalMax - globalMin;
+    return spread > 0 ? (raw - globalMin) / spread : 1;
+  }
+
+  it("groups chunks by filename and computes maxScore / relevanceTier / chunkTiers", async () => {
+    // a.pdf: [4.0, 2.0]   b.pdf: [1.5]
+    // globalMin=1.5, globalMax=4.0, spread=2.5
+    // norm(4.0) = (4.0-1.5)/2.5 = 1.0  → High
+    // norm(2.0) = (2.0-1.5)/2.5 = 0.2  → Low
+    // norm(1.5) = (1.5-1.5)/2.5 = 0.0  → Low
+    serveSearch({
+      results: [
+        chunk({ filename: "a.pdf", score: 4.0 }),
+        chunk({ filename: "a.pdf", score: 2.0 }),
+        chunk({ filename: "b.pdf", score: 1.5 }),
+      ],
+    });
+
+    const { result } = await runSearch("term");
+
+    const files = result.current.data?.files ?? [];
+    expect(files).toHaveLength(2);
+
+    const aPdf = files[0];
+    expect(aPdf.filename).toBe("a.pdf");
+    expect(aPdf.chunkCount).toBe(2);
+    expect(aPdf.maxScore).toBeCloseTo(norm(4.0, 1.5, 4.0));
+    expect(aPdf.relevanceTier).toBe("high");
+    expect(aPdf.chunkTiers).toMatchObject({ high: 1, medium: 0, low: 1 });
+
+    const bPdf = files[1];
+    expect(bPdf.filename).toBe("b.pdf");
+    expect(bPdf.maxScore).toBeCloseTo(norm(1.5, 1.5, 4.0));
+    expect(bPdf.relevanceTier).toBe("low");
+    expect(bPdf.chunkTiers).toMatchObject({ high: 0, medium: 0, low: 1 });
+  });
+
+  it("single result — maps to High (100%) via min-max", async () => {
+    // Only one chunk: globalMin = globalMax → zero-spread → 1.0
+    // This is correct: it IS the best (and only) match for this query.
+    serveSearch({
+      results: [chunk({ filename: "a.pdf", score: 1.26 })],
+    });
+
+    const { result } = await runSearch("term");
+
+    const file = result.current.data?.files[0];
+    expect(file?.maxScore).toBe(1.0);
+    expect(file?.relevanceTier).toBe("high");
+  });
+
+  it("zero-spread — all identical scores map to High (100%)", async () => {
+    // All chunks same score → spread = 0 → every chunk normalises to 1.0
+    serveSearch({
+      results: [
+        chunk({ filename: "a.pdf", score: 3.5 }),
+        chunk({ filename: "a.pdf", score: 3.5 }),
+      ],
+    });
+
+    const { result } = await runSearch("term");
+
+    const file = result.current.data?.files[0];
+    expect(file?.maxScore).toBe(1.0);
+    expect(file?.relevanceTier).toBe("high");
+    expect(file?.chunkTiers).toMatchObject({ high: 2, medium: 0, low: 0 });
+  });
+
+  it("best chunk reaches High, worst reaches Low across files", async () => {
+    // a.pdf has the global max, b.pdf has the global min
+    // norm(4.0) = 1.0 → High;  norm(1.5) = 0.0 → Low
+    serveSearch({
+      results: [
+        chunk({ filename: "a.pdf", score: 4.0 }),
+        chunk({ filename: "b.pdf", score: 1.5 }),
+      ],
+    });
+
+    const { result } = await runSearch("term");
+
+    const files = result.current.data?.files ?? [];
+    expect(files.find((f) => f.filename === "a.pdf")?.relevanceTier).toBe(
+      "high",
+    );
+    expect(files.find((f) => f.filename === "b.pdf")?.relevanceTier).toBe(
+      "low",
+    );
+  });
+
+  it("exposes tier threshold constants", () => {
+    expect(RELEVANCE_HIGH_THRESHOLD).toBeGreaterThan(RELEVANCE_MED_THRESHOLD);
+    expect(RELEVANCE_HIGH_THRESHOLD).toBeLessThanOrEqual(1);
+    expect(RELEVANCE_MED_THRESHOLD).toBeGreaterThanOrEqual(0);
   });
 
   describe("warnings", () => {
