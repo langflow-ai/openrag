@@ -6,9 +6,11 @@ describe("normalizeFrontendBasePath", () => {
     [undefined, ""],
     ["", ""],
     ["/", ""],
+    [" / ", ""],
     ["openrag-fe", "/openrag-fe"],
     [" /openrag-fe/ ", "/openrag-fe"],
     ["/platform/openrag-fe///", "/platform/openrag-fe"],
+    ["/r-d_ui", "/r-d_ui"],
   ])("normalizes %j to %j", (value, expected) => {
     expect(normalizeFrontendBasePath(value)).toBe(expected);
   });
@@ -17,7 +19,15 @@ describe("normalizeFrontendBasePath", () => {
     "https://example.com/openrag-fe",
     "/openrag-fe?tab=1",
     "/x#y",
-  ])("rejects a URL rather than a path (%s)", (value) => {
+    "//wrong-origin",
+    "/r&d|ui",
+    "/bad\\path",
+    "/a//b",
+    "/a/../b",
+    "/a/./b",
+    "/bad path",
+    "/bad\npath",
+  ])("rejects an invalid path (%s)", (value) => {
     expect(() => normalizeFrontendBasePath(value)).toThrow(
       "OPENRAG_FRONTEND_BASE_PATH",
     );
