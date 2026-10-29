@@ -72,6 +72,9 @@ dependencies = [
     "alembic>=1.13.0",
     "asyncpg>=0.30.0",
     "cachetools>=5.5.0",
+    "mako>=1.4.2",
+    "multidict>=6.9.1",
+    "oauthlib>=4.0.0",
 ]
 
 # Optional extras. Install with `uv sync --extra <name>`.
