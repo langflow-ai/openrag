@@ -11,6 +11,7 @@ import json
 from typing import Any
 
 from config.settings import get_index_name
+from services.search_cache import invalidate_corpus_caches
 from src.connectors.base import DocumentACL
 from utils.logging_config import get_logger
 
@@ -157,6 +158,8 @@ async def update_document_acl(
             },
         )
 
+        # Visibility changed, so cached per-user suggestions may be wrong.
+        invalidate_corpus_caches()
         return {"status": "updated", "chunks_updated": response.get("updated", 0)}
 
     except Exception as e:
@@ -224,6 +227,7 @@ async def batch_update_acls(
 
     try:
         results = await asyncio.gather(*update_tasks, return_exceptions=True)
+        invalidate_corpus_caches()
         total_chunks_updated = 0
         errors = []
         for result in results:

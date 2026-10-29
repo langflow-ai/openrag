@@ -2,6 +2,7 @@ from collections.abc import Iterable
 
 from opensearchpy.exceptions import NotFoundError
 
+from services.search_cache import invalidate_corpus_caches
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -59,17 +60,21 @@ async def delete_document_ids(
     a delete per ID.
     """
     deleted_count = 0
-    for document_id in document_ids:
-        try:
-            result = await opensearch_client.delete(
-                index=index,
-                id=document_id,
-                refresh=refresh,
-            )
-        except NotFoundError:
-            continue
+    try:
+        for document_id in document_ids:
+            try:
+                result = await opensearch_client.delete(
+                    index=index,
+                    id=document_id,
+                    refresh=refresh,
+                )
+            except NotFoundError:
+                continue
 
-        if result.get("result") == "deleted":
-            deleted_count += 1
+            if result.get("result") == "deleted":
+                deleted_count += 1
+    finally:
+        if deleted_count:
+            invalidate_corpus_caches()
 
     return deleted_count
