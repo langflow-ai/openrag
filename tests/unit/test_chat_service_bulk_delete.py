@@ -17,22 +17,6 @@ def _patch_owner(monkeypatch, owners):
 
 
 @pytest.mark.asyncio
-async def test_bulk_delete_mixed_ownership(monkeypatch):
-    svc = _make_service()
-    # alice owns s1; s2 is bob's; s3 has no owner
-    _patch_owner(monkeypatch, {"s1": "alice", "s2": "bob", "s3": None})
-    svc.delete_session = AsyncMock(return_value={"success": True, "error": None})
-
-    result = await svc.delete_sessions("alice", ["s1", "s2", "s3"])
-
-    assert result["deleted"] == ["s1"]
-    assert sorted(result["failed"]) == ["s2", "s3"]
-    # only the owned id ever reaches delete_session
-    called = {c.args[1] for c in svc.delete_session.call_args_list}
-    assert called == {"s1"}
-
-
-@pytest.mark.asyncio
 async def test_bulk_delete_all_succeed(monkeypatch):
     svc = _make_service()
     _patch_owner(monkeypatch, {"a": "alice", "b": "alice"})

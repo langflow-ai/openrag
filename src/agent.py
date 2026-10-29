@@ -161,6 +161,8 @@ async def store_conversation_thread(user_id: str, response_id: str, conversation
 
     # 2. Store only essential metadata to disk (simplified JSON)
     messages = conversation_state.get("messages", [])
+    # A restarted thread has durable metadata, but not successful message bodies.
+    persisted_metadata = conversation_state.get("_persisted_metadata", {})
     first_user_msg = next((msg for msg in messages if msg.get("role") == "user"), None)
     title = "New Chat"
     if first_user_msg:
@@ -170,17 +172,21 @@ async def store_conversation_thread(user_id: str, response_id: str, conversation
     user_assistant_messages = [msg for msg in messages if msg.get("role") in ["user", "assistant"]]
     metadata_only = {
         "response_id": response_id,
-        "title": title,
+        "title": persisted_metadata.get("title") or title,
         "endpoint": "langflow",
         "created_at": conversation_state.get("created_at"),
         "last_activity": conversation_state.get("last_activity"),
-        "previous_response_id": conversation_state.get("previous_response_id"),
+        "previous_response_id": persisted_metadata.get(
+            "previous_response_id", conversation_state.get("previous_response_id")
+        ),
         "filter_id": conversation_state.get("filter_id"),
-        "total_messages": len(user_assistant_messages),
+        "total_messages": (persisted_metadata.get("total_messages") or 0)
+        + len(user_assistant_messages),
     }
     # Snapshot error-thread turns: Langflow history is incomplete after fresh-session retries.
-    if any(msg.get("error") for msg in user_assistant_messages):
-        metadata_only["messages"] = [
+    persisted_messages = persisted_metadata.get("messages", [])
+    if persisted_messages or any(msg.get("error") for msg in user_assistant_messages):
+        metadata_only["messages"] = persisted_messages + [
             {
                 "role": msg.get("role"),
                 "content": msg.get("content"),
@@ -910,9 +916,36 @@ async def async_langflow_chat_stream(
             thread_id,
         )
     previous_loaded_from_memory = _conversation_thread_in_memory(user_id, thread_id)
-    conversation_state = get_conversation_thread(user_id, thread_id)
+    owned_session_ids = []
+    persisted_metadata = {}
+    if thread_id and not previous_loaded_from_memory:
+        from services.session_ownership_service import session_ownership_service
 
+        owned_session_ids = await session_ownership_service.get_conversation_sessions(
+            user_id, thread_id
+        )
+        if owned_session_ids:
+            thread_id = owned_session_ids[0]
+            previous_loaded_from_memory = _conversation_thread_in_memory(user_id, thread_id)
+            if not previous_loaded_from_memory:
+                persisted_metadata = await conversation_persistence.get_conversation_thread(
+                    user_id, thread_id
+                )
     from datetime import datetime
+
+    conversation_state = get_conversation_thread(user_id, thread_id)
+    if persisted_metadata:
+        conversation_state["_persisted_metadata"] = persisted_metadata
+        restored_created_at = persisted_metadata.get("created_at")
+        if isinstance(restored_created_at, str):
+            try:
+                restored_created_at = datetime.fromisoformat(restored_created_at)
+            except ValueError:
+                restored_created_at = None
+        if isinstance(restored_created_at, datetime):
+            conversation_state["created_at"] = restored_created_at
+        conversation_state["filter_id"] = persisted_metadata.get("filter_id")
+        conversation_state["response_ids"] = list(owned_session_ids)
 
     conversation_state["messages"].append(
         {"role": "user", "content": prompt, "timestamp": datetime.now()}
@@ -930,7 +963,8 @@ async def async_langflow_chat_stream(
     usage_data = None
     collected_chunks = []  # Store all chunks for function call data
     error_occurred = False
-    store_id = None
+    # A durable owned group can safely retain its canonical sidebar ID on restart.
+    store_id = thread_id if owned_session_ids else None
     claimed_ids: set[str] = set()
     turn_finished = False
 
@@ -1127,8 +1161,13 @@ async def async_langflow_chat_stream(
             await upstream.aclose()
 
 
-async def delete_user_conversation(user_id: str, response_id: str) -> bool:
+async def delete_user_conversation(
+    user_id: str, response_id: str, *, session_ids: list[str] | None = None
+) -> bool:
     """Delete a conversation for a user from both memory and persistent storage.
+
+    ``session_ids`` is the caller's already-authorized ownership snapshot, when
+    provided. An empty group permits only user-scoped local orphan cleanup.
 
     Returns:
         True  — conversation was found and deleted from at least one store.
@@ -1140,13 +1179,15 @@ async def delete_user_conversation(user_id: str, response_id: str) -> bool:
     """
     from services.session_ownership_service import session_ownership_service
 
-    session_ids = await session_ownership_service.get_conversation_sessions(user_id, response_id)
-    if not session_ids:
-        return False
-    canonical_id = session_ids[0]
-    # Revoke ALL durable aliases before removing the local index. Failures must
-    # reach the caller, not turn into a successful delete with reusable IDs.
-    await session_ownership_service.release_conversation_sessions(user_id, session_ids)
+    if session_ids is None:
+        session_ids = await session_ownership_service.get_conversation_sessions(
+            user_id, response_id
+        )
+    canonical_id = session_ids[0] if session_ids else response_id
+    if session_ids:
+        # Revoke only the snapshot used for upstream cleanup. Never revoke a late
+        # alias whose upstream deletion was not attempted.
+        await session_ownership_service.release_conversation_sessions(user_id, session_ids)
     deleted = await conversation_persistence.delete_conversation_thread(user_id, canonical_id)
     if canonical_id in active_conversations.get(user_id, {}):
         del active_conversations[user_id][canonical_id]
