@@ -841,9 +841,10 @@ class SearchService:
                 "require_field_match": False,
             }
 
-        # Prepare fallback search body without num_candidates for clusters that don't support it.
-        # Only relevant when we actually dispatched KNN queries.
-        fallback_search_body: dict[str, Any] | None = None
+        # Prepare fallback search bodies for two known retry scenarios.
+        # Both are only relevant when we dispatched a hybrid query.
+        fallback_search_body: dict[str, Any] | None = None  # num_candidates retry
+        dls_fallback_body: dict[str, Any] | None = None     # DLS wrapper retry
         if not is_wildcard_match_all and query_embeddings:
             try:
                 fallback_search_body = copy.deepcopy(search_body)
@@ -857,6 +858,25 @@ class SearchService:
                                 params.pop("num_candidates", None)
             except (KeyError, IndexError, AttributeError, TypeError):
                 fallback_search_body = None
+
+            # DLS fallback: rewrite hybrid as bool/should so the security plugin's
+            # function_score wrapper is not blocked by the hybrid-must-be-top-level rule.
+            # Scores won't be normalized by the pipeline but ranking is preserved.
+            try:
+                dls_fallback_body = copy.deepcopy(search_body)
+                hybrid = dls_fallback_body["query"]["hybrid"]
+                bool_filters = hybrid.get("filter") or all_filters
+                dls_fallback_body["query"] = {
+                    "bool": {
+                        "should": hybrid["queries"],
+                        "minimum_should_match": 1,
+                        "filter": bool_filters if bool_filters else None,
+                    }
+                }
+                if dls_fallback_body["query"]["bool"]["filter"] is None:
+                    del dls_fallback_body["query"]["bool"]["filter"]
+            except (KeyError, AttributeError, TypeError):
+                dls_fallback_body = None
 
         # Authentication required - ACL filter is applied at the application layer above
         logger.debug(
@@ -927,6 +947,40 @@ class SearchService:
                             "OpenSearch retry without num_candidates failed",
                             error=str(retry_error),
                             search_body=fallback_search_body,
+                        )
+                        raise
+                elif (
+                    dls_fallback_body is not None
+                    and "hybrid query must be a top level query" in error_message.lower()
+                ):
+                    # DLS (Document Level Security) wraps the query in function_score,
+                    # which the hybrid query type cannot be nested inside. Fall back to
+                    # bool/should so DLS users get keyword+semantic results without the
+                    # normalization pipeline. Scores are still meaningful for ranking.
+                    logger.warning(
+                        "DLS wrapper incompatible with hybrid query; retrying as bool/should"
+                    )
+                    query_span.set(retried_dls_bool_fallback=True)
+                    dls_params = {k: v for k, v in search_params.items() if k != "search_pipeline"}
+                    try:
+                        results = await opensearch_client.search(
+                            index=get_index_name(),
+                            body=dls_fallback_body,
+                            params=dls_params,
+                        )
+                    except RequestError as dls_retry_error:
+                        if is_disk_space_error(dls_retry_error):
+                            logger.error(
+                                "OpenSearch DLS retry blocked by disk space constraint",
+                                error=str(dls_retry_error),
+                            )
+                            raise OpenSearchDiskSpaceError(
+                                DISK_SPACE_ERROR_MESSAGE
+                            ) from dls_retry_error
+                        logger.error(
+                            "OpenSearch DLS bool/should retry failed",
+                            error=str(dls_retry_error),
+                            search_body=dls_fallback_body,
                         )
                         raise
                 else:

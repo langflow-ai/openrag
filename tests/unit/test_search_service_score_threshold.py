@@ -235,3 +235,83 @@ async def test_chunk_search_excludes_website_manifests_but_not_page_chunks(monke
         for clause in filters
         if clause.get("bool", {}).get("must_not")
     ]
+
+
+@pytest.mark.asyncio
+async def test_dls_hybrid_conflict_retries_as_bool_should(monkeypatch):
+    """DLS wraps hybrid in function_score; service must retry as bool/should without pipeline."""
+
+    class _DLSOpenSearch:
+        def __init__(self):
+            self.bodies: list[dict] = []
+            self.params_list: list[dict] = []
+
+        async def search(self, *, index, body, params):
+            if body.get("size") == 0:
+                return {"aggregations": {"embedding_spaces": {"buckets": []}, "legacy_embedding_models": {"buckets": []}}}
+            self.bodies.append(body)
+            self.params_list.append(params)
+            if len(self.bodies) == 1:
+                raise RequestError(
+                    400,
+                    "search_phase_execution_exception",
+                    {"error": {"root_cause": [{"reason": "hybrid query must be a top level query and cannot be wrapped into other queries"}]}},
+                )
+            return {"hits": {"hits": []}, "aggregations": {}}
+
+    os_client = _DLSOpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+
+    await service.search_tool("MCP")
+
+    first, retry = os_client.bodies
+    # First attempt was hybrid
+    assert "hybrid" in first["query"]
+    assert os_client.params_list[0].get("search_pipeline") is not None
+    # Retry is bool/should with no pipeline
+    assert "bool" in retry["query"]
+    assert "hybrid" not in retry["query"]
+    assert "search_pipeline" not in os_client.params_list[1]
+    # Retry preserves the same sub-queries from the hybrid clause
+    should_clauses = retry["query"]["bool"]["should"]
+    assert len(should_clauses) >= 2  # semantic dis_max + at least one keyword clause
+
+
+@pytest.mark.asyncio
+async def test_dls_fallback_preserves_filters(monkeypatch):
+    """DLS bool/should retry must carry the original filters into the bool clause."""
+
+    class _DLSOpenSearch:
+        def __init__(self):
+            self.bodies: list[dict] = []
+
+        async def search(self, *, index, body, params):
+            if body.get("size") == 0:
+                return {"aggregations": {"embedding_spaces": {"buckets": []}, "legacy_embedding_models": {"buckets": []}}}
+            self.bodies.append(body)
+            if len(self.bodies) == 1:
+                raise RequestError(
+                    400,
+                    "search_phase_execution_exception",
+                    {"error": {"root_cause": [{"reason": "hybrid query must be a top level query"}]}},
+                )
+            return {"hits": {"hits": []}, "aggregations": {}}
+
+    os_client = _DLSOpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+    set_search_result_mode("chunks")
+
+    await service.search_tool("baseball")
+
+    retry_body = os_client.bodies[-1]
+    assert "bool" in retry_body["query"]
+    # record_kind filter must still be present in the fallback
+    filters = retry_body["query"]["bool"].get("filter", [])
+    record_kind_filter_present = any(
+        clause.get("bool", {}).get("must_not", [{}])[0].get("terms", {}).get("record_kind")
+        for clause in filters
+        if clause.get("bool", {}).get("must_not")
+    )
+    assert record_kind_filter_present, "record_kind filter missing from DLS fallback"
