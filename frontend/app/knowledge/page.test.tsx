@@ -6,6 +6,7 @@
  *   isSkippedStatus       — skipped detection used by the cell renderer
  *   SkippedStatusCell     — renders the amber "Duplicate" badge with tooltip
  *   buildChunksUrl        — URL construction for the chunks navigation link
+ *   buildWebsitePagesUrl  — URL construction for website page navigation
  *   getOwnerLabel         — owner display label preference order
  *   formatAvgScoreLabel   — avg-score cell number / dash formatting
  *   formatChunkCountLabel — chunk-count cell number / dash formatting
@@ -28,6 +29,7 @@ import { setMockLocation } from "@/test-utils/router";
 import ProtectedSearchPage, {
   AvgScoreCellContent,
   buildChunksUrl,
+  buildWebsitePagesUrl,
   compareAvgScore,
   compareStatusRank,
   formatAvgScoreLabel,
@@ -179,6 +181,23 @@ describe("buildChunksUrl", () => {
     const url = buildChunksUrl("my doc & notes.pdf", "cost/benefit");
     expect(url).toContain("filename=my+doc+%26+notes.pdf");
     expect(url).toContain("q=cost%2Fbenefit");
+  });
+});
+
+describe("buildWebsitePagesUrl", () => {
+  it("carries a non-wildcard knowledge search into the website page view", () => {
+    expect(buildWebsitePagesUrl("source-1", "baseball news")).toBe(
+      "/knowledge?website=source-1&q=baseball+news",
+    );
+  });
+
+  it("omits empty and wildcard search terms", () => {
+    expect(buildWebsitePagesUrl("source-1", "")).toBe(
+      "/knowledge?website=source-1",
+    );
+    expect(buildWebsitePagesUrl("source-1", "*")).toBe(
+      "/knowledge?website=source-1",
+    );
   });
 });
 

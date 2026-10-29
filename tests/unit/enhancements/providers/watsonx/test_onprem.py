@@ -39,6 +39,22 @@ def _providers(**credentials) -> ProvidersConfig:
     )
 
 
+def _chat_api_params(params: dict[str, Any], model: str):
+    """Call the Watsonx chat module's bound parameter helper.
+
+    LiteLLM renamed this private helper to ``get_api_params`` in 1.106. Test
+    the actual chat call site so the compatibility patch works across both
+    layouts rather than importing either private spelling directly.
+    """
+    from litellm.llms.watsonx.chat import handler
+
+    legacy_helper_name = "_get_api_params"
+    get_api_params = getattr(handler, "get_api_params", None) or getattr(
+        handler, legacy_helper_name
+    )
+    return get_api_params(params=params, model=model)
+
+
 def test_zen_api_key_is_the_base64_cpd_docs_describe() -> None:
     # `echo "<username>:<apikey>" | base64`, which is what the cluster expects
     # after `Authorization: ZenApiKey `.
@@ -253,9 +269,7 @@ def test_a_scopeless_cluster_call_carries_no_null_space_id(monkeypatch) -> None:
     LiteLLM 1.84 refuses the call locally and, past that, serialises the absent
     space as `"space_id": null`. Both are wrong for that install.
     """
-    # A developer's `.env` or a CI runner may define a scope that LiteLLM falls
-    # back to; these are every alias its watsonx `_get_api_params` reads.
-    for var in (
+    for name in (
         "WATSONX_PROJECT_ID",
         "WX_PROJECT_ID",
         "PROJECT_ID",
@@ -264,14 +278,14 @@ def test_a_scopeless_cluster_call_carries_no_null_space_id(monkeypatch) -> None:
         "WX_SPACE_ID",
         "SPACE_ID",
     ):
-        monkeypatch.delenv(var, raising=False)
+        monkeypatch.delenv(name, raising=False)
+
     watsonx_onprem.install_litellm_compatibility()
 
-    from litellm.llms.watsonx.chat.handler import _get_api_params
     from litellm.llms.watsonx.chat.transformation import IBMWatsonXChatConfig
 
-    api_params = _get_api_params(params={}, model="ibm/granite-3-3-8b-instruct")
-    payload = IBMWatsonXChatConfig()._prepare_payload(
+    api_params = _chat_api_params(params={}, model="ibm/granite-3-3-8b-instruct")
+    payload = IBMWatsonXChatConfig().prepare_payload(
         model="ibm/granite-3-3-8b-instruct", api_params=api_params
     )
 
@@ -281,13 +295,12 @@ def test_a_scopeless_cluster_call_carries_no_null_space_id(monkeypatch) -> None:
 def test_a_scope_that_is_set_still_reaches_the_cluster() -> None:
     watsonx_onprem.install_litellm_compatibility()
 
-    from litellm.llms.watsonx.chat.handler import _get_api_params
     from litellm.llms.watsonx.chat.transformation import IBMWatsonXChatConfig
 
-    api_params = _get_api_params(
+    api_params = _chat_api_params(
         params={"space_id": "space-1"}, model="ibm/granite-3-3-8b-instruct"
     )
-    payload = IBMWatsonXChatConfig()._prepare_payload(
+    payload = IBMWatsonXChatConfig().prepare_payload(
         model="ibm/granite-3-3-8b-instruct", api_params=api_params
     )
 
@@ -299,13 +312,12 @@ def test_an_explicit_onprem_space_ignores_the_cloud_project_environment(monkeypa
     monkeypatch.setenv("WATSONX_PROJECT_ID", "cloud-project")
     watsonx_onprem.install_litellm_compatibility()
 
-    from litellm.llms.watsonx.chat.handler import _get_api_params
     from litellm.llms.watsonx.chat.transformation import IBMWatsonXChatConfig
 
-    api_params = _get_api_params(
+    api_params = _chat_api_params(
         params={"space_id": "onprem-space"}, model="ibm/granite-3-3-8b-instruct"
     )
-    payload = IBMWatsonXChatConfig()._prepare_payload(
+    payload = IBMWatsonXChatConfig().prepare_payload(
         model="ibm/granite-3-3-8b-instruct", api_params=api_params
     )
 
