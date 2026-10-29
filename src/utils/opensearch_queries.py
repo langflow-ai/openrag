@@ -116,3 +116,76 @@ def build_replace_filename_query(filename: str, owner: str) -> dict:
             ]
         }
     }
+
+
+def build_date_range_query(
+    field: str, gte: str | None = None, lte: str | None = None
+) -> dict | None:
+    """
+    Build a date range query clause for OpenSearch.
+
+    Args:
+        field: The date field name to filter on (e.g. 'created_time')
+        gte: Lower bound ISO-8601 string (inclusive)
+        lte: Upper bound ISO-8601 string (inclusive)
+
+    Returns:
+        A dict containing {"range": {field: {...}}} or None if both bounds are None.
+    """
+    range_bounds: dict[str, str] = {}
+    if gte is not None:
+        range_bounds["gte"] = gte
+    if lte is not None:
+        range_bounds["lte"] = lte
+    if not range_bounds:
+        return None
+    return {"range": {field: range_bounds}}
+
+
+FILTER_FIELD_MAPPING = {
+    "data_sources": "filename",
+    "document_types": "mimetype",
+    "owners": "owner",
+    "connector_types": "connector_type",
+}
+
+
+def build_filter_clauses(
+    filters: dict | None, *, empty_list_matches_nothing: bool = False
+) -> list[dict]:
+    """
+    Convert request filters into OpenSearch filter clauses.
+
+    List-valued filters become term/terms clauses on the mapped field.
+    ``created_after``/``created_before`` become one inclusive ``indexed_time``
+    range clause.
+
+    Args:
+        filters: Frontend filter dict (may be None/empty).
+        empty_list_matches_nothing: When True an empty list matches no documents
+            (search behavior); when False it is ignored (chat/nudges behavior).
+    """
+    clauses: list[dict] = []
+    if not filters:
+        return clauses
+
+    for filter_key, values in filters.items():
+        if values is None or not isinstance(values, list):
+            continue
+        field_name = FILTER_FIELD_MAPPING.get(filter_key, filter_key)
+        if len(values) == 0:
+            if empty_list_matches_nothing:
+                clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
+        elif len(values) == 1:
+            clauses.append({"term": {field_name: values[0]}})
+        else:
+            clauses.append({"terms": {field_name: values}})
+
+    date_clause = build_date_range_query(
+        "indexed_time",
+        gte=filters.get("created_after") or None,
+        lte=filters.get("created_before") or None,
+    )
+    if date_clause is not None:
+        clauses.append(date_clause)
+    return clauses

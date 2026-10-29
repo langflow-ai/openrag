@@ -25,6 +25,7 @@ from utils.embedding_fields import (
     get_embedding_space_id,
 )
 from utils.logging_config import get_logger
+from utils.opensearch_queries import build_filter_clauses
 
 logger = get_logger(__name__)
 
@@ -376,30 +377,9 @@ class SearchService:
 
         if not is_wildcard_match_all:
             # Build filter clauses first so we can use them in model detection
-            filter_clauses: list[dict[str, Any]] = []
-            if filters:
-                # Map frontend filter names to backend field names
-                field_mapping = {
-                    "data_sources": "filename",
-                    "document_types": "mimetype",
-                    "owners": "owner",
-                    "connector_types": "connector_type",
-                }
-
-                for filter_key, values in filters.items():
-                    if values is not None and isinstance(values, list):
-                        # Map frontend key to backend field name
-                        field_name = field_mapping.get(filter_key, filter_key)
-
-                        if len(values) == 0:
-                            # Empty array means "match nothing" - use impossible filter
-                            filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
-                        elif len(values) == 1:
-                            # Single value filter
-                            filter_clauses.append({"term": {field_name: values[0]}})
-                        else:
-                            # Multiple values filter
-                            filter_clauses.append({"terms": {field_name: values}})
+            filter_clauses: list[dict[str, Any]] = build_filter_clauses(
+                filters, empty_list_matches_nothing=True
+            )
 
             try:
                 seen_spaces: set[str] = set()
@@ -564,30 +544,7 @@ class SearchService:
             )
         else:
             # Wildcard query - no embedding needed
-            filter_clauses = []
-            if filters:
-                # Map frontend filter names to backend field names
-                field_mapping = {
-                    "data_sources": "filename",
-                    "document_types": "mimetype",
-                    "owners": "owner",
-                    "connector_types": "connector_type",
-                }
-
-                for filter_key, values in filters.items():
-                    if values is not None and isinstance(values, list):
-                        # Map frontend key to backend field name
-                        field_name = field_mapping.get(filter_key, filter_key)
-
-                        if len(values) == 0:
-                            # Empty array means "match nothing" - use impossible filter
-                            filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
-                        elif len(values) == 1:
-                            # Single value filter
-                            filter_clauses.append({"term": {field_name: values[0]}})
-                        else:
-                            # Multiple values filter
-                            filter_clauses.append({"terms": {field_name: values}})
+            filter_clauses = build_filter_clauses(filters, empty_list_matches_nothing=True)
 
         # Build query body
         if is_wildcard_match_all:
@@ -602,17 +559,17 @@ class SearchService:
             knn_queries = []
             for field_identity, embedding_vector in query_embeddings.items():
                 field_name = get_embedding_field_name(field_identity)
-                knn_queries.append(
-                    {
-                        "knn": {
-                            field_name: {
-                                "vector": embedding_vector,
-                                "k": 50,
-                                "num_candidates": 1000,
-                            }
-                        }
-                    }
-                )
+                knn_clause: dict[str, Any] = {
+                    "vector": embedding_vector,
+                    "k": 50,
+                    "num_candidates": 1000,
+                }
+                # Filter inside the kNN clause so neighbors are chosen among
+                # in-range documents; the outer bool filter alone is a
+                # post-filter over the global top-k.
+                if filter_clauses:
+                    knn_clause["filter"] = {"bool": {"filter": filter_clauses}}
+                knn_queries.append({"knn": {field_name: knn_clause}})
 
             # KNN clauses naturally apply only to documents carrying their
             # vector field. Keep all other documents eligible for keyword
@@ -630,7 +587,7 @@ class SearchService:
             # Hybrid search (semantic + keyword) when embeddings are available;
             # keyword-only fallback when none succeeded. When falling back, bump
             # the multi_match boost so keyword scoring isn't artificially damped.
-            should_clauses = []
+            should_clauses: list[dict[str, Any]] = []
             if knn_queries:
                 should_clauses.append(
                     {
@@ -711,6 +668,7 @@ class SearchService:
                 "allowed_users",
                 "allowed_groups",
                 "allowed_principal_labels",
+                "indexed_time",
             ],
             "size": limit,
         }
@@ -872,6 +830,7 @@ class SearchService:
                     "allowed_users": source.get("allowed_users", []),
                     "allowed_groups": source.get("allowed_groups", []),
                     "allowed_principal_labels": source.get("allowed_principal_labels", []),
+                    "indexed_time": source.get("indexed_time"),
                 }
             )
 

@@ -161,6 +161,9 @@ def register_internal_routes(app: FastAPI):
     # File listing/search endpoints
     app.add_api_route("/files", files.list_files, methods=["GET"], tags=["internal"])
     app.add_api_route("/files/search", files.search_files, methods=["GET"], tags=["internal"])
+    app.add_api_route(
+        "/files/upload-histogram", files.upload_histogram, methods=["GET"], tags=["internal"]
+    )
 
     # Knowledge Filter endpoints
     app.add_api_route(

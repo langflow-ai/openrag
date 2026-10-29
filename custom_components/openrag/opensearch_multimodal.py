@@ -1777,6 +1777,21 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         # term_obj like {"filename": "__IMPOSSIBLE_VALUE__"}
         return any(v == "__IMPOSSIBLE_VALUE__" for v in term_obj.values())
 
+    @staticmethod
+    def _is_valid_range_clause(clause: Any) -> bool:
+        """Return True for a single-field range clause with at least one bound."""
+        if not isinstance(clause, dict) or not isinstance(clause.get("range"), dict):
+            return False
+        range_obj = clause["range"]
+        if len(range_obj) != 1:
+            return False
+        bounds = next(iter(range_obj.values()))
+        if not isinstance(bounds, dict):
+            return False
+        return any(
+            key in bounds and bounds[key] not in (None, "") for key in ("gte", "gt", "lte", "lt")
+        )
+
     def _coerce_filter_clauses(self, filter_obj: dict | None) -> list[dict]:
         """Convert filter expressions into OpenSearch-compatible filter clauses.
 
@@ -1794,7 +1809,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             filter_obj: Filter configuration dictionary or None
 
         Returns:
-            List of OpenSearch filter clauses (term/terms objects)
+            List of OpenSearch filter clauses (term/terms/range objects)
             Placeholder values with "__IMPOSSIBLE_VALUE__" are ignored
         """
         if not filter_obj:
@@ -1825,6 +1840,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     field, vals = next(iter(f["terms"].items()))
                     if isinstance(vals, list) and len(vals) > 0:
                         explicit_clauses.append(f)
+                elif self._is_valid_range_clause(f):
+                    explicit_clauses.append(f)
             return explicit_clauses
 
         # Case B: convert context-style maps into clauses
@@ -2368,6 +2385,11 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     }
                 }
             }
+            # Filter inside each kNN clause so the nearest neighbours are chosen
+            # from matching documents; the outer bool filter alone would only
+            # post-filter the global top-k and miss narrow ranges.
+            if filter_clauses:
+                base_query["knn"][selected_field]["filter"] = {"bool": {"filter": filter_clauses}}
 
             if use_num_candidates:
                 query_with_candidates = copy.deepcopy(base_query)

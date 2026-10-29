@@ -129,6 +129,8 @@ export interface RequestBody {
     document_types?: string[];
     owners?: string[];
     connector_types?: string[];
+    created_after?: string;
+    created_before?: string;
   };
   filter_id?: string;
   limit?: number;
