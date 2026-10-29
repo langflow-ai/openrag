@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import io
+import json
 import os
 import subprocess
 import sys
@@ -66,6 +67,14 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--output-dir", type=Path, default=HERE / "results")
     run.add_argument("--baseline", type=Path, help="results file to compare this run against")
     run.add_argument(
+        "--max-recall-drop",
+        type=float,
+        help=(
+            "with --baseline, exit with status 1 when the average recall at the compared "
+            "cutoff falls by more than this (0.02 = two points). Off by default."
+        ),
+    )
+    run.add_argument(
         "--k",
         dest="k_values",
         type=_parse_k_values,
@@ -104,6 +113,18 @@ def build_parser() -> argparse.ArgumentParser:
     compare = commands.add_parser("compare", help="diff two results files offline")
     compare.add_argument("baseline", type=Path)
     compare.add_argument("current", type=Path)
+
+    promote = commands.add_parser(
+        "promote", help="replace the baseline with a results file, only if it improves on it"
+    )
+    promote.add_argument("current", type=Path, help="results file of the new run")
+    promote.add_argument("baseline", type=Path, help="baseline file to update (may not exist yet)")
+    promote.add_argument(
+        "--min-gain",
+        type=float,
+        default=0.0,
+        help="average recall must rise by more than this (default: 0, any rise)",
+    )
     return parser
 
 
@@ -391,6 +412,11 @@ async def run(args: argparse.Namespace) -> int:
     print("Wrote:")
     for path in written:
         print(f"  {path}")
+    if diff is not None and args.max_recall_drop is not None:
+        failure = report.recall_gate_failure(diff, args.max_recall_drop)
+        if failure:
+            print(f"error: {failure}", file=sys.stderr)
+            return 1
     return 0
 
 
@@ -403,9 +429,32 @@ def compare(args: argparse.Namespace) -> int:
     return 0
 
 
+NOT_PROMOTED = 3
+
+
+def promote(args: argparse.Namespace) -> int:
+    current = report.load_results(args.current)
+    baseline = report.load_results(args.baseline) if args.baseline.exists() else None
+    promoted, reason = report.promotion_decision(baseline, current, args.min_gain)
+    if not promoted:
+        print(f"Baseline not updated: {reason}")
+        return NOT_PROMOTED
+    args.baseline.parent.mkdir(parents=True, exist_ok=True)
+    args.baseline.write_text(json.dumps(current, indent=2) + "\n", encoding="utf-8")
+    print(f"Baseline updated ({reason}): {args.baseline}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "promote" and args.min_gain < 0:
+        parser.error("--min-gain must not be negative")
+    if args.command == "run" and args.max_recall_drop is not None:
+        if args.max_recall_drop < 0:
+            parser.error("--max-recall-drop must not be negative")
+        if args.baseline is None:
+            parser.error("--max-recall-drop needs --baseline to compare against")
     if args.command == "run" and args.fetch_limit < max(args.k_values):
         # Fewer chunks than the largest cutoff cannot fill that many file
         # ranks, so recall@k and nDCG@k at that cutoff would be meaningless.
@@ -416,6 +465,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "compare":
             return compare(args)
+        if args.command == "promote":
+            return promote(args)
         return asyncio.run(run(args))
     except (dataset.DatasetError, report.ResultsError, EvalError) as exc:
         print(f"error: {exc}", file=sys.stderr)

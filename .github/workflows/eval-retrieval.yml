@@ -1,0 +1,274 @@
+name: Retrieval Eval
+
+# Manual only. Nothing here runs on a push or a pull request: someone starts it
+# from the Actions tab (or `gh workflow run eval-retrieval.yml`) when they want
+# to measure search quality. See scripts/eval/retrieval/README.md.
+#
+# Each run is compared with the tracked scripts/eval/retrieval/baseline.json.
+# That file changes only when a run asks for it (update_baseline), improved on
+# it, and ran on a branch other than the default one, so the new baseline
+# reaches main through a normal pull request.
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_recall_drop:
+        description: >-
+          Fail the run if average recall at the compared cutoff falls by more than this
+          (0.02 = two points) below the tracked baseline. Leave empty to only report.
+        required: false
+        type: string
+      update_baseline:
+        description: >-
+          If this run improves on the tracked baseline, commit the new baseline.json to
+          the selected branch. Refused on the default branch.
+        required: false
+        type: boolean
+        default: false
+      min_gain:
+        description: >-
+          Average recall must rise by more than this to count as an improvement. Keeps
+          run-to-run noise from raising the baseline.
+        required: false
+        type: string
+        default: "0.025"
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.13"
+  OPENRAG_VERSION: eval-${{ github.sha }}
+  LANGFLOW_SUPERUSER: "admin"
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+  AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+  AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION || '2024-02-01' }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  WATSONX_API_KEY: ${{ secrets.WATSONX_API_KEY }}
+  WATSONX_ENDPOINT: ${{ secrets.WATSONX_ENDPOINT }}
+  WATSONX_PROJECT_ID: ${{ secrets.WATSONX_PROJECT_ID }}
+  OLLAMA_ENDPOINT: ${{ secrets.OLLAMA_ENDPOINT }}
+  # The embedding model decides the scores, so it is the same one test-ci.yml
+  # uses. Scores from different models are not comparable.
+  LLM_PROVIDER: ${{ secrets.LLM_PROVIDER || 'azure' }}
+  EMBEDDING_PROVIDER: ${{ secrets.EMBEDDING_PROVIDER || 'azure' }}
+  LLM_MODEL: ${{ secrets.LLM_MODEL || 'gpt-4.1' }}
+  EMBEDDING_MODEL: ${{ secrets.EMBEDDING_MODEL || 'text-embedding-3-small' }}
+  LANGFLOW_AUTO_LOGIN: "True"
+  LANGFLOW_NEW_USER_IS_ACTIVE: "True"
+  LANGFLOW_ENABLE_SUPERUSER_CLI: "True"
+  LANGFLOW_CHAT_FLOW_ID: ${{ vars.LANGFLOW_CHAT_FLOW_ID || '1098eea1-6649-4e1d-aed1-b77249fb8dd0' }}
+  LANGFLOW_INGEST_FLOW_ID: ${{ vars.LANGFLOW_INGEST_FLOW_ID || '5488df7c-b93f-4f87-a446-b67028bc0813' }}
+  NUDGES_FLOW_ID: ${{ vars.NUDGES_FLOW_ID || 'ebc01d31-1976-46ce-a385-b0240327226c' }}
+  LANGFLOW_URL_INGEST_FLOW_ID: ${{ vars.LANGFLOW_URL_INGEST_FLOW_ID || '72c3d17c-2dac-4a73-b48a-6518473d7830' }}
+  # No-auth mode, so the run can create its own API key. Startup ingest is
+  # off so default documents do not end up in the index being measured.
+  GOOGLE_OAUTH_CLIENT_ID: ""
+  GOOGLE_OAUTH_CLIENT_SECRET: ""
+  DISABLE_STARTUP_INGEST: "true"
+  # Single-node test cluster never reaches the multi-node readiness counts
+  OPENSEARCH_NODE_COUNT_CHECK_ENABLED: "false"
+
+jobs:
+  eval:
+    name: Retrieval eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # write is used only by the "Update the tracked baseline" step, which
+    # runs when update_baseline is set.
+    permissions:
+      contents: write
+    steps:
+      - name: Validate inputs
+        env:
+          MAX_RECALL_DROP: ${{ inputs.max_recall_drop }}
+          MIN_GAIN: ${{ inputs.min_gain || '0.025' }}
+          UPDATE_BASELINE: ${{ inputs.update_baseline }}
+          REF_NAME: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          number='^[0-9]+(\.[0-9]+)?$'
+          if [ -n "$MAX_RECALL_DROP" ] && ! printf '%s' "$MAX_RECALL_DROP" | grep -Eq "$number"; then
+            echo "::error::max_recall_drop must be a non-negative number such as 0.02"
+            exit 1
+          fi
+          if ! printf '%s' "$MIN_GAIN" | grep -Eq "$number"; then
+            echo "::error::min_gain must be a non-negative number such as 0.025"
+            exit 1
+          fi
+          if [ "$UPDATE_BASELINE" = "true" ] && [ "$REF_NAME" = "$DEFAULT_BRANCH" ]; then
+            echo "::error::update_baseline is refused on ${DEFAULT_BRANCH}. Run it on a branch and merge the result in a pull request."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Throwaway passwords for the stack this run starts and then deletes, so
+      # no password is stored in the repository.
+      - name: Generate stack passwords
+        run: |
+          set -euo pipefail
+          for name in OPENSEARCH_PASSWORD LANGFLOW_SUPERUSER_PASSWORD; do
+            value="Ea1#$(openssl rand -hex 16)"
+            echo "::add-mask::${value}"
+            echo "${name}=${value}" >> "$GITHUB_ENV"
+          done
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: latest
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Check the corpus and questions
+        run: make eval-validate
+
+      - name: Build images from this ref
+        run: |
+          for image in opensearch backend frontend langflow; do
+            if [ "$image" = "opensearch" ]; then
+              dockerfile=Dockerfile
+            else
+              dockerfile="Dockerfile.${image}"
+            fi
+            docker build -f "$dockerfile" -t "langflowai/openrag-${image}:${OPENRAG_VERSION}" .
+          done
+
+      - name: Start the stack
+        env:
+          CI: "true"
+        run: |
+          chmod +x scripts/setup-e2e.sh
+          ./scripts/setup-e2e.sh
+
+      - name: Onboard the stack and create an API key
+        run: |
+          set -euo pipefail
+          base_url="http://localhost:3000"
+
+          payload="$(jq -n \
+            --arg llm_provider "$LLM_PROVIDER" \
+            --arg embedding_provider "$EMBEDDING_PROVIDER" \
+            --arg llm_model "$LLM_MODEL" \
+            --arg embedding_model "$EMBEDDING_MODEL" \
+            --arg azure_key "${AZURE_OPENAI_API_KEY:-}" \
+            --arg azure_base "${AZURE_OPENAI_ENDPOINT:-}" \
+            --arg azure_version "${AZURE_OPENAI_API_VERSION:-}" \
+            '{llm_provider: $llm_provider, embedding_provider: $embedding_provider,
+              llm_model: $llm_model, embedding_model: $embedding_model}
+             + (if $azure_key != "" and $azure_base != ""
+                then {provider_credentials: {azure: {api_key: $azure_key, api_base: $azure_base, api_version: $azure_version}}}
+                else {} end)')"
+
+          status="$(curl -sS --max-time 120 -o /tmp/onboarding.json -w '%{http_code}' \
+            -X POST "${base_url}/api/onboarding" -H 'Content-Type: application/json' -d "$payload")"
+          if [ "$status" != "200" ] && [ "$status" != "204" ]; then
+            echo "::error::Onboarding failed with HTTP ${status}"
+            exit 1
+          fi
+
+          api_key="$(curl -sS --max-time 60 --fail \
+            -X POST "${base_url}/api/keys" -H 'Content-Type: application/json' \
+            -d '{"name": "Retrieval Eval"}' | jq -r '.api_key')"
+          if [ -z "$api_key" ] || [ "$api_key" = "null" ]; then
+            echo "::error::Could not create an API key"
+            exit 1
+          fi
+          echo "::add-mask::${api_key}"
+          echo "OPENRAG_API_KEY=${api_key}" >> "$GITHUB_ENV"
+
+      - name: Run the retrieval eval
+        env:
+          OPENRAG_URL: http://localhost:3000
+          MAX_RECALL_DROP: ${{ inputs.max_recall_drop }}
+        run: |
+          set -euo pipefail
+          if [ -f scripts/eval/retrieval/baseline.json ]; then
+            args=""
+            if [ -n "$MAX_RECALL_DROP" ]; then
+              args="--max-recall-drop ${MAX_RECALL_DROP}"
+            fi
+            make eval-run BASELINE=baseline.json EVAL_ARGS="${args}"
+          else
+            echo "::warning::scripts/eval/retrieval/baseline.json does not exist yet, so nothing was compared. Run with update_baseline on a branch to create it."
+            make eval-run
+          fi
+
+      - name: Publish summary
+        if: ${{ always() }}
+        run: |
+          if [ -f scripts/eval/retrieval/results/summary.md ]; then
+            cat scripts/eval/retrieval/results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "The eval did not produce a summary." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Update the tracked baseline
+        if: ${{ inputs.update_baseline }}
+        env:
+          MIN_GAIN: ${{ inputs.min_gain || '0.025' }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          # Exit status 3 means "not an improvement", which is not a failure, so
+          # read the status instead of letting the shell stop on it.
+          set +e
+          cd scripts/eval/retrieval
+          uv run run_eval.py promote results/results.json baseline.json --min-gain "$MIN_GAIN" > /tmp/promote.txt
+          status=$?
+          set -e
+          cat /tmp/promote.txt
+          {
+            echo "### Baseline"
+            cat /tmp/promote.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" = "3" ]; then
+            exit 0
+          elif [ "$status" != "0" ]; then
+            exit "$status"
+          fi
+          cd "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/eval/retrieval/baseline.json
+          git commit -m "chore: update the retrieval eval baseline"
+          git push origin "HEAD:refs/heads/${REF_NAME}"
+
+      - name: Upload results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: retrieval-eval-results
+          path: scripts/eval/retrieval/results/
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Collect service logs on failure
+        if: failure()
+        run: |
+          mkdir -p service-logs
+          docker logs openrag-opensearch > service-logs/opensearch.log 2>&1 || true
+          docker logs openrag-backend > service-logs/backend.log 2>&1 || true
+          docker logs openrag-frontend > service-logs/frontend.log 2>&1 || true
+          docker logs openrag-langflow > service-logs/langflow.log 2>&1 || true
+          cp ~/.openrag/tui/docling-serve.log service-logs/docling.log 2>&1 || true
+
+      - name: Upload service logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: eval-service-logs
+          path: service-logs/
+          retention-days: 7
+
+      - name: Teardown infrastructure
+        if: ${{ always() }}
+        run: |
+          make docling-stop || true
+          docker rm -f openrag-backend-proxy 2>/dev/null || true
+          make clean || true
+          docker system prune -f || true
