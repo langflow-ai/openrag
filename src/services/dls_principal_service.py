@@ -7,7 +7,7 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-from services.search_cache import invalidate_user_suggestions
+from services.search_cache import invalidate_user_spaces, invalidate_user_suggestions
 from session_manager import User
 from utils.group_acl import (
     acl_principal_label,
@@ -161,12 +161,13 @@ class DLSPrincipalService:
         return principals
 
     def _drop_stale_suggestions(self, user: User, principals: list[str]) -> None:
-        """Cached suggestions embed what the user could see; membership changes make them stale."""
+        """Cached suggestions and spaces embed what the user could see; membership changes make them stale."""
         current = frozenset(principals)
         previous = self._last_principals.get(user.user_id)
         self._last_principals[user.user_id] = current
         if previous is not None and previous != current:
             invalidate_user_suggestions(user.user_id)
+            invalidate_user_spaces(user.user_id)
 
     def invalidate_user(self, user: User | str) -> None:
         """Drop cached DLS principals for one auth user or OpenSearch user name."""

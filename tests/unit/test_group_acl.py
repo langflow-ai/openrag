@@ -524,19 +524,26 @@ async def test_dls_principal_change_drops_that_users_cached_suggestions():
     user = User(user_id="user-1", email=None, name=None, provider="test")
     other_key = ("user-2", "docling", "{}", 0, True)
     user_key = ("user-1", "docling", "{}", 0, True)
+    other_space_key = ("user-2", "fp-2")
+    user_space_key = ("user-1", "fp-1")
 
     await service.refresh_user_principals(user)
     search_cache.SUGGEST_CACHE.set(user_key, {"files": ["old.pdf"]})
     search_cache.SUGGEST_CACHE.set(other_key, {"files": ["other.pdf"]})
+    search_cache.SPACES_CACHE.set(user_space_key, ["space-1"])
+    search_cache.SPACES_CACHE.set(other_space_key, ["space-2"])
 
     await service.refresh_user_principals(user)
     assert search_cache.SUGGEST_CACHE.get(user_key) == {"files": ["old.pdf"]}
+    assert search_cache.SPACES_CACHE.get(user_space_key) == ["space-1"]
 
     current_principals.remove("g:test:engineering")
     await service.refresh_user_principals(user)
 
     assert search_cache.SUGGEST_CACHE.get(user_key) is None
     assert search_cache.SUGGEST_CACHE.get(other_key) == {"files": ["other.pdf"]}
+    assert search_cache.SPACES_CACHE.get(user_space_key) is None
+    assert search_cache.SPACES_CACHE.get(other_space_key) == ["space-2"]
 
 
 @pytest.mark.asyncio

@@ -5,10 +5,10 @@ import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { trackButton } from "@/lib/analytics";
 import { buildChunksUrl } from "@/lib/chunks-url";
+import { limitSearchInput } from "@/lib/limit-search-input";
 import { cn } from "@/lib/utils";
 import { filterAccentClasses } from "./knowledge-filter-panel";
 import {
-  limitSearchInput,
   SearchSuggestionsPopover,
   useSearchSuggestionsBox,
 } from "./search-suggestions";

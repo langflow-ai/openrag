@@ -12,11 +12,11 @@ import { RequirePermission } from "@/components/require-permission";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { buildChunksUrl } from "@/lib/chunks-url";
+import { limitSearchInput } from "@/lib/limit-search-input";
 import { cn } from "@/lib/utils";
 import { KnowledgeDropdown } from "./knowledge-dropdown";
 import { filterAccentClasses } from "./knowledge-filter-panel";
 import {
-  limitSearchInput,
   SearchSuggestionsPopover,
   useSearchSuggestionsBox,
 } from "./search-suggestions";

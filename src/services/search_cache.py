@@ -23,7 +23,7 @@ computation instead of each paying for it.
 import asyncio
 import json
 from collections.abc import Awaitable, Callable, Hashable
-from typing import Any
+from typing import Any, cast
 
 from cachetools import TTLCache
 
@@ -147,7 +147,20 @@ def fingerprint(value: Any) -> str:
 
 def invalidate_user_suggestions(user_id: str) -> None:
     """Drop one user's cached suggestions (keys start with the user id)."""
-    SUGGEST_CACHE.discard_where(lambda key: key[0] == user_id)
+    SUGGEST_CACHE.discard_where(
+        lambda key: (
+            isinstance(key, tuple) and len(key) > 0 and cast(tuple[Any, ...], key)[0] == user_id
+        )
+    )
+
+
+def invalidate_user_spaces(user_id: str) -> None:
+    """Drop one user's cached embedding spaces (keys start with the user id)."""
+    SPACES_CACHE.discard_where(
+        lambda key: (
+            isinstance(key, tuple) and len(key) > 0 and cast(tuple[Any, ...], key)[0] == user_id
+        )
+    )
 
 
 def invalidate_corpus_caches() -> None:

@@ -216,6 +216,21 @@ def test_invalidate_user_suggestions_only_drops_that_user():
     assert search_cache.SUGGEST_CACHE.get(("u2", "docling", "{}", 0, True)) == {"files": ["b"]}
 
 
+def test_invalidate_user_suggestions_ignores_non_tuple_and_empty_keys():
+    search_cache.SUGGEST_CACHE.set(("u1", "docling", "{}", 0, True), {"files": ["a"]})
+    search_cache.SUGGEST_CACHE.set("g", {"files": ["g"]})
+    search_cache.SUGGEST_CACHE.set((), {"files": ["empty"]})
+    search_cache.SUGGEST_CACHE.set(42, {"files": ["num"]})
+
+    # This should not raise IndexError, TypeError, etc.
+    search_cache.invalidate_user_suggestions("u1")
+
+    assert search_cache.SUGGEST_CACHE.get(("u1", "docling", "{}", 0, True)) is None
+    assert search_cache.SUGGEST_CACHE.get("g") == {"files": ["g"]}
+    assert search_cache.SUGGEST_CACHE.get(()) == {"files": ["empty"]}
+    assert search_cache.SUGGEST_CACHE.get(42) == {"files": ["num"]}
+
+
 @pytest.mark.asyncio
 async def test_discard_where_keeps_an_inflight_computation_from_storing():
     cache = SingleflightTTLCache(maxsize=8, ttl=60)
