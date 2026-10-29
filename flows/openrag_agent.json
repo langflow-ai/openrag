@@ -3989,7 +3989,7 @@
   "endpoint_name": null,
   "id": "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
   "is_component": false,
-  "last_tested_version": "1.12.8rc0",
+  "last_tested_version": "1.12.8",
   "locked": true,
   "name": "OpenRAG OpenSearch Agent Flow",
   "tags": [

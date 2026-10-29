@@ -6800,7 +6800,7 @@
   "endpoint_name": null,
   "id": "72c3d17c-2dac-4a73-b48a-6518473d7830",
   "is_component": false,
-  "last_tested_version": "1.12.8rc0",
+  "last_tested_version": "1.12.8",
   "mcp_enabled": true,
   "locked": true,
   "name": "OpenSearch URL Ingestion Flow",
