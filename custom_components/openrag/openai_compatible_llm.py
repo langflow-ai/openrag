@@ -127,6 +127,10 @@ class OpenAICompatibleLLMComponent(LCModelComponent):
             "api_key": api_key,
             "base_url": api_base or None,
             "streaming": bool(getattr(self, "stream", False)),
+            # The gateway serves only /chat/completions. Left unset, ChatOpenAI
+            # switches some models (e.g. gpt-6* with tools) to the Responses
+            # API, which the gateway lacks and whose client rejects `seed`.
+            "use_responses_api": False,
         }
         max_tokens = getattr(self, "max_tokens", None)
         if max_tokens:
