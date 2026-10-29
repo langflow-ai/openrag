@@ -88,13 +88,30 @@ class ConversationPersistenceService:
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
                     json.dump(snapshot, f, indent=2, ensure_ascii=False, default=str)
+                    f.flush()
+                    os.fsync(f.fileno())
                 os.replace(tmp_path, self.storage_file)
+                self._fsync_dir(dir_)
             except Exception:
                 try:
                     os.unlink(tmp_path)
                 except OSError:
                     pass
                 raise
+
+    @staticmethod
+    def _fsync_dir(path: str) -> None:
+        """Make the rename durable. Best-effort: unsupported on some platforms."""
+        try:
+            dir_fd = os.open(path, os.O_RDONLY)
+        except OSError:
+            return
+        try:
+            os.fsync(dir_fd)
+        except OSError:
+            pass
+        finally:
+            os.close(dir_fd)
 
     async def _save_conversations(self) -> None:
         loop = asyncio.get_event_loop()

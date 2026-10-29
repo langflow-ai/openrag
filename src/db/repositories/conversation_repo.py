@@ -99,6 +99,8 @@ class ConversationRepo:
         if ttl_days < 1:
             raise ValueError(f"ttl_days must be at least 1, got {ttl_days}")
 
+        # Must stay timezone-aware: SQLModel binds datetime fields through
+        # UTCDateTime, which rejects naive values and normalises aware ones to UTC.
         cutoff = datetime.now(UTC) - timedelta(days=ttl_days)
         result: CursorResult = await self.session.execute(  # type: ignore[assignment]
             delete(Conversation).where(col(Conversation.last_activity) < cutoff)
