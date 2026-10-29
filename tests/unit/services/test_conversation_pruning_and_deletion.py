@@ -1,6 +1,7 @@
 """Pruning TTL validation, prune rollback races, and file-save failure handling."""
 
 import asyncio
+import errno
 import json
 import sys
 from datetime import UTC, datetime, timedelta
@@ -209,9 +210,9 @@ async def test_delete_thread_still_deletes_from_db_when_file_save_fails(
     assert "r-1" in await _db_ids(session_factory)
     svc._save_conversations = _failing_save
 
-    deleted = await svc.delete_conversation_thread("alice", "r-1")
+    with pytest.raises(OSError, match="disk full"):
+        await svc.delete_conversation_thread("alice", "r-1")
 
-    assert deleted is True
     assert "r-1" not in await _db_ids(session_factory)
     assert "r-1" not in svc._conversations.get("alice", {})
 
@@ -227,7 +228,8 @@ async def test_clear_user_still_deletes_from_db_when_file_save_fails(
     assert await _db_ids(session_factory) == {"r-1", "r-2"}
     svc._save_conversations = _failing_save
 
-    await svc.clear_user_conversations("alice")
+    with pytest.raises(OSError, match="disk full"):
+        await svc.clear_user_conversations("alice")
 
     assert await _db_ids(session_factory) == set()
     assert "alice" not in svc._conversations
@@ -239,9 +241,9 @@ async def test_files_only_delete_failure_is_logged_not_durable(
 ):
     """In files mode a failed save leaves the entry on disk.
 
-    The exception is swallowed so callers are not broken, but nothing was
-    removed from disk: a restart before another successful save brings the
-    conversation back. A later successful save rewrites the file from memory.
+    The error is raised so the caller knows the delete was not durable: a
+    restart before another successful save brings the conversation back. A
+    later successful save rewrites the file from memory.
     """
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
     svc = _svc(storage_path, session_factory)
@@ -250,7 +252,8 @@ async def test_files_only_delete_failure_is_logged_not_durable(
     real_save = svc._save_conversations
     svc._save_conversations = _failing_save
 
-    assert await svc.delete_conversation_thread("alice", "r-1") is True
+    with pytest.raises(OSError, match="disk full"):
+        await svc.delete_conversation_thread("alice", "r-1")
 
     assert "r-1" not in svc._conversations["alice"]
     assert set(json.loads(storage_path.read_text())["alice"]) == {"r-1", "r-2"}
@@ -271,7 +274,8 @@ async def test_files_only_clear_failure_is_logged_not_durable(
     await svc.store_conversation_thread("alice", "r-1", _payload("r-1"))
     svc._save_conversations = _failing_save
 
-    await svc.clear_user_conversations("alice")
+    with pytest.raises(OSError, match="disk full"):
+        await svc.clear_user_conversations("alice")
 
     assert "alice" not in svc._conversations
     assert "r-1" in json.loads(storage_path.read_text())["alice"]
@@ -346,3 +350,55 @@ async def test_failed_prune_does_not_resurrect_a_cleared_user(
     assert not svc._conversations.get("alice")
     assert await svc.get_user_conversations("alice") == {}
     assert await _db_ids(session_factory) == set()
+
+
+# ---------------------------------------------------------------------------
+# 5. Directory fsync after the atomic replace
+# ---------------------------------------------------------------------------
+
+
+def _fail_dir_fsync(monkeypatch, err):
+    import services.conversation_persistence_service as mod
+
+    def boom(path):
+        raise err
+
+    monkeypatch.setattr(mod.ConversationPersistenceService, "_fsync_dir", staticmethod(boom))
+
+
+@pytest.mark.parametrize("code", [errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP])
+def test_fsync_dir_ignores_unsupported_errors(monkeypatch, tmp_path, code):
+    import services.conversation_persistence_service as mod
+
+    def unsupported(fd):
+        raise OSError(code, "unsupported")
+
+    monkeypatch.setattr(mod.os, "fsync", unsupported)
+    ConversationPersistenceService._fsync_dir(str(tmp_path))  # must not raise
+
+
+def test_fsync_dir_propagates_real_errors(monkeypatch, tmp_path):
+    import services.conversation_persistence_service as mod
+
+    def eio(fd):
+        raise OSError(errno.EIO, "io error")
+
+    monkeypatch.setattr(mod.os, "fsync", eio)
+    with pytest.raises(OSError):
+        ConversationPersistenceService._fsync_dir(str(tmp_path))
+
+
+@pytest.mark.asyncio
+async def test_prune_keeps_memory_matching_replaced_file_when_dir_fsync_fails(
+    monkeypatch, storage_path, session_factory
+):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
+    svc = _svc(storage_path, session_factory)
+    await svc.store_conversation_thread("alice", "old", _payload("old", age_days=90))
+    await svc.store_conversation_thread("alice", "recent", _payload("recent"))
+    _fail_dir_fsync(monkeypatch, OSError(errno.EIO, "io error"))
+
+    assert await svc.prune_stale_conversations(30) == 1
+
+    assert set(svc._conversations["alice"]) == {"recent"}
+    assert set(json.loads(storage_path.read_text())["alice"]) == {"recent"}

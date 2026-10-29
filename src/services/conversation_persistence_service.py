@@ -16,6 +16,7 @@ flipped from sync to ``await`` as part of this migration.
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import os
 import tempfile
@@ -33,6 +34,14 @@ from config.storage_mode import (
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+class PostReplaceSyncError(OSError):
+    """The store file was replaced, but the directory fsync then failed.
+
+    The new contents are in place; only their durability across a crash is
+    unknown. Callers must not roll back in-memory state for this error.
+    """
 
 
 class ConversationPersistenceService:
@@ -91,25 +100,33 @@ class ConversationPersistenceService:
                     f.flush()
                     os.fsync(f.fileno())
                 os.replace(tmp_path, self.storage_file)
-                self._fsync_dir(dir_)
             except Exception:
                 try:
                     os.unlink(tmp_path)
                 except OSError:
                     pass
                 raise
+            try:
+                self._fsync_dir(dir_)
+            except OSError as exc:
+                raise PostReplaceSyncError(exc.errno, str(exc)) from exc
 
     @staticmethod
     def _fsync_dir(path: str) -> None:
-        """Make the rename durable. Best-effort: unsupported on some platforms."""
+        """Make the rename durable. Only "unsupported" errors are ignored."""
+        unsupported = {errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP}
         try:
             dir_fd = os.open(path, os.O_RDONLY)
-        except OSError:
-            return
+        except OSError as exc:
+            # Platforms that cannot open a directory (e.g. Windows) cannot fsync it.
+            if exc.errno in unsupported or isinstance(exc, PermissionError):
+                return
+            raise
         try:
             os.fsync(dir_fd)
-        except OSError:
-            pass
+        except OSError as exc:
+            if exc.errno not in unsupported:
+                raise
         finally:
             os.close(dir_fd)
 
@@ -196,13 +213,14 @@ class ConversationPersistenceService:
     async def delete_conversation_thread(self, user_id: str, response_id: str) -> bool:
         """Delete one conversation from every active store.
 
-        The file save is best-effort, like ``store_conversation_thread``: a
-        failure is logged and the DB delete still runs in hybrid mode. In
-        ``files`` mode a failed save means the entry is gone from memory but
-        still on disk; the next successful save rewrites the file from memory
-        and removes it, but a restart before then brings it back.
+        A file-save failure does not skip the DB delete, but it is not hidden:
+        the DB delete runs first, then the save error is re-raised so the
+        caller knows the JSON copy may survive a restart (and, in hybrid mode,
+        be served by the JSON fallback). The entry is already gone from memory;
+        the next successful save rewrites the file without it.
         """
         deleted = False
+        save_error: Exception | None = None
 
         if file_writes_enabled():
             # Waits for an in-flight prune, so its rollback cannot undo this.
@@ -217,6 +235,7 @@ class ConversationPersistenceService:
                     try:
                         await self._save_conversations()
                     except Exception as exc:  # noqa: BLE001
+                        save_error = exc
                         logger.error(
                             "Failed to persist conversation deletion to disk",
                             user_id=user_id,
@@ -228,6 +247,8 @@ class ConversationPersistenceService:
             db_deleted = await self._db_delete(response_id, user_id)
             deleted = deleted or db_deleted
 
+        if save_error is not None:
+            raise save_error
         return deleted
 
     async def prune_stale_conversations(self, ttl_days: int) -> int:
@@ -315,6 +336,10 @@ class ConversationPersistenceService:
 
         try:
             await self._save_conversations()
+        except PostReplaceSyncError as exc:
+            # The pruned file is already in place; only its durability is in
+            # doubt, so memory must keep matching it. Do not roll back.
+            logger.error("Pruned conversation store replaced but not fsynced", error=str(exc))
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to persist conversation pruning to disk", error=str(exc))
             # Restore deleted entries so in-memory state stays consistent
@@ -331,10 +356,10 @@ class ConversationPersistenceService:
     async def clear_user_conversations(self, user_id: str) -> None:
         """Delete every conversation for *user_id* from every active store.
 
-        File-save failures are logged, not raised, so the DB delete still runs.
-        Same durability caveat as ``delete_conversation_thread`` in ``files``
-        mode: until a later save succeeds, the on-disk copy survives a restart.
+        A file-save failure does not skip the DB delete; the error is re-raised
+        afterwards, like ``delete_conversation_thread``.
         """
+        save_error: Exception | None = None
         if file_writes_enabled():
             # Waits for an in-flight prune, so its rollback cannot undo this.
             async with self._file_mutation_lock:
@@ -344,6 +369,7 @@ class ConversationPersistenceService:
                     try:
                         await self._save_conversations()
                     except Exception as exc:  # noqa: BLE001
+                        save_error = exc
                         logger.error(
                             "Failed to persist user conversation clear to disk",
                             user_id=user_id,
@@ -352,6 +378,9 @@ class ConversationPersistenceService:
 
         if db_writes_enabled():
             await self._db_delete_all(user_id)
+
+        if save_error is not None:
+            raise save_error
 
     async def get_storage_stats(self) -> dict[str, Any]:
         # Snapshot — uses whichever storage the mode prioritizes.
