@@ -12,7 +12,11 @@ import aiofiles
 from utils.logging_config import get_logger
 
 from .base import BaseConnector
-from .registry import get_all_secret_keys, get_connector_class, get_connector_classes
+from .registry import (
+    get_all_secret_keys,
+    get_connector_class,
+    get_connector_classes,
+)
 
 logger = get_logger(__name__)
 
@@ -477,6 +481,7 @@ class ConnectionManager:
                 "icon": cls.CONNECTOR_ICON,
                 "available": cls.is_available(self, user_id),
                 "kind": cls.CONNECTOR_KIND,
+                "always_connected": cls.ALWAYS_CONNECTED,
             }
         return result
 

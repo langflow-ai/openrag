@@ -33,9 +33,81 @@ EMBED_RETRY_INITIAL_DELAY = 1.0
 EMBED_RETRY_MAX_DELAY = 8.0
 EMBEDDING_SPACE_PAGE_SIZE = 100
 
+_SEARCH_FILTER_FIELDS = {
+    "data_sources": "filename",
+    "document_types": "mimetype",
+    "owners": "owner",
+    "connector_types": "connector_type",
+    "document_ids": "document_id",
+    "web_source_ids": "web_source_id",
+}
+_MAPPING_COMPATIBLE_FILTER_FIELDS = {"web_source_id"}
+_CHUNK_SEARCH_EXCLUDED_RECORD_KINDS = {"web_source", "web_page_manifest"}
+
 
 # Variable used to store the active instance for the tool wrapper
 _global_search_service = None
+
+
+def _build_search_filter_clauses(filters: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Translate public search filters into OpenSearch clauses in one place."""
+    clauses: list[dict[str, Any]] = []
+    for filter_key, values in (filters or {}).items():
+        if not isinstance(values, list):
+            continue
+        field_name = _SEARCH_FILTER_FIELDS.get(filter_key, filter_key)
+        if not values:
+            clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
+        elif field_name in _MAPPING_COMPATIBLE_FILTER_FIELDS:
+            terms_query = (
+                {"term": {field_name: values[0]}}
+                if len(values) == 1
+                else {"terms": {field_name: values}}
+            )
+            keyword_field = f"{field_name}.keyword"
+            keyword_query = (
+                {"term": {keyword_field: values[0]}}
+                if len(values) == 1
+                else {"terms": {keyword_field: values}}
+            )
+            clauses.append(
+                {
+                    "bool": {
+                        "should": [terms_query, keyword_query],
+                        "minimum_should_match": 1,
+                    }
+                }
+            )
+        elif len(values) == 1:
+            clauses.append({"term": {field_name: values[0]}})
+        else:
+            clauses.append({"terms": {field_name: values}})
+    return clauses
+
+
+def _add_result_mode_filter(
+    filter_clauses: list[dict[str, Any]], result_mode: str
+) -> list[dict[str, Any]]:
+    """Keep metadata-only website records out of normal chunk retrieval.
+
+    URL sources and their durable page manifests share the document index with
+    searchable website-page chunks. They intentionally contain no body text or
+    embedding, so returning them from ordinary search or RAG creates empty
+    context. The Knowledge view has its own result mode and projection paths,
+    while ``chunks`` includes real ``web_page`` chunks as usual.
+    """
+    if result_mode != "chunks":
+        return filter_clauses
+    return [
+        *filter_clauses,
+        {
+            "bool": {
+                "must_not": [
+                    {"terms": {"record_kind": sorted(_CHUNK_SEARCH_EXCLUDED_RECORD_KINDS)}}
+                ]
+            }
+        },
+    ]
 
 
 def _is_exact_token_query(query: str) -> bool:
@@ -359,11 +431,13 @@ class SearchService:
             get_score_threshold,
             get_search_filters,
             get_search_limit,
+            get_search_result_mode,
         )
 
         filters = get_search_filters() or {}
         limit = get_search_limit()
         score_threshold = get_score_threshold()
+        result_mode = get_search_result_mode()
         # Detect wildcard request ("*") to return global facets/stats without semantic search
         is_wildcard_match_all = isinstance(query, str) and query.strip() == "*"
 
@@ -376,30 +450,9 @@ class SearchService:
 
         if not is_wildcard_match_all:
             # Build filter clauses first so we can use them in model detection
-            filter_clauses: list[dict[str, Any]] = []
-            if filters:
-                # Map frontend filter names to backend field names
-                field_mapping = {
-                    "data_sources": "filename",
-                    "document_types": "mimetype",
-                    "owners": "owner",
-                    "connector_types": "connector_type",
-                }
-
-                for filter_key, values in filters.items():
-                    if values is not None and isinstance(values, list):
-                        # Map frontend key to backend field name
-                        field_name = field_mapping.get(filter_key, filter_key)
-
-                        if len(values) == 0:
-                            # Empty array means "match nothing" - use impossible filter
-                            filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
-                        elif len(values) == 1:
-                            # Single value filter
-                            filter_clauses.append({"term": {field_name: values[0]}})
-                        else:
-                            # Multiple values filter
-                            filter_clauses.append({"terms": {field_name: values}})
+            filter_clauses = _add_result_mode_filter(
+                _build_search_filter_clauses(filters), result_mode
+            )
 
             try:
                 seen_spaces: set[str] = set()
@@ -564,30 +617,9 @@ class SearchService:
             )
         else:
             # Wildcard query - no embedding needed
-            filter_clauses = []
-            if filters:
-                # Map frontend filter names to backend field names
-                field_mapping = {
-                    "data_sources": "filename",
-                    "document_types": "mimetype",
-                    "owners": "owner",
-                    "connector_types": "connector_type",
-                }
-
-                for filter_key, values in filters.items():
-                    if values is not None and isinstance(values, list):
-                        # Map frontend key to backend field name
-                        field_name = field_mapping.get(filter_key, filter_key)
-
-                        if len(values) == 0:
-                            # Empty array means "match nothing" - use impossible filter
-                            filter_clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
-                        elif len(values) == 1:
-                            # Single value filter
-                            filter_clauses.append({"term": {field_name: values[0]}})
-                        else:
-                            # Multiple values filter
-                            filter_clauses.append({"terms": {field_name: values}})
+            filter_clauses = _add_result_mode_filter(
+                _build_search_filter_clauses(filters), result_mode
+            )
 
         # Build query body
         if is_wildcard_match_all:
@@ -711,6 +743,15 @@ class SearchService:
                 "allowed_users",
                 "allowed_groups",
                 "allowed_principal_labels",
+                "document_id",
+                "web_source_id",
+                "web_page_id",
+                "web_page_depth",
+                "web_child_count",
+                "chunk_count",
+                "canonical_url",
+                "status",
+                "error",
             ],
             "size": limit,
         }
@@ -872,6 +913,15 @@ class SearchService:
                     "allowed_users": source.get("allowed_users", []),
                     "allowed_groups": source.get("allowed_groups", []),
                     "allowed_principal_labels": source.get("allowed_principal_labels", []),
+                    "document_id": source.get("document_id"),
+                    "web_source_id": source.get("web_source_id"),
+                    "web_page_id": source.get("web_page_id"),
+                    "web_page_depth": source.get("web_page_depth"),
+                    "web_child_count": source.get("web_child_count"),
+                    "chunk_count": source.get("chunk_count"),
+                    "canonical_url": source.get("canonical_url"),
+                    "status": source.get("status"),
+                    "error": source.get("error"),
                 }
             )
 
@@ -918,6 +968,7 @@ class SearchService:
         limit: int = 10,
         score_threshold: float = 0,
         embedding_model: str = None,
+        result_mode: str = "chunks",
     ) -> dict[str, Any]:
         """Public search method for API endpoints
 
@@ -933,15 +984,18 @@ class SearchService:
 
             set_auth_context(user_id, jwt_token)
 
-        # Set filters and limit in context if provided
-        if filters:
-            from auth_context import set_search_filters
+        from auth_context import (
+            set_score_threshold,
+            set_search_filters,
+            set_search_limit,
+            set_search_result_mode,
+        )
 
-            set_search_filters(filters)
-
-        from auth_context import set_score_threshold, set_search_limit
-
+        # Context variables survive within a task. Reset filters for every
+        # search so an unfiltered call cannot inherit a prior request's scope.
+        set_search_filters(filters or {})
         set_search_limit(limit)
         set_score_threshold(score_threshold)
+        set_search_result_mode(result_mode)
 
         return await self.search_tool(query, embedding_model=embedding_model, source="api")
