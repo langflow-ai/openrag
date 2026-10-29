@@ -1,5 +1,7 @@
 """Unit tests for services/search_suggest.py (pure helpers)."""
 
+from typing import Any, cast
+
 from services.search_suggest import (
     PREVIEW_KEYWORD,
     PREVIEW_MAX_CHARS,
@@ -22,7 +24,7 @@ class TestNormalizeSuggestQuery:
         assert normalize_suggest_query("a") == ""
         assert normalize_suggest_query("*") == ""
         assert normalize_suggest_query(None) == ""
-        assert normalize_suggest_query(123) == ""  # type: ignore[arg-type]
+        assert normalize_suggest_query(cast(Any, 123)) == ""
 
     def test_caps_length(self):
         assert len(normalize_suggest_query("x" * 500)) == 100
@@ -116,5 +118,5 @@ class TestExtractCandidates:
         assert extract_candidates(["anything"], "[") == []
 
     def test_ignores_non_string_texts_and_empty_query(self):
-        assert extract_candidates([None, 3], "docling") == []  # type: ignore[list-item]
+        assert extract_candidates(cast(Any, [None, 3]), "docling") == []
         assert extract_candidates(["docling"], "  ") == []
