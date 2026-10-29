@@ -45,9 +45,23 @@ USER root
 #     the runtime library for the source-built lxml. TODO: remove (see lxml-build).
 #   expat >= 2.7.3-1.el10_2.5: CVE-2026-66046, CVE-2026-93990
 #   npm 12.2.1 (bundles brace-expansion 5.0.12): CVE-2026-102276, CVE-2026-102278
+#   rpm-sequoia >= 1.10.2.1-1.el10_2: CVE-2026-42784
+#   python3.14/python3.14-libs >= 3.14.8-1.el10_2: CVE-2026-19445,
+#     CVE-2026-19553
+#   glibc and language packs >= 2.39-142.el10_2: CVE-2026-19499
+#   openssl-libs >= 3.5.8-2.el10_2: CVE-2026-84782
 RUN microdnf install -y 'libxml2 >= 2.12.5-10.el10_2.4' \
     && microdnf install -y libxslt \
     && microdnf install -y 'expat >= 2.7.3-1.el10_2.5' \
+    && microdnf install -y \
+        'rpm-sequoia >= 1.10.2.1-1.el10_2' \
+        'python3.14 >= 3.14.8-1.el10_2' \
+        'python3.14-libs >= 3.14.8-1.el10_2' \
+        'glibc >= 2.39-142.el10_2' \
+        'glibc-common >= 2.39-142.el10_2' \
+        'glibc-langpack-en >= 2.39-142.el10_2' \
+        'glibc-minimal-langpack >= 2.39-142.el10_2' \
+        'openssl-libs >= 3.5.8-2.el10_2' \
     && npm install -g --no-audit --no-fund npm@12.2.1 \
     && npm cache clean --force \
     && microdnf clean all \
@@ -61,6 +75,9 @@ USER 1000
 #   pyjwt 2.14.0: CVE-2026-102266, CVE-2026-102267, CVE-2026-102268,
 #     CVE-2026-102271, CVE-2026-102272, CVE-2026-102273
 #   urllib3 2.8.0: CVE-2026-97687, CVE-2026-97689
+#   fsspec 2026.6.0: CVE-2026-104851
+#   pymongo 4.18.2: CVE-2026-88029, CVE-2026-96749
+#   langgraph-sdk 0.4.4: CVE-2026-104873
 RUN pip install --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     torch==2.13.0 \
@@ -70,6 +87,9 @@ RUN pip install --no-cache-dir \
     "pypdf>=6.19.0,<7.0.0" \
     "pyjwt>=2.14.0,<3.0.0" \
     "urllib3>=2.8.0,<3.0.0" \
+    "fsspec>=2026.6.0,<2027.0.0" \
+    "pymongo>=4.18.2,<5.0.0" \
+    "langgraph-sdk>=0.4.4,<0.5.0" \
     openai \
     langchain-openai \
     anthropic \
