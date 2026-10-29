@@ -145,6 +145,7 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
     opensearch_client.search = AsyncMock(side_effect=_search)
     opensearch_client.delete = AsyncMock(side_effect=_delete)
     processor.document_service.document_index_writer = _FakeDocumentIndexWriter()
+    before_index_write = AsyncMock()
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
         tmp.write(b"hello world")
@@ -157,6 +158,7 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
             owner_user_id="alice",
             original_filename="renamed.txt",
             connector_type="sharepoint",
+            before_index_write=before_index_write,
         )
     finally:
         Path(tmp_path).unlink(missing_ok=True)
@@ -193,10 +195,44 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
     assert index_call["context"].filename == "renamed.txt"
     assert len(index_call["chunks"]) == 3
     assert index_call["final"] is True
+    assert before_index_write.await_count == 1
 
     # 5) delete_by_query must NEVER be used (DLS would silently filter it).
     if hasattr(opensearch_client, "delete_by_query"):
         opensearch_client.delete_by_query.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_source_deletion_guard_aborts_before_cleanup_or_indexing(monkeypatch):
+    """A source deleted mid-crawl must not be recreated by this page write."""
+    processor, opensearch_client = _make_processor_with_mocks()
+    _patch_embedding_pipeline(monkeypatch, chunk_count=1, write_client=opensearch_client)
+    # The document-exists check runs before the source-deletion guard. Return
+    # no existing document there, then verify the later stale-cleanup search
+    # never starts.
+    opensearch_client.search = AsyncMock(return_value={"hits": {"hits": []}})
+    index_chunks = AsyncMock()
+    processor.document_service.document_index_writer = MagicMock(index_chunks=index_chunks)
+    before_index_write = AsyncMock(side_effect=RuntimeError("Website source is deleting"))
+
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
+        tmp.write(b"hello world")
+        tmp_path = tmp.name
+
+    try:
+        with pytest.raises(RuntimeError, match="source is deleting"):
+            await processor.process_document_standard(
+                file_path=tmp_path,
+                file_hash="abc123",
+                owner_user_id="alice",
+                before_index_write=before_index_write,
+            )
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+    before_index_write.assert_awaited_once()
+    opensearch_client.search.assert_awaited_once()
+    index_chunks.assert_not_awaited()
 
 
 @pytest.mark.asyncio
