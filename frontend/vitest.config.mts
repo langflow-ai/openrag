@@ -7,8 +7,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    // Vite does not read tsconfig "paths"; this mirrors "@/*" -> "./*".
+    // Vite does not read tsconfig "paths"; mirrors "@/*" -> "./*" and
+    // "@config/*" -> "../src/config/*" for the shared scoring constants.
     alias: {
+      "@config": path.resolve(import.meta.dirname, "../src/config"),
       "@": path.resolve(import.meta.dirname, "."),
     },
   },

@@ -1,4 +1,4 @@
-import searchScoring from "../../src/config/search_scoring.json";
+import searchScoring from "@config/search_scoring.json";
 
 export const RUN_MODE = {
   OSS: "oss",
