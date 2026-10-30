@@ -14,6 +14,7 @@ import httpx
 from enhancements.providers.registry import get as get_provider_enhancement
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
+from utils.provider_urls import openai_compatible_url
 
 logger = get_logger(__name__)
 
@@ -967,6 +968,7 @@ async def validate_provider_setup(
                     embedding_model=embedding_model,
                     endpoint=endpoint,
                     project_id=project_id,
+                    credentials=supplied,
                 )
                 result = ProbeResult(model_probed=True)
             elif llm_model:
@@ -977,6 +979,7 @@ async def validate_provider_setup(
                     llm_model=llm_model,
                     endpoint=endpoint,
                     project_id=project_id,
+                    credentials=supplied,
                 )
                 result = ProbeResult(model_probed=True, tools_exercised=True)
             else:
@@ -1081,7 +1084,9 @@ async def test_lightweight_health(
     """
 
     if provider == "openai":
-        await _test_openai_lightweight_health(api_key)
+        await _test_openai_lightweight_health(
+            api_key, api_base=(credentials or {}).get("api_base") or endpoint
+        )
     elif provider == "azure":
         await _test_azure_lightweight_health(
             credentials or {"api_key": api_key, "api_base": endpoint}
@@ -1106,11 +1111,14 @@ async def test_completion_with_tools(
     llm_model: str = None,
     endpoint: str = None,
     project_id: str = None,
+    credentials: Mapping[str, Any] | None = None,
 ) -> None:
     """Test completion with tool calling for the provider."""
 
     if provider == "openai":
-        await _test_openai_completion_with_tools(api_key, llm_model)
+        await _test_openai_completion_with_tools(
+            api_key, llm_model, (credentials or {}).get("api_base") or endpoint
+        )
     elif provider == "watsonx":
         await _test_watsonx_completion_with_tools(api_key, llm_model, endpoint, project_id)
     elif provider == "ollama":
@@ -1127,11 +1135,14 @@ async def test_embedding(
     embedding_model: str = None,
     endpoint: str = None,
     project_id: str = None,
+    credentials: Mapping[str, Any] | None = None,
 ) -> None:
     """Test embedding generation for the provider."""
 
     if provider == "openai":
-        await _test_openai_embedding(api_key, embedding_model)
+        await _test_openai_embedding(
+            api_key, embedding_model, (credentials or {}).get("api_base") or endpoint
+        )
     elif provider == "watsonx":
         await _test_watsonx_embedding(api_key, embedding_model, endpoint, project_id)
     elif provider == "ollama":
@@ -1215,7 +1226,7 @@ async def _http_request_with_retry(
 
 
 # OpenAI validation functions
-async def _test_openai_lightweight_health(api_key: str) -> None:
+async def _test_openai_lightweight_health(api_key: str, api_base: str | None = None) -> None:
     """Test OpenAI API key validity with lightweight check.
 
     Only checks if the API key is valid without consuming credits.
@@ -1230,7 +1241,7 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
         # Use /v1/models endpoint which validates the key without consuming credits
         response = await _http_request_with_retry(
             "GET",
-            "https://api.openai.com/v1/models",
+            openai_compatible_url(api_base, "models"),
             headers=headers,
             timeout=30.0,
         )
@@ -1315,7 +1326,9 @@ async def _test_azure_lightweight_health(credentials: dict[str, str]) -> None:
         raise Exception(_extract_error_details(response))
 
 
-async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> None:
+async def _test_openai_completion_with_tools(
+    api_key: str, llm_model: str, api_base: str | None = None
+) -> None:
     """Test OpenAI completion with tool calling."""
     try:
         headers = {
@@ -1349,7 +1362,7 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
         payload = {**base_payload, "max_tokens": 50}
         response = await _http_request_with_retry(
             "POST",
-            "https://api.openai.com/v1/chat/completions",
+            openai_compatible_url(api_base, "chat/completions"),
             headers=headers,
             json=payload,
             timeout=45.0,
@@ -1364,7 +1377,7 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
             payload = {**base_payload, "max_completion_tokens": 50}
             response = await _http_request_with_retry(
                 "POST",
-                "https://api.openai.com/v1/chat/completions",
+                openai_compatible_url(api_base, "chat/completions"),
                 headers=headers,
                 json=payload,
                 timeout=45.0,
@@ -1386,7 +1399,9 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
         raise
 
 
-async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
+async def _test_openai_embedding(
+    api_key: str, embedding_model: str, api_base: str | None = None
+) -> None:
     """Test OpenAI embedding generation."""
     try:
         headers = {
@@ -1401,7 +1416,7 @@ async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
 
         response = await _http_request_with_retry(
             "POST",
-            "https://api.openai.com/v1/embeddings",
+            openai_compatible_url(api_base, "embeddings"),
             headers=headers,
             json=payload,
             timeout=45.0,
