@@ -16,11 +16,13 @@ flipped from sync to ``await`` as part of this migration.
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import os
+import tempfile
 import threading
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from config.paths import get_data_file
@@ -34,6 +36,14 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+class PostReplaceSyncError(OSError):
+    """The store file was replaced, but the directory fsync then failed.
+
+    The new contents are in place; only their durability across a crash is
+    unknown. Callers must not roll back in-memory state for this error.
+    """
+
+
 class ConversationPersistenceService:
     """Per-user chat-history index. Stores metadata only."""
 
@@ -45,6 +55,21 @@ class ConversationPersistenceService:
         self.storage_file = storage_file or get_data_file("conversations.json")
         os.makedirs(os.path.dirname(self.storage_file), exist_ok=True)
         self.lock = threading.Lock()
+        # Serialises whole saves (snapshot -> write -> replace) so an older
+        # snapshot can never replace a newer one. Kept separate from ``lock``
+        # so mutators are not blocked during file I/O.
+        self._save_lock = threading.Lock()
+        # Serialises the JSON-store mutations that prune can roll back (prune,
+        # explicit delete, clear), so a failed prune can never resurrect an
+        # entry that was deleted while its save was in flight.
+        self._file_mutation_lock = asyncio.Lock()
+        # Deletions applied in memory whose file save has not yet succeeded.
+        # While non-empty, memory and disk may differ, so a retry of the same
+        # delete/clear must save again instead of finding nothing to do.
+        # Guarded by ``lock``; cleared by any successful save (its snapshot
+        # already excludes every removal recorded here).
+        self._pending_file_deletes: set[tuple[str, str]] = set()
+        self._pending_file_clears: set[str] = set()
         self._session_factory = session_factory
         self._conversations: dict[str, dict[str, Any]] = self._load_conversations()
 
@@ -63,22 +88,65 @@ class ConversationPersistenceService:
         return {}
 
     def _save_conversations_sync(self) -> None:
-        try:
+        """Write to a temp file then atomically replace storage_file.
+
+        Takes a shallow snapshot of ``_conversations`` under ``self.lock``
+        so the lock is not held during the (potentially slow) file I/O.
+        This ensures a failed write (disk full, serialisation error, etc.)
+        leaves the existing store intact rather than truncating it.
+        """
+        with self._save_lock:
             with self.lock:
-                with open(self.storage_file, "w", encoding="utf-8") as f:
-                    json.dump(
-                        self._conversations,
-                        f,
-                        indent=2,
-                        ensure_ascii=False,
-                        default=str,
-                    )
-        except Exception as exc:  # noqa: BLE001
-            logger.error(f"Error saving conversations: {exc}")
+                snapshot = {uid: dict(convs) for uid, convs in self._conversations.items()}
+
+            dir_ = os.path.dirname(self.storage_file)
+            fd, tmp_path = tempfile.mkstemp(dir=dir_, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(snapshot, f, indent=2, ensure_ascii=False, default=str)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp_path, self.storage_file)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+            try:
+                self._fsync_dir(dir_)
+            except OSError as exc:
+                raise PostReplaceSyncError(exc.errno, str(exc)) from exc
+
+    @staticmethod
+    def _fsync_dir(path: str) -> None:
+        """Make the rename durable. Only "unsupported" errors are ignored."""
+        unsupported = {errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP}
+        try:
+            dir_fd = os.open(path, os.O_RDONLY)
+        except OSError as exc:
+            # Platforms that cannot open a directory (e.g. Windows) cannot fsync it.
+            if exc.errno in unsupported or isinstance(exc, PermissionError):
+                return
+            raise
+        try:
+            os.fsync(dir_fd)
+        except OSError as exc:
+            if exc.errno not in unsupported:
+                raise
+        finally:
+            os.close(dir_fd)
 
     async def _save_conversations(self) -> None:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, self._save_conversations_sync)
+
+    async def _save_after_removal(self) -> None:
+        """Save, and forget pending deletions once the file reflects them."""
+        await self._save_conversations()
+        with self.lock:
+            self._pending_file_deletes.clear()
+            self._pending_file_clears.clear()
 
     def _serialize_datetime(self, obj: Any) -> Any:
         if isinstance(obj, datetime):
@@ -127,10 +195,20 @@ class ConversationPersistenceService:
         serialized = self._serialize_datetime(conversation_state)
 
         if file_writes_enabled():
-            if user_id not in self._conversations:
-                self._conversations[user_id] = {}
-            self._conversations[user_id][response_id] = serialized
-            await self._save_conversations()
+            with self.lock:
+                if user_id not in self._conversations:
+                    self._conversations[user_id] = {}
+                self._conversations[user_id][response_id] = serialized
+            try:
+                await self._save_conversations()  # snapshots under lock internally
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "Failed to persist conversation to disk",
+                    user_id=user_id,
+                    response_id=response_id,
+                    error=str(exc),
+                )
+                # Save failure is observable via log; do not block the DB write.
 
         if db_writes_enabled():
             await self._db_upsert(user_id, response_id, serialized)
@@ -147,27 +225,194 @@ class ConversationPersistenceService:
         return self._conversations.get(user_id, {}).get(response_id, {})
 
     async def delete_conversation_thread(self, user_id: str, response_id: str) -> bool:
+        """Delete one conversation from every active store.
+
+        A file-save failure does not skip the DB delete, but it is not hidden:
+        the DB delete runs first, then the save error is re-raised so the
+        caller knows the JSON copy may survive a restart (and, in hybrid mode,
+        be served by the JSON fallback). The entry is already gone from memory,
+        so the deletion is recorded as pending: retrying the same delete saves
+        the file again and reports the conversation as deleted once it succeeds.
+        """
         deleted = False
+        save_error: Exception | None = None
 
         if file_writes_enabled():
-            if user_id in self._conversations and response_id in self._conversations[user_id]:
-                del self._conversations[user_id][response_id]
-                await self._save_conversations()
-                deleted = True
+            # Waits for an in-flight prune, so its rollback cannot undo this.
+            async with self._file_mutation_lock:
+                with self.lock:
+                    user_convs = self._conversations.get(user_id)
+                    removed = (
+                        user_convs is not None and user_convs.pop(response_id, None) is not None
+                    )
+                    if removed:
+                        self._pending_file_deletes.add((user_id, response_id))
+                    needs_save = (
+                        removed
+                        or (user_id, response_id) in self._pending_file_deletes
+                        or user_id in self._pending_file_clears
+                    )
+                if needs_save:
+                    deleted = True
+                    try:
+                        await self._save_after_removal()
+                    except Exception as exc:  # noqa: BLE001
+                        save_error = exc
+                        logger.error(
+                            "Failed to persist conversation deletion to disk",
+                            user_id=user_id,
+                            response_id=response_id,
+                            error=str(exc),
+                        )
 
         if db_writes_enabled():
             db_deleted = await self._db_delete(response_id, user_id)
             deleted = deleted or db_deleted
 
+        if save_error is not None:
+            raise save_error
         return deleted
 
-    async def clear_user_conversations(self, user_id: str) -> None:
-        if file_writes_enabled() and user_id in self._conversations:
-            del self._conversations[user_id]
+    async def prune_stale_conversations(self, ttl_days: int) -> int:
+        """Delete conversations that have had no activity for *ttl_days* days.
+
+        Covers all active storage modes:
+        - ``db`` / ``hybrid``: bulk DELETE via the DB repo.
+        - ``files`` / ``hybrid``: removes matching entries from the in-memory
+          JSON store and persists to disk.
+
+        The JSON-store part is serialised with ``delete_conversation_thread`` and
+        ``clear_user_conversations``: if its save fails and entries are rolled
+        back, a delete issued meanwhile waits and then removes the restored
+        entry, so a deleted conversation is never resurrected.
+
+        A database failure is logged and then re-raised, so callers can tell an
+        incomplete prune from a completed one and retry. In hybrid mode the JSON
+        part has already been applied by then; pruning is idempotent, so a retry
+        is safe.
+
+        Returns the total number of conversations deleted across all stores.
+        Raises ``ValueError`` unless *ttl_days* >= 1, before touching memory,
+        disk or the DB: zero would delete nearly every conversation and a
+        negative value would move the cutoff into the future.
+        """
+        if ttl_days < 1:
+            raise ValueError(f"ttl_days must be at least 1, got {ttl_days}")
+
+        deleted = 0
+        # Use local naive time to match the naive timestamps produced by
+        # datetime.now() in agent.py.  Each aware timestamp is individually
+        # converted to local naive time via astimezone() so Python picks the
+        # correct local UTC offset for that instant rather than relying on a
+        # single cached tzinfo object.
+        cutoff_local = datetime.now() - timedelta(days=ttl_days)
+
+        if file_writes_enabled():
+            async with self._file_mutation_lock:
+                deleted += await self._prune_file_store(cutoff_local)
+
+        if db_writes_enabled():
+            from db.repositories import ConversationRepo
+
+            sess_factory = self._resolve_session_factory()
+            if sess_factory is not None:
+                try:
+                    async with sess_factory() as session:
+                        n = await ConversationRepo(session).delete_stale(ttl_days)
+                        await session.commit()
+                        deleted += n
+                except Exception as exc:  # noqa: BLE001
+                    logger.error("DB prune_stale_conversations failed", error=str(exc))
+                    raise
+
+        logger.info("Conversation pruning completed", ttl_days=ttl_days, deleted=deleted)
+        return deleted
+
+    async def _prune_file_store(self, cutoff_local: datetime) -> int:
+        """Drop entries older than *cutoff_local* from the JSON store.
+
+        Returns how many were pruned (0 if the save failed and the entries were
+        rolled back). The caller holds ``_file_mutation_lock``, so no explicit
+        delete or clear can interleave with the rollback.
+        """
+        stale_keys: list[tuple[str, str]] = []
+        snapshot: dict[tuple[str, str], Any] = {}
+        with self.lock:
+            for user_id, user_convs in self._conversations.items():
+                for resp_id, payload in user_convs.items():
+                    last_activity_raw = payload.get("last_activity")
+                    if last_activity_raw:
+                        try:
+                            la = datetime.fromisoformat(str(last_activity_raw))
+                            # Aware timestamps: convert to local naive per-timestamp.
+                            # Naive timestamps: already local (written by agent.py).
+                            if la.tzinfo is not None:
+                                la = la.astimezone().replace(tzinfo=None)
+                            if la < cutoff_local:
+                                stale_keys.append((user_id, resp_id))
+                        except (TypeError, ValueError):
+                            pass
+
+            if stale_keys:
+                # Snapshot payloads before deletion so we can restore on save failure.
+                snapshot = {(uid, rid): self._conversations[uid][rid] for uid, rid in stale_keys}
+                for user_id, resp_id in stale_keys:
+                    del self._conversations[user_id][resp_id]
+
+        if not stale_keys:
+            return 0
+
+        try:
             await self._save_conversations()
+        except PostReplaceSyncError as exc:
+            # The pruned file is already in place; only its durability is in
+            # doubt, so memory must keep matching it. Do not roll back.
+            logger.error("Pruned conversation store replaced but not fsynced", error=str(exc))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to persist conversation pruning to disk", error=str(exc))
+            # Restore deleted entries so in-memory state stays consistent
+            # with what is on disk — they were not actually pruned.
+            # setdefault: an entry stored again while the save was in flight
+            # is newer than our snapshot and must win. Explicit deletes cannot
+            # interleave here: they wait on _file_mutation_lock.
+            with self.lock:
+                for (user_id, resp_id), payload in snapshot.items():
+                    self._conversations.setdefault(user_id, {}).setdefault(resp_id, payload)
+            return 0
+        return len(stale_keys)
+
+    async def clear_user_conversations(self, user_id: str) -> None:
+        """Delete every conversation for *user_id* from every active store.
+
+        A file-save failure does not skip the DB delete; the error is re-raised
+        afterwards, like ``delete_conversation_thread``. The clear is recorded
+        as pending, so a retry saves the file again.
+        """
+        save_error: Exception | None = None
+        if file_writes_enabled():
+            # Waits for an in-flight prune, so its rollback cannot undo this.
+            async with self._file_mutation_lock:
+                with self.lock:
+                    removed = self._conversations.pop(user_id, None) is not None
+                    if removed:
+                        self._pending_file_clears.add(user_id)
+                    needs_save = removed or user_id in self._pending_file_clears
+                if needs_save:
+                    try:
+                        await self._save_after_removal()
+                    except Exception as exc:  # noqa: BLE001
+                        save_error = exc
+                        logger.error(
+                            "Failed to persist user conversation clear to disk",
+                            user_id=user_id,
+                            error=str(exc),
+                        )
 
         if db_writes_enabled():
             await self._db_delete_all(user_id)
+
+        if save_error is not None:
+            raise save_error
 
     async def get_storage_stats(self) -> dict[str, Any]:
         # Snapshot — uses whichever storage the mode prioritizes.

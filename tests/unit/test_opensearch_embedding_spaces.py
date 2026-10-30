@@ -1,4 +1,5 @@
 import importlib
+import json
 import sys
 from types import ModuleType, SimpleNamespace
 
@@ -392,3 +393,62 @@ def test_ingest_normalizes_kangxi_radicals_before_embedding_and_indexing(
 
     assert embedding.embedded == ["11 月 27 日 ( 木 )"]
     assert indexed == ["11 月 27 日 ( 木 )"]
+
+
+@pytest.mark.parametrize("use_callback", [True, False], ids=["callback", "direct_write"])
+def test_partial_embed_failure_aborts_before_any_write(
+    monkeypatch: pytest.MonkeyPatch, use_callback: bool
+) -> None:
+    """A document with a missing chunk must never be indexed, in either mode.
+
+    Direct writes carry no ingest_run_id, so the backend cannot clean up
+    survivors afterwards; a partial document would stay searchable and be
+    mistaken for a duplicate. The component therefore fails before writing.
+    """
+    module = _load_opensearch_module(monkeypatch)
+
+    class _Doc:
+        text_key = "text"
+        default_value = ""
+
+        def __init__(self, text):
+            self._text = text
+
+        def model_dump_json(self):
+            return json.dumps({"text": self._text, "document_id": "doc"})
+
+    class _Embedding:
+        model = "text-embedding-3-small"
+
+        def embed_documents(self, texts):
+            if texts == ["bad"]:
+                raise ValueError("embedding backend rejected the chunk")
+            return [[0.1, 0.2] for _ in texts]
+
+    class _Indices:
+        def exists(self, **kwargs):
+            raise AssertionError("index must not be touched")
+
+        create = put_mapping = get_mapping = exists
+
+    class _Client:
+        indices = _Indices()
+
+        def index(self, **kwargs):
+            raise AssertionError("direct write must not happen")
+
+    component = _component(module, client=_Client(), embedding=_Embedding())
+    component.embedding_model_name = ""
+    component.docs_metadata = []
+    component._prepare_ingest_data = lambda: [_Doc("ok-0"), _Doc("bad"), _Doc("ok-2")]
+    if use_callback:
+        component._openrag_ingest_callback_config = lambda: ("url", "token", "task")
+    else:
+        component._openrag_ingest_callback_config = lambda: None
+    writes: list[dict] = []
+    component._bulk_ingest_embeddings = lambda **kwargs: writes.append(kwargs)
+
+    with pytest.raises(RuntimeError, match=r"Embedding failed for 1 of 3 chunks"):
+        component._add_documents_to_vector_store(_Client())
+
+    assert writes == []
