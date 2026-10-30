@@ -93,6 +93,8 @@ dev = [
     "pytest-cov>=4.0.0",
     "ruff>=0.15.12",
     "mypy>=2.0.0",
+    # Used by the Langflow Split Text component, so its unit tests run the real splitter.
+    "langchain-text-splitters>=1.1.2,<2",
 ]
 
 [project.scripts]
