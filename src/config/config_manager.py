@@ -714,15 +714,6 @@ class OnboardingState:
 
 
 @dataclass
-class FlowsState:
-    """Which shipped version of each Langflow flow OpenRAG last wrote to Langflow."""
-
-    # flow type ("ingest", "url_ingest", "retrieval", "nudges") -> signature of
-    # the flow file at the time it was created or reset in Langflow
-    applied_signatures: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass
 class OpenRAGConfig:
     """Complete OpenRAG configuration."""
 
@@ -730,7 +721,6 @@ class OpenRAGConfig:
     knowledge: KnowledgeConfig
     agent: AgentConfig
     onboarding: OnboardingState
-    flows: FlowsState = field(default_factory=FlowsState)
     edited: bool = False  # Track if manually edited
 
     @classmethod
@@ -777,7 +767,6 @@ class OpenRAGConfig:
             knowledge=KnowledgeConfig(**data.get("knowledge", {})),
             agent=AgentConfig(**data.get("agent", {})),
             onboarding=OnboardingState(**data.get("onboarding", {})),
-            flows=FlowsState(**(data.get("flows") or {})),
             edited=data.get("edited", False),
         )
 
@@ -843,7 +832,6 @@ class ConfigManager:
             "knowledge": {},
             "agent": {},
             "onboarding": {},
-            "flows": {},
         }
 
         needs_encryption_upgrade = False
@@ -873,7 +861,7 @@ class ConfigManager:
                                 if get_master_secret() is not None:
                                     needs_encryption_upgrade = True
                             config_data["providers"][provider].update(provider_data)
-                for section in ["knowledge", "agent", "onboarding", "flows"]:
+                for section in ["knowledge", "agent", "onboarding"]:
                     if section in file_config:
                         config_data[section].update(file_config[section])
 

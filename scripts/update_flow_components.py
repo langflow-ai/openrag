@@ -13,12 +13,6 @@ Example:
         --code-file custom_components/openrag/opensearch_multimodal.py \\
         --display-name "OpenSearch (Multi-Model Multi-Embedding)" \\
         --set-module custom_components.OpenRAG.opensearch_multimodal.OpenSearchVectorStoreComponentMultimodalMultiEmbedding
-
-    python scripts/update_flow_components.py \\
-        --code-file custom_components/openrag/split_text.py \\
-        --display-name "Split Text" \\
-        --set-type OpenRAGSplitText \\
-        --set-module custom_components.openrag.split_text.OpenRAGSplitTextComponent
 """
 
 from __future__ import annotations
@@ -26,11 +20,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 from collections.abc import Iterable
 from pathlib import Path
-
-_DATA_TYPE_TOKEN = re.compile(r"œdataTypeœ:œ[^œ]*œ")
 
 
 def _code_hash(source: str) -> str:
@@ -64,28 +55,6 @@ def should_update_component(
     return isinstance(code_entry, dict) and "value" in code_entry
 
 
-def retype_node(data: dict, node: dict, new_type: str) -> None:
-    """Change a node's component type, including the type its outgoing edges carry.
-
-    Edges name the source component type in ``sourceHandle.dataType`` and again
-    inside the serialized handle strings (``œdataTypeœ:œ<type>œ``). Those are
-    rewritten whatever they currently say, since the node may have no type of
-    its own to match them against. Only the source handle carries a dataType,
-    so the edge id's target half is left as is.
-    """
-    node["data"]["type"] = new_type
-    new_token = f"œdataTypeœ:œ{new_type}œ"
-    for edge in data.get("data", {}).get("edges", []):
-        if edge.get("source") != node.get("id"):
-            continue
-        source_handle = edge.get("data", {}).get("sourceHandle")
-        if isinstance(source_handle, dict) and "dataType" in source_handle:
-            source_handle["dataType"] = new_type
-        for key in ("id", "sourceHandle"):
-            if isinstance(edge.get(key), str):
-                edge[key] = _DATA_TYPE_TOKEN.sub(lambda _: new_token, edge[key])
-
-
 def update_flow(
     flow_path: Path,
     code: str,
@@ -94,7 +63,6 @@ def update_flow(
     metadata_module: str | None,
     set_module: str | None,
     dry_run: bool,
-    set_type: str | None = None,
 ) -> bool:
     with flow_path.open(encoding="utf-8") as fh:
         try:
@@ -110,11 +78,6 @@ def update_flow(
             node, display_name=display_name, metadata_module=metadata_module
         ):
             continue
-
-        if set_type and node["data"].get("type") != set_type:
-            if not dry_run:
-                retype_node(data, node, set_type)
-            changed = True
 
         component = node["data"]["node"]
         template = component["template"]
@@ -173,13 +136,6 @@ def parse_args() -> argparse.Namespace:
         help="Write this value to matching nodes' metadata.module (does not filter).",
     )
     parser.add_argument(
-        "--set-type",
-        help=(
-            "Change matching nodes' component type (the component class's `name`) "
-            "and the source type on their outgoing edges (does not filter)."
-        ),
-    )
-    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Report which files would change without modifying them.",
@@ -211,7 +167,6 @@ def main() -> None:
             metadata_module=args.metadata_module,
             set_module=args.set_module,
             dry_run=args.dry_run,
-            set_type=args.set_type,
         )
         if changed:
             updated_files.append(flow_path)

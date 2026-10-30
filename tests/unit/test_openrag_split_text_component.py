@@ -9,7 +9,6 @@ hundreds of thousands of characters.
 
 import hashlib
 import importlib
-import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -166,82 +165,3 @@ def test_flows_embed_the_openrag_split_text_component(flow_name):
         if edge["source"] == node_id:
             assert edge["data"]["sourceHandle"]["dataType"] == NODE_TYPE
             assert "œdataTypeœ:œSplitTextœ" not in edge["sourceHandle"]
-
-
-def _load_update_flow_components():
-    spec = importlib.util.spec_from_file_location(
-        "update_flow_components", Path("scripts/update_flow_components.py")
-    )
-    script = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(script)
-    return script
-
-
-def test_retype_node_without_a_type_still_retypes_its_edges():
-    script = _load_update_flow_components()
-    handle = "{œdataTypeœ:œSplitTextœ,œidœ:œn1œ}"
-    node = {"id": "n1", "data": {}}
-    flow = {
-        "data": {
-            "nodes": [node],
-            "edges": [
-                {
-                    "id": f"xy-edge__n1{handle}-n2{{œfieldNameœ:œinœ}}",
-                    "source": "n1",
-                    "sourceHandle": handle,
-                    "data": {"sourceHandle": {"dataType": "SplitText"}},
-                },
-                {
-                    "id": "plain",
-                    "source": "n1",
-                    "sourceHandle": "{œidœ:œn1œ}",
-                    "data": {"sourceHandle": {"name": "dataframe"}},
-                },
-            ],
-        }
-    }
-
-    script.retype_node(flow, node, "New")
-
-    typed, untyped = flow["data"]["edges"]
-    assert node["data"]["type"] == "New"
-    assert typed["data"]["sourceHandle"]["dataType"] == "New"
-    assert typed["sourceHandle"] == "{œdataTypeœ:œNewœ,œidœ:œn1œ}"
-    assert typed["id"] == "xy-edge__n1{œdataTypeœ:œNewœ,œidœ:œn1œ}-n2{œfieldNameœ:œinœ}"
-    assert "dataType" not in untyped["data"]["sourceHandle"]
-    assert untyped["sourceHandle"] == "{œidœ:œn1œ}"
-
-
-def test_update_flow_components_retypes_node_and_outgoing_edges():
-    script = _load_update_flow_components()
-
-    handle = "{œdataTypeœ:œOldœ,œidœ:œn1œ}"
-    node = {"id": "n1", "data": {"type": "Old"}}
-    flow = {
-        "data": {
-            "nodes": [node],
-            "edges": [
-                {
-                    "id": f"xy-edge__n1{handle}-n2",
-                    "source": "n1",
-                    "sourceHandle": handle,
-                    "data": {"sourceHandle": {"dataType": "Old"}},
-                },
-                {
-                    "id": "other",
-                    "source": "n2",
-                    "sourceHandle": handle,
-                    "data": {"sourceHandle": {"dataType": "Old"}},
-                },
-            ],
-        }
-    }
-
-    script.retype_node(flow, node, "New")
-
-    outgoing, unrelated = flow["data"]["edges"]
-    assert node["data"]["type"] == "New"
-    assert outgoing["data"]["sourceHandle"]["dataType"] == "New"
-    assert outgoing["sourceHandle"] == "{œdataTypeœ:œNewœ,œidœ:œn1œ}"
-    assert "œNewœ" in outgoing["id"]
-    assert unrelated["data"]["sourceHandle"]["dataType"] == "Old"
