@@ -861,7 +861,8 @@ class SearchService:
 
             # DLS fallback: rewrite hybrid as bool/should so the security plugin's
             # function_score wrapper is not blocked by the hybrid-must-be-top-level rule.
-            # Scores won't be normalized by the pipeline but ranking is preserved.
+            # Also strip num_candidates from kNN clauses — jvector doesn't support it
+            # and the fallback must succeed even on clusters that reject that field.
             try:
                 dls_fallback_body = copy.deepcopy(search_body)
                 hybrid = dls_fallback_body["query"]["hybrid"]
@@ -875,6 +876,13 @@ class SearchService:
                 }
                 if dls_fallback_body["query"]["bool"]["filter"] is None:
                     del dls_fallback_body["query"]["bool"]["filter"]
+                # Strip num_candidates from every kNN sub-clause
+                for clause in dls_fallback_body["query"]["bool"]["should"]:
+                    knn_queries = clause.get("dis_max", {}).get("queries", [])
+                    for knn_clause in knn_queries:
+                        for params in knn_clause.get("knn", {}).values():
+                            if isinstance(params, dict):
+                                params.pop("num_candidates", None)
             except (KeyError, AttributeError, TypeError):
                 dls_fallback_body = None
 

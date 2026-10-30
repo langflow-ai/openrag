@@ -276,6 +276,14 @@ async def test_dls_hybrid_conflict_retries_as_bool_should(monkeypatch):
     # Retry preserves the same sub-queries from the hybrid clause
     should_clauses = retry["query"]["bool"]["should"]
     assert len(should_clauses) >= 2  # semantic dis_max + at least one keyword clause
+    # num_candidates must be absent from all kNN params in the DLS fallback
+    knn_params = [
+        params
+        for clause in should_clauses
+        for knn_clause in clause.get("dis_max", {}).get("queries", [])
+        for params in knn_clause.get("knn", {}).values()
+    ]
+    assert all("num_candidates" not in p for p in knn_params)
 
 
 @pytest.mark.asyncio
