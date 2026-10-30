@@ -1,7 +1,9 @@
-"""Tests for flows_service bulk_update_flows with Langflow backup creation."""
+"""Tests for flows_service flow updates: detecting them, and applying them with backups."""
 
+import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,7 +13,11 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from services.flows_service import FlowsService  # noqa: E402
+from services.flows_service import (  # noqa: E402
+    FlowsService,
+    flow_component_fingerprint,
+    flow_signature,
+)
 
 
 @pytest.mark.asyncio
@@ -283,148 +289,183 @@ async def test_get_flows_updates_available_includes_all_flows():
     assert all(u["flow_type"] in ["nudges", "retrieval", "ingest", "url_ingest"] for u in updates)
 
 
-@pytest.mark.asyncio
-async def test_flow_update_uses_source_mtime_tag_not_langflow_updated_at(tmp_path):
-    service = FlowsService()
-    flow_path = tmp_path / "flow.json"
-    flow_path.write_text('{"id": "flow-1", "tags": ["rag"]}', encoding="utf-8")
-    source_mtime = flow_path.stat().st_mtime_ns
-
-    with patch.object(service, "_find_flow_file_by_id", return_value=str(flow_path)):
-        update = await service._check_flow_update(
-            "retrieval",
-            "flow-1",
-            {
-                "locked": True,
-                "tags": [f"openrag:file-mtime:{source_mtime - 1}"],
-                "updated_at": "2099-01-01T00:00:00Z",
-            },
-        )
-
-    assert update == {"flow_type": "retrieval", "flow_id": "flow-1", "is_custom": False}
-
-
-@pytest.mark.asyncio
-async def test_flow_update_is_not_available_when_source_mtime_matches_tag(tmp_path):
-    service = FlowsService()
-    flow_path = tmp_path / "flow.json"
-    flow_path.write_text('{"id": "flow-1", "tags": ["rag"]}', encoding="utf-8")
-    source_mtime = flow_path.stat().st_mtime_ns
-
-    with patch.object(service, "_find_flow_file_by_id", return_value=str(flow_path)):
-        update = await service._check_flow_update(
-            "retrieval",
-            "flow-1",
-            {
-                "locked": False,
-                "tags": [f"openrag:file-mtime:{source_mtime}"],
-                "updated_at": "1970-01-01T00:00:00Z",
-            },
-        )
-
-    assert update is None
-
-
-@pytest.mark.asyncio
-async def test_flow_update_does_not_upgrade_when_stored_mtime_is_newer(tmp_path):
-    service = FlowsService()
-    flow_path = tmp_path / "flow.json"
-    flow_path.write_text('{"id": "flow-1", "tags": ["rag"]}', encoding="utf-8")
-    source_mtime = flow_path.stat().st_mtime_ns
-
-    with patch.object(service, "_find_flow_file_by_id", return_value=str(flow_path)):
-        update = await service._check_flow_update(
-            "retrieval", "flow-1", {"tags": [f"openrag:file-mtime:{source_mtime + 1}"]}
-        )
-
-    assert update is None
-
-
-@pytest.mark.asyncio
-async def test_flow_update_detects_stored_flow_without_a_mtime_tag(tmp_path):
-    service = FlowsService()
-    flow_path = tmp_path / "flow.json"
-    flow_path.write_text('{"id": "flow-1", "tags": ["rag"]}', encoding="utf-8")
-
-    with patch.object(service, "_find_flow_file_by_id", return_value=str(flow_path)):
-        update = await service._check_flow_update(
-            "retrieval", "flow-1", {"locked": False, "tags": ["rag"]}
-        )
-
-    assert update == {"flow_type": "retrieval", "flow_id": "flow-1", "is_custom": True}
-
-
-def test_stamp_flow_with_file_mtime_replaces_previous_mtime_tag(tmp_path):
-    service = FlowsService()
-    flow_path = tmp_path / "flow.json"
-    flow_path.write_text('{"id": "flow-1", "tags": ["rag"]}', encoding="utf-8")
-    flow_data = {
-        "id": "flow-1",
-        "tags": ["rag", "openrag:file-mtime:1", "openrag:file-mtime:2"],
+def _shipped_flow(code_hash: str = "aaa111", chunk_size: int = 1000) -> dict:
+    return {
+        "id": "flow-ingest-1",
+        "name": "OpenRAG Ingest",
+        "data": {
+            "nodes": [
+                {
+                    "id": "SplitText-1",
+                    "data": {
+                        "type": "OpenRAGSplitText",
+                        "node": {
+                            "metadata": {"module": "openrag.split_text", "code_hash": code_hash},
+                            "template": {"chunk_size": {"value": chunk_size}},
+                        },
+                    },
+                }
+            ],
+            "edges": [
+                {
+                    "source": "SplitText-1",
+                    "target": "OpenSearch-1",
+                    "data": {
+                        "sourceHandle": {"name": "dataframe"},
+                        "targetHandle": {"fieldName": "ingest_data"},
+                    },
+                }
+            ],
+        },
     }
 
-    service._stamp_flow_with_file_mtime(flow_data, str(flow_path))
 
-    assert flow_data["tags"] == [
-        "rag",
-        f"openrag:file-mtime:{flow_path.stat().st_mtime_ns}",
-    ]
+def _langflow_copy(flow: dict, **fields) -> dict:
+    return {**flow, "locked": True, "updated_at": "2999-01-01T00:00:00Z", **fields}
+
+
+@pytest.fixture
+def update_check(tmp_path):
+    """Run _check_flow_update against a shipped file and a recorded signature."""
+    from config.config_manager import FlowsState
+
+    async def run(shipped: dict, langflow: dict, recorded: str | None):
+        flow_file = tmp_path / "ingestion_flow.json"
+        flow_file.write_text(json.dumps(shipped), encoding="utf-8")
+        signatures = {"ingest": recorded} if recorded is not None else {}
+        config = SimpleNamespace(flows=FlowsState(applied_signatures=signatures))
+        response = MagicMock(status_code=200)
+        response.json.return_value = langflow
+        request = AsyncMock(return_value=response)
+        record = MagicMock()
+        service = FlowsService()
+        with (
+            patch.object(service, "_find_flow_file_by_id", return_value=str(flow_file)),
+            patch("services.flows_service.get_openrag_config", return_value=config),
+            patch("services.flows_service.clients.langflow_request", request),
+            patch("services.flows_service.record_applied_flow_signatures", record),
+        ):
+            result = await service._check_flow_update("ingest", "flow-ingest-1")
+        return result, request, record
+
+    return run
 
 
 @pytest.mark.asyncio
-async def test_reset_stamps_flow_with_source_mtime(tmp_path, monkeypatch):
+async def test_update_check_is_quiet_when_shipped_flow_was_already_applied(update_check):
+    shipped = _shipped_flow()
+
+    result, request, record = await update_check(
+        shipped, _langflow_copy(shipped), recorded=flow_signature(shipped)
+    )
+
+    assert result is None
+    request.assert_not_called()
+    record.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_check_reports_new_shipped_flow_even_if_langflow_copy_is_newer(update_check):
+    """A settings save after the release was built must not hide the update."""
+    old = _shipped_flow(code_hash="old000")
+    new = _shipped_flow(code_hash="new999")
+
+    result, _, record = await update_check(
+        new, _langflow_copy(old, locked=False), recorded=flow_signature(old)
+    )
+
+    assert result == {"flow_type": "ingest", "flow_id": "flow-ingest-1", "is_custom": True}
+    record.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_check_adopts_matching_flow_on_installs_without_a_signature(update_check):
+    shipped = _shipped_flow(chunk_size=1000)
+    # The user's chunk size was written into Langflow's copy; components are the same.
+    running = _langflow_copy(_shipped_flow(chunk_size=500))
+
+    result, _, record = await update_check(shipped, running, recorded=None)
+
+    assert result is None
+    record.assert_called_once_with({"ingest": flow_signature(shipped)})
+
+
+@pytest.mark.asyncio
+async def test_update_check_reports_changed_component_on_installs_without_a_signature(
+    update_check,
+):
+    shipped = _shipped_flow(code_hash="new999")
+    running = _langflow_copy(_shipped_flow(code_hash="old000"))
+
+    result, _, record = await update_check(shipped, running, recorded=None)
+
+    assert result == {"flow_type": "ingest", "flow_id": "flow-ingest-1", "is_custom": False}
+    record.assert_not_called()
+
+
+def test_component_fingerprint_ignores_field_values_but_not_code():
+    base = flow_component_fingerprint(_shipped_flow())
+
+    assert flow_component_fingerprint(_shipped_flow(chunk_size=250)) == base
+    assert flow_component_fingerprint(_shipped_flow(code_hash="other")) != base
+
+
+@pytest.mark.asyncio
+async def test_reset_records_the_signature_of_the_flow_it_wrote(tmp_path):
+    shipped = _shipped_flow()
+    flow_file = tmp_path / "ingestion_flow.json"
+    flow_file.write_text(json.dumps(shipped), encoding="utf-8")
     service = FlowsService()
-    flow_path = tmp_path / "flow.json"
-    flow_path.write_text('{"id": "flow-1", "tags": ["rag"]}', encoding="utf-8")
-    source_mtime = flow_path.stat().st_mtime_ns
-    response = MagicMock(status_code=200)
-    response.json.return_value = {}
-    uploaded_flow: dict = {}
+    patch_response = MagicMock(status_code=200)
+    patch_response.json.return_value = {"folder_id": None}
+    record = MagicMock()
 
-    async def request(method, url, json=None, **kwargs):
-        assert method == "PUT"
-        assert url == "/api/v1/flows/flow-1"
-        uploaded_flow.update(json)
-        return response
-
-    monkeypatch.setattr("services.flows_service.LANGFLOW_URL", "http://langflow")
     with (
-        patch.object(service, "_find_flow_file_by_id", return_value=str(flow_path)),
+        patch("services.flows_service.LANGFLOW_URL", "http://langflow:7860"),
+        patch.object(service, "_find_flow_file_by_id", return_value=str(flow_file)),
         patch.object(service, "_unlock_flow", AsyncMock()),
         patch.object(service, "_lock_flow", AsyncMock()),
-        patch("services.flows_service.clients.langflow_request", side_effect=request),
+        patch(
+            "services.flows_service.clients.langflow_request",
+            AsyncMock(return_value=patch_response),
+        ),
+        patch("services.flows_service.record_applied_flow_signatures", record),
     ):
-        result = await service._reset_langflow_flow_locked("retrieval", "flow-1")
+        result = await service._reset_langflow_flow_locked("ingest", "flow-ingest-1")
 
     assert result["success"] is True
-    assert uploaded_flow["tags"] == ["rag", f"openrag:file-mtime:{source_mtime}"]
+    record.assert_called_once_with({"ingest": flow_signature(shipped)})
 
 
 @pytest.mark.asyncio
-async def test_ensure_flows_exist_stamps_created_flow_with_source_mtime(tmp_path, monkeypatch):
+async def test_ensure_flows_exist_records_signatures_of_created_flows(tmp_path):
+    shipped = _shipped_flow()
+    flow_file = tmp_path / "ingestion_flow.json"
+    flow_file.write_text(json.dumps(shipped), encoding="utf-8")
     service = FlowsService()
-    flow_path = tmp_path / "flow.json"
-    flow_path.write_text('{"id": "flow-1", "tags": ["rag"]}', encoding="utf-8")
-    source_mtime = flow_path.stat().st_mtime_ns
-    uploaded_flow: dict = {}
 
-    async def request(method, url, json=None, **kwargs):
+    async def langflow_request(method, url, **kwargs):
         if method == "GET":
             return MagicMock(status_code=404)
-        assert method == "PUT"
-        assert url == "/api/v1/flows/flow-1"
-        uploaded_flow.update(json)
-        return MagicMock(status_code=201)
+        created = MagicMock(status_code=201)
+        created.json.return_value = {"folder_id": None}
+        return created
 
-    monkeypatch.setattr("services.flows_service.NUDGES_FLOW_ID", "flow-1")
-    monkeypatch.setattr("services.flows_service.LANGFLOW_CHAT_FLOW_ID", "")
-    monkeypatch.setattr("services.flows_service.LANGFLOW_INGEST_FLOW_ID", "")
-    monkeypatch.setattr("services.flows_service.LANGFLOW_URL_INGEST_FLOW_ID", "")
+    record = MagicMock()
     with (
-        patch.object(service, "_find_flow_file_by_id", return_value=str(flow_path)),
-        patch("services.flows_service.clients.langflow_request", side_effect=request),
+        patch("services.flows_service.NUDGES_FLOW_ID", None),
+        patch("services.flows_service.LANGFLOW_CHAT_FLOW_ID", None),
+        patch("services.flows_service.LANGFLOW_URL_INGEST_FLOW_ID", None),
+        patch("services.flows_service.LANGFLOW_INGEST_FLOW_ID", "flow-ingest-1"),
+        patch.object(service, "_find_flow_file_by_id", return_value=str(flow_file)),
+        patch("services.flows_service.clients.langflow_request", side_effect=langflow_request),
+        patch("services.flows_service.record_applied_flow_signatures", record),
+        patch(
+            "services.flows_service.get_openrag_config",
+            return_value=SimpleNamespace(edited=False),
+        ),
     ):
         created = await service.ensure_flows_exist()
 
-    assert created == {"nudges"}
-    assert uploaded_flow["tags"] == ["rag", f"openrag:file-mtime:{source_mtime}"]
+    assert created == {"ingest"}
+    record.assert_called_once_with({"ingest": flow_signature(shipped)})
