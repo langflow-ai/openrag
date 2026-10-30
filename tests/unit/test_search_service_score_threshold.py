@@ -5,13 +5,15 @@ With the normalization processor, OpenSearch returns scores in [0, 1] and
 the frontend applies the relevance threshold via min-max normalisation.
 The backend no longer wraps queries in function_score/min_score; instead it
 emits a hybrid query and attaches the normalization pipeline param.
+num_candidates is not sent because jvector uses k only.
 
 Verifies:
 - a positive threshold does NOT produce a top-level or inner min_score
 - the hybrid query structure is used when embeddings are available
+- kNN clauses never include num_candidates
 - keyword-only fallback uses bool/should (no pipeline)
 - wildcard queries use match_all / bool-filter (no pipeline)
-- the num_candidates retry still strips num_candidates inside the hybrid clause
+- DLS wrapper causes a single-step fallback to bool/should without pipeline
 - knowledge_source result mode keeps website page chunks for parent aggregation
 - chunk result mode excludes website manifests (record_kind filter)
 """
@@ -184,21 +186,19 @@ async def test_wildcard_query_ignores_the_threshold(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_num_candidates_retry_keeps_the_hybrid_structure(monkeypatch):
-    """Verify a retry removes unsupported num_candidates while preserving the hybrid query."""
-    os_client = _OpenSearch(reject_num_candidates=True)
+async def test_knn_clauses_never_include_num_candidates(monkeypatch):
+    """kNN queries must not include num_candidates — jvector uses k only."""
+    os_client = _OpenSearch()
     service = _make_service(os_client, monkeypatch)
-    _set_context(1.0)
+    _set_context(0)
 
     await service.search_tool("MCP")
 
-    first, retry = os_client.bodies
-    assert all("num_candidates" in params for params in _knn_params(first["query"]))
-    assert all("num_candidates" not in params for params in _knn_params(retry["query"]))
-    # The retry still uses hybrid, not function_score
-    assert "hybrid" in retry["query"]
-    assert "function_score" not in retry["query"]
-    assert "min_score" not in retry
+    body = os_client.bodies[-1]
+    knn_params = _knn_params(body["query"])
+    assert knn_params, "expected at least one kNN clause"
+    assert all("num_candidates" not in p for p in knn_params)
+    assert all("k" in p for p in knn_params)
 
 
 @pytest.mark.asyncio
@@ -401,10 +401,10 @@ async def test_dls_fallback_skips_score_threshold_post_filter(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_num_candidates_retry_then_dls_fallback(monkeypatch):
-    """num_candidates retry still uses hybrid; DLS wraps it again → must fall back to bool/should."""
+async def test_dls_fallback_is_single_step(monkeypatch):
+    """Without num_candidates the DLS error fires on the first attempt — one retry, not two."""
 
-    class _NumCandidatesThenDLSOpenSearch:
+    class _DLSOnFirstAttempt:
         def __init__(self):
             self.bodies: list[dict] = []
             self.params_list: list[dict] = []
@@ -414,39 +414,24 @@ async def test_num_candidates_retry_then_dls_fallback(monkeypatch):
                 return {"aggregations": {"embedding_spaces": {"buckets": []}, "legacy_embedding_models": {"buckets": []}}}
             self.bodies.append(body)
             self.params_list.append(params)
-            call = len(self.bodies)
-            if call == 1:
-                # First attempt: hybrid with num_candidates → num_candidates error
-                raise RequestError(
-                    400,
-                    "x_content_parse_exception",
-                    {"error": {"root_cause": [{"reason": "[knn] unknown field [num_candidates]"}]}},
-                )
-            if call == 2:
-                # num_candidates retry: hybrid without num_candidates → DLS wraps it → rejected
+            if len(self.bodies) == 1:
                 raise RequestError(
                     400,
                     "search_phase_execution_exception",
                     {"error": {"root_cause": [{"reason": "hybrid query must be a top level query and cannot be wrapped into other queries"}]}},
                 )
-            # Third attempt: bool/should DLS fallback → succeeds
             return {"hits": {"hits": [{"_score": 0.9, "_source": {"filename": "result.pdf", "text": "some content"}}]}, "aggregations": {}}
 
-    os_client = _NumCandidatesThenDLSOpenSearch()
+    os_client = _DLSOnFirstAttempt()
     service = _make_service(os_client, monkeypatch)
     _set_context(0)
 
     response = await service.search_tool("MCP")
 
-    assert len(os_client.bodies) == 3
-    # Attempt 1: hybrid with num_candidates + pipeline
+    # Exactly two attempts: hybrid → bool/should
+    assert len(os_client.bodies) == 2
     assert "hybrid" in os_client.bodies[0]["query"]
     assert os_client.params_list[0].get("search_pipeline") is not None
-    # Attempt 2: hybrid without num_candidates + pipeline
-    assert "hybrid" in os_client.bodies[1]["query"]
-    # Attempt 3: bool/should without pipeline
-    assert "bool" in os_client.bodies[2]["query"]
-    assert "hybrid" not in os_client.bodies[2]["query"]
-    assert "search_pipeline" not in os_client.params_list[2]
-    # Result returned successfully
+    assert "bool" in os_client.bodies[1]["query"]
+    assert "search_pipeline" not in os_client.params_list[1]
     assert response["results"][0]["filename"] == "result.pdf"

@@ -710,7 +710,6 @@ class SearchService:
                             field_name: {
                                 "vector": embedding_vector,
                                 "k": 50,
-                                "num_candidates": 1000,
                             }
                         }
                     }
@@ -841,28 +840,11 @@ class SearchService:
                 "require_field_match": False,
             }
 
-        # Prepare fallback search bodies for two known retry scenarios.
-        # Both are only relevant when we dispatched a hybrid query.
-        fallback_search_body: dict[str, Any] | None = None  # num_candidates retry
-        dls_fallback_body: dict[str, Any] | None = None     # DLS wrapper retry
+        # DLS fallback: pre-build a bool/should version of the hybrid query so the
+        # security plugin's function_score wrapper (which hybrid cannot be nested inside)
+        # doesn't abort the search for JWT-authenticated users.
+        dls_fallback_body: dict[str, Any] | None = None
         if not is_wildcard_match_all and query_embeddings:
-            try:
-                fallback_search_body = copy.deepcopy(search_body)
-                # hybrid query structure: {"hybrid": {"queries": [semantic_clause, ...]}}
-                knn_query_blocks = fallback_search_body["query"]["hybrid"]["queries"][0]["dis_max"]["queries"]
-                for query_candidate in knn_query_blocks:
-                    knn_section = query_candidate.get("knn")
-                    if isinstance(knn_section, dict):
-                        for params in knn_section.values():
-                            if isinstance(params, dict):
-                                params.pop("num_candidates", None)
-            except (KeyError, IndexError, AttributeError, TypeError):
-                fallback_search_body = None
-
-            # DLS fallback: rewrite hybrid as bool/should so the security plugin's
-            # function_score wrapper is not blocked by the hybrid-must-be-top-level rule.
-            # Also strip num_candidates from kNN clauses — jvector doesn't support it
-            # and the fallback must succeed even on clusters that reject that field.
             try:
                 dls_fallback_body = copy.deepcopy(search_body)
                 hybrid = dls_fallback_body["query"]["hybrid"]
@@ -876,13 +858,6 @@ class SearchService:
                 }
                 if dls_fallback_body["query"]["bool"]["filter"] is None:
                     del dls_fallback_body["query"]["bool"]["filter"]
-                # Strip num_candidates from every kNN sub-clause
-                for clause in dls_fallback_body["query"]["bool"]["should"]:
-                    knn_queries = clause.get("dis_max", {}).get("queries", [])
-                    for knn_clause in knn_queries:
-                        for params in knn_clause.get("knn", {}).values():
-                            if isinstance(params, dict):
-                                params.pop("num_candidates", None)
             except (KeyError, AttributeError, TypeError):
                 dls_fallback_body = None
 
@@ -930,73 +905,6 @@ class SearchService:
                     )
                     raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from e
                 if (
-                    fallback_search_body is not None
-                    and "unknown field [num_candidates]" in error_message.lower()
-                ):
-                    logger.warning(
-                        "OpenSearch cluster does not support num_candidates; retrying without it"
-                    )
-                    query_span.set(retried_without_num_candidates=True)
-                    try:
-                        results = await opensearch_client.search(
-                            index=get_index_name(),
-                            body=fallback_search_body,
-                            params=search_params,
-                        )
-                    except RequestError as retry_error:
-                        if is_disk_space_error(retry_error):
-                            logger.error(
-                                "OpenSearch retry blocked by disk space constraint",
-                                error=str(retry_error),
-                            )
-                            raise OpenSearchDiskSpaceError(
-                                DISK_SPACE_ERROR_MESSAGE
-                            ) from retry_error
-                        retry_error_message = str(retry_error)
-                        if (
-                            dls_fallback_body is not None
-                            and "hybrid query must be a top level query"
-                            in retry_error_message.lower()
-                        ):
-                            # num_candidates retry still used hybrid; DLS wrapped it again.
-                            # Fall through to the bool/should DLS fallback below.
-                            logger.warning(
-                                "DLS wrapper blocked num_candidates retry; falling back to bool/should"
-                            )
-                            query_span.set(retried_dls_bool_fallback=True)
-                            pipeline_active = False
-                            dls_params = {
-                                k: v for k, v in search_params.items() if k != "search_pipeline"
-                            }
-                            try:
-                                results = await opensearch_client.search(
-                                    index=get_index_name(),
-                                    body=dls_fallback_body,
-                                    params=dls_params,
-                                )
-                            except RequestError as dls_retry_error:
-                                if is_disk_space_error(dls_retry_error):
-                                    logger.error(
-                                        "OpenSearch DLS retry blocked by disk space constraint",
-                                        error=str(dls_retry_error),
-                                    )
-                                    raise OpenSearchDiskSpaceError(
-                                        DISK_SPACE_ERROR_MESSAGE
-                                    ) from dls_retry_error
-                                logger.error(
-                                    "OpenSearch DLS bool/should retry failed",
-                                    error=str(dls_retry_error),
-                                    search_body=dls_fallback_body,
-                                )
-                                raise
-                        else:
-                            logger.error(
-                                "OpenSearch retry without num_candidates failed",
-                                error=retry_error_message,
-                                search_body=fallback_search_body,
-                            )
-                            raise
-                elif (
                     dls_fallback_body is not None
                     and "hybrid query must be a top level query" in error_message.lower()
                 ):
