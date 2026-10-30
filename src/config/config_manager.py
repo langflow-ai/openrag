@@ -323,6 +323,7 @@ class OpenAIConfig:
     """OpenAI provider configuration."""
 
     api_key: str = ""
+    base_url: str = ""  # Optional override to point at an OpenAI-compatible gateway
     configured: bool = False
 
 
@@ -566,6 +567,8 @@ class ProvidersConfig:
         if key == "openai":
             if self.openai.api_key:
                 custom.setdefault("api_key", self.openai.api_key)
+            if self.openai.base_url:
+                custom.setdefault("api_base", self.openai.base_url)
             return custom
         if key == "anthropic":
             if self.anthropic.api_key:
@@ -993,6 +996,8 @@ class ConfigManager:
         # OpenAI provider settings
         if os.getenv("OPENAI_API_KEY"):
             config_data["providers"]["openai"]["api_key"] = os.getenv("OPENAI_API_KEY")
+        if os.getenv("OPENAI_BASE_URL"):
+            config_data["providers"]["openai"]["base_url"] = os.getenv("OPENAI_BASE_URL")
 
         # Anthropic provider settings
         if os.getenv("ANTHROPIC_API_KEY"):
