@@ -944,12 +944,50 @@ class SearchService:
                             raise OpenSearchDiskSpaceError(
                                 DISK_SPACE_ERROR_MESSAGE
                             ) from retry_error
-                        logger.error(
-                            "OpenSearch retry without num_candidates failed",
-                            error=str(retry_error),
-                            search_body=fallback_search_body,
-                        )
-                        raise
+                        retry_error_message = str(retry_error)
+                        if (
+                            dls_fallback_body is not None
+                            and "hybrid query must be a top level query"
+                            in retry_error_message.lower()
+                        ):
+                            # num_candidates retry still used hybrid; DLS wrapped it again.
+                            # Fall through to the bool/should DLS fallback below.
+                            logger.warning(
+                                "DLS wrapper blocked num_candidates retry; falling back to bool/should"
+                            )
+                            query_span.set(retried_dls_bool_fallback=True)
+                            pipeline_active = False
+                            dls_params = {
+                                k: v for k, v in search_params.items() if k != "search_pipeline"
+                            }
+                            try:
+                                results = await opensearch_client.search(
+                                    index=get_index_name(),
+                                    body=dls_fallback_body,
+                                    params=dls_params,
+                                )
+                            except RequestError as dls_retry_error:
+                                if is_disk_space_error(dls_retry_error):
+                                    logger.error(
+                                        "OpenSearch DLS retry blocked by disk space constraint",
+                                        error=str(dls_retry_error),
+                                    )
+                                    raise OpenSearchDiskSpaceError(
+                                        DISK_SPACE_ERROR_MESSAGE
+                                    ) from dls_retry_error
+                                logger.error(
+                                    "OpenSearch DLS bool/should retry failed",
+                                    error=str(dls_retry_error),
+                                    search_body=dls_fallback_body,
+                                )
+                                raise
+                        else:
+                            logger.error(
+                                "OpenSearch retry without num_candidates failed",
+                                error=retry_error_message,
+                                search_body=fallback_search_body,
+                            )
+                            raise
                 elif (
                     dls_fallback_body is not None
                     and "hybrid query must be a top level query" in error_message.lower()

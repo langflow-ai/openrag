@@ -390,3 +390,55 @@ async def test_dls_fallback_skips_score_threshold_post_filter(monkeypatch):
     # 0.03 < 0.1 threshold, but threshold must NOT be applied to raw DLS fallback scores
     filenames = [c["filename"] for c in response["results"]]
     assert "dls_result.pdf" in filenames
+
+
+@pytest.mark.asyncio
+async def test_num_candidates_retry_then_dls_fallback(monkeypatch):
+    """num_candidates retry still uses hybrid; DLS wraps it again → must fall back to bool/should."""
+
+    class _NumCandidatesThenDLSOpenSearch:
+        def __init__(self):
+            self.bodies: list[dict] = []
+            self.params_list: list[dict] = []
+
+        async def search(self, *, index, body, params):
+            if body.get("size") == 0:
+                return {"aggregations": {"embedding_spaces": {"buckets": []}, "legacy_embedding_models": {"buckets": []}}}
+            self.bodies.append(body)
+            self.params_list.append(params)
+            call = len(self.bodies)
+            if call == 1:
+                # First attempt: hybrid with num_candidates → num_candidates error
+                raise RequestError(
+                    400,
+                    "x_content_parse_exception",
+                    {"error": {"root_cause": [{"reason": "[knn] unknown field [num_candidates]"}]}},
+                )
+            if call == 2:
+                # num_candidates retry: hybrid without num_candidates → DLS wraps it → rejected
+                raise RequestError(
+                    400,
+                    "search_phase_execution_exception",
+                    {"error": {"root_cause": [{"reason": "hybrid query must be a top level query and cannot be wrapped into other queries"}]}},
+                )
+            # Third attempt: bool/should DLS fallback → succeeds
+            return {"hits": {"hits": [{"_score": 0.9, "_source": {"filename": "result.pdf", "text": "some content"}}]}, "aggregations": {}}
+
+    os_client = _NumCandidatesThenDLSOpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+
+    response = await service.search_tool("MCP")
+
+    assert len(os_client.bodies) == 3
+    # Attempt 1: hybrid with num_candidates + pipeline
+    assert "hybrid" in os_client.bodies[0]["query"]
+    assert os_client.params_list[0].get("search_pipeline") is not None
+    # Attempt 2: hybrid without num_candidates + pipeline
+    assert "hybrid" in os_client.bodies[1]["query"]
+    # Attempt 3: bool/should without pipeline
+    assert "bool" in os_client.bodies[2]["query"]
+    assert "hybrid" not in os_client.bodies[2]["query"]
+    assert "search_pipeline" not in os_client.params_list[2]
+    # Result returned successfully
+    assert response["results"][0]["filename"] == "result.pdf"
