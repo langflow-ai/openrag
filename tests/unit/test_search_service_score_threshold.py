@@ -315,3 +315,78 @@ async def test_dls_fallback_preserves_filters(monkeypatch):
         if clause.get("bool", {}).get("must_not")
     )
     assert record_kind_filter_present, "record_kind filter missing from DLS fallback"
+
+
+@pytest.mark.asyncio
+async def test_score_threshold_post_filters_chunks_when_pipeline_ran(monkeypatch):
+    """Python post-filter removes chunks below the threshold when the pipeline ran."""
+    monkeypatch.setattr("config.search_constants.DEFAULT_SEARCH_SCORE_THRESHOLD", 0.1)
+
+    class _ScoredOpenSearch:
+        def __init__(self):
+            self.bodies: list[dict] = []
+
+        async def search(self, *, index, body, params):
+            if body.get("size") == 0:
+                return {"aggregations": {"embedding_spaces": {"buckets": []}, "legacy_embedding_models": {"buckets": []}}}
+            self.bodies.append(body)
+            # Return two hits: one above threshold, one below
+            return {
+                "hits": {
+                    "hits": [
+                        {"_score": 0.8, "_source": {"filename": "good.pdf", "text": "relevant content"}},
+                        {"_score": 0.05, "_source": {"filename": "bad.pdf", "text": "irrelevant content"}},
+                    ]
+                },
+                "aggregations": {},
+            }
+
+    os_client = _ScoredOpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)  # request threshold=0 → falls back to DEFAULT (0.1)
+
+    response = await service.search_tool("MCP")
+
+    filenames = [c["filename"] for c in response["results"]]
+    assert "good.pdf" in filenames
+    assert "bad.pdf" not in filenames  # 0.05 < 0.1 threshold
+
+
+@pytest.mark.asyncio
+async def test_dls_fallback_skips_score_threshold_post_filter(monkeypatch):
+    """When DLS forces bool/should fallback, scores are raw so threshold must not apply."""
+    monkeypatch.setattr("config.search_constants.DEFAULT_SEARCH_SCORE_THRESHOLD", 0.1)
+
+    class _DLSScoredOpenSearch:
+        def __init__(self):
+            self.call_count = 0
+
+        async def search(self, *, index, body, params):
+            if body.get("size") == 0:
+                return {"aggregations": {"embedding_spaces": {"buckets": []}, "legacy_embedding_models": {"buckets": []}}}
+            self.call_count += 1
+            if self.call_count == 1:
+                raise RequestError(
+                    400,
+                    "search_phase_execution_exception",
+                    {"error": {"root_cause": [{"reason": "hybrid query must be a top level query"}]}},
+                )
+            # DLS fallback: raw unnormalized scores (e.g. 0.03 is a real result)
+            return {
+                "hits": {
+                    "hits": [
+                        {"_score": 0.03, "_source": {"filename": "dls_result.pdf", "text": "some content"}},
+                    ]
+                },
+                "aggregations": {},
+            }
+
+    os_client = _DLSScoredOpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+
+    response = await service.search_tool("MCP")
+
+    # 0.03 < 0.1 threshold, but threshold must NOT be applied to raw DLS fallback scores
+    filenames = [c["filename"] for c in response["results"]]
+    assert "dls_result.pdf" in filenames

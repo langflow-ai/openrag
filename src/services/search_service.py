@@ -10,7 +10,7 @@ from agentd.tool_decorator import tool
 
 from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
-from config.search_constants import HYBRID_PIPELINE_NAME
+from config.search_constants import DEFAULT_SEARCH_SCORE_THRESHOLD, HYBRID_PIPELINE_NAME
 from config.settings import get_embedding_model, get_index_name, get_openrag_config
 from observability.spans import Span, trace_root, trace_span
 from services.llm_gateway import LlmGatewayError
@@ -902,7 +902,8 @@ class SearchService:
         search_params: dict[str, Any] = {"terminate_after": 0}
         # Attach the normalization pipeline only for hybrid queries. Keyword-only
         # fallback and wildcard queries don't use it.
-        if not is_wildcard_match_all and query_embeddings:
+        pipeline_active = not is_wildcard_match_all and bool(query_embeddings)
+        if pipeline_active:
             search_params["search_pipeline"] = HYBRID_PIPELINE_NAME
 
         with trace_span("search.query", knn_fields=len(query_embeddings), size=limit) as query_span:
@@ -961,6 +962,7 @@ class SearchService:
                         "DLS wrapper incompatible with hybrid query; retrying as bool/should"
                     )
                     query_span.set(retried_dls_bool_fallback=True)
+                    pipeline_active = False  # scores are raw, not [0,1]-normalized
                     dls_params = {k: v for k, v in search_params.items() if k != "search_pipeline"}
                     try:
                         results = await opensearch_client.search(
@@ -1051,6 +1053,13 @@ class SearchService:
 
         if not is_wildcard_match_all:
             chunks = [chunk for chunk in chunks if _has_readable_text(chunk["text"])]
+
+        # Apply score threshold as a post-filter when the normalization pipeline ran
+        # and produced [0,1] scores. Skip when DLS forced the bool/should fallback
+        # (scores are then raw and the threshold is miscalibrated for that scale).
+        effective_threshold = score_threshold or DEFAULT_SEARCH_SCORE_THRESHOLD
+        if pipeline_active and effective_threshold > 0 and not is_wildcard_match_all:
+            chunks = [c for c in chunks if (c.get("score") or 0) >= effective_threshold]
 
         # If query text appears verbatim in one subset of files, prefer those files
         # to avoid broad semantic spillover for unique lookups.
