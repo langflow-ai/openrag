@@ -28,6 +28,36 @@ async def test_openai_lightweight_health_preserves_custom_base_path(monkeypatch)
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "api_base",
+    [
+        "http://gateway.example/openai",
+        "ftp://gateway.example/openai",
+        "https://gateway.example:99999/openai",
+        "https:///openai",
+        "https://user:password@gateway.example/openai",
+        "https://gateway.example/openai?tenant=one",
+        "https://gateway.example/openai#models",
+    ],
+)
+async def test_openai_health_rejects_unsafe_custom_base_before_request(monkeypatch, api_base):
+    calls = []
+
+    async def fake_request(method, url, **kwargs):
+        calls.append((method, url))
+        return SimpleNamespace(status_code=200)
+
+    monkeypatch.setattr(provider_validation, "_http_request_with_retry", fake_request)
+
+    with pytest.raises(ValueError, match="HTTPS URL"):
+        await provider_validation.test_lightweight_health(
+            "openai", api_key="test-key", credentials={"api_base": api_base}
+        )
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
 async def test_openai_completion_and_embedding_use_custom_base(monkeypatch):
     calls = []
 
