@@ -72,8 +72,9 @@ async def test_openai_model_discovery_uses_custom_base(monkeypatch):
     monkeypatch.setattr("services.models_service._http_request_with_retry", fake_request)
     service = ModelsService()
 
-    await service.get_openai_models(
+    result = await service.get_openai_models(
         "test-key", api_base="https://gateway.example/openai", update_index=False
     )
 
     assert calls == [("GET", "https://gateway.example/openai/models")]
+    assert [model["value"] for model in result["language_models"]] == ["example-model"]

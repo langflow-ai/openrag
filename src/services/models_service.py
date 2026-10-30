@@ -353,6 +353,9 @@ class ModelsService:
                 # Classify live inventory into embedding vs chat; drop non-chat junk.
                 language_models = []
                 embedding_models = []
+                is_custom_endpoint = bool(
+                    api_base and api_base.rstrip("/") != "https://api.openai.com/v1"
+                )
 
                 for model in models:
                     model_id = model.get("id", "")
@@ -367,7 +370,7 @@ class ModelsService:
                                 "default": False,
                             }
                         )
-                    elif is_openai_language_model(model_id):
+                    elif is_custom_endpoint or is_openai_language_model(model_id):
                         language_models.append(
                             {
                                 "value": model_id,

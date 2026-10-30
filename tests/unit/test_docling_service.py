@@ -676,6 +676,7 @@ async def test_build_vlm_options_openai_custom_base_url(docling_service):
         options["picture_description_api"]["url"]
         == "https://gateway.example/openai/chat/completions"
     )
+    mock_config.providers.credential_values.assert_called_once_with("openai")
 
 
 @pytest.mark.asyncio
