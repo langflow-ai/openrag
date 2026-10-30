@@ -286,6 +286,11 @@ class ConversationPersistenceService:
         back, a delete issued meanwhile waits and then removes the restored
         entry, so a deleted conversation is never resurrected.
 
+        A database failure is logged and then re-raised, so callers can tell an
+        incomplete prune from a completed one and retry. In hybrid mode the JSON
+        part has already been applied by then; pruning is idempotent, so a retry
+        is safe.
+
         Returns the total number of conversations deleted across all stores.
         Raises ``ValueError`` unless *ttl_days* >= 1, before touching memory,
         disk or the DB: zero would delete nearly every conversation and a
@@ -318,6 +323,7 @@ class ConversationPersistenceService:
                         deleted += n
                 except Exception as exc:  # noqa: BLE001
                     logger.error("DB prune_stale_conversations failed", error=str(exc))
+                    raise
 
         logger.info("Conversation pruning completed", ttl_days=ttl_days, deleted=deleted)
         return deleted

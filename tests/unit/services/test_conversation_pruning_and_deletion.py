@@ -139,6 +139,25 @@ async def test_positive_ttl_prunes_old_and_keeps_recent(monkeypatch, storage_pat
     assert "recent-db" in ids
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["db", "hybrid"])
+async def test_prune_propagates_db_failure(monkeypatch, storage_path, session_factory, mode):
+    """A DB prune error must reach the caller, not be swallowed after logging."""
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", mode)
+    svc = _svc(storage_path, session_factory)
+    await _seed_db(session_factory, "old-db", age_days=90)
+
+    async def _boom(self, ttl_days):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(ConversationRepo, "delete_stale", _boom)
+
+    with pytest.raises(RuntimeError, match="db down"):
+        await svc.prune_stale_conversations(30)
+
+    assert "old-db" in await _db_ids(session_factory)
+
+
 # ---------------------------------------------------------------------------
 # 2. Failed-prune rollback must not clobber concurrent updates
 # ---------------------------------------------------------------------------
