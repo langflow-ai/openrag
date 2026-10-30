@@ -281,6 +281,47 @@ async def test_files_only_clear_failure_is_logged_not_durable(
     assert "r-1" in json.loads(storage_path.read_text())["alice"]
 
 
+@pytest.mark.asyncio
+async def test_files_only_delete_retry_saves_again_after_failed_save(
+    monkeypatch, storage_path, session_factory
+):
+    """A retry must rewrite the file even though memory no longer has the entry."""
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
+    svc = _svc(storage_path, session_factory)
+    await svc.store_conversation_thread("alice", "r-1", _payload("r-1"))
+    await svc.store_conversation_thread("alice", "r-2", _payload("r-2"))
+    real_save = svc._save_conversations
+    svc._save_conversations = _failing_save
+
+    with pytest.raises(OSError, match="disk full"):
+        await svc.delete_conversation_thread("alice", "r-1")
+
+    svc._save_conversations = real_save
+    assert await svc.delete_conversation_thread("alice", "r-1") is True
+    assert set(json.loads(storage_path.read_text())["alice"]) == {"r-2"}
+
+    # Once the file reflects the delete, nothing is pending any more.
+    assert await svc.delete_conversation_thread("alice", "r-1") is False
+
+
+@pytest.mark.asyncio
+async def test_files_only_clear_retry_saves_again_after_failed_save(
+    monkeypatch, storage_path, session_factory
+):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
+    svc = _svc(storage_path, session_factory)
+    await svc.store_conversation_thread("alice", "r-1", _payload("r-1"))
+    real_save = svc._save_conversations
+    svc._save_conversations = _failing_save
+
+    with pytest.raises(OSError, match="disk full"):
+        await svc.clear_user_conversations("alice")
+
+    svc._save_conversations = real_save
+    await svc.clear_user_conversations("alice")
+    assert "alice" not in json.loads(storage_path.read_text())
+
+
 # ---------------------------------------------------------------------------
 # 4. A failed prune must not resurrect a conversation deleted meanwhile
 # ---------------------------------------------------------------------------

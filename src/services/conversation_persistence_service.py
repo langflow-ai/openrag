@@ -63,6 +63,13 @@ class ConversationPersistenceService:
         # explicit delete, clear), so a failed prune can never resurrect an
         # entry that was deleted while its save was in flight.
         self._file_mutation_lock = asyncio.Lock()
+        # Deletions applied in memory whose file save has not yet succeeded.
+        # While non-empty, memory and disk may differ, so a retry of the same
+        # delete/clear must save again instead of finding nothing to do.
+        # Guarded by ``lock``; cleared by any successful save (its snapshot
+        # already excludes every removal recorded here).
+        self._pending_file_deletes: set[tuple[str, str]] = set()
+        self._pending_file_clears: set[str] = set()
         self._session_factory = session_factory
         self._conversations: dict[str, dict[str, Any]] = self._load_conversations()
 
@@ -133,6 +140,13 @@ class ConversationPersistenceService:
     async def _save_conversations(self) -> None:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, self._save_conversations_sync)
+
+    async def _save_after_removal(self) -> None:
+        """Save, and forget pending deletions once the file reflects them."""
+        await self._save_conversations()
+        with self.lock:
+            self._pending_file_deletes.clear()
+            self._pending_file_clears.clear()
 
     def _serialize_datetime(self, obj: Any) -> Any:
         if isinstance(obj, datetime):
@@ -216,8 +230,9 @@ class ConversationPersistenceService:
         A file-save failure does not skip the DB delete, but it is not hidden:
         the DB delete runs first, then the save error is re-raised so the
         caller knows the JSON copy may survive a restart (and, in hybrid mode,
-        be served by the JSON fallback). The entry is already gone from memory;
-        the next successful save rewrites the file without it.
+        be served by the JSON fallback). The entry is already gone from memory,
+        so the deletion is recorded as pending: retrying the same delete saves
+        the file again and reports the conversation as deleted once it succeeds.
         """
         deleted = False
         save_error: Exception | None = None
@@ -230,10 +245,17 @@ class ConversationPersistenceService:
                     removed = (
                         user_convs is not None and user_convs.pop(response_id, None) is not None
                     )
-                if removed:
+                    if removed:
+                        self._pending_file_deletes.add((user_id, response_id))
+                    needs_save = (
+                        removed
+                        or (user_id, response_id) in self._pending_file_deletes
+                        or user_id in self._pending_file_clears
+                    )
+                if needs_save:
                     deleted = True
                     try:
-                        await self._save_conversations()
+                        await self._save_after_removal()
                     except Exception as exc:  # noqa: BLE001
                         save_error = exc
                         logger.error(
@@ -357,7 +379,8 @@ class ConversationPersistenceService:
         """Delete every conversation for *user_id* from every active store.
 
         A file-save failure does not skip the DB delete; the error is re-raised
-        afterwards, like ``delete_conversation_thread``.
+        afterwards, like ``delete_conversation_thread``. The clear is recorded
+        as pending, so a retry saves the file again.
         """
         save_error: Exception | None = None
         if file_writes_enabled():
@@ -365,9 +388,12 @@ class ConversationPersistenceService:
             async with self._file_mutation_lock:
                 with self.lock:
                     removed = self._conversations.pop(user_id, None) is not None
-                if removed:
+                    if removed:
+                        self._pending_file_clears.add(user_id)
+                    needs_save = removed or user_id in self._pending_file_clears
+                if needs_save:
                     try:
-                        await self._save_conversations()
+                        await self._save_after_removal()
                     except Exception as exc:  # noqa: BLE001
                         save_error = exc
                         logger.error(
