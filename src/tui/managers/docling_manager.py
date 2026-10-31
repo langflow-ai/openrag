@@ -298,7 +298,7 @@ class DoclingManager:
                 "--python",
                 "3.13",
                 "--from",
-                "docling-serve[ui]==1.26.0",
+                "docling-serve[ui]==1.38.2",
                 "--with",
                 "onnxruntime",
                 "--with",
