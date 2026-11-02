@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from api.files import _validate_date_range
+from api.files import validate_date_filter_bounds
 from config.settings import is_url_connector_enabled
 from connectors.url.projection import get_source_manifest, list_page_manifests
 from dependencies import (
@@ -48,6 +48,7 @@ def _website_page_chunk(page: dict[str, Any]) -> dict[str, Any]:
         "file_size": page.get("file_size") or 0,
         "connector_type": "url",
         "document_id": page.get("content_document_id") or page.get("document_id"),
+        "indexed_time": page.get("indexed_time"),
         "web_source_id": page.get("web_source_id"),
         "web_page_id": page.get("web_page_id"),
         "web_page_depth": page.get("web_page_depth") or 0,
@@ -84,6 +85,7 @@ def _website_source_chunk(source: dict[str, Any], matching_page: dict[str, Any])
         "allowed_groups": source.get("allowed_groups", []),
         "allowed_principal_labels": source.get("allowed_principal_labels", []),
         "document_id": source.get("document_id"),
+        "indexed_time": source.get("indexed_time"),
         "web_source_id": source_id,
         "web_child_count": source.get("web_child_count", 0),
         "chunk_count": source.get("chunk_count", 0),
@@ -151,9 +153,15 @@ async def _website_page_search_result(
         raise HTTPException(404, "Website source not found")
 
     query = body.query.strip()
-    all_pages = await list_page_manifests(source_id)
+    bounds = {
+        "created_after": body.filters.get("created_after"),
+        "created_before": body.filters.get("created_before"),
+    }
+    all_pages = await list_page_manifests(source_id, **bounds)
     matching_pages = (
-        await list_page_manifests(source_id, query) if query and query != "*" else all_pages
+        await list_page_manifests(source_id, query, **bounds)
+        if query and query != "*"
+        else all_pages
     )
     pages_by_id = {str(page["web_page_id"]): page for page in all_pages if page.get("web_page_id")}
     results_by_page_id = {
@@ -231,12 +239,8 @@ async def search(
         merged_filters["created_after"] = body.created_after
     if body.created_before:
         merged_filters["created_before"] = body.created_before
-    for bound in ("created_after", "created_before"):
-        value = merged_filters.get(bound)
-        if value is not None and not isinstance(value, str):
-            raise HTTPException(status_code=422, detail=f"{bound} must be a string")
     # Validate after merging: the bounds can also arrive inside `filters`.
-    _validate_date_range(merged_filters.get("created_after"), merged_filters.get("created_before"))
+    validate_date_filter_bounds(merged_filters)
     # Downstream result-mode helpers read body.filters, so make them see the merged bounds.
     body.filters = merged_filters
 

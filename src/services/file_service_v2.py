@@ -33,18 +33,17 @@ _FILE_IDENTITY_SCRIPT = (
 )
 
 
-def _distinct_files_agg() -> dict[str, Any]:
+def _file_identity_script() -> dict[str, Any]:
     return {
-        "cardinality": {
-            "script": {
-                "lang": "painless",
-                "source": _FILE_IDENTITY_SCRIPT,
-                # Painless has no "\\n" string escape, so the separator is a param.
-                "params": {"separator": "\n"},
-            },
-            "precision_threshold": 3000,
-        }
+        "lang": "painless",
+        "source": _FILE_IDENTITY_SCRIPT,
+        # Painless has no "\\n" string escape, so the separator is a param.
+        "params": {"separator": "\n"},
     }
+
+
+def _distinct_files_agg() -> dict[str, Any]:
+    return {"cardinality": {"script": _file_identity_script(), "precision_threshold": 3000}}
 
 
 _COMPOSITE_SORT_FIELDS: dict[str, str] = {
@@ -554,7 +553,8 @@ class FileServiceV2:
             "aggs": {
                 "files": {
                     "terms": {
-                        "field": "document_id",
+                        # Same identity as _get_file_count, so totals and buckets agree.
+                        "script": _file_identity_script(),
                         "size": offset + page_size,
                         "order": {"sort_chunk_count": sort_order},
                     },
@@ -670,7 +670,8 @@ class FileServiceV2:
                     or (
                         bucket["key"].get("filename", "")
                         if isinstance(bucket["key"], dict)
-                        else bucket.get("key", "")
+                        # Script-grouped terms keys are "filename\ndocument_id".
+                        else str(bucket.get("key", "")).partition("\n")[0]
                     ),
                     "document_id": source.get("document_id", ""),
                     "mimetype": source.get("mimetype", ""),

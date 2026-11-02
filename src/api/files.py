@@ -10,6 +10,7 @@ using FileServiceV2 (composite-aggregation cursor pagination). Pass `after_key`
 import json
 import re
 from datetime import UTC, datetime
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import Depends, HTTPException, Query
@@ -79,6 +80,16 @@ def _validate_date_range(created_after: str | None, created_before: str | None) 
             status_code=422,
             detail="created_after must be earlier than or equal to created_before",
         )
+
+
+def validate_date_filter_bounds(filters: dict[str, Any] | None) -> None:
+    """Raise HTTP 422 unless the optional date bounds in *filters* are valid ISO 8601 strings."""
+    filters = filters or {}
+    for bound in ("created_after", "created_before"):
+        value = filters.get(bound)
+        if value is not None and not isinstance(value, str):
+            raise HTTPException(status_code=422, detail=f"{bound} must be a string")
+    _validate_date_range(filters.get("created_after"), filters.get("created_before"))
 
 
 def _parse_after_key(after_key: str | None) -> dict | None:

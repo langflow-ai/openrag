@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException
 
 from api.files import upload_histogram
-from services.file_service_v2 import FileServiceV2
+from services.file_service_v2 import FileServiceV2, _distinct_files_agg
 
 USER = SimpleNamespace(user_id="u1", jwt_token="jwt")
 
@@ -118,3 +118,27 @@ async def test_service_buckets_by_local_day_and_keeps_all_time_total():
         assert "params.separator" in script
         assert agg["cardinality"]["script"]["params"] == {"separator": "\n"}
         assert agg["cardinality"]["precision_threshold"] == 3000
+
+
+def test_chunk_count_terms_agg_groups_by_the_same_file_identity_as_the_count():
+    body = FileServiceV2(MagicMock())._build_terms_aggregation_for_chunk_count(
+        query={"bool": {}}, page_size=25, offset=0, sort_order="desc"
+    )
+    terms = body["aggs"]["files"]["terms"]
+
+    assert "field" not in terms
+    assert terms["script"] == _distinct_files_agg()["cardinality"]["script"]
+    assert terms["script"]["params"] == {"separator": "\n"}
+
+
+def test_script_grouped_bucket_falls_back_to_the_filename_part_of_its_key():
+    files = FileServiceV2(MagicMock())._buckets_to_files(
+        [
+            {
+                "key": "report.pdf\nabc123",
+                "file_metadata": {"hits": {"hits": [{"_source": {"document_id": "abc123"}}]}},
+            }
+        ]
+    )
+
+    assert files[0]["filename"] == "report.pdf"

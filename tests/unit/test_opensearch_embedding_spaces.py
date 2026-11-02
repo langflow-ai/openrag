@@ -437,7 +437,11 @@ def test_search_applies_date_filter_outside_and_inside_each_knn(
         }
     }
     fields = {
-        "chunk_embedding_azure_text_embedding_3_small": {"type": "knn_vector", "dimension": 2}
+        "chunk_embedding_azure_text_embedding_3_small": {
+            "type": "knn_vector",
+            "dimension": 2,
+            "method": {"engine": "jvector", "name": "disk_ann"},
+        }
     }
     client = _SearchClient(aggregation, fields)
 
@@ -553,3 +557,44 @@ def test_partial_embed_failure_aborts_before_any_write(
         component._add_documents_to_vector_store(_Client())
 
     assert writes == []
+
+
+@pytest.mark.parametrize(
+    ("engine", "expect_inner"),
+    [("jvector", True), ("lucene", True), ("faiss", True), ("nmslib", False), (None, False)],
+)
+def test_inner_knn_filter_only_for_engines_that_support_it(
+    monkeypatch: pytest.MonkeyPatch, engine, expect_inner
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    aggregation = {
+        "aggregations": {
+            "embedding_spaces": {
+                "buckets": [{"key": {"space_id": "azure:text-embedding-3-small"}, "doc_count": 2}]
+            },
+            "legacy_embedding_models": {"buckets": []},
+        }
+    }
+    field = {"type": "knn_vector", "dimension": 2}
+    if engine:
+        field["method"] = {"engine": engine, "name": "hnsw"}
+    client = _SearchClient(aggregation, {"chunk_embedding_azure_text_embedding_3_small": field})
+
+    class Child:
+        def embed_query(self, query):
+            return [0.1, 0.2]
+
+    class Root(Child):
+        deployment = "selected-model"
+
+        def for_model(self, route):
+            return Child()
+
+    component = _component(module, client, Root())
+    component.filter_expression = json.dumps({"filter": [_RANGE]})
+    component.search("needle")
+
+    bool_query = client.query["query"]["bool"]
+    assert bool_query["filter"] == [_RANGE]  # the outer filter is always kept
+    (knn,) = bool_query["should"][0]["dis_max"]["queries"][0]["knn"].values()
+    assert ("filter" in knn) is expect_inner

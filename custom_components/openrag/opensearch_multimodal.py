@@ -2071,6 +2071,19 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         nested_props = field_def.get("properties")
         return bool(isinstance(nested_props, dict) and nested_props.get("type") == "knn_vector")
 
+    _INNER_KNN_FILTER_ENGINES = frozenset({"lucene", "faiss", "jvector"})
+
+    def _supports_inner_knn_filter(
+        self, properties: dict[str, Any] | None, field_name: str
+    ) -> bool:
+        """True when the field's k-NN engine supports a filter inside the k-NN clause."""
+        field_def = (properties or {}).get(field_name)
+        if not isinstance(field_def, dict):
+            return False
+        method = field_def.get("method")
+        engine = method.get("engine") if isinstance(method, dict) else None
+        return isinstance(engine, str) and engine.lower() in self._INNER_KNN_FILTER_ENGINES
+
     def _get_field_dimension(
         self, properties: dict[str, Any] | None, field_name: str
     ) -> int | None:
@@ -2418,10 +2431,12 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     }
                 }
             }
-            # Filter inside each kNN clause so the nearest neighbours are chosen
+            # Filter inside the kNN clause so the nearest neighbours are chosen
             # from matching documents; the outer bool filter alone would only
-            # post-filter the global top-k and miss narrow ranges.
-            if filter_clauses:
+            # post-filter the global top-k and miss narrow ranges. nmslib (and
+            # an unknown engine) cannot filter efficiently, so those fields
+            # keep the outer filter only.
+            if filter_clauses and self._supports_inner_knn_filter(index_properties, selected_field):
                 base_query["knn"][selected_field]["filter"] = {"bool": {"filter": filter_clauses}}
 
             if use_num_candidates:
