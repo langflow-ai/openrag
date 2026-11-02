@@ -1252,6 +1252,13 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
         raise
 
 
+def _require_https_provider_endpoint(endpoint: str, provider: str) -> None:
+    """Reject credential-bearing provider endpoints that do not use HTTPS."""
+    parsed = urlparse(endpoint)
+    if parsed.scheme.lower() != "https" or not parsed.netloc:
+        raise ValueError(f"The {provider} endpoint must use HTTPS")
+
+
 async def _test_azure_lightweight_health(credentials: dict[str, str]) -> None:
     """Validate Azure OpenAI credentials without selecting or billing a deployment.
 
@@ -1267,6 +1274,7 @@ async def _test_azure_lightweight_health(credentials: dict[str, str]) -> None:
         raise ValueError("Azure credentials are required")
     if not api_base:
         raise ValueError("API Base is required")
+    _require_https_provider_endpoint(api_base, "Azure")
 
     if not access_token and credentials.get("client_secret"):
         tenant_id = credentials.get("tenant_id")
@@ -1473,6 +1481,7 @@ async def _test_watsonx_completion_with_tools(
 ) -> None:
     """Test IBM Watson completion with tool calling."""
     try:
+        _require_https_provider_endpoint(endpoint, "watsonx")
         # Get bearer token from IBM IAM
         async with httpx.AsyncClient() as client:
             token_response = await client.post(
@@ -1567,6 +1576,7 @@ async def _test_watsonx_embedding(
 ) -> None:
     """Test IBM Watson embedding generation."""
     try:
+        _require_https_provider_endpoint(endpoint, "watsonx")
         # Get bearer token from IBM IAM
         async with httpx.AsyncClient() as client:
             token_response = await client.post(
