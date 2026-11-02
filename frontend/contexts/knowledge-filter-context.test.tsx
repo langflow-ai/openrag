@@ -131,6 +131,20 @@ describe("KnowledgeFilterProvider saved date range", () => {
     expect(result.current.dateRange?.from).toEqual(new Date(2026, 9, 1));
   });
 
+  it("does not copy a selected filter's saved range into a new filter", () => {
+    const { result } = setup();
+    act(() => result.current.setSelectedFilter(withDates));
+    expect(result.current.effectiveDateRange.createdAfter).toBe(AFTER);
+
+    act(() => result.current.startCreateMode());
+
+    const filters = result.current.parsedFilterData?.filters;
+    expect(filters).not.toHaveProperty("created_after");
+    expect(filters).not.toHaveProperty("created_before");
+    expect(result.current.parsedFilterData?.dateRangeContext).toBeUndefined();
+    expect(result.current.effectiveDateRange).toEqual({});
+  });
+
   it("starts a new filter without dates when no toolbar range was picked", () => {
     const { result } = setup();
 

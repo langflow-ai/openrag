@@ -213,8 +213,9 @@ export function KnowledgeFilterProvider({
     setPanelMode("filters");
     setCreateMode(true);
     setSelectedFilterState(null);
-    // A range picked in the toolbar carries into the new filter, like checked rows.
-    const seeded = effectiveDateRange;
+    // Only a range explicitly picked in the toolbar carries over; the selected
+    // filter's own saved range must not leak into a different filter.
+    const seeded = dateRangeOverride ?? NO_DATE_RANGE;
     setDateRangeOverride(null);
     setParsedFilterData({
       query: "",

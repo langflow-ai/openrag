@@ -108,6 +108,9 @@ async def test_service_buckets_by_local_day_and_keeps_all_time_total():
     histogram = window["aggs"]["days"]["date_histogram"]
     assert histogram["time_zone"] == "Asia/Kolkata"
     assert histogram["calendar_interval"] == "day"
-    # Counted by document_id, like the file list, so same-named files stay distinct.
-    assert body["aggs"]["total"]["cardinality"]["field"] == "document_id"
-    assert window["aggs"]["days"]["aggs"]["files"]["cardinality"]["field"] == "document_id"
+    # A file is a (filename, document_id) pair, matching the file list's rows.
+    for agg in (body["aggs"]["total"], window["aggs"]["days"]["aggs"]["files"]):
+        script = agg["cardinality"]["script"]["source"]
+        assert "doc['filename']" in script
+        assert "doc['document_id']" in script
+        assert agg["cardinality"]["precision_threshold"] == 3000

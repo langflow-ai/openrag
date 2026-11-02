@@ -25,6 +25,23 @@ from utils.opensearch_queries import build_date_range_query
 
 logger = get_logger(__name__)
 
+# A file row is a (filename, document_id) pair: document_id is a content hash,
+# so identical content under two names is two rows. Missing values count as "".
+_FILE_IDENTITY_SCRIPT = (
+    "(doc['filename'].size() == 0 ? '' : doc['filename'].value) + '\\n' + "
+    "(doc['document_id'].size() == 0 ? '' : doc['document_id'].value)"
+)
+
+
+def _distinct_files_agg() -> dict[str, Any]:
+    return {
+        "cardinality": {
+            "script": {"lang": "painless", "source": _FILE_IDENTITY_SCRIPT},
+            "precision_threshold": 3000,
+        }
+    }
+
+
 _COMPOSITE_SORT_FIELDS: dict[str, str] = {
     "filename": "filename",
     "file_size": "file_size",
@@ -176,7 +193,7 @@ class FileServiceV2:
         owner: list[str] | None = None,
         data_sources: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Distinct files (by document_id, like the file list) per calendar day (in *time_zone*) within [start, end], plus the all-time total."""
+        """Distinct files (filename + document_id, like the file list) per calendar day (in *time_zone*) within [start, end], plus the all-time total."""
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
         query = self._build_filter_query(
             user_id, connector_type, mimetype, owner, None, data_sources
@@ -187,7 +204,7 @@ class FileServiceV2:
             "size": 0,
             "query": query,
             "aggs": {
-                "total": {"cardinality": {"field": "document_id", "precision_threshold": 3000}},
+                "total": _distinct_files_agg(),
                 "window": {
                     "filter": build_date_range_query("indexed_time", gte=start, lte=end),
                     "aggs": {
@@ -199,14 +216,7 @@ class FileServiceV2:
                                 "format": "yyyy-MM-dd",
                                 "min_doc_count": 1,
                             },
-                            "aggs": {
-                                "files": {
-                                    "cardinality": {
-                                        "field": "document_id",
-                                        "precision_threshold": 3000,
-                                    }
-                                }
-                            },
+                            "aggs": {"files": _distinct_files_agg()},
                         }
                     },
                 },
@@ -612,7 +622,7 @@ class FileServiceV2:
     async def _get_file_count(
         self, opensearch_client: Any, query: dict[str, Any]
     ) -> tuple[int, bool]:
-        """Approximate unique-document count via cardinality aggregation (O(1)).
+        """Approximate unique-file count (filename + document_id) via cardinality aggregation (O(1)).
 
         Returns (count, is_approximate).  is_approximate is always True on
         success (cardinality agg is inherently approximate) and True when the
@@ -621,14 +631,7 @@ class FileServiceV2:
         body = {
             "size": 0,
             "query": query,
-            "aggs": {
-                "file_count": {
-                    "cardinality": {
-                        "field": "document_id",
-                        "precision_threshold": 3000,
-                    }
-                }
-            },
+            "aggs": {"file_count": _distinct_files_agg()},
         }
         try:
             result = await opensearch_client.search(index=get_index_name(), body=body)
