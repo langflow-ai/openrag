@@ -47,7 +47,11 @@ export function KnowledgeSearchToolbar({
 
   return (
     <form onSubmit={handleSubmit} className="flex w-full items-stretch">
-      <div className="flex h-12 w-full overflow-hidden border border-border bg-card">
+      <div
+        role="group"
+        aria-label="Knowledge search and actions"
+        className="flex h-12 w-full overflow-x-auto overflow-y-hidden border border-border bg-card"
+      >
         {filter}
         <div className="flex h-full flex-shrink-0 items-center justify-center">
           <Search

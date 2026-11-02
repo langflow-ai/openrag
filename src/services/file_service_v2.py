@@ -176,7 +176,7 @@ class FileServiceV2:
         owner: list[str] | None = None,
         data_sources: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Distinct files per calendar day (in *time_zone*) within [start, end], plus the all-time total."""
+        """Distinct files (by document_id, like the file list) per calendar day (in *time_zone*) within [start, end], plus the all-time total."""
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
         query = self._build_filter_query(
             user_id, connector_type, mimetype, owner, None, data_sources
@@ -187,7 +187,7 @@ class FileServiceV2:
             "size": 0,
             "query": query,
             "aggs": {
-                "total": {"cardinality": {"field": "filename", "precision_threshold": 3000}},
+                "total": {"cardinality": {"field": "document_id", "precision_threshold": 3000}},
                 "window": {
                     "filter": build_date_range_query("indexed_time", gte=start, lte=end),
                     "aggs": {
@@ -202,7 +202,7 @@ class FileServiceV2:
                             "aggs": {
                                 "files": {
                                     "cardinality": {
-                                        "field": "filename",
+                                        "field": "document_id",
                                         "precision_threshold": 3000,
                                     }
                                 }
