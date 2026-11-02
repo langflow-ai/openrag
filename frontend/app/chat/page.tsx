@@ -50,6 +50,7 @@ import { makeInitialMessage, PLACEHOLDER_GREETING } from "./_types/types";
 
 function ChatPage() {
   const isDebugMode = process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
+  const isRetryInProgressRef = useRef(false);
   const {
     endpoint,
     setEndpoint,
@@ -180,6 +181,8 @@ function ChatPage() {
     endpoint: apiEndpoint,
     onComplete: (message, responseId) => {
       setLoading(false);
+      isRetryInProgressRef.current = false;
+      setIsUserInteracting(false);
       setWaitingTooLong(false);
 
       setMessages((prev) => {
@@ -433,7 +436,8 @@ function ChatPage() {
       hasMessageCountChanged &&
       !localMessagesAhead &&
       !isUserInteracting &&
-      !isForkingInProgress;
+      !isForkingInProgress &&
+      !isRetryInProgressRef.current;
 
     if (skipSyncAfterLiveError) {
       lastLoadedConversationRef.current = conversationId;
@@ -978,13 +982,11 @@ function ChatPage() {
   const handleRetry = (messageIndex: number) => {
     const userMessage = messages[messageIndex - 1];
     if (!userMessage || userMessage.role !== "user") return;
+
+    isRetryInProgressRef.current = true;
     setIsUserInteracting(true);
     setMessages((prev) => prev.slice(0, messageIndex));
     handleSendMessage(userMessage.content, undefined);
-
-    setTimeout(() => {
-      setIsUserInteracting(false);
-    }, 2000);
   };
 
   const handleSuggestionClick = (suggestion: string) => {
