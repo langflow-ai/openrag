@@ -178,10 +178,10 @@ async def test_filters_are_pushed_into_each_knn_clause(monkeypatch):
 
     params = _knn_params(os_client.bodies[-1]["query"])
     assert params
+    date_clause = {"range": {"indexed_time": {"gte": "2024-01-01T00:00:00Z"}}}
     for knn in params:
-        assert knn["filter"] == {
-            "bool": {"filter": [{"range": {"indexed_time": {"gte": "2024-01-01T00:00:00Z"}}}]}
-        }
+        # The date range sits beside the chunk-mode exclusion of website manifests.
+        assert date_clause in knn["filter"]["bool"]["filter"]
 
 
 @pytest.mark.asyncio
