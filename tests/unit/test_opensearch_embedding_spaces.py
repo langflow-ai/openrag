@@ -596,5 +596,86 @@ def test_inner_knn_filter_only_for_engines_that_support_it(
 
     bool_query = client.query["query"]["bool"]
     assert bool_query["filter"] == [_RANGE]  # the outer filter is always kept
-    (knn,) = bool_query["should"][0]["dis_max"]["queries"][0]["knn"].values()
-    assert ("filter" in knn) is expect_inner
+    (clause,) = bool_query["should"][0]["dis_max"]["queries"]
+    if expect_inner:
+        (knn,) = clause["knn"].values()
+        assert knn["filter"] == {"bool": {"filter": [_RANGE]}}
+    else:
+        # nmslib cannot pre-filter: score the filtered documents exactly instead.
+        assert "knn" not in clause
+        script_score = clause["script_score"]
+        assert _RANGE in script_score["query"]["bool"]["filter"]
+        assert script_score["script"]["lang"] == "knn"
+        assert script_score["script"]["params"]["field"].startswith("chunk_embedding_")
+
+
+def test_unfiltered_nmslib_search_keeps_the_plain_knn_clause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    aggregation = {
+        "aggregations": {
+            "embedding_spaces": {
+                "buckets": [{"key": {"space_id": "azure:text-embedding-3-small"}, "doc_count": 2}]
+            },
+            "legacy_embedding_models": {"buckets": []},
+        }
+    }
+    field = {"type": "knn_vector", "dimension": 2, "method": {"engine": "nmslib"}}
+    client = _SearchClient(aggregation, {"chunk_embedding_azure_text_embedding_3_small": field})
+
+    class Child:
+        def embed_query(self, query):
+            return [0.1, 0.2]
+
+    class Root(Child):
+        deployment = "selected-model"
+
+        def for_model(self, route):
+            return Child()
+
+    _component(module, client, Root()).search("needle")
+
+    (clause,) = client.query["query"]["bool"]["should"][0]["dis_max"]["queries"]
+    assert "knn" in clause
+
+
+def test_unreadable_mapping_keeps_the_native_knn_clause(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    aggregation = {
+        "aggregations": {
+            "embedding_spaces": {
+                "buckets": [{"key": {"space_id": "azure:text-embedding-3-small"}, "doc_count": 2}]
+            },
+            "legacy_embedding_models": {"buckets": []},
+        }
+    }
+    client = _SearchClient(aggregation, {})
+    client.indices = type(
+        "Indices",
+        (),
+        {
+            "get_mapping": staticmethod(
+                lambda index: (_ for _ in ()).throw(module.OpenSearchException("denied"))
+            )
+        },
+    )()
+
+    class Child:
+        def embed_query(self, query):
+            return [0.1, 0.2]
+
+    class Root(Child):
+        deployment = "selected-model"
+
+        def for_model(self, route):
+            return Child()
+
+    component = _component(module, client, Root())
+    component.filter_expression = json.dumps({"filter": [_RANGE]})
+    component.search("needle")
+
+    (clause,) = client.query["query"]["bool"]["should"][0]["dis_max"]["queries"]
+    assert "script_score" not in clause
+    (knn,) = clause["knn"].values()
+    assert knn["filter"] == {"bool": {"filter": [_RANGE]}}

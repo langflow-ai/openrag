@@ -2084,6 +2084,32 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         engine = method.get("engine") if isinstance(method, dict) else None
         return isinstance(engine, str) and engine.lower() in self._INNER_KNN_FILTER_ENGINES
 
+    def _exact_filtered_knn_query(
+        self,
+        properties: dict[str, Any] | None,
+        field_name: str,
+        vector: list[float],
+        filter_clauses: list[dict],
+    ) -> dict[str, Any]:
+        """Exact k-NN scoring over only the documents matching *filter_clauses*."""
+        field_def = (properties or {}).get(field_name)
+        method = field_def.get("method") if isinstance(field_def, dict) else None
+        space_type = (method or {}).get("space_type") if isinstance(method, dict) else None
+        return {
+            "script_score": {
+                "query": {"bool": {"filter": [{"exists": {"field": field_name}}, *filter_clauses]}},
+                "script": {
+                    "source": "knn_score",
+                    "lang": "knn",
+                    "params": {
+                        "field": field_name,
+                        "query_value": vector,
+                        "space_type": space_type or "l2",
+                    },
+                },
+            }
+        }
+
     def _get_field_dimension(
         self, properties: dict[str, Any] | None, field_name: str
     ) -> int | None:
@@ -2431,15 +2457,25 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     }
                 }
             }
-            # Filter inside the kNN clause so the nearest neighbours are chosen
-            # from matching documents; the outer bool filter alone would only
-            # post-filter the global top-k and miss narrow ranges. nmslib (and
-            # an unknown engine) cannot filter efficiently, so those fields
-            # keep the outer filter only.
-            if filter_clauses and self._supports_inner_knn_filter(index_properties, selected_field):
-                base_query["knn"][selected_field]["filter"] = {"bool": {"filter": filter_clauses}}
+            # A filter must apply before neighbours are chosen, or a narrow range
+            # sees only whatever survives the global top-k. Engines with native
+            # filtering take it inside the kNN clause; nmslib cannot, so a
+            # filtered search scores the filtered documents exactly instead.
+            if filter_clauses:
+                if index_properties is None or self._supports_inner_knn_filter(
+                    index_properties, selected_field
+                ):
+                    # Without readable mapping metadata the engine and metric are
+                    # unknown, so keep the native clause rather than guess a metric.
+                    base_query["knn"][selected_field]["filter"] = {
+                        "bool": {"filter": filter_clauses}
+                    }
+                else:
+                    base_query = self._exact_filtered_knn_query(
+                        index_properties, selected_field, embedding_vector, filter_clauses
+                    )
 
-            if use_num_candidates:
+            if use_num_candidates and "knn" in base_query:
                 query_with_candidates = copy.deepcopy(base_query)
                 query_with_candidates["knn"][selected_field]["num_candidates"] = num_candidates
             else:

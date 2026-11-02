@@ -169,7 +169,13 @@ async def upsert_page_manifest(page: dict[str, Any]) -> None:
         "content_document_id": page.get("content_document_id") or page.get("document_id"),
         "record_kind": PAGE_MANIFEST_KIND,
         "connector_type": "url",
-        "indexed_time": datetime.now(UTC).isoformat(),
+        # Manifest-only writes (status changes, unchanged content, noindex) must
+        # not move a page into a newer date window: keep the last ingestion time.
+        "indexed_time": (
+            page.get("last_ingested_at")
+            or page.get("indexed_time")
+            or datetime.now(UTC).isoformat()
+        ),
     }
     await clients.opensearch.index(
         index=get_index_name(),
