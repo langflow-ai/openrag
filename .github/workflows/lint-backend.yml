@@ -6,6 +6,7 @@ on:
       - 'src/**/*.py'
       - 'tests/**/*.py'
       - 'scripts/ci/**/*.py'
+      - 'scripts/eval/**/*.py'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/lint-backend.yml'

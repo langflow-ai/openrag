@@ -255,6 +255,7 @@ const ProviderSettingsDialog = ({
                 fields={fields}
                 savedSecretFields={reusableSecretFields}
                 reenterSecretFields={reenterSecretFields}
+                savedCredentialValues={savedCredentialValues}
                 saveError={methods.formState.errors.root?.message}
                 azureAuthMethod={azureAuthMethod}
                 onAzureAuthMethodChange={setAzureAuthMethod}

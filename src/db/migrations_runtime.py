@@ -232,6 +232,7 @@ async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, in
                 user_id=str(uid),
                 created_at=created,
                 last_accessed=last,
+                conversation_id=data.get("conversation_id") or str(sid),
             )
             if inserted:
                 stats["sessions_inserted"] += 1

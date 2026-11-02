@@ -24,13 +24,14 @@ REPO ?= https://github.com/langflow-ai/langflow.git
 
 # Auto-detect container runtime: prefer docker, fall back to podman
 CONTAINER_RUNTIME := $(shell command -v docker >/dev/null 2>&1 && echo "docker" || echo "podman")
-# Next.js compiles `basePath` into the frontend bundle, so every direct
-# frontend image build and local URL must use its normalized form.
+# Next.js compiles `basePath` into the frontend bundle. Production images carry
+# a placeholder that their entrypoint replaces at startup; the normalized path
+# is still used for local health checks and URLs.
 strip_trailing_slashes = $(if $(filter %/,$(1)),$(call strip_trailing_slashes,$(patsubst %/,%,$(1))),$(1))
 FRONTEND_NORMALIZED_BASE_PATH := $(call strip_trailing_slashes,$(strip $(OPENRAG_FRONTEND_BASE_PATH)))
 FRONTEND_NORMALIZED_BASE_PATH := $(if $(FRONTEND_NORMALIZED_BASE_PATH),$(if $(filter /%,$(FRONTEND_NORMALIZED_BASE_PATH)),$(FRONTEND_NORMALIZED_BASE_PATH),/$(FRONTEND_NORMALIZED_BASE_PATH)))
-FRONTEND_BASE_PATH_BUILD_ARG := --build-arg OPENRAG_FRONTEND_BASE_PATH="$(FRONTEND_NORMALIZED_BASE_PATH)"
-FRONTEND_LOCAL_URL := http://localhost:3000$(FRONTEND_NORMALIZED_BASE_PATH)
+FRONTEND_PORT ?= 3000
+FRONTEND_LOCAL_URL := http://localhost:$(FRONTEND_PORT)$(FRONTEND_NORMALIZED_BASE_PATH)
 
 # Host UID/GID — evaluated once at parse time and used in Docker-assisted chown commands
 # so that Alpine (running as root) can re-own volume directories back to the host user.
@@ -114,6 +115,7 @@ endef
        instana-agent-up instana-agent-down \
        shell-backend shell-frontend install \
        test test-unit test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
+       eval-validate eval-run eval-baseline eval-compare \
        ci-build-images ci-save-images \
        backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
@@ -345,6 +347,14 @@ help_test: ## Show testing commands
 	@echo "  $(PURPLE)make test-sdk$(NC)        - Run SDK integration tests"
 	@echo "                         (requires running OpenRAG at localhost:3000)"
 	@echo ''
+	@echo "$(PURPLE)Retrieval Evaluation:$(NC)"
+	@echo "  $(PURPLE)make eval-validate$(NC)   - Check the eval corpus and questions (no stack needed)"
+	@echo "  $(PURPLE)make eval-run$(NC)        - Score search quality (requires running OpenRAG and OPENRAG_API_KEY)"
+	@echo "                         (BASELINE=results/baseline.json to compare with an earlier run)"
+	@echo "  $(PURPLE)make eval-baseline$(NC)   - Run the eval and save it as results/baseline.json"
+	@echo "  $(PURPLE)make eval-compare$(NC)    - Compare two results files offline"
+	@echo "                         (BASELINE=... CURRENT=..., default baseline vs latest run)"
+	@echo ''
 	@echo "$(PURPLE)Diagnostic Tests:$(NC)"
 	@echo "  $(PURPLE)make test-os-jwt$(NC)     - Test JWT authentication against OpenSearch"
 	@echo "                         (requires running OpenSearch)"
@@ -519,7 +529,7 @@ dev: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack w
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Frontend:$(NC)   $(FRONTEND_LOCAL_URL)"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
@@ -529,7 +539,7 @@ dev-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start full sta
 	$(COMPOSE_CMD) up -d $(SERVICES)
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Frontend:$(NC)   $(FRONTEND_LOCAL_URL)"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
@@ -541,7 +551,7 @@ dev-build: ensure-langflow-data ensure-backend-volumes check-env ## Start full s
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Frontend:$(NC)   $(FRONTEND_LOCAL_URL)"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
@@ -553,7 +563,7 @@ dev-build-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start fu
 	$(COMPOSE_CMD) up -d
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Frontend:$(NC)   $(FRONTEND_LOCAL_URL)"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
@@ -855,7 +865,7 @@ backend: ## Run backend locally
 	uv run python src/main.py
 
 frontend: ## Run frontend locally
-	@echo "$(YELLOW)Starting frontend locally...$(NC)"
+	@echo "$(YELLOW)Starting frontend locally at $(FRONTEND_LOCAL_URL)...$(NC)"
 	@if [ ! -d "frontend/node_modules" ]; then echo "$(YELLOW)Installing frontend dependencies first...$(NC)"; cd frontend && npm install; fi
 	@ARCH=$$(uname -m); \
 	export ENV_FILE="$(abspath $(ENV_FILE))"; \
@@ -942,7 +952,7 @@ build-be: ## Build backend Docker image
 
 build-fe: ## Build frontend Docker image
 	@echo "$(YELLOW)Building frontend image...$(NC)"
-	$(CONTAINER_RUNTIME) build $(FRONTEND_BASE_PATH_BUILD_ARG) -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
 	@echo "$(PURPLE)Frontend image built.$(NC)"
 
 build-lf: ## Build Langflow Docker image
@@ -1033,7 +1043,7 @@ ci-build-images: ## Build all OpenRAG images for CI artifact sharing
 	echo "$(YELLOW)Building all OpenRAG images with tag '$$IMAGE_TAG'...$(NC)"; \
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:$$IMAGE_TAG -f Dockerfile .; \
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:$$IMAGE_TAG -f Dockerfile.backend .; \
-	$(CONTAINER_RUNTIME) build $(FRONTEND_BASE_PATH_BUILD_ARG) -t langflowai/openrag-frontend:$$IMAGE_TAG -f Dockerfile.frontend .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:$$IMAGE_TAG -f Dockerfile.frontend .; \
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:$$IMAGE_TAG -f Dockerfile.langflow .; \
 	echo "$(GREEN)All images built successfully!$(NC)"
 
@@ -1191,7 +1201,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	echo "$(YELLOW)Building all images locally...$(NC)"; \
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:latest -f Dockerfile.backend .; \
-	$(CONTAINER_RUNTIME) build $(FRONTEND_BASE_PATH_BUILD_ARG) -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .; \
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .; \
 	echo "::endgroup::"; \
 	echo "::group::Start Infrastructure"; \
@@ -1332,6 +1342,27 @@ test-sdk: ## Run SDK integration tests (requires running OpenRAG at localhost:30
 	@echo "$(PURPLE)Running TypeScript SDK tests...$(NC)"
 	cd sdks/typescript && npm install && npm run build && OPENRAG_URL=$(FRONTEND_LOCAL_URL) npm test
 	@echo "$(PURPLE)SDK tests complete.$(NC)"
+
+EVAL_DIR := scripts/eval/retrieval
+# Paths below are relative to EVAL_DIR. Override OUTPUT_DIR (not --output-dir in
+# EVAL_ARGS) to change where results land, so eval-baseline's copy step always
+# matches what run_eval.py actually wrote.
+OUTPUT_DIR ?= results
+CURRENT ?= $(OUTPUT_DIR)/results.json
+
+eval-validate: ## Check the retrieval eval corpus and questions (no stack needed)
+	cd $(EVAL_DIR) && uv run run_eval.py run --validate-only $(EVAL_ARGS)
+
+eval-run: ## Run the retrieval eval (requires running OpenRAG and OPENRAG_API_KEY); BASELINE=file to compare
+	cd $(EVAL_DIR) && uv run run_eval.py run --output-dir $(OUTPUT_DIR) $(if $(BASELINE),--baseline $(BASELINE)) $(EVAL_ARGS)
+
+eval-baseline: ## Run the retrieval eval and save it as $(OUTPUT_DIR)/baseline.json
+	$(if $(findstring --output-dir,$(EVAL_ARGS)),$(error Set OUTPUT_DIR instead of passing --output-dir in EVAL_ARGS))
+	cd $(EVAL_DIR) && uv run run_eval.py run --output-dir $(OUTPUT_DIR) $(EVAL_ARGS) && cp $(OUTPUT_DIR)/results.json $(OUTPUT_DIR)/baseline.json
+	@echo "$(PURPLE)Saved $(EVAL_DIR)/$(OUTPUT_DIR)/baseline.json$(NC)"
+
+eval-compare: ## Compare two retrieval eval results files offline (BASELINE=..., CURRENT=...)
+	cd $(EVAL_DIR) && uv run run_eval.py compare $(or $(BASELINE),$(OUTPUT_DIR)/baseline.json) $(CURRENT)
 
 lint: ## Run linting checks
 	@echo "$(YELLOW)Running linting checks...$(NC)"

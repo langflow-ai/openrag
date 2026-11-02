@@ -5,10 +5,13 @@ import {
   AZURE_AUTH_GROUPS,
   fieldsForKeys,
   ON_PREM_AUTH_GROUPS,
+  rhoaiSectionsOpenByDefault,
   SECRET_REENTRY_HINT,
 } from "@/components/models/provider-credentials";
+import { RhoaiCredentialSections } from "@/components/models/rhoai-credential-sections";
+import { TLS_VERIFY_FIELD_TYPE } from "@/components/models/tls-verification";
+import { TlsVerificationField } from "@/components/models/tls-verification-settings";
 import { WatsonxSpaceSelect } from "@/components/models/watsonx-space-select";
-import { WatsonxTlsSettings } from "@/components/models/watsonx-tls-settings";
 import {
   Accordion,
   AccordionContent,
@@ -34,6 +37,7 @@ export function ProviderSettingsForm({
   fields,
   savedSecretFields,
   reenterSecretFields = [],
+  savedCredentialValues,
   saveError,
   azureAuthMethod,
   onAzureAuthMethodChange,
@@ -50,6 +54,8 @@ export function ProviderSettingsForm({
   savedSecretFields: string[];
   /** Saved secrets the chosen auth method needs typed again before Save. */
   reenterSecretFields?: string[];
+  /** Saved non-secret values; decide which collapsed sections start open. */
+  savedCredentialValues?: Record<string, string>;
   saveError?: string | null;
   azureAuthMethod?: string;
   onAzureAuthMethodChange?: (method: string) => void;
@@ -86,14 +92,16 @@ export function ProviderSettingsForm({
       );
     }
 
-    if (provider === "watsonx_onprem" && field.key === "ssl_verify") {
+    if (field.field_type === TLS_VERIFY_FIELD_TYPE) {
       return (
-        <WatsonxTlsSettings
+        <TlsVerificationField
           key={field.key}
-          idPrefix="provider-watsonx-onprem"
-          value={watch("credentials.ssl_verify")}
+          field={field}
+          idPrefix={`provider-${provider}`}
+          value={watch(`credentials.${field.key}`)}
+          savedValue={savedCredentialValues?.[field.key] ?? ""}
           onValueChange={(value) =>
-            setValue("credentials.ssl_verify", value, { shouldDirty: true })
+            setValue(`credentials.${field.key}`, value, { shouldDirty: true })
           }
         />
       );
@@ -253,6 +261,12 @@ export function ProviderSettingsForm({
             </AccordionItem>
           </Accordion>
         </>
+      ) : provider === "rhoai" ? (
+        <RhoaiCredentialSections
+          fields={fields}
+          renderField={renderField}
+          openByDefault={rhoaiSectionsOpenByDefault(savedCredentialValues)}
+        />
       ) : (
         fields.map(renderField)
       )}

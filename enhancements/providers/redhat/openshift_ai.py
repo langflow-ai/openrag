@@ -102,8 +102,9 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "label": "Chat endpoint",
         "placeholder": "https://openrag-chat-predictor.openrag-models.svc.cluster.local:8443/v1",
         "tooltip": "URL of the InferenceService serving your chat model, ending in /v1. "
-        "In-cluster this is the predictor Service; from a laptop it is an oc port-forward "
-        "or a Route.",
+        "In-cluster, this is the predictor Service; otherwise, this is a Route or an "
+        "`oc port-forward`. "
+        "This endpoint may also serve an embedding model.",
         "required": True,
         "field_type": "text",
         "options": None,
@@ -114,8 +115,7 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "label": "Embeddings endpoint",
         "placeholder": "https://openrag-embed-predictor.openrag-models.svc.cluster.local:8443/v1",
         "tooltip": "URL of the InferenceService serving your embedding model, ending in /v1. "
-        "vLLM serves one model per deployment, so this is a second InferenceService. Leave "
-        "blank only if one endpoint serves both.",
+        "vLLM serves one model per deployment, so this is a second InferenceService.",
         "required": False,
         "field_type": "text",
         "options": None,
@@ -123,11 +123,12 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
     },
     {
         "key": "api_key",
+        # The Kubernetes kind name: a proper noun, so it reads correctly where
+        # it is interpolated mid-sentence (CredentialTargetChangedError).
         "label": "ServiceAccount token",
         "placeholder": None,
         "tooltip": "A Kubernetes bearer token whose subject has `get` on inferenceservices in "
-        "the model namespace, e.g. `oc create token openrag-inference -n openrag`. Both "
-        "endpoints are authenticated with the same token.",
+        "the model namespace. Both endpoints are authenticated with the same token.",
         "required": True,
         "field_type": "password",
         "options": None,
@@ -135,13 +136,13 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
     },
     {
         "key": "ssl_verify",
-        "label": "TLS certificate authority",
+        "label": "Verify TLS certificates",
         "placeholder": "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt",
-        "tooltip": "Path to the CA bundle that signs the endpoint's certificate. In-cluster "
-        "this is OpenShift's projected service CA. Set to `false` to skip verification — "
-        "development only, for a port-forward whose certificate cannot match localhost.",
+        "tooltip": "Path to the CA bundle that signs the endpoint's certificate. In-cluster, "
+        "this is OpenShift's projected service CA.",
         "required": False,
-        "field_type": "text",
+        # A switch plus a CA path; blank (`default_value` None) means verify.
+        "field_type": "tls_verify",
         "options": None,
         "default_value": None,
     },
@@ -152,11 +153,8 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "tooltip": "How many embedding requests OpenRAG sends to the embedding endpoint at "
         "once; the rest wait in OpenRAG. One slot is kept for search and chat queries so "
         "they never wait behind ingestion. Leave blank for the default of 16, sized for a "
-        "GPU-served model. A CPU-served model whose vLLM threads match its CPU limit "
-        "copes with 16; lower it to 4 if the endpoint takes more than about a second per "
-        "chunk: the endpoint's kube-rbac-proxy returns 502 once a queued request waits "
-        "past its upstream timeout (30s by default), which fails ingestion. 0 means no "
-        "limit.",
+        "GPU-served model. Lower to 4 if ingestion fails with 502s on a slow CPU-served "
+        "model. 0 means no limit.",
         "required": False,
         "field_type": "text",
         "options": None,

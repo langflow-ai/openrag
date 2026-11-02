@@ -1,6 +1,7 @@
 import asyncio
 import json
 import platform
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -230,6 +231,96 @@ def _format_docling_error(payload: dict[str, Any]) -> str:
     if len(result) > DOCLING_ERROR_DETAIL_MAX_LENGTH:
         return f"{result[:DOCLING_ERROR_DETAIL_MAX_LENGTH]}..."
     return result
+
+
+# Keeps the "incorrect password" substring that task_service._infer_failure_metadata
+# maps to the user-facing password-protected message.
+PASSWORD_PROTECTED_PDF_DETAIL = "PDF is password-protected (Incorrect password)"
+
+# The trailer / xref-stream dictionary holding /Encrypt is never compressed, so a
+# byte scan finds it without a PDF library. Applied only to the active trailer
+# dictionary (_active_trailer_dict): /Encrypt elsewhere in the file, such as page
+# text or an attached PDF, does not make the document encrypted. Matches an
+# indirect reference (/Encrypt 5 0 R) or a direct dictionary (/Encrypt <<).
+_PDF_ENCRYPT_RE = re.compile(rb"/Encrypt\s*(?:\d+\s+\d+\s+R|<<)")
+_STARTXREF_RE = re.compile(rb"startxref\s+(\d+)")
+# What a startxref offset may point at: a classic `xref` table (group 1) or the
+# header of an indirect object that should be the xref stream.
+_XREF_SECTION_START_RE = re.compile(rb"\s*(?:(xref)|\d+\s+\d+\s+obj\b)")
+# The object's dictionary ends where its stream data or the object itself ends.
+_OBJ_DICT_END_RE = re.compile(rb"stream|endobj")
+_XREF_TYPE_RE = re.compile(rb"/Type\s*/XRef\b")
+
+
+def is_docling_load_failure(message: str) -> bool:
+    """True when docling reports that its backend could not open the document."""
+    return "could not load document" in message.lower()
+
+
+def _active_trailer_dict(content: bytes) -> bytes | None:
+    """Return the trailer or xref-stream dictionary that the final ``startxref`` names.
+
+    PDF encryption is declared only there. Incremental updates repeat /Encrypt in
+    the newest trailer, and a linearized file's final ``startxref`` points at the
+    first-page section, which carries the full trailer. Offsets are tried both from
+    the start of the file and from the ``%PDF-`` header, because some producers
+    write junk before the header. An object at the offset counts only if it is an
+    xref stream (``/Type /XRef``), so a stale offset in a damaged file cannot pick
+    up an unrelated dictionary. Returns ``None`` when the content is not a PDF or
+    the trailer cannot be located.
+
+    Searches ``content`` in place and slices out only the dictionary, because a
+    linearized file's offset is near the start and a tail copy would duplicate
+    almost the whole upload.
+    """
+    header = content.find(b"%PDF-", 0, 1024)
+    if header < 0:
+        return None
+    matches = list(_STARTXREF_RE.finditer(content, max(0, len(content) - 1024)))
+    if not matches:
+        logger.debug("No startxref found; not treating the PDF as encrypted")
+        return None
+    offset = int(matches[-1].group(1))
+    for start in dict.fromkeys((offset, offset + header)):
+        section = _XREF_SECTION_START_RE.match(content, start)
+        if section is None:
+            continue
+        if section.group(1):
+            # Classic table: the dictionary follows the `trailer` keyword.
+            trailer = content.find(b"trailer", section.end())
+            if trailer < 0:
+                logger.debug("Cross-reference table has no trailer", offset=start)
+                return None
+            end = content.find(b"startxref", trailer)
+            return content[trailer : end if end >= 0 else None]
+        # Xref stream: the dictionary precedes `stream`; the data is excluded.
+        dict_end = _OBJ_DICT_END_RE.search(content, section.end())
+        xref_dict = content[section.end() : dict_end.start() if dict_end else None]
+        if _XREF_TYPE_RE.search(xref_dict):
+            return xref_dict
+    logger.debug("startxref offset does not point at a cross-reference section", offset=offset)
+    return None
+
+
+def is_encrypted_pdf(content: bytes) -> bool:
+    """True when ``content`` is a PDF whose active trailer declares an encryption dictionary."""
+    trailer = _active_trailer_dict(content)
+    return trailer is not None and _PDF_ENCRYPT_RE.search(trailer) is not None
+
+
+def password_protected_pdf_error(message: str, content: bytes) -> str | None:
+    """Return the password-protected detail for a docling load failure on an encrypted PDF.
+
+    docling 2.108 pre-opened PDFs with pypdfium2, whose error read "Incorrect
+    password". Later versions load through docling-parse first, which reports only
+    "Failed to load document with key ...", so the reason has to be recovered from
+    the bytes. This is checked only after docling failed to load the file: a PDF
+    with just an owner password also declares /Encrypt but converts fine. A file
+    whose trailer cannot be located keeps docling's own message.
+    """
+    if is_docling_load_failure(message) and is_encrypted_pdf(content):
+        return PASSWORD_PROTECTED_PDF_DETAIL
+    return None
 
 
 def _extract_document_json_content(payload: dict[str, Any], *, task_id: str) -> dict[str, Any]:
@@ -851,8 +942,8 @@ class DoclingService:
             ocr=ocr,
             picture_descriptions=picture_descriptions,
         )
-        return await self.get_docling_result_async(
-            task_id, user_id=user_id, auth_header=auth_header
+        return await self._get_result_for_content(
+            task_id, file_bytes, user_id=user_id, auth_header=auth_header
         )
 
     async def convert_bytes(
@@ -868,6 +959,30 @@ class DoclingService:
         task_id = await self.upload_to_docling_direct_async(
             filename, content, user_id=user_id, auth_header=auth_header
         )
-        return await self.get_docling_result_async(
-            task_id, user_id=user_id, auth_header=auth_header
+        return await self._get_result_for_content(
+            task_id, content, user_id=user_id, auth_header=auth_header
         )
+
+    async def _get_result_for_content(
+        self,
+        task_id: str,
+        content: bytes,
+        *,
+        user_id: str | None,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        """Fetch the conversion result, naming a password-protected PDF on load failure."""
+        try:
+            return await self.get_docling_result_async(
+                task_id, user_id=user_id, auth_header=auth_header
+            )
+        except DoclingServeError as exc:
+            detail = password_protected_pdf_error(str(exc), content)
+            if detail is None:
+                raise
+            logger.warning(
+                "Docling could not load an encrypted PDF",
+                task_id=task_id,
+                docling_error=str(exc),
+            )
+            raise DoclingServeError(f"Docling processing failed: {detail}") from exc

@@ -350,5 +350,10 @@ async def test_untraced_ingest_behaves_the_same(monkeypatch, text_file):
 
     result = await pipeline.run(text_file)
 
-    assert result == {"status": "indexed", "id": "doc-1", "ingest_path": "openrag"}
+    assert result == {
+        "status": "indexed",
+        "id": "doc-1",
+        "chunk_count": 1,
+        "ingest_path": "openrag",
+    }
     assert len(pipeline.indexed) == 1
