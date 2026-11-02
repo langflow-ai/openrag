@@ -213,6 +213,8 @@ export function KnowledgeFilterProvider({
     setPanelMode("filters");
     setCreateMode(true);
     setSelectedFilterState(null);
+    // A range picked in the toolbar carries into the new filter, like checked rows.
+    const seeded = effectiveDateRange;
     setDateRangeOverride(null);
     setParsedFilterData({
       query: "",
@@ -221,8 +223,10 @@ export function KnowledgeFilterProvider({
         document_types: ["*"],
         owners: ["*"],
         connector_types: ["*"],
-        // No dates: a temporary toolbar range is never saved implicitly.
+        ...(seeded.createdAfter && { created_after: seeded.createdAfter }),
+        ...(seeded.createdBefore && { created_before: seeded.createdBefore }),
       },
+      ...(seeded.context && { dateRangeContext: seeded.context }),
       limit: 10,
       scoreThreshold: 0,
       color: FILTER_COLORS[Math.floor(Math.random() * FILTER_COLORS.length)],

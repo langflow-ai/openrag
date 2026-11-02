@@ -555,21 +555,17 @@ export function DateRangePicker({
       : "Any time";
 
   return (
-    <div className="flex h-full flex-shrink-0 items-stretch">
+    <div className="flex flex-shrink-0 items-center gap-1">
       <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
           <Button
             type="button"
-            variant="ghost"
-            className={cn(
-              "h-auto gap-2 rounded-none px-3 text-sm hover:bg-accent hover:text-foreground",
-              dateRange && "bg-accent text-foreground",
-            )}
+            variant="outline"
+            className={cn("flex-shrink-0 rounded-lg", dateRange && "bg-accent")}
             aria-label={label ?? "Filter by date range"}
           >
-            <CalendarIcon className="h-4 w-4 flex-shrink-0 text-[var(--icon-primary)]" />
-            {/* The range label is wide; in the toolbar show it only once the bar has room. */}
-            <span className="hidden max-w-[16rem] truncate xl:inline">
+            <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
+            <span className="max-w-[16rem] truncate">
               {label ?? "Date range"}
             </span>
           </Button>
@@ -615,7 +611,7 @@ export function DateRangePicker({
         <button
           type="button"
           aria-label="Clear date range"
-          className="inline-flex w-8 flex-shrink-0 items-center justify-center bg-accent text-muted-foreground transition-colors hover:text-foreground"
+          className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           onClick={handleClear}
         >
           <X className="h-3 w-3" />

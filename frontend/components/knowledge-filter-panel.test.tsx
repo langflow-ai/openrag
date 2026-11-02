@@ -3,6 +3,7 @@ import { HttpResponse, http } from "msw";
 import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { toLocalDayStartISOString } from "@/lib/time-utils";
 import { authPresets, withAuth } from "@/test-utils/fixtures/auth";
 import { server } from "@/test-utils/msw/server";
 import { renderWithProviders, screen, waitFor } from "@/test-utils/render";
@@ -176,7 +177,7 @@ describe("KnowledgeFilterPanel date ingested", () => {
     expect(data).not.toHaveProperty("date_range_context");
   });
 
-  it("creates a filter without dates even when a toolbar range was active", async () => {
+  it("creates a filter with the range picked in the toolbar", async () => {
     postBody = undefined;
     server.use(
       http.post("/api/search", () => HttpResponse.json({ aggregations: {} })),
@@ -194,10 +195,7 @@ describe("KnowledgeFilterPanel date ingested", () => {
 
     await click(screen.getByRole("button", { name: "start-create" }));
     await screen.findByText("Date ingested");
-    expect(screen.getByTestId("toolbar")).toHaveTextContent("none");
-    expect(
-      screen.getByRole("button", { name: /filter by date ingested/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^from/i })).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText(/name/i), {
       target: { value: "New filter" },
@@ -206,9 +204,11 @@ describe("KnowledgeFilterPanel date ingested", () => {
     await waitFor(() => expect(createdBody()).toBeDefined());
 
     const data = JSON.parse(createdBody()?.queryData ?? "{}");
-    expect(data.filters).not.toHaveProperty("created_after");
+    expect(data.filters.created_after).toBe(
+      toLocalDayStartISOString(new Date(2026, 8, 1)),
+    );
     expect(data.filters).not.toHaveProperty("created_before");
-    expect(data).not.toHaveProperty("date_range_context");
+    expect(data.date_range_context).toMatchObject({ from: "2026-09-01" });
   });
 
   it.each([

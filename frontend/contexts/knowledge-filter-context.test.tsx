@@ -114,21 +114,44 @@ describe("KnowledgeFilterProvider saved date range", () => {
     expect(result.current.effectiveDateRange.createdBefore).toBe(BEFORE);
   });
 
-  it("starts a new filter without dates even with a temporary toolbar range", () => {
+  it("starts a new filter from the toolbar range, then drops the temporary override", () => {
     const { result } = setup();
     act(() => result.current.setDateRange({ from: new Date(2026, 9, 1) }));
-    expect(result.current.effectiveDateRange.createdAfter).toBeTruthy();
+    const picked = result.current.effectiveDateRange;
+    expect(picked.createdAfter).toBeTruthy();
+
+    act(() => result.current.startCreateMode());
+
+    const filters = result.current.parsedFilterData?.filters;
+    expect(filters?.created_after).toBe(picked.createdAfter);
+    expect(filters).not.toHaveProperty("created_before");
+    expect(result.current.parsedFilterData?.dateRangeContext).toEqual(
+      picked.context,
+    );
+    expect(result.current.dateRange?.from).toEqual(new Date(2026, 9, 1));
+  });
+
+  it("starts a new filter without dates when no toolbar range was picked", () => {
+    const { result } = setup();
 
     act(() => result.current.startCreateMode());
 
     expect(result.current.parsedFilterData?.filters).not.toHaveProperty(
       "created_after",
     );
-    expect(result.current.parsedFilterData?.filters).not.toHaveProperty(
-      "created_before",
-    );
     expect(result.current.parsedFilterData?.dateRangeContext).toBeUndefined();
-    expect(result.current.dateRange).toBeNull();
     expect(result.current.effectiveDateRange).toEqual({});
+  });
+
+  it("starts a new filter without dates after the toolbar range was cleared", () => {
+    const { result } = setup();
+    act(() => result.current.setDateRange({ from: new Date(2026, 9, 1) }));
+    act(() => result.current.setDateRange(null));
+
+    act(() => result.current.startCreateMode());
+
+    expect(result.current.parsedFilterData?.filters).not.toHaveProperty(
+      "created_after",
+    );
   });
 });
