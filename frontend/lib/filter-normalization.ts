@@ -6,6 +6,8 @@ export interface FilterInput {
   /** Inclusive UTC bounds on indexed_time (ISO 8601). */
   created_after?: string;
   created_before?: string;
+  document_ids?: string[];
+  web_source_ids?: string[];
 }
 
 export interface NormalizedSelectedFilters {
@@ -13,6 +15,8 @@ export interface NormalizedSelectedFilters {
   document_types: string[];
   owners: string[];
   connector_types: string[];
+  document_ids: string[];
+  web_source_ids: string[];
 }
 
 function normalizeFilterDimension(values?: string[]): string[] {
@@ -30,6 +34,8 @@ function normalizeSelectedFilters(
     document_types: normalizeFilterDimension(filters?.document_types),
     owners: normalizeFilterDimension(filters?.owners),
     connector_types: normalizeFilterDimension(filters?.connector_types),
+    document_ids: normalizeFilterDimension(filters?.document_ids),
+    web_source_ids: normalizeFilterDimension(filters?.web_source_ids),
   };
 }
 
@@ -69,6 +75,12 @@ export function buildSearchPayloadFilters(
     const createdBefore = dateBound(filters?.created_before);
     if (createdAfter) payloadFilters.created_after = createdAfter;
     if (createdBefore) payloadFilters.created_before = createdBefore;
+  }
+  if (normalized.document_ids.length > 0) {
+    payloadFilters.document_ids = normalized.document_ids;
+  }
+  if (normalized.web_source_ids.length > 0) {
+    payloadFilters.web_source_ids = normalized.web_source_ids;
   }
 
   return Object.keys(payloadFilters).length > 0 ? payloadFilters : undefined;

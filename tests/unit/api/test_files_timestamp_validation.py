@@ -158,7 +158,6 @@ async def test_search_rejects_invalid_date_bounds(body):
         await search_endpoint(
             SearchBody(**body),
             search_service=search_service,
-            session_manager=None,
             user=user,
         )
     assert exc.value.status_code == 422

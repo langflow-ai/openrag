@@ -67,10 +67,14 @@ dependencies = [
     "fsspec>=2026.6.0",
     "sqlmodel>=0.0.22",
     "sqlalchemy[asyncio]>=2.0.36",
+    "scrapy>=2.13.0",
     "aiosqlite>=0.20.0",
     "alembic>=1.13.0",
     "asyncpg>=0.30.0",
     "cachetools>=5.5.0",
+    "mako>=1.4.2",
+    "multidict>=6.9.1",
+    "oauthlib>=4.0.0",
 ]
 
 # Optional extras. Install with `uv sync --extra <name>`.
@@ -98,6 +102,8 @@ dev = [
     "mypy>=2.0.0",
     # The tracing extra, so its unit tests (tests/unit/observability) run.
     "langfuse>=4.16,<5",
+    # Used by the Langflow Split Text component, so its unit tests run the real splitter.
+    "langchain-text-splitters>=1.1.2,<2",
 ]
 
 [project.scripts]

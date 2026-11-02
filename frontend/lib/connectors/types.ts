@@ -2,7 +2,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import type { ComponentType } from "react";
 import type { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 
-export type ConnectorKind = "oauth" | "bucket";
+export type ConnectorKind = "oauth" | "bucket" | "managed";
 
 export interface ConnectorIconProps {
   className?: string;

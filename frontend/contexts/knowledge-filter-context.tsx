@@ -44,6 +44,8 @@ export interface ParsedQueryData {
     /** Saved inclusive UTC bounds on indexed_time; absent means any time. */
     created_after?: string;
     created_before?: string;
+    document_ids?: string[];
+    web_source_ids?: string[];
   };
   /** Calendar days + timezone the saved bounds were picked in (display only). */
   dateRangeContext?: DateRangeContext;
