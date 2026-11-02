@@ -133,6 +133,24 @@ uv run scripts/openrag_bulk.py bench arxiv summary
 uv run scripts/openrag_bulk.py bench arxiv summary --detail latest
 ```
 
+## Retrieval evaluation (`eval/retrieval/`)
+
+`eval/retrieval/` is a harness that measures search quality. It ingests a fixed
+corpus, runs a set of labeled questions through `/v1/search`, and reports
+recall@k, MRR and nDCG@k, with a per-question comparison against an earlier
+run. Use it before and after a change to search, chunking or embeddings.
+
+```bash
+cd scripts/eval/retrieval
+export OPENRAG_URL=http://localhost:3000
+export OPENRAG_API_KEY=orag_your_api_key
+
+uv run run_eval.py run
+```
+
+See [`eval/retrieval/README.md`](eval/retrieval/README.md) for the baseline
+workflow, the output format and how to add questions.
+
 ## Sync default user roles (`sync_default_user_roles.py`)
 
 Dev-only helper for RBAC in **OSS run mode** (`OPENRAG_RUN_MODE=oss`): updates

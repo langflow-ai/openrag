@@ -30,6 +30,8 @@ export interface ParsedQueryData {
     document_types: string[];
     owners: string[];
     connector_types: string[];
+    document_ids?: string[];
+    web_source_ids?: string[];
   };
   limit: number;
   scoreThreshold: number;

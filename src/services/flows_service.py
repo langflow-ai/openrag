@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from cachetools import LRUCache
@@ -25,6 +25,7 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 logger = get_logger(__name__)
 
 _UNSET = object()
+_FLOW_FILE_MTIME_TAG_PREFIX = "openrag:file-mtime:"
 
 
 class FlowsService:
@@ -559,6 +560,7 @@ class FlowsService:
         try:
             with open(flow_path) as f:
                 flow_data = json.load(f)
+            self._stamp_flow_with_file_mtime(flow_data, flow_path)
             logger.info(
                 f"Successfully loaded flow data for {flow_type} from {os.path.basename(flow_path)}"
             )
@@ -569,10 +571,10 @@ class FlowsService:
 
         await self._unlock_flow(flow_id)
 
-        # Make PATCH request to Langflow API to update the flow using shared client
+        # Replace the complete flow so the stamped source timestamp is persisted.
         try:
             response = await clients.langflow_request(
-                "PATCH",
+                "PUT",
                 f"/api/v1/flows/{flow_id}",
                 json=flow_data,
                 idempotent=True,
@@ -889,7 +891,13 @@ class FlowsService:
         self, flow_type: str, flow_id: str, flow_data: dict[str, Any] | None = None
     ) -> dict[str, Any] | None:
         """
-        Check if a flow has a newer version on disk compared to Langflow.
+        Check whether the source flow file is newer than the version stored in Langflow.
+
+        The backend stamps each uploaded flow with an
+        ``openrag:file-mtime:<nanoseconds>`` tag. Comparing the current file
+        timestamp to that tag avoids relying on Langflow's unrelated
+        ``updated_at`` value.
+
         Returns flow update info dict if an update is available, None otherwise.
         """
         if not flow_id:
@@ -897,7 +905,12 @@ class FlowsService:
         flow_path = self._find_flow_file_by_id(flow_id)
         if not flow_path or not os.path.exists(flow_path):
             return None
-        local_mtime = os.path.getmtime(flow_path)
+
+        try:
+            source_mtime = os.stat(flow_path).st_mtime_ns
+        except OSError as error:
+            logger.warning(f"Could not stat bundled flow {flow_path} for update check: {error}")
+            return None
 
         if flow_data is None:
             try:
@@ -909,26 +922,42 @@ class FlowsService:
                 logger.error(f"Failed to fetch flow {flow_id} for update check: {e}")
                 return None
 
-        langflow_updated_at_str = flow_data.get("updated_at")
-        langflow_mtime: float = 0.0
-        if langflow_updated_at_str:
-            if langflow_updated_at_str.endswith("Z"):
-                langflow_updated_at_str = langflow_updated_at_str[:-1] + "+00:00"
-            try:
-                dt = datetime.fromisoformat(langflow_updated_at_str)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=UTC)
-                langflow_mtime = dt.timestamp()
-            except ValueError:
-                pass
-
-        if local_mtime > langflow_mtime + 1.0:
+        stored_mtime = self._get_flow_file_mtime_tag(flow_data)
+        if stored_mtime is None or source_mtime > stored_mtime:
             is_locked = flow_data.get("locked", False)
             return {
                 "flow_type": flow_type,
                 "flow_id": flow_id,
                 "is_custom": not is_locked,
             }
+        return None
+
+    @staticmethod
+    def _stamp_flow_with_file_mtime(flow_data: dict[str, Any], flow_path: str) -> None:
+        """Embed the source flow's modification timestamp into its Langflow tags."""
+        tags = flow_data.get("tags")
+        if tags is None:
+            tags = []
+        if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
+            raise ValueError(f"Flow {flow_data.get('id', '<unknown>')} has invalid tags")
+        flow_data["tags"] = [
+            *[tag for tag in tags if not tag.startswith(_FLOW_FILE_MTIME_TAG_PREFIX)],
+            f"{_FLOW_FILE_MTIME_TAG_PREFIX}{os.stat(flow_path).st_mtime_ns}",
+        ]
+
+    @staticmethod
+    def _get_flow_file_mtime_tag(flow_data: dict[str, Any]) -> int | None:
+        """Return the source-file modification timestamp recorded on a Langflow flow."""
+        tags = flow_data.get("tags")
+        if not isinstance(tags, list):
+            return None
+        for tag in tags:
+            if not isinstance(tag, str) or not tag.startswith(_FLOW_FILE_MTIME_TAG_PREFIX):
+                continue
+            try:
+                return int(tag.removeprefix(_FLOW_FILE_MTIME_TAG_PREFIX))
+            except ValueError:
+                continue
         return None
 
     async def ensure_flows_exist(self) -> set[str]:
@@ -983,6 +1012,7 @@ class FlowsService:
 
                 with open(flow_path) as f:
                     flow_data = json.load(f)
+                self._stamp_flow_with_file_mtime(flow_data, flow_path)
 
                 response = await clients.langflow_request(
                     "PUT", f"/api/v1/flows/{flow_id}", json=flow_data

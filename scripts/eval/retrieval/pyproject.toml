@@ -1,0 +1,12 @@
+[project]
+name = "openrag-retrieval-eval"
+version = "0.1.0"
+description = "Retrieval-quality evaluation harness for OpenRAG search (/v1/search)"
+requires-python = ">=3.11"
+dependencies = ["openrag-sdk"]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+openrag-sdk = { path = "../../../sdks/python", editable = true }

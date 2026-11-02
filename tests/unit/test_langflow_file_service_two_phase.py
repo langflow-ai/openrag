@@ -114,6 +114,58 @@ async def test_langflow_not_invoked_on_docling_failure(
 
 
 @pytest.mark.asyncio
+async def test_docling_load_failure_on_encrypted_pdf_names_password_protection(
+    langflow_service, mock_polling_service, file_task
+):
+    """Newer docling drops the PDFium reason; the bytes still show the PDF is encrypted."""
+    head = b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+    pdf = (
+        head
+        + b"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Root 1 0 R /Encrypt 5 0 R >>\n"
+        + b"startxref\n%d\n%%%%EOF\n" % len(head)
+    )
+    encrypted = ("secret.pdf", pdf, "application/pdf")
+    mock_polling_service.poll_until_ready.return_value = DoclingPollResult(
+        outcome=PollOutcome.FAILED,
+        detail=(
+            "Docling result unavailable after SUCCESS status: Docling processing failed: "
+            "docling-parse could not load document 8fc525: "
+            "Failed to load document with key key=8fc525"
+        ),
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        await langflow_service.upload_and_ingest_file(
+            file_tuple=encrypted,
+            docling_polling_service=mock_polling_service,
+            file_task=file_task,
+        )
+
+    message = str(exc_info.value)
+    assert message.startswith("Docling conversion did not complete (failed): ")
+    assert "Incorrect password" in message
+    assert "with key" not in message
+    assert langflow_service.run_ingestion_flow.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_docling_load_failure_on_unencrypted_pdf_keeps_docling_detail(
+    langflow_service, mock_polling_service, file_tuple, file_task
+):
+    detail = "docling-parse could not load document 8fc525: Failed to load document with key k"
+    mock_polling_service.poll_until_ready.return_value = DoclingPollResult(
+        outcome=PollOutcome.FAILED, detail=detail
+    )
+
+    with pytest.raises(Exception, match="Failed to load document with key k"):
+        await langflow_service.upload_and_ingest_file(
+            file_tuple=file_tuple,
+            docling_polling_service=mock_polling_service,
+            file_task=file_task,
+        )
+
+
+@pytest.mark.asyncio
 async def test_langflow_not_invoked_on_docling_expired(
     langflow_service, mock_polling_service, file_tuple, file_task
 ):

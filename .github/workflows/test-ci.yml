@@ -454,7 +454,7 @@ jobs:
       - name: Setup E2E infrastructure
         run: |
           chmod +x scripts/setup-e2e.sh
-          OPENRAG_VERSION="${CI_IMAGE_TAG}" ./scripts/setup-e2e.sh
+          OPENRAG_VERSION="${CI_IMAGE_TAG}" OPENRAG_URL_CONNECTOR_ENABLED=true ./scripts/setup-e2e.sh
 
       - name: Run Playwright tests (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
         working-directory: frontend

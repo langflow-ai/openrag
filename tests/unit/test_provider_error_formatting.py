@@ -60,6 +60,10 @@ def test_is_provider_credential_error():
     assert is_provider_credential_error("Provided API key could not be found.")
     assert is_provider_credential_error("Provided API key is disabled.")
     assert is_provider_credential_error(json.dumps({"errorMessage": "api key revoked"}))
+    assert is_provider_credential_error("401, message='Unauthorized', url='http://x/v1/chat'")
+    assert is_provider_credential_error("Error code: 401 - Unauthorized")
+    assert is_provider_credential_error('{"detail":"Unauthorized"}')
+    assert is_provider_credential_error("litellm.AuthenticationError: Unauthorized")
     assert not is_provider_credential_error("Rate limit exceeded")
 
 
@@ -95,6 +99,14 @@ def test_looks_like_provider_error_content():
         'Failed to authenticate: {"errorMessage":"Provided API key could not be found."}'
     )
     assert not looks_like_provider_error_content("OpenRAG is an open-source package.")
+    assert not looks_like_provider_error_content(
+        "Unauthorized absence may be treated as disciplinary."
+    )
+    assert not looks_like_provider_error_content(
+        "Unauthorized access to payroll records is prohibited."
+    )
+    assert looks_like_provider_error_content("Error: unauthorized")
+    assert looks_like_provider_error_content("Unauthorized: Access token is expired")
     assert is_generic_upstream_error("An unknown error occurred.")
 
 
