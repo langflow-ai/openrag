@@ -113,4 +113,8 @@ async def test_service_buckets_by_local_day_and_keeps_all_time_total():
         script = agg["cardinality"]["script"]["source"]
         assert "doc['filename']" in script
         assert "doc['document_id']" in script
+        # Painless rejects "\\n" in a literal; the separator must come from params.
+        assert "\\" not in script
+        assert "params.separator" in script
+        assert agg["cardinality"]["script"]["params"] == {"separator": "\n"}
         assert agg["cardinality"]["precision_threshold"] == 3000

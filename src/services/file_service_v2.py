@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 # A file row is a (filename, document_id) pair: document_id is a content hash,
 # so identical content under two names is two rows. Missing values count as "".
 _FILE_IDENTITY_SCRIPT = (
-    "(doc['filename'].size() == 0 ? '' : doc['filename'].value) + '\\n' + "
+    "(doc['filename'].size() == 0 ? '' : doc['filename'].value) + params.separator + "
     "(doc['document_id'].size() == 0 ? '' : doc['document_id'].value)"
 )
 
@@ -36,7 +36,12 @@ _FILE_IDENTITY_SCRIPT = (
 def _distinct_files_agg() -> dict[str, Any]:
     return {
         "cardinality": {
-            "script": {"lang": "painless", "source": _FILE_IDENTITY_SCRIPT},
+            "script": {
+                "lang": "painless",
+                "source": _FILE_IDENTITY_SCRIPT,
+                # Painless has no "\\n" string escape, so the separator is a param.
+                "params": {"separator": "\n"},
+            },
             "precision_threshold": 3000,
         }
     }
