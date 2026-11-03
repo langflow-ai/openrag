@@ -7,10 +7,10 @@
 # Rebuild lxml from source so it links against the patched system libxml2
 # supplied by the Langflow base image (2.12.5-10.el10_2.4).
 #
-# TODO: Remove the CVE-2026-74860 / CVE-2026-86140 workarounds once the
-# langflowai/langflow base image ships both fixes. Check with:
-#   rpm -q libxml2   -> 2.12.5-10.el10_2.4 or later
-#   python -c "import lxml.etree as e; print(e.LIBXML_VERSION)"   -> (2, 15, 4) or later
+# Langflow 1.12.8 already ships the system libxml2 fix for CVE-2026-74860.
+# Keep this CVE-2026-86140 workaround until its bundled lxml wheel reports
+# libxml2 >= 2.15.4:
+#   python -c "import lxml.etree as e; print(e.LIBXML_VERSION)"
 # Then delete: this lxml-build stage, the libxslt install in the runtime root
 # step, and the lxml wheel swap after the pip install.
 # -----------------------------------------------------------------------------
@@ -42,9 +42,28 @@ USER root
 # Patch base-image CVEs in system packages:
 #   libxslt is the runtime library for the source-built lxml. TODO: remove
 #     once the lxml workaround above is removed.
+#   expat >= 2.7.3-1.el10_2.7: CVE-2026-77214, CVE-2026-102633
+#   ca-certificates >= 2026.2.92_v9.0.319-100.3.el10_2: CVE-2026-114406
 #   npm 12.2.1 (bundles brace-expansion 5.0.12): CVE-2026-102276, CVE-2026-102278
-RUN microdnf install -y libxslt \
+#   npm's nested undici 8.12.2 and ip-address 10.7.4: outstanding npm dependency CVEs.
+#     These are unpacked directly because `npm install --prefix npm` attempts to
+#     resolve npm's private build-time packages, which are not published.
+RUN microdnf install -y \
+        libxslt \
+        'expat >= 2.7.3-1.el10_2.7' \
+        'ca-certificates >= 2026.2.92_v9.0.319-100.3.el10_2' \
     && npm install -g --no-audit --no-fund npm@12.2.1 \
+    && mkdir -p /tmp/npm-patches \
+    && npm pack --pack-destination /tmp/npm-patches undici@8.12.2 ip-address@10.7.4 \
+    && rm -rf /usr/local/lib/node_modules/npm/node_modules/undici \
+        /usr/local/lib/node_modules/npm/node_modules/ip-address \
+    && mkdir -p /usr/local/lib/node_modules/npm/node_modules/undici \
+        /usr/local/lib/node_modules/npm/node_modules/ip-address \
+    && tar -xzf /tmp/npm-patches/undici-8.12.2.tgz --strip-components=1 \
+        -C /usr/local/lib/node_modules/npm/node_modules/undici \
+    && tar -xzf /tmp/npm-patches/ip-address-10.7.4.tgz --strip-components=1 \
+        -C /usr/local/lib/node_modules/npm/node_modules/ip-address \
+    && rm -rf /tmp/npm-patches \
     && npm cache clean --force \
     && microdnf clean all \
     && rm -rf /var/cache/yum \
@@ -52,15 +71,35 @@ RUN microdnf install -y libxslt \
     && chmod 0777 /app/langflow-data
 USER 1000
 
-# Mako 1.4.2 patches CVE-2026-102991. pypdf, pyjwt, and urllib3 are already
-# patched in langflowai/langflow:base-1.12.8, so do not override them here.
+# Pin base-image Python packages to the minimum versions that resolve the
+# outstanding CVEs.  They are installed with the application dependencies so
+# Langflow's venv, which takes precedence at runtime, contains the fixes.
 RUN pip install --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     torch==2.13.0 \
     torchvision==0.28.0 \
     "transformers>=5.10.1,<6.0.0" \
     "docling-core<3.0.0" \
+    "aiohttp>=3.14.4,<4.0.0" \
+    "filelock>=4.2.1,<5.0.0" \
     "mako>=1.4.2,<2.0.0" \
+    "opentelemetry-api>=1.45.1,<2.0.0" \
+    "opentelemetry-sdk>=1.45.1,<2.0.0" \
+    "opentelemetry-exporter-otlp>=1.45.1,<2.0.0" \
+    "opentelemetry-exporter-otlp-proto-grpc>=1.45.1,<2.0.0" \
+    "opentelemetry-exporter-prometheus>=0.66b1,<1.0.0" \
+    "opentelemetry-instrumentation>=0.66b1,<1.0.0" \
+    "opentelemetry-instrumentation-asgi>=0.66b1,<1.0.0" \
+    "opentelemetry-instrumentation-fastapi>=0.66b1,<1.0.0" \
+    "opentelemetry-instrumentation-logging>=0.66b1,<1.0.0" \
+    "opentelemetry-instrumentation-redis>=0.66b1,<1.0.0" \
+    "opentelemetry-instrumentation-requests>=0.66b1,<1.0.0" \
+    "opentelemetry-instrumentation-sqlalchemy>=0.66b1,<1.0.0" \
+    "opentelemetry-instrumentation-system-metrics>=0.66b1,<1.0.0" \
+    "opentelemetry-instrumentation-threading>=0.66b1,<1.0.0" \
+    "opentelemetry-instrumentation-urllib3>=0.66b1,<1.0.0" \
+    "pillow>=13.0.0,<14.0.0" \
+    "pypdf>=6.21.2,<7.0.0" \
     openai \
     langchain-openai \
     anthropic \
