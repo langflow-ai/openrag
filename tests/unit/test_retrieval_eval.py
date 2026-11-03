@@ -606,3 +606,174 @@ def test_run_rejects_a_fetch_limit_below_the_largest_cutoff(fetch_limit: str) ->
 
     assert completed.returncode == 2
     assert "--fetch-limit must be at least the largest --k value (5)" in completed.stderr
+
+
+# --- recall-drop gate --------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("current_recall", "expected_drop"),
+    [(0.0, 1.0), (1.0, 0.0)],
+)
+def test_recall_drop_reports_a_fall_and_ignores_a_gain(
+    current_recall: float, expected_drop: float
+) -> None:
+    baseline = make_results([make_query("q", 1.0, 1.0, 1.0, 1)])
+    current = make_results([make_query("q", current_recall, 1.0, 1.0, 1)])
+
+    assert report.recall_drop(report.diff_results(baseline, current)) == pytest.approx(
+        expected_drop
+    )
+
+    improved = make_results([make_query("q", 0.0, 0.0, 0.0, None)])
+    gain = make_results([make_query("q", 1.0, 1.0, 1.0, 1)])
+    assert report.recall_drop(report.diff_results(improved, gain)) == 0.0
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "message"),
+    [
+        (["--max-recall-drop", "0.02"], "--max-recall-drop needs --baseline"),
+        (["--max-recall-drop", "-0.1", "--baseline", "b.json"], "must not be negative"),
+    ],
+)
+def test_run_rejects_an_unusable_max_recall_drop(extra_args: list[str], message: str) -> None:
+    script = Path(__file__).resolve().parents[2] / "scripts/eval/retrieval/run_eval.py"
+    completed = subprocess.run(
+        [sys.executable, str(script), "run", "--validate-only", *extra_args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 2
+    assert message in completed.stderr
+
+
+# --- baseline promotion ----------------------------------------------------
+
+
+def _results_with_recall(recall: float, **run_overrides: Any) -> dict[str, Any]:
+    return make_results([make_query("q", recall, recall, recall, 1)], **run_overrides)
+
+
+def test_promotion_accepts_the_first_baseline() -> None:
+    promoted, reason = report.promotion_decision(None, _results_with_recall(0.5))
+
+    assert promoted
+    assert "no baseline" in reason
+
+
+@pytest.mark.parametrize(
+    ("baseline_recall", "current_recall", "min_gain", "expected"),
+    [
+        (0.5, 0.75, 0.0, True),
+        (0.5, 0.5, 0.0, False),
+        (0.75, 0.5, 0.0, False),
+        (0.5, 0.55, 0.1, False),
+        (0.5, 0.75, 0.1, True),
+    ],
+)
+def test_promotion_requires_a_gain_above_the_minimum(
+    baseline_recall: float, current_recall: float, min_gain: float, expected: bool
+) -> None:
+    promoted, _ = report.promotion_decision(
+        _results_with_recall(baseline_recall), _results_with_recall(current_recall), min_gain
+    )
+
+    assert promoted is expected
+
+
+def test_promotion_refuses_runs_that_are_not_comparable() -> None:
+    promoted, reason = report.promotion_decision(
+        _results_with_recall(0.5), _results_with_recall(1.0, corpus_hash="e" * 64)
+    )
+
+    assert not promoted
+    assert "not comparable" in reason
+
+
+def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    script = Path(__file__).resolve().parents[2] / "scripts/eval/retrieval/run_eval.py"
+    return subprocess.run(
+        [sys.executable, str(script), *args], capture_output=True, text=True, check=False
+    )
+
+
+def test_promote_writes_the_baseline_only_on_improvement(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.json"
+    low, high = tmp_path / "low.json", tmp_path / "high.json"
+    low.write_text(json.dumps(_results_with_recall(0.5)), encoding="utf-8")
+    high.write_text(json.dumps(_results_with_recall(1.0)), encoding="utf-8")
+
+    first = _run_cli("promote", str(low), str(baseline))
+    assert first.returncode == 0
+    assert json.loads(baseline.read_text(encoding="utf-8")) == json.loads(low.read_text())
+
+    same = _run_cli("promote", str(low), str(baseline))
+    assert same.returncode == 3
+    assert "Baseline not updated" in same.stdout
+
+    better = _run_cli("promote", str(high), str(baseline))
+    assert better.returncode == 0
+    assert json.loads(baseline.read_text(encoding="utf-8")) == json.loads(high.read_text())
+
+    worse = _run_cli("promote", str(low), str(baseline))
+    assert worse.returncode == 3
+    assert json.loads(baseline.read_text(encoding="utf-8")) == json.loads(high.read_text())
+
+
+# --- review follow-ups -------------------------------------------------------
+
+
+def test_recall_gate_fails_when_the_runs_are_not_comparable() -> None:
+    baseline = _results_with_recall(0.5)
+    current = _results_with_recall(0.5, corpus_hash="e" * 64)
+
+    failure = report.recall_gate_failure(report.diff_results(baseline, current), 0.02)
+
+    assert failure is not None
+    assert "not comparable" in failure
+
+
+@pytest.mark.parametrize(
+    ("current_recall", "fails"),
+    [(0.5, False), (0.49, False), (0.45, True), (1.0, False)],
+)
+def test_recall_gate_fails_only_on_a_drop_above_the_limit(
+    current_recall: float, fails: bool
+) -> None:
+    diff = report.diff_results(_results_with_recall(0.5), _results_with_recall(current_recall))
+
+    assert (report.recall_gate_failure(diff, 0.02) is not None) is fails
+
+
+@pytest.mark.parametrize("missing", ["current", "baseline"])
+def test_promotion_refuses_a_run_without_recorded_settings(missing: str) -> None:
+    baseline, current = _results_with_recall(0.5), _results_with_recall(1.0)
+    (current if missing == "current" else baseline)["settings"] = None
+
+    promoted, reason = report.promotion_decision(baseline, current)
+
+    assert not promoted
+    assert "settings" in reason
+
+
+def test_promotion_refuses_a_first_baseline_without_recorded_settings() -> None:
+    current = _results_with_recall(0.5)
+    current["settings"] = None
+
+    promoted, reason = report.promotion_decision(None, current)
+
+    assert not promoted
+    assert "settings" in reason
+
+
+def test_promote_rejects_a_negative_min_gain(tmp_path: Path) -> None:
+    results = tmp_path / "results.json"
+    results.write_text(json.dumps(_results_with_recall(0.5)), encoding="utf-8")
+
+    completed = _run_cli("promote", str(results), str(tmp_path / "b.json"), "--min-gain", "-0.1")
+
+    assert completed.returncode == 2
+    assert "--min-gain must not be negative" in completed.stderr
