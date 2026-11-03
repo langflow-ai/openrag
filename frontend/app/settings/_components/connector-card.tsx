@@ -25,6 +25,7 @@ export interface Connector {
   status?: string;
   connectionId?: string;
   requiresOAuth?: boolean;
+  alwaysConnected?: boolean;
 }
 
 interface ConnectorCardProps {
@@ -33,7 +34,7 @@ interface ConnectorCardProps {
   isDisconnecting: boolean;
   onConnect: (connector: Connector) => void;
   onDisconnect: (connector: Connector) => void;
-  onNavigateToKnowledge: (connector: Connector) => void;
+  onAddKnowledge: (connector: Connector) => void;
   /** Optional: open a connector-specific settings/edit dialog */
   onConfigure?: (connector: Connector) => void;
 }
@@ -44,7 +45,7 @@ export default function ConnectorCard({
   isDisconnecting,
   onConnect,
   onDisconnect,
-  onNavigateToKnowledge,
+  onAddKnowledge,
   onConfigure,
 }: ConnectorCardProps) {
   const isCloudBrand = useIsCloudBrand();
@@ -56,7 +57,8 @@ export default function ConnectorCard({
   ]);
   const canUpload = can("knowledge:upload");
   const isConnected =
-    connector.status === "connected" && connector.connectionId;
+    connector.status === "connected" &&
+    (connector.connectionId || connector.alwaysConnected);
   const isConfigured = connector.status === "configured";
 
   return (
@@ -123,7 +125,7 @@ export default function ConnectorCard({
               <div className="flex gap-2 overflow-hidden w-full">
                 <Button
                   variant="default"
-                  onClick={() => onNavigateToKnowledge(connector)}
+                  onClick={() => onAddKnowledge(connector)}
                   disabled={isDisconnecting || isConnecting || !canUpload}
                   title={
                     canUpload
@@ -139,7 +141,7 @@ export default function ConnectorCard({
                   <Plus className="h-4 w-4" />
                   <span className="text-mmd truncate">Add Knowledge</span>
                 </Button>
-                {canCreate && (
+                {canCreate && !connector.alwaysConnected && (
                   <Button
                     variant="outline"
                     onClick={() =>
@@ -162,7 +164,7 @@ export default function ConnectorCard({
                     )}
                   </Button>
                 )}
-                {canDisconnect && (
+                {canDisconnect && !connector.alwaysConnected && (
                   <Button
                     variant="outline"
                     onClick={() => {

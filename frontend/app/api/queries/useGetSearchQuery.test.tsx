@@ -7,6 +7,7 @@ import {
   type ChunkResult,
   resolveScoreThreshold,
   type SearchPayload,
+  type SearchResultDisplayOptions,
   useGetSearchQuery,
 } from "./useGetSearchQuery";
 
@@ -62,10 +63,17 @@ function serveSearch(body: Record<string, unknown>, status = 200) {
   return seen;
 }
 
-async function runSearch(query: string, data?: ParsedQueryData | null) {
-  const rendered = renderHook(() => useGetSearchQuery(query, data), {
-    wrapper: createQueryWrapper(),
-  });
+async function runSearch(
+  query: string,
+  data?: ParsedQueryData | null,
+  displayOptions?: SearchResultDisplayOptions,
+) {
+  const rendered = renderHook(
+    () => useGetSearchQuery(query, data, undefined, displayOptions),
+    {
+      wrapper: createQueryWrapper(),
+    },
+  );
   await waitFor(() =>
     expect(
       rendered.result.current.isSuccess || rendered.result.current.isError,
@@ -172,6 +180,30 @@ describe("useGetSearchQuery", () => {
       });
     });
 
+    it("preserves a URL source scope and website-page result mode", async () => {
+      const seen = serveSearch({ results: [] });
+
+      await runSearch(
+        "",
+        queryData({
+          filters: {
+            data_sources: [],
+            document_types: [],
+            owners: [],
+            connector_types: [],
+            web_source_ids: ["source-123"],
+          },
+        }),
+        { groupBy: "document_id", resultMode: "website_pages" },
+      );
+
+      expect(seen.payload).toMatchObject({
+        query: "*",
+        resultMode: "website_pages",
+        filters: { web_source_ids: ["source-123"] },
+      });
+    });
+
     it("treats a '*' dimension as unfiltered", async () => {
       const seen = serveSearch({ results: [] });
 
@@ -192,6 +224,26 @@ describe("useGetSearchQuery", () => {
   });
 
   describe("grouping chunks into files", () => {
+    it("keeps URL pages with duplicate titles separate by document id", async () => {
+      serveSearch({
+        results: [
+          chunk({ filename: "Guide", document_id: "page-a" }),
+          chunk({ filename: "Guide", document_id: "page-b" }),
+        ],
+      });
+
+      const { result } = await runSearch("", queryData(), {
+        groupBy: "document_id",
+      });
+
+      expect(result.current.data?.files).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ filename: "Guide", document_id: "page-a" }),
+          expect.objectContaining({ filename: "Guide", document_id: "page-b" }),
+        ]),
+      );
+    });
+
     it("groups chunks by filename and averages their scores", async () => {
       serveSearch({
         results: [
@@ -211,6 +263,33 @@ describe("useGetSearchQuery", () => {
         avgScore: 3,
       });
       expect(files[1]).toMatchObject({ filename: "b.pdf", chunkCount: 1 });
+    });
+
+    it("uses the backend chunk count for a website page", async () => {
+      serveSearch({
+        results: [
+          chunk({
+            filename: "Guide",
+            document_id: "page-a",
+            chunk_count: 12,
+          }),
+          chunk({
+            filename: "Guide",
+            document_id: "page-a",
+            chunk_count: 12,
+          }),
+        ],
+      });
+
+      const { result } = await runSearch("", queryData(), {
+        groupBy: "document_id",
+        resultMode: "website_pages",
+      });
+
+      expect(result.current.data?.files[0]).toMatchObject({
+        document_id: "page-a",
+        chunkCount: 12,
+      });
     });
 
     it("falls back to source_url, then to Untitled source (#1609)", async () => {
