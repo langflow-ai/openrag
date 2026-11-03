@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from dependencies import get_current_user, get_file_service_v2
+from dependencies import get_current_user, get_file_service_v2, require_permission
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -223,7 +223,7 @@ async def upload_histogram(
     owner: list[str] | None = Query(None, description="Filter by owner (repeatable)"),
     data_sources: list[str] | None = Query(None, description="Filename whitelist (repeatable)"),
     file_service=Depends(get_file_service_v2),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("knowledge:read:own")),
 ):
     """Count distinct uploaded files per calendar day, plus the all-time total."""
     if _parse_iso_timestamp(start, "start") > _parse_iso_timestamp(end, "end"):
