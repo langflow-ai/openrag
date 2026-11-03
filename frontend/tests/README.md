@@ -18,6 +18,13 @@ We provide a setup script that automates the process of starting the full stack 
 ./scripts/setup-e2e.sh
 ```
 
+The managed website-connection E2E test is behind the URL connector feature
+flag. Enable it when starting the stack:
+
+```bash
+OPENRAG_URL_CONNECTOR_ENABLED=true ./scripts/setup-e2e.sh
+```
+
 **What this script does:**
 - Pre-creates required directories (e.g., `langflow-data`).
 - Starts the full stack using `make dev-cpu`.

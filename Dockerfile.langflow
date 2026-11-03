@@ -3,18 +3,18 @@
 # -----------------------------------------------------------------------------
 # Stage: lxml-build
 # lxml's PyPI wheels statically bundle their own libxml2 (2.14.6 as of lxml
-# 6.1.3), which is vulnerable to CVE-2026-86140 (fixed upstream in 2.15.4).
-# Rebuild lxml from source so it links against RHEL's patched system libxml2
-# (2.12.5-10.el10_2.4) instead.
+# 6.1.1), which is vulnerable to CVE-2026-86140 (fixed upstream in 2.15.4).
+# Rebuild lxml from source so it links against the patched system libxml2
+# supplied by the Langflow base image (2.12.5-10.el10_2.4).
 #
 # TODO: Remove the CVE-2026-74860 / CVE-2026-86140 workarounds once the
 # langflowai/langflow base image ships both fixes. Check with:
 #   rpm -q libxml2   -> 2.12.5-10.el10_2.4 or later
 #   python -c "import lxml.etree as e; print(e.LIBXML_VERSION)"   -> (2, 15, 4) or later
-# Then delete: this lxml-build stage, the libxml2 update and libxslt install in
-# the runtime root step, and the lxml wheel swap after the pip install.
+# Then delete: this lxml-build stage, the libxslt install in the runtime root
+# step, and the lxml wheel swap after the pip install.
 # -----------------------------------------------------------------------------
-FROM langflowai/langflow:base-1.12.3 AS lxml-build
+FROM langflowai/langflow:base-1.12.8 AS lxml-build
 
 USER root
 RUN microdnf install -y \
@@ -31,23 +31,19 @@ RUN pip wheel --no-cache-dir --no-deps --no-binary lxml -w /wheels \
 # -----------------------------------------------------------------------------
 # Stage: runtime
 # -----------------------------------------------------------------------------
-FROM langflowai/langflow:base-1.12.3
+FROM langflowai/langflow:base-1.12.8
 
 # Install uv, then pre-create the Langflow data directory as root.
 # Langflow 1.12's base image runs as uid=1000, but /app itself is not writable.
-# Upgrade pip first to patch CVE-2026-8643 (fixed in 26.1.2) in the base image.
-RUN pip install --no-cache-dir --upgrade "pip>=26.1.2" \
-    && pip install --no-cache-dir uv
+# The base image already ships pip 26.2.1, which patches CVE-2026-8643.
+RUN pip install --no-cache-dir uv
 
 USER root
 # Patch base-image CVEs in system packages:
-#   libxml2 >= 2.12.5-10.el10_2.4: CVE-2026-74860, CVE-2026-86140. libxslt is
-#     the runtime library for the source-built lxml. TODO: remove (see lxml-build).
-#   expat >= 2.7.3-1.el10_2.5: CVE-2026-66046, CVE-2026-93990
+#   libxslt is the runtime library for the source-built lxml. TODO: remove
+#     once the lxml workaround above is removed.
 #   npm 12.2.1 (bundles brace-expansion 5.0.12): CVE-2026-102276, CVE-2026-102278
-RUN microdnf install -y 'libxml2 >= 2.12.5-10.el10_2.4' \
-    && microdnf install -y libxslt \
-    && microdnf install -y 'expat >= 2.7.3-1.el10_2.5' \
+RUN microdnf install -y libxslt \
     && npm install -g --no-audit --no-fund npm@12.2.1 \
     && npm cache clean --force \
     && microdnf clean all \
@@ -56,20 +52,15 @@ RUN microdnf install -y 'libxml2 >= 2.12.5-10.el10_2.4' \
     && chmod 0777 /app/langflow-data
 USER 1000
 
-# Minimum versions that patch base-image CVEs:
-#   pypdf 6.19.0: CVE-2026-102998, CVE-2026-102999, CVE-2026-103000
-#   pyjwt 2.14.0: CVE-2026-102266, CVE-2026-102267, CVE-2026-102268,
-#     CVE-2026-102271, CVE-2026-102272, CVE-2026-102273
-#   urllib3 2.8.0: CVE-2026-97687, CVE-2026-97689
+# Mako 1.4.2 patches CVE-2026-102991. pypdf, pyjwt, and urllib3 are already
+# patched in langflowai/langflow:base-1.12.8, so do not override them here.
 RUN pip install --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     torch==2.13.0 \
     torchvision==0.28.0 \
     "transformers>=5.10.1,<6.0.0" \
     "docling-core<3.0.0" \
-    "pypdf>=6.19.0,<7.0.0" \
-    "pyjwt>=2.14.0,<3.0.0" \
-    "urllib3>=2.8.0,<3.0.0" \
+    "mako>=1.4.2,<2.0.0" \
     openai \
     langchain-openai \
     anthropic \

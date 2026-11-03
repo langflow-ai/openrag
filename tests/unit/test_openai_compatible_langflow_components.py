@@ -245,3 +245,69 @@ def test_flows_embed_the_current_proxy_component_sources():
                 assert component.get("metadata", {}).get("code_hash") == expected_hash, (
                     f"{path.name}: {node_type} metadata.code_hash is stale"
                 )
+
+
+def test_llm_component_pins_chat_completions_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The gateway serves only /chat/completions, never /responses (#2534).
+
+    Left to infer, ChatOpenAI routes some models (gpt-6* with tools) to the
+    Responses API, whose client then rejects the component's default `seed`
+    with "AsyncResponses.create() got an unexpected keyword argument 'seed'".
+    """
+    created: list[dict[str, object]] = []
+
+    class FakeChatOpenAI:
+        def __init__(self, **kwargs: object) -> None:
+            created.append(kwargs)
+
+    class FakeInput:
+        def __init__(self, **kwargs: object) -> None:
+            self.name = kwargs.get("name")
+
+    modules: dict[str, ModuleType] = {
+        "langchain_openai": ModuleType("langchain_openai"),
+        "lfx": ModuleType("lfx"),
+        "lfx.base": ModuleType("lfx.base"),
+        "lfx.base.models": ModuleType("lfx.base.models"),
+        "lfx.base.models.model": ModuleType("lfx.base.models.model"),
+        "lfx.field_typing": ModuleType("lfx.field_typing"),
+        "lfx.field_typing.constants": ModuleType("lfx.field_typing.constants"),
+        "lfx.field_typing.range_spec": ModuleType("lfx.field_typing.range_spec"),
+        "lfx.inputs": ModuleType("lfx.inputs"),
+        "lfx.inputs.inputs": ModuleType("lfx.inputs.inputs"),
+        "lfx.io": ModuleType("lfx.io"),
+    }
+    vars(modules["langchain_openai"])["ChatOpenAI"] = FakeChatOpenAI
+    vars(modules["lfx.base.models.model"])["LCModelComponent"] = object
+    vars(modules["lfx.field_typing.constants"])["LanguageModel"] = object
+    vars(modules["lfx.field_typing.range_spec"])["RangeSpec"] = FakeInput
+    for input_name in ("BoolInput", "StrInput"):
+        setattr(modules["lfx.inputs.inputs"], input_name, FakeInput)
+    for input_name in (
+        "IntInput",
+        "MessageInput",
+        "MultilineInput",
+        "SecretStrInput",
+        "SliderInput",
+    ):
+        setattr(modules["lfx.io"], input_name, FakeInput)
+    for module_name, module in modules.items():
+        monkeypatch.setitem(sys.modules, module_name, module)
+
+    module_name = "custom_components.openrag.openai_compatible_llm"
+    sys.modules.pop(module_name, None)
+    llm = importlib.import_module(module_name)
+
+    component = llm.OpenAICompatibleLLMComponent()
+    component.model_name = "gpt-6.1-sol"
+    component.api_key = "token"
+    component.api_base = "http://openrag/v1/"
+    component.stream = True
+    component.temperature = 0.1
+    component.max_tokens = None
+    component.seed = 1
+    component.build_model()
+
+    assert len(created) == 1
+    assert created[0]["use_responses_api"] is False
+    assert created[0]["seed"] == 1

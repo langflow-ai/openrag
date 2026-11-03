@@ -2,6 +2,7 @@ import asyncio
 import mimetypes
 import os
 import time
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Literal
 
 from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
@@ -557,6 +558,15 @@ class TaskProcessor:
         ocr: bool | None = None,
         picture_descriptions: bool | None = None,
         shared: bool = False,
+        document_id: str | None = None,
+        replace_existing: bool = False,
+        source_url: str | None = None,
+        web_source_id: str | None = None,
+        web_page_id: str | None = None,
+        web_page_depth: int | None = None,
+        root_source_url: str | None = None,
+        canonical_url: str | None = None,
+        before_index_write: Callable[[], Awaitable[object]] | None = None,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -587,6 +597,7 @@ class TaskProcessor:
         if chunk_overlap is None:
             chunk_overlap = config.knowledge.chunk_overlap
 
+        stable_document_id = document_id or file_hash
         file_ext = os.path.splitext(file_path)[1].lower()
 
         # One trace per file, with a span per stage; no-ops while tracing is off.
@@ -595,7 +606,7 @@ class TaskProcessor:
             user_id=owner_user_id,
             tags=["ingest_path:openrag", f"connector:{connector_type}"],
             attributes={
-                "document_id": file_hash,
+                "document_id": stable_document_id,
                 "ingest_path": "openrag",
                 "connector_type": connector_type,
                 "embedding_model": embedding_model,
@@ -612,15 +623,18 @@ class TaskProcessor:
                 owner_user_id, jwt_token
             )
 
-            # Check if already exists
-            if await self.check_document_exists(file_hash, opensearch_client):
+            # URL sources own normalized-content deduplication. A page re-sync
+            # deliberately replaces chunks under its stable document ID.
+            if not replace_existing and await self.check_document_exists(
+                stable_document_id, opensearch_client
+            ):
                 ingest_trace.set(status="unchanged")
-                return {"status": "unchanged", "id": file_hash}
+                return {"status": "unchanged", "id": stable_document_id}
 
             logger.info(
                 "Processing document with embedding model",
                 embedding_model=embedding_model,
-                file_hash=file_hash,
+                file_hash=stable_document_id,
             )
 
             # Check if this is a .txt or .md file - use simple processing instead of docling
@@ -797,7 +811,7 @@ class TaskProcessor:
 
             filename = original_filename if original_filename else slim_doc["filename"]
             index_context = DocumentIndexContext(
-                document_id=file_hash,
+                document_id=stable_document_id,
                 filename=filename,
                 mimetype=slim_doc["mimetype"],
                 embedding_model=embedding_model,
@@ -807,6 +821,13 @@ class TaskProcessor:
                 owner_email=owner_email,
                 file_size=file_size,
                 connector_type=connector_type,
+                source_url=source_url,
+                record_kind="web_page" if web_source_id else None,
+                web_source_id=web_source_id,
+                web_page_id=web_page_id,
+                web_page_depth=web_page_depth,
+                root_source_url=root_source_url,
+                canonical_url=canonical_url,
                 allowed_users=allowed_users,
                 allowed_groups=allowed_groups,
                 allowed_principals=allowed_principals,
@@ -830,7 +851,7 @@ class TaskProcessor:
 
             index_chunks = [
                 DocumentIndexChunk(
-                    chunk_id=f"{file_hash}_{i}",
+                    chunk_id=f"{stable_document_id}_{i}",
                     text=chunk["text"],
                     vector=vect,
                     page=chunk["page"],
@@ -840,6 +861,13 @@ class TaskProcessor:
             ]
 
             with trace_span("ingest.index") as index:
+                # This guard is intentionally outside the stale-cleanup handler.
+                # A URL source can be deleted while its crawl is still processing;
+                # in that case indexing must stop rather than recreating chunks for
+                # the deleted source.
+                if before_index_write is not None:
+                    await before_index_write()
+
                 # Clear stale chunks from a prior indexing of this document. Chunks are
                 # stored under ids {file_hash}_{i}; if the new chunk count is lower
                 # than the prior one, trailing chunks would otherwise survive the
@@ -859,7 +887,7 @@ class TaskProcessor:
                     stale_chunk_ids = await collect_visible_document_ids(
                         opensearch_client,
                         index=get_index_name(),
-                        query={"term": {"document_id": file_hash}},
+                        query={"term": {"document_id": stable_document_id}},
                     )
                     await delete_document_ids(
                         write_client,
@@ -871,7 +899,7 @@ class TaskProcessor:
                 except Exception as e:
                     logger.warning(
                         "Failed to clear stale chunks before re-index; proceeding",
-                        file_hash=file_hash,
+                        file_hash=stable_document_id,
                         error=str(e),
                     )
                     index.set(stale_cleanup_failed=True)
@@ -880,7 +908,11 @@ class TaskProcessor:
                 index.set(chunks_indexed=len(index_chunks))
 
             ingest_trace.set(status="indexed", chunks=len(index_chunks))
-            return {"status": "indexed", "id": file_hash}
+            return {
+                "status": "indexed",
+                "id": stable_document_id,
+                "chunk_count": len(index_chunks),
+            }
 
     async def process_item(self, upload_task: UploadTask, item: Any, file_task: FileTask) -> None:
         """

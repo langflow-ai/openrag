@@ -608,11 +608,12 @@ class TaskService:
             for item in items
         }
 
-        if (
+        task_already_exists = (
             existing_task_id
             and store_user_id in self.task_store
             and existing_task_id in self.task_store[store_user_id]
-        ):
+        )
+        if task_already_exists:
             upload_task = self.task_store[store_user_id][existing_task_id]
             upload_task.file_tasks.update(file_tasks)
             upload_task.total_files += len(items)
@@ -652,8 +653,10 @@ class TaskService:
         self.background_tasks.add(background_task)
         background_task.add_done_callback(self.background_tasks.discard)
 
-        # Store reference to background task for cancellation if newly created
-        if not existing_task_id:
+        # Store the task whenever this call creates one. URL sources reserve an
+        # ID before enqueueing, so `existing_task_id` alone does not mean the
+        # task existed already.
+        if not task_already_exists:
             upload_task.background_task = background_task
 
         # Send telemetry event for task creation with metadata
