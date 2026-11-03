@@ -309,6 +309,10 @@ class DoclingManager:
                 "docling-core==2.85.0",
                 "--with",
                 "transformers>=5.8.1,<5.9.0",
+                # docling-serve currently resolves an older OpenTelemetry API;
+                # keep the runtime above the CVE remediation floor.
+                "--with",
+                "opentelemetry-api>=1.45.1,<2.0.0",
             ]
             if override_path:
                 cmd += ["--override", override_path, "--with", "opencv-python-headless"]
