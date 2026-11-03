@@ -111,7 +111,13 @@ export function useSearchSuggestions(
     baseScoreThreshold,
   );
   const keyword = useQuery({
-    queryKey: ["search-suggest", "keyword", keywordQuery, filtersKey],
+    queryKey: [
+      "search-suggest",
+      "keyword",
+      keywordQuery,
+      filtersKey,
+      keywordThreshold,
+    ],
     queryFn: ({ signal }) =>
       fetchSuggestions(keywordQuery, false, filters, keywordThreshold, signal),
     enabled: enabled && keywordQuery.length >= SUGGEST_MIN_CHARS,

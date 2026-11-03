@@ -207,6 +207,7 @@ class ConnectorService:
                         },
                     },
                 },
+                refresh=True,
             )
             invalidate_corpus_caches()
             logger.debug(f"Updated metadata for document {document.id}")

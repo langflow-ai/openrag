@@ -136,6 +136,15 @@ describe("bestSentence", () => {
     ).toContain("エンジン");
   });
 
+  it("matches query terms within unspaced CJK text and selects the matching sentence", () => {
+    expect(
+      bestSentence(
+        "関係のない文がここにあります。全文検索エンジンの設計と実装について説明する。もう一つの無関係な文が続きます。",
+        "検索",
+      ),
+    ).toBe("全文検索エンジンの設計と実装について説明する。");
+  });
+
   it("returns null for blank text", () => {
     expect(bestSentence("   ", "q")).toBeNull();
   });

@@ -74,6 +74,7 @@ async def test_update_includes_filename_in_script_and_params(monkeypatch):
 
     opensearch_client.update_by_query.assert_awaited_once()
     call = opensearch_client.update_by_query.await_args
+    assert call.kwargs.get("refresh") is True
     body = call.kwargs["body"]
     script = body["script"]
     params = script["params"]

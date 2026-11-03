@@ -1239,6 +1239,7 @@ class ConnectorFileProcessor(TaskProcessor):
                             },
                         },
                     },
+                    refresh=True,
                 )
                 invalidate_corpus_caches()
             except Exception as e:

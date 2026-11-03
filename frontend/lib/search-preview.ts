@@ -90,14 +90,21 @@ function clipFragment(fragment: string): string {
 }
 
 /** The sentence sharing the most words with the query (first one on ties). */
+const CJK_REGEX =
+  /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/u;
+
 export function bestSentence(text: string, query: string): string | null {
   const cleaned = text.trim();
   if (!cleaned) return null;
 
   const sentences = cleaned
-    .split(/(?<=[.!?])\s+|\n{2,}/)
+    .split(/(?<=[.!?])\s+|(?<=[。！？])\s*|\n{2,}/)
     .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length >= 20);
+    .filter(
+      (sentence) =>
+        sentence.length >= 20 ||
+        (CJK_REGEX.test(sentence) && sentence.length >= 8),
+    );
   const candidates = sentences.length > 0 ? sentences : [cleaned];
 
   const words = (value: string) =>
@@ -106,7 +113,17 @@ export function bestSentence(text: string, query: string): string | null {
   let best = candidates[0];
   let bestScore = -1;
   for (const sentence of candidates) {
-    const score = words(sentence).filter((word) => queryWords.has(word)).length;
+    const sLower = sentence.toLowerCase();
+    const sentenceWords = new Set(words(sentence));
+    let score = 0;
+    for (const queryWord of queryWords) {
+      if (
+        sentenceWords.has(queryWord) ||
+        (CJK_REGEX.test(queryWord) && sLower.includes(queryWord))
+      ) {
+        score++;
+      }
+    }
     if (score > bestScore) {
       best = sentence;
       bestScore = score;

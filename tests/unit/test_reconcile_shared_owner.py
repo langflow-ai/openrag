@@ -47,6 +47,7 @@ async def test_reconcile_shared_true_omits_owner_via_script():
 
     assert write_client.update_by_query.await_count >= 1
     call = write_client.update_by_query.await_args_list[0]
+    assert call.kwargs.get("refresh") is True
     body = call.kwargs["body"]
     assert body["query"]["bool"]["filter"][0] == {"term": {"filename": "report.pdf"}}
     params = body["script"]["params"]

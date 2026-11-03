@@ -156,6 +156,7 @@ async def update_document_acl(
                     },
                 },
             },
+            refresh=True,
         )
 
         # Visibility changed, so cached per-user suggestions may be wrong.
@@ -221,6 +222,7 @@ async def batch_update_acls(
                     },
                 },
             },
+            refresh=True,
         )
         for doc_id, acl in changed
     ]

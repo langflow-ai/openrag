@@ -120,6 +120,32 @@ describe("useSearchSuggestions", () => {
     expect(requests.every((r) => r.scoreThreshold === 2.5)).toBe(true);
   });
 
+  it("refetches when keywordThreshold changes for the same query", async () => {
+    const requests = serveSuggest();
+    const { rerender } = renderHook(
+      ({ threshold }) =>
+        useSearchSuggestions("docling", undefined, true, threshold),
+      {
+        wrapper: createQueryWrapper(),
+        initialProps: { threshold: 2.0 },
+      },
+    );
+
+    await waitFor(() =>
+      expect(
+        requests.some((r) => !r.semantic && r.scoreThreshold === 2.0),
+      ).toBe(true),
+    );
+
+    rerender({ threshold: 4.0 });
+
+    await waitFor(() =>
+      expect(
+        requests.some((r) => !r.semantic && r.scoreThreshold === 4.0),
+      ).toBe(true),
+    );
+  });
+
   it("lowers the threshold for a short single token like the main search", async () => {
     const requests = serveSuggest();
     renderHook(() => useSearchSuggestions("docl", undefined, true, 2.5), {
