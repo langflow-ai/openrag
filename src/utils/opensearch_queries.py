@@ -2,6 +2,8 @@
 Utility functions for constructing OpenSearch queries consistently.
 """
 
+import re
+
 
 def build_filename_query(filename: str) -> dict:
     """
@@ -118,6 +120,25 @@ def build_replace_filename_query(filename: str, owner: str) -> dict:
     }
 
 
+_PARTIAL_TIMESTAMP_RE = re.compile(
+    r"^(?P<date>\d{4}-\d{2}-\d{2})(?:T(?P<hm>\d{2}:\d{2}))?(?P<tz>Z|[+-]\d{2}:\d{2})?$"
+)
+
+
+def normalize_date_bound(value: str) -> str:
+    """Spell out the seconds a bound omits.
+
+    API validation reads ``2026-10-10`` as midnight and ``…T10:30`` as 10:30:00,
+    but OpenSearch expands the missing parts of an ``lte`` bound to the end of
+    that day or minute. Sending the explicit instant keeps both in agreement.
+    Full timestamps are returned unchanged.
+    """
+    match = _PARTIAL_TIMESTAMP_RE.match(value)
+    if match is None:
+        return value
+    return f"{match['date']}T{match['hm'] or '00:00'}:00{match['tz'] or 'Z'}"
+
+
 def build_date_range_query(
     field: str, gte: str | None = None, lte: str | None = None
 ) -> dict | None:
@@ -131,15 +152,52 @@ def build_date_range_query(
 
     Returns:
         A dict containing {"range": {field: {...}}} or None if both bounds are None.
+        Bounds that omit seconds are sent as explicit instants (see normalize_date_bound).
     """
     range_bounds: dict[str, str] = {}
     if gte is not None:
-        range_bounds["gte"] = gte
+        range_bounds["gte"] = normalize_date_bound(gte)
     if lte is not None:
-        range_bounds["lte"] = lte
+        range_bounds["lte"] = normalize_date_bound(lte)
     if not range_bounds:
         return None
     return {"range": {field: range_bounds}}
+
+
+_INNER_KNN_FILTER_ENGINES = frozenset({"lucene", "faiss", "jvector"})
+
+
+def supports_inner_knn_filter(field_def: dict | None) -> bool:
+    """True when the vector field's engine supports a filter inside the k-NN clause."""
+    method = field_def.get("method") if isinstance(field_def, dict) else None
+    engine = method.get("engine") if isinstance(method, dict) else None
+    return isinstance(engine, str) and engine.lower() in _INNER_KNN_FILTER_ENGINES
+
+
+def build_exact_filtered_knn_query(
+    field_name: str, field_def: dict | None, vector: list[float], filter_clauses: list[dict]
+) -> dict:
+    """Exact k-NN scoring over only the documents matching *filter_clauses*.
+
+    Used for engines that cannot filter inside the k-NN clause (nmslib), so the
+    filter is applied before neighbours are chosen rather than after.
+    """
+    method = field_def.get("method") if isinstance(field_def, dict) else None
+    space_type = method.get("space_type") if isinstance(method, dict) else None
+    return {
+        "script_score": {
+            "query": {"bool": {"filter": [{"exists": {"field": field_name}}, *filter_clauses]}},
+            "script": {
+                "source": "knn_score",
+                "lang": "knn",
+                "params": {
+                    "field": field_name,
+                    "query_value": vector,
+                    "space_type": space_type or "l2",
+                },
+            },
+        }
+    }
 
 
 FILTER_FIELD_MAPPING = {
