@@ -10,8 +10,8 @@ pytestmark = pytest.mark.openrag_skip_app_onboard
 
 
 @pytest.mark.asyncio
-async def test_docling_launcher_pins_patched_opentelemetry_api(monkeypatch, tmp_path):
-    """The transient uvx environment must not reintroduce the reported CVE."""
+async def test_docling_launcher_does_not_force_an_incompatible_otel_api(monkeypatch, tmp_path):
+    """Docling Serve 1.26 owns the compatible OpenTelemetry dependency set."""
     import tui.managers.docling_manager as manager_module
     import utils.paths
 
@@ -36,5 +36,4 @@ async def test_docling_launcher_pins_patched_opentelemetry_api(monkeypatch, tmp_
 
     assert started is True
     command = captured_popen.call_args.args[0]
-    opentelemetry_index = command.index("opentelemetry-api>=1.45.1,<2.0.0")
-    assert command[opentelemetry_index - 1] == "--with"
+    assert not any(argument.startswith("opentelemetry-api") for argument in command)
