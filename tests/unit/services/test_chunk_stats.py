@@ -227,6 +227,34 @@ async def test_an_ingested_file_gets_chunk_stats_in_its_result(ingest_path):
 
 
 @pytest.mark.asyncio
+async def test_collect_can_skip_the_refresh():
+    from services.chunk_stats import collect_chunk_stats
+
+    client = _client([{"text": "x", "page": 1}])
+
+    await collect_chunk_stats(
+        client, document_id="doc-1", ingest_path="openrag", index_name="documents", refresh=False
+    )
+
+    client.indices.refresh.assert_not_awaited()
+    client.search.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("ingest_path", "refreshed"), [("openrag", False), ("langflow", True)])
+async def test_only_langflow_ingests_refresh_before_reading_stats(ingest_path, refreshed):
+    """The OpenRAG writer refreshes on its final batch; Langflow's writes aren't refreshed."""
+    from services.chunk_stats import record_chunk_stats
+
+    client = _client([{"text": "hello", "page": 1}])
+    task = _file_task({"status": "indexed", "id": "hash-1", "ingest_path": ingest_path})
+
+    await record_chunk_stats(task, client=client)
+
+    assert client.indices.refresh.await_count == (1 if refreshed else 0)
+
+
+@pytest.mark.asyncio
 async def test_the_file_tasks_document_id_wins_over_the_result_id():
     from services.chunk_stats import record_chunk_stats
     from services.ingest_preview_service import document_chunks_query

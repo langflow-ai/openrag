@@ -30,6 +30,7 @@ import re
 import statistics
 import sys
 import time
+from collections.abc import Iterable
 from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -138,11 +139,17 @@ def build_cjk_pdf(target: Path) -> Path:
     return target
 
 
-def materialise_fixtures(repo: Path, workdir: Path) -> list[tuple[Fixture, Path]]:
-    """Each fixture's file on disk; derived ones are built into ``workdir``."""
+def materialise_fixtures(
+    repo: Path, workdir: Path, only: Iterable[str] | None = None
+) -> list[tuple[Fixture, Path]]:
+    """Each fixture's file on disk, or just those named in ``only``; derived
+    ones are built into ``workdir``."""
     workdir.mkdir(parents=True, exist_ok=True)
+    selected = set(only) if only else None
     files = []
     for fixture in FIXTURES:
+        if selected is not None and fixture.name not in selected:
+            continue
         if fixture.source is not None:
             path = repo / fixture.source
         elif fixture.derived_from is not None:
@@ -614,9 +621,7 @@ def main(argv: list[str] | None = None) -> int:
 
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out = (args.out or Path("~/.openrag/ingest-compare") / stamp).expanduser()
-    files = materialise_fixtures(repo, out / "fixtures")
-    if args.only:
-        files = [(f, p) for f, p in files if f.name in set(args.only)]
+    files = materialise_fixtures(repo, out / "fixtures", only=args.only)
 
     auth = (env.get("OPENSEARCH_USERNAME", "admin"), env.get("OPENSEARCH_PASSWORD", ""))
     with (

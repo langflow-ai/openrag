@@ -101,17 +101,24 @@ def compute_chunk_stats(
 
 
 async def collect_chunk_stats(
-    client: Any, *, document_id: str, ingest_path: str, index_name: str | None = None
+    client: Any,
+    *,
+    document_id: str,
+    ingest_path: str,
+    index_name: str | None = None,
+    refresh: bool = True,
 ) -> dict[str, Any]:
     """``compute_chunk_stats`` over one document's chunks as stored in the index.
 
-    Refreshes the index first so chunks written moments ago are searchable;
-    ``client`` needs that privilege (the platform writer client has it). Past
+    With ``refresh``, refreshes the index first so chunks written moments ago
+    are searchable; ``client`` needs that privilege (the platform writer client
+    has it). Past
     ``STATS_MAX_CHUNKS`` the stats cover the first chunks read and
     ``truncated`` is set; ``indexed_chunk_count`` is the full count.
     """
     index_name = index_name or get_index_name()
-    await client.indices.refresh(index=index_name)
+    if refresh:
+        await client.indices.refresh(index=index_name)
     response = await client.search(
         index=index_name,
         body={
@@ -171,7 +178,14 @@ async def record_chunk_stats(file_task: FileTask, *, client: Any = None) -> None
     ) as trace:
         try:
             stats = await asyncio.wait_for(
-                collect_chunk_stats(client, document_id=document_id, ingest_path=ingest_path),
+                collect_chunk_stats(
+                    client,
+                    document_id=document_id,
+                    ingest_path=ingest_path,
+                    # The OpenRAG writer already refreshed on its final batch;
+                    # nothing refreshes after Langflow's writes.
+                    refresh=ingest_path != "openrag",
+                ),
                 timeout=STATS_TIMEOUT_SECONDS,
             )
         except Exception as exc:

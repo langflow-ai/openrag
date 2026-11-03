@@ -33,6 +33,18 @@ def test_fixture_names_are_unique():
     assert len(names) == len(set(names))
 
 
+def test_only_builds_just_the_selected_fixtures(monkeypatch, tmp_path):
+    def unexpected_build(*_args):
+        raise AssertionError("built a fixture that wasn't selected")
+
+    monkeypatch.setattr(compare, "build_scanned_pdf", unexpected_build)
+    monkeypatch.setattr(compare, "build_cjk_pdf", unexpected_build)
+
+    files = compare.materialise_fixtures(REPO, tmp_path, only=["sample.md"])
+
+    assert [fixture.name for fixture, _ in files] == ["sample.md"]
+
+
 def test_tokens_split_cjk_into_characters_and_ignore_markup():
     assert compare.tokens("## The **Quick** | fox 42") == ["the", "quick", "fox", "42"]
     assert compare.tokens("東京は晴れ abc") == ["東", "京", "は", "晴", "れ", "abc"]
