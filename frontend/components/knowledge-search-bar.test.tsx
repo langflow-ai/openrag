@@ -64,7 +64,7 @@ async function renderBar() {
     </>,
     {
       providers: ["knowledgeFilter", "task", "brand"],
-      brand: "ibm_cloud",
+      brand: "oss",
     },
   );
   const input = await screen.findByRole("combobox");
