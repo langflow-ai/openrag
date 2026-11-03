@@ -688,11 +688,12 @@ class ChatService:
                     if first_user_msg
                     else "New chat"
                 )
+                persisted_metadata = conversation_state.get("_persisted_metadata", {})
 
                 conversations.append(
                     {
                         "response_id": response_id,
-                        "title": title,
+                        "title": persisted_metadata.get("title") or title,
                         "endpoint": "chat",
                         "messages": messages,
                         "created_at": conversation_state.get("created_at").isoformat()
@@ -703,7 +704,8 @@ class ChatService:
                         else None,
                         "previous_response_id": conversation_state.get("previous_response_id"),
                         "filter_id": conversation_state.get("filter_id"),
-                        "total_messages": len(messages),
+                        "total_messages": (persisted_metadata.get("total_messages") or 0)
+                        + len(messages),
                         "source": "in_memory",
                     }
                 )
@@ -948,7 +950,9 @@ class ChatService:
             ]
             langflow_deleted = bool(upstream_results) and all(upstream_results)
 
-            local_deleted = await delete_user_conversation(user_id, session_id)
+            local_deleted = await delete_user_conversation(
+                user_id, session_id, session_ids=session_ids
+            )
 
             if not local_deleted:
                 return {
@@ -981,7 +985,7 @@ class ChatService:
         for session_id in dict.fromkeys(session_ids):
             try:
                 owner = await session_ownership_service.get_session_owner(session_id)
-                if owner != user_id:
+                if owner is not None and owner != user_id:
                     logger.warning("bulk_delete: %s not owned by %s", session_id, user_id)
                     failed.append(session_id)
                     continue
