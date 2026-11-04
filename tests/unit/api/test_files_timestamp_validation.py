@@ -32,6 +32,10 @@ def test_accepts_extended_iso_forms(value):
         "20240101T000000",
         "2024-01-01T000000",
         "2024-13-01",
+        # Offset/Z without a time: fromisoformat misreads it as an hour offset.
+        "2024-01-01+05:00",
+        "2024-01-01-05:00",
+        "2024-01-01Z",
         "not-a-date",
         "",
     ],

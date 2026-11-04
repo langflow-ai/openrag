@@ -19,11 +19,22 @@ Sort-field notes
 
 from typing import Any
 
+from opensearchpy.exceptions import NotFoundError
+
 from config.settings import get_index_name
 from utils.logging_config import get_logger
 from utils.opensearch_queries import build_date_range_query
 
 logger = get_logger(__name__)
+
+
+def _is_index_not_found(exc: Exception) -> bool:
+    """True for a missing index (fresh install, nothing ingested yet)."""
+    return (
+        isinstance(exc, NotFoundError)
+        and exc.status_code == 404
+        and exc.error == "index_not_found_exception"
+    )
 
 # A file row is a (filename, document_id) pair: document_id is a content hash,
 # so identical content under two names is two rows. Missing values count as "".
@@ -161,6 +172,8 @@ class FileServiceV2:
 
             if is_opensearch_auth_error(e):
                 raise
+            if not _is_index_not_found(e):
+                raise
             return {
                 "files": [],
                 "total": 0,
@@ -272,6 +285,8 @@ class FileServiceV2:
             from utils.opensearch_utils import is_opensearch_auth_error
 
             if is_opensearch_auth_error(e):
+                raise
+            if not _is_index_not_found(e):
                 raise
             return {
                 "files": [],

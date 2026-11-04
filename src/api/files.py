@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from dependencies import get_current_user, get_file_service_v2, require_permission
+from dependencies import get_file_service_v2, require_permission
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -26,8 +26,7 @@ logger = get_logger(__name__)
 # strict_date_optional_time mapping on indexed_time rejects.
 _EXTENDED_ISO_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}"
-    r"(T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?)?"
-    r"(Z|[+-]\d{2}:\d{2})?$"
+    r"(T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})?)?$"
 )
 
 
@@ -128,7 +127,7 @@ async def list_files(
     created_after: str | None = Query(None, description=CREATED_AFTER_DESCRIPTION),
     created_before: str | None = Query(None, description=CREATED_BEFORE_DESCRIPTION),
     file_service=Depends(get_file_service_v2),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("knowledge:read:own")),
 ):
     """List ingested files with composite-aggregation pagination, filtering, and sorting."""
     _validate_date_range(created_after, created_before)
@@ -178,7 +177,7 @@ async def search_files(
     created_after: str | None = Query(None, description=CREATED_AFTER_DESCRIPTION),
     created_before: str | None = Query(None, description=CREATED_BEFORE_DESCRIPTION),
     file_service=Depends(get_file_service_v2),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("knowledge:read:own")),
 ):
     """Search files by name with fuzzy/partial matching (composite pagination)."""
     _validate_date_range(created_after, created_before)
