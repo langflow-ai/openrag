@@ -347,7 +347,7 @@ async def test_page_manifest_query_filters_indexed_time(monkeypatch):
     dated, undated = (
         call.kwargs["body"]["query"]["bool"]["filter"] for call in client.search.await_args_list
     )
-    assert {"range": {"indexed_time": {"gte": "2026-10-07T00:00:00Z"}}} in dated
+    assert {"range": {"indexed_time": {"gte": "2026-10-07T00:00:00.000000Z"}}} in dated
     assert not any("range" in clause for clause in undated)
 
 
