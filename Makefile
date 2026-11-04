@@ -150,15 +150,25 @@ check_tools: ## Verify required tools are installed with correct versions
 	@NODE_VERSION=$$(node --version | sed 's/v//'); \
 	NODE_MAJOR=$$(echo $$NODE_VERSION | cut -d. -f1); \
 	NODE_MINOR=$$(echo $$NODE_VERSION | cut -d. -f2); \
-	if [ "$$NODE_MAJOR" -lt 24 ] || { [ "$$NODE_MAJOR" -eq 24 ] && [ "$$NODE_MINOR" -lt 15 ]; }; then \
-		echo "$(RED)✗ Node.js $$NODE_VERSION found, but 24.15+ required$(NC)"; exit 1; \
+	if [ "$$NODE_MAJOR" -ne 24 ] || [ "$$NODE_MINOR" -lt 15 ]; then \
+		echo "$(RED)✗ Node.js $$NODE_VERSION found, but ^24.15.0 required (see frontend/.nvmrc)$(NC)"; exit 1; \
 	else \
 		echo "$(PURPLE)✓ Node.js $$NODE_VERSION$(NC)"; \
 	fi
-	@# Check npm
+	@# Check npm (must satisfy frontend/package.json engines: ^11.12.1)
 	@command -v npm >/dev/null 2>&1 || { echo "$(RED)✗ npm is not installed. Aborting.$(NC)"; exit 1; }
 	@NPM_VERSION=$$(npm --version 2>/dev/null || echo "unknown"); \
-	echo "$(PURPLE)✓ npm $$NPM_VERSION$(NC)"
+	NPM_MAJOR=$$(echo "$$NPM_VERSION" | cut -d. -f1); \
+	NPM_MINOR=$$(echo "$$NPM_VERSION" | cut -d. -f2); \
+	NPM_PATCH=$$(echo "$$NPM_VERSION" | cut -d. -f3 | cut -d- -f1); \
+	case "$$NPM_MAJOR.$$NPM_MINOR.$$NPM_PATCH" in \
+		*[!0-9.]*|.*|*..*|*.) echo "$(RED)✗ Could not determine npm version (got '$$NPM_VERSION'); ^11.12.1 required$(NC)"; exit 1;; \
+	esac; \
+	if [ "$$NPM_MAJOR" -ne 11 ] || [ "$$NPM_MINOR" -lt 12 ] || { [ "$$NPM_MINOR" -eq 12 ] && [ "$$NPM_PATCH" -lt 1 ]; }; then \
+		echo "$(RED)✗ npm $$NPM_VERSION found, but ^11.12.1 required. Install: npm install -g npm@11$(NC)"; exit 1; \
+	else \
+		echo "$(PURPLE)✓ npm $$NPM_VERSION$(NC)"; \
+	fi
 	@# Check container runtime
 	@command -v $(CONTAINER_RUNTIME) >/dev/null 2>&1 || { echo "$(RED)✗ $(CONTAINER_RUNTIME) is not installed. Aborting.$(NC)"; exit 1; }
 	@CONTAINER_VERSION=$$($(CONTAINER_RUNTIME) --version 2>/dev/null | head -1 || echo "unknown"); \
