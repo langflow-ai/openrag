@@ -68,6 +68,7 @@ class DocumentIndexContext:
     parser: str | None = None
     chunk_size: int | None = None
     chunk_overlap: int | None = None
+    indexed_time: str | None = None
     record_kind: str | None = None
     web_source_id: str | None = None
     web_page_id: str | None = None
@@ -138,7 +139,7 @@ class DocumentIndexWriter:
             dimensions=dimensions,
         )
 
-        now = datetime.datetime.now(datetime.UTC).isoformat()
+        now = context.indexed_time or datetime.datetime.now(datetime.UTC).isoformat()
         bulk_body: list[dict[str, Any]] = []
         for chunk in chunks:
             if len(chunk.vector) != dimensions:

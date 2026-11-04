@@ -5,6 +5,7 @@ import React, {
   type ReactNode,
   use,
   useCallback,
+  useMemo,
   useState,
 } from "react";
 import {
@@ -12,6 +13,16 @@ import {
   type FilterColor,
   type IconKey,
 } from "@/lib/filter-constants";
+import {
+  applySelection,
+  type DateRangeContext,
+  type DateRangeValue,
+  displayRangeFromSaved,
+  NO_DATE_RANGE,
+  parseSavedDateRange,
+  type SavedDateRange,
+  savedDateRangeOf,
+} from "@/lib/saved-date-range";
 
 interface KnowledgeFilter {
   id: string;
@@ -30,9 +41,14 @@ export interface ParsedQueryData {
     document_types: string[];
     owners: string[];
     connector_types: string[];
+    /** Saved inclusive UTC bounds on indexed_time; absent means any time. */
+    created_after?: string;
+    created_before?: string;
     document_ids?: string[];
     web_source_ids?: string[];
   };
+  /** Calendar days + timezone the saved bounds were picked in (display only). */
+  dateRangeContext?: DateRangeContext;
   limit: number;
   scoreThreshold: number;
   color: FilterColor;
@@ -58,6 +74,20 @@ interface KnowledgeFilterContextType {
   /** Filenames checked in the knowledge table; seeds data_sources on create. */
   selectedSources: string[];
   setSelectedSources: (sources: string[]) => void;
+  /**
+   * Effective date range for the file grid: the selected filter's saved range,
+   * unless the toolbar has overridden it. Overrides are temporary; they are
+   * saved only when the Knowledge Filter itself is saved.
+   */
+  dateRange: DateRangeValue | null;
+  setDateRange: (range: DateRangeValue | null) => void;
+  /** Saved range of the selected filter (what the editor starts from). */
+  savedDateRange: SavedDateRange;
+  /**
+   * UTC bounds used for retrieval. Unchanged saved ranges keep their exact
+   * saved bounds in any viewer timezone; a cleared range has neither bound.
+   */
+  effectiveDateRange: SavedDateRange;
 }
 
 const KnowledgeFilterContext = createContext<
@@ -92,14 +122,33 @@ export function KnowledgeFilterProvider({
   const [createMode, setCreateMode] = useState(false);
   const [queryOverride, setQueryOverride] = useState("");
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
+  // null = no toolbar override (use the saved range); NO_DATE_RANGE = "any time".
+  const [dateRangeOverride, setDateRangeOverride] =
+    useState<SavedDateRange | null>(null);
+
+  const savedDateRange = useMemo(
+    () => savedDateRangeOf(parsedFilterData),
+    [parsedFilterData],
+  );
+  const effectiveDateRange = dateRangeOverride ?? savedDateRange;
+  const dateRange = useMemo(
+    () => displayRangeFromSaved(effectiveDateRange),
+    [effectiveDateRange],
+  );
+  const setDateRange = (range: DateRangeValue | null) => {
+    setDateRangeOverride(applySelection(effectiveDateRange, range));
+  };
 
   const setSelectedFilter = (filter: KnowledgeFilter | null) => {
     setSelectedFilterState(filter);
+    // A temporary toolbar range never outlives the filter it was set against.
+    setDateRangeOverride(null);
 
     if (filter) {
       setCreateMode(false);
       try {
         const raw = JSON.parse(filter.query_data);
+        const saved = parseSavedDateRange(raw);
         // Normalize parsed data with defaults for missing fields
         // This handles filters created via API with incomplete queryData
         const parsed: ParsedQueryData = {
@@ -109,7 +158,12 @@ export function KnowledgeFilterProvider({
             document_types: raw.filters?.document_types ?? ["*"],
             owners: raw.filters?.owners ?? ["*"],
             connector_types: raw.filters?.connector_types ?? ["*"],
+            ...(saved.createdAfter && { created_after: saved.createdAfter }),
+            ...(saved.createdBefore && {
+              created_before: saved.createdBefore,
+            }),
           },
+          ...(saved.context && { dateRangeContext: saved.context }),
           limit: raw.limit ?? 10,
           scoreThreshold: raw.scoreThreshold ?? 0,
           color: raw.color ?? "zinc",
@@ -159,6 +213,10 @@ export function KnowledgeFilterProvider({
     setPanelMode("filters");
     setCreateMode(true);
     setSelectedFilterState(null);
+    // Only a range explicitly picked in the toolbar carries over; the selected
+    // filter's own saved range must not leak into a different filter.
+    const seeded = dateRangeOverride ?? NO_DATE_RANGE;
+    setDateRangeOverride(null);
     setParsedFilterData({
       query: "",
       filters: {
@@ -166,7 +224,10 @@ export function KnowledgeFilterProvider({
         document_types: ["*"],
         owners: ["*"],
         connector_types: ["*"],
+        ...(seeded.createdAfter && { created_after: seeded.createdAfter }),
+        ...(seeded.createdBefore && { created_before: seeded.createdBefore }),
       },
+      ...(seeded.context && { dateRangeContext: seeded.context }),
       limit: 10,
       scoreThreshold: 0,
       color: FILTER_COLORS[Math.floor(Math.random() * FILTER_COLORS.length)],
@@ -204,6 +265,10 @@ export function KnowledgeFilterProvider({
     setQueryOverride,
     selectedSources,
     setSelectedSources,
+    dateRange,
+    setDateRange,
+    savedDateRange,
+    effectiveDateRange,
   };
 
   return (

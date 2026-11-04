@@ -7,6 +7,7 @@ import {
   useSyncAllConnectors,
   useSyncAllConnectorsPreview,
 } from "@/app/api/mutations/useSyncConnector";
+import { KnowledgeDateRangeFilter } from "@/components/knowledge-date-range-filter";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 import { KnowledgeSearchToolbar } from "@/components/knowledge-search-toolbar";
@@ -175,6 +176,7 @@ export const KnowledgeSearchBar = ({
           </span>
         </Button>
       </RequirePermission>
+      <KnowledgeDateRangeFilter />
       <div className="ml-auto">
         <KnowledgeDropdown />
       </div>
@@ -244,6 +246,7 @@ export const KnowledgeSearchBar = ({
           Delete
         </Button>
       )}
+      <KnowledgeDateRangeFilter />
       <div className="ml-auto">
         <KnowledgeDropdown />
       </div>

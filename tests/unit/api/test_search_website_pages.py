@@ -303,3 +303,60 @@ async def test_knowledge_source_search_keeps_fetching_when_one_source_fills_cand
     body = json.loads(response.body)
     assert [result["filename"] for result in body["results"]] == ["First", "Second"]
     assert [call.kwargs["limit"] for call in search_service.search.await_args_list] == [100, 200]
+
+
+@pytest.mark.asyncio
+async def test_website_page_search_applies_date_bounds_to_every_manifest_lookup(monkeypatch):
+    source = {"id": "source-1", "owner_id": "user-1"}
+    search_service = type(
+        "SearchService", (), {"search": AsyncMock(return_value={"results": []})}
+    )()
+    list_pages = AsyncMock(return_value=[])
+    monkeypatch.setattr(search_api, "get_source_manifest", AsyncMock(return_value=source))
+    monkeypatch.setattr(search_api, "list_page_manifests", list_pages)
+    bounds = {"created_after": "2026-10-07T00:00:00Z", "created_before": "2026-10-10T23:59:59Z"}
+
+    for query in ("*", "guide"):
+        list_pages.reset_mock()
+        await _website_page_search_result(
+            SearchBody(
+                query=query,
+                filters={"web_source_ids": [source["id"]], **bounds},
+                resultMode="website_pages",
+            ),
+            type("User", (), {"user_id": source["owner_id"], "jwt_token": None})(),
+            search_service,
+        )
+        assert list_pages.await_count >= 1
+        for call in list_pages.await_args_list:
+            assert call.kwargs == bounds
+
+
+@pytest.mark.asyncio
+async def test_page_manifest_query_filters_indexed_time(monkeypatch):
+    from connectors.url import projection
+
+    client = type("Client", (), {"search": AsyncMock(return_value={"hits": {"hits": []}})})()
+    monkeypatch.setattr(projection.clients, "opensearch", client)
+
+    await projection.list_page_manifests(
+        "source-1", "guide", created_after="2026-10-07T00:00:00Z", created_before=None
+    )
+    await projection.list_page_manifests("source-1")
+
+    dated, undated = (
+        call.kwargs["body"]["query"]["bool"]["filter"] for call in client.search.await_args_list
+    )
+    assert {"range": {"indexed_time": {"gte": "2026-10-07T00:00:00Z"}}} in dated
+    assert not any("range" in clause for clause in undated)
+
+
+@pytest.mark.asyncio
+async def test_website_rows_carry_the_manifest_indexed_time():
+    from api.search import _website_page_chunk, _website_source_chunk
+
+    page = {"web_page_id": "p1", "indexed_time": "2026-10-08T10:00:00Z"}
+    source = {"id": "s1", "indexed_time": "2026-10-07T09:00:00Z"}
+
+    assert _website_page_chunk(page)["indexed_time"] == "2026-10-08T10:00:00Z"
+    assert _website_source_chunk(source, {})["indexed_time"] == "2026-10-07T09:00:00Z"
