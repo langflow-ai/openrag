@@ -201,15 +201,18 @@ def test_file_service_v2_groups_sources_by_document_id_not_display_name():
         sort_order="asc",
         after_key=None,
     )["aggs"]["files"]["composite"]["sources"]
-    terms_field = service._build_terms_aggregation_for_chunk_count(
+    terms = service._build_terms_aggregation_for_chunk_count(
         query=query,
         page_size=25,
         offset=0,
         sort_order="asc",
-    )["aggs"]["files"]["terms"]["field"]
+    )["aggs"]["files"]["terms"]
 
     assert composite_sources[-1]["document_id_tiebreak"]["terms"]["field"] == "document_id"
-    assert terms_field == "document_id"
+    # Buckets are (filename, document_id) pairs, so the display name alone never
+    # merges two documents and identical content under two names stays two rows.
+    assert "doc['document_id']" in terms["script"]["source"]
+    assert "doc['filename']" in terms["script"]["source"]
 
 
 def test_service_query_paths_do_not_apply_document_visibility_filters():

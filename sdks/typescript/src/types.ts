@@ -147,6 +147,10 @@ export interface ListFilesOptions {
   owner?: string;
   search?: string;
   after_key?: string;
+  /** ISO 8601 timestamp; return only files indexed on or after this instant. */
+  created_after?: string;
+  /** ISO 8601 timestamp; return only files indexed on or before this instant. */
+  created_before?: string;
 }
 
 // Chat history types

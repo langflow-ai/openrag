@@ -223,3 +223,7 @@ async def startup_tasks(services) -> None:
 
     # Update MCP server URLs and required global-var headers after flows and variables exist
     await _update_mcp_server_urls(services["langflow_mcp_service"])
+
+    from services.indexed_time_backfill import run_indexed_time_backfill
+
+    await run_indexed_time_backfill()

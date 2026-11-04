@@ -66,9 +66,10 @@ async function runSearch(
   query: string,
   data?: ParsedQueryData | null,
   displayOptions?: SearchResultDisplayOptions,
+  dateRange?: { createdAfter?: string; createdBefore?: string },
 ) {
   const rendered = renderHook(
-    () => useGetSearchQuery(query, data, undefined, displayOptions),
+    () => useGetSearchQuery(query, data, undefined, displayOptions, dateRange),
     {
       wrapper: createQueryWrapper(),
     },
@@ -466,6 +467,43 @@ describe("useGetSearchQuery", () => {
 
       // retry: false is set explicitly so errors show immediately.
       expect(calls).toBe(1);
+    });
+  });
+
+  describe("date bounds", () => {
+    const AFTER = "2026-10-07T07:00:00.000Z";
+    const BEFORE = "2026-10-11T06:59:59.999999Z";
+    const saved = () =>
+      queryData({
+        filters: {
+          data_sources: [],
+          document_types: ["application/pdf"],
+          owners: [],
+          connector_types: [],
+          created_after: AFTER,
+          created_before: BEFORE,
+        },
+      });
+
+    it("sends the effective bounds beside the PDF filter", async () => {
+      const seen = serveSearch({ results: [] });
+      await runSearch("term", saved(), undefined, {
+        createdAfter: AFTER,
+        createdBefore: BEFORE,
+      });
+      expect(seen.payload?.filters).toEqual({
+        document_types: ["application/pdf"],
+      });
+      expect(seen.payload?.created_after).toBe(AFTER);
+      expect(seen.payload?.created_before).toBe(BEFORE);
+    });
+
+    it("does not fall back to saved dates when the range was cleared", async () => {
+      const seen = serveSearch({ results: [] });
+      await runSearch("term", saved(), undefined, {});
+      expect(seen.payload?.created_after).toBeUndefined();
+      expect(seen.payload?.created_before).toBeUndefined();
+      expect(JSON.stringify(seen.payload)).not.toContain("created_");
     });
   });
 });

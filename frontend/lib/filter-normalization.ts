@@ -3,6 +3,9 @@ export interface FilterInput {
   document_types?: string[];
   owners?: string[];
   connector_types?: string[];
+  /** Inclusive UTC bounds on indexed_time (ISO 8601). */
+  created_after?: string;
+  created_before?: string;
   document_ids?: string[];
   web_source_ids?: string[];
 }
@@ -36,9 +39,22 @@ function normalizeSelectedFilters(
   };
 }
 
+function dateBound(value?: string): string | undefined {
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+/**
+ * Build the `filters` object for search/chat/nudge requests.
+ *
+ * Saved date bounds are included by default. The Knowledge page passes
+ * `includeDates: false` because it sends its effective bounds separately, so a
+ * cleared temporary range can never fall back to the saved one.
+ */
 export function buildSearchPayloadFilters(
   filters?: FilterInput,
+  options: { includeDates?: boolean } = {},
 ): FilterInput | undefined {
+  const { includeDates = true } = options;
   const normalized = normalizeSelectedFilters(filters);
   const payloadFilters: FilterInput = {};
 
@@ -53,6 +69,12 @@ export function buildSearchPayloadFilters(
   }
   if (normalized.connector_types.length > 0) {
     payloadFilters.connector_types = normalized.connector_types;
+  }
+  if (includeDates) {
+    const createdAfter = dateBound(filters?.created_after);
+    const createdBefore = dateBound(filters?.created_before);
+    if (createdAfter) payloadFilters.created_after = createdAfter;
+    if (createdBefore) payloadFilters.created_before = createdBefore;
   }
   if (normalized.document_ids.length > 0) {
     payloadFilters.document_ids = normalized.document_ids;
