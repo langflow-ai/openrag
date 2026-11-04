@@ -1,5 +1,5 @@
-import { type ClassValue, clsx } from "clsx";
-import { extendTailwindMerge } from "tailwind-merge";
+import { type ClassValue, clsx } from "cn";
+import { extendTailwindMerge } from "cn/config";
 
 // Mirror the custom `@theme` keys in app/globals.css. Without this,
 // tailwind-merge reads `text-mmd` as a text color and drops it when a later
