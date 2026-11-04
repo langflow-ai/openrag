@@ -103,7 +103,12 @@ async def test_service_buckets_by_local_day_and_keeps_all_time_total():
     assert {"term": {"connector_type": "local"}} in body["query"]["bool"]["filter"]
     window = body["aggs"]["window"]
     assert window["filter"] == {
-        "range": {"indexed_time": {"gte": "2024-05-01T00:00:00.000000Z", "lte": "2024-06-20T23:59:59.000000Z"}}
+        "range": {
+            "indexed_time": {
+                "gte": "2024-05-01T00:00:00.000000Z",
+                "lte": "2024-06-20T23:59:59.000000Z",
+            }
+        }
     }
     histogram = window["aggs"]["days"]["date_histogram"]
     assert histogram["time_zone"] == "Asia/Kolkata"

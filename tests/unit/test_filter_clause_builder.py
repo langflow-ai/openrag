@@ -3,7 +3,9 @@ import pytest
 from utils.opensearch_queries import build_filter_clauses
 
 RANGE = {
-    "range": {"indexed_time": {"gte": "2026-10-07T00:00:00.000000Z", "lte": "2026-10-10T23:59:59.999Z"}}
+    "range": {
+        "indexed_time": {"gte": "2026-10-07T00:00:00.000000Z", "lte": "2026-10-10T23:59:59.999Z"}
+    }
 }
 DATES = {"created_after": "2026-10-07T00:00:00Z", "created_before": "2026-10-10T23:59:59.999Z"}
 
