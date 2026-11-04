@@ -230,8 +230,11 @@ def diff_results(
             f"The baseline has no recall@{current['run']['primary_k']}, "
             f"so questions are compared on recall@{k}."
         )
+    # Notes are informational. Unlike warnings, they do not make the file scores
+    # incomparable, so the recall gate and baseline promotion ignore them.
+    notes: list[str] = []
     if "passage_mrr" in cur_overall and "passage_mrr" not in base_overall:
-        warnings.append(
+        notes.append(
             "The baseline has no passage scores, so only file scores are compared. "
             "Rerun the baseline to compare passages."
         )
@@ -246,6 +249,7 @@ def diff_results(
         "current_run_id": current["run"].get("run_id"),
         "compare_metrics": metrics,
         "warnings": warnings,
+        "notes": notes,
         "aggregate": aggregate,
         "regressed": regressed,
         "improved": improved,
@@ -387,7 +391,9 @@ def render_diff(diff: Mapping[str, Any]) -> str:
     ]
     for warning in diff["warnings"]:
         lines.append(f"> **Warning:** {warning}")
-    if diff["warnings"]:
+    for note in diff.get("notes", ()):
+        lines.append(f"> **Note:** {note}")
+    if diff["warnings"] or diff.get("notes"):
         lines.append("")
 
     lines += [f"### Regressed ({len(regressed)})", ""]

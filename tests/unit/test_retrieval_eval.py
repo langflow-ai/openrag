@@ -588,7 +588,19 @@ def test_diff_with_an_old_baseline_compares_file_scores_and_says_why() -> None:
 
     assert diff["unchanged"] == 1
     assert "passage_mrr" not in diff["aggregate"]
-    assert any("baseline has no passage scores" in w for w in diff["warnings"])
+    assert diff["warnings"] == []
+    assert any("baseline has no passage scores" in note for note in diff["notes"])
+    assert "> **Note:** The baseline has no passage scores" in report.render_diff(diff)
+
+
+def test_an_old_baseline_still_passes_the_gate_and_allows_promotion() -> None:
+    old = _results_with_recall(0.5)
+    same = make_results([with_passage(make_query("q", 0.5, 0.5, 0.5, 1), 1)])
+    better = make_results([with_passage(make_query("q", 1.0, 1.0, 1.0, 1), 1)])
+
+    assert report.recall_gate_failure(report.diff_results(old, same), 0.02) is None
+    promoted, reason = report.promotion_decision(old, better)
+    assert promoted, reason
 
 
 def test_render_diff_says_so_when_nothing_changed() -> None:
