@@ -158,7 +158,8 @@ OpenRAG's own pipeline and Langflow's. It then writes a side-by-side Markdown
 report of how each path chunked the same files.
 
 It runs against a local dev stack in no-auth mode, with the backend at
-`http://localhost:8000` and OpenSearch at `https://localhost:9200`. For each
+`http://localhost:8000` and OpenSearch at `https://localhost:9200`. Complete
+onboarding on the stack first: the script stops if it hasn't run. For each
 path it:
 
 1. deletes and reuses a dedicated index (`compare-openrag-documents`,

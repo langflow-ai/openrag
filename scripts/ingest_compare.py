@@ -280,8 +280,8 @@ class OpenRAG:
     def __init__(self, client: httpx.Client):
         self._client = client
 
-    def knowledge_settings(self) -> dict[str, Any]:
-        return _checked(self._client.get("/settings"))["knowledge"]
+    def settings(self) -> dict[str, Any]:
+        return _checked(self._client.get("/settings"))
 
     def update_settings(self, **body: Any) -> None:
         _checked(self._client.post("/settings", json=body))
@@ -381,7 +381,11 @@ def run_comparison(
     delete_indexes: bool = False,
 ) -> dict[str, Any]:
     """Ingest ``files`` through each path; the stack's settings are restored after."""
-    settings = api.knowledge_settings()
+    current = api.settings()
+    # /settings refuses updates until onboarding has run; stop before touching anything.
+    if not current.get("edited"):
+        raise ApiError("Complete onboarding on the stack before running the comparison")
+    settings = current["knowledge"]
     original = {
         "index_name": settings.get("index_name"),
         "disable_ingest_with_langflow": settings.get("disable_ingest_with_langflow"),
@@ -636,7 +640,9 @@ def main(argv: list[str] | None = None) -> int:
             delete_indexes=args.delete_indexes,
         )
 
-    (out / "results.json").write_text(json.dumps(results, indent=2, ensure_ascii=False))
+    (out / "results.json").write_text(
+        json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     report = out / "report.md"
     report.write_text(render_report(results), encoding="utf-8")
     print(report)

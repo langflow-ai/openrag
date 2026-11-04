@@ -158,7 +158,8 @@ import httpx  # noqa: E402
 class _FakeStack:
     """A backend that ingests into whatever index and mode /settings last set."""
 
-    def __init__(self, *, fail_upload=False):
+    def __init__(self, *, fail_upload=False, onboarded=True):
+        self.onboarded = onboarded
         self.settings = {"index_name": "documents", "disable_ingest_with_langflow": False}
         self.settings_posts: list[dict] = []
         self.deleted: list[str] = []
@@ -169,7 +170,11 @@ class _FakeStack:
     def backend(self, request: httpx.Request) -> httpx.Response:
         if request.url.path == "/settings" and request.method == "GET":
             return httpx.Response(
-                200, json={"knowledge": {**self.settings, "chunk_size": 1000, "ocr": True}}
+                200,
+                json={
+                    "edited": self.onboarded,
+                    "knowledge": {**self.settings, "chunk_size": 1000, "ocr": True},
+                },
             )
         if request.url.path == "/settings" and request.method == "POST":
             body = json.loads(request.content)
@@ -276,6 +281,18 @@ def test_settings_are_restored_when_a_run_fails(tmp_path):
         "index_name": "documents",
         "disable_ingest_with_langflow": False,
     }
+
+
+def test_a_stack_that_has_not_been_onboarded_is_left_untouched(tmp_path):
+    stack = _FakeStack(onboarded=False)
+    api, index = stack.clients()
+
+    with pytest.raises(compare.ApiError, match="onboarding"):
+        compare.run_comparison(api, index, _files(tmp_path, "a.txt"), poll_seconds=0)
+
+    assert stack.settings_posts == []
+    assert stack.deleted == []
+    assert stack.uploads == []
 
 
 def test_indexes_can_be_deleted_after_the_run(tmp_path):
