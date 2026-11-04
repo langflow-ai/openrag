@@ -275,11 +275,18 @@ async def _run_queries(
         )
         chunks = [metrics.Chunk(r.filename, r.text, r.score) for r in response.results]
         ranked = metrics.rank_files(chunks, run_prefix, corpus_names, query.expected_text)
+        scores = metrics.score_query(ranked, query.expected_files, args.k_values)
         snippet_found = None
+        passage: dict[str, Any] = {}
         if query.expected_text is not None:
             snippet_found = any(
                 item.snippet_found for item in ranked if item.filename in query.expected_files
             )
+            rank = metrics.passage_rank(
+                chunks, run_prefix, corpus_names, query.expected_files, query.expected_text
+            )
+            passage = {"passage_rank": rank}
+            scores.update(metrics.score_passage(rank, args.k_values))
         records.append(
             {
                 "id": query.id,
@@ -300,7 +307,8 @@ async def _run_queries(
                 ],
                 "expected_ranks": metrics.expected_ranks(ranked, query.expected_files),
                 "snippet_found": snippet_found,
-                "metrics": metrics.score_query(ranked, query.expected_files, args.k_values),
+                **passage,
+                "metrics": scores,
             }
         )
     return records
@@ -389,6 +397,7 @@ async def run(args: argparse.Namespace) -> int:
             "corpus_files": len(corpus_names),
             "corpus_hash": dataset.hash_corpus(args.corpus, corpus_names),
             "query_count": len(queries),
+            "passage_questions": sum(1 for query in queries if query.expected_text is not None),
             "queries_hash": dataset.hash_file(args.queries),
             "k_values": args.k_values,
             "primary_k": metrics.primary_k(args.k_values),

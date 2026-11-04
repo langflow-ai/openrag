@@ -205,6 +205,7 @@ def diff_results(
                 "baseline": _snippet_missing(base),
                 "current": _snippet_missing(cur),
             },
+            "passage": {"baseline": _passage(base), "current": _passage(cur)},
         }
         (improved if direction > 0 else regressed).append(entry)
 
@@ -228,6 +229,11 @@ def diff_results(
         warnings.append(
             f"The baseline has no recall@{current['run']['primary_k']}, "
             f"so questions are compared on recall@{k}."
+        )
+    if "passage_mrr" in cur_overall and "passage_mrr" not in base_overall:
+        warnings.append(
+            "The baseline has no passage scores, so only file scores are compared. "
+            "Rerun the baseline to compare passages."
         )
     if added or removed:
         warnings.append(
@@ -314,7 +320,17 @@ def _cell(text: object) -> str:
 def _label(metric: str) -> str:
     if metric in ("mrr", "reciprocal_rank"):
         return "MRR" if metric == "mrr" else "Reciprocal rank"
-    return metric.replace("ndcg", "nDCG")
+    if metric in ("passage_mrr", "passage_rr"):
+        return "Passage MRR" if metric == "passage_mrr" else "Passage reciprocal rank"
+    return metric.replace("ndcg", "nDCG").replace("passage_hit", "passage hit")
+
+
+def _passage(query: Mapping[str, Any]) -> str:
+    """Where the answer chunk ranked, for a question with an expected_text."""
+    if "passage_rank" not in query:
+        return "n/a"
+    rank = query["passage_rank"]
+    return "not returned" if rank is None else f"#{rank}"
 
 
 def _ranks(ranks: Mapping[str, int | None], snippet_missing: Sequence[str] = ()) -> str:
@@ -330,8 +346,10 @@ def _ranks(ranks: Mapping[str, int | None], snippet_missing: Sequence[str] = ())
 
 def _changed_table(entries: Sequence[Mapping[str, Any]], metrics: Sequence[str]) -> list[str]:
     lines = [
-        "| ID | Query | " + " | ".join(_label(m) for m in metrics) + " | Expected file ranks |",
-        "|---|---|" + "---|" * len(metrics) + "---|",
+        "| ID | Query | "
+        + " | ".join(_label(m) for m in metrics)
+        + " | Expected file ranks | Answer chunk rank |",
+        "|---|---|" + "---|" * len(metrics) + "---|---|",
     ]
     for entry in entries:
         cells = []
@@ -344,10 +362,12 @@ def _changed_table(entries: Sequence[Mapping[str, Any]], metrics: Sequence[str])
         missing = entry.get("snippet_missing", {})
         before = _ranks(ranks["baseline"], missing.get("baseline", ()))
         after = _ranks(ranks["current"], missing.get("current", ()))
+        passage = entry.get("passage", {})
         lines.append(
             f"| {_cell(entry['id'])} | {_cell(entry['query'])} | "
             + " | ".join(cells)
-            + f" | {_cell(before)} → {_cell(after)} |"
+            + f" | {_cell(before)} → {_cell(after)} "
+            + f"| {passage.get('baseline', 'n/a')} → {passage.get('current', 'n/a')} |"
         )
     return lines
 
@@ -434,8 +454,17 @@ def render_summary(results: Mapping[str, Any], diff: Mapping[str, Any] | None = 
         "|---|---|",
     ]
     lines += [f"| {_label(name)} | {value:.3f} |" for name, value in overall.items()]
+    if "passage_mrr" in overall:
+        lines += [
+            "",
+            f"Passage scores cover the {run.get('passage_questions', 'n/a')} of "
+            f"{run['query_count']} questions that have an expected_text. They rank the "
+            "first chunk holding that text among all chunks returned.",
+        ]
 
     if by_tag:
+        if f"passage_hit@{k}" in overall:
+            headline += [f"passage_hit@{k}", "passage_mrr"]
         lines += [
             "",
             "## By tag",
@@ -446,7 +475,8 @@ def render_summary(results: Mapping[str, Any], diff: Mapping[str, Any] | None = 
         for tag, scores in by_tag.items():
             lines.append(
                 f"| {_cell(tag)} | {scores['count']} | "
-                + " | ".join(f"{scores[m]:.3f}" for m in headline)
+                # A tag whose questions all lack an expected_text has no passage scores.
+                + " | ".join(f"{scores[m]:.3f}" if m in scores else "n/a" for m in headline)
                 + " |"
             )
 
@@ -454,15 +484,17 @@ def render_summary(results: Mapping[str, Any], diff: Mapping[str, Any] | None = 
     lines += ["", f"## Questions below full recall@{k} ({len(missed)})", ""]
     if missed:
         lines += [
-            f"| ID | Query | recall@{k} | Expected file ranks | Snippet found | Top files returned |",
-            "|---|---|---|---|---|---|",
+            f"| ID | Query | recall@{k} | Expected file ranks | Snippet found "
+            "| Answer chunk rank | Top files returned |",
+            "|---|---|---|---|---|---|---|",
         ]
         for q in missed:
             snippet = {True: "yes", False: "no", None: "n/a"}[q.get("snippet_found")]
             top = ", ".join(item["filename"] for item in q["ranked_files"][:3]) or "none"
             lines.append(
                 f"| {_cell(q['id'])} | {_cell(q['query'])} | {q['metrics'][f'recall@{k}']:.3f} "
-                f"| {_cell(_ranks(q['expected_ranks'], _snippet_missing(q)))} | {snippet} | {_cell(top)} |"
+                f"| {_cell(_ranks(q['expected_ranks'], _snippet_missing(q)))} | {snippet} "
+                f"| {_passage(q)} | {_cell(top)} |"
             )
     else:
         lines.append(f"Every question reached full recall@{k}.")
