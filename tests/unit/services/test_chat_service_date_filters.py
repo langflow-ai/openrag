@@ -12,7 +12,7 @@ from services.chat_service import ChatService
 
 HEADER = "X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"
 RANGE = {
-    "range": {"indexed_time": {"gte": "2026-10-07T07:00:00Z", "lte": "2026-10-11T06:59:59.999Z"}}
+    "range": {"indexed_time": {"gte": "2026-10-07T07:00:00.000000Z", "lte": "2026-10-11T06:59:59.999Z"}}
 }
 PDF = {"term": {"mimetype": "application/pdf"}}
 SAMPLE_EXCLUSION = {"bool": {"must_not": [{"term": {"is_sample_data": "true"}}]}}
