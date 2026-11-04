@@ -207,11 +207,10 @@ async def app(monkeypatch):
     ):
         return JSONResponse({"user_id": user.user_id})
 
-    from api.files import upload_histogram as real_upload_histogram
-    from dependencies import get_file_service_v2
-
     from api.files import list_files as real_list_files
     from api.files import search_files as real_search_files
+    from api.files import upload_histogram as real_upload_histogram
+    from dependencies import get_file_service_v2
 
     class _Histogram:
         async def upload_histogram(self, **_kwargs):

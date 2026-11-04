@@ -36,6 +36,7 @@ def _is_index_not_found(exc: Exception) -> bool:
         and exc.error == "index_not_found_exception"
     )
 
+
 # A file row is a (filename, document_id) pair: document_id is a content hash,
 # so identical content under two names is two rows. Missing values count as "".
 _FILE_IDENTITY_SCRIPT = (
