@@ -149,8 +149,9 @@ check_tools: ## Verify required tools are installed with correct versions
 	@command -v node >/dev/null 2>&1 || { echo "$(RED)✗ Node.js is not installed. Aborting.$(NC)"; exit 1; }
 	@NODE_VERSION=$$(node --version | sed 's/v//'); \
 	NODE_MAJOR=$$(echo $$NODE_VERSION | cut -d. -f1); \
-	if [ "$$NODE_MAJOR" -lt 18 ]; then \
-		echo "$(RED)✗ Node.js $$NODE_VERSION found, but 18+ required$(NC)"; exit 1; \
+	NODE_MINOR=$$(echo $$NODE_VERSION | cut -d. -f2); \
+	if [ "$$NODE_MAJOR" -lt 24 ] || { [ "$$NODE_MAJOR" -eq 24 ] && [ "$$NODE_MINOR" -lt 15 ]; }; then \
+		echo "$(RED)✗ Node.js $$NODE_VERSION found, but 24.15+ required$(NC)"; exit 1; \
 	else \
 		echo "$(PURPLE)✓ Node.js $$NODE_VERSION$(NC)"; \
 	fi
