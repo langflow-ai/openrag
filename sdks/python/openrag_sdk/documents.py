@@ -196,6 +196,8 @@ class DocumentsClient:
         owner: str | None = None,
         search: str | None = None,
         after_key: str | None = None,
+        created_after: str | None = None,
+        created_before: str | None = None,
     ) -> ListFilesResponse:
         """
         List ingested files with cursor-based composite-aggregation pagination (v2).
@@ -212,6 +214,10 @@ class DocumentsClient:
             search: Substring/prefix match against filename.
             after_key: JSON-encoded composite cursor from a previous response's
                 after_key field. Pass to fetch the next page.
+            created_after: ISO 8601 timestamp; return only files indexed on or
+                after this instant (e.g. "2024-01-01" or "2024-01-01T00:00:00Z").
+            created_before: ISO 8601 timestamp; return only files indexed on or
+                before this instant.
 
         Returns:
             ListFilesResponse with files list, approximate total, and next
@@ -233,6 +239,10 @@ class DocumentsClient:
             params["search"] = search
         if after_key is not None:
             params["after_key"] = after_key
+        if created_after is not None:
+            params["created_after"] = created_after
+        if created_before is not None:
+            params["created_before"] = created_before
 
         response = await self._client._request(
             "GET",

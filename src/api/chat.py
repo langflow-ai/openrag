@@ -4,6 +4,7 @@ from fastapi import Depends, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
+from api.files import validate_date_filter_bounds
 from dependencies import (
     get_chat_service,
     get_session_manager,
@@ -74,6 +75,7 @@ async def chat_endpoint(
     if body.filters:
         from auth_context import set_search_filters
 
+        validate_date_filter_bounds(body.filters)
         set_search_filters(body.filters)
 
     from auth_context import set_score_threshold, set_search_limit
@@ -130,6 +132,7 @@ async def langflow_endpoint(
     if body.filters:
         from auth_context import set_search_filters
 
+        validate_date_filter_bounds(body.filters)
         set_search_filters(body.filters)
 
     from auth_context import set_score_threshold, set_search_limit

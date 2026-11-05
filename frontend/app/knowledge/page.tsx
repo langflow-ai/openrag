@@ -132,6 +132,7 @@ const AG_FIELD_TO_SORT_BY: Record<string, string> = {
   mimetype: "mimetype",
   owner: "owner",
   chunkCount: "chunk_count",
+  indexed_time: "indexed_time",
   status: "status",
 };
 
@@ -440,6 +441,8 @@ function SearchPage() {
     queryOverride,
     selectedFilter,
     setSelectedSources,
+    dateRange,
+    effectiveDateRange,
   } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
 
@@ -578,12 +581,18 @@ function SearchPage() {
   const effectiveSearchText =
     queryOverride.trim() || parsedFilterData?.query?.trim() || "";
   const hasActiveFilters = parsedFilterData?.filters
-    ? buildSearchPayloadFilters(parsedFilterData.filters) !== undefined
+    ? buildSearchPayloadFilters(parsedFilterData.filters, {
+        includeDates: false,
+      }) !== undefined
     : false;
   const isWildcardQuery =
     (effectiveSearchText === "" || effectiveSearchText === "*") &&
     !hasActiveFilters;
   const filterPageResetKey = buildFilterPageResetKey(parsedFilterData);
+
+  // Retrieval uses the effective UTC bounds as-is; `dateRange` is display-only.
+  const createdAfter = effectiveDateRange.createdAfter;
+  const createdBefore = effectiveDateRange.createdBefore;
 
   const {
     data: listFilesData,
@@ -608,6 +617,8 @@ function SearchPage() {
       dataSources: listFilesFilterValues(
         parsedFilterData?.filters?.data_sources,
       ),
+      createdAfter,
+      createdBefore,
     },
     {
       refetchInterval: 5000,
@@ -625,6 +636,7 @@ function SearchPage() {
     parsedFilterData,
     { enabled: !isWildcardQuery },
     { resultMode: "knowledge_sources" },
+    { createdAfter, createdBefore },
   );
 
   const { files: searchFiles, warnings: searchWarnings } =
@@ -709,6 +721,8 @@ function SearchPage() {
     effectiveData,
     taskFiles,
     Boolean(selectedFilter),
+    dateRange,
+    { createdAfter, createdBefore },
   );
 
   const serverTotal = isWildcardQuery
@@ -720,7 +734,7 @@ function SearchPage() {
   useEffect(() => {
     cursorCacheRef.current = new Map();
     setCurrentPage(1);
-  }, [effectiveSearchText, filterPageResetKey]);
+  }, [effectiveSearchText, filterPageResetKey, createdAfter, createdBefore]);
 
   // when the server responds with an after_key for page N, cache it as the cursor for page N+1
   useEffect(() => {
@@ -921,6 +935,26 @@ function SearchPage() {
     comparator: serverSideComparator,
   };
 
+  const colIndexedTime: ColDef<File> = {
+    field: "indexed_time",
+    headerName: "Date Ingested",
+    ...(isCloudBrand ? { flex: 1.2, minWidth: 140 } : { minWidth: 130 }),
+    sortable: true,
+    comparator: serverSideComparator,
+    cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
+    valueFormatter: ({ value }: ValueFormatterParams<File>) => {
+      if (!value) return "—";
+      const d = new Date(value);
+      return Number.isNaN(d.getTime())
+        ? "—"
+        : d.toLocaleDateString(undefined, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          });
+    },
+  };
+
   const colChunks: ColDef<File> = {
     field: "chunkCount",
     headerName: "Chunks",
@@ -1022,6 +1056,7 @@ function SearchPage() {
         colSize,
         colType,
         colOwner,
+        colIndexedTime,
         colChunks,
         colAvgScore,
         colStatus,
@@ -1225,6 +1260,12 @@ function SearchPage() {
           onGridPreDestroyed={handleGridPreDestroyed}
           onSelectionChanged={onSelectionChanged}
           onSortChanged={onSortChanged}
+          {...(dateRange && serverTotal === 0
+            ? {
+                emptyTitle: "No results for the selected date range",
+                emptyDescription: "Try a wider range or clear the date filter.",
+              }
+            : {})}
         />
 
         <KnowledgePaginationFooter

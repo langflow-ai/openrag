@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+import datetime
 import time
 import uuid
 from typing import Any
@@ -83,6 +85,11 @@ class LangflowIngestTokenService:
 
     def create_token(self, context: DocumentIndexContext) -> str:
         now = int(time.time())
+        if context.indexed_time is None:
+            context = dataclasses.replace(
+                context,
+                indexed_time=datetime.datetime.fromtimestamp(now, datetime.UTC).isoformat(),
+            )
         jti = str(uuid.uuid4())
         payload = {
             "aud": self.audience,
@@ -169,6 +176,7 @@ class LangflowIngestTokenService:
             "chunk_size": context.chunk_size,
             "chunk_overlap": context.chunk_overlap,
             "connector_file_id": context.connector_file_id,
+            "indexed_time": context.indexed_time,
         }
 
     @staticmethod
@@ -206,4 +214,5 @@ class LangflowIngestTokenService:
             chunk_size=payload.get("chunk_size"),
             chunk_overlap=payload.get("chunk_overlap"),
             connector_file_id=payload.get("connector_file_id"),
+            indexed_time=payload.get("indexed_time"),
         )

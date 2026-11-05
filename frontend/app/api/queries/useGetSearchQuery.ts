@@ -16,6 +16,8 @@ export interface SearchPayload {
   limit: number;
   scoreThreshold: number;
   filters?: FilterInput;
+  created_after?: string;
+  created_before?: string;
   resultMode?: "chunks" | "knowledge_sources" | "website_pages";
 }
 
@@ -45,6 +47,7 @@ export interface ChunkResult {
   index?: number;
   allowed_users?: string[];
   allowed_groups?: string[];
+  indexed_time?: string;
   document_id?: string;
   web_source_id?: string;
   web_page_id?: string;
@@ -91,6 +94,7 @@ export interface File {
   chunks?: ChunkResult[];
   allowed_users?: string[];
   allowed_groups?: string[];
+  indexed_time?: string;
   document_id?: string;
   web_source_id?: string;
   web_page_id?: string;
@@ -150,6 +154,9 @@ export const useGetSearchQuery = (
     "queryKey" | "queryFn"
   >,
   displayOptions: SearchResultDisplayOptions = {},
+  // Effective UTC bounds from the caller. Saved dates inside `queryData` are
+  // deliberately not sent so a cleared temporary range cannot fall back to them.
+  dateRange?: { createdAfter?: string; createdBefore?: string },
 ) => {
   const queryClient = useQueryClient();
 
@@ -186,7 +193,15 @@ export const useGetSearchQuery = (
       };
       if (queryData?.filters) {
         searchPayload.filters =
-          buildSearchPayloadFilters(queryData.filters) ?? undefined;
+          buildSearchPayloadFilters(queryData.filters, {
+            includeDates: false,
+          }) ?? undefined;
+      }
+      if (dateRange?.createdAfter) {
+        searchPayload.created_after = dateRange.createdAfter;
+      }
+      if (dateRange?.createdBefore) {
+        searchPayload.created_before = dateRange.createdBefore;
       }
 
       const response = await apiClient.post(`/search`, searchPayload);
@@ -220,6 +235,7 @@ export const useGetSearchQuery = (
           embedding_dimensions?: number;
           allowed_users?: string[];
           allowed_groups?: string[];
+          indexed_time?: string;
           document_id?: string;
           web_source_id?: string;
           web_page_id?: string;
@@ -278,6 +294,7 @@ export const useGetSearchQuery = (
             embedding_dimensions: chunk.embedding_dimensions,
             allowed_users: chunk.allowed_users || [],
             allowed_groups: chunk.allowed_groups || [],
+            indexed_time: chunk.indexed_time,
             document_id: chunk.document_id,
             web_source_id: chunk.web_source_id,
             web_page_id: chunk.web_page_id,
@@ -307,6 +324,7 @@ export const useGetSearchQuery = (
         chunks: file.chunks,
         allowed_users: file.allowed_users || [],
         allowed_groups: file.allowed_groups || [],
+        indexed_time: file.indexed_time,
         document_id: file.document_id,
         web_source_id: file.web_source_id,
         web_page_id: file.web_page_id,
@@ -333,7 +351,7 @@ export const useGetSearchQuery = (
 
   return useQuery(
     {
-      queryKey: ["search", queryData, query, displayOptions],
+      queryKey: ["search", queryData, query, displayOptions, dateRange],
       placeholderData: (prev) => prev,
       staleTime: 0,
       queryFn: getFiles,
