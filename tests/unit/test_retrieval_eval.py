@@ -167,6 +167,63 @@ def test_expected_file_without_the_snippet_is_not_relevant() -> None:
     assert scores["reciprocal_rank"] == 0.0
 
 
+def test_passage_rank_finds_the_answer_chunk_below_the_files_first_chunk() -> None:
+    chunks = [
+        chunk("a.md", "Introduction to keys."),
+        chunk("b.md", "Signing secrets also rotate."),
+        chunk("a.md", "Keep the OVERLAP\n window short."),
+    ]
+
+    rank = metrics.passage_rank(chunks, PREFIX, CORPUS, ["a.md"], "overlap window")
+
+    # File recall gives a.md full marks at rank 1; the answer itself is chunk 3.
+    assert rank == 3
+    assert metrics.score_passage(rank, [1, 3, 5]) == {
+        "passage_hit@1": 0.0,
+        "passage_hit@3": 1.0,
+        "passage_hit@5": 1.0,
+        "passage_rr": pytest.approx(1 / 3),
+    }
+
+
+def test_passage_rank_ignores_the_text_in_files_that_are_not_expected() -> None:
+    chunks = [chunk("b.md", "overlap window"), chunk("a.md", "Nothing here.")]
+
+    rank = metrics.passage_rank(chunks, PREFIX, CORPUS, ["a.md"], "overlap window")
+
+    assert rank is None
+    assert metrics.score_passage(rank, [5]) == {"passage_hit@5": 0.0, "passage_rr": 0.0}
+
+
+def test_passage_rank_does_not_count_chunks_from_other_documents() -> None:
+    chunks = [
+        chunk("a.md", "overlap window", prefix="eval-other123-"),
+        chunk("stray.md", "overlap window"),
+        chunk("a.md", "overlap window"),
+    ]
+
+    assert metrics.passage_rank(chunks, PREFIX, CORPUS, ["a.md"], "overlap window") == 1
+
+
+def test_aggregate_averages_passage_scores_over_questions_that_have_them() -> None:
+    per_query = [
+        {"recall@5": 1.0, "passage_hit@5": 1.0, "passage_rr": 0.5},
+        {"recall@5": 0.0, "passage_hit@5": 0.0, "passage_rr": 0.0},
+        {"recall@5": 1.0},
+    ]
+    tags = [["semantic"], ["semantic"], ["semantic"]]
+
+    result: Any = metrics.aggregate(per_query, tags)
+
+    assert result["overall"] == {
+        "recall@5": pytest.approx(2 / 3),
+        "passage_hit@5": 0.5,
+        "passage_mrr": 0.25,
+    }
+    assert result["by_tag"]["semantic"]["count"] == 3
+    assert result["by_tag"]["semantic"]["passage_count"] == 2
+
+
 def test_primary_k_prefers_five_then_largest() -> None:
     assert metrics.primary_k([1, 3, 5, 10]) == 5
     assert metrics.primary_k([1, 3]) == 3
@@ -497,6 +554,53 @@ def test_diff_explains_a_drop_caused_by_a_missing_snippet() -> None:
 
     assert diff["regressed"][0]["snippet_missing"] == {"baseline": [], "current": ["a.md"]}
     assert "a.md: #1 → a.md: #1 (snippet not found)" in report.render_diff(diff)
+
+
+def with_passage(query: dict[str, Any], rank: int | None) -> dict[str, Any]:
+    query["expected_text"] = "overlap window"
+    query["passage_rank"] = rank
+    query["metrics"].update(metrics.score_passage(rank, [5]))
+    return query
+
+
+def test_summary_and_diff_show_the_answer_chunk_rank() -> None:
+    baseline = make_results([with_passage(make_query("q", 1.0, 1.0, 1.0, 1), 2)])
+    current = make_results(
+        [with_passage(make_query("q", 0.0, 0.0, 0.0, None), None)], passage_questions=1
+    )
+
+    summary = report.render_summary(current, report.diff_results(baseline, current))
+
+    assert "| Passage MRR | 0.000 |" in summary
+    assert "| passage hit@5 | 0.000 |" in summary
+    assert "cover the 1 of 1 questions that have an expected_text" in summary
+    assert "| semantic | 1 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 |" in summary
+    # The questions-below-recall table and the regressed table both show it.
+    assert "| n/a | not returned |" in summary
+    assert "| #2 → not returned |" in summary
+
+
+def test_diff_with_an_old_baseline_compares_file_scores_and_says_why() -> None:
+    baseline = make_results([make_query("q", 1.0, 1.0, 1.0, 1)])
+    current = make_results([with_passage(make_query("q", 1.0, 1.0, 1.0, 1), 3)])
+
+    diff = report.diff_results(baseline, current)
+
+    assert diff["unchanged"] == 1
+    assert "passage_mrr" not in diff["aggregate"]
+    assert diff["warnings"] == []
+    assert any("baseline has no passage scores" in note for note in diff["notes"])
+    assert "> **Note:** The baseline has no passage scores" in report.render_diff(diff)
+
+
+def test_an_old_baseline_still_passes_the_gate_and_allows_promotion() -> None:
+    old = _results_with_recall(0.5)
+    same = make_results([with_passage(make_query("q", 0.5, 0.5, 0.5, 1), 1)])
+    better = make_results([with_passage(make_query("q", 1.0, 1.0, 1.0, 1), 1)])
+
+    assert report.recall_gate_failure(report.diff_results(old, same), 0.02) is None
+    promoted, reason = report.promotion_decision(old, better)
+    assert promoted, reason
 
 
 def test_render_diff_says_so_when_nothing_changed() -> None:

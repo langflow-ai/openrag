@@ -6,6 +6,9 @@ on:
     - cron: '0 9 * * 1,4'
   workflow_dispatch: # Allow manual trigger
 
+permissions:
+  contents: read
+
 jobs:
   npm-audit:
     name: NPM Audit
@@ -19,7 +22,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Run npm audit
         working-directory: ${{ matrix.directory }}

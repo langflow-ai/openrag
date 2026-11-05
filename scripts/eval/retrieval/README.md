@@ -276,6 +276,29 @@ All three run from 0 to 1, and higher is better. Runs are compared on recall@5.
 If either run did not evaluate k=5, the comparison uses a cutoff both runs have
 and says so. Two runs with no cutoff in common cannot be compared.
 
+### Passage scores
+
+A file can rank first while the chunk that answers the question sits much
+lower. For every question with an `expected_text`, the harness also records
+the rank of the first returned chunk that comes from an expected file and
+contains that text. It counts every chunk this run uploaded, not just the first
+chunk of each file.
+
+| Metric | Meaning |
+|---|---|
+| passage hit@k | 1 when the answer chunk is in the top k chunks, otherwise 0 |
+| Passage MRR | 1 divided by the rank of the answer chunk, averaged over questions; 0 when no chunk holds the text |
+
+Chunks are matched on their text, not on chunk IDs, so passage scores can still
+be compared when the chunk size changes. Questions without an `expected_text`
+have no passage scores and are left out of these averages. The summary says how
+many questions the passage scores cover.
+
+Passage scores are reported for information. Questions are still classified as
+regressed or improved on the file scores above. A baseline written before
+passage scores existed still compares; the comparison notes that only file
+scores were compared.
+
 ## Results files
 
 Each run writes four files to the output directory: `results.json` and
@@ -295,7 +318,9 @@ Each run writes four files to the output directory: `results.json` and
 Each record in `queries` holds the question, its labels, the ranked files with
 the score of their first chunk, the rank of each expected file
 (`expected_ranks`, `null` when a file was not returned), whether the expected
-text was found, and the metrics for that question.
+text was found, the rank of the answer chunk (`passage_rank`, only for questions
+with an `expected_text`, `null` when no chunk held it), and the metrics for that
+question.
 
 ## Add or change a question
 
