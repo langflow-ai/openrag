@@ -5141,7 +5141,7 @@
   "endpoint_name": null,
   "id": "5488df7c-b93f-4f87-a446-b67028bc0813",
   "is_component": false,
-  "last_tested_version": "1.12.8",
+  "last_tested_version": "1.12.9rc1",
   "locked": true,
   "name": "OpenSearch Ingestion Flow",
   "tags": [
