@@ -199,6 +199,33 @@ async def test_collect_says_when_the_document_has_more_chunks_than_it_read():
     assert stats["indexed_chunk_count"] == 12_000
 
 
+@pytest.mark.asyncio
+async def test_collect_counts_tokens_off_the_event_loop(monkeypatch):
+    """Tokenising up to STATS_MAX_CHUNKS chunks is CPU work; it must not block the loop."""
+    import threading
+
+    from services import chunk_stats
+
+    loop_thread = threading.current_thread()
+    ran_on = []
+
+    def compute(chunks, *, ingest_path):
+        ran_on.append(threading.current_thread())
+        return {"chunk_count": len(list(chunks))}
+
+    monkeypatch.setattr(chunk_stats, "compute_chunk_stats", compute)
+
+    stats = await chunk_stats.collect_chunk_stats(
+        _client([{"text": "x", "page": 1}]),
+        ingest_run_id="run-1",
+        ingest_path="openrag",
+        index_name="documents",
+    )
+
+    assert stats["chunk_count"] == 1
+    assert ran_on and ran_on[0] is not loop_thread
+
+
 def _file_task(result, document_id=None):
     from models.tasks import FileTask, TaskStatus
 

@@ -45,6 +45,23 @@ def test_only_builds_just_the_selected_fixtures(monkeypatch, tmp_path):
     assert [fixture.name for fixture, _ in files] == ["sample.md"]
 
 
+def test_an_unknown_fixture_name_is_rejected(tmp_path):
+    with pytest.raises(ValueError, match="nope.pdf"):
+        compare.materialise_fixtures(REPO, tmp_path, only=["sample.md", "nope.pdf"])
+
+
+def test_an_unknown_only_name_stops_the_run_before_it_reaches_the_stack(monkeypatch, tmp_path):
+    def unexpected_comparison(*_args, **_kwargs):
+        raise AssertionError("touched the stack")
+
+    monkeypatch.setattr(compare, "run_comparison", unexpected_comparison)
+
+    with pytest.raises(SystemExit) as exit_info:
+        compare.main(["--only", "nope.pdf", "--out", str(tmp_path)])
+
+    assert exit_info.value.code == 2
+
+
 def test_tokens_split_cjk_into_characters_and_ignore_markup():
     assert compare.tokens("## The **Quick** | fox 42") == ["the", "quick", "fox", "42"]
     assert compare.tokens("東京は晴れ abc") == ["東", "京", "は", "晴", "れ", "abc"]

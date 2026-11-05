@@ -143,9 +143,13 @@ def materialise_fixtures(
     repo: Path, workdir: Path, only: Iterable[str] | None = None
 ) -> list[tuple[Fixture, Path]]:
     """Each fixture's file on disk, or just those named in ``only``; derived
-    ones are built into ``workdir``."""
-    workdir.mkdir(parents=True, exist_ok=True)
+    ones are built into ``workdir``. An unknown name in ``only`` is a
+    ``ValueError``."""
     selected = set(only) if only else None
+    unknown = sorted((selected or set()) - {fixture.name for fixture in FIXTURES})
+    if unknown:
+        raise ValueError(f"unknown fixture(s): {', '.join(unknown)}")
+    workdir.mkdir(parents=True, exist_ok=True)
     files = []
     for fixture in FIXTURES:
         if selected is not None and fixture.name not in selected:
@@ -248,6 +252,8 @@ def pick_samples(chunks: list[dict[str, Any]]) -> dict[str, dict[str, Any] | Non
 
 @dataclass(frozen=True)
 class IngestPath:
+    """One ingest path: the ``/settings`` mode that selects it and its comparison index."""
+
     name: str
     disable_ingest_with_langflow: bool
     index_name: str
@@ -266,6 +272,7 @@ class ApiError(RuntimeError):
 
 
 def _checked(response: httpx.Response) -> dict[str, Any]:
+    """The response's JSON body; an ``ApiError`` naming the request for an error status."""
     if response.is_error:
         raise ApiError(
             f"{response.request.method} {response.request.url.path} -> "
@@ -287,6 +294,7 @@ class OpenRAG:
         _checked(self._client.post("/settings", json=body))
 
     def upload(self, files: list[Path]) -> str:
+        """Upload ``files`` as one ingest task, replacing same-named documents; its task id."""
         with ExitStack() as stack:
             parts = [
                 (
@@ -307,6 +315,7 @@ class OpenRAG:
         return _checked(response)["task_id"]
 
     def wait(self, task_id: str, *, poll_seconds: float, timeout_seconds: float) -> dict:
+        """Poll the task until it finishes; an ``ApiError`` past ``timeout_seconds``."""
         deadline = time.monotonic() + timeout_seconds
         while True:
             task = _checked(self._client.get(f"/tasks/{task_id}"))
@@ -326,11 +335,13 @@ class Index:
         self._client = client
 
     def delete(self, index: str) -> None:
+        """Delete ``index``; one that doesn't exist is fine."""
         response = self._client.delete(f"/{index}")
         if response.status_code != 404:
             _checked(response)
 
     def chunks(self, index: str, filename: str) -> list[dict[str, Any]]:
+        """``filename``'s chunks in ``index`` (text and page), in page order."""
         body = {
             "size": 10_000,
             "query": {"term": {"filename": filename}},
@@ -350,6 +361,8 @@ def _ingest(
     poll_seconds: float,
     timeout_seconds: float,
 ) -> dict[str, dict[str, Any]]:
+    """Ingest ``files`` through ``path`` into a fresh index; per fixture, its outcome,
+    ``chunk_stats`` and chunks."""
     index.delete(path.index_name)
     api.update_settings(
         index_name=path.index_name,
@@ -481,6 +494,7 @@ def compare_document(doc: dict[str, Any]) -> dict[str, Any]:
 
 
 def render_report(results: dict[str, Any]) -> str:
+    """``run_comparison``'s results as the Markdown report: a summary, then each document."""
     names = [path.name for path in PATHS]
     a, b = names
     settings = results.get("settings") or {}
@@ -591,6 +605,7 @@ def render_report(results: dict[str, Any]) -> str:
 
 
 def _dotenv(repo: Path) -> dict[str, str]:
+    """``KEY=value`` pairs from the repository's ``.env``, if it has one."""
     values: dict[str, str] = {}
     env_file = repo / ".env"
     if env_file.is_file():
@@ -602,6 +617,7 @@ def _dotenv(repo: Path) -> dict[str, str]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the comparison and write ``results.json`` and ``report.md``; prints the report path."""
     repo = Path(__file__).resolve().parents[1]
     env = {**_dotenv(repo), **os.environ}
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -625,7 +641,10 @@ def main(argv: list[str] | None = None) -> int:
 
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out = (args.out or Path("~/.openrag/ingest-compare") / stamp).expanduser()
-    files = materialise_fixtures(repo, out / "fixtures", only=args.only)
+    try:
+        files = materialise_fixtures(repo, out / "fixtures", only=args.only)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     auth = (env.get("OPENSEARCH_USERNAME", "admin"), env.get("OPENSEARCH_PASSWORD", ""))
     with (

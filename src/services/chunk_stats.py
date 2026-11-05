@@ -132,8 +132,10 @@ async def collect_chunk_stats(
     chunks = [hit.get("_source") or {} for hit in hits.get("hits", [])]
     total = hits.get("total")
     indexed = total.get("value", len(chunks)) if isinstance(total, dict) else len(chunks)
+    # Token counting over up to STATS_MAX_CHUNKS chunks is CPU-bound; keep it off the loop.
+    stats = await asyncio.to_thread(compute_chunk_stats, chunks, ingest_path=ingest_path)
     return {
-        **compute_chunk_stats(chunks, ingest_path=ingest_path),
+        **stats,
         "indexed_chunk_count": indexed,
         "truncated": indexed > len(chunks),
     }

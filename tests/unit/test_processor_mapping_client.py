@@ -120,6 +120,7 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
         "id": "file-1",
         "chunk_count": 1,
         "ingest_path": "openrag",
+        "ingest_run_id": ANY,
     }
     assert mapping_clients == [admin_client]
     assert user_client.search_calls[0] == {
