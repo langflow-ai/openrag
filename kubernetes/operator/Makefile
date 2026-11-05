@@ -156,7 +156,7 @@ GOLANGCI_LINT        ?= $(LOCALBIN)/golangci-lint
 KUSTOMIZE_VERSION          ?= v5.4.3
 CONTROLLER_TOOLS_VERSION   ?= v0.16.4
 ENVTEST_VERSION            ?= release-0.19
-GOLANGCI_LINT_VERSION      ?= v2.11.4
+GOLANGCI_LINT_VERSION      ?= v2.13.0
 
 .PHONY: deps
 deps: controller-gen kustomize envtest golangci-lint ## Install all local tool dependencies into ./bin.

@@ -72,7 +72,9 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.11.4
+          # v2.13.0 adds Go 1.27 support; earlier releases are built with an
+          # older Go toolchain and reject this module's go directive.
+          version: v2.13.0
           working-directory: kubernetes/operator
 
   helm:
