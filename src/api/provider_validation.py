@@ -902,6 +902,11 @@ async def validate_provider_setup(
             f"Starting validation for provider: {provider_lower} (test_completion={test_completion})"
         )
 
+        # Foundry model probes use LiteLLM directly, so guard the configured
+        # endpoint here as well as in the Azure lightweight-health path.
+        if provider_lower == "azure" and supplied.get("api_base"):
+            _require_https_provider_endpoint(supplied["api_base"], "Azure")
+
         # A provider enhancement has no bespoke model probe of its own: a real
         # call through LiteLLM *is* its model probe, and it is what makes
         # switching to a model the cluster does not serve fail instead of saving
@@ -1252,6 +1257,13 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
         raise
 
 
+def _require_https_provider_endpoint(endpoint: str, provider: str) -> None:
+    """Reject credential-bearing provider endpoints that do not use HTTPS."""
+    parsed = urlparse(endpoint)
+    if parsed.scheme.lower() != "https" or not parsed.netloc:
+        raise ValueError(f"The {provider} endpoint must use HTTPS")
+
+
 async def _test_azure_lightweight_health(credentials: dict[str, str]) -> None:
     """Validate Azure OpenAI credentials without selecting or billing a deployment.
 
@@ -1267,6 +1279,7 @@ async def _test_azure_lightweight_health(credentials: dict[str, str]) -> None:
         raise ValueError("Azure credentials are required")
     if not api_base:
         raise ValueError("API Base is required")
+    _require_https_provider_endpoint(api_base, "Azure")
 
     if not access_token and credentials.get("client_secret"):
         tenant_id = credentials.get("tenant_id")
@@ -1435,6 +1448,7 @@ async def _test_watsonx_lightweight_health(api_key: str, endpoint: str, project_
     Does not consume credits by avoiding model inference requests.
     """
     try:
+        _require_https_provider_endpoint(endpoint, "watsonx")
         # Get bearer token from IBM IAM - this validates the API key without consuming credits
         async with httpx.AsyncClient() as client:
             token_response = await client.post(
@@ -1473,6 +1487,7 @@ async def _test_watsonx_completion_with_tools(
 ) -> None:
     """Test IBM Watson completion with tool calling."""
     try:
+        _require_https_provider_endpoint(endpoint, "watsonx")
         # Get bearer token from IBM IAM
         async with httpx.AsyncClient() as client:
             token_response = await client.post(
@@ -1567,6 +1582,7 @@ async def _test_watsonx_embedding(
 ) -> None:
     """Test IBM Watson embedding generation."""
     try:
+        _require_https_provider_endpoint(endpoint, "watsonx")
         # Get bearer token from IBM IAM
         async with httpx.AsyncClient() as client:
             token_response = await client.post(
