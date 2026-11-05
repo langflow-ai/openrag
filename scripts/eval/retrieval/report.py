@@ -205,6 +205,7 @@ def diff_results(
                 "baseline": _snippet_missing(base),
                 "current": _snippet_missing(cur),
             },
+            "passage": {"baseline": _passage(base), "current": _passage(cur)},
         }
         (improved if direction > 0 else regressed).append(entry)
 
@@ -229,6 +230,14 @@ def diff_results(
             f"The baseline has no recall@{current['run']['primary_k']}, "
             f"so questions are compared on recall@{k}."
         )
+    # Notes are informational. Unlike warnings, they do not make the file scores
+    # incomparable, so the recall gate and baseline promotion ignore them.
+    notes: list[str] = []
+    if "passage_mrr" in cur_overall and "passage_mrr" not in base_overall:
+        notes.append(
+            "The baseline has no passage scores, so only file scores are compared. "
+            "Rerun the baseline to compare passages."
+        )
     if added or removed:
         warnings.append(
             "The runs do not cover the same questions, so the aggregate deltas "
@@ -240,6 +249,7 @@ def diff_results(
         "current_run_id": current["run"].get("run_id"),
         "compare_metrics": metrics,
         "warnings": warnings,
+        "notes": notes,
         "aggregate": aggregate,
         "regressed": regressed,
         "improved": improved,
@@ -249,6 +259,64 @@ def diff_results(
     }
 
 
+def recall_drop(diff: Mapping[str, Any]) -> float:
+    """How far the average recall fell at the compared cutoff; 0 if it held or rose."""
+    name = diff["compare_metrics"][0]
+    return max(0.0, -diff["aggregate"][name]["delta"])
+
+
+def recall_gate_failure(diff: Mapping[str, Any], max_drop: float) -> str | None:
+    """Why the recall gate fails, or None when it passes.
+
+    The gate fails when the runs are not like for like, because a score that
+    held up between two different setups says nothing about the search.
+    """
+    if diff["warnings"]:
+        return "the runs are not comparable, so recall cannot be checked: " + " ".join(
+            diff["warnings"]
+        )
+    drop = recall_drop(diff)
+    if drop > max_drop:
+        return (
+            f"average {diff['compare_metrics'][0]} fell by {drop:.3f}, "
+            f"more than the allowed {max_drop:.3f}"
+        )
+    return None
+
+
+def promotion_decision(
+    baseline: Mapping[str, Any] | None,
+    current: Mapping[str, Any],
+    min_gain: float = 0.0,
+) -> tuple[bool, str]:
+    """Whether ``current`` should replace ``baseline`` as the reference.
+
+    Yes when there is no baseline yet, or when average recall at the compared
+    cutoff rose by more than ``min_gain``. A pair that is not like for like
+    (different corpus, questions, cutoffs or stack settings) is never promoted,
+    because the gain would not mean the search got better. A run that did not
+    record the stack settings is never promoted either, since later runs could
+    not tell whether they match it.
+    """
+    if not current.get("settings"):
+        return False, "this run did not record the stack settings, so it cannot be a baseline"
+    if baseline is None:
+        return True, "no baseline yet"
+    if not baseline.get("settings"):
+        return (
+            False,
+            "the baseline did not record the stack settings, so the runs cannot be compared",
+        )
+    diff = diff_results(baseline, current)
+    if diff["warnings"]:
+        return False, "the runs are not comparable: " + " ".join(diff["warnings"])
+    name = diff["compare_metrics"][0]
+    gain = diff["aggregate"][name]["delta"]
+    if gain > min_gain:
+        return True, f"average {name} rose by {gain:.3f}"
+    return False, f"average {name} changed by {gain:+.3f}, which is not above {min_gain:.3f}"
+
+
 def _cell(text: object) -> str:
     return str(text).replace("|", "\\|").replace("\n", " ")
 
@@ -256,7 +324,17 @@ def _cell(text: object) -> str:
 def _label(metric: str) -> str:
     if metric in ("mrr", "reciprocal_rank"):
         return "MRR" if metric == "mrr" else "Reciprocal rank"
-    return metric.replace("ndcg", "nDCG")
+    if metric in ("passage_mrr", "passage_rr"):
+        return "Passage MRR" if metric == "passage_mrr" else "Passage reciprocal rank"
+    return metric.replace("ndcg", "nDCG").replace("passage_hit", "passage hit")
+
+
+def _passage(query: Mapping[str, Any]) -> str:
+    """Where the answer chunk ranked, for a question with an expected_text."""
+    if "passage_rank" not in query:
+        return "n/a"
+    rank = query["passage_rank"]
+    return "not returned" if rank is None else f"#{rank}"
 
 
 def _ranks(ranks: Mapping[str, int | None], snippet_missing: Sequence[str] = ()) -> str:
@@ -272,8 +350,10 @@ def _ranks(ranks: Mapping[str, int | None], snippet_missing: Sequence[str] = ())
 
 def _changed_table(entries: Sequence[Mapping[str, Any]], metrics: Sequence[str]) -> list[str]:
     lines = [
-        "| ID | Query | " + " | ".join(_label(m) for m in metrics) + " | Expected file ranks |",
-        "|---|---|" + "---|" * len(metrics) + "---|",
+        "| ID | Query | "
+        + " | ".join(_label(m) for m in metrics)
+        + " | Expected file ranks | Answer chunk rank |",
+        "|---|---|" + "---|" * len(metrics) + "---|---|",
     ]
     for entry in entries:
         cells = []
@@ -286,10 +366,12 @@ def _changed_table(entries: Sequence[Mapping[str, Any]], metrics: Sequence[str])
         missing = entry.get("snippet_missing", {})
         before = _ranks(ranks["baseline"], missing.get("baseline", ()))
         after = _ranks(ranks["current"], missing.get("current", ()))
+        passage = entry.get("passage", {})
         lines.append(
             f"| {_cell(entry['id'])} | {_cell(entry['query'])} | "
             + " | ".join(cells)
-            + f" | {_cell(before)} → {_cell(after)} |"
+            + f" | {_cell(before)} → {_cell(after)} "
+            + f"| {passage.get('baseline', 'n/a')} → {passage.get('current', 'n/a')} |"
         )
     return lines
 
@@ -309,7 +391,9 @@ def render_diff(diff: Mapping[str, Any]) -> str:
     ]
     for warning in diff["warnings"]:
         lines.append(f"> **Warning:** {warning}")
-    if diff["warnings"]:
+    for note in diff.get("notes", ()):
+        lines.append(f"> **Note:** {note}")
+    if diff["warnings"] or diff.get("notes"):
         lines.append("")
 
     lines += [f"### Regressed ({len(regressed)})", ""]
@@ -376,8 +460,17 @@ def render_summary(results: Mapping[str, Any], diff: Mapping[str, Any] | None = 
         "|---|---|",
     ]
     lines += [f"| {_label(name)} | {value:.3f} |" for name, value in overall.items()]
+    if "passage_mrr" in overall:
+        lines += [
+            "",
+            f"Passage scores cover the {run.get('passage_questions', 'n/a')} of "
+            f"{run['query_count']} questions that have an expected_text. They rank the "
+            "first chunk holding that text among all chunks returned.",
+        ]
 
     if by_tag:
+        if f"passage_hit@{k}" in overall:
+            headline += [f"passage_hit@{k}", "passage_mrr"]
         lines += [
             "",
             "## By tag",
@@ -388,7 +481,8 @@ def render_summary(results: Mapping[str, Any], diff: Mapping[str, Any] | None = 
         for tag, scores in by_tag.items():
             lines.append(
                 f"| {_cell(tag)} | {scores['count']} | "
-                + " | ".join(f"{scores[m]:.3f}" for m in headline)
+                # A tag whose questions all lack an expected_text has no passage scores.
+                + " | ".join(f"{scores[m]:.3f}" if m in scores else "n/a" for m in headline)
                 + " |"
             )
 
@@ -396,15 +490,17 @@ def render_summary(results: Mapping[str, Any], diff: Mapping[str, Any] | None = 
     lines += ["", f"## Questions below full recall@{k} ({len(missed)})", ""]
     if missed:
         lines += [
-            f"| ID | Query | recall@{k} | Expected file ranks | Snippet found | Top files returned |",
-            "|---|---|---|---|---|---|",
+            f"| ID | Query | recall@{k} | Expected file ranks | Snippet found "
+            "| Answer chunk rank | Top files returned |",
+            "|---|---|---|---|---|---|---|",
         ]
         for q in missed:
             snippet = {True: "yes", False: "no", None: "n/a"}[q.get("snippet_found")]
             top = ", ".join(item["filename"] for item in q["ranked_files"][:3]) or "none"
             lines.append(
                 f"| {_cell(q['id'])} | {_cell(q['query'])} | {q['metrics'][f'recall@{k}']:.3f} "
-                f"| {_cell(_ranks(q['expected_ranks'], _snippet_missing(q)))} | {snippet} | {_cell(top)} |"
+                f"| {_cell(_ranks(q['expected_ranks'], _snippet_missing(q)))} | {snippet} "
+                f"| {_passage(q)} | {_cell(top)} |"
             )
     else:
         lines.append(f"Every question reached full recall@{k}.")

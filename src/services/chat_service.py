@@ -6,6 +6,7 @@ from auth_context import set_auth_context
 from config.settings import LANGFLOW_CHAT_FLOW_ID, LANGFLOW_URL, NUDGES_FLOW_ID, clients
 from utils.langflow_utils import fence_untrusted_text
 from utils.logging_config import get_logger
+from utils.opensearch_queries import build_filter_clauses
 
 logger = get_logger(__name__)
 
@@ -171,26 +172,7 @@ class ChatService:
         # Build the complete filter expression like the search service does
         filter_expression: dict[str, Any] = {}
         if filters:
-            filter_clauses = []
-            # Map frontend filter names to backend field names
-            field_mapping = {
-                "data_sources": "filename",
-                "document_types": "mimetype",
-                "owners": "owner",
-                "connector_types": "connector_type",
-            }
-
-            for filter_key, values in filters.items():
-                if values is not None and isinstance(values, list) and len(values) > 0:
-                    # Map frontend key to backend field name
-                    field_name = field_mapping.get(filter_key, filter_key)
-
-                    if len(values) == 1:
-                        # Single value filter
-                        filter_clauses.append({"term": {field_name: values[0]}})
-                    else:
-                        # Multiple values filter
-                        filter_clauses.append({"terms": {field_name: values}})
+            filter_clauses = build_filter_clauses(filters)
 
             if filter_clauses:
                 filter_expression["filter"] = filter_clauses
@@ -298,29 +280,9 @@ class ChatService:
         # Build the complete filter expression like the chat service does
         filter_expression: dict[str, Any] = {}
         has_user_filters = False
-        filter_clauses = []
+        filter_clauses = build_filter_clauses(filters)
 
         if filters:
-            # Map frontend filter names to backend field names
-            field_mapping = {
-                "data_sources": "filename",
-                "document_types": "mimetype",
-                "owners": "owner",
-                "connector_types": "connector_type",
-            }
-
-            for filter_key, values in filters.items():
-                if values is not None and isinstance(values, list) and len(values) > 0:
-                    # Map frontend key to backend field name
-                    field_name = field_mapping.get(filter_key, filter_key)
-
-                    if len(values) == 1:
-                        # Single value filter
-                        filter_clauses.append({"term": {field_name: values[0]}})
-                    else:
-                        # Multiple values filter
-                        filter_clauses.append({"terms": {field_name: values}})
-
             if filter_clauses:
                 has_user_filters = True
 
@@ -688,11 +650,12 @@ class ChatService:
                     if first_user_msg
                     else "New chat"
                 )
+                persisted_metadata = conversation_state.get("_persisted_metadata", {})
 
                 conversations.append(
                     {
                         "response_id": response_id,
-                        "title": title,
+                        "title": persisted_metadata.get("title") or title,
                         "endpoint": "chat",
                         "messages": messages,
                         "created_at": conversation_state.get("created_at").isoformat()
@@ -703,7 +666,8 @@ class ChatService:
                         else None,
                         "previous_response_id": conversation_state.get("previous_response_id"),
                         "filter_id": conversation_state.get("filter_id"),
-                        "total_messages": len(messages),
+                        "total_messages": (persisted_metadata.get("total_messages") or 0)
+                        + len(messages),
                         "source": "in_memory",
                     }
                 )
@@ -948,7 +912,9 @@ class ChatService:
             ]
             langflow_deleted = bool(upstream_results) and all(upstream_results)
 
-            local_deleted = await delete_user_conversation(user_id, session_id)
+            local_deleted = await delete_user_conversation(
+                user_id, session_id, session_ids=session_ids
+            )
 
             if not local_deleted:
                 return {
@@ -981,7 +947,7 @@ class ChatService:
         for session_id in dict.fromkeys(session_ids):
             try:
                 owner = await session_ownership_service.get_session_owner(session_id)
-                if owner != user_id:
+                if owner is not None and owner != user_id:
                     logger.warning("bulk_delete: %s not owned by %s", session_id, user_id)
                     failed.append(session_id)
                     continue

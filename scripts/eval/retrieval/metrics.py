@@ -3,7 +3,8 @@
 ``/v1/search`` returns chunks, but questions are labeled by file because chunk
 boundaries move whenever chunking changes. This module turns a ranked chunk
 list into a ranked list of unique files and scores it with recall@k,
-reciprocal rank and nDCG@k.
+reciprocal rank and nDCG@k. For questions with an ``expected_text`` it also
+scores the rank of the chunk that holds the answer.
 
 Standard library only, so it can be unit-tested without the SDK or a stack.
 """
@@ -139,11 +140,55 @@ def score_query(
     return {**recall, "reciprocal_rank": reciprocal_rank, **ndcg}
 
 
+def passage_rank(
+    chunks: Iterable[Chunk],
+    run_prefix: str,
+    corpus_names: Collection[str],
+    expected_files: Collection[str],
+    expected_text: str,
+) -> int | None:
+    """Rank of the first chunk that holds the answer, or None if no chunk does.
+
+    The answer chunk is a chunk of an expected file that contains
+    ``expected_text`` (case- and whitespace-insensitive). Ranks count only the
+    chunks of files this run uploaded, so stray documents never shift them.
+    Matching on text rather than chunk IDs keeps the rank meaningful when the
+    chunk size changes.
+    """
+    needle = _normalize(expected_text)
+    expected = set(expected_files)
+    position = 0
+    for chunk in chunks:
+        name = canonical_name(chunk.filename, run_prefix, corpus_names)
+        if name is None:
+            continue
+        position += 1
+        if name in expected and needle in _normalize(chunk.text):
+            return position
+    return None
+
+
+def score_passage(rank: int | None, k_values: Sequence[int] = DEFAULT_K_VALUES) -> dict[str, float]:
+    """Score one question on the rank of its answer chunk.
+
+    - ``passage_hit@k``: 1 if the answer chunk is in the top k chunks, else 0.
+    - ``passage_rr``: 1 / rank of the answer chunk, 0 if none was returned.
+    """
+    hits = {f"passage_hit@{k}": 1.0 if rank is not None and rank <= k else 0.0 for k in k_values}
+    return {**hits, "passage_rr": 1.0 / rank if rank is not None else 0.0}
+
+
+_MEAN_NAMES = {"reciprocal_rank": "mrr", "passage_rr": "passage_mrr"}
+
+
 def _mean_scores(rows: Sequence[Mapping[str, float]]) -> dict[str, float]:
+    # Passage scores exist only for questions with an expected_text, so each
+    # metric is averaged over the questions that have it.
+    keys = list(dict.fromkeys(key for row in rows for key in row))
     means: dict[str, float] = {}
-    for key in rows[0]:
-        name = "mrr" if key == "reciprocal_rank" else key
-        means[name] = sum(row[key] for row in rows) / len(rows)
+    for key in keys:
+        values = [row[key] for row in rows if key in row]
+        means[_MEAN_NAMES.get(key, key)] = sum(values) / len(values)
     return means
 
 
@@ -167,7 +212,13 @@ def aggregate(
             by_tag.setdefault(tag, []).append(scores)
     return {
         "overall": _mean_scores(per_query),
-        "by_tag": {
-            tag: {"count": len(rows), **_mean_scores(rows)} for tag, rows in sorted(by_tag.items())
-        },
+        "by_tag": {tag: _tag_scores(rows) for tag, rows in sorted(by_tag.items())},
     }
+
+
+def _tag_scores(rows: Sequence[Mapping[str, float]]) -> dict[str, float]:
+    scores: dict[str, float] = {"count": len(rows)}
+    passage_count = sum(1 for row in rows if "passage_rr" in row)
+    if passage_count:
+        scores["passage_count"] = passage_count
+    return {**scores, **_mean_scores(rows)}

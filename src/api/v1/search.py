@@ -11,6 +11,7 @@ from fastapi import Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from api.files import validate_date_filter_bounds
 from api.v1._filter_resolution import merge_filter_overrides, resolve_filter_id
 from auth_context import set_auth_context
 from dependencies import (
@@ -62,6 +63,8 @@ async def search_endpoint(
         resolved_filters, resolved_limit, resolved_score_threshold = merge_filter_overrides(
             resolved, body
         )
+
+    validate_date_filter_bounds(resolved_filters)
 
     logger.debug(
         "Public API search request",

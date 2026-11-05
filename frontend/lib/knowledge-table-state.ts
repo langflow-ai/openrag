@@ -188,6 +188,8 @@ export function buildKnowledgeTableRows(
   searchData: SearchFile[],
   taskFiles: TaskFile[],
   hasActiveFilter = false,
+  dateRange?: { from?: Date; to?: Date } | null,
+  bounds?: { createdAfter?: string; createdBefore?: string },
 ): SearchFile[] {
   const taskFilesAsFiles: SearchFile[] = taskFiles.map((taskFile) => {
     const normalizedFilename =
@@ -197,6 +199,7 @@ export function buildKnowledgeTableRows(
 
     return {
       filename: normalizedFilename,
+      indexed_time: taskFile.created_at || undefined,
       mimetype: taskFile.mimetype,
       source_url: taskFile.source_url || "",
       size: taskFile.size,
@@ -284,7 +287,55 @@ export function buildKnowledgeTableRows(
     return backendFiles;
   }
 
-  return [...backendFiles, ...filteredTaskFiles];
+  // Effective UTC bounds win over the display days so in-flight rows agree with
+  // the server results even when the range was saved in another timezone.
+  const boundFrom = bounds?.createdAfter
+    ? new Date(bounds.createdAfter).getTime()
+    : undefined;
+  const boundTo = bounds?.createdBefore
+    ? new Date(bounds.createdBefore).getTime()
+    : undefined;
+  const rangeFrom = dateRange?.from;
+  const rangeTo = dateRange?.to;
+  const useBounds = bounds !== undefined;
+  const hasRange = useBounds
+    ? boundFrom !== undefined || boundTo !== undefined
+    : Boolean(rangeFrom ?? rangeTo);
+  const dateFilteredTaskFiles = hasRange
+    ? filteredTaskFiles.filter((f) => {
+        if (!f.indexed_time) return true;
+        const d = new Date(f.indexed_time);
+        if (Number.isNaN(d.getTime())) return true;
+        if (useBounds) {
+          if (boundFrom !== undefined && d.getTime() < boundFrom) return false;
+          if (boundTo !== undefined && d.getTime() > boundTo) return false;
+          return true;
+        }
+        if (rangeFrom) {
+          const start = new Date(
+            rangeFrom.getFullYear(),
+            rangeFrom.getMonth(),
+            rangeFrom.getDate(),
+          );
+          if (d < start) return false;
+        }
+        if (rangeTo) {
+          const end = new Date(
+            rangeTo.getFullYear(),
+            rangeTo.getMonth(),
+            rangeTo.getDate(),
+            23,
+            59,
+            59,
+            999,
+          );
+          if (d > end) return false;
+        }
+        return true;
+      })
+    : filteredTaskFiles;
+
+  return [...backendFiles, ...dateFilteredTaskFiles];
 }
 
 export function buildActiveSourceOptions(

@@ -21,8 +21,30 @@ from typing import Any
 
 from config.settings import get_index_name
 from utils.logging_config import get_logger
+from utils.opensearch_queries import build_date_range_query
 
 logger = get_logger(__name__)
+
+# A file row is a (filename, document_id) pair: document_id is a content hash,
+# so identical content under two names is two rows. Missing values count as "".
+_FILE_IDENTITY_SCRIPT = (
+    "(doc['filename'].size() == 0 ? '' : doc['filename'].value) + params.separator + "
+    "(doc['document_id'].size() == 0 ? '' : doc['document_id'].value)"
+)
+
+
+def _file_identity_script() -> dict[str, Any]:
+    return {
+        "lang": "painless",
+        "source": _FILE_IDENTITY_SCRIPT,
+        # Painless has no "\\n" string escape, so the separator is a param.
+        "params": {"separator": "\n"},
+    }
+
+
+def _distinct_files_agg() -> dict[str, Any]:
+    return {"cardinality": {"script": _file_identity_script(), "precision_threshold": 3000}}
+
 
 _COMPOSITE_SORT_FIELDS: dict[str, str] = {
     "filename": "filename",
@@ -68,6 +90,8 @@ class FileServiceV2:
         search: str | None = None,
         after_key: dict | None = None,
         data_sources: list[str] | None = None,
+        created_after: str | None = None,
+        created_before: str | None = None,
     ) -> dict[str, Any]:
         """
         List files with server-side pagination via composite aggregation.
@@ -84,7 +108,14 @@ class FileServiceV2:
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
         query = self._build_filter_query(
-            user_id, connector_type, mimetype, owner, search, data_sources
+            user_id,
+            connector_type,
+            mimetype,
+            owner,
+            search,
+            data_sources,
+            created_after,
+            created_before,
         )
         total, is_approximate = await self._get_file_count(opensearch_client, query)
 
@@ -154,6 +185,59 @@ class FileServiceV2:
             "after_key": next_after_key,
         }
 
+    async def upload_histogram(
+        self,
+        user_id: str,
+        jwt_token: str = None,
+        start: str = "",
+        end: str = "",
+        time_zone: str = "UTC",
+        connector_type: list[str] | None = None,
+        mimetype: list[str] | None = None,
+        owner: list[str] | None = None,
+        data_sources: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Distinct files (filename + document_id, like the file list) per calendar day (in *time_zone*) within [start, end], plus the all-time total."""
+        opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+        query = self._build_filter_query(
+            user_id, connector_type, mimetype, owner, None, data_sources
+        )
+        # The window is a filter sub-agg rather than part of the query so the
+        # same request also yields the all-time total.
+        body = {
+            "size": 0,
+            "query": query,
+            "aggs": {
+                "total": _distinct_files_agg(),
+                "window": {
+                    "filter": build_date_range_query("indexed_time", gte=start, lte=end),
+                    "aggs": {
+                        "days": {
+                            "date_histogram": {
+                                "field": "indexed_time",
+                                "calendar_interval": "day",
+                                "time_zone": time_zone,
+                                "format": "yyyy-MM-dd",
+                                "min_doc_count": 1,
+                            },
+                            "aggs": {"files": _distinct_files_agg()},
+                        }
+                    },
+                },
+            },
+        }
+        result = await opensearch_client.search(index=get_index_name(), body=body)
+        aggs = result.get("aggregations", {})
+        buckets = aggs.get("window", {}).get("days", {}).get("buckets", [])
+        return {
+            "total": aggs.get("total", {}).get("value", 0),
+            "days": {
+                b["key_as_string"]: b.get("files", {}).get("value", 0)
+                for b in buckets
+                if b.get("key_as_string")
+            },
+        }
+
     async def _list_files_by_chunk_count(
         self,
         opensearch_client: Any,
@@ -220,6 +304,8 @@ class FileServiceV2:
         owner: list[str] | None = None,
         after_key: dict | None = None,
         data_sources: list[str] | None = None,
+        created_after: str | None = None,
+        created_before: str | None = None,
     ) -> dict[str, Any]:
         """Search files by name with fuzzy/prefix matching."""
         return await self.list_files(
@@ -235,6 +321,8 @@ class FileServiceV2:
             search=query,
             after_key=after_key,
             data_sources=data_sources,
+            created_after=created_after,
+            created_before=created_before,
         )
 
     def _build_filter_query(
@@ -245,6 +333,8 @@ class FileServiceV2:
         owner: list[str] | None = None,
         search: str | None = None,
         data_sources: list[str] | None = None,
+        created_after: str | None = None,
+        created_before: str | None = None,
     ) -> dict[str, Any]:
         def _effective_values(values: str | list[str] | None) -> list[str]:
             if values is None:
@@ -291,6 +381,12 @@ class FileServiceV2:
                 else {"terms": {"filename": effective_sources}}
             )
             filter_clauses.append(clause)
+
+        date_range_clause = build_date_range_query(
+            "indexed_time", gte=created_after, lte=created_before
+        )
+        if date_range_clause is not None:
+            filter_clauses.append(date_range_clause)
 
         if search:
             must.append(
@@ -457,7 +553,8 @@ class FileServiceV2:
             "aggs": {
                 "files": {
                     "terms": {
-                        "field": "document_id",
+                        # Same identity as _get_file_count, so totals and buckets agree.
+                        "script": _file_identity_script(),
                         "size": offset + page_size,
                         "order": {"sort_chunk_count": sort_order},
                     },
@@ -530,7 +627,7 @@ class FileServiceV2:
     async def _get_file_count(
         self, opensearch_client: Any, query: dict[str, Any]
     ) -> tuple[int, bool]:
-        """Approximate unique-document count via cardinality aggregation (O(1)).
+        """Approximate unique-file count (filename + document_id) via cardinality aggregation (O(1)).
 
         Returns (count, is_approximate).  is_approximate is always True on
         success (cardinality agg is inherently approximate) and True when the
@@ -539,14 +636,7 @@ class FileServiceV2:
         body = {
             "size": 0,
             "query": query,
-            "aggs": {
-                "file_count": {
-                    "cardinality": {
-                        "field": "document_id",
-                        "precision_threshold": 3000,
-                    }
-                }
-            },
+            "aggs": {"file_count": _distinct_files_agg()},
         }
         try:
             result = await opensearch_client.search(index=get_index_name(), body=body)
@@ -580,7 +670,8 @@ class FileServiceV2:
                     or (
                         bucket["key"].get("filename", "")
                         if isinstance(bucket["key"], dict)
-                        else bucket.get("key", "")
+                        # Script-grouped terms keys are "filename\ndocument_id".
+                        else str(bucket.get("key", "")).partition("\n")[0]
                     ),
                     "document_id": source.get("document_id", ""),
                     "mimetype": source.get("mimetype", ""),

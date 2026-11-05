@@ -3,7 +3,7 @@
 ![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.13+-blue.svg)
-![Node.js](https://img.shields.io/badge/node.js-18+-green.svg)
+![Node.js](https://img.shields.io/badge/node.js-24.x-green.svg)
 
 **Thank you for your interest in contributing to OpenRAG!** 🎉
 
@@ -77,10 +77,12 @@ If you're a first-time contributor, the [Development Workflows](#development-wor
 |------|---------|--------------|
 | Docker, Podman, or Colima | Latest | [Docker](https://docs.docker.com/get-docker/), [Podman](https://podman.io/getting-started/installation), or [Colima](https://github.com/abiosoft/colima) |
 | Python | 3.13+ | With [uv](https://github.com/astral-sh/uv) package manager |
-| Node.js | 18+ | With npm |
+| Node.js | 24.x (24.15+, see `frontend/.nvmrc`) | With npm 11.x (11.12.1+) |
 | Make | Any | Usually pre-installed on macOS/Linux |
 
 You only need one container runtime — pick whichever you're comfortable with. On macOS, most contributors use either Colima (lightweight, scriptable, no GUI) or Podman.
+
+`frontend/.nvmrc` pins only the major version, so `nvm use` can select an installed 24.x older than 24.15, which `make setup` rejects. To fix this, run `nvm install` from `frontend/` to get the latest 24.x. `nvm` only searches upward for `.nvmrc`, so these commands won't find it from the repository root.
 
 ### Colima Setup (macOS)
 

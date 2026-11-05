@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from config.settings import clients, get_index_name
+from utils.opensearch_queries import build_date_range_query
 
 SOURCE_MANIFEST_KIND = "web_source"
 PAGE_MANIFEST_KIND = "web_page_manifest"
@@ -104,13 +105,21 @@ async def get_page_index_metadata(document_id: str) -> dict[str, Any]:
     return dict(source) if isinstance(source, dict) else {}
 
 
-async def list_page_manifests(source_id: str, query: str = "") -> list[dict[str, Any]]:
+async def list_page_manifests(
+    source_id: str,
+    query: str = "",
+    created_after: str | None = None,
+    created_before: str | None = None,
+) -> list[dict[str, Any]]:
     if clients.opensearch is None:
         return []
     filters: list[dict[str, Any]] = [
         _exact("record_kind", PAGE_MANIFEST_KIND),
         _exact("web_source_id", source_id),
     ]
+    date_clause = build_date_range_query("indexed_time", gte=created_after, lte=created_before)
+    if date_clause is not None:
+        filters.append(date_clause)
     must: list[dict[str, Any]] = []
     if query.strip() and query.strip() != "*":
         value = query.strip().lower()
@@ -160,7 +169,13 @@ async def upsert_page_manifest(page: dict[str, Any]) -> None:
         "content_document_id": page.get("content_document_id") or page.get("document_id"),
         "record_kind": PAGE_MANIFEST_KIND,
         "connector_type": "url",
-        "indexed_time": datetime.now(UTC).isoformat(),
+        # Manifest-only writes (status changes, unchanged content, noindex) must
+        # not move a page into a newer date window: keep the last ingestion time.
+        "indexed_time": (
+            page.get("last_ingested_at")
+            or page.get("indexed_time")
+            or datetime.now(UTC).isoformat()
+        ),
     }
     await clients.opensearch.index(
         index=get_index_name(),
