@@ -6,6 +6,9 @@ on:
       - 'frontend/**'
       - '.github/workflows/lint-frontend.yml'
 
+permissions:
+  contents: read
+
 jobs:
   biome:
     name: Biome
