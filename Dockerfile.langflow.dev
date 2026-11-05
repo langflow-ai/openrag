@@ -1,23 +1,32 @@
-# Development Dockerfile for building Langflow from source
-# Allows building from any Git branch/repo for testing
+# syntax=docker/dockerfile:1.4
 
-FROM registry.access.redhat.com/ubi10/python-314-minimal AS builder
+# Development Dockerfile for building Langflow from any Git branch/repository.
+# Keep this in sync with Dockerfile.langflow; the source checkout and frontend
+# build below are the only intentional differences.
 
-# Install system dependencies using microdnf (UBI minimal package manager)
-USER 0
+# lxml's PyPI wheels statically bundle their own libxml2 (2.14.6 as of lxml
+# 6.1.3), which is vulnerable to CVE-2026-86140 (fixed upstream in 2.15.4).
+# Rebuild lxml from source so it links against RHEL's patched system libxml2
+# (2.12.5-10.el10_2.4) instead. Remove this workaround once Langflow ships
+# both fixes in its base dependencies.
+FROM registry.access.redhat.com/ubi10/python-314-minimal
 
-# Set environment variables
+USER root
+
 ENV PYTHONUNBUFFERED=1
 ENV RUSTFLAGS="--cfg reqwest_unstable"
 
-# Accept build arguments for git repository and branch
+# Accept build arguments for the Langflow source to test.
 ARG GIT_REPO=https://github.com/langflow-ai/langflow.git
 ARG GIT_BRANCH=main
 
 WORKDIR /app
 
+# Install the source-build toolchain and the patched runtime libraries. libxslt
+# is required by the source-built lxml wheel.
 RUN microdnf update -y \
     && microdnf install -y \
+    'libxml2 >= 2.12.5-10.el10_2.4' \
     gcc \
     gcc-c++ \
     make \
@@ -29,45 +38,83 @@ RUN microdnf update -y \
     npm \
     rust cargo pkgconf-pkg-config openssl-devel \
     python3.14-devel \
+    libxml2-devel \
+    libxslt \
+    libxslt-devel \
     && microdnf clean all \
     && rm -rf /var/cache/yum
 
-# Install uv for faster Python package management.
-# Upgrade pip first to patch CVE-2026-8643 (fixed in 26.1.2) in the base image.
+# Upgrade pip first to patch CVE-2026-8643 (fixed in 26.1.2) and install uv.
 RUN python -m ensurepip --upgrade \
     && python -m pip install --no-cache-dir --upgrade "pip>=26.1.2" \
     && python -m pip install --no-cache-dir uv
 
-# Clone the repository and checkout the specified branch
-RUN echo "Cloning ${GIT_REPO} branch ${GIT_BRANCH}..." && \
-    git clone --depth 1 --branch ${GIT_BRANCH} ${GIT_REPO} /app
+# Clone the selected Langflow branch.
+RUN echo "Cloning ${GIT_REPO} branch ${GIT_BRANCH}..." \
+    && git clone --depth 1 --branch "${GIT_BRANCH}" "${GIT_REPO}" /app
 
+# Patch the source before compiling the frontend, so the OpenRAG component
+# group is present in the built bundle.
 COPY scripts/patch_langflow_openrag_bundle.py /tmp/patch_langflow_openrag_bundle.py
 RUN python3 /tmp/patch_langflow_openrag_bundle.py /app/src/frontend/src/utils/styleUtils.ts
 
-# Install backend dependencies
+# Install backend dependencies before the frontend build.
 RUN uv sync --frozen --no-install-project --no-editable --extra postgresql
 
-# Build frontend (split into steps to reduce peak memory usage)
 WORKDIR /app/src/frontend
 ENV PUPPETEER_SKIP_DOWNLOAD=true
-# Install dependencies first
 RUN npm ci --maxsockets 1
-# Build with reduced memory - 4GB should be safer for most systems
 RUN NODE_OPTIONS="--max_old_space_size=4096 --max-semi-space-size=128" npm run build
-# Copy built frontend
-RUN mkdir -p /app/src/backend/base/langflow/frontend && \
-    cp -r build/* /app/src/backend/base/langflow/frontend/
 
-# Return to app directory and install the project
+# Install the branch itself plus the OpenRAG runtime integrations used by the
+# production image.
 WORKDIR /app
-RUN uv sync --frozen --no-dev --no-editable --extra postgresql
-RUN uv pip uninstall litellm ragstack-ai-knowledge-store
+RUN uv sync --frozen --no-dev --no-editable --extra postgresql \
+    && uv pip uninstall litellm ragstack-ai-knowledge-store \
+    && uv pip install \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        torch==2.13.0 \
+        torchvision==0.28.0 \
+        "transformers>=5.10.1,<6.0.0" \
+        "docling-core<3.0.0" \
+        "pypdf>=6.16.1,<7.0.0" \
+        openai \
+        langchain-openai \
+        anthropic \
+        langchain-anthropic \
+        google-generativeai \
+        langchain-google-genai \
+        langchain-ollama \
+        opensearch-py \
+        langfuse \
+        "ibm-watsonx-ai>=1.3.1,<2.0.0" \
+        "langchain-ibm~=1.1.0"
 
+# uv installs the branch as a non-editable package. Put the built frontend in
+# both the source tree and that installed package, which is where Langflow
+# resolves its static files at runtime.
+RUN frontend_dir="$(/app/.venv/bin/python -c 'from pathlib import Path; import langflow; print(Path(langflow.__file__).parent / "frontend")')" \
+    && mkdir -p /app/src/backend/base/langflow/frontend "${frontend_dir}" \
+    && cp -r /app/src/frontend/build/. /app/src/backend/base/langflow/frontend/ \
+    && cp -r /app/src/frontend/build/. "${frontend_dir}/"
+
+# Replace the binary lxml wheel after all installations so it remains linked
+# to the patched system libxml2. This is the source-build equivalent of the
+# lxml-build stage in Dockerfile.langflow.
+RUN lxml_version="$(uv pip show --python /app/.venv/bin/python lxml | awk '/^Version:/ {print $2}')" \
+    && uv pip install --python /app/.venv/bin/python --no-deps --reinstall \
+        --no-binary lxml "lxml==${lxml_version}"
+
+COPY flows/ /app/flows/
 COPY custom_components/ /app/custom_components/
 
-# Expose ports
-EXPOSE 7860
+# Match the production image's bind-mount permission handling. The entrypoint
+# drops from root to uid 1000, so the branch checkout and Gunicorn control
+# directory must also be writable by that user.
+RUN mkdir -p /app/langflow-data \
+    && chmod 0777 /app/langflow-data \
+    && chown -R 1000:0 /app
+COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
 
 ENV LANGFLOW_SSRF_ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal
 ENV LANGFLOW_LOG_TRACE_LOCALS=false
@@ -78,9 +125,11 @@ ENV LANGFLOW_ALLOW_CUSTOM_COMPONENTS=false
 ENV LANGFLOW_DANGEROUSLY_ALLOW_MULTI_WORKER_WITHOUT_SHARED_QUEUE=true
 ENV LANGFLOW_DISABLE_TRACK_APIKEY_USAGE=true
 
-# CWE-426 fix: explicitly set PATH so system-owned directories are always resolved
-# first. App venv and ubi python dirs are appended last so they cannot shadow system binaries.
+# CWE-426 fix: explicitly set PATH so system-owned directories are always
+# resolved first. App venv and UBI Python directories are appended last.
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/app/.venv/bin:/opt/app-root/bin:/opt/app-root/src/bin:/opt/app-root/src/.local/bin
 
-# Start the backend server
-CMD ["uv", "run", "langflow", "run", "--host", "0.0.0.0", "--port", "7860"]
+EXPOSE 7860
+
+ENTRYPOINT ["langflow-entrypoint"]
+CMD ["python", "-m", "langflow", "run", "--host", "0.0.0.0", "--port", "7860"]
