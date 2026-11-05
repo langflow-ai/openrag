@@ -1443,6 +1443,7 @@ async def _test_watsonx_lightweight_health(api_key: str, endpoint: str, project_
     Does not consume credits by avoiding model inference requests.
     """
     try:
+        _require_https_provider_endpoint(endpoint, "watsonx")
         # Get bearer token from IBM IAM - this validates the API key without consuming credits
         async with httpx.AsyncClient() as client:
             token_response = await client.post(
