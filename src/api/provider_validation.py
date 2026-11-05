@@ -902,6 +902,11 @@ async def validate_provider_setup(
             f"Starting validation for provider: {provider_lower} (test_completion={test_completion})"
         )
 
+        # Foundry model probes use LiteLLM directly, so guard the configured
+        # endpoint here as well as in the Azure lightweight-health path.
+        if provider_lower == "azure" and supplied.get("api_base"):
+            _require_https_provider_endpoint(supplied["api_base"], "Azure")
+
         # A provider enhancement has no bespoke model probe of its own: a real
         # call through LiteLLM *is* its model probe, and it is what makes
         # switching to a model the cluster does not serve fail instead of saving

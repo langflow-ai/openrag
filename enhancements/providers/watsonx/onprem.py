@@ -779,8 +779,6 @@ async def list_cluster_models(credentials: Mapping[str, Any]) -> ClusterModels |
         )
         return None
 
-    _require_https_api_base(api_base)
-
     headers = {"Authorization": header, "Accept": "application/json"}
     url = model_specs_url(api_base)
     # Only the first request needs parameters built here; a `next` link already
@@ -788,6 +786,7 @@ async def list_cluster_models(credentials: Mapping[str, Any]) -> ClusterModels |
     params: dict[str, Any] | None = model_specs_params(limit=MODELS_PAGE_LIMIT)
     resources: list[Any] = []
     try:
+        _require_https_api_base(api_base)
         async with httpx.AsyncClient(verify=ssl_verify(credentials), timeout=15.0) as client:
             for _ in range(MAX_MODEL_PAGES):
                 response = await client.get(url, headers=headers, params=params)

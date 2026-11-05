@@ -544,7 +544,12 @@ async def test_health_check_uses_the_saved_tls_policy(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_space_listing_rejects_cleartext_credentials() -> None:
+async def test_space_listing_rejects_cleartext_credentials(monkeypatch) -> None:
+    def unexpected_client(*args, **kwargs):
+        raise AssertionError("HTTP client must not be created")
+
+    monkeypatch.setattr("httpx.AsyncClient", unexpected_client)
+
     with pytest.raises(ValueError, match="must use HTTPS"):
         await watsonx_onprem.list_spaces(
             {
@@ -553,6 +558,44 @@ async def test_space_listing_rejects_cleartext_credentials() -> None:
                 "api_key": "APIKEY",
             }
         )
+
+
+@pytest.mark.asyncio
+async def test_onprem_health_check_rejects_http_before_request(monkeypatch) -> None:
+    def unexpected_client(*args, **kwargs):
+        raise AssertionError("HTTP client must not be created")
+
+    monkeypatch.setattr("httpx.AsyncClient", unexpected_client)
+
+    with pytest.raises(ValueError, match="must use HTTPS"):
+        await watsonx_onprem.lightweight_health_check(
+            {
+                "api_base": "http://cpd.example.com",
+                "username": "cpduser",
+                "api_key": "APIKEY",
+            }
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("lister", ["fetch_models", "list_cluster_models"])
+async def test_onprem_model_discovery_rejects_http_without_request(
+    monkeypatch, lister, _forget_cluster_models
+) -> None:
+    def unexpected_client(*args, **kwargs):
+        raise AssertionError("HTTP client must not be created")
+
+    monkeypatch.setattr("httpx.AsyncClient", unexpected_client)
+
+    result = await getattr(watsonx_onprem, lister)(
+        {
+            "api_base": "http://cpd.example.com",
+            "username": "cpduser",
+            "api_key": "APIKEY",
+        }
+    )
+
+    assert result is None
 
 
 @pytest.mark.asyncio

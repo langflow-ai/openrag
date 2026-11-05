@@ -11,6 +11,9 @@ from api.provider_validation import (
     _http_request_with_retry,
     _test_azure_lightweight_health,
     _test_openai_lightweight_health,
+    _test_watsonx_completion_with_tools,
+    _test_watsonx_embedding,
+    _test_watsonx_lightweight_health,
     validate_provider_setup,
 )
 
@@ -183,6 +186,116 @@ async def test_azure_foundry_lightweight_health_checks_endpoint_and_key(monkeypa
 async def test_azure_lightweight_health_rejects_missing_credentials():
     with pytest.raises(ValueError, match="Azure credentials are required"):
         await _test_azure_lightweight_health({"api_base": "https://example.openai.azure.com"})
+
+
+@pytest.mark.asyncio
+async def test_azure_lightweight_health_rejects_http_before_request(monkeypatch):
+    retry = AsyncMock(side_effect=AssertionError("HTTP request must not be sent"))
+    monkeypatch.setattr("api.provider_validation._http_request_with_retry", retry)
+
+    with pytest.raises(ValueError, match="Azure endpoint must use HTTPS"):
+        await _test_azure_lightweight_health(
+            {"api_key": "azure-key", "api_base": "http://example.openai.azure.com"}
+        )
+
+    retry.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_azure_foundry_model_probe_rejects_http_before_litellm(monkeypatch):
+    litellm_probe = AsyncMock(side_effect=AssertionError("LiteLLM request must not be sent"))
+    monkeypatch.setattr("api.provider_validation._test_litellm_provider", litellm_probe)
+
+    with pytest.raises(ValueError, match="Azure endpoint must use HTTPS"):
+        await validate_provider_setup(
+            provider="azure",
+            llm_model="gpt-4.1",
+            credentials={
+                "api_key": "azure-key",
+                "api_base": "http://example.services.ai.azure.com/",
+            },
+        )
+
+    litellm_probe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "probe,args",
+    [
+        (_test_watsonx_lightweight_health, ("ibm-key", "http://wx.example.com", "project")),
+        (
+            _test_watsonx_completion_with_tools,
+            ("ibm-key", "model", "http://wx.example.com", "project"),
+        ),
+        (
+            _test_watsonx_embedding,
+            ("ibm-key", "embedding-model", "http://wx.example.com", "project"),
+        ),
+    ],
+)
+async def test_watsonx_probes_reject_http_before_request(monkeypatch, probe, args):
+    def unexpected_client(*args, **kwargs):
+        raise AssertionError("HTTP client must not be created")
+
+    monkeypatch.setattr("api.provider_validation.httpx.AsyncClient", unexpected_client)
+
+    with pytest.raises(ValueError, match="watsonx endpoint must use HTTPS"):
+        await probe(*args)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "probe,args,provider_url,provider_response",
+    [
+        (
+            _test_watsonx_lightweight_health,
+            ("ibm-key", "https://wx.example.com", "project"),
+            None,
+            None,
+        ),
+        (
+            _test_watsonx_completion_with_tools,
+            ("ibm-key", "model", "https://wx.example.com", "project"),
+            "https://wx.example.com/ml/v1/text/chat",
+            {"results": []},
+        ),
+        (
+            _test_watsonx_embedding,
+            ("ibm-key", "embedding-model", "https://wx.example.com", "project"),
+            "https://wx.example.com/ml/v1/text/embeddings",
+            {"results": [{"embedding": [0.1]}]},
+        ),
+    ],
+)
+async def test_watsonx_https_probes_keep_existing_requests(
+    monkeypatch, probe, args, provider_url, provider_response
+):
+    from unittest.mock import Mock
+
+    class Client:
+        def __init__(self, response):
+            self.post = AsyncMock(return_value=response)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    iam = Client(httpx.Response(200, json={"access_token": "bearer"}))
+    provider_client = Client(httpx.Response(200, json=provider_response or {}))
+    clients = [iam] if provider_url is None else [iam, provider_client]
+    client_factory = Mock(side_effect=clients)
+    monkeypatch.setattr("api.provider_validation.httpx.AsyncClient", client_factory)
+
+    await probe(*args)
+
+    assert iam.post.await_args.args[0] == "https://iam.cloud.ibm.com/identity/token"
+    assert iam.post.await_args.kwargs["data"]["apikey"] == "ibm-key"
+    if provider_url:
+        assert provider_client.post.await_args.args[0] == provider_url
+        assert provider_client.post.await_args.kwargs["headers"]["Authorization"] == "Bearer bearer"
 
 
 @pytest.mark.asyncio
