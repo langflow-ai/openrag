@@ -1,195 +1,1415 @@
-# OpenRAG Operator Makefile
-#
-# Go version: managed via gvm.  The Makefile auto-selects go1.26.4 when found
-# under ~/.gvm/gos/go1.26.4, otherwise falls back to whatever 'go' is in PATH.
-#
-# Quick start:
-#   make deps            # install controller-gen, kustomize, envtest into ./bin
-#   make manifests       # generate CRD + RBAC YAML under config/
-#   make generate        # regenerate zz_generated.deepcopy.go
-#   make generate-client # generate typed clientsets, listers, and informers
-#   make build           # compile the operator binary
+# Environment file location (can be overridden via command line)
+ENV_FILE ?= .env
 
-# Image to push/pull for the operator container.
-IMG ?= ghcr.io/langflow-ai/openrag-operator:latest
+# Load variables from $(ENV_FILE) if present so `make` commands pick them up
+# Strip quotes from values to avoid issues with tools that don't handle them like python-dotenv does
 
-# Kubernetes version used by envtest.
-ENVTEST_K8S_VERSION = 1.33.0
-
-# Go 1.26.4 via gvm — set PATH and GOROOT so sub-shells pick the right toolchain.
-GVM_GO_VERSION   ?= go1.26.4
-GVM_GO_ROOT      := $(HOME)/.gvm/gos/$(GVM_GO_VERSION)
-ifneq ($(wildcard $(GVM_GO_ROOT)/bin/go),)
-  export GOROOT := $(GVM_GO_ROOT)
-  export PATH   := $(GVM_GO_ROOT)/bin:$(PATH)
+ifneq (,$(wildcard $(ENV_FILE)))
+  include $(ENV_FILE)
+  export $(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' $(ENV_FILE))
+  # Strip single and double quotes from all exported variables
+  $(foreach var,$(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' $(ENV_FILE)),$(eval $(var):=$(shell echo $($(var)) | sed "s/^['\"]//;s/['\"]$$//")))
 endif
 
-# Resolve GOBIN (respect GOBIN env if set, else fall back to GOPATH/bin).
-ifeq (,$(shell go env GOBIN))
-GOBIN=$(shell go env GOPATH)/bin
+hostname ?= 0.0.0.0
+
+# Environment variables that must be non-empty in .env for dev targets to work.
+# Add new vars here as they become required.
+REQUIRED_ENV_VARS := LANGFLOW_SUPERUSER LANGFLOW_SUPERUSER_PASSWORD OPENSEARCH_PASSWORD LANGFLOW_SECRET_KEY
+
+# Default values for dev-branch builds (can be overridden via command line)
+# Usage: make dev-branch BRANCH=test-openai-responses REPO=https://github.com/myorg/langflow.git
+BRANCH ?= main
+REPO ?= https://github.com/langflow-ai/langflow.git
+
+# Auto-detect container runtime: prefer docker, fall back to podman
+CONTAINER_RUNTIME := $(shell command -v docker >/dev/null 2>&1 && echo "docker" || echo "podman")
+# Next.js compiles `basePath` into the frontend bundle, so every direct
+# frontend image build and local URL must use its normalized form.
+strip_trailing_slashes = $(if $(filter %/,$(1)),$(call strip_trailing_slashes,$(patsubst %/,%,$(1))),$(1))
+FRONTEND_NORMALIZED_BASE_PATH := $(call strip_trailing_slashes,$(strip $(OPENRAG_FRONTEND_BASE_PATH)))
+FRONTEND_NORMALIZED_BASE_PATH := $(if $(FRONTEND_NORMALIZED_BASE_PATH),$(if $(filter /%,$(FRONTEND_NORMALIZED_BASE_PATH)),$(FRONTEND_NORMALIZED_BASE_PATH),/$(FRONTEND_NORMALIZED_BASE_PATH)))
+FRONTEND_BASE_PATH_BUILD_ARG := --build-arg OPENRAG_FRONTEND_BASE_PATH="$(FRONTEND_NORMALIZED_BASE_PATH)"
+FRONTEND_LOCAL_URL := http://localhost:3000$(FRONTEND_NORMALIZED_BASE_PATH)
+
+# Host UID/GID — evaluated once at parse time and used in Docker-assisted chown commands
+# so that Alpine (running as root) can re-own volume directories back to the host user.
+HOST_UID := $(shell id -u)
+HOST_GID := $(shell id -g)
+OPENRAG_IMAGE_REPOS := langflowai/openrag-backend langflowai/openrag-frontend langflowai/openrag-langflow langflowai/openrag-opensearch langflowai/openrag-dashboards langflow/langflow opensearchproject/opensearch opensearchproject/opensearch-dashboards
+COMPOSE_PROJECT_NAME ?= openrag
+
+# Only pass --env-file if the file actually exists
+ifneq (,$(wildcard $(ENV_FILE)))
+  COMPOSE_CMD := $(CONTAINER_RUNTIME) compose --env-file $(ENV_FILE) -p $(COMPOSE_PROJECT_NAME)
 else
-GOBIN=$(shell go env GOBIN)
+  COMPOSE_CMD := $(CONTAINER_RUNTIME) compose -p $(COMPOSE_PROJECT_NAME)
 endif
 
-CONTAINER_TOOL ?= docker
-SHELL = /usr/bin/env bash -o pipefail
-.SHELLFLAGS = -ec
+######################
+# COLOR DEFINITIONS
+######################
+RED=\033[0;31m
+PURPLE=\033[38;2;119;62;255m
+YELLOW=\033[1;33m
+CYAN=\033[0;36m
+NC=\033[0m
+GREEN=\033[0;32m
 
-.PHONY: all
-all: build
+######################
+# REUSABLE FUNCTIONS
+######################
 
-##@ General
-
-.PHONY: help
-help: ## Display this help.
-	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
-
-##@ Development
-
-.PHONY: manifests
-manifests: controller-gen ## Generate CRD and RBAC manifests from Go type markers.
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd paths="./..." \
-		output:crd:artifacts:config=config/crd/bases \
-		output:rbac:artifacts:config=config/rbac
-
-.PHONY: generate
-generate: controller-gen ## Regenerate zz_generated.deepcopy.go from type definitions.
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
-
-.PHONY: generate-client
-generate-client: ## Generate typed clientsets, listers, and informers.
-	@echo "Generating typed clientsets..."
-	bash hack/update-codegen.sh
-	@echo ""
-	@echo "⚠️  Remember to commit the generated files in pkg/generated/"
-	@echo "    CI will verify these are up to date on pull requests"
-
-.PHONY: fmt
-fmt: ## Run go fmt.
-	go fmt ./...
-
-.PHONY: vet
-vet: ## Run go vet.
-	go vet ./...
-
-.PHONY: tidy
-tidy: ## Run go mod tidy.
-	go mod tidy
-
-.PHONY: lint
-lint: golangci-lint ## Run golangci-lint.
-	$(GOLANGCI_LINT) run ./...
-
-.PHONY: test
-test: manifests generate fmt vet envtest ## Run unit tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" \
-		go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
-
-##@ Build
-
-.PHONY: build
-build: manifests generate fmt vet ## Build the operator binary to bin/manager.
-	go build -o bin/manager cmd/main.go
-
-.PHONY: run
-run: manifests generate fmt vet ## Run the operator locally (uses current kubeconfig).
-	go run ./cmd/main.go
-
-.PHONY: docker-build
-docker-build: ## Build the operator container image for the local platform.
-	$(CONTAINER_TOOL) build -t $(IMG) \
-		--build-arg TARGETOS=linux \
-		--build-arg TARGETARCH=$$(go env GOARCH) \
-		.
-
-.PHONY: docker-push
-docker-push: ## Push the operator container image.
-	$(CONTAINER_TOOL) push $(IMG)
-
-.PHONY: docker-buildx
-docker-buildx: ## Build and push multi-arch image (amd64 + arm64) via buildx.
-	$(CONTAINER_TOOL) buildx build \
-		--platform linux/amd64,linux/arm64 \
-		--build-arg TARGETOS=linux \
-		--push -t $(IMG) .
-
-##@ Deployment
-
-ifndef ignore-not-found
-  ignore-not-found = false
-endif
-
-.PHONY: install
-install: manifests kustomize ## Install CRDs into the cluster in ~/.kube/config.
-	$(KUSTOMIZE) build config/crd | kubectl apply --server-side -f -
-
-.PHONY: uninstall
-uninstall: manifests kustomize ## Uninstall CRDs from the cluster.
-	$(KUSTOMIZE) build config/crd | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
-
-.PHONY: deploy
-deploy: manifests kustomize ## Deploy the operator to the cluster.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	$(KUSTOMIZE) build config/default | kubectl apply -f -
-
-.PHONY: undeploy
-undeploy: kustomize ## Remove the operator from the cluster.
-	$(KUSTOMIZE) build config/default | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
-
-.PHONY: dist
-dist: manifests kustomize ## Build a single-file install manifest to dist/install.yaml.
-	mkdir -p dist
-	$(KUSTOMIZE) build config/default > dist/install.yaml
-
-##@ Dependencies
-
-LOCALBIN ?= $(shell pwd)/bin
-$(LOCALBIN):
-	mkdir -p $(LOCALBIN)
-
-KUBECTL              ?= kubectl
-KUSTOMIZE            ?= $(LOCALBIN)/kustomize
-CONTROLLER_GEN       ?= $(LOCALBIN)/controller-gen
-ENVTEST              ?= $(LOCALBIN)/setup-envtest
-GOLANGCI_LINT        ?= $(LOCALBIN)/golangci-lint
-
-KUSTOMIZE_VERSION          ?= v5.4.3
-CONTROLLER_TOOLS_VERSION   ?= v0.16.4
-ENVTEST_VERSION            ?= release-0.19
-GOLANGCI_LINT_VERSION      ?= v2.11.4
-
-.PHONY: deps
-deps: controller-gen kustomize envtest golangci-lint ## Install all local tool dependencies into ./bin.
-
-.PHONY: kustomize
-kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
-$(KUSTOMIZE): $(LOCALBIN)
-	$(call go-install-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v5,$(KUSTOMIZE_VERSION))
-
-.PHONY: controller-gen
-controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
-$(CONTROLLER_GEN): $(LOCALBIN)
-	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
-
-.PHONY: envtest
-envtest: $(ENVTEST) ## Download setup-envtest locally if necessary.
-$(ENVTEST): $(LOCALBIN)
-	$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
-
-.PHONY: golangci-lint
-golangci-lint: $(LOCALBIN) ## Download golangci-lint locally if necessary.
-	GOBIN=$(LOCALBIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
-
-# go-install-tool installs a versioned binary into LOCALBIN, caching by version suffix.
-# Usage: $(call go-install-tool,<target-path>,<package-url>,<version>)
-define go-install-tool
-@[ -f "$(1)-$(3)" ] || { \
-set -e; \
-package=$(2)@$(3) ;\
-echo "Downloading $${package}" ;\
-rm -f $(1) || true ;\
-GOBIN=$(LOCALBIN) go install $${package} ;\
-mv $(1) $(1)-$(3) ;\
-} ;\
-ln -sf $(1)-$(3) $(1)
+# JWT OpenSearch test function - tests that JWT authentication works against OpenSearch
+# Usage: $(call test_jwt_opensearch)
+define test_jwt_opensearch
+	echo "$(CYAN)=== JWT OpenSearch Authentication Test ===$(NC)"; \
+	echo "$(YELLOW)Generating test JWT token...$(NC)"; \
+	TEST_TOKEN=$$(uv run python -c 'from utils.logging_config import configure_logging; configure_logging(log_level="CRITICAL"); \
+	    from src.session_manager import SessionManager, AnonymousUser; \
+	    sm = SessionManager("test"); \
+	    print(sm.create_jwt_token(AnonymousUser()).removeprefix("Bearer "))' 2>/dev/null); \
+	if [ -z "$$TEST_TOKEN" ]; then \
+	    echo "$(RED)Failed to generate JWT token$(NC)"; \
+	    exit 1; \
+	fi; \
+	echo "$(YELLOW)Testing JWT against OpenSearch...$(NC)"; \
+	RESPONSE_FILE=$$(mktemp /tmp/jwt-os-diag.XXXXXX); \
+	curl --fail-with-body -k -s \
+	    -o "$$RESPONSE_FILE" \
+	    -H "Authorization: Bearer $$TEST_TOKEN" \
+	    -H "Content-Type: application/json" \
+	    https://localhost:9200/documents/_search \
+	    -d '{"query":{"match_all":{}}}' \
+	    || { echo "$(RED)curl command failed (network error or HTTP 4xx/5xx)$(NC)"; cat "$$RESPONSE_FILE" 2>/dev/null | head -c 400; rm -f "$$RESPONSE_FILE"; exit 1; }; \
+	echo "$(GREEN)Success - OpenSearch accepted JWT$(NC)"; \
+	echo "Response preview:"; \
+	head -c 200 "$$RESPONSE_FILE" | sed 's/^/  /' || true; \
+	rm -f "$$RESPONSE_FILE"; \
+	echo "";
 endef
+
+# Fix ownership of backend volume directories
+# Re-owns directories to the host user so local dev (make backend) can always read/write them,
+# even after a container run chowned them to UID 1000 (appuser). Runs via Docker Alpine as root
+# so it succeeds regardless of current ownership; falls back to native chown if Docker is unavailable.
+# Usage: $(call fix_backend_volume_ownership)
+define fix_backend_volume_ownership
+	$(CONTAINER_RUNTIME) run --rm \
+		-v "$$(pwd)/flows:/mnt/flows" \
+		-v "$$(pwd)/keys:/mnt/keys" \
+		-v "$$(pwd)/config:/mnt/config" \
+		-v "$$(pwd)/data:/mnt/data" \
+		-v "$$(pwd)/openrag-documents:/mnt/openrag-documents" \
+		alpine sh -c "chown -R $(HOST_UID):$(HOST_GID) /mnt/flows /mnt/keys /mnt/config /mnt/data /mnt/openrag-documents && chmod 775 /mnt/flows /mnt/keys /mnt/config /mnt/data /mnt/openrag-documents" 2>/dev/null \
+		|| { chown -R $(HOST_UID):$(HOST_GID) flows keys config data openrag-documents 2>/dev/null || true; chmod 775 flows keys config data openrag-documents 2>/dev/null || true; }
+endef
+
+######################
+# PHONY TARGETS
+######################
+.PHONY: help check_tools help_docker help_dev help_test help_local help_utils help_operator \
+       dev dev-cpu dev-local dev-local-cpu dev-local-build-lf dev-local-build-lf-cpu stop clean build logs \
+       azurite-up azurite-down \
+       instana-agent-up instana-agent-down \
+       shell-backend shell-frontend install \
+       test test-unit test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
+       ci-build-images ci-save-images \
+       backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
+       shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
+       dev-branch dev-branch-cpu dev-branch-local dev-branch-local-cpu build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev \
+       ensure-langflow-data ensure-backend-volumes
+
+all: help
+
+######################
+# UTILITIES
+######################
+
+check_tools: ## Verify required tools are installed with correct versions
+	@echo "$(YELLOW)Checking required tools...$(NC)"
+	@echo ""
+	@# Check Python
+	@command -v python3 >/dev/null 2>&1 || { echo "$(RED)✗ Python is not installed. Aborting.$(NC)"; exit 1; }
+	@PYTHON_VERSION=$$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'); \
+	PYTHON_MAJOR=$$(echo $$PYTHON_VERSION | cut -d. -f1); \
+	PYTHON_MINOR=$$(echo $$PYTHON_VERSION | cut -d. -f2); \
+	if [ "$$PYTHON_MAJOR" -lt 3 ] || ([ "$$PYTHON_MAJOR" -eq 3 ] && [ "$$PYTHON_MINOR" -lt 13 ]); then \
+		echo "$(RED)✗ Python $$PYTHON_VERSION found, but 3.13+ required$(NC)"; exit 1; \
+	else \
+		echo "$(PURPLE)✓ Python $$PYTHON_VERSION$(NC)"; \
+	fi
+	@# Check uv
+	@command -v uv >/dev/null 2>&1 || { echo "$(RED)✗ uv is not installed. Install: curl -LsSf https://astral.sh/uv/install.sh | sh$(NC)"; exit 1; }
+	@UV_VERSION=$$(uv --version 2>/dev/null | head -1 | awk '{print $$2}' || echo "unknown"); \
+	echo "$(PURPLE)✓ uv $$UV_VERSION$(NC)"
+	@# Check Node.js
+	@command -v node >/dev/null 2>&1 || { echo "$(RED)✗ Node.js is not installed. Aborting.$(NC)"; exit 1; }
+	@NODE_VERSION=$$(node --version | sed 's/v//'); \
+	NODE_MAJOR=$$(echo $$NODE_VERSION | cut -d. -f1); \
+	if [ "$$NODE_MAJOR" -lt 18 ]; then \
+		echo "$(RED)✗ Node.js $$NODE_VERSION found, but 18+ required$(NC)"; exit 1; \
+	else \
+		echo "$(PURPLE)✓ Node.js $$NODE_VERSION$(NC)"; \
+	fi
+	@# Check npm
+	@command -v npm >/dev/null 2>&1 || { echo "$(RED)✗ npm is not installed. Aborting.$(NC)"; exit 1; }
+	@NPM_VERSION=$$(npm --version 2>/dev/null || echo "unknown"); \
+	echo "$(PURPLE)✓ npm $$NPM_VERSION$(NC)"
+	@# Check container runtime
+	@command -v $(CONTAINER_RUNTIME) >/dev/null 2>&1 || { echo "$(RED)✗ $(CONTAINER_RUNTIME) is not installed. Aborting.$(NC)"; exit 1; }
+	@CONTAINER_VERSION=$$($(CONTAINER_RUNTIME) --version 2>/dev/null | head -1 || echo "unknown"); \
+	echo "$(PURPLE)✓ $$CONTAINER_VERSION$(NC)"
+	@# Check make (always present if running this)
+	@MAKE_VERSION=$$(make --version 2>/dev/null | head -1 || echo "unknown"); \
+	echo "$(PURPLE)✓ $$MAKE_VERSION$(NC)"
+	@echo ""
+	@echo "$(PURPLE)All required tools are installed and meet version requirements!$(NC)"
+
+######################
+# HELP SYSTEM
+######################
+
+help: ## Show main help with common commands
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)                    OPENRAG MAKEFILE COMMANDS                       $(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+	@echo "$(PURPLE)Quick Start:$(NC)"
+	@echo "  $(PURPLE)make setup$(NC)           - Initialize project (install dependencies, create .env)"
+	@echo "  $(PURPLE)make dev$(NC)             - Start full stack with GPU support"
+	@echo "  $(PURPLE)make dev-cpu$(NC)         - Start full stack with CPU only"
+	@echo "  $(PURPLE)make dev-build$(NC)       - Build all images and start full stack with GPU support"
+	@echo "  $(PURPLE)make dev-build-cpu$(NC)   - Build all images and start full stack with CPU only"
+	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
+	@echo ''
+	@echo "$(PURPLE)Common Commands:$(NC)"
+	@echo "  $(PURPLE)make backend$(NC)         - Run backend locally"
+	@echo "  $(PURPLE)make frontend$(NC)        - Run frontend locally"
+	@echo "  $(PURPLE)make docling$(NC)         - Start docling-serve for document processing"
+	@echo "  $(PURPLE)make docling-stop$(NC)    - Stop docling-serve"
+	@echo "  $(PURPLE)make test$(NC)            - Run all backend tests"
+	@echo "  $(PURPLE)make logs$(NC)            - Show logs from all containers"
+	@echo "  $(PURPLE)make status$(NC)          - Show container status"
+	@echo "  $(PURPLE)make health$(NC)          - Check health of all services"
+	@echo ''
+	@echo "$(PURPLE)Specialized Help Commands:$(NC)"
+	@echo "  $(PURPLE)make help_dev$(NC)        - Development environment commands"
+	@echo "  $(PURPLE)make help_docker$(NC)     - Docker and container commands"
+	@echo "  $(PURPLE)make help_test$(NC)       - Testing commands"
+	@echo "  $(PURPLE)make help_local$(NC)      - Local development commands"
+	@echo "  $(PURPLE)make help_utils$(NC)      - Utility commands (logs, cleanup, etc.)"
+	@echo "  $(PURPLE)make help_operator$(NC)   - Kubernetes operator & kind commands"
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+
+OPERATOR_DIR := kubernetes/operator
+
+help_operator: ## Show Kubernetes operator and kind local cluster commands
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)              KUBERNETES OPERATOR & KIND COMMANDS                   $(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+	@echo "$(PURPLE)Docs:$(NC) $(OPERATOR_DIR)/README.md"
+	@echo ''
+	@echo "$(PURPLE)App images → kind (from repo root, Colima/Docker):$(NC)"
+	@echo "  $(PURPLE)make kind-build-load-apps$(NC)  - Build backend/frontend/langflow + load into kind"
+	@echo "  $(PURPLE)make kind-load-app-images$(NC)  - Load already-built app images into kind"
+	@echo "                         $(CYAN)KIND_CLUSTER_NAME$(NC)=$(KIND_CLUSTER_NAME) (default: openrag)"
+	@echo ''
+	@echo "$(PURPLE)Operator binary & CRD ($(OPERATOR_DIR)):$(NC)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make deps$(NC)       - Install controller-gen, kustomize, envtest"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make install$(NC)    - Install OpenRAG CRD into current cluster"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make run$(NC)        - Run operator on host (uses kubeconfig)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make build$(NC)      - Compile operator to bin/manager"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make test$(NC)       - Operator unit tests (envtest)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make lint$(NC)       - golangci-lint"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make manifests$(NC)  - Regenerate CRD/RBAC YAML"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make generate$(NC)   - Regenerate DeepCopy code"
+	@echo ''
+	@echo "$(PURPLE)Operator in-cluster:$(NC)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make deploy$(NC)     - Deploy operator (IMG=...)"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make undeploy$(NC)   - Remove operator deployment"
+	@echo "  $(PURPLE)cd $(OPERATOR_DIR) && make docker-build$(NC) - Build operator image (IMG=...)"
+	@echo "  $(PURPLE)kind load docker-image openrag-operator:dev --name openrag$(NC)"
+	@echo "  $(PURPLE)helm install openrag-operator ./kubernetes/helm/operator -n openrag-control --create-namespace$(NC)"
+	@echo ''
+	@echo "$(PURPLE)Sample OpenRAG CR (after make run or make deploy):$(NC)"
+	@echo "  $(PURPLE)kubectl create namespace my-tenant$(NC)"
+	@echo "  $(PURPLE)kubectl apply -f $(OPERATOR_DIR)/config/samples/openrag_v1alpha1_openrag-kind-local.yaml$(NC)"
+	@echo "                         (low CPU + imagePullPolicy: Never for local images)"
+	@echo "  $(PURPLE)kubectl get pods -n my-tenant$(NC)"
+	@echo "  $(PURPLE)kubectl rollout restart deployment -n my-tenant openrag-fe openrag-be openrag-lf$(NC)"
+	@echo "                         (after rebuilding and reloading images)"
+	@echo ''
+	@echo "$(PURPLE)Typical kind + local images workflow:$(NC)"
+	@echo "  1. $(CYAN)kind create cluster --name openrag$(NC)"
+	@echo "  2. $(CYAN)make kind-build-load-apps$(NC)"
+	@echo "  3. $(CYAN)cd $(OPERATOR_DIR) && make install && make run$(NC)"
+	@echo "  4. $(CYAN)kubectl create namespace my-tenant$(NC)"
+	@echo "  5. $(CYAN)kubectl apply -f $(OPERATOR_DIR)/config/samples/openrag_v1alpha1_openrag-kind-local.yaml$(NC)"
+	@echo ''
+	@echo "$(PURPLE)All operator Makefile targets:$(NC) $(CYAN)cd $(OPERATOR_DIR) && make help$(NC)"
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+
+help_dev: ## Show development environment commands
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)                 DEVELOPMENT ENVIRONMENT COMMANDS                   $(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+	@echo "$(PURPLE)Full Stack Development:$(NC)"
+	@echo "  $(PURPLE)make dev$(NC)             - Start full stack with GPU support ($(COMPOSE_CMD))"
+	@echo "  $(PURPLE)make dev-cpu$(NC)         - Start full stack with CPU only"
+	@echo "  $(PURPLE)make dev-build$(NC)       - Build all images and start full stack with GPU support"
+	@echo "  $(PURPLE)make dev-build-cpu$(NC)   - Build all images and start full stack with CPU only"
+	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
+	@echo "  $(PURPLE)make restart$(NC)         - Restart all containers"
+	@echo ''
+	@echo "$(PURPLE)Infrastructure Only:$(NC)"
+	@echo "  $(PURPLE)make dev-local$(NC)       - Start infrastructure only (for local backend/frontend) and build OpenSearch and Langflow images"
+	@echo "  $(PURPLE)make dev-local-cpu$(NC)   - Start infrastructure for local backend/frontend with CPU only and build OpenSearch and Langflow images"
+	@echo ''
+	@echo "$(PURPLE)Branch Development (build Langflow from source):$(NC)"
+	@echo "  $(PURPLE)make dev-branch$(NC)      - Build & run with custom Langflow branch"
+	@echo "                         Usage: make dev-branch BRANCH=test-openai-responses"
+	@echo "                                make dev-branch BRANCH=feature-x REPO=https://github.com/org/langflow.git"
+	@echo "  $(PURPLE)make dev-branch-cpu$(NC)  - Build & run (CPU only) with custom Langflow branch"
+	@echo "  $(PURPLE)make dev-branch-local$(NC) - Start local infrastructure only with custom Langflow branch"
+	@echo "  $(PURPLE)make dev-branch-local-cpu$(NC) - Start local infrastructure only (CPU only) with custom Langflow branch"
+	@echo "  $(PURPLE)make build-langflow-dev$(NC) - Build only the Langflow dev image (no cache)"
+	@echo "  $(PURPLE)make stop-dev$(NC)        - Stop dev environment containers"
+	@echo "  $(PURPLE)make restart-dev$(NC)     - Restart dev environment"
+	@echo "  $(PURPLE)make clean-dev$(NC)       - Stop dev containers and remove volumes"
+	@echo "  $(PURPLE)make logs-dev$(NC)        - Show all dev container logs"
+	@echo "  $(PURPLE)make logs-lf-dev$(NC)     - Show Langflow dev logs"
+	@echo "  $(PURPLE)make shell-lf-dev$(NC)    - Shell into Langflow dev container"
+	@echo "  $(PURPLE)make status-dev$(NC)      - Show dev container status"
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+
+help_docker: ## Show Docker and container commands
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)                    DOCKER & CONTAINER COMMANDS                     $(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+	@echo "$(PURPLE)Build Images:$(NC)"
+	@echo "  $(PURPLE)make build$(NC)           - Build all Docker images locally"
+	@echo "  $(PURPLE)make build-os$(NC)        - Build OpenSearch Docker image only"
+	@echo "  $(PURPLE)make build-be$(NC)        - Build backend Docker image only"
+	@echo "  $(PURPLE)make build-fe$(NC)        - Build frontend Docker image only"
+	@echo "  $(PURPLE)make build-lf$(NC)        - Build Langflow Docker image only"
+	@echo "  $(PURPLE)make kind-build-load-apps$(NC) - Build app images and load into kind (KIND_CLUSTER_NAME=openrag)"
+	@echo "  $(PURPLE)make kind-load-app-images$(NC) - Load already-built app images into kind"
+	@echo ''
+	@echo "$(PURPLE)Container Management:$(NC)"
+	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
+	@echo "  $(PURPLE)make restart$(NC)         - Restart all containers"
+	@echo "  $(PURPLE)make clean$(NC)           - Stop containers and remove volumes"
+	@echo "  $(PURPLE)make status$(NC)          - Show container status"
+	@echo ''
+	@echo "$(PURPLE)Shell Access:$(NC)"
+	@echo "  $(PURPLE)make shell-be$(NC)        - Shell into backend container"
+	@echo "  $(PURPLE)make shell-lf$(NC)        - Shell into langflow container"
+	@echo "  $(PURPLE)make shell-os$(NC)        - Shell into opensearch container"
+	@echo ''
+	@echo "$(YELLOW)Note:$(NC) Using container runtime: $(PURPLE)$(CONTAINER_RUNTIME)$(NC)"
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+
+help_test: ## Show testing commands
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)                       TESTING COMMANDS                             $(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+	@echo "$(PURPLE)Unit & Integration Tests:$(NC)"
+	@echo "  $(PURPLE)make test$(NC)            - Run all backend tests"
+	@echo "  $(PURPLE)make test-unit$(NC)       - Run unit tests only (tests/unit/)"
+	@echo "  $(PURPLE)make test-integration$(NC) - Run integration tests (requires infra)"
+	@echo ''
+	@echo "$(PURPLE)CI Tests:$(NC)"
+	@echo "  $(PURPLE)make test-ci$(NC)         - Start infra, run integration + SDK tests, tear down"
+	@echo "                         (uses DockerHub images)"
+	@echo "  $(PURPLE)make test-ci-local$(NC)   - Same as test-ci but builds all images locally"
+	@echo ''
+	@echo "$(PURPLE)SDK Tests:$(NC)"
+	@echo "  $(PURPLE)make test-sdk$(NC)        - Run SDK integration tests"
+	@echo "                         (requires running OpenRAG at localhost:3000)"
+	@echo ''
+	@echo "$(PURPLE)Diagnostic Tests:$(NC)"
+	@echo "  $(PURPLE)make test-os-jwt$(NC)     - Test JWT authentication against OpenSearch"
+	@echo "                         (requires running OpenSearch)"
+	@echo ''
+	@echo "$(PURPLE)Code Quality:$(NC)"
+	@echo "  $(PURPLE)make lint$(NC)            - Run linting checks"
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+
+help_local: ## Show local development commands
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)                   LOCAL DEVELOPMENT COMMANDS                       $(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+	@echo "$(PURPLE)Run Services Locally:$(NC)"
+	@echo "  $(PURPLE)make backend$(NC)         - Run backend locally (requires infrastructure)"
+	@echo "  $(PURPLE)make frontend$(NC)        - Run frontend locally"
+	@echo "  $(PURPLE)make docling$(NC)         - Start docling-serve for document processing"
+	@echo "  $(PURPLE)make docling-stop$(NC)    - Stop docling-serve"
+	@echo "  $(PURPLE)make azurite-up$(NC)      - Start Azurite (local Azure Blob emulator) for connector testing"
+	@echo "  $(PURPLE)make azurite-down$(NC)    - Stop Azurite emulator"
+	@echo "  $(PURPLE)make instana-agent-up$(NC)   - Start the local Instana host agent (forwards to INSTANA_AGENT_ENDPOINT)"
+	@echo "  $(PURPLE)make instana-agent-down$(NC) - Stop the local Instana host agent"
+	@echo ''
+	@echo "$(PURPLE)Red Hat OpenShift AI (RHOAI) models:$(NC)"
+	@echo "  Set these in $(ENV_FILE); they are exported to $(CYAN)make backend$(NC) and passed"
+	@echo "  through to the backend container by $(CYAN)make dev$(NC) / $(CYAN)make dev-cpu$(NC)."
+	@echo "    $(CYAN)RHOAI_ENDPOINT$(NC)             - chat InferenceService URL, ending in /v1"
+	@echo "    $(CYAN)RHOAI_EMBEDDINGS_ENDPOINT$(NC)  - embedding InferenceService URL (vLLM serves one model each)"
+	@echo "    $(CYAN)RHOAI_API_KEY$(NC)              - ServiceAccount bearer token for both endpoints"
+	@echo "    $(CYAN)RHOAI_TLS_VERIFY$(NC)           - CA bundle path, or 'false' for a port-forward (dev only)"
+	@echo "    $(CYAN)RHOAI_EMBEDDING_MAX_CONCURRENCY$(NC) - max in-flight embedding calls (default 16 for GPU; use 4 for CPU; 0 = no limit)"
+	@echo "  In-cluster, use the predictor Service DNS and the projected service CA:"
+	@echo "    $(CYAN)/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt$(NC)"
+	@echo "  From a laptop, port-forward each InferenceService and set RHOAI_TLS_VERIFY=false:"
+	@echo "    $(CYAN)oc port-forward -n <ns> svc/<isvc>-predictor 8443:8443$(NC)"
+	@echo "  The provider is hidden in every run mode until $(CYAN)OPENRAG_MODEL_PROVIDERS_CONFIG$(NC)"
+	@echo "  points at a model_providers.yaml enabling it (see .env.example)."
+	@echo ''
+	@echo "$(PURPLE)Installation:$(NC)"
+	@echo "  $(PURPLE)make install$(NC)         - Install all dependencies"
+	@echo "  $(PURPLE)make install-be$(NC)      - Install backend dependencies (uv)"
+	@echo "  $(PURPLE)make install-fe$(NC)      - Install frontend dependencies (npm)"
+	@echo "  $(PURPLE)make setup$(NC)           - Full setup (install deps + create .env)"
+	@echo ''
+	@echo "$(PURPLE)Typical Workflow:$(NC)"
+	@echo "  1. $(CYAN)make dev-local$(NC)     - Start infrastructure"
+	@echo "  2. $(CYAN)make backend$(NC)       - Run backend in one terminal"
+	@echo "  3. $(CYAN)make frontend$(NC)      - Run frontend in another terminal"
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+
+help_utils: ## Show utility commands
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)                       UTILITY COMMANDS                             $(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+	@echo "$(PURPLE)Logs:$(NC)"
+	@echo "  $(PURPLE)make logs$(NC)            - Show logs from all containers"
+	@echo "  $(PURPLE)make logs-be$(NC)         - Show backend container logs"
+	@echo "  $(PURPLE)make logs-fe$(NC)         - Show frontend container logs"
+	@echo "  $(PURPLE)make logs-lf$(NC)         - Show langflow container logs"
+	@echo "  $(PURPLE)make logs-os$(NC)         - Show opensearch container logs"
+	@echo ''
+	@echo "$(PURPLE)Status & Health:$(NC)"
+	@echo "  $(PURPLE)make status$(NC)          - Show container status"
+	@echo "  $(PURPLE)make health$(NC)          - Check health of all services"
+	@echo ''
+	@echo "$(PURPLE)Database Operations:$(NC)"
+	@echo "  $(PURPLE)make db-reset$(NC)        - Reset OpenSearch indices"
+	@echo "  $(PURPLE)make clear-os-data$(NC)   - Clear OpenSearch data directory"
+	@echo ''
+	@echo "$(PURPLE)Cleanup:$(NC)"
+	@echo "  $(PURPLE)make clean$(NC)           - Stop containers and remove volumes"
+	@echo "  $(PURPLE)make clean-dev$(NC)       - Clean dev environment"
+	@echo "  $(PURPLE)make factory-reset$(NC)   - Complete reset (stop, remove volumes, clear data)"
+	@echo "  $(PURPLE)make factory-reset-clean-build$(NC) - Complete reset including removing images"
+	@echo ''
+	@echo "$(PURPLE)Flows:$(NC)"
+	@echo "  $(PURPLE)make flow-upload$(NC)     - Upload flow to Langflow"
+	@echo "                         Usage: make flow-upload FLOW_FILE=path/to/flow.json"
+	@echo ''
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo ''
+
+######################
+# DEVELOPMENT ENVIRONMENTS
+######################
+
+ensure-langflow-data: ## Create the langflow-data directory if it does not exist
+	@mkdir -p langflow-data
+	@chmod 777 langflow-data
+
+ensure-backend-volumes: ## Create and permission backend volume directories
+	@mkdir -p flows keys config data openrag-documents
+	@chmod 775 flows keys config data openrag-documents 2>/dev/null \
+		|| echo "$(YELLOW)Warning: Could not chmod backend volume directories.$(NC)"
+
+check-env: ## Verify required environment variables are set in .env
+	@missing=""; \
+	for var in $(REQUIRED_ENV_VARS); do \
+		val="$$(eval echo "\$$$$var")"; \
+		if [ -z "$$val" ]; then \
+			missing="$$missing $$var"; \
+		fi; \
+	done; \
+	if [ -n "$$missing" ]; then \
+		echo "$(RED)Error: the following required variables are missing or empty in $(ENV_FILE):$(NC)"; \
+		for var in $$missing; do \
+			echo "  - $$var"; \
+		done; \
+		echo ""; \
+		echo "$(YELLOW)Set them in $(ENV_FILE) and try again.$(NC)"; \
+		echo "Tip: 'make generate-langflow-password' can auto-generate Langflow credentials."; \
+		exit 1; \
+	fi; \
+	pw="$${OPENSEARCH_PASSWORD}"; \
+	pw_errors=""; \
+	if [ $${#pw} -lt 8 ]; then \
+		pw_errors="$$pw_errors\n  - at least 8 characters"; \
+	fi; \
+	if ! printf '%s' "$$pw" | grep -q '[A-Z]'; then \
+		pw_errors="$$pw_errors\n  - at least one uppercase letter"; \
+	fi; \
+	if ! printf '%s' "$$pw" | grep -q '[a-z]'; then \
+		pw_errors="$$pw_errors\n  - at least one lowercase letter"; \
+	fi; \
+	if ! printf '%s' "$$pw" | grep -q '[0-9]'; then \
+		pw_errors="$$pw_errors\n  - at least one digit"; \
+	fi; \
+	if ! printf '%s' "$$pw" | grep -q '[^A-Za-z0-9]'; then \
+		pw_errors="$$pw_errors\n  - at least one special character"; \
+	fi; \
+	if [ -n "$$pw_errors" ]; then \
+		echo "$(RED)Error: OPENSEARCH_PASSWORD does not meet the required policy:$(NC)"; \
+		printf "$$pw_errors\n"; \
+		echo ""; \
+		echo "$(YELLOW)Update OPENSEARCH_PASSWORD in $(ENV_FILE) and try again.$(NC)"; \
+		exit 1; \
+	fi
+
+generate-langflow-password: ## Auto-generate and append Langflow superuser credentials to .env
+	@PW=$$(openssl rand -base64 24 | tr -d '/+=' | head -c 24) || \
+		{ echo "$(RED)Error: failed to generate password$(NC)"; exit 1; }; \
+	if [ -z "$$PW" ]; then \
+		echo "$(RED)Error: generated password is empty$(NC)"; exit 1; \
+	fi; \
+	if grep -q '^LANGFLOW_SUPERUSER=' "$(ENV_FILE)" 2>/dev/null; then \
+		sed -i.bak "s/^LANGFLOW_SUPERUSER=.*/LANGFLOW_SUPERUSER='admin'/" "$(ENV_FILE)" && rm -f "$(ENV_FILE).bak" || \
+			{ rm -f "$(ENV_FILE).bak"; echo "$(RED)Error: failed to update LANGFLOW_SUPERUSER in $(ENV_FILE)$(NC)"; exit 1; }; \
+	else \
+		echo "LANGFLOW_SUPERUSER='admin'" >> "$(ENV_FILE)" || \
+			{ echo "$(RED)Error: failed to append LANGFLOW_SUPERUSER to $(ENV_FILE)$(NC)"; exit 1; }; \
+	fi; \
+	if grep -q '^LANGFLOW_SUPERUSER_PASSWORD=' "$(ENV_FILE)" 2>/dev/null; then \
+		sed -i.bak "s/^LANGFLOW_SUPERUSER_PASSWORD=.*/LANGFLOW_SUPERUSER_PASSWORD='$$PW'/" "$(ENV_FILE)" && rm -f "$(ENV_FILE).bak" || \
+			{ rm -f "$(ENV_FILE).bak"; echo "$(RED)Error: failed to update LANGFLOW_SUPERUSER_PASSWORD in $(ENV_FILE)$(NC)"; exit 1; }; \
+	else \
+		echo "LANGFLOW_SUPERUSER_PASSWORD='$$PW'" >> "$(ENV_FILE)" || \
+			{ echo "$(RED)Error: failed to append LANGFLOW_SUPERUSER_PASSWORD to $(ENV_FILE)$(NC)"; exit 1; }; \
+	fi; \
+	echo "$(GREEN)Langflow superuser credentials written to $(ENV_FILE)$(NC)"; \
+	echo "  LANGFLOW_SUPERUSER=admin"; \
+	echo "  LANGFLOW_SUPERUSER_PASSWORD=$$PW"
+
+dev: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack with GPU support
+	@echo "$(YELLOW)Starting OpenRAG with GPU support...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
+	@echo "$(PURPLE)Services started!$(NC)"
+	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
+	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+
+dev-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack with CPU only
+	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
+	$(COMPOSE_CMD) up -d $(SERVICES)
+	@echo "$(PURPLE)Services started!$(NC)"
+	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
+	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+
+dev-build: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack with GPU support, building all images first
+	@echo "$(YELLOW)Building all OpenRAG images...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build
+	@echo "$(YELLOW)Starting OpenRAG with GPU support...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
+	@echo "$(PURPLE)Services started!$(NC)"
+	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
+	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+
+dev-build-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack with CPU only, building all images first
+	@echo "$(YELLOW)Building all OpenRAG images (CPU)...$(NC)"
+	$(COMPOSE_CMD) build
+	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
+	$(COMPOSE_CMD) up -d
+	@echo "$(PURPLE)Services started!$(NC)"
+	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
+	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+
+dev-local: ensure-langflow-data ensure-backend-volumes check-env ## Start infrastructure for local development
+	@echo "$(YELLOW)Building Langflow and OpenSearch images...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build langflow opensearch
+	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
+	@echo "$(PURPLE)Infrastructure started!$(NC)"
+	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+	@echo ""
+	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
+
+dev-local-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start infrastructure for local development, with CPU only
+	@echo "$(YELLOW)Building Langflow and OpenSearch images (CPU)...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml build langflow opensearch
+	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
+	@echo "$(PURPLE)Infrastructure started!$(NC)"
+	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+	@echo ""
+	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
+
+######################
+# BRANCH DEVELOPMENT
+######################
+# Usage: make dev-branch BRANCH=test-openai-responses
+#        make dev-branch BRANCH=feature-x REPO=https://github.com/myorg/langflow.git
+
+dev-branch: ensure-langflow-data ensure-backend-volumes check-env ## Build & run full stack with custom Langflow branch
+	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
+	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
+	@echo ""
+	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml build langflow
+	@echo ""
+	@echo "$(YELLOW)Starting OpenRAG with custom Langflow build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml up -d
+	@echo ""
+	@echo "$(PURPLE)Dev environment started!$(NC)"
+	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+
+dev-branch-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Build & run full stack with custom Langflow branch and CPU only mode
+	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
+	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
+	@echo ""
+	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml build langflow
+	@echo ""
+	@echo "$(YELLOW)Starting OpenRAG (CPU only) with custom Langflow build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml up -d
+	@echo ""
+	@echo "$(PURPLE)Dev environment started!$(NC)"
+	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+
+dev-branch-local: ensure-langflow-data ensure-backend-volumes check-env ## Start infrastructure for local development with custom Langflow branch
+	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
+	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
+	@echo ""
+	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml build langflow
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build opensearch
+	@echo "$(YELLOW)Starting infrastructure only (for local development) with custom Langflow build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
+	@echo "$(PURPLE)Infrastructure started!$(NC)"
+	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+	@echo ""
+	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
+
+dev-branch-local-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start infrastructure for local development, with CPU only and custom Langflow branch
+	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
+	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
+	@echo ""
+	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml build langflow
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml build opensearch
+	@echo "$(YELLOW)Starting infrastructure only (for local development) with CPU only and custom Langflow build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
+	@echo "$(PURPLE)Infrastructure started!$(NC)"
+	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
+	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+	@echo ""
+	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
+
+build-langflow-dev: ## Build only the Langflow dev image (no cache)
+	@echo "$(YELLOW)Building Langflow dev image from branch: $(BRANCH)$(NC)"
+	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.dev.yml build --no-cache langflow
+	@echo "$(PURPLE)Langflow dev image built!$(NC)"
+
+stop-dev: ## Stop dev environment containers
+	@echo "$(YELLOW)Stopping dev environment containers...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.dev.yml down
+	@echo "$(PURPLE)Dev environment stopped.$(NC)"
+
+restart-dev: ensure-langflow-data ensure-backend-volumes ## Restart dev environment
+	@echo "$(YELLOW)Restarting dev environment with branch: $(BRANCH)$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.dev.yml down
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.dev.yml up -d
+	@echo "$(PURPLE)Dev environment restarted!$(NC)"
+
+clean-dev: ## Stop dev containers and remove volumes
+	@echo "$(YELLOW)Cleaning up dev containers and volumes...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.dev.yml down -v --remove-orphans
+	@echo "$(PURPLE)Dev environment cleaned!$(NC)"
+
+logs-dev: ## Show all dev container logs
+	@echo "$(YELLOW)Showing all dev container logs...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.dev.yml logs -f
+
+logs-lf-dev: ## Show Langflow dev logs
+	@echo "$(YELLOW)Showing Langflow dev logs...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.dev.yml logs -f langflow
+
+shell-lf-dev: ## Shell into Langflow dev container
+	@echo "$(YELLOW)Opening shell in Langflow dev container...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.dev.yml exec langflow /bin/bash
+
+status-dev: ## Show dev container status
+	@echo "$(PURPLE)Dev container status:$(NC)"
+	@$(COMPOSE_CMD) -f docker-compose.dev.yml ps 2>/dev/null || echo "$(YELLOW)No dev containers running$(NC)"
+
+######################
+# CONTAINER MANAGEMENT
+######################
+
+stop: ## Stop and remove all OpenRAG containers
+	@echo "$(YELLOW)Stopping and removing all OpenRAG containers...$(NC)"
+	@$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) down --remove-orphans 2>/dev/null || true
+	@$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml down --remove-orphans 2>/dev/null || true
+	@$(CONTAINER_RUNTIME) ps -a --filter "name=openrag" --filter "name=langflow" --filter "name=opensearch" -q | xargs -r $(CONTAINER_RUNTIME) rm -f 2>/dev/null || true
+	@echo "$(PURPLE)All OpenRAG containers stopped and removed.$(NC)"
+
+restart: stop dev ## Restart all containers
+
+remove-openrag-images: ## Remove OpenRAG-related images and dependencies (may affect other projects using shared images)
+	@echo "$(YELLOW)Removing OpenRAG-related images and dependencies...$(NC)"
+	@removed=0; total=0; \
+	for repo in $(OPENRAG_IMAGE_REPOS); do \
+		ids=$$($(CONTAINER_RUNTIME) images "$$repo" -q 2>/dev/null | sort -u); \
+		for id in $$ids; do \
+			total=$$((total+1)); \
+			if $(CONTAINER_RUNTIME) rmi -f "$$id" >/dev/null 2>&1; then \
+				removed=$$((removed+1)); \
+			fi; \
+		done; \
+	done; \
+	echo "$(PURPLE)Removed $$removed/$$total OpenRAG image(s).$(NC)"
+
+clean: stop ## Stop containers and remove volumes
+	@echo "$(YELLOW)Cleaning up containers and volumes...$(NC)"
+	$(COMPOSE_CMD) down -v --remove-orphans
+	@$(MAKE) remove-openrag-images
+	@echo "$(PURPLE)Cleanup complete!$(NC)"
+
+define FACTORY_RESET_SCRIPT
+set -e; \
+if [ "$(FORCE)" != "true" ]; then \
+	read -p "Are you sure? Type 'yes' to continue: " confirm; \
+	if [ "$$confirm" != "yes" ]; then \
+		echo "$(CYAN)Factory reset cancelled.$(NC)"; \
+		exit 0; \
+	fi; \
+fi; \
+echo ""; \
+echo "$(YELLOW)Stopping all services and removing volumes...$(NC)"; \
+$(COMPOSE_CMD) down -v --remove-orphans || true; \
+echo "$(YELLOW)Removing local data directories...$(NC)"; \
+if [ -d "langflow-data" ]; then \
+	echo "Removing langflow-data..."; \
+	rm -rf langflow-data; \
+	echo "$(PURPLE)langflow-data removed$(NC)"; \
+fi; \
+if [ -d "config" ]; then \
+	echo "Removing config..."; \
+	rm -rf config; \
+	echo "$(PURPLE)config removed$(NC)"; \
+fi; \
+if [ -d "data" ]; then \
+	echo "Removing data..."; \
+	rm -rf data; \
+	echo "$(PURPLE)data removed$(NC)"; \
+fi; \
+if [ -n "$$OPENRAG_DATA_PATH" ] && [ -d "$$OPENRAG_DATA_PATH" ]; then \
+	echo "Removing $$OPENRAG_DATA_PATH..."; \
+	rm -rf "$$OPENRAG_DATA_PATH"; \
+	echo "$(PURPLE)$$OPENRAG_DATA_PATH removed$(NC)"; \
+fi; \
+if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
+	echo "Removing JWT keys..."; \
+	rm -f keys/private_key.pem keys/public_key.pem 2>/dev/null || \
+		$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/keys:/keys" alpine rm -f /keys/private_key.pem /keys/public_key.pem 2>/dev/null || true; \
+	echo "$(PURPLE)JWT keys removed$(NC)"; \
+fi
+endef
+
+factory-reset: ## Complete reset (stop, remove volumes, clear data)
+	@echo "$(RED)WARNING: This will completely reset OpenRAG data!$(NC)"; \
+	echo "$(YELLOW)This will:$(NC)"; \
+	echo "  - Stop all containers"; \
+	echo "  - Remove all volumes"; \
+	echo "  - Delete langflow-data directory"; \
+	echo "  - Delete config directory"; \
+	echo "  - Delete data directory (database and session configs)"; \
+	echo "  - Delete JWT keys (private_key.pem, public_key.pem)"; \
+	echo ""; \
+	echo ""; \
+	$(FACTORY_RESET_SCRIPT); \
+	echo ""; \
+	echo "$(PURPLE)Factory reset complete!$(NC)"; \
+	echo "$(CYAN)Run 'make dev' or 'make dev-cpu' to start fresh.$(NC)";
+
+factory-reset-clean-build: ## Complete reset (stop, remove volumes, clear data, remove images)
+	@echo "$(RED)WARNING: This will completely reset OpenRAG and remove images!$(NC)"; \
+	echo "$(YELLOW)This will:$(NC)"; \
+	echo "  - Stop all containers"; \
+	echo "  - Remove all volumes"; \
+	echo "  - Delete langflow-data directory"; \
+	echo "  - Delete config directory"; \
+	echo "  - Delete data directory (database and session configs)"; \
+	echo "  - Delete opensearch-data directory (legacy OpenSearch bind-mount data)"; \
+	echo "  - Delete JWT keys (private_key.pem, public_key.pem)"; \
+	echo "  - Remove OpenRAG images"; \
+	echo ""; \
+	echo ""; \
+	if [ "$(FORCE)" != "true" ]; then \
+		read -p "Are you sure? Type 'yes' to continue: " confirm; \
+		if [ "$$confirm" != "yes" ]; then \
+			echo "$(CYAN)Factory reset cancelled.$(NC)"; \
+			exit 0; \
+		fi; \
+	fi; \
+	echo ""; \
+	echo "$(YELLOW)Stopping all services and removing volumes...$(NC)"; \
+	$(COMPOSE_CMD) down -v --remove-orphans || true; \
+	echo "$(YELLOW)Removing local data directories...$(NC)"; \
+	if [ -d "langflow-data" ]; then \
+		echo "Removing langflow-data..."; \
+		rm -rf langflow-data; \
+		echo "$(PURPLE)langflow-data removed$(NC)"; \
+	fi; \
+	if [ -d "config" ]; then \
+		echo "Removing config..."; \
+		rm -rf config; \
+		echo "$(PURPLE)config removed$(NC)"; \
+	fi; \
+	if [ -d "data" ]; then \
+		echo "Removing data..."; \
+		rm -rf data; \
+		echo "$(PURPLE)data removed$(NC)"; \
+	fi; \
+	if [ -d "opensearch-data" ]; then \
+		echo "Removing opensearch-data..."; \
+		if rm -rf opensearch-data; then \
+			echo "$(PURPLE)opensearch-data removed$(NC)"; \
+		else \
+			echo "$(RED)Warning: Failed to remove opensearch-data (check permissions)$(NC)"; \
+		fi; \
+	fi; \
+	if [ -n "$$OPENRAG_DATA_PATH" ] && [ -d "$$OPENRAG_DATA_PATH" ]; then \
+		echo "Removing $$OPENRAG_DATA_PATH..."; \
+		rm -rf "$$OPENRAG_DATA_PATH"; \
+		echo "$(PURPLE)$$OPENRAG_DATA_PATH removed$(NC)"; \
+	fi; \
+	if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
+		echo "Removing JWT keys..."; \
+		rm -f keys/private_key.pem keys/public_key.pem 2>/dev/null || \
+			$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/keys:/keys" alpine rm -f /keys/private_key.pem /keys/public_key.pem 2>/dev/null || true; \
+		echo "$(PURPLE)JWT keys removed$(NC)"; \
+	fi; \
+	echo "$(YELLOW)Removing OpenRAG images...$(NC)"; \
+	$(MAKE) remove-openrag-images; \
+	echo ""; \
+	echo "$(PURPLE)Factory reset complete!$(NC)"; \
+	echo "$(CYAN)Run 'make dev' or 'make dev-cpu' to start fresh.$(NC)";
+
+######################
+# LOCAL DEVELOPMENT
+######################
+
+backend: ## Run backend locally
+	@echo "$(YELLOW)Starting backend locally...$(NC)"
+	@if [ ! -f $(ENV_FILE) ]; then echo "$(RED)$(ENV_FILE) file not found. Copy .env.example to it first$(NC)"; exit 1; fi
+	@$(call fix_backend_volume_ownership)
+	uv run python src/main.py
+
+frontend: ## Run frontend locally
+	@echo "$(YELLOW)Starting frontend locally...$(NC)"
+	@if [ ! -d "frontend/node_modules" ]; then echo "$(YELLOW)Installing frontend dependencies first...$(NC)"; cd frontend && npm install; fi
+	@ARCH=$$(uname -m); \
+	export ENV_FILE="$(abspath $(ENV_FILE))"; \
+	PORT=$${FRONTEND_PORT:-3000}; \
+	export NEXT_DIST_DIR=$${NEXT_DIST_DIR:-$$( [ "$$PORT" = "3000" ] && echo .next || echo .next-$$PORT )}; \
+	cd frontend && \
+	echo "$(YELLOW)Using distDir $$NEXT_DIST_DIR$(NC)"; \
+	if [ "$$ARCH" = "ppc64le" ] || [ "$$ARCH" = "ppc64" ]; then \
+		echo "$(YELLOW)Detected Power architecture ($$ARCH) — using Webpack fallback$(NC)"; \
+		npx next dev --webpack \
+			--port $$PORT \
+			--hostname $(hostname); \
+	else \
+		npx next dev \
+			--port $$PORT \
+			--hostname $(hostname); \
+	fi
+
+docling: ## Start docling-serve for document processing
+	@echo "$(YELLOW)Starting docling-serve...$(NC)"
+	@uv run python scripts/docling_ctl.py start
+	@echo "$(PURPLE)Docling-serve started! Use 'make docling-stop' to stop it.$(NC)"
+
+docling-stop: ## Stop docling-serve
+	@echo "$(YELLOW)Stopping docling-serve...$(NC)"
+	@uv run python scripts/docling_ctl.py stop
+	@echo "$(PURPLE)Docling-serve stopped.$(NC)"
+
+azurite-up: ## Start Azurite (local Azure Blob emulator) for connector testing
+	@echo "$(YELLOW)Starting Azurite (Azure Blob emulator)...$(NC)"
+	$(COMPOSE_CMD) --profile azurite up -d azurite
+	@echo "$(PURPLE)Azurite started on http://localhost:10000 (account: devstoreaccount1).$(NC)"
+
+azurite-down: ## Stop Azurite emulator
+	@echo "$(YELLOW)Stopping Azurite...$(NC)"
+	$(COMPOSE_CMD) --profile azurite stop azurite
+	@echo "$(PURPLE)Azurite stopped.$(NC)"
+
+instana-agent-up: ## Start the local Instana host agent (forwards to INSTANA_AGENT_ENDPOINT)
+	@echo "$(YELLOW)Starting Instana host agent...$(NC)"
+	@echo "$(RED)WARNING: Local development only on Linux. Runs privileged, in the host PID namespace, with Docker socket access and uses host networking. Do not run on a shared or production host.$(NC)"
+	@if [ -z "$$INSTANA_AGENT_KEY" ]; then echo "$(RED)INSTANA_AGENT_KEY not set in $(ENV_FILE)$(NC)"; exit 1; fi
+	$(COMPOSE_CMD) --profile instana up -d instana-agent
+	@echo "$(PURPLE)Instana agent started (listening on 127.0.0.1:42699).$(NC)"
+
+instana-agent-down: ## Stop the local Instana host agent
+	@echo "$(YELLOW)Stopping Instana agent...$(NC)"
+	$(COMPOSE_CMD) --profile instana stop instana-agent
+	@echo "$(PURPLE)Instana agent stopped.$(NC)"
+
+######################
+# INSTALLATION
+######################
+
+install: install-be install-fe ## Install all dependencies
+	@echo "$(PURPLE)All dependencies installed!$(NC)"
+
+install-be: ## Install backend dependencies
+	@echo "$(YELLOW)Installing backend dependencies...$(NC)"
+	uv sync
+	@echo "$(PURPLE)Backend dependencies installed.$(NC)"
+
+install-fe: ## Install frontend dependencies
+	@echo "$(YELLOW)Installing frontend dependencies...$(NC)"
+	cd frontend && npm install
+	@echo "$(PURPLE)Frontend dependencies installed.$(NC)"
+
+######################
+# DOCKER BUILD
+######################
+
+build: build-os build-be build-fe build-lf ## Build all Docker images locally
+	@echo "$(PURPLE)All images built successfully!$(NC)"
+
+build-os: ## Build OpenSearch Docker image
+	@echo "$(YELLOW)Building OpenSearch image...$(NC)"
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:latest -f Dockerfile .
+	@echo "$(PURPLE)OpenSearch image built.$(NC)"
+
+build-be: ## Build backend Docker image
+	@echo "$(YELLOW)Building backend image...$(NC)"
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:latest -f Dockerfile.backend .
+	@echo "$(PURPLE)Backend image built.$(NC)"
+
+build-fe: ## Build frontend Docker image
+	@echo "$(YELLOW)Building frontend image...$(NC)"
+	$(CONTAINER_RUNTIME) build $(FRONTEND_BASE_PATH_BUILD_ARG) -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
+	@echo "$(PURPLE)Frontend image built.$(NC)"
+
+build-lf: ## Build Langflow Docker image
+	@echo "$(YELLOW)Building Langflow image...$(NC)"
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .
+	@echo "$(PURPLE)Langflow image built.$(NC)"
+
+# kind cluster name for local Kubernetes (see kubernetes/operator/README.md)
+KIND_CLUSTER_NAME ?= openrag
+
+kind-load-app-images: ## Load OpenRAG app images into a kind cluster (Colima/Docker)
+	@command -v kind >/dev/null 2>&1 || { echo "$(RED)kind is not installed$(NC)"; exit 1; }
+	@echo "$(YELLOW)Loading app images into kind cluster '$(KIND_CLUSTER_NAME)'...$(NC)"
+	kind load docker-image langflowai/openrag-backend:latest --name $(KIND_CLUSTER_NAME)
+	kind load docker-image langflowai/openrag-frontend:latest --name $(KIND_CLUSTER_NAME)
+	kind load docker-image langflowai/openrag-langflow:latest --name $(KIND_CLUSTER_NAME)
+	@echo "$(PURPLE)Images loaded. Restart pods if they already exist:$(NC)"
+	@echo "  kubectl rollout restart deployment -n my-tenant openrag-fe openrag-be openrag-lf"
+
+kind-build-load-apps: build-be build-fe build-lf kind-load-app-images ## Build app images and load into kind
+
+######################
+# LOGGING
+######################
+
+logs: ## Show logs from all containers
+	@echo "$(YELLOW)Showing all container logs...$(NC)"
+	$(COMPOSE_CMD) logs -f
+
+logs-be: ## Show backend container logs
+	@echo "$(YELLOW)Showing backend logs...$(NC)"
+	$(COMPOSE_CMD) logs -f openrag-backend
+
+logs-fe: ## Show frontend container logs
+	@echo "$(YELLOW)Showing frontend logs...$(NC)"
+	$(COMPOSE_CMD) logs -f openrag-frontend
+
+logs-lf: ## Show langflow container logs
+	@echo "$(YELLOW)Showing langflow logs...$(NC)"
+	$(COMPOSE_CMD) logs -f langflow
+
+logs-os: ## Show opensearch container logs
+	@echo "$(YELLOW)Showing opensearch logs...$(NC)"
+	$(COMPOSE_CMD) logs -f opensearch
+
+######################
+# SHELL ACCESS
+######################
+
+shell-be: ## Shell into backend container
+	@echo "$(YELLOW)Opening shell in backend container...$(NC)"
+	$(COMPOSE_CMD) exec openrag-backend /bin/bash
+
+shell-lf: ## Shell into langflow container
+	@echo "$(YELLOW)Opening shell in langflow container...$(NC)"
+	$(COMPOSE_CMD) exec langflow /bin/bash
+
+shell-os: ## Shell into opensearch container
+	@echo "$(YELLOW)Opening shell in opensearch container...$(NC)"
+	$(COMPOSE_CMD) exec opensearch /bin/bash
+
+######################
+# TESTING
+######################
+
+test: ## Run all backend tests
+	@echo "$(YELLOW)Running all backend tests...$(NC)"
+	uv run pytest tests/ -v
+	@echo "$(PURPLE)Tests complete.$(NC)"
+
+test-unit: ## Run unit tests only
+	@echo "$(YELLOW)Running unit tests...$(NC)"
+	@# A stale module that fails to import must not abort the whole suite;
+	@# the collection error is still reported and still fails the target.
+	uv run pytest tests/unit/ -v --continue-on-collection-errors
+	@echo "$(PURPLE)Unit tests complete.$(NC)"
+
+test-integration: ## Run integration tests (requires infrastructure)
+	@echo "$(CYAN)════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE) Core Integration Tests$(NC)"
+	@echo "$(CYAN)════════════════════════════════════════$(NC)"
+	@echo "$(YELLOW)Make sure to run 'make dev-local' first!$(NC)"
+	uv run pytest tests/integration/core/ -v
+
+ci-build-images: ## Build all OpenRAG images for CI artifact sharing
+	@set -e; \
+	IMAGE_TAG=$${OPENRAG_VERSION:-latest}; \
+	echo "$(YELLOW)Building all OpenRAG images with tag '$$IMAGE_TAG'...$(NC)"; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:$$IMAGE_TAG -f Dockerfile .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:$$IMAGE_TAG -f Dockerfile.backend .; \
+	$(CONTAINER_RUNTIME) build $(FRONTEND_BASE_PATH_BUILD_ARG) -t langflowai/openrag-frontend:$$IMAGE_TAG -f Dockerfile.frontend .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:$$IMAGE_TAG -f Dockerfile.langflow .; \
+	echo "$(GREEN)All images built successfully!$(NC)"
+
+ci-save-images: ## Save CI-built OpenRAG images to .ci-artifacts/openrag-ci-images.tar
+	@set -e; \
+	IMAGE_TAG=$${OPENRAG_VERSION:-latest}; \
+	mkdir -p .ci-artifacts; \
+	echo "$(YELLOW)Saving OpenRAG images with tag '$$IMAGE_TAG'...$(NC)"; \
+	$(CONTAINER_RUNTIME) save -o .ci-artifacts/openrag-ci-images.tar \
+		langflowai/openrag-opensearch:$$IMAGE_TAG \
+		langflowai/openrag-backend:$$IMAGE_TAG \
+		langflowai/openrag-frontend:$$IMAGE_TAG \
+		langflowai/openrag-langflow:$$IMAGE_TAG; \
+	ls -lh .ci-artifacts/openrag-ci-images.tar
+
+test-ci-suite: ensure-langflow-data ensure-backend-volumes ## Run one CI integration suite: TEST_SUITE=core|sdk-python|sdk-typescript
+	@scripts/ci/run_integration_suite.sh "$${TEST_SUITE:-core}"
+
+test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integration + SDK tests, tear down (uses DockerHub images)
+	@set -e; \
+	TEST_RESULT=0; \
+	echo "$(YELLOW)Installing test dependencies...$(NC)"; \
+	uv sync --quiet --group dev; \
+	echo "::group::Cleanup, Pull & Build Images"; \
+	echo "$(YELLOW)Cleaning up old containers and volumes...$(NC)"; \
+	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
+	echo "$(YELLOW)Pulling latest images...$(NC)"; \
+	$(COMPOSE_CMD) pull; \
+	echo "$(YELLOW)Building OpenSearch image override...$(NC)"; \
+	$(CONTAINER_RUNTIME) build --no-cache -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
+	echo "::endgroup::"; \
+	echo "::group::Start Infrastructure"; \
+	echo "$(YELLOW)Starting infra (OpenSearch + Langflow + Backend + Frontend) with CPU containers$(NC)"; \
+	OPENSEARCH_HOST=opensearch $(COMPOSE_CMD) up -d opensearch langflow openrag-backend openrag-frontend; \
+	echo "$(CYAN)Architecture: $$(uname -m), Platform: $$(uname -s)$(NC)"; \
+	echo "$(YELLOW)Starting docling-serve...$(NC)"; \
+	DOCLING_START_FAILED=0; \
+	DOCLING_START_OUTPUT=$$(uv run python scripts/docling_ctl.py start --port 5001 --timeout 180 2>&1) || DOCLING_START_FAILED=1; \
+	echo "$$DOCLING_START_OUTPUT"; \
+	if [ "$$DOCLING_START_FAILED" = "1" ]; then \
+		echo "$(RED)ERROR: docling_ctl.py start failed. Output above.$(NC)"; \
+		uv run python scripts/docling_ctl.py status 2>&1 || true; \
+		$(COMPOSE_CMD) down -v 2>/dev/null || true; \
+		exit 1; \
+	fi; \
+	DOCLING_ENDPOINT=$$(echo "$$DOCLING_START_OUTPUT" | grep "Endpoint:" | awk '{print $$2}'); \
+	if [ -z "$$DOCLING_ENDPOINT" ]; then \
+		echo "$(RED)WARNING: docling-serve did not report an endpoint. Defaulting to http://localhost:5001$(NC)"; \
+		DOCLING_ENDPOINT="http://localhost:5001"; \
+	fi; \
+	echo "$(PURPLE)Docling-serve started at $$DOCLING_ENDPOINT$(NC)"; \
+	echo "$(YELLOW)Docling-serve status check:$(NC)"; \
+	uv run python scripts/docling_ctl.py status 2>&1 || true; \
+	echo "$(YELLOW)Waiting for backend OIDC endpoint...$(NC)"; \
+	for i in $$(seq 1 60); do \
+		$(COMPOSE_CMD) exec -T openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
+	done; \
+	echo "$(YELLOW)Fixing JWT key ownership for test runner (host UID $$(id -u))...$(NC)"; \
+	$(CONTAINER_RUNTIME) run --rm -v $$(pwd)/keys:/keys alpine sh -c "chown $$(id -u):$$(id -g) /keys/private_key.pem /keys/public_key.pem 2>/dev/null; chmod 600 /keys/private_key.pem; chmod 644 /keys/public_key.pem 2>/dev/null" 2>/dev/null || true; \
+	echo "$(YELLOW)Waiting for OpenSearch security config to be fully applied...$(NC)"; \
+	for i in $$(seq 1 60); do \
+		if $(COMPOSE_CMD) logs opensearch 2>&1 | grep -q "Security configuration applied successfully"; then \
+			echo "$(PURPLE)Security configuration applied$(NC)"; \
+			break; \
+		fi; \
+		sleep 2; \
+	done; \
+	echo "$(YELLOW)Verifying OIDC authenticator is active in OpenSearch...$(NC)"; \
+	for i in $$(seq 1 30); do \
+		AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:$${OPENSEARCH_PORT:-9200}/_opendistro/_security/api/securityconfig 2>/dev/null || true); \
+		if echo "$$AUTHC_CONFIG" | grep -q "openid_auth_domain"; then \
+			echo "$(PURPLE)OIDC authenticator configured$(NC)"; \
+			echo "$$AUTHC_CONFIG" | grep -A 5 "openid_auth_domain"; \
+			break; \
+		fi; \
+		if [ $$i -eq 30 ]; then \
+			echo "$(RED)OIDC authenticator NOT found or unreachable in time!$(NC)"; \
+			echo "Security config output: $$AUTHC_CONFIG"; \
+			exit 1; \
+		fi; \
+		sleep 2; \
+	done; \
+	echo "$(YELLOW)Waiting for Langflow...$(NC)"; \
+	for i in $$(seq 1 60); do \
+		curl -s http://localhost:$${LANGFLOW_PORT:-7860}/ >/dev/null 2>&1 && break || sleep 2; \
+	done; \
+	echo "$(YELLOW)Waiting for docling-serve at $$DOCLING_ENDPOINT...$(NC)"; \
+	for i in $$(seq 1 60); do \
+		curl -s $${DOCLING_ENDPOINT}/health >/dev/null 2>&1 && break || sleep 2; \
+	done; \
+	if ! curl -s $${DOCLING_ENDPOINT}/health >/dev/null 2>&1; then \
+		echo "$(RED)ERROR: docling-serve is not healthy at $$DOCLING_ENDPOINT after waiting$(NC)"; \
+		echo "$(YELLOW)Docling status:$(NC)"; \
+		uv run python scripts/docling_ctl.py status 2>&1 || true; \
+		echo "$(RED)Aborting: docling-serve is required for integration tests.$(NC)"; \
+		uv run python scripts/docling_ctl.py stop || true; \
+		$(COMPOSE_CMD) down -v 2>/dev/null || true; \
+		exit 1; \
+	fi; \
+	echo "::endgroup::"; \
+	echo "::group::Core Integration Tests"; \
+	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
+	echo "$(PURPLE) Core Integration Tests$(NC)"; \
+	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
+	mkdir -p service-logs; \
+	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
+	GOOGLE_OAUTH_CLIENT_ID="" \
+	GOOGLE_OAUTH_CLIENT_SECRET="" \
+	OPENSEARCH_HOST=localhost OPENSEARCH_PORT=$${OPENSEARCH_PORT:-9200} \
+	OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD=$${OPENSEARCH_PASSWORD} \
+	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
+	uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml || TEST_RESULT=1; \
+	echo "::endgroup::"; \
+	echo ""; \
+	echo "$(YELLOW)Waiting for frontend at $(FRONTEND_LOCAL_URL)...$(NC)"; \
+	for i in $$(seq 1 60); do \
+		curl -s $(FRONTEND_LOCAL_URL)/ >/dev/null 2>&1 && break || sleep 2; \
+	done; \
+	echo "::group::SDK Integration Tests (Python)"; \
+	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
+	echo "$(PURPLE) SDK Integration Tests (Python)$(NC)"; \
+	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
+	uv pip install --quiet -e sdks/python; \
+	mkdir -p service-logs; \
+	SDK_TESTS_ONLY=true OPENRAG_URL=$(FRONTEND_LOCAL_URL) uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || TEST_RESULT=1; \
+	echo "::endgroup::"; \
+	echo "::group::SDK Integration Tests (TypeScript)"; \
+	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
+	echo "$(PURPLE) SDK Integration Tests (TypeScript)$(NC)"; \
+	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
+	cd sdks/typescript && \
+	npm install && npm run build && \
+	OPENRAG_URL=$(FRONTEND_LOCAL_URL) npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || TEST_RESULT=1; \
+	cd ../..; \
+	echo "::endgroup::"; \
+	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
+	echo ""; \
+	echo "::group::Test Failure Report"; \
+	uv run python scripts/ci/generate_test_report.py service-logs || true; \
+	echo "::endgroup::"; \
+	($(call test_jwt_opensearch)) || TEST_RESULT=1; \
+	echo "$(YELLOW)Tearing down infra$(NC)"; \
+	uv run python scripts/docling_ctl.py stop || true; \
+	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
+	exit $$TEST_RESULT
+
+test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci but builds all images locally
+	@set -e; \
+	TEST_RESULT=0; \
+	echo "$(YELLOW)Installing test dependencies...$(NC)"; \
+	uv sync --quiet --group dev; \
+	echo "::group::Cleanup & Build Images"; \
+	echo "$(YELLOW)Cleaning up old containers and volumes...$(NC)"; \
+	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
+	echo "$(YELLOW)Building all images locally...$(NC)"; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:latest -f Dockerfile.backend .; \
+	$(CONTAINER_RUNTIME) build $(FRONTEND_BASE_PATH_BUILD_ARG) -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .; \
+	echo "::endgroup::"; \
+	echo "::group::Start Infrastructure"; \
+	echo "$(YELLOW)Starting infra (OpenSearch + Langflow + Backend + Frontend) with CPU containers$(NC)"; \
+	echo "$(CYAN)Architecture: $$(uname -m), Platform: $$(uname -s)$(NC)"; \
+	OPENSEARCH_HOST=opensearch $(COMPOSE_CMD) up -d opensearch langflow openrag-backend openrag-frontend; \
+	echo "$(YELLOW)Starting docling-serve...$(NC)"; \
+	DOCLING_START_FAILED=0; \
+	DOCLING_START_OUTPUT=$$(uv run python scripts/docling_ctl.py start --port 5001 --timeout 180 2>&1) || DOCLING_START_FAILED=1; \
+	echo "$$DOCLING_START_OUTPUT"; \
+	if [ "$$DOCLING_START_FAILED" = "1" ]; then \
+		echo "$(RED)ERROR: docling_ctl.py start failed. Output above.$(NC)"; \
+		uv run python scripts/docling_ctl.py status 2>&1 || true; \
+		$(COMPOSE_CMD) down -v 2>/dev/null || true; \
+		exit 1; \
+	fi; \
+	DOCLING_ENDPOINT=$$(echo "$$DOCLING_START_OUTPUT" | grep "Endpoint:" | awk '{print $$2}'); \
+	if [ -z "$$DOCLING_ENDPOINT" ]; then \
+		echo "$(RED)WARNING: docling-serve did not report an endpoint. Defaulting to http://localhost:5001$(NC)"; \
+		DOCLING_ENDPOINT="http://localhost:5001"; \
+	fi; \
+	echo "$(PURPLE)Docling-serve started at $$DOCLING_ENDPOINT$(NC)"; \
+	echo "$(YELLOW)Docling-serve status check:$(NC)"; \
+	uv run python scripts/docling_ctl.py status 2>&1 || true; \
+	echo "$(YELLOW)Waiting for backend OIDC endpoint...$(NC)"; \
+	for i in $$(seq 1 60); do \
+		$(COMPOSE_CMD) exec -T openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
+	done; \
+	echo "$(YELLOW)Fixing JWT key ownership for test runner (host UID $$(id -u))...$(NC)"; \
+	$(CONTAINER_RUNTIME) run --rm -v $$(pwd)/keys:/keys alpine sh -c "chown $$(id -u):$$(id -g) /keys/private_key.pem /keys/public_key.pem 2>/dev/null; chmod 600 /keys/private_key.pem; chmod 644 /keys/public_key.pem 2>/dev/null" 2>/dev/null || true; \
+	echo "$(YELLOW)Waiting for OpenSearch security config to be fully applied...$(NC)"; \
+	for i in $$(seq 1 60); do \
+		if $(COMPOSE_CMD) logs opensearch 2>&1 | grep -q "Security configuration applied successfully"; then \
+			echo "$(PURPLE)Security configuration applied$(NC)"; \
+			break; \
+		fi; \
+		sleep 2; \
+	done; \
+	echo "$(YELLOW)Verifying OIDC authenticator is active in OpenSearch...$(NC)"; \
+	for i in $$(seq 1 30); do \
+		AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:$${OPENSEARCH_PORT:-9200}/_opendistro/_security/api/securityconfig 2>/dev/null || true); \
+		if echo "$$AUTHC_CONFIG" | grep -q "openid_auth_domain"; then \
+			echo "$(PURPLE)OIDC authenticator configured$(NC)"; \
+			echo "$$AUTHC_CONFIG" | grep -A 5 "openid_auth_domain"; \
+			break; \
+		fi; \
+		if [ $$i -eq 30 ]; then \
+			echo "$(RED)OIDC authenticator NOT found or unreachable in time!$(NC)"; \
+			echo "Security config output: $$AUTHC_CONFIG"; \
+			exit 1; \
+		fi; \
+		sleep 2; \
+	done; \
+	echo "$(YELLOW)Waiting for Langflow...$(NC)"; \
+	for i in $$(seq 1 60); do \
+		curl -s http://localhost:$${LANGFLOW_PORT:-7860}/ >/dev/null 2>&1 && break || sleep 2; \
+	done; \
+	echo "$(YELLOW)Waiting for docling-serve at $$DOCLING_ENDPOINT...$(NC)"; \
+	for i in $$(seq 1 60); do \
+		curl -s $${DOCLING_ENDPOINT}/health >/dev/null 2>&1 && break || sleep 2; \
+	done; \
+	if ! curl -s $${DOCLING_ENDPOINT}/health >/dev/null 2>&1; then \
+		echo "$(RED)ERROR: docling-serve is not healthy at $$DOCLING_ENDPOINT after waiting$(NC)"; \
+		echo "$(YELLOW)Docling status:$(NC)"; \
+		uv run python scripts/docling_ctl.py status 2>&1 || true; \
+		echo "$(RED)Aborting: docling-serve is required for integration tests.$(NC)"; \
+		uv run python scripts/docling_ctl.py stop || true; \
+		$(COMPOSE_CMD) down -v 2>/dev/null || true; \
+		exit 1; \
+	fi; \
+	echo "::endgroup::"; \
+	echo "::group::Core Integration Tests"; \
+	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
+	echo "$(PURPLE) Core Integration Tests$(NC)"; \
+	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
+	mkdir -p service-logs; \
+	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
+	GOOGLE_OAUTH_CLIENT_ID="" \
+	GOOGLE_OAUTH_CLIENT_SECRET="" \
+	OPENSEARCH_HOST=localhost OPENSEARCH_PORT=$${OPENSEARCH_PORT:-9200} \
+	OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD=$${OPENSEARCH_PASSWORD} \
+	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
+	uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml || TEST_RESULT=1; \
+	echo "::endgroup::"; \
+	echo ""; \
+	echo "$(YELLOW)Waiting for frontend at $(FRONTEND_LOCAL_URL)...$(NC)"; \
+	for i in $$(seq 1 60); do \
+		curl -s $(FRONTEND_LOCAL_URL)/ >/dev/null 2>&1 && break || sleep 2; \
+	done; \
+	echo "::group::SDK Integration Tests (Python)"; \
+	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
+	echo "$(PURPLE) SDK Integration Tests (Python)$(NC)"; \
+	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
+	uv pip install --quiet -e sdks/python; \
+	mkdir -p service-logs; \
+	SDK_TESTS_ONLY=true OPENRAG_URL=$(FRONTEND_LOCAL_URL) uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || TEST_RESULT=1; \
+	echo "::endgroup::"; \
+	echo "::group::SDK Integration Tests (TypeScript)"; \
+	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
+	echo "$(PURPLE) SDK Integration Tests (TypeScript)$(NC)"; \
+	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
+	cd sdks/typescript && \
+	npm install && npm run build && \
+	OPENRAG_URL=$(FRONTEND_LOCAL_URL) npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || TEST_RESULT=1; \
+	cd ../..; \
+	echo "::endgroup::"; \
+	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
+	echo ""; \
+	if [ $$TEST_RESULT -ne 0 ]; then \
+		echo "$(RED)=== Tests failed, saving container logs to service-logs/ ===$(NC)"; \
+		mkdir -p service-logs; \
+		$(CONTAINER_RUNTIME) logs $(COMPOSE_PROJECT_NAME)-langflow > service-logs/langflow.log 2>&1 || echo "$(RED)Could not get Langflow logs$(NC)"; \
+		$(CONTAINER_RUNTIME) logs $(COMPOSE_PROJECT_NAME)-backend > service-logs/backend.log 2>&1 || echo "$(RED)Could not get backend logs$(NC)"; \
+		$(CONTAINER_RUNTIME) logs $(COMPOSE_PROJECT_NAME)-frontend > service-logs/frontend.log 2>&1 || echo "$(RED)Could not get frontend logs$(NC)"; \
+		$(CONTAINER_RUNTIME) logs $(COMPOSE_PROJECT_NAME)-opensearch > service-logs/opensearch.log 2>&1 || echo "$(RED)Could not get OpenSearch logs$(NC)"; \
+		if [ -f ~/.openrag/tui/docling-serve.log ]; then cp ~/.openrag/tui/docling-serve.log service-logs/docling.log 2>/dev/null || echo "$(RED)Could not get Docling logs$(NC)"; fi; \
+	fi; \
+	echo "::group::Test Failure Report"; \
+	uv run python scripts/ci/generate_test_report.py service-logs || true; \
+	echo "::endgroup::"; \
+	($(call test_jwt_opensearch)) || TEST_RESULT=1; \
+	echo "$(YELLOW)Tearing down infra$(NC)"; \
+	uv run python scripts/docling_ctl.py stop || true; \
+	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
+	exit $$TEST_RESULT
+
+test-os-jwt: ## Test JWT authentication against OpenSearch
+	@$(call test_jwt_opensearch)
+
+test-sdk: ## Run SDK integration tests (requires running OpenRAG at localhost:3000)
+	@echo "$(CYAN)════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE) SDK Integration Tests (Python)$(NC)"
+	@echo "$(CYAN)════════════════════════════════════════$(NC)"
+	@echo "$(YELLOW)Make sure OpenRAG is running at localhost:3000 (make dev)$(NC)"
+	uv pip install -e sdks/python
+	SDK_TESTS_ONLY=true OPENRAG_URL=$(FRONTEND_LOCAL_URL) uv run pytest tests/integration/sdk/ -vv -s
+	@echo ""
+	@echo "$(PURPLE)Running TypeScript SDK tests...$(NC)"
+	cd sdks/typescript && npm install && npm run build && OPENRAG_URL=$(FRONTEND_LOCAL_URL) npm test
+	@echo "$(PURPLE)SDK tests complete.$(NC)"
+
+lint: ## Run linting checks
+	@echo "$(YELLOW)Running linting checks...$(NC)"
+	cd frontend && npm run lint
+	@echo "$(PURPLE)Frontend linting complete.$(NC)"
+
+######################
+# STATUS & HEALTH
+######################
+
+status: ## Show container status
+	@echo "$(PURPLE)Container status:$(NC)"
+	@$(COMPOSE_CMD) ps 2>/dev/null || echo "$(YELLOW)No containers running$(NC)"
+
+health: ## Check health of all services
+	@printf "$(PURPLE)Health check:$(NC)\n"
+	@printf "$(CYAN)Frontend:$(NC)   "
+	@if curl -s -k --fail http://127.0.0.1:$${FRONTEND_PORT:-3000}$(OPENRAG_FRONTEND_BASE_PATH)/ >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
+	@printf "$(CYAN)Backend:$(NC)     "
+	@if curl -s -k --fail http://127.0.0.1:$${OPENRAG_BACKEND_PORT:-8000}/health >/dev/null 2>&1; then \
+		printf "$(GREEN)Healthy$(NC)\n"; \
+	elif command -v podman >/dev/null 2>&1 && podman ps --format "{{.Names}}" | grep -q "^openrag-backend$$" && podman exec openrag-backend curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then \
+		printf "$(GREEN)Healthy$(NC)\n"; \
+	elif command -v docker >/dev/null 2>&1 && docker ps --format "{{.Names}}" | grep -q "^openrag-backend$$" && docker exec openrag-backend curl -s -k --fail http://127.0.0.1:8000/health >/dev/null 2>&1; then \
+		printf "$(GREEN)Healthy$(NC)\n"; \
+	else \
+		printf "$(RED)Not responding$(NC)\n"; \
+	fi
+	@printf "$(CYAN)Langflow:$(NC)   "
+	@if curl -s -k --fail http://127.0.0.1:$${LANGFLOW_PORT:-7860}/health >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
+	@printf "$(CYAN)OpenSearch:$(NC) "
+	@RESULTS=$$(curl -s -k -u "admin:$$OPENSEARCH_PASSWORD" https://127.0.0.1:$${OPENSEARCH_PORT:-9200}/_cluster/health 2>/dev/null); \
+	if [ -z "$$RESULTS" ]; then \
+		printf "$(RED)Not responding$(NC)\n"; \
+	else \
+		STATUS=$$(echo "$$RESULTS" | python3 -c 'import sys, json; print(json.load(sys.stdin).get("status", "unknown"))' 2>/dev/null || echo "unknown"); \
+		if [ "$$STATUS" = "green" ]; then printf "$(GREEN)$$STATUS$(NC)\n"; \
+		elif [ "$$STATUS" = "yellow" ]; then printf "$(YELLOW)$$STATUS$(NC)\n"; \
+		elif [ "$$STATUS" = "red" ]; then printf "$(RED)$$STATUS$(NC)\n"; \
+		elif [ "$$STATUS" = "unknown" ]; then printf "$(RED)Invalid Response (Check Credentials)$(NC)\n"; \
+		else printf "$(YELLOW)%s$(NC)\n" "$$STATUS"; fi; \
+	fi
+	@printf "$(CYAN)Docling:$(NC)    "
+	@if curl -s -k --fail http://127.0.0.1:5001/health >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
+
+######################
+# DATABASE OPERATIONS
+######################
+
+db-reset: ## Reset OpenSearch indices
+	@echo "$(YELLOW)Resetting OpenSearch indices...$(NC)"
+	curl -k -X DELETE "https://localhost:$${OPENSEARCH_PORT:-9200}/documents" -u admin:$${OPENSEARCH_PASSWORD} || true
+	curl -k -X DELETE "https://localhost:$${OPENSEARCH_PORT:-9200}/knowledge_filters" -u admin:$${OPENSEARCH_PASSWORD} || true
+	@echo "$(PURPLE)Indices reset. Restart backend to recreate.$(NC)"
+
+clear-os-data: ## Clear OpenSearch data volume
+	@echo "$(YELLOW)Clearing OpenSearch data volume...$(NC)"
+	@uv run python scripts/clear_opensearch_data.py
+	@echo "$(PURPLE)OpenSearch data volume cleared.$(NC)"
+
+######################
+# FLOW MANAGEMENT
+######################
+
+flow-upload: ## Upload flow to Langflow
+	@echo "$(YELLOW)Uploading flow to Langflow...$(NC)"
+	@if [ -z "$(FLOW_FILE)" ]; then echo "$(RED)Usage: make flow-upload FLOW_FILE=path/to/flow.json$(NC)"; exit 1; fi
+	curl -X POST "http://localhost:$${LANGFLOW_PORT:-7860}/api/v1/flows" \
+		-H "Content-Type: application/json" \
+		-d @$(FLOW_FILE)
+	@echo "$(PURPLE)Flow uploaded.$(NC)"
+
+######################
+# SETUP
+######################
+
+setup: check_tools ## Set up development environment
+	@echo "$(YELLOW)Setting up development environment...$(NC)"
+	@if [ ! -f .env ]; then cp .env.example .env && echo "$(PURPLE)Created .env from template$(NC)"; fi
+	@$(MAKE) install
+	@echo "$(PURPLE)Setup complete! Run 'make dev' to start.$(NC)"
