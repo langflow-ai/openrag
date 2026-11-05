@@ -151,7 +151,7 @@ check_tools: ## Verify required tools are installed with correct versions
 	NODE_MAJOR=$$(echo $$NODE_VERSION | cut -d. -f1); \
 	NODE_MINOR=$$(echo $$NODE_VERSION | cut -d. -f2); \
 	if [ "$$NODE_MAJOR" -ne 24 ] || [ "$$NODE_MINOR" -lt 15 ]; then \
-		echo "$(RED)✗ Node.js $$NODE_VERSION found, but ^24.15.0 required (see frontend/.nvmrc)$(NC)"; exit 1; \
+		echo "$(RED)✗ Node.js $$NODE_VERSION found, but ^24.15.0 required. Install the latest 24.x (nvm: cd frontend && nvm install)$(NC)"; exit 1; \
 	else \
 		echo "$(PURPLE)✓ Node.js $$NODE_VERSION$(NC)"; \
 	fi
