@@ -21,7 +21,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "agentd>=0.8.7",
+    "agentd>=0.13.0",
     "aiofiles>=24.1.0",
     "authlib>=1.8.0,<2.0.0",
     "aiohttp>=3.14.4",
@@ -31,6 +31,8 @@ dependencies = [
     "google-auth-httplib2>=0.2.0",
     "httplib2>=0.32.0",
     "google-auth-oauthlib>=1.2.0",
+    # AgentD 0.13 imports griffe at runtime but does not declare it.
+    "griffe>=1.15.0,<2.0.0",
     "msal>=1.29.0",
     "httpx>=0.27.0",
     "idna>=3.18",
@@ -55,8 +57,8 @@ dependencies = [
     "joserfc>=1.7.3,<2.0.0",
     "pyyaml>=6.0",
     "tiktoken>=0.7.0",
-    "fastmcp>=3.4.0",
-    "mcp>=1.30.0",
+    "fastmcp>=4.1.6",
+    "mcp>=2.2.0,<3.0.0",
     "openai>=2.24.0,<3",
     "tenacity>=9.1.4",
     "pygments>=2.20.0",
