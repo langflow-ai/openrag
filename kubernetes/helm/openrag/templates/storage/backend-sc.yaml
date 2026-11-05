@@ -1,4 +1,4 @@
-{{- if or (.Values.backend.persistence.data.enabled) (.Values.backend.persistence.shared.enabled) }}
+{{- if and (or (.Values.backend.persistence.data.enabled) (.Values.backend.persistence.shared.enabled)) (ne .Values.backend.createStorageClass false) }}
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
