@@ -34,11 +34,10 @@ class TestEndpointProfile:
             (f"{RESOURCE}/api/projects/proj-1/openai/v1/", "project_openai_v1"),
             (f"{RESOURCE}/models", "legacy_models"),
             (f"{RESOURCE}/models/", "legacy_models"),
-            # A bare resource root is the legacy route's own default *on this
-            # host*: litellm's azure_ai handler appends `/models/...` and
-            # reaches the right place. See the host test below.
-            (RESOURCE, "legacy_models"),
-            (f"{RESOURCE}/", "legacy_models"),
+            # A bare resource root is named rather than routed; see
+            # TestTheResourceRootIsRefused below.
+            (RESOURCE, "resource_root"),
+            (f"{RESOURCE}/", "resource_root"),
             # The model *listing* URL names the same surface as its parent.
             # Pasted whole it used to match `/models` first and route as
             # legacy, so litellm built `.../openai/v1/models/chat/completions`.
@@ -53,7 +52,7 @@ class TestEndpointProfile:
     @pytest.mark.parametrize(
         "host, expected",
         [
-            ("contoso.services.ai.azure.com", "legacy_models"),
+            ("contoso.services.ai.azure.com", "resource_root"),
             # LiteLLM picks the legacy call path by testing the hostname for
             # `services.ai.azure.com`. Off it, a bare root becomes plain
             # `/chat/completions` and 404s, and the auth header changes from
@@ -65,6 +64,38 @@ class TestEndpointProfile:
     )
     def test_a_bare_root_is_only_unambiguous_on_the_foundry_host(self, host, expected) -> None:
         assert foundry.endpoint_profile(f"https://{host}") == expected
+
+    def test_the_resource_root_is_named_so_the_fix_can_be_stated(self) -> None:
+        """The portal's Overview page shows exactly this, so it is the single
+        most likely thing to be pasted.
+
+        Routed as legacy it went to `/models/chat/completions` — a different
+        inference surface from the `/openai/v1` one deployments are usually
+        on — and Azure answered "Resource not found" at first use, which reads
+        as a credential or resource fault rather than a missing suffix.
+        """
+        assert foundry.endpoint_profile(RESOURCE) == "resource_root"
+
+        with pytest.raises(foundry.UnsupportedEndpointError, match="/openai/v1"):
+            foundry.litellm_route({"api_base": RESOURCE})
+
+    @pytest.mark.asyncio
+    async def test_the_resource_root_is_refused_at_save_time(self) -> None:
+        """Refused where it can still be read as a configuration error."""
+        with pytest.raises(foundry.UnsupportedEndpointError) as caught:
+            await foundry.lightweight_health_check({"api_base": RESOURCE, "api_key": "k"})
+
+        assert "/openai/v1" in str(caught.value)
+        # Names the actual problem rather than the generic endpoint message.
+        assert "without a path" in str(caught.value)
+
+    def test_the_suffixed_endpoint_is_unaffected(self) -> None:
+        """The fix is to add the suffix, so that form has to keep working."""
+        assert foundry.endpoint_profile(f"{RESOURCE}/openai/v1") == "resource_openai_v1"
+        assert (
+            foundry.litellm_route({"api_base": f"{RESOURCE}/openai/v1"})
+            == foundry.OPENAI_COMPATIBLE_ROUTE
+        )
 
     def test_an_explicit_models_path_routes_on_any_host(self) -> None:
         """Spelled out, the path is enough and the host stops mattering.
@@ -246,7 +277,6 @@ class TestTransportSelection:
             (f"{RESOURCE}/api/projects/p/openai/v1", foundry.OPENAI_COMPATIBLE_ROUTE),
             (f"{RESOURCE}/openai/v1/chat/completions", foundry.OPENAI_COMPATIBLE_ROUTE),
             (f"{RESOURCE}/models", "azure_ai"),
-            (RESOURCE, "azure_ai"),
         ],
     )
     def test_the_endpoint_picks_the_transport(self, api_base, expected_route) -> None:
@@ -714,7 +744,7 @@ class TestGatewayRouting:
         assert litellm_model == "hosted_vllm/my-deployment"
         assert provider == "azure_ai"
 
-    @pytest.mark.parametrize("api_base", [f"{RESOURCE}/models", RESOURCE])
+    @pytest.mark.parametrize("api_base", [f"{RESOURCE}/models"])
     def test_the_legacy_surface_keeps_the_native_route(self, api_base) -> None:
         from services.llm_gateway import resolve_call
 

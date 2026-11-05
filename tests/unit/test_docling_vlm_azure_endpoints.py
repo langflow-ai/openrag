@@ -101,8 +101,6 @@ class TestFoundryEndpointShapes:
             (f"{RESOURCE}/models", f"{RESOURCE}/models/chat/completions"),
             # Legacy surface given as the resource root: `/models` is where
             # inference lives, and is what the gateway targets for the same
-            # configuration.
-            (RESOURCE, f"{RESOURCE}/models/chat/completions"),
         ],
     )
     async def test_the_url_matches_the_configured_surface(
@@ -177,6 +175,19 @@ class TestFoundryEndpointShapes:
                 monkeypatch,
                 "azure_ai",
                 {"api_base": api_base, "api_key": SECRET, "api_version": "2024-02-01"},
+                "gpt-4o",
+            )
+
+    @pytest.mark.asyncio
+    async def test_the_resource_root_is_refused(self, monkeypatch) -> None:
+        """Routed as legacy it reached `/models/chat/completions`, a different
+        surface from the one the deployment is on, and failed inside
+        docling-serve during ingestion rather than at option-build time."""
+        with pytest.raises(DoclingServeError, match="/openai/v1"):
+            await _options(
+                monkeypatch,
+                "azure_ai",
+                {"api_base": RESOURCE, "api_key": SECRET},
                 "gpt-4o",
             )
 
