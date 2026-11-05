@@ -19,7 +19,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "22"
   PYTHON_VERSION: "3.13"
   PLAYWRIGHT_BROWSERS_PATH: "ms-playwright"
   PLAYWRIGHT_VERSION: "1.57.0"
@@ -370,7 +369,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: frontend/.nvmrc
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
@@ -544,7 +543,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: frontend/.nvmrc
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
