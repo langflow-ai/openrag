@@ -2,7 +2,7 @@
 
 Customer connectors are **trusted Python code** installed in a derived backend image, not uploaded into a running server. The host discovers only explicitly enabled wheels from the `openrag.connectors.v1` entry-point group. A customer package can provide authentication, complete paginated inventory, file download and (optionally) paginated folder navigation. OpenRAG supplies the generic credentials form, picker, ingestion tasks and indexing; a Python wheel cannot add a custom React popup to the already-compiled frontend.
 
-The [SharePoint Server (NTLM) example](sharepoint_onprem/README.md) is an independently installable package demonstrating this contract. It is separate from the existing Microsoft Graph `sharepoint` connector. Keep this example **disabled** until an operator has verified the target SharePoint zone offers NTLM, approved the endpoint and CA, and exercised the tests against a non-production farm. Kerberos-only, forms, SAML and OIDC zones are not supported by this NTLM adapter.
+The SharePoint Server (NTLM) reference connector, `openrag-sharepoint-onprem`, is maintained in its own repository (`sharepoint-server-extension`) as an independently installable package demonstrating this contract. Its `Makefile` installs it into an OpenRAG checkout's venv for local development (`make install-dev`, `make backend`); OpenRAG itself ships no per-plugin Make targets. It is separate from the existing Microsoft Graph `sharepoint` connector. Keep this example **disabled** until an operator has verified the target SharePoint zone offers NTLM, approved the endpoint and CA, and exercised the tests against a non-production farm. Kerberos-only, forms, SAML and OIDC zones are not supported by this NTLM adapter.
 
 ## Build and enable
 
