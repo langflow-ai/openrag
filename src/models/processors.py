@@ -2,6 +2,7 @@ import asyncio
 import mimetypes
 import os
 import time
+import uuid
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -833,6 +834,9 @@ class TaskProcessor:
                 allowed_principals=allowed_principals,
                 allowed_principal_labels=allowed_principal_labels,
                 is_sample_data=is_sample_data,
+                # Stamped on every chunk written below, so chunk stats can count
+                # this run's chunks alone; same format as the Langflow callback's.
+                ingest_run_id=f"{stable_document_id}-{uuid.uuid4().hex}",
             )
             parser_name = slim_doc.get("parser")
             if not parser_name:
@@ -914,6 +918,7 @@ class TaskProcessor:
                 "id": stable_document_id,
                 "chunk_count": len(index_chunks),
                 "ingest_path": "openrag",
+                "ingest_run_id": index_context.ingest_run_id,
             }
 
     async def process_item(self, upload_task: UploadTask, item: Any, file_task: FileTask) -> None:

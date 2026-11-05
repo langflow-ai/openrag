@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import ANY
 
 import pytest
 
@@ -218,6 +219,7 @@ async def test_standard_processor_routes_onprem_embeddings_through_gateway(
         "id": "file-1",
         "chunk_count": 1,
         "ingest_path": "openrag",
+        "ingest_run_id": ANY,
     }
     assert gateway_calls == [
         {

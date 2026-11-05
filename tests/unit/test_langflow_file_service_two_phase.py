@@ -46,7 +46,7 @@ def mock_polling_service():
 def langflow_service(mock_docling_service):
     svc = LangflowFileService(docling_service=mock_docling_service)
     # Stub the actual Langflow HTTP call — those have their own coverage.
-    svc.run_ingestion_flow = AsyncMock(return_value={"status": "ok"})
+    svc.run_ingestion_flow = AsyncMock(return_value={"status": "ok", "ingest_run_id": "run-9"})
     return svc
 
 
@@ -90,6 +90,7 @@ async def test_two_phase_success_invokes_langflow_with_task_id(
     assert result["status"] == "success"
     assert result["docling_task_id"] == "task-abc-123"
     assert result["ingest_path"] == "langflow"
+    assert result["ingest_run_id"] == "run-9"
 
 
 @pytest.mark.asyncio

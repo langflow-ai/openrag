@@ -32,7 +32,7 @@ def _client(sources):
 def _file_task(ingest_path="langflow"):
     task = FileTask(file_path="/data/a.pdf", filename="a.pdf", document_id="hash-1")
     task.status = TaskStatus.COMPLETED
-    task.result = {"status": "success", "ingest_path": ingest_path}
+    task.result = {"status": "success", "ingest_path": ingest_path, "ingest_run_id": "run-1"}
     return task
 
 
@@ -53,6 +53,7 @@ async def test_stats_are_traced_in_the_tasks_session(finished):
     assert _trace_metadata(root, "task_id") == "task-9"
     assert _trace_metadata(root, "document_id") == "hash-1"
     assert _trace_metadata(root, "ingest_path") == "langflow"
+    assert _trace_metadata(root, "ingest_run_id") == "run-1"
     assert _metadata(root, "chunk_stats.chunk_count") == 2
     assert _metadata(root, "chunk_stats.chars.max") == 17
     assert _metadata(root, "chunk_stats.pages.count") == 2

@@ -157,19 +157,18 @@ def _client(hits, total=None):
 @pytest.mark.asyncio
 async def test_collect_reads_the_documents_chunks_from_the_index():
     from services.chunk_stats import STATS_MAX_CHUNKS, collect_chunk_stats
-    from services.ingest_preview_service import document_chunks_query
 
     client = _client([{"text": "hello world", "page": 1}, {"text": "bye", "page": 2}])
 
     stats = await collect_chunk_stats(
-        client, document_id="doc-1", ingest_path="openrag", index_name="documents"
+        client, ingest_run_id="run-1", ingest_path="openrag", index_name="documents"
     )
 
     # Chunks written moments ago are searchable only after a refresh.
     client.indices.refresh.assert_awaited_once_with(index="documents")
     search = client.search.await_args.kwargs
     assert search["index"] == "documents"
-    assert search["body"]["query"] == document_chunks_query("doc-1")
+    assert search["body"]["query"] == {"term": {"ingest_run_id": "run-1"}}
     assert search["body"]["size"] == STATS_MAX_CHUNKS
     assert search["body"]["track_total_hits"] is True
     assert set(search["body"]["_source"]["includes"]) == {
@@ -192,7 +191,7 @@ async def test_collect_says_when_the_document_has_more_chunks_than_it_read():
     client = _client([{"text": "x", "page": 1}], total=12_000)
 
     stats = await collect_chunk_stats(
-        client, document_id="doc-1", ingest_path="openrag", index_name="documents"
+        client, ingest_run_id="run-1", ingest_path="openrag", index_name="documents"
     )
 
     assert stats["chunk_count"] == 1
@@ -213,14 +212,15 @@ def _file_task(result, document_id=None):
 @pytest.mark.parametrize("ingest_path", ["openrag", "langflow"])
 async def test_an_ingested_file_gets_chunk_stats_in_its_result(ingest_path):
     from services.chunk_stats import record_chunk_stats
-    from services.ingest_preview_service import document_chunks_query
 
     client = _client([{"text": "hello", "page": 1}])
-    task = _file_task({"status": "indexed", "id": "hash-1", "ingest_path": ingest_path})
+    task = _file_task(
+        {"status": "indexed", "id": "hash-1", "ingest_path": ingest_path, "ingest_run_id": "run-1"}
+    )
 
     await record_chunk_stats(task, client=client)
 
-    assert client.search.await_args.kwargs["body"]["query"] == document_chunks_query("hash-1")
+    assert client.search.await_args.kwargs["body"]["query"] == {"term": {"ingest_run_id": "run-1"}}
     assert task.result["status"] == "indexed"
     assert task.result["chunk_stats"]["chunk_count"] == 1
     assert task.result["chunk_stats"]["ingest_path"] == ingest_path
@@ -233,7 +233,7 @@ async def test_collect_can_skip_the_refresh():
     client = _client([{"text": "x", "page": 1}])
 
     await collect_chunk_stats(
-        client, document_id="doc-1", ingest_path="openrag", index_name="documents", refresh=False
+        client, ingest_run_id="run-1", ingest_path="openrag", index_name="documents", refresh=False
     )
 
     client.indices.refresh.assert_not_awaited()
@@ -247,24 +247,65 @@ async def test_only_langflow_ingests_refresh_before_reading_stats(ingest_path, r
     from services.chunk_stats import record_chunk_stats
 
     client = _client([{"text": "hello", "page": 1}])
-    task = _file_task({"status": "indexed", "id": "hash-1", "ingest_path": ingest_path})
+    task = _file_task(
+        {"status": "indexed", "id": "hash-1", "ingest_path": ingest_path, "ingest_run_id": "run-1"}
+    )
 
     await record_chunk_stats(task, client=client)
 
     assert client.indices.refresh.await_count == (1 if refreshed else 0)
 
 
-@pytest.mark.asyncio
-async def test_the_file_tasks_document_id_wins_over_the_result_id():
-    from services.chunk_stats import record_chunk_stats
-    from services.ingest_preview_service import document_chunks_query
+def _index(chunks):
+    """A client whose search applies the query's ``ingest_run_id`` term to ``chunks``."""
+    from unittest.mock import AsyncMock
 
-    client = _client([{"text": "hello", "page": 1}])
-    task = _file_task({"status": "success", "ingest_path": "langflow"}, document_id="conn-7")
+    client = AsyncMock()
+
+    async def search(index, body):
+        run_id = body["query"]["term"]["ingest_run_id"]
+        hits = [c for c in chunks if c.get("ingest_run_id") == run_id]
+        return {"hits": {"hits": [{"_source": c} for c in hits], "total": {"value": len(hits)}}}
+
+    client.search.side_effect = search
+    return client
+
+
+@pytest.mark.asyncio
+async def test_only_the_files_own_ingest_run_is_counted():
+    """Another user's private copy, or an earlier run's leftovers, share the
+    document_id but not the run."""
+    from services.chunk_stats import record_chunk_stats
+
+    client = _index(
+        [
+            {"document_id": "hash-1", "ingest_run_id": "run-1", "text": "mine"},
+            {"document_id": "hash-1", "ingest_run_id": "run-other", "text": "theirs"},
+            {"document_id": "hash-1", "ingest_run_id": "run-other", "text": "theirs too"},
+        ]
+    )
+    task = _file_task(
+        {"status": "indexed", "id": "hash-1", "ingest_path": "openrag", "ingest_run_id": "run-1"}
+    )
 
     await record_chunk_stats(task, client=client)
 
-    assert client.search.await_args.kwargs["body"]["query"] == document_chunks_query("conn-7")
+    assert task.result["chunk_stats"]["chunk_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_result_without_an_ingest_run_gets_no_stats():
+    """Langflow without the ingest callback writes directly and leaves no run id."""
+    from services.chunk_stats import record_chunk_stats
+
+    client = _client([{"text": "hello", "page": 1}])
+    result = {"status": "success", "ingest_path": "langflow", "ingest_run_id": None}
+    task = _file_task(dict(result), document_id="hash-1")
+
+    await record_chunk_stats(task, client=client)
+
+    client.search.assert_not_awaited()
+    assert task.result == result
 
 
 @pytest.mark.asyncio
@@ -295,7 +336,9 @@ async def test_a_failed_file_gets_no_stats():
     from services.chunk_stats import record_chunk_stats
 
     client = _client([])
-    task = _file_task({"status": "indexed", "id": "hash-1", "ingest_path": "openrag"})
+    task = _file_task(
+        {"status": "indexed", "id": "hash-1", "ingest_path": "openrag", "ingest_run_id": "run-1"}
+    )
     task.status = TaskStatus.FAILED
 
     await record_chunk_stats(task, client=client)
@@ -310,7 +353,12 @@ async def test_a_stats_failure_is_logged_and_the_file_keeps_its_result():
 
     client = _client([])
     client.search.side_effect = RuntimeError("opensearch down")
-    result = {"status": "indexed", "id": "hash-1", "ingest_path": "openrag"}
+    result = {
+        "status": "indexed",
+        "id": "hash-1",
+        "ingest_path": "openrag",
+        "ingest_run_id": "run-1",
+    }
     task = _file_task(dict(result))
 
     await record_chunk_stats(task, client=client)
@@ -325,7 +373,12 @@ async def test_no_index_client_means_no_stats(monkeypatch):
     from services.chunk_stats import record_chunk_stats
 
     monkeypatch.setattr(clients, "opensearch", None)
-    result = {"status": "indexed", "id": "hash-1", "ingest_path": "openrag"}
+    result = {
+        "status": "indexed",
+        "id": "hash-1",
+        "ingest_path": "openrag",
+        "ingest_run_id": "run-1",
+    }
     task = _file_task(dict(result))
 
     await record_chunk_stats(task)

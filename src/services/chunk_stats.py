@@ -1,8 +1,9 @@
-"""Summary stats over the chunks a file left in the index.
+"""Summary stats over the chunks a file's ingest left in the index.
 
 Computed from what landed in OpenSearch rather than from either pipeline's
 internals, so Langflow and non-Langflow ingests are measured the same way and
-can be compared.
+can be compared. Scoped to the ingest run: a document id is shared by other
+users' private copies of the same content and by an earlier run's leftovers.
 """
 
 import asyncio
@@ -15,7 +16,6 @@ from typing import Any
 from config.settings import clients, get_index_name
 from models.tasks import FileTask, TaskStatus
 from observability.spans import trace_root
-from services.ingest_preview_service import document_chunks_query
 from utils.document_processing import IMAGE_PLACEHOLDER
 from utils.logging_config import get_logger
 
@@ -103,12 +103,12 @@ def compute_chunk_stats(
 async def collect_chunk_stats(
     client: Any,
     *,
-    document_id: str,
+    ingest_run_id: str,
     ingest_path: str,
     index_name: str | None = None,
     refresh: bool = True,
 ) -> dict[str, Any]:
-    """``compute_chunk_stats`` over one document's chunks as stored in the index.
+    """``compute_chunk_stats`` over the chunks one ingest run stored in the index.
 
     With ``refresh``, refreshes the index first so chunks written moments ago
     are searchable; ``client`` needs that privilege (the platform writer client
@@ -124,7 +124,7 @@ async def collect_chunk_stats(
         body={
             "size": STATS_MAX_CHUNKS,
             "track_total_hits": True,
-            "query": document_chunks_query(document_id),
+            "query": {"term": {"ingest_run_id": ingest_run_id}},
             "_source": {"includes": ["text", "page", *SETTING_FIELDS]},
         },
     )
@@ -155,17 +155,20 @@ async def record_chunk_stats(file_task: FileTask, *, client: Any = None) -> None
     """Add ``chunk_stats`` to a just-ingested file's task result, and trace them.
 
     Only files that were (re)indexed: their result names the ``ingest_path``
-    that chunked them; unchanged, skipped and removed files have none. Never
-    fails the file: on any error the stats are logged and left out. ``client``
-    defaults to the platform writer client, which can refresh the index.
+    that chunked them and the ``ingest_run_id`` stamped on the chunks;
+    unchanged, skipped and removed files have neither, nor does a Langflow run
+    without the backend ingest callback. Never fails the file: on any error the
+    stats are logged and left out. ``client`` defaults to the platform writer
+    client, which can refresh the index.
     """
     result = file_task.result
     if file_task.status != TaskStatus.COMPLETED or not isinstance(result, dict):
         return
     ingest_path = result.get("ingest_path")
-    document_id = file_task.document_id or result.get("id")
-    if not ingest_path or not document_id:
+    ingest_run_id = result.get("ingest_run_id")
+    if not ingest_path or not ingest_run_id:
         return
+    document_id = file_task.document_id or result.get("id")
     client = client or clients.opensearch
     if client is None:
         return
@@ -174,13 +177,17 @@ async def record_chunk_stats(file_task: FileTask, *, client: Any = None) -> None
     # the task's session groups it with the file's other traces.
     with trace_root(
         "ingest.chunk_stats",
-        attributes={"document_id": document_id, "ingest_path": ingest_path},
+        attributes={
+            "document_id": document_id,
+            "ingest_path": ingest_path,
+            "ingest_run_id": ingest_run_id,
+        },
     ) as trace:
         try:
             stats = await asyncio.wait_for(
                 collect_chunk_stats(
                     client,
-                    document_id=document_id,
+                    ingest_run_id=ingest_run_id,
                     ingest_path=ingest_path,
                     # The OpenRAG writer already refreshed on its final batch;
                     # nothing refreshes after Langflow's writes.
@@ -193,6 +200,7 @@ async def record_chunk_stats(file_task: FileTask, *, client: Any = None) -> None
                 "Chunk stats unavailable; file result left without them",
                 document_id=document_id,
                 ingest_path=ingest_path,
+                ingest_run_id=ingest_run_id,
                 error_type=type(exc).__name__,
                 error=str(exc),
             )

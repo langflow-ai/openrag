@@ -4,7 +4,7 @@
 OpenSearch; the spans go through the real Langfuse SDK into memory.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 from langfuse._client.attributes import LangfuseOtelSpanAttributes as LF
@@ -71,9 +71,11 @@ class _Pipeline:
             return_value=self.opensearch
         )
         self.indexed: list = []
+        self.contexts: list = []
 
         class _Writer:
             async def index_chunks(writer_self, context, chunks, *, final=False):
+                self.contexts.append(context)
                 self.indexed.extend(chunks)
 
         document_service.document_index_writer = _Writer()
@@ -355,5 +357,22 @@ async def test_untraced_ingest_behaves_the_same(monkeypatch, text_file):
         "id": "doc-1",
         "chunk_count": 1,
         "ingest_path": "openrag",
+        "ingest_run_id": ANY,
     }
     assert len(pipeline.indexed) == 1
+
+
+@pytest.mark.asyncio
+async def test_each_ingest_stamps_its_chunks_with_a_new_run_id(monkeypatch, text_file):
+    """Chunk stats count only the chunks of the run named in the result."""
+    pipeline = _Pipeline(monkeypatch)
+
+    first = await pipeline.run(text_file)
+    second = await pipeline.run(text_file)
+
+    assert [context.ingest_run_id for context in pipeline.contexts] == [
+        first["ingest_run_id"],
+        second["ingest_run_id"],
+    ]
+    assert first["ingest_run_id"].startswith("doc-1-")
+    assert first["ingest_run_id"] != second["ingest_run_id"]

@@ -188,10 +188,8 @@ async def test_langflow_ingest_callback_rewrites_langflow_chunk_ids():
     assert chunks[0].metadata["langflow_chunk_id"] == "other-doc_0"
 
 
-@pytest.mark.asyncio
-async def test_langflow_file_service_sends_backend_callback_global_vars(monkeypatch):
-    token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
-    captured = {}
+def _stub_langflow(monkeypatch, captured):
+    """Langflow answers {"status": "ok"}; the request it got lands in ``captured``."""
 
     class Response:
         status_code = 200
@@ -211,7 +209,7 @@ async def test_langflow_file_service_sends_backend_callback_global_vars(monkeypa
 
     monkeypatch.setattr(
         "services.langflow_file_service.clients",
-        SimpleNamespace(langflow_request=langflow_request),
+        SimpleNamespace(langflow_request=langflow_request, opensearch=None),
     )
     monkeypatch.setattr(
         "utils.langflow_headers.add_provider_credentials_to_headers",
@@ -225,8 +223,9 @@ async def test_langflow_file_service_sends_backend_callback_global_vars(monkeypa
     )
     monkeypatch.setattr("config.settings.get_index_name", lambda: "unit-documents")
 
-    service = LangflowFileService(ingest_token_service=token_service)
-    result = await service.run_ingestion_flow(
+
+async def _run_ingestion_flow(service):
+    return await service.run_ingestion_flow(
         file_paths=["/tmp/source.pdf"],
         file_tuples=[("source.pdf", b"content", "application/pdf")],
         jwt_token="user-token",
@@ -236,7 +235,20 @@ async def test_langflow_file_service_sends_backend_callback_global_vars(monkeypa
         connector_type="local",
     )
 
-    assert result == {"status": "ok"}
+
+@pytest.mark.asyncio
+async def test_langflow_file_service_sends_backend_callback_global_vars(monkeypatch):
+    token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
+    captured = {}
+    _stub_langflow(monkeypatch, captured)
+
+    result = await _run_ingestion_flow(LangflowFileService(ingest_token_service=token_service))
+
+    # The run id the callback stamps on every chunk; chunk stats are scoped to it.
+    assert result == {
+        "status": "ok",
+        "ingest_run_id": captured["headers"]["X-Langflow-Global-Var-OPENRAG_INGEST_RUN_ID"],
+    }
     payload = captured["json"]
     assert LangflowFileService.INGEST_OPENSEARCH_COMPONENT_ID not in payload["tweaks"]
     headers = captured["headers"]
@@ -256,6 +268,16 @@ async def test_langflow_file_service_sends_backend_callback_global_vars(monkeypa
     assert decoded_context.index_name == "unit-documents"
     assert decoded_context.is_sample_data is False
     assert headers["X-Langflow-Global-Var-DOCUMENT_ID"] == decoded_context.document_id
+
+
+@pytest.mark.asyncio
+async def test_without_the_callback_no_ingest_run_is_reported(monkeypatch):
+    """Langflow writes to OpenSearch directly then, leaving no run id on the chunks."""
+    _stub_langflow(monkeypatch, {})
+
+    result = await _run_ingestion_flow(LangflowFileService(ingest_token_service=None))
+
+    assert result == {"status": "ok", "ingest_run_id": None}
 
 
 @pytest.mark.asyncio
@@ -281,7 +303,7 @@ async def test_langflow_file_service_marks_openrag_docs_callback_as_sample_data(
 
     monkeypatch.setattr(
         "services.langflow_file_service.clients",
-        SimpleNamespace(langflow_request=langflow_request),
+        SimpleNamespace(langflow_request=langflow_request, opensearch=None),
     )
     monkeypatch.setattr(
         "utils.langflow_headers.add_provider_credentials_to_headers",
