@@ -17,11 +17,14 @@ class ApiKeyRepo:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_by_hash(self, key_hash: str) -> ApiKey | None:
-        result = await self.session.execute(
-            select(ApiKey).where(col(ApiKey.key_hash) == key_hash, col(ApiKey.revoked).is_(False))
-        )
+    # TODO: once we remove opensearch fallback for reads, we can revert this to
+    # get_by_hash to only return non revoked keys
+    async def get_by_hash_any_state(self, key_hash: str) -> ApiKey | None:
+        result = await self.session.execute(select(ApiKey).where(col(ApiKey.key_hash) == key_hash))
         return result.scalar_one_or_none()
+
+    async def get_by_id(self, key_id: str) -> ApiKey | None:
+        return await self.session.get(ApiKey, key_id)
 
     async def list_for_user(self, user_id: str) -> list[ApiKey]:
         result = await self.session.execute(select(ApiKey).where(col(ApiKey.user_id) == user_id))
@@ -32,6 +35,18 @@ class ApiKeyRepo:
         await self.session.flush()
         return api_key
 
+    async def mark_used(self, key_id: str) -> None:
+        """Update last_used_at on a successful validation"""
+        from datetime import UTC, datetime
+
+        row = await self.session.get(ApiKey, key_id)
+        if row is None:
+            return
+
+        row.last_used_at = datetime.now(UTC)
+        self.session.add(row)
+        await self.session.flush()
+
     async def revoke(self, key_id: str) -> None:
         from datetime import datetime
 
@@ -41,3 +56,5 @@ class ApiKeyRepo:
             row.revoked_at = datetime.now(UTC)
             self.session.add(row)
             await self.session.flush()
+
+    # TODO: once we remove opensearch fallback for reads, add a hard delete sql method
