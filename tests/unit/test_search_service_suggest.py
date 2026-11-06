@@ -388,9 +388,7 @@ def test_filters_to_clauses_honors_dates_document_ids_and_web_sources():
         }
     } in clauses
     assert {
-        "range": {
-            "indexed_time": {"gte": "2025-01-01T00:00:00Z", "lte": "2025-02-01T00:00:00Z"}
-        }
+        "range": {"indexed_time": {"gte": "2025-01-01T00:00:00Z", "lte": "2025-02-01T00:00:00Z"}}
     } in clauses
     assert len(clauses) == 3
 
