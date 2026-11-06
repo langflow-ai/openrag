@@ -7,6 +7,7 @@ import pytest
 from auth_context import set_auth_context, set_score_threshold, set_search_filters, set_search_limit
 from services.search_cache import clear_search_caches
 from services.search_service import SearchService, _filters_to_clauses, _group_suggest_files
+from utils.opensearch_queries import build_date_range_query
 
 
 @pytest.fixture(autouse=True)
@@ -387,9 +388,12 @@ def test_filters_to_clauses_honors_dates_document_ids_and_web_sources():
             "minimum_should_match": 1,
         }
     } in clauses
-    assert {
-        "range": {"indexed_time": {"gte": "2025-01-01T00:00:00Z", "lte": "2025-02-01T00:00:00Z"}}
-    } in clauses
+    assert (
+        build_date_range_query(
+            "indexed_time", gte="2025-01-01T00:00:00Z", lte="2025-02-01T00:00:00Z"
+        )
+        in clauses
+    )
     assert len(clauses) == 3
 
 
