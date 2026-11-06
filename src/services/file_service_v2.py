@@ -19,11 +19,23 @@ Sort-field notes
 
 from typing import Any
 
+from opensearchpy.exceptions import NotFoundError
+
 from config.settings import get_index_name
 from utils.logging_config import get_logger
 from utils.opensearch_queries import build_date_range_query
 
 logger = get_logger(__name__)
+
+
+def _is_index_not_found(exc: Exception) -> bool:
+    """True for a missing index (fresh install, nothing ingested yet)."""
+    return (
+        isinstance(exc, NotFoundError)
+        and exc.status_code == 404
+        and exc.error == "index_not_found_exception"
+    )
+
 
 # A file row is a (filename, document_id) pair: document_id is a content hash,
 # so identical content under two names is two rows. Missing values count as "".
@@ -34,6 +46,7 @@ _FILE_IDENTITY_SCRIPT = (
 
 
 def _file_identity_script() -> dict[str, Any]:
+    """Painless script building the (filename, document_id) identity key."""
     return {
         "lang": "painless",
         "source": _FILE_IDENTITY_SCRIPT,
@@ -43,6 +56,7 @@ def _file_identity_script() -> dict[str, Any]:
 
 
 def _distinct_files_agg() -> dict[str, Any]:
+    """Cardinality aggregation counting distinct files by identity."""
     return {"cardinality": {"script": _file_identity_script(), "precision_threshold": 3000}}
 
 
@@ -161,6 +175,8 @@ class FileServiceV2:
 
             if is_opensearch_auth_error(e):
                 raise
+            if not _is_index_not_found(e):
+                raise
             return {
                 "files": [],
                 "total": 0,
@@ -273,6 +289,8 @@ class FileServiceV2:
 
             if is_opensearch_auth_error(e):
                 raise
+            if not _is_index_not_found(e):
+                raise
             return {
                 "files": [],
                 "total": 0,
@@ -336,6 +354,8 @@ class FileServiceV2:
         created_after: str | None = None,
         created_before: str | None = None,
     ) -> dict[str, Any]:
+        """Build the bool query (filters, filename search, date range) for file views."""
+
         def _effective_values(values: str | list[str] | None) -> list[str]:
             if values is None:
                 return []
@@ -445,6 +465,7 @@ class FileServiceV2:
         sort_order: str,
         after_key: dict | None,
     ) -> dict[str, Any]:
+        """Build the composite aggregation request, with filename/document_id tiebreakers."""
         composite: dict[str, Any] = {
             "size": page_size,
             "sources": [
@@ -629,9 +650,10 @@ class FileServiceV2:
     ) -> tuple[int, bool]:
         """Approximate unique-file count (filename + document_id) via cardinality aggregation (O(1)).
 
-        Returns (count, is_approximate).  is_approximate is always True on
-        success (cardinality agg is inherently approximate) and True when the
-        aggregation fails and 0 is returned as a fallback.
+        Returns (count, is_approximate).  is_approximate is always True
+        (cardinality agg is inherently approximate).  A missing index (fresh
+        install) yields (0, True); every other failure is re-raised so the API
+        returns an error instead of a wrong total or an empty page.
         """
         body = {
             "size": 0,
@@ -642,9 +664,10 @@ class FileServiceV2:
             result = await opensearch_client.search(index=get_index_name(), body=body)
             return result.get("aggregations", {}).get("file_count", {}).get("value", 0), True
         except Exception as e:
-            logger.warning(
-                "Failed to retrieve file count; pagination total will show 0", error=str(e)
-            )
+            if not _is_index_not_found(e):
+                logger.error("Failed to retrieve file count (v2)", error=str(e))
+                raise
+            logger.warning("File count skipped; index not found", error=str(e))
             return 0, True
 
     def _parse_composite_buckets(

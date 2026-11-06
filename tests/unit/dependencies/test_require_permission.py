@@ -207,12 +207,23 @@ async def app(monkeypatch):
     ):
         return JSONResponse({"user_id": user.user_id})
 
+    from api.files import list_files as real_list_files
+    from api.files import search_files as real_search_files
     from api.files import upload_histogram as real_upload_histogram
     from dependencies import get_file_service_v2
 
     class _Histogram:
         async def upload_histogram(self, **_kwargs):
             return {"total": 0, "days": {}}
+
+        async def list_files(self, **_kwargs):
+            return {"files": [], "total": 0}
+
+        async def search_files(self, **_kwargs):
+            return {"files": [], "total": 0}
+
+    app.add_api_route("/test/real-list-files", real_list_files, methods=["GET"])
+    app.add_api_route("/test/real-search-files", real_search_files, methods=["GET"])
 
     app.add_api_route("/test/real-upload-histogram", real_upload_histogram, methods=["GET"])
     app.dependency_overrides[get_file_service_v2] = lambda: _Histogram()
@@ -331,3 +342,19 @@ async def test_real_upload_histogram_route_requires_knowledge_read(app, persona,
     assert r.status_code == expected, f"{persona} -> {r.status_code} {r.text}"
     if expected == 403:
         assert r.json()["detail"]["error"] == "permission_denied"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path, params",
+    [("/test/real-list-files", {}), ("/test/real-search-files", {"q": "x"})],
+)
+@pytest.mark.parametrize(
+    "persona, expected",
+    [("admin", 200), ("developer", 200), ("user", 200), ("viewer", 403)],
+)
+async def test_real_file_list_routes_require_knowledge_read(app, path, params, persona, expected):
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.get(path, params=params, headers={"X-Test-Persona": persona})
+    assert r.status_code == expected, f"{persona} -> {r.status_code} {r.text}"

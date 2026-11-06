@@ -121,22 +121,25 @@ def build_replace_filename_query(filename: str, owner: str) -> dict:
 
 
 _PARTIAL_TIMESTAMP_RE = re.compile(
-    r"^(?P<date>\d{4}-\d{2}-\d{2})(?:T(?P<hm>\d{2}:\d{2}))?(?P<tz>Z|[+-]\d{2}:\d{2})?$"
+    r"^(?P<date>\d{4}-\d{2}-\d{2})"
+    r"(?:T(?P<hm>\d{2}:\d{2})(?::(?P<s>\d{2})(?P<frac>\.\d{1,6})?)?)?"
+    r"(?P<tz>Z|[+-]\d{2}:\d{2})?$"
 )
 
 
 def normalize_date_bound(value: str) -> str:
-    """Spell out the seconds a bound omits.
+    """Spell out the seconds and fraction a bound omits.
 
     API validation reads ``2026-10-10`` as midnight and ``…T10:30`` as 10:30:00,
     but OpenSearch expands the missing parts of an ``lte`` bound to the end of
-    that day or minute. Sending the explicit instant keeps both in agreement.
-    Full timestamps are returned unchanged.
+    that day, minute or second. Sending the explicit instant, with a zero
+    fraction, keeps both in agreement. A caller-supplied fraction is preserved.
     """
     match = _PARTIAL_TIMESTAMP_RE.match(value)
-    if match is None:
+    if match is None or match["frac"]:
         return value
-    return f"{match['date']}T{match['hm'] or '00:00'}:00{match['tz'] or 'Z'}"
+    hm = match["hm"] or "00:00"
+    return f"{match['date']}T{hm}:{match['s'] or '00'}.000000{match['tz'] or 'Z'}"
 
 
 def build_date_range_query(

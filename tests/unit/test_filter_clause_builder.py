@@ -3,7 +3,9 @@ import pytest
 from utils.opensearch_queries import build_filter_clauses
 
 RANGE = {
-    "range": {"indexed_time": {"gte": "2026-10-07T00:00:00Z", "lte": "2026-10-10T23:59:59.999Z"}}
+    "range": {
+        "indexed_time": {"gte": "2026-10-07T00:00:00.000000Z", "lte": "2026-10-10T23:59:59.999Z"}
+    }
 }
 DATES = {"created_after": "2026-10-07T00:00:00Z", "created_before": "2026-10-10T23:59:59.999Z"}
 
@@ -42,7 +44,7 @@ def test_dates_combined_with_lists_and_not_treated_as_terms():
 
 def test_single_bound_and_blank_bounds():
     assert build_filter_clauses({"created_after": "2026-10-07T00:00:00Z"}) == [
-        {"range": {"indexed_time": {"gte": "2026-10-07T00:00:00Z"}}}
+        {"range": {"indexed_time": {"gte": "2026-10-07T00:00:00.000000Z"}}}
     ]
     assert build_filter_clauses({"created_after": "", "created_before": None}) == []
 
@@ -50,12 +52,13 @@ def test_single_bound_and_blank_bounds():
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ("2026-10-10", "2026-10-10T00:00:00Z"),
-        ("2026-10-10Z", "2026-10-10T00:00:00Z"),
-        ("2026-10-10T10:30", "2026-10-10T10:30:00Z"),
-        ("2026-10-10T10:30+05:30", "2026-10-10T10:30:00+05:30"),
-        ("2026-10-10T10:30:15Z", "2026-10-10T10:30:15Z"),
+        ("2026-10-10", "2026-10-10T00:00:00.000000Z"),
+        ("2026-10-10Z", "2026-10-10T00:00:00.000000Z"),
+        ("2026-10-10T10:30", "2026-10-10T10:30:00.000000Z"),
+        ("2026-10-10T10:30+05:30", "2026-10-10T10:30:00.000000+05:30"),
+        ("2026-10-10T10:30:15Z", "2026-10-10T10:30:15.000000Z"),
         ("2026-10-10T23:59:59.999999Z", "2026-10-10T23:59:59.999999Z"),
+        ("2026-10-10T23:59:59.5", "2026-10-10T23:59:59.5"),
     ],
 )
 def test_date_bounds_are_sent_as_explicit_instants(raw, expected):
