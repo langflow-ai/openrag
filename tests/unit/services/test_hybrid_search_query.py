@@ -13,7 +13,7 @@ Covers:
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -29,15 +29,15 @@ from config.search_constants import (  # noqa: E402
     SEMANTIC_WEIGHT,
 )
 from services.search_service import (  # noqa: E402
-    _is_noise_query,
     _is_exact_token_query,
+    _is_noise_query,
     _keyword_query,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_service(captured_bodies: list, captured_params: list, *, hit_score: float = 0.85):
     """Return a SearchService whose OpenSearch client records every search call."""
@@ -103,7 +103,7 @@ def _patch_context(monkeypatch, *, filters=None, limit=10, threshold=0.0):
 
 def _patch_embedding(monkeypatch, *, vector=None, field_identity="openai__text-embedding-3-small"):
     """Stub the embedding gateway and corpus space detection to return one space."""
-    from utils.embedding_fields import EmbeddingSpace, INDEXED_EMBEDDING_ROUTE_PREFIX
+    from utils.embedding_fields import INDEXED_EMBEDDING_ROUTE_PREFIX, EmbeddingSpace
 
     vec = vector or [0.1] * 8
 
@@ -255,6 +255,7 @@ class TestQueryBodyStructure:
         await svc._search("vector search", "text-embedding-3-small")
 
         import json
+
         body_str = json.dumps(bodies[-1])
         assert "function_score" not in body_str
 
@@ -341,27 +342,33 @@ class TestPipelineParam:
 
 
 class TestNoiseQuery:
-    @pytest.mark.parametrize("query", [
-        "asdfgh",
-        "qwerty",
-        "zzzzzz",
-        "jjjjjj",
-        "qwertyu",
-        "asdfghjkl",
-    ])
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "asdfgh",
+            "qwerty",
+            "zzzzzz",
+            "jjjjjj",
+            "qwertyu",
+            "asdfghjkl",
+        ],
+    )
     def test_keyboard_mash_is_noise(self, query):
         assert _is_noise_query(query), f"'{query}' should be noise"
 
-    @pytest.mark.parametrize("query", [
-        "machine learning",
-        "what is RAG",
-        "the",            # stopword but real word — not noise
-        "https",          # vowel-poor but not mash
-        "pgsql",          # abbreviation
-        "strengths",      # consonant-heavy English word
-        "vitamin",        # real word, prefix of vitaminC
-        "a",              # single letter
-    ])
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "machine learning",
+            "what is RAG",
+            "the",  # stopword but real word — not noise
+            "https",  # vowel-poor but not mash
+            "pgsql",  # abbreviation
+            "strengths",  # consonant-heavy English word
+            "vitamin",  # real word, prefix of vitaminC
+            "a",  # single letter
+        ],
+    )
     def test_real_words_are_not_noise(self, query):
         assert not _is_noise_query(query), f"'{query}' should NOT be noise"
 
@@ -378,25 +385,31 @@ class TestNoiseQuery:
 
 
 class TestExactTokenQuery:
-    @pytest.mark.parametrize("query", [
-        "v1.2.3",
-        "SKU-98765",
-        "error_code_404",
-        "abc123",
-        "GPT-4o",
-        "C++",
-    ])
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "v1.2.3",
+            "SKU-98765",
+            "error_code_404",
+            "abc123",
+            "GPT-4o",
+            "C++",
+        ],
+    )
     def test_code_like_queries_are_exact(self, query):
         assert _is_exact_token_query(query), f"'{query}' should be exact-token"
 
-    @pytest.mark.parametrize("query", [
-        "machine learning",
-        "what is retrieval",
-        "the quick brown fox",
-        "a",
-        "",
-        "ab",
-    ])
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "machine learning",
+            "what is retrieval",
+            "the quick brown fox",
+            "a",
+            "",
+            "ab",
+        ],
+    )
     def test_prose_queries_are_not_exact(self, query):
         assert not _is_exact_token_query(query), f"'{query}' should NOT be exact-token"
 
@@ -551,6 +564,7 @@ class TestEdgeCases:
         await svc._search("machine learning", "text-embedding-3-small")
 
         import json
+
         body_str = json.dumps(bodies[-1])
         assert "__IMPOSSIBLE_VALUE__" in body_str
 
@@ -562,7 +576,7 @@ class TestEdgeCases:
         _patch_auth(monkeypatch)
         _patch_context(monkeypatch)
 
-        from utils.embedding_fields import EmbeddingSpace, INDEXED_EMBEDDING_ROUTE_PREFIX
+        from utils.embedding_fields import INDEXED_EMBEDDING_ROUTE_PREFIX, EmbeddingSpace
 
         spaces = [
             EmbeddingSpace(

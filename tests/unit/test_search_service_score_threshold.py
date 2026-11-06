@@ -257,14 +257,27 @@ async def test_dls_hybrid_conflict_retries_as_bool_should(monkeypatch):
 
         async def search(self, *, index, body, params):
             if body.get("size") == 0:
-                return {"aggregations": {"embedding_spaces": {"buckets": []}, "legacy_embedding_models": {"buckets": []}}}
+                return {
+                    "aggregations": {
+                        "embedding_spaces": {"buckets": []},
+                        "legacy_embedding_models": {"buckets": []},
+                    }
+                }
             self.bodies.append(body)
             self.params_list.append(params)
             if len(self.bodies) == 1:
                 raise RequestError(
                     400,
                     "search_phase_execution_exception",
-                    {"error": {"root_cause": [{"reason": "hybrid query must be a top level query and cannot be wrapped into other queries"}]}},
+                    {
+                        "error": {
+                            "root_cause": [
+                                {
+                                    "reason": "hybrid query must be a top level query and cannot be wrapped into other queries"
+                                }
+                            ]
+                        }
+                    },
                 )
             return {"hits": {"hits": []}, "aggregations": {}}
 
@@ -305,13 +318,22 @@ async def test_dls_fallback_preserves_filters(monkeypatch):
 
         async def search(self, *, index, body, params):
             if body.get("size") == 0:
-                return {"aggregations": {"embedding_spaces": {"buckets": []}, "legacy_embedding_models": {"buckets": []}}}
+                return {
+                    "aggregations": {
+                        "embedding_spaces": {"buckets": []},
+                        "legacy_embedding_models": {"buckets": []},
+                    }
+                }
             self.bodies.append(body)
             if len(self.bodies) == 1:
                 raise RequestError(
                     400,
                     "search_phase_execution_exception",
-                    {"error": {"root_cause": [{"reason": "hybrid query must be a top level query"}]}},
+                    {
+                        "error": {
+                            "root_cause": [{"reason": "hybrid query must be a top level query"}]
+                        }
+                    },
                 )
             return {"hits": {"hits": []}, "aggregations": {}}
 
@@ -345,14 +367,25 @@ async def test_score_threshold_post_filters_chunks_when_pipeline_ran(monkeypatch
 
         async def search(self, *, index, body, params):
             if body.get("size") == 0:
-                return {"aggregations": {"embedding_spaces": {"buckets": []}, "legacy_embedding_models": {"buckets": []}}}
+                return {
+                    "aggregations": {
+                        "embedding_spaces": {"buckets": []},
+                        "legacy_embedding_models": {"buckets": []},
+                    }
+                }
             self.bodies.append(body)
             # Return two hits: one above threshold, one below
             return {
                 "hits": {
                     "hits": [
-                        {"_score": 0.8, "_source": {"filename": "good.pdf", "text": "relevant content"}},
-                        {"_score": 0.05, "_source": {"filename": "bad.pdf", "text": "irrelevant content"}},
+                        {
+                            "_score": 0.8,
+                            "_source": {"filename": "good.pdf", "text": "relevant content"},
+                        },
+                        {
+                            "_score": 0.05,
+                            "_source": {"filename": "bad.pdf", "text": "irrelevant content"},
+                        },
                     ]
                 },
                 "aggregations": {},
@@ -380,19 +413,31 @@ async def test_dls_fallback_skips_score_threshold_post_filter(monkeypatch):
 
         async def search(self, *, index, body, params):
             if body.get("size") == 0:
-                return {"aggregations": {"embedding_spaces": {"buckets": []}, "legacy_embedding_models": {"buckets": []}}}
+                return {
+                    "aggregations": {
+                        "embedding_spaces": {"buckets": []},
+                        "legacy_embedding_models": {"buckets": []},
+                    }
+                }
             self.call_count += 1
             if self.call_count == 1:
                 raise RequestError(
                     400,
                     "search_phase_execution_exception",
-                    {"error": {"root_cause": [{"reason": "hybrid query must be a top level query"}]}},
+                    {
+                        "error": {
+                            "root_cause": [{"reason": "hybrid query must be a top level query"}]
+                        }
+                    },
                 )
             # DLS fallback: raw unnormalized scores (e.g. 0.03 is a real result)
             return {
                 "hits": {
                     "hits": [
-                        {"_score": 0.03, "_source": {"filename": "dls_result.pdf", "text": "some content"}},
+                        {
+                            "_score": 0.03,
+                            "_source": {"filename": "dls_result.pdf", "text": "some content"},
+                        },
                     ]
                 },
                 "aggregations": {},
@@ -420,16 +465,39 @@ async def test_dls_fallback_is_single_step(monkeypatch):
 
         async def search(self, *, index, body, params):
             if body.get("size") == 0:
-                return {"aggregations": {"embedding_spaces": {"buckets": []}, "legacy_embedding_models": {"buckets": []}}}
+                return {
+                    "aggregations": {
+                        "embedding_spaces": {"buckets": []},
+                        "legacy_embedding_models": {"buckets": []},
+                    }
+                }
             self.bodies.append(body)
             self.params_list.append(params)
             if len(self.bodies) == 1:
                 raise RequestError(
                     400,
                     "search_phase_execution_exception",
-                    {"error": {"root_cause": [{"reason": "hybrid query must be a top level query and cannot be wrapped into other queries"}]}},
+                    {
+                        "error": {
+                            "root_cause": [
+                                {
+                                    "reason": "hybrid query must be a top level query and cannot be wrapped into other queries"
+                                }
+                            ]
+                        }
+                    },
                 )
-            return {"hits": {"hits": [{"_score": 0.9, "_source": {"filename": "result.pdf", "text": "some content"}}]}, "aggregations": {}}
+            return {
+                "hits": {
+                    "hits": [
+                        {
+                            "_score": 0.9,
+                            "_source": {"filename": "result.pdf", "text": "some content"},
+                        }
+                    ]
+                },
+                "aggregations": {},
+            }
 
     os_client = _DLSOnFirstAttempt()
     service = _make_service(os_client, monkeypatch)
