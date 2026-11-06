@@ -5,6 +5,7 @@ import { server } from "@/test-utils/msw/server";
 import { createQueryWrapper, renderHook, waitFor } from "@/test-utils/render";
 import {
   type ChunkResult,
+  resolveScoreThreshold,
   type SearchPayload,
   type SearchResultDisplayOptions,
   useGetSearchQuery,
@@ -505,5 +506,25 @@ describe("useGetSearchQuery", () => {
       expect(seen.payload?.created_before).toBeUndefined();
       expect(JSON.stringify(seen.payload)).not.toContain("created_");
     });
+  });
+});
+
+describe("resolveScoreThreshold", () => {
+  it("lowers the threshold to 1.0 for a short single token", () => {
+    expect(resolveScoreThreshold("docl", 1.25)).toBe(1.0);
+    expect(resolveScoreThreshold("  ab ", 3)).toBe(1.0);
+  });
+
+  it("never raises a threshold that is already below 1.0", () => {
+    expect(resolveScoreThreshold("docl", 0.5)).toBe(0.5);
+  });
+
+  it.each([
+    ["docling", "longer than four characters"],
+    ["a b", "more than one token"],
+    ["*", "the wildcard"],
+    ["", "empty"],
+  ])("keeps the base threshold for %j (%s)", (query) => {
+    expect(resolveScoreThreshold(query, 1.25)).toBe(1.25);
   });
 });

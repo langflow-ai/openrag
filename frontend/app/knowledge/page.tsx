@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Cloud,
   FileIcon,
+  Globe,
   RefreshCw,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -25,13 +26,21 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  BOLD_MATCH_CLASS,
+  HighlightedText,
+  PREVIEW_TEXT_CLASS,
+} from "@/components/highlighted-text";
 import { KnowledgeDataTable } from "@/components/knowledge-data-table";
+import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { KnowledgeUrlIcon } from "@/components/knowledge-url-icon";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
 import { useOpenTaskMenu } from "@/contexts/console-status-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
+import { trackButton } from "@/lib/analytics";
+import { buildChunksUrl } from "@/lib/chunks-url";
 import { isFileCancelled } from "@/lib/task-error-display";
 import {
   EMPTY_SEARCH_RESULT,
@@ -64,6 +73,11 @@ import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
 } from "@/lib/knowledge-table-state";
+import {
+  computeTopPreviews,
+  type SearchPreview,
+  stripMarks,
+} from "@/lib/search-preview";
 import { parseTimestampMs } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
 import {
@@ -259,17 +273,8 @@ export function getFileStatus(status?: File["status"]): string {
   return status || "active";
 }
 
-export function buildChunksUrl(
-  filename: string,
-  effectiveSearchText: string,
-): string {
-  const params = new URLSearchParams({ filename });
-  const trimmed = effectiveSearchText.trim();
-  if (trimmed && trimmed !== "*") {
-    params.set("q", trimmed);
-  }
-  return `/knowledge/chunks?${params.toString()}`;
-}
+// Lives in lib/ so components can build the link without importing this page.
+export { buildChunksUrl };
 
 export function buildWebsitePagesUrl(
   sourceId: string,
@@ -648,6 +653,16 @@ function SearchPage() {
   const error = isWildcardQuery ? listFilesError : searchError;
   const isError = isWildcardQuery ? isListFilesError : isSearchError;
 
+  // One-line "why it matched" for the most relevant files across the whole
+  // result set (not just the visible page).
+  const topPreviews = useMemo(
+    () =>
+      isWildcardQuery
+        ? new Map<string, SearchPreview>()
+        : computeTopPreviews(searchFiles, effectiveSearchText),
+    [isWildcardQuery, searchFiles, effectiveSearchText],
+  );
+
   const effectiveData: File[] = isWildcardQuery
     ? (listFilesData?.files ?? [])
     : searchFiles.slice(
@@ -833,6 +848,7 @@ function SearchPage() {
           !data.web_page_id;
         const showOpenragSourceAnimation =
           isOpenragDocsRow(data) && hasOpenragRefreshCue;
+        const preview = topPreviews.get(getKnowledgeFileIdentity(data));
         return (
           <div className="flex items-center overflow-hidden w-full min-w-0 h-full">
             <div
@@ -843,7 +859,8 @@ function SearchPage() {
             <button
               type="button"
               className={cn(
-                "flex items-center gap-2 text-left flex-1 overflow-hidden transition-colors",
+                "flex gap-2 text-left flex-1 overflow-hidden transition-colors",
+                preview ? "items-start" : "items-center",
                 isActive
                   ? isCloudBrand
                     ? "cursor-pointer hover:text-primary"
@@ -865,23 +882,44 @@ function SearchPage() {
               }}
             >
               {getSourceIcon(data?.connector_type)}
-              <Tooltip>
-                <TooltipTrigger asChild>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      className={cn(
+                        "font-medium truncate min-w-0",
+                        showOpenragSourceAnimation
+                          ? "text-primary animate-pulse"
+                          : "text-foreground",
+                      )}
+                    >
+                      {filename}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" align="start">
+                    {filename}
+                  </TooltipContent>
+                </Tooltip>
+                {preview && (
                   <span
                     className={cn(
-                      "font-medium truncate min-w-0",
-                      showOpenragSourceAnimation
-                        ? "text-primary animate-pulse"
-                        : "text-foreground",
+                      "block truncate text-xs font-normal",
+                      PREVIEW_TEXT_CLASS,
                     )}
+                    title={stripMarks(preview.text)}
                   >
-                    {filename}
+                    {preview.kind === "keyword" ? (
+                      <HighlightedText
+                        highlights={[preview.text]}
+                        fallbackText=""
+                        markClassName={BOLD_MATCH_CLASS}
+                      />
+                    ) : (
+                      preview.text
+                    )}
                   </span>
-                </TooltipTrigger>
-                <TooltipContent side="top" align="start">
-                  {filename}
-                </TooltipContent>
-              </Tooltip>
+                )}
+              </span>
               {isParentWebsiteSource && (
                 <ChevronRight
                   aria-hidden="true"
@@ -900,8 +938,22 @@ function SearchPage() {
       hasOpenragRefreshCue,
       effectiveSearchText,
       router,
+      topPreviews,
     ],
   );
+
+  // Rows that carry a preview line need extra height. The cloud grid already
+  // uses a 64px row, which fits two lines.
+  const getRowHeight = useCallback(
+    (params: { data?: File }) =>
+      topPreviews.has(getKnowledgeFileIdentity(params.data)) ? 56 : undefined,
+    [topPreviews],
+  );
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: topPreviews changes which rows are tall, so heights must be recomputed.
+  useEffect(() => {
+    getGridApi()?.resetRowHeights();
+  }, [topPreviews, getGridApi]);
 
   const colSize: ColDef<File> = {
     field: "size",

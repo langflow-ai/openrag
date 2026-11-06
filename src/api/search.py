@@ -2,7 +2,7 @@ from typing import Any, Literal
 
 from fastapi import Depends, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from api.files import validate_date_filter_bounds
 from config.settings import is_url_connector_enabled
@@ -16,6 +16,9 @@ from utils.logging_config import get_logger
 from utils.opensearch_utils import DISK_SPACE_ERROR_MESSAGE, OpenSearchDiskSpaceError
 
 logger = get_logger(__name__)
+
+SUGGEST_MAX_FILTER_KEYS = 10
+SUGGEST_MAX_FILTER_VALUES = 100
 
 # OpenSearch's default result window caps a single ranked search at 10,000
 # hits. Knowledge-source results are grouped after the ranked search, so use
@@ -34,6 +37,29 @@ class SearchBody(BaseModel):
     resultMode: Literal["chunks", "knowledge_sources", "website_pages"] = "chunks"
 
     model_config = {"populate_by_name": True}
+
+
+class SuggestBody(BaseModel):
+    """Search-as-you-type request. Bounds are enforced server-side."""
+
+    query: str = Field(max_length=200)
+    filters: dict[str, Any] = Field(default_factory=dict)
+    # False: cheap keyword phase for every debounced keystroke.
+    # True: also run the semantic (embedding) search.
+    semantic: bool = False
+    scoreThreshold: float = Field(default=0, ge=0, le=100)
+
+    model_config = {"populate_by_name": True}
+
+    @field_validator("filters")
+    @classmethod
+    def _bound_filters(cls, filters: dict[str, Any]) -> dict[str, Any]:
+        if len(filters) > SUGGEST_MAX_FILTER_KEYS:
+            raise ValueError("too many filters")
+        for values in filters.values():
+            if isinstance(values, list) and len(values) > SUGGEST_MAX_FILTER_VALUES:
+                raise ValueError("too many filter values")
+        return filters
 
 
 def _website_page_chunk(page: dict[str, Any]) -> dict[str, Any]:
@@ -285,3 +311,30 @@ async def search(
             return JSONResponse({"error": error_msg}, status_code=403)
         else:
             return JSONResponse({"error": error_msg}, status_code=500)
+
+
+async def suggest(
+    body: SuggestBody,
+    search_service=Depends(get_search_service),
+    user: User = Depends(require_permission("search:use")),
+):
+    """Query completions, matching files and per-file previews."""
+    try:
+        result = await search_service.suggest(
+            body.query,
+            user_id=user.user_id,
+            jwt_token=user.jwt_token,
+            filters=body.filters,
+            semantic=body.semantic,
+            score_threshold=body.scoreThreshold,
+        )
+        if result.get("error"):
+            logger.error("Search suggest failed", user_id=user.user_id, error=result["error"])
+            return JSONResponse({"error": "Suggestions unavailable"}, status_code=502)
+        return JSONResponse(result, status_code=200)
+    except OpenSearchDiskSpaceError:
+        return JSONResponse({"error": DISK_SPACE_ERROR_MESSAGE}, status_code=507)
+    except Exception as e:
+        # Detailed error stays server-side; clients get a generic message.
+        logger.error("Search suggest failed", user_id=user.user_id, error=str(e))
+        return JSONResponse({"error": "Suggestions unavailable"}, status_code=500)

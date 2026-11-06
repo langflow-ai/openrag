@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { trackButton } from "@/lib/analytics";
+import { limitSearchInput } from "@/lib/limit-search-input";
 import { cn } from "@/lib/utils";
 import { filterAccentClasses } from "./knowledge-filter-panel";
 import { SyncConfirmDialog } from "./sync-confirm-dialog";
@@ -256,7 +257,11 @@ export const KnowledgeSearchBar = ({
     <>
       <KnowledgeSearchToolbar
         value={displayedValue}
-        onValueChange={controlled ? onSearch : setSearchQueryInput}
+        onValueChange={
+          controlled
+            ? onSearch
+            : (next) => setSearchQueryInput(limitSearchInput(next))
+        }
         onSubmit={handleSearch}
         onClear={handleReset}
         placeholder={placeholder}
