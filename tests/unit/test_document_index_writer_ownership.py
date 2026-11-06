@@ -119,3 +119,30 @@ async def test_new_chunks_persist_provider_qualified_embedding_space() -> None:
     assert document["embedding_provider"] == "azure"
     assert document["embedding_space_id"] == "azure:test-model"
     assert document["chunk_embedding_azure_test_model"] == [0.1, 0.2, 0.3]
+
+
+@pytest.mark.asyncio
+async def test_batches_of_one_ingest_run_share_the_context_indexed_time() -> None:
+    opensearch = InMemoryOpenSearch()
+    writer = DocumentIndexWriter(opensearch_client=opensearch)
+    context = make_context("user-a")
+    context.indexed_time = "2026-01-01T00:00:00+00:00"
+
+    first = DocumentIndexChunk(chunk_id="doc_0", text="a", vector=[0.1, 0.2, 0.3])
+    second = DocumentIndexChunk(chunk_id="doc_1", text="b", vector=[0.1, 0.2, 0.3])
+    await writer.index_chunks(context, [first])
+    await writer.index_chunks(context, [second])
+
+    assert {d["indexed_time"] for d in opensearch.documents.values()} == {
+        "2026-01-01T00:00:00+00:00"
+    }
+
+
+@pytest.mark.asyncio
+async def test_indexed_time_defaults_to_now_without_a_context_value() -> None:
+    opensearch = InMemoryOpenSearch()
+    writer = DocumentIndexWriter(opensearch_client=opensearch)
+
+    await writer.index_chunks(make_context("user-a"), [make_chunk()])
+
+    assert next(iter(opensearch.documents.values()))["indexed_time"]

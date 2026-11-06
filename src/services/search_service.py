@@ -26,6 +26,11 @@ from utils.embedding_fields import (
     get_embedding_space_id,
 )
 from utils.logging_config import get_logger
+from utils.opensearch_queries import (
+    build_date_range_query,
+    build_exact_filtered_knn_query,
+    supports_inner_knn_filter,
+)
 
 logger = get_logger(__name__)
 
@@ -115,6 +120,7 @@ def _is_noise_query(query: str) -> bool:
     tokens = re.findall(r"\w+", query, flags=re.UNICODE)
     return bool(tokens) and all(_is_noise_token(t) for t in tokens)
 
+
 def _build_search_filter_clauses(filters: dict[str, Any] | None) -> list[dict[str, Any]]:
     """Translate public search filters into OpenSearch clauses in one place."""
     clauses: list[dict[str, Any]] = []
@@ -148,7 +154,29 @@ def _build_search_filter_clauses(filters: dict[str, Any] | None) -> list[dict[st
             clauses.append({"term": {field_name: values[0]}})
         else:
             clauses.append({"terms": {field_name: values}})
+    date_clause = build_date_range_query(
+        "indexed_time",
+        gte=(filters or {}).get("created_after") or None,
+        lte=(filters or {}).get("created_before") or None,
+    )
+    if date_clause is not None:
+        clauses.append(date_clause)
     return clauses
+
+
+async def _get_vector_field_definitions(opensearch_client: Any) -> dict[str, Any] | None:
+    """Mapping properties of the documents index, or None when they cannot be read."""
+    try:
+        mapping = await opensearch_client.indices.get_mapping(index=get_index_name())
+    except Exception as e:
+        logger.warning("Could not read index mapping for kNN engine detection", error=str(e))
+        return None
+    properties: dict[str, Any] = {}
+    for index_info in mapping.values():
+        props = index_info.get("mappings", {}).get("properties", {})
+        if isinstance(props, dict):
+            properties.update(props)
+    return properties
 
 
 def _add_result_mode_filter(
@@ -702,18 +730,32 @@ class SearchService:
             # Build multi-model KNN queries (only for models that successfully
             # produced query embeddings)
             knn_queries = []
+            vector_fields = (
+                await _get_vector_field_definitions(opensearch_client) if filter_clauses else None
+            )
             for field_identity, embedding_vector in query_embeddings.items():
                 field_name = get_embedding_field_name(field_identity)
-                knn_queries.append(
-                    {
-                        "knn": {
-                            field_name: {
-                                "vector": embedding_vector,
-                                "k": 50,
-                            }
-                        }
-                    }
-                )
+                knn_clause: dict[str, Any] = {
+                    "vector": embedding_vector,
+                    "k": 50,
+                }
+                # A filter must apply before neighbours are chosen, or only the
+                # global top-k is post-filtered. Engines with native filtering
+                # take it inside the kNN clause; nmslib rejects that, so it scores
+                # the filtered documents exactly. Unknown mappings keep the
+                # native clause (the engine and metric cannot be guessed).
+                if filter_clauses:
+                    field_def = (vector_fields or {}).get(field_name)
+                    if vector_fields is None or supports_inner_knn_filter(field_def):
+                        knn_clause["filter"] = {"bool": {"filter": filter_clauses}}
+                    else:
+                        knn_queries.append(
+                            build_exact_filtered_knn_query(
+                                field_name, field_def, embedding_vector, filter_clauses
+                            )
+                        )
+                        continue
+                knn_queries.append({"knn": {field_name: knn_clause}})
 
             # KNN clauses naturally apply only to documents carrying their
             # vector field. Keep all other documents eligible for keyword
@@ -810,6 +852,7 @@ class SearchService:
                 "allowed_users",
                 "allowed_groups",
                 "allowed_principal_labels",
+                "indexed_time",
                 "document_id",
                 "web_source_id",
                 "web_page_id",
@@ -993,6 +1036,7 @@ class SearchService:
                     "allowed_users": source.get("allowed_users", []),
                     "allowed_groups": source.get("allowed_groups", []),
                     "allowed_principal_labels": source.get("allowed_principal_labels", []),
+                    "indexed_time": source.get("indexed_time"),
                     "document_id": source.get("document_id"),
                     "web_source_id": source.get("web_source_id"),
                     "web_page_id": source.get("web_page_id"),

@@ -291,7 +291,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (user || isNoAuthMode || isIbmAuthMode) {
       setPermissionsResolved(false);
       void fetchPermissions();
-    } else {
+    } else if (!isLoading) {
+      // Only resolve with empty permissions once auth has finished loading.
+      // While isLoading=true the final user/mode is not known yet, so resolving
+      // early creates a transient state (permissionsResolved=true, roles=[]) that
+      // can race with the post-checkAuth effect run that actually fetches roles.
       resetPermissionState();
       setPermissionsResolved(true);
     }
@@ -299,6 +303,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     user,
     isNoAuthMode,
     isIbmAuthMode,
+    isLoading,
     fetchPermissions,
     resetPermissionState,
   ]);

@@ -50,3 +50,41 @@ async def test_page_manifest_is_non_vector_and_parent_projection_aggregates_page
     assert parent["file_size"] == 512
     assert parent["embedding_dimensions"] == 1536
     assert parent["crawl_settings"] == source["crawl_settings"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("page_fields", "expected"),
+    [
+        ({"last_ingested_at": "2026-10-08T10:00:00+00:00"}, "2026-10-08T10:00:00+00:00"),
+        (
+            {
+                "last_ingested_at": "2026-10-08T10:00:00+00:00",
+                "indexed_time": "2026-10-20T10:00:00+00:00",
+            },
+            "2026-10-08T10:00:00+00:00",
+        ),
+        ({"indexed_time": "2026-10-07T09:00:00+00:00"}, "2026-10-07T09:00:00+00:00"),
+    ],
+)
+async def test_manifest_only_writes_keep_the_last_ingestion_time(
+    monkeypatch, page_fields, expected
+):
+    opensearch = type("OpenSearch", (), {"index": AsyncMock()})()
+    monkeypatch.setattr(clients, "opensearch", opensearch)
+
+    await upsert_page_manifest(
+        {"web_source_id": "s", "web_page_id": "p", "status": "disabled", **page_fields}
+    )
+
+    assert opensearch.index.await_args.kwargs["body"]["indexed_time"] == expected
+
+
+@pytest.mark.asyncio
+async def test_a_never_ingested_page_falls_back_to_the_current_time(monkeypatch):
+    opensearch = type("OpenSearch", (), {"index": AsyncMock()})()
+    monkeypatch.setattr(clients, "opensearch", opensearch)
+
+    await upsert_page_manifest({"web_source_id": "s", "web_page_id": "p"})
+
+    assert opensearch.index.await_args.kwargs["body"]["indexed_time"]

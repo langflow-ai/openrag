@@ -317,3 +317,63 @@ describe("useDocumentScopedChunksQuery", () => {
     ]);
   });
 });
+
+describe("useDocumentScopedChunksQuery", () => {
+  it("merges highlights by stable document id without removing other chunks", async () => {
+    const requests: { query: string; documentIds?: string[] }[] = [];
+    server.use(
+      http.post("/api/search", async ({ request }) => {
+        const body = (await request.json()) as {
+          query: string;
+          filters?: { document_ids?: string[] };
+        };
+        requests.push({
+          query: body.query,
+          documentIds: body.filters?.document_ids,
+        });
+        return HttpResponse.json({
+          results:
+            body.query === "*"
+              ? [
+                  chunk({
+                    document_id: "page-1",
+                    chunk_id: "one",
+                    text: "match",
+                  }),
+                  chunk({
+                    document_id: "page-1",
+                    chunk_id: "two",
+                    text: "other",
+                  }),
+                ]
+              : [
+                  chunk({
+                    document_id: "page-1",
+                    chunk_id: "one",
+                    text: "match",
+                    highlights: ["<mark>match</mark>"],
+                  }),
+                ],
+          warnings: [],
+        });
+      }),
+    );
+
+    const { result } = renderHook(
+      () => useDocumentScopedChunksQuery("page-1", "match"),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    expect(requests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ query: "*", documentIds: ["page-1"] }),
+        expect.objectContaining({ query: "match", documentIds: ["page-1"] }),
+      ]),
+    );
+    expect(result.current.file?.chunks).toHaveLength(2);
+    expect(result.current.file?.chunks?.[0]?.highlights).toEqual([
+      "<mark>match</mark>",
+    ]);
+  });
+});

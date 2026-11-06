@@ -13,6 +13,7 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
+from api.files import validate_date_filter_bounds
 from api.v1._filter_resolution import merge_filter_overrides, resolve_filter_id
 from auth_context import set_auth_context, set_score_threshold, set_search_filters, set_search_limit
 from dependencies import (
@@ -152,6 +153,7 @@ async def chat_create_endpoint(
         )
 
     if resolved_filters:
+        validate_date_filter_bounds(resolved_filters)
         set_search_filters(resolved_filters)
     set_search_limit(resolved_limit)
     set_score_threshold(resolved_score_threshold)

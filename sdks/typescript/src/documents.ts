@@ -165,6 +165,8 @@ export class DocumentsClient {
     if (options.owner !== undefined) params.set("owner", options.owner);
     if (options.search !== undefined) params.set("search", options.search);
     if (options.after_key !== undefined) params.set("after_key", options.after_key);
+    if (options.created_after !== undefined) params.set("created_after", options.created_after);
+    if (options.created_before !== undefined) params.set("created_before", options.created_before);
 
     const qs = params.toString();
     const path = qs ? `/api/v2/files?${qs}` : "/api/v2/files";
