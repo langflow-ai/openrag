@@ -50,6 +50,7 @@ import { makeInitialMessage, PLACEHOLDER_GREETING } from "./_types/types";
 
 function ChatPage() {
   const isDebugMode = process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
+  const isRetryInProgressRef = useRef(false);
   const {
     endpoint,
     setEndpoint,
@@ -180,6 +181,8 @@ function ChatPage() {
     endpoint: apiEndpoint,
     onComplete: (message, responseId) => {
       setLoading(false);
+      isRetryInProgressRef.current = false;
+      setIsUserInteracting(false);
       setWaitingTooLong(false);
 
       setMessages((prev) => {
@@ -433,7 +436,8 @@ function ChatPage() {
       hasMessageCountChanged &&
       !localMessagesAhead &&
       !isUserInteracting &&
-      !isForkingInProgress;
+      !isForkingInProgress &&
+      !isRetryInProgressRef.current;
 
     if (skipSyncAfterLiveError) {
       lastLoadedConversationRef.current = conversationId;
@@ -740,7 +744,13 @@ function ChatPage() {
     if (messages.length === 1) {
       setMessages([userMessage]);
     } else {
-      setMessages((prev) => [...prev, userMessage]);
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "user" && last.content === userMessage.content) {
+          return prev; // already ends with this user message — retry case, do not duplicate
+        }
+        return [...prev, userMessage];
+      });
     }
     setInput("");
     setLoading(true);
@@ -969,6 +979,16 @@ function ChatPage() {
     // This new forked conversation will get its own response_id when the user sends the next message
   };
 
+  const handleRetry = (messageIndex: number) => {
+    const userMessage = messages[messageIndex - 1];
+    if (!userMessage || userMessage.role !== "user") return;
+
+    isRetryInProgressRef.current = true;
+    setIsUserInteracting(true);
+    setMessages((prev) => prev.slice(0, messageIndex));
+    handleSendMessage(userMessage.content, undefined);
+  };
+
   const handleSuggestionClick = (suggestion: string) => {
     handleSendMessage(suggestion);
   };
@@ -1152,6 +1172,8 @@ function ChatPage() {
                           <ErrorMessage
                             content={message.content}
                             animate={false}
+                            onRetry={() => handleRetry(index)}
+                            disabled={loading}
                           />
                         ) : (
                           <AssistantMessage
@@ -1167,6 +1189,12 @@ function ChatPage() {
                             isInitialGreeting={!!message.isGreeting}
                             usage={message.usage}
                             timestamp={message.timestamp}
+                            onRetry={
+                              !message.isGreeting
+                                ? () => handleRetry(index)
+                                : undefined
+                            }
+                            disabled={loading}
                           />
                         )}
                       </div>

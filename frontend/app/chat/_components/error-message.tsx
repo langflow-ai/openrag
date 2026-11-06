@@ -1,18 +1,23 @@
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, RotateCcw } from "lucide-react";
 import { motion } from "motion/react";
 import DogIcon from "@/components/icons/dog-icon";
+import { Button } from "@/components/ui/button";
 import { Message } from "./message";
 
 interface ErrorMessageProps {
   content: string;
   animate?: boolean;
   delay?: number;
+  onRetry?: () => void;
+  disabled?: boolean;
 }
 
 export function ErrorMessage({
   content,
   animate = true,
   delay = 0.2,
+  onRetry,
+  disabled,
 }: ErrorMessageProps) {
   return (
     <motion.div
@@ -40,6 +45,17 @@ export function ErrorMessage({
             <div className="flex-1">
               <p className="text-sm text-destructive font-medium mb-1">Error</p>
               <p className="text-sm text-muted-foreground">{content}</p>
+              {onRetry && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="Retry"
+                  onClick={onRetry}
+                  disabled={disabled}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
         </div>
