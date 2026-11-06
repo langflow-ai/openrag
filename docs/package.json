@@ -13,7 +13,9 @@
     "serve": "docusaurus serve",
     "write-translations": "docusaurus write-translations",
     "write-heading-ids": "docusaurus write-heading-ids",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "test:open-browser": "node --test tests/open-browser.test.cjs",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@docusaurus/core": "3.10.2",
@@ -34,6 +36,7 @@
     "@docusaurus/types": "3.10.2",
     "baseline-browser-mapping": "^2.11.0",
     "deepmerge": "file:./stubs/deepmerge-unused",
+    "patch-package": "8.0.1",
     "typescript": "~6.0.3"
   },
   "overrides": {
