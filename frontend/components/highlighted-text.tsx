@@ -20,11 +20,33 @@ interface HighlightedTextProps {
   searchQuery?: string;
   /** Relevance tier — drives the colour of the semantic highlight mark. Defaults to "high". */
   scoreTier?: SemanticTier;
+  /** Replaces the default yellow-background style of matched terms. */
+  markClassName?: string;
 }
 
+const DEFAULT_MARK_CLASS =
+  "bg-yellow-200 dark:bg-yellow-800 text-foreground rounded-[2px] px-px not-italic";
+
+/**
+ * Bold + underline match style for one-line previews (search suggestions and
+ * the table). `bg-transparent` is required: a bare <mark> gets the browser's
+ * yellow background, which is unreadable against theme foreground colours.
+ * Colours come from theme tokens so it follows light and dark mode.
+ */
+export const BOLD_MATCH_CLASS =
+  "bg-transparent text-foreground font-semibold underline decoration-1 underline-offset-2 not-italic";
+
+/** Surrounding (non-matched) preview text: readable, but below the match. */
+export const PREVIEW_TEXT_CLASS = "text-foreground/70";
+
+/**
+ * Parse a single fragment string like "foo <mark>bar</mark> baz" into an
+ * array of React nodes, converting `<mark>` elements to styled spans.
+ */
 function parseFragment(
   fragment: string,
   keyPrefix: string,
+  markClassName: string,
   semanticTier?: SemanticTier,
 ): React.ReactNode {
   const parts = fragment.split(/(<mark>.*?<\/mark>)/g);
@@ -37,9 +59,7 @@ function parseFragment(
         <mark
           key={key}
           className={
-            semanticTier
-              ? SEMANTIC_MARK_CLASS[semanticTier]
-              : "bg-yellow-200 dark:bg-yellow-800 text-foreground rounded-[2px] px-px not-italic"
+            semanticTier ? SEMANTIC_MARK_CLASS[semanticTier] : markClassName
           }
         >
           {inner}
@@ -135,6 +155,7 @@ export function HighlightedText({
   isSemanticMatch,
   searchQuery,
   scoreTier,
+  markClassName = DEFAULT_MARK_CLASS,
 }: HighlightedTextProps) {
   const tier: SemanticTier = scoreTier ?? "high";
 
@@ -159,7 +180,12 @@ export function HighlightedText({
             {i > 0 && (
               <span className="text-muted-foreground mx-1 select-none">…</span>
             )}
-            {parseFragment(fragment, key, isSemanticMatch ? tier : undefined)}
+            {parseFragment(
+              fragment,
+              key,
+              markClassName,
+              isSemanticMatch ? tier : undefined,
+            )}
           </span>
         );
       })}

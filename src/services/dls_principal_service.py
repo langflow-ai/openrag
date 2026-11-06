@@ -7,6 +7,7 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
+from services.search_cache import invalidate_user_spaces, invalidate_user_suggestions
 from session_manager import User
 from utils.group_acl import (
     acl_principal_label,
@@ -44,6 +45,7 @@ class DLSPrincipalService:
         self._ensure_lock = asyncio.Lock()
         self._index_checked = False
         self._cache: dict[str, tuple[float, list[str]]] = {}
+        self._last_principals: dict[str, frozenset[str]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
 
     async def refresh_user_principals(
@@ -146,6 +148,7 @@ class DLSPrincipalService:
                     refresh="wait_for",
                 )
             self._cache_principals(user, group_roles, principals)
+            self._drop_stale_suggestions(user, principals)
         except Exception as e:
             logger.warning(
                 "Failed to refresh DLS principal lookup row",
@@ -156,6 +159,15 @@ class DLSPrincipalService:
             )
 
         return principals
+
+    def _drop_stale_suggestions(self, user: User, principals: list[str]) -> None:
+        """Cached suggestions and spaces embed what the user could see; membership changes make them stale."""
+        current = frozenset(principals)
+        previous = self._last_principals.get(user.user_id)
+        self._last_principals[user.user_id] = current
+        if previous is not None and previous != current:
+            invalidate_user_suggestions(user.user_id)
+            invalidate_user_spaces(user.user_id)
 
     def invalidate_user(self, user: User | str) -> None:
         """Drop cached DLS principals for one auth user or OpenSearch user name."""

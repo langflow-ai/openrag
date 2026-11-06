@@ -31,6 +31,19 @@ async def onboard_system():
 
 
 @pytest.fixture(autouse=True)
+def _reset_search_caches():
+    """Search caches are process-wide; keep tests from seeing each other's entries."""
+    try:
+        from services.search_cache import clear_search_caches
+    except ImportError:
+        yield
+        return
+    clear_search_caches()
+    yield
+    clear_search_caches()
+
+
+@pytest.fixture(autouse=True)
 def _reset_db_engine_module_state(monkeypatch):
     """Defensive: per-test, ensure `db.engine`'s module-level singletons
     don't leak across tests. Most tests build their own AsyncEngine via
