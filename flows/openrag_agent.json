@@ -4009,12 +4009,11 @@
   "endpoint_name": null,
   "id": "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
   "is_component": false,
-  "last_tested_version": "1.12.9rc1",
+  "last_tested_version": "1.12.10",
   "locked": true,
   "name": "OpenRAG OpenSearch Agent Flow",
   "tags": [
     "assistants",
-    "agents",
-    "openrag:file-mtime:1793900616604080328"
+    "agents"
   ]
 }
