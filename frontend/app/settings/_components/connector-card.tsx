@@ -113,7 +113,7 @@ export default function ConnectorCard({
                   isCloudBrand && "text-layer-contextual-foreground!",
                 )}
               >
-                {connector.description ||
+                {(connector.configFields && connector.description) ||
                   (isConnected
                     ? `${connector.name} is connected.`
                     : isConfigured
