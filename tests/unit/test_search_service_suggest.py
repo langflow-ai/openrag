@@ -368,6 +368,33 @@ def test_filters_to_clauses_allowlists_fields():
     assert len(clauses) == 3
 
 
+def test_filters_to_clauses_honors_dates_document_ids_and_web_sources():
+    clauses = _filters_to_clauses(
+        {
+            "document_ids": ["d1", "d2"],
+            "web_source_ids": ["w1"],
+            "created_after": "2025-01-01T00:00:00Z",
+            "created_before": "2025-02-01T00:00:00Z",
+        }
+    )
+    assert {"terms": {"document_id": ["d1", "d2"]}} in clauses
+    assert {
+        "bool": {
+            "should": [
+                {"term": {"web_source_id": "w1"}},
+                {"term": {"web_source_id.keyword": "w1"}},
+            ],
+            "minimum_should_match": 1,
+        }
+    } in clauses
+    assert {
+        "range": {
+            "indexed_time": {"gte": "2025-01-01T00:00:00Z", "lte": "2025-02-01T00:00:00Z"}
+        }
+    } in clauses
+    assert len(clauses) == 3
+
+
 def test_group_suggest_files_limits_rows_and_previews():
     chunks = [
         {

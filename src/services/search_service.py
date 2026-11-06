@@ -336,34 +336,26 @@ SUGGEST_MAX_SUGGESTIONS = 4
 SUGGEST_MAX_FILES = 5
 SUGGEST_PREVIEW_FILES = 3
 
-_SUGGEST_FILTER_FIELDS = {
-    "data_sources": "filename",
-    "document_types": "mimetype",
-    "owners": "owner",
-    "connector_types": "connector_type",
-}
+_SUGGEST_LIST_FILTER_KEYS = tuple(_SEARCH_FILTER_FIELDS)
+_SUGGEST_DATE_FILTER_KEYS = ("created_after", "created_before")
 
 
 def _filters_to_clauses(filters: dict[str, Any]) -> list[dict[str, Any]]:
-    """Translate frontend facet filters into OpenSearch filter clauses.
+    """Translate frontend filters into OpenSearch filter clauses.
 
-    Unknown keys are ignored (an allowlist) so a caller cannot target
-    arbitrary index fields through the suggest endpoint.
+    Only keys supported by normal search are forwarded (an allowlist) so a
+    caller cannot target arbitrary index fields through the suggest endpoint.
     """
-    clauses: list[dict[str, Any]] = []
-    for key, field_name in _SUGGEST_FILTER_FIELDS.items():
+    supported: dict[str, Any] = {}
+    for key in _SUGGEST_LIST_FILTER_KEYS:
         values = filters.get(key)
-        if not isinstance(values, list):
-            continue
-        values = [v for v in values if isinstance(v, str)]
-        if not values:
-            # Empty list means "match nothing", mirroring search_tool.
-            clauses.append({"term": {field_name: "__IMPOSSIBLE_VALUE__"}})
-        elif len(values) == 1:
-            clauses.append({"term": {field_name: values[0]}})
-        else:
-            clauses.append({"terms": {field_name: values}})
-    return clauses
+        if isinstance(values, list):
+            supported[key] = [v for v in values if isinstance(v, str)]
+    for key in _SUGGEST_DATE_FILTER_KEYS:
+        value = filters.get(key)
+        if isinstance(value, str):
+            supported[key] = value
+    return _build_search_filter_clauses(supported)
 
 
 def _group_suggest_files(
