@@ -1359,7 +1359,7 @@ eval-check: ## Check that the stack at OPENRAG_URL is ready for a retrieval eval
 	cd $(EVAL_DIR) && uv run run_eval.py check $(EVAL_ARGS)
 
 eval-cleanup: ## List documents interrupted retrieval eval runs left behind; CONFIRM=1 to delete them
-	cd $(EVAL_DIR) && uv run run_eval.py cleanup $(if $(CONFIRM),--yes) $(EVAL_ARGS)
+	cd $(EVAL_DIR) && uv run run_eval.py cleanup $(if $(filter 1 true yes,$(CONFIRM)),--yes) $(EVAL_ARGS)
 
 eval-run: ## Run the retrieval eval (requires running OpenRAG and OPENRAG_API_KEY); BASELINE=file to compare
 	cd $(EVAL_DIR) && uv run run_eval.py run --output-dir $(OUTPUT_DIR) $(if $(BASELINE),--baseline $(BASELINE)) $(EVAL_ARGS)
