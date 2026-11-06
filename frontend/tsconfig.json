@@ -21,7 +21,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@config/*": ["../src/config/*"]
     }
   },
   "include": [
@@ -31,7 +32,8 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     ".next-3001/types/**/*.ts",
-    ".next-3001/dev/types/**/*.ts"
+    ".next-3001/dev/types/**/*.ts",
+    "../src/config/*.json"
   ],
   "exclude": ["node_modules"]
 }

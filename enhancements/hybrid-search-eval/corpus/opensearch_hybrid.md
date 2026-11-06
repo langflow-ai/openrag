@@ -1,0 +1,3 @@
+# OpenSearch Hybrid Search
+
+The hybrid query type combines lexical BM25 and k-NN vector sub-queries in a single request. A normalization processor in the search pipeline rescales each sub-query's scores before they are combined. Use min_max normalization to map every score set onto the 0-1 range, then apply arithmetic_mean combination with weights summing to 1.0 (for example 0.3 for BM25 and 0.7 for k-NN). Without normalization, unbounded BM25 scores dominate the bounded k-NN scores and drown out semantic matches entirely. Weights that do not sum to 1.0 are rejected, so tune the ratio rather than the total.

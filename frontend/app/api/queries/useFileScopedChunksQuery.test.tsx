@@ -218,6 +218,104 @@ describe("useFileScopedChunksQuery", () => {
     // The query should have been trimmed (line 20-21 logic)
     expect(result.current.file?.filename).toBe("test.pdf");
   });
+  describe("polling session counter", () => {
+    it("polls for chunks after filename changes (baseline resets per session)", async () => {
+      // First serve no chunks for file-a.pdf, then chunks for file-b.pdf.
+      // After rerender with file-b.pdf the hook must fetch (not stay idle because
+      // a prior session exhausted the budget on file-a.pdf).
+      serveSearch([]);
+
+      const { result, rerender } = renderHook(
+        ({ name }: { name: string }) => useFileScopedChunksQuery(name),
+        { wrapper: createQueryWrapper(), initialProps: { name: "file-a.pdf" } },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+      expect(result.current.file).toBeUndefined();
+
+      // Switch to a different file that does have chunks.
+      serveSearch([chunk({ filename: "file-b.pdf", text: "hello" })]);
+      rerender({ name: "file-b.pdf" });
+
+      await waitFor(() =>
+        expect(result.current.file?.filename).toBe("file-b.pdf"),
+      );
+    });
+
+    it("stops polling once chunks are found for the file", async () => {
+      serveSearch([chunk({ filename: "found.pdf", text: "content" })]);
+
+      const { result } = renderHook(
+        () => useFileScopedChunksQuery("found.pdf"),
+        { wrapper: createQueryWrapper() },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+      // Chunks were found immediately — file should be populated.
+      expect(result.current.file?.filename).toBe("found.pdf");
+      expect((result.current.file?.chunkCount ?? 0) > 0).toBe(true);
+    });
+  });
+});
+
+describe("useDocumentScopedChunksQuery", () => {
+  it("merges highlights by stable document id without removing other chunks", async () => {
+    const requests: { query: string; documentIds?: string[] }[] = [];
+    server.use(
+      http.post("/api/search", async ({ request }) => {
+        const body = (await request.json()) as {
+          query: string;
+          filters?: { document_ids?: string[] };
+        };
+        requests.push({
+          query: body.query,
+          documentIds: body.filters?.document_ids,
+        });
+        return HttpResponse.json({
+          results:
+            body.query === "*"
+              ? [
+                  chunk({
+                    document_id: "page-1",
+                    chunk_id: "one",
+                    text: "match",
+                  }),
+                  chunk({
+                    document_id: "page-1",
+                    chunk_id: "two",
+                    text: "other",
+                  }),
+                ]
+              : [
+                  chunk({
+                    document_id: "page-1",
+                    chunk_id: "one",
+                    text: "match",
+                    highlights: ["<mark>match</mark>"],
+                  }),
+                ],
+          warnings: [],
+        });
+      }),
+    );
+
+    const { result } = renderHook(
+      () => useDocumentScopedChunksQuery("page-1", "match"),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    expect(requests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ query: "*", documentIds: ["page-1"] }),
+        expect.objectContaining({ query: "match", documentIds: ["page-1"] }),
+      ]),
+    );
+    expect(result.current.file?.chunks).toHaveLength(2);
+    expect(result.current.file?.chunks?.[0]?.highlights).toEqual([
+      "<mark>match</mark>",
+    ]);
+  });
 });
 
 describe("useDocumentScopedChunksQuery", () => {

@@ -10,6 +10,7 @@ from agentd.tool_decorator import tool
 
 from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
+from config.search_constants import DEFAULT_SEARCH_SCORE_THRESHOLD, HYBRID_PIPELINE_NAME
 from config.settings import get_embedding_model, get_index_name, get_openrag_config
 from observability.spans import Span, trace_root, trace_span
 from services.llm_gateway import LlmGatewayError
@@ -66,6 +67,72 @@ _CHUNK_SEARCH_EXCLUDED_RECORD_KINDS = {"web_source", "web_page_manifest"}
 
 # Variable used to store the active instance for the tool wrapper
 _global_search_service = None
+
+
+_HAS_WORDS = re.compile(r"[^\W\d_]{2,}")
+
+
+def _has_readable_text(text: Any) -> bool:
+    """Return False for chunks with no run of two letters, e.g. a ``|---|---|`` table rule."""
+    return not isinstance(text, str) or _HAS_WORDS.search(text) is not None
+
+
+_STOPWORDS = frozenset(
+    "a an and are as at be but by for from if in into is it of on or so that the "
+    "their then there these this to was were what when where which who why will with".split()
+)
+
+
+def _keyword_query(query: str) -> str:
+    """Drop filler words from the keyword leg of a multi-word query.
+
+    The semantic leg still embeds the full query. A filler word counts as a
+    keyword match (and gets highlighted) only when it is the whole query, or
+    when it sits inside a phrase matched by the phrase clause.
+    """
+    tokens = query.split()
+    if len(tokens) < 2:
+        return query
+    kept = [t for t in tokens if t.lower().strip(".,;:!?\"'()[]") not in _STOPWORDS]
+    return " ".join(kept) if kept else query
+
+
+_KEYBOARD_ROWS = ("qwertyuiop", "asdfghjkl", "zxcvbnm")
+
+
+def _is_noise_token(token: str) -> bool:
+    """Return True for tokens that are clearly keyboard mash, not language.
+
+    Deliberately conservative: only repeated characters, keyboard-row runs,
+    long vowel-less words and very long consonant runs. Vowel-poor real terms
+    ("https", "pgsql", "rhythms", "strengths") and invented-but-pronounceable
+    words must pass.
+    """
+    token = token.lower()
+    if not token.isalpha() or not token.isascii():
+        return False
+    length = len(token)
+    if length >= 2 and len(set(token)) == 1:
+        return True
+    if length >= 5 and any(token in row for row in _KEYBOARD_ROWS):
+        return True
+    if length >= 6 and not re.search(r"[aeiouy]", token):
+        return True
+    return (
+        length >= 8
+        and re.search(r"[^aeiouy]{5,}", token) is not None
+        and re.search(r"ngths|lfths|ghts|ngst", token) is None
+    )
+
+
+def _is_noise_query(query: str) -> bool:
+    """Return True when every token of the query is keyboard mash.
+
+    Such queries get no semantic (kNN) leg: an embedding model always returns
+    nearest neighbours, so gibberish would otherwise match arbitrary chunks.
+    """
+    tokens = re.findall(r"\w+", query, flags=re.UNICODE)
+    return bool(tokens) and all(_is_noise_token(t) for t in tokens)
 
 
 def _build_search_filter_clauses(filters: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -647,6 +714,10 @@ class SearchService:
                         )
                     ]
 
+            if _is_noise_query(query):
+                logger.info("Skipping semantic search for noise query")
+                available_spaces = []
+
             # Parallelize embedding generation for all models
             async def _embed_uncached(space: EmbeddingSpace) -> list[float]:
                 """Generate one query vector through its exact gateway route."""
@@ -772,7 +843,6 @@ class SearchService:
                 knn_clause: dict[str, Any] = {
                     "vector": embedding_vector,
                     "k": 50,
-                    "num_candidates": 1000,
                 }
                 # A filter must apply before neighbours are chosen, or only the
                 # global top-k is post-filtered. Engines with native filtering
@@ -805,64 +875,62 @@ class SearchService:
                 knn_queries_count=len(knn_queries),
             )
 
-            # Hybrid search (semantic + keyword) when embeddings are available;
-            # keyword-only fallback when none succeeded. When falling back, bump
-            # the multi_match boost so keyword scoring isn't artificially damped.
-            should_clauses: list[dict[str, Any]] = []
-            if knn_queries:
-                should_clauses.append(
-                    {
-                        "dis_max": {
-                            "tie_breaker": 0.0,  # Take only the best match, no blending
-                            "boost": 0.7,  # 70% weight for semantic search
-                            "queries": knn_queries,
+            # Hybrid search: use the normalization processor pipeline when
+            # embeddings are available so k-NN and BM25 scores are normalized
+            # to [0,1] independently before being combined with the configured
+            # weights. Falls back to keyword-only (plain bool) when no embedding
+            # succeeded, since the hybrid query type requires at least one
+            # neural sub-clause.
+            keyword_clauses = [
+                {
+                    "multi_match": {
+                        "query": _keyword_query(query),
+                        "fields": ["text^2", "filename^1.5"],
+                        "type": "best_fields",
+                        "operator": "or",
+                        "minimum_should_match": "2<75%",
+                        "fuzziness": "AUTO:4,7",
+                    }
+                },
+                {
+                    # Prefix fallback for partial input (e.g. "vita" -> "vitamin").
+                    "match_phrase_prefix": {
+                        "text": {
+                            "query": query,
+                            "max_expansions": 50,
+                            "boost": 0.25,
                         }
                     }
-                )
-            should_clauses.extend(
-                [
-                    {
-                        "multi_match": {
-                            "query": query,
-                            "fields": ["text^2", "filename^1.5"],
-                            "type": "best_fields",
-                            "operator": "or",
-                            "fuzziness": "AUTO:4,7",
-                            "boost": 0.3 if knn_queries else 1.0,
-                        }
-                    },
-                    {
-                        # Prefix fallback for partial input (e.g. "vita" -> "vitamin").
-                        # Avoid bool_prefix here because our current mappings are:
-                        # - text: standard "text" (not search_as_you_type / edge-ngram)
-                        # - filename: "keyword"
-                        # match_phrase_prefix with a bounded expansion is safer.
-                        "match_phrase_prefix": {
-                            "text": {
-                                "query": query,
-                                "max_expansions": 50,
-                                "boost": 0.25,
-                            }
-                        }
-                    },
-                ]
-            )
+                },
+            ]
 
-            query_block = {
-                "bool": {
-                    "should": should_clauses,
-                    "minimum_should_match": 1,
-                    "filter": all_filters,
+            if knn_queries:
+                # hybrid query: normalization processor handles score blending.
+                # Filters are pushed into the hybrid clause directly so DLS can
+                # still wrap the top-level query without breaking the pipeline.
+                semantic_clause = {
+                    "dis_max": {
+                        "tie_breaker": 0.0,
+                        "queries": knn_queries,
+                    }
                 }
-            }
-
-            # Apply the threshold to the hybrid score itself. A top-level
-            # min_score also counts the constant-score clause OpenSearch DLS
-            # adds to every user-scoped search, which lifts every visible hit
-            # over the threshold and turns the filter off.
-            if score_threshold > 0:
                 query_block = {
-                    "function_score": {"query": query_block, "min_score": score_threshold}
+                    "hybrid": {
+                        "queries": [semantic_clause, *keyword_clauses],
+                        "filter": all_filters if all_filters else None,
+                    }
+                }
+                # Remove None filter key so OpenSearch doesn't choke on it
+                if query_block["hybrid"]["filter"] is None:
+                    del query_block["hybrid"]["filter"]
+            else:
+                # Keyword-only fallback: plain bool, no pipeline needed
+                query_block = {
+                    "bool": {
+                        "should": keyword_clauses,
+                        "minimum_should_match": 1,
+                        "filter": all_filters,
+                    }
                 }
 
         search_body: dict[str, Any] = {
@@ -912,8 +980,7 @@ class SearchService:
                 "type": "unified",
                 "fields": {
                     "text": {
-                        "fragment_size": 200,
-                        "number_of_fragments": 3,
+                        "number_of_fragments": 0,
                         "pre_tags": ["<mark>"],
                         "post_tags": ["</mark>"],
                     }
@@ -921,23 +988,26 @@ class SearchService:
                 "require_field_match": False,
             }
 
-        # Prepare fallback search body without num_candidates for clusters that don't support it.
-        # Only relevant when we actually dispatched KNN queries.
-        fallback_search_body: dict[str, Any] | None = None
+        # DLS fallback: pre-build a bool/should version of the hybrid query so the
+        # security plugin's function_score wrapper (which hybrid cannot be nested inside)
+        # doesn't abort the search for JWT-authenticated users.
+        dls_fallback_body: dict[str, Any] | None = None
         if not is_wildcard_match_all and query_embeddings:
             try:
-                fallback_search_body = copy.deepcopy(search_body)
-                hybrid_query = fallback_search_body["query"]
-                hybrid_query = hybrid_query.get("function_score", {}).get("query", hybrid_query)
-                knn_query_blocks = hybrid_query["bool"]["should"][0]["dis_max"]["queries"]
-                for query_candidate in knn_query_blocks:
-                    knn_section = query_candidate.get("knn")
-                    if isinstance(knn_section, dict):
-                        for params in knn_section.values():
-                            if isinstance(params, dict):
-                                params.pop("num_candidates", None)
-            except (KeyError, IndexError, AttributeError, TypeError):
-                fallback_search_body = None
+                dls_fallback_body = copy.deepcopy(search_body)
+                hybrid = dls_fallback_body["query"]["hybrid"]
+                bool_filters = hybrid.get("filter") or all_filters
+                dls_fallback_body["query"] = {
+                    "bool": {
+                        "should": hybrid["queries"],
+                        "minimum_should_match": 1,
+                        "filter": bool_filters if bool_filters else None,
+                    }
+                }
+                if dls_fallback_body["query"]["bool"]["filter"] is None:
+                    del dls_fallback_body["query"]["bool"]["filter"]
+            except (KeyError, AttributeError, TypeError):
+                dls_fallback_body = None
 
         # Authentication required - ACL filter is applied at the application layer above
         logger.debug(
@@ -960,7 +1030,12 @@ class SearchService:
             is_disk_space_error,
         )
 
-        search_params = {"terminate_after": 0}
+        search_params: dict[str, Any] = {"terminate_after": 0}
+        # Attach the normalization pipeline only for hybrid queries. Keyword-only
+        # fallback and wildcard queries don't use it.
+        pipeline_active = not is_wildcard_match_all and bool(query_embeddings)
+        if pipeline_active:
+            search_params["search_pipeline"] = HYBRID_PIPELINE_NAME
 
         with trace_span("search.query", knn_fields=len(query_embeddings), size=limit) as query_span:
             try:
@@ -978,32 +1053,38 @@ class SearchService:
                     )
                     raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from e
                 if (
-                    fallback_search_body is not None
-                    and "unknown field [num_candidates]" in error_message.lower()
+                    dls_fallback_body is not None
+                    and "hybrid query must be a top level query" in error_message.lower()
                 ):
+                    # DLS (Document Level Security) wraps the query in function_score,
+                    # which the hybrid query type cannot be nested inside. Fall back to
+                    # bool/should so DLS users get keyword+semantic results without the
+                    # normalization pipeline. Scores are still meaningful for ranking.
                     logger.warning(
-                        "OpenSearch cluster does not support num_candidates; retrying without it"
+                        "DLS wrapper incompatible with hybrid query; retrying as bool/should"
                     )
-                    query_span.set(retried_without_num_candidates=True)
+                    query_span.set(retried_dls_bool_fallback=True)
+                    pipeline_active = False  # scores are raw, not [0,1]-normalized
+                    dls_params = {k: v for k, v in search_params.items() if k != "search_pipeline"}
                     try:
                         results = await opensearch_client.search(
                             index=get_index_name(),
-                            body=fallback_search_body,
-                            params=search_params,
+                            body=dls_fallback_body,
+                            params=dls_params,
                         )
-                    except RequestError as retry_error:
-                        if is_disk_space_error(retry_error):
+                    except RequestError as dls_retry_error:
+                        if is_disk_space_error(dls_retry_error):
                             logger.error(
-                                "OpenSearch retry blocked by disk space constraint",
-                                error=str(retry_error),
+                                "OpenSearch DLS retry blocked by disk space constraint",
+                                error=str(dls_retry_error),
                             )
                             raise OpenSearchDiskSpaceError(
                                 DISK_SPACE_ERROR_MESSAGE
-                            ) from retry_error
+                            ) from dls_retry_error
                         logger.error(
-                            "OpenSearch retry without num_candidates failed",
-                            error=str(retry_error),
-                            search_body=fallback_search_body,
+                            "OpenSearch DLS bool/should retry failed",
+                            error=str(dls_retry_error),
+                            search_body=dls_fallback_body,
                         )
                         raise
                 else:
@@ -1072,6 +1153,16 @@ class SearchService:
                     "error": source.get("error"),
                 }
             )
+
+        if not is_wildcard_match_all:
+            chunks = [chunk for chunk in chunks if _has_readable_text(chunk["text"])]
+
+        # Apply score threshold as a post-filter when the normalization pipeline ran
+        # and produced [0,1] scores. Skip when DLS forced the bool/should fallback
+        # (scores are then raw and the threshold is miscalibrated for that scale).
+        effective_threshold = score_threshold or DEFAULT_SEARCH_SCORE_THRESHOLD
+        if pipeline_active and effective_threshold > 0 and not is_wildcard_match_all:
+            chunks = [c for c in chunks if (c.get("score") or 0) >= effective_threshold]
 
         # If query text appears verbatim in one subset of files, prefer those files
         # to avoid broad semantic spillover for unique lookups.

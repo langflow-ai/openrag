@@ -24,6 +24,7 @@ wheels/
 !src/tui/_assets/flows/*.json
 !src/tui/_assets/flows/components/*.json
 !frontend/*.json
+!src/config/search_scoring.json
 .DS_Store
 logs
 

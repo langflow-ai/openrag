@@ -45,6 +45,7 @@ import { isFileCancelled } from "@/lib/task-error-display";
 import {
   EMPTY_SEARCH_RESULT,
   type File,
+  RELEVANCE_HIDE_THRESHOLD,
   type SearchResult,
   useGetSearchQuery,
 } from "../api/queries/useGetSearchQuery";
@@ -58,6 +59,15 @@ import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-b
 import { KnowledgePaginationFooter } from "@/components/knowledge-pagination-footer";
 import { KnowledgeSearchBar } from "@/components/knowledge-search-bar";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
+import { LowRelevanceBanner } from "@/components/low-relevance-banner";
+import {
+  getRelevanceReasoning,
+  getScoreTier,
+  RELEVANCE_PILL_STYLES,
+  RELEVANCE_TEXT_COLORS,
+  WifiSignalIcon,
+} from "@/components/relevance-signal-icon";
+import { RequirePermission } from "@/components/require-permission";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Tooltip,
@@ -149,6 +159,13 @@ const AG_FIELD_TO_SORT_BY: Record<string, string> = {
   indexed_time: "indexed_time",
   status: "status",
 };
+
+export function isLowRelevanceFile(file: File): boolean {
+  return (
+    typeof file.maxScore === "number" &&
+    file.maxScore < RELEVANCE_HIDE_THRESHOLD
+  );
+}
 
 function listFilesFilterValues(values?: string[]) {
   const filtered = values?.filter((value) => value !== "*");
@@ -262,11 +279,11 @@ export function compareStatusRank(
   return getStatusSortRank(valueA) - getStatusSortRank(valueB);
 }
 
-export function compareAvgScore(
+export function compareRelevance(
   valueA: number | undefined,
   valueB: number | undefined,
 ): number {
-  return (valueA || 0) - (valueB || 0);
+  return (valueA ?? 0) - (valueB ?? 0);
 }
 
 export function getFileStatus(status?: File["status"]): string {
@@ -290,6 +307,112 @@ export function buildWebsitePagesUrl(
 
 const AVG_SCORE_TOOLTIP =
   "Average relevance score across the matched chunks of this file. Higher means a stronger match — sort by this column to rank results by relevance.";
+
+export function RelevanceCellContent({ data }: { data?: File }) {
+  const tier = data?.relevanceTier;
+  if (!tier) return <span className="text-muted-foreground text-xs">—</span>;
+
+  const breakdown = getRelevanceReasoning(data);
+  const pct = breakdown.topChunkScorePct;
+  const badgeLabel = pct !== null ? `${pct}%` : "";
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full border cursor-default transition-colors",
+            RELEVANCE_PILL_STYLES[tier],
+          )}
+        >
+          <WifiSignalIcon tier={tier} size={13} />
+          {badgeLabel && <span>{badgeLabel}</span>}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        className="max-w-72 text-left p-3 space-y-2.5 bg-popover text-popover-foreground border border-border shadow-md"
+      >
+        <div>
+          <p className="font-semibold text-xs text-popover-foreground flex items-center gap-1.5">
+            <WifiSignalIcon tier={tier} size={14} />
+            <span>
+              Why it's ranked{" "}
+              <span className={RELEVANCE_TEXT_COLORS[tier]}>
+                {breakdown.tierLabel}
+              </span>
+            </span>
+          </p>
+          <p className="text-muted-foreground text-xs mt-1 leading-relaxed">
+            {breakdown.reasoning}
+          </p>
+        </div>
+
+        <div className="rounded-md border border-border/80 bg-muted/80 p-2.5 text-xs space-y-2 dark:bg-muted/40">
+          {/* Keyword row — flush left labels and stacked wifi icons */}
+          <div className="grid grid-cols-[58px_16px_1fr] items-center gap-2">
+            <span className="text-muted-foreground font-medium">Keyword:</span>
+            <WifiSignalIcon tier={breakdown.keywordTier} size={13} />
+            <span className="text-foreground text-xxs font-normal">
+              {breakdown.keywordMentionCount > 0 ? (
+                <>
+                  Mentioned{" "}
+                  <span
+                    className={cn(
+                      "font-semibold",
+                      RELEVANCE_TEXT_COLORS[breakdown.keywordTier],
+                    )}
+                  >
+                    {breakdown.keywordMentionCount}
+                  </span>{" "}
+                  time{breakdown.keywordMentionCount !== 1 ? "s" : ""}
+                </>
+              ) : (
+                <span className={RELEVANCE_TEXT_COLORS.low}>
+                  0 direct matches
+                </span>
+              )}
+            </span>
+          </div>
+
+          {/* Meaning row — flush left labels and stacked wifi icons */}
+          <div className="grid grid-cols-[58px_16px_1fr] items-center gap-2">
+            <span className="text-muted-foreground font-medium">Meaning:</span>
+            <WifiSignalIcon tier={breakdown.meaningTier} size={13} />
+            <span className="text-foreground text-xxs font-normal">
+              <span
+                className={cn(
+                  "font-semibold",
+                  RELEVANCE_TEXT_COLORS[breakdown.meaningTier],
+                )}
+              >
+                {breakdown.meaningDetail}
+              </span>
+            </span>
+          </div>
+
+          {/* Top score & matched chunks metadata */}
+          <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-border/50 text-muted-foreground text-xxs">
+            <span>Matched chunks: {breakdown.matchedChunksCount}</span>
+            {pct !== null && (
+              <span>
+                Top score:{" "}
+                <span
+                  className={cn(
+                    "font-semibold",
+                    RELEVANCE_TEXT_COLORS[getScoreTier(pct)],
+                  )}
+                >
+                  {pct}%
+                </span>
+              </span>
+            )}
+          </div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 export function AvgScoreCellContent({ value }: { value: unknown }) {
   const label = formatAvgScoreLabel(value);
@@ -450,6 +573,7 @@ function SearchPage() {
     effectiveDateRange,
   } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
+  const [showLowRelevance, setShowLowRelevance] = useState(false);
 
   const [sortBy, setSortBy] = useState<string>("filename");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
@@ -743,7 +867,14 @@ function SearchPage() {
   const serverTotal = isWildcardQuery
     ? (listFilesData?.total ?? 0)
     : searchFiles.length;
-  const gridRows: File[] = fileResults;
+
+  const hiddenLowRelevanceFiles = !isWildcardQuery
+    ? fileResults.filter(isLowRelevanceFile)
+    : [];
+  const gridRows: File[] =
+    !isWildcardQuery && !showLowRelevance
+      ? fileResults.filter((f) => !isLowRelevanceFile(f))
+      : fileResults;
   const totalPages = Math.max(1, Math.ceil(serverTotal / currentPageSize));
 
   useEffect(() => {
@@ -1021,14 +1152,14 @@ function SearchPage() {
   };
 
   const colAvgScore: ColDef<File> = {
-    field: "avgScore",
-    headerName: "Avg score",
+    field: "maxScore",
+    headerName: "Relevance",
     hide: isWildcardQuery,
     ...(isCloudBrand ? { flex: 1, minWidth: 120 } : { width: 120 }),
     sortable: true,
-    comparator: compareAvgScore,
-    cellRenderer: ({ value }: CustomCellRendererProps<File>) => (
-      <AvgScoreCellContent value={value} />
+    comparator: compareRelevance,
+    cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
+      <RelevanceCellContent data={data} />
     ),
   };
 
@@ -1319,6 +1450,17 @@ function SearchPage() {
               }
             : {})}
         />
+
+        {hiddenLowRelevanceFiles.length > 0 && (
+          <div className="mt-2">
+            <LowRelevanceBanner
+              showingAll={showLowRelevance}
+              hiddenMessage={`${hiddenLowRelevanceFiles.length} file${hiddenLowRelevanceFiles.length > 1 ? "s" : ""} below 10% relevance hidden`}
+              shownMessage="Showing files including those below 10% relevance"
+              onToggle={() => setShowLowRelevance((prev) => !prev)}
+            />
+          </div>
+        )}
 
         <KnowledgePaginationFooter
           currentPage={currentPage}

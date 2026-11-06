@@ -64,6 +64,12 @@ const createNextConfig = (phase: string): NextConfig => {
       ? RUNTIME_BASE_PATH_PLACEHOLDER
       : normalizeFrontendBasePath(process.env.OPENRAG_FRONTEND_BASE_PATH);
 
+  // src/config lives outside the Next.js project root. Extend the tracing root
+  // so standalone output includes it, and register the @config alias in both
+  // Turbopack (default in Next 16) and webpack (used by vitest / CI webpack builds).
+  const repoRoot = path.resolve(__dirname, "..");
+  const configDir = path.join(repoRoot, "src", "config");
+
   return {
     // `basePath` is compiled into the browser bundle. The same value is exposed
     // below so the Axios API client calls /<basePath>/api rather than /api.
@@ -72,6 +78,7 @@ const createNextConfig = (phase: string): NextConfig => {
       NEXT_PUBLIC_OPENRAG_FRONTEND_BASE_PATH: frontendBasePath,
     },
     output: "standalone",
+    outputFileTracingRoot: repoRoot,
     // Build/dev output directory. Overridable via NEXT_DIST_DIR so multiple
     // `next dev` servers can run simultaneously from this same directory: Next.js
     // 16 acquires a lock at `<distDir>/lock` keyed on the project dir + distDir
@@ -80,6 +87,11 @@ const createNextConfig = (phase: string): NextConfig => {
     // Increase timeout for API routes
     experimental: {
       proxyTimeout: 300000, // 5 minutes
+    },
+    turbopack: {
+      resolveAlias: {
+        "@config": configDir,
+      },
     },
     async rewrites() {
       return [{ source: "/mcp/:path*", destination: "/api/mcp/:path*" }];

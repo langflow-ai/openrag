@@ -133,6 +133,7 @@ function ChunksPageContent() {
             searchQuery={searchQuery || undefined}
             filterQuery={localQuery}
             onFilterQueryChange={handleQueryChange}
+            hideIrrelevant={Boolean(searchQuery || initialQuery)}
           />
         </div>
 
