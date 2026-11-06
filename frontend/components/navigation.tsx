@@ -92,8 +92,12 @@ interface NavigationProps {
   onNavigate?: () => void;
 }
 
+// Stable default: the auto-load effect below depends on `conversations`, so a
+// fresh `[]` per render would re-run it (and its state writes) forever.
+const NO_CONVERSATIONS: ChatConversation[] = [];
+
 export function Navigation({
-  conversations = [],
+  conversations = NO_CONVERSATIONS,
   isConversationsLoading = false,
   onNewConversation,
   onSelectionChange,
