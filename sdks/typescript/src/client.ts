@@ -95,6 +95,7 @@ export class OpenRAGClient {
   private readonly _extraHeaders: Record<string, string>;
   private readonly _baseUrl: string;
   private readonly _timeout: number;
+  private readonly _fetch: typeof fetch;
 
   /** Chat client for conversations. */
   readonly chat: ChatClient;
@@ -120,6 +121,7 @@ export class OpenRAGClient {
     ).replace(/\/$/, "");
 
     this._timeout = options.timeout ?? 30000;
+    this._fetch = options.fetch ?? ((input, init) => fetch(input, init));
 
     // Initialize sub-clients
     this.chat = new ChatClient(this);
@@ -133,7 +135,13 @@ export class OpenRAGClient {
   _getHeaders(isMultipart = false): Record<string, string> {
     const headers: Record<string, string> = { ...this._extraHeaders };
 
-    if (this._apiKey) {
+    // An X-Api-Key in extraHeaders wins. Adding X-API-Key as well would send the
+    // key twice (object keys are case-sensitive, HTTP headers are not); fetch
+    // joins the values into "key, key" and the server rejects it with 401.
+    const hasKeyHeader = Object.keys(headers).some(
+      (name) => name.toLowerCase() === "x-api-key"
+    );
+    if (this._apiKey && !hasKeyHeader) {
       headers["X-API-Key"] = this._apiKey;
     }
 
@@ -157,7 +165,7 @@ export class OpenRAGClient {
     const timeoutId = setTimeout(() => controller.abort(), this._timeout);
 
     try {
-      const response = await fetch(url, {
+      const response = await this._fetch(url, {
         method,
         headers,
         body: options.body ?? null,

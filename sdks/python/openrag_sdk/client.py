@@ -1,6 +1,7 @@
 """OpenRAG SDK client."""
 
 import os
+import ssl
 from typing import Any
 
 import httpx
@@ -118,6 +119,7 @@ class OpenRAGClient:
         base_url: str | None = None,
         timeout: float = 30.0,
         http_client: httpx.AsyncClient | None = None,
+        verify: ssl.SSLContext | str | bool = True,
     ):
         """
         Initialize the OpenRAG client.
@@ -127,9 +129,17 @@ class OpenRAGClient:
                 Optional when using IBM auth — pass credentials via extra_headers instead.
             extra_headers: Additional headers forwarded on every request. Used in IBM
                 auth mode to pass X-Username and X-Api-Key from the user's MCP config.
+                An X-Api-Key given here (any casing) takes precedence over api_key /
+                OPENRAG_API_KEY, so the key is never sent twice.
             base_url: Base URL for the API. Falls back to OPENRAG_URL env var, then default.
             timeout: Request timeout in seconds (default 30).
             http_client: Optional custom httpx.AsyncClient instance.
+            verify: TLS verification for the SDK-created HTTP client. True (default)
+                uses certifi, or SSL_CERT_FILE / SSL_CERT_DIR when set. A path to a PEM
+                CA file or bundle is trusted in addition to those defaults, e.g. the
+                cluster CA of a CPD deployment. An ssl.SSLContext is used as-is.
+                False disables verification. Cannot be combined with http_client;
+                configure verification on that client instead.
         """
         # Resolve API key from argument or environment
         self._api_key = api_key or os.environ.get("OPENRAG_API_KEY")
@@ -151,9 +161,18 @@ class OpenRAGClient:
 
         # Create or use provided HTTP client
         if http_client:
+            if verify is not True:
+                raise ValueError(
+                    "verify cannot be combined with http_client; "
+                    "configure verification on the http_client instead."
+                )
             self._http = http_client
         else:
-            self._http = httpx.AsyncClient(timeout=timeout)
+            if isinstance(verify, str):
+                ctx = httpx.create_ssl_context()
+                ctx.load_verify_locations(cafile=verify)
+                verify = ctx
+            self._http = httpx.AsyncClient(timeout=timeout, verify=verify)
 
         # Initialize sub-clients
         self.chat = ChatClient(self)
@@ -170,7 +189,11 @@ class OpenRAGClient:
             "Content-Type": "application/json",
             **self._extra_headers,
         }
-        if self._api_key:
+        # An X-Api-Key in extra_headers wins. Adding X-API-Key as well would send the
+        # header twice (dict keys are case-sensitive, HTTP headers are not) and the
+        # server rejects the joined value with 401.
+        has_key_header = any(k.lower() == "x-api-key" for k in self._extra_headers)
+        if self._api_key and not has_key_header:
             headers["X-API-Key"] = self._api_key
         return headers
 
