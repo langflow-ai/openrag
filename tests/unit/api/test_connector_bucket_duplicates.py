@@ -112,6 +112,7 @@ async def test_sharepoint_onprem_duplicate_check_uses_index_name_not_picker_base
     )
     result = await connectors_api._classify_connector_duplicates(
         connector=connector,
+        connector_type="sharepoint_onprem",
         selected_files_raw=[
             {"id": "first", "name": "report.pdf", "mimeType": "application/pdf"},
             {"id": "second", "name": "report.pdf", "mimeType": "application/pdf"},
