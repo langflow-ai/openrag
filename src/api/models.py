@@ -174,12 +174,20 @@ async def get_openai_models(
     """Get available OpenAI models"""
     try:
         api_key = body.api_key if body else None
+        api_base = None
+        config = None
         if not api_key:
             try:
                 config = get_openrag_config()
                 api_key = config.providers.openai.api_key
             except Exception as e:
                 logger.error(f"Failed to get config: {e}")
+        if api_base is None:
+            try:
+                config = config or get_openrag_config()
+                api_base = config.providers.credential_values("openai").get("api_base")
+            except Exception as e:
+                logger.error(f"Failed to get OpenAI endpoint: {e}")
 
         if not api_key:
             return JSONResponse(
@@ -187,7 +195,7 @@ async def get_openai_models(
                 status_code=400,
             )
 
-        models = await models_service.get_openai_models(api_key=api_key)
+        models = await models_service.get_openai_models(api_key=api_key, api_base=api_base)
         return JSONResponse(hide_excluded_live_models("openai", models))
     except Exception as e:
         logger.error(f"Failed to get OpenAI models: {str(e)}")
