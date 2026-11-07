@@ -23,6 +23,10 @@ from ..utils.validation import (
 
 logger = get_logger(__name__)
 
+# Settings where a blank value is a choice (it turns the feature off) rather than
+# "not set", so loading keeps it instead of falling back to the default.
+BLANK_ALLOWED_ENV_KEYS = frozenset({"DOCLING_EASYOCR_CONFIDENCE_THRESHOLD"})
+
 
 @dataclass
 class EnvConfig:
@@ -94,6 +98,9 @@ class EnvConfig:
 
     # Ingestion settings
     disable_ingest_with_langflow: str = "False"
+    # Recovers low-confidence CJK/Arabic lines easyocr would drop. Needs the
+    # docling-serve the TUI launches (it allows custom OCR config); blank opts out.
+    docling_easyocr_confidence_threshold: str = "0.3"
     nudges_flow_id: str = "ebc01d31-1976-46ce-a385-b0240327226c"
     ingest_sample_data: str = "True"
 
@@ -243,6 +250,7 @@ class EnvManager:
             "LANGFLOW_NEW_USER_IS_ACTIVE": "langflow_new_user_is_active",
             "LANGFLOW_ENABLE_SUPERUSER_CLI": "langflow_enable_superuser_cli",
             "DISABLE_INGEST_WITH_LANGFLOW": "disable_ingest_with_langflow",
+            "DOCLING_EASYOCR_CONFIDENCE_THRESHOLD": "docling_easyocr_confidence_threshold",
             "INGEST_SAMPLE_DATA": "ingest_sample_data",
             "OPENRAG_VERSION": "openrag_version",
             "LANGFUSE_SECRET_KEY": "langfuse_secret_key",  # pragma: allowlist secret
@@ -314,7 +322,7 @@ class EnvManager:
         # This works whether values came from .env file or existing environment variables
         for env_key, attr_name in attr_map.items():
             value = os.environ.get(env_key, "")
-            if value:
+            if value or (env_key in BLANK_ALLOWED_ENV_KEYS and env_key in os.environ):
                 setattr(self.config, attr_name, value)
 
         return loaded_from_file
@@ -625,6 +633,11 @@ class EnvManager:
                 )
                 f.write(
                     f"INGEST_SAMPLE_DATA={self._quote_env_value(self.config.ingest_sample_data)}\n"
+                )
+                # Written even when blank, so the opt-out survives a reload.
+                f.write(
+                    "DOCLING_EASYOCR_CONFIDENCE_THRESHOLD="
+                    f"{self._quote_env_value(self.config.docling_easyocr_confidence_threshold)}\n"
                 )
                 f.write("\n")
 

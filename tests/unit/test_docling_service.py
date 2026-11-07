@@ -71,6 +71,12 @@ def docling_service(mock_httpx_client):
 
 
 @pytest.fixture(autouse=True)
+def no_easyocr_threshold(monkeypatch):
+    """Keep the opt-in easyocr threshold off unless a test patches it on."""
+    monkeypatch.delenv("DOCLING_EASYOCR_CONFIDENCE_THRESHOLD", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def no_sleep():
     """Patch asyncio.sleep so tests run instantly."""
     with patch("services.docling_service.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
@@ -560,6 +566,97 @@ def test_preset_configs_linux():
     with patch("services.docling_service.platform.system", return_value="Linux"):
         preset = get_docling_preset_configs(ocr=True)
         assert preset["ocr_preset"] == "easyocr"
+
+
+def test_preset_configs_sends_easyocr_threshold_as_custom_config():
+    """A configured threshold replaces the easyocr preset with a custom config.
+
+    docling-serve rejects a request that names both a preset and a custom
+    config, so the preset falls back to "auto", the sentinel that defers to
+    the custom config.
+    """
+    from services.docling_service import get_docling_preset_configs
+
+    with (
+        patch("services.docling_service.platform.system", return_value="Linux"),
+        patch("services.docling_service.get_easyocr_confidence_threshold", return_value=0.3),
+    ):
+        preset = get_docling_preset_configs(ocr=True, ocr_languages=["en", "ko"])
+
+    assert preset["ocr_preset"] == "auto"
+    assert preset["ocr_custom_config"] == {
+        "kind": "easyocr",
+        "lang": ["ko", "en"],
+        "confidence_threshold": 0.3,
+    }
+    # Languages travel inside the custom config; docling-serve ignores ocr_lang there.
+    assert "ocr_lang" not in preset
+
+
+def test_preset_configs_easyocr_threshold_without_languages_keeps_engine_default():
+    from services.docling_service import get_docling_preset_configs
+
+    with (
+        patch("services.docling_service.platform.system", return_value="Linux"),
+        patch("services.docling_service.get_easyocr_confidence_threshold", return_value=0.3),
+    ):
+        preset = get_docling_preset_configs(ocr=True, ocr_languages=[])
+
+    assert preset["ocr_custom_config"] == {"kind": "easyocr", "confidence_threshold": 0.3}
+
+
+def test_preset_configs_without_threshold_keeps_easyocr_preset():
+    """Unset threshold sends no custom config, so an un-flagged docling-serve keeps working."""
+    from services.docling_service import get_docling_preset_configs
+
+    with (
+        patch("services.docling_service.platform.system", return_value="Linux"),
+        patch("services.docling_service.get_easyocr_confidence_threshold", return_value=None),
+    ):
+        preset = get_docling_preset_configs(ocr=True, ocr_languages=["ko"])
+
+    assert preset["ocr_preset"] == "easyocr"
+    assert preset["ocr_lang"] == ["ko"]
+    assert "ocr_custom_config" not in preset
+
+
+def test_preset_configs_ignores_easyocr_threshold_on_macos():
+    from services.docling_service import get_docling_preset_configs
+
+    with (
+        patch("services.docling_service.platform.system", return_value="Darwin"),
+        patch("services.docling_service.get_easyocr_confidence_threshold", return_value=0.3),
+    ):
+        preset = get_docling_preset_configs(ocr=True, ocr_languages=["ko"])
+
+    assert preset["ocr_preset"] == "ocrmac"
+    assert "ocr_custom_config" not in preset
+
+
+def test_preset_configs_ignores_easyocr_threshold_when_ocr_disabled():
+    from services.docling_service import get_docling_preset_configs
+
+    with (
+        patch("services.docling_service.platform.system", return_value="Linux"),
+        patch("services.docling_service.get_easyocr_confidence_threshold", return_value=0.3),
+    ):
+        preset = get_docling_preset_configs(ocr=False, ocr_languages=["ko"])
+
+    assert preset["ocr_preset"] == "easyocr"
+    assert "ocr_custom_config" not in preset
+
+
+def test_docling_config_model_accepts_easyocr_custom_config_preset():
+    """The legacy /settings/docling-preset response still validates."""
+    from services.docling_service import DoclingConfig, get_docling_preset_configs
+
+    with (
+        patch("services.docling_service.platform.system", return_value="Linux"),
+        patch("services.docling_service.get_easyocr_confidence_threshold", return_value=0.3),
+    ):
+        preset = get_docling_preset_configs(ocr=True, ocr_languages=["ko"])
+
+    assert DoclingConfig(**preset).ocr_preset == "auto"
 
 
 def test_preset_configs_never_sends_deprecated_ocr_engine():
