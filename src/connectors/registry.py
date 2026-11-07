@@ -11,6 +11,7 @@ import inspect
 import os
 import re
 from importlib.metadata import entry_points
+from typing import Literal, TypedDict
 
 from .aws_s3 import S3Connector
 from .base import BaseConnector
@@ -32,6 +33,15 @@ BUILTIN_CONNECTORS: list[type[BaseConnector]] = [
 PLUGIN_ENTRY_POINT_GROUP = "openrag.connectors.v1"
 _plugin_connectors: tuple[type[BaseConnector], ...] | None = None
 _PLUGIN_TYPE = re.compile(r"[a-z][a-z0-9_]*\Z")
+
+
+class PluginConfigField(TypedDict):
+    """A validated plugin form field, safe to expose to HTTP clients."""
+
+    name: str
+    label: str
+    type: Literal["text", "secret"]
+    required: bool
 
 
 def _load_plugins() -> tuple[type[BaseConnector], ...]:
@@ -125,12 +135,12 @@ def _load_plugins() -> tuple[type[BaseConnector], ...]:
     return _plugin_connectors
 
 
-def plugin_config_fields(cls: type[BaseConnector]) -> list[dict[str, str | bool]]:
+def plugin_config_fields(cls: type[BaseConnector]) -> list[PluginConfigField]:
     """Return only safe form descriptors, rejecting malformed plugin contracts."""
     fields = getattr(cls, "CONFIG_FIELDS", None)
     if not isinstance(fields, (list, tuple)) or not fields:
         raise RuntimeError(f"Connector plugin {cls.CONNECTOR_TYPE!r} needs CONFIG_FIELDS")
-    result = []
+    result: list[PluginConfigField] = []
     names = set()
     for field in fields:
         if not isinstance(field, dict) or set(field) != {"name", "label", "type", "required"}:

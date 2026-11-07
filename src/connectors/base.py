@@ -95,6 +95,10 @@ class BaseConnector(ABC):
     # ConnectionManager entry (the URL connector is the first example).
     CONNECTOR_KIND: str = "oauth"
     ALWAYS_CONNECTED: bool = False
+    # Customer plugin contract (openrag.connectors.v1). Unset on built-in and
+    # enhancement connectors; the registry rejects a plugin that leaves them None.
+    CONNECTOR_API_VERSION: int | None = None
+    BROWSE_CAPABILITY: str | None = None
     # When a sync re-processes files that are already indexed, pass
     # replace_duplicates so the indexed copy is replaced and content changes
     # propagate, instead of being skipped by the duplicate-filename gate.
