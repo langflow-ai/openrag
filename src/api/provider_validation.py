@@ -3,6 +3,7 @@
 import ast
 import asyncio
 import json
+import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -904,8 +905,12 @@ async def validate_provider_setup(
 
         # Foundry model probes use LiteLLM directly, so guard the configured
         # endpoint here as well as in the Azure lightweight-health path.
-        if provider_lower == "azure" and supplied.get("api_base"):
-            _require_https_provider_endpoint(supplied["api_base"], "Azure")
+        if provider_lower == "azure":
+            # LiteLLM falls back to AZURE_API_BASE when api_base is omitted.
+            # Validate the same effective endpoint before credentials reach it.
+            azure_api_base = supplied.get("api_base") or os.getenv("AZURE_API_BASE")
+            if azure_api_base:
+                _require_https_provider_endpoint(azure_api_base, "Azure")
 
         # A provider enhancement has no bespoke model probe of its own: a real
         # call through LiteLLM *is* its model probe, and it is what makes

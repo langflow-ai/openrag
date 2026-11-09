@@ -220,6 +220,40 @@ async def test_azure_foundry_model_probe_rejects_http_before_litellm(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_azure_model_probe_rejects_http_environment_endpoint(monkeypatch):
+    monkeypatch.setenv("AZURE_API_BASE", "http://example.services.ai.azure.com/")
+    litellm_probe = AsyncMock(side_effect=AssertionError("LiteLLM request must not be sent"))
+    monkeypatch.setattr("api.provider_validation._test_litellm_provider", litellm_probe)
+
+    with pytest.raises(ValueError, match="Azure endpoint must use HTTPS"):
+        await validate_provider_setup(
+            provider="azure",
+            llm_model="gpt-4.1",
+            credentials={"api_key": "azure-key"},
+        )
+
+    litellm_probe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_azure_model_probe_uses_explicit_https_endpoint_before_environment(monkeypatch):
+    monkeypatch.setenv("AZURE_API_BASE", "http://insecure.example.services.ai.azure.com/")
+    litellm_probe = AsyncMock()
+    monkeypatch.setattr("api.provider_validation._test_litellm_provider", litellm_probe)
+
+    await validate_provider_setup(
+        provider="azure",
+        llm_model="gpt-4.1",
+        credentials={
+            "api_key": "azure-key",
+            "api_base": "https://example.services.ai.azure.com/",
+        },
+    )
+
+    litellm_probe.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "probe,args",
     [
