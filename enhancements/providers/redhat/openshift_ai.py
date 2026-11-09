@@ -114,7 +114,7 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "key": "embedding_api_base",
         "label": "Embeddings endpoint",
         "placeholder": "https://openrag-embed-predictor.openrag-models.svc.cluster.local:8443/v1",
-        "tooltip": "URL of the InferenceService serving your embedding model, ending in /v1. "
+        "tooltip": "HTTPS URL of the InferenceService serving your embedding model, ending in /v1. "
         "vLLM serves one model per deployment, so this is a second InferenceService.",
         "required": False,
         "field_type": "text",
