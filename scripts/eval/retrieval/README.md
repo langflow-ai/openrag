@@ -481,8 +481,14 @@ its own answers. Choose another configured model with `--judge-model MODEL`
 to reduce that bias. `--no-judge` runs only the deterministic checks and avoids
 the judge calls. Unusable judge replies and request failures are recorded in
 `answer.judge_error`, counted in the summary and excluded from judged averages;
-they are never silently scored as wrong. Chat request failures fail the run
-and still trigger cleanup.
+they are never silently scored as wrong. A failed chat request is handled the
+same way: it is recorded in `answer.chat_error`, listed under "Chat errors" in
+the summary and left out of the answer averages, and the run continues. After
+three chat failures in a row the remaining questions are skipped and marked,
+so a dead chat endpoint cannot stall the run; the retrieval scores are still
+written. Chat and judge requests use `--chat-timeout` (default 180 seconds)
+instead of `--request-timeout`, since an agent answer with tool calls can take
+longer than a search.
 
 A full 83-question pass adds 83 chat calls and up to 83 judge calls. Budget
 roughly 10–20 minutes, depending on the provider; tokens and charges depend

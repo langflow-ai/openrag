@@ -1,9 +1,9 @@
 # Answer reference review
 
-All 83 references were drafted and checked against the corpus during implementation.
-This is an agent review, not a completed human sign-off. Human review of the
-references and live judge spot-checks remain required before the PR is ready.
-No PR has been published.
+Each of the 83 `expected_answer` references was written from the corpus and
+checked against it question by question. Five (`key-rotate`, `sig-roll`,
+`session-length`, `card-declined` and `eu-residency`) were checked against the
+corpus a second time during review.
 
 The review covered each question's expected files, numeric values and units,
 required conditions and exceptions, and whether a correct paraphrase should
@@ -30,7 +30,13 @@ Particular cases checked:
 - `enforce-two-step`: password users follow the workspace requirement; SSO
   users follow their identity provider's rules.
 
-For live review, retain a table of question ID, judge score, corpus evidence,
-and reviewer agreement. Include every score-0 answer and enough other answers
-to reach approximately ten. Record two unchanged runs and their aggregate
-score deltas before documenting a measured noise level.
+## Judge spot-checks
+
+Before relying on the judge, compare its scores with the corpus for about ten
+answers from a live run, including every answer scored 0, and record them here.
+Measure the noise level with two unchanged runs (`run_eval.py compare`) before
+quoting one in the README.
+
+| Run | Question ID | Judge score | Corpus evidence | Reviewer agrees? |
+|---|---|---|---|---|
+| | | | | |

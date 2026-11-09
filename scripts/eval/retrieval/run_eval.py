@@ -148,6 +148,13 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument(
             "--answer-limit", type=int, default=10, help="chat retrieval limit (default: 10)"
         )
+        command.add_argument(
+            "--chat-timeout",
+            type=float,
+            default=180.0,
+            help="seconds per chat or judge request (default: 180); an agent answer "
+            "with tool calls can take longer than --request-timeout",
+        )
     check.add_argument("--score-threshold", type=float, default=0.0)
 
     cleanup = commands.add_parser(
@@ -412,6 +419,26 @@ async def _judge(
     return judgement
 
 
+MAX_CHAT_FAILURES_IN_A_ROW = 3
+
+
+def _failed_answer(error: str, chat_ms: float) -> dict[str, Any]:
+    """An answer record for a question whose chat request failed.
+
+    It gets no answer scores, so it is left out of the answer averages and
+    counted in the summary instead, the same way a judge error is.
+    """
+    return {
+        "text": None,
+        "chat_ms": chat_ms,
+        "sources": [],
+        "cited_rank": None,
+        "judgement": None,
+        "judge_error": None,
+        "chat_error": error,
+    }
+
+
 async def _run_answers(
     client: Any,
     queries: list[dataset.Query],
@@ -425,15 +452,32 @@ async def _run_answers(
 
     scope = SearchFilters(data_sources=sorted(manifest))
     corpus_names = frozenset(manifest.values())
+    failures_in_a_row = 0
     for index, (query, record) in enumerate(zip(queries, records, strict=True), 1):
+        if failures_in_a_row >= MAX_CHAT_FAILURES_IN_A_ROW:
+            # The stack is unlikely to recover mid-run; skipping keeps a dead chat
+            # endpoint from costing --chat-timeout per remaining question.
+            record["answer"] = _failed_answer(
+                f"skipped after {MAX_CHAT_FAILURES_IN_A_ROW} chat failures in a row", 0.0
+            )
+            continue
         print(f"  answer {index}/{len(queries)}: {query.id}", flush=True)
         started = time.monotonic()
-        response = await client.chat.create(
-            query.query,
-            filters=scope,
-            limit=args.answer_limit,
-            score_threshold=args.score_threshold,
-        )
+        try:
+            response = await client.chat.create(
+                query.query,
+                filters=scope,
+                limit=args.answer_limit,
+                score_threshold=args.score_threshold,
+            )
+        except Exception as exc:
+            failures_in_a_row += 1
+            elapsed = round((time.monotonic() - started) * 1000, 1)
+            error = f"{type(exc).__name__}: {exc}"
+            print(f"warning: chat failed for {query.id}: {error}", file=sys.stderr)
+            record["answer"] = _failed_answer(error, elapsed)
+            continue
+        failures_in_a_row = 0
         if response.chat_id:
             chat_ids.append(response.chat_id)
         elapsed = round((time.monotonic() - started) * 1000, 1)
@@ -469,6 +513,7 @@ async def _run_answers(
             "cited_rank": rank,
             "judgement": asdict(judgement) if judgement else None,
             "judge_error": judge_error,
+            "chat_error": None,
         }
         record["metrics"].update(
             answers.score_answer(
@@ -559,7 +604,12 @@ async def run(args: argparse.Namespace) -> int:
             records = await _run_queries(client, queries, manifest, run_prefix, args)
             if args.answers:
                 answer_settings = await _answer_settings(client, args)
-                await _run_answers(client, queries, manifest, run_prefix, args, records, chat_ids)
+                async with OpenRAGClient(
+                    api_key=args.api_key, base_url=args.url, timeout=args.chat_timeout
+                ) as answer_client:
+                    await _run_answers(
+                        answer_client, queries, manifest, run_prefix, args, records, chat_ids
+                    )
         finally:
             for warning in await _cleanup_chats(client, chat_ids):
                 print(f"warning: cleanup: {warning}", file=sys.stderr)
@@ -703,17 +753,21 @@ async def check(args: argparse.Namespace) -> int:
                     ("eval-check-0000",),
                     expected_answer="ready",
                 )
-                records = [{"metrics": {}}]
-                await _run_answers(
-                    client,
-                    [question],
-                    {"eval-check-0000": "eval-check-0000"},
-                    "",
-                    args,
-                    records,
-                    chat_ids,
-                )
-                error = records[0]["answer"]["judge_error"]
+                records: list[dict[str, Any]] = [{"metrics": {}}]
+                async with OpenRAGClient(
+                    api_key=args.api_key, base_url=args.url, timeout=args.chat_timeout
+                ) as answer_client:
+                    await _run_answers(
+                        answer_client,
+                        [question],
+                        {"eval-check-0000": "eval-check-0000"},
+                        "",
+                        args,
+                        records,
+                        chat_ids,
+                    )
+                answer = records[0]["answer"]
+                error = answer["chat_error"] or answer["judge_error"]
                 if error:
                     raise EvalError(error)
                 print("  ok    answers: chat" + (" and judge" if not args.no_judge else ""))
@@ -835,6 +889,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command in ("run", "check") and args.answer_limit < 1:
         parser.error("--answer-limit must be positive")
+    if args.command in ("run", "check") and args.chat_timeout <= 0:
+        parser.error("--chat-timeout must be positive")
     if args.command == "promote" and args.min_gain < 0:
         parser.error("--min-gain must not be negative")
     if args.command == "run" and args.max_recall_drop is not None:

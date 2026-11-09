@@ -982,6 +982,13 @@ def test_answer_phrase_and_missing_scores() -> None:
     [
         '{"correctness": 2, "grounded": "yes", "reason": "supported"}',
         'Here is my verdict:\n```json\n{"correctness": 2, "grounded": "yes", "reason": "supported"}\n```',
+        # Near-misses small models produce.
+        '{"correctness": 2.0, "grounded": "Yes ", "reason": " supported "}',
+        '{"correctness": "2", "grounded": "YES", "reason": "supported"}',
+        # A schema echo or other invalid object before the real verdict.
+        'Format: {"correctness": "0|1|2", "grounded": "yes|partial|no"} '
+        'Verdict: {"correctness": 2, "grounded": "yes", "reason": "supported"}',
+        '{"note": {"nested": true}} {"correctness": 2, "grounded": "yes", "reason": "supported"}',
     ],
 )
 def test_parse_judgement_valid(text: str) -> None:
@@ -996,8 +1003,11 @@ def test_parse_judgement_valid(text: str) -> None:
         "{oops}",
         "{}",
         '{"correctness": true, "grounded": "yes", "reason": "x"}',
-        '{"correctness": 2.0, "grounded": "yes", "reason": "x"}',
+        '{"correctness": "true", "grounded": "yes", "reason": "x"}',
+        '{"correctness": 1.5, "grounded": "yes", "reason": "x"}',
+        '{"correctness": "two", "grounded": "yes", "reason": "x"}',
         '{"correctness": 3, "grounded": "yes", "reason": "x"}',
+        '{"correctness": -0.0e5, "grounded": "maybe", "reason": "x"}',
         '{"correctness": 1, "grounded": [], "reason": "x"}',
         '{"correctness": 1, "grounded": "maybe", "reason": "x"}',
         '{"correctness": 1, "grounded": "no", "reason": " "}',
@@ -1139,8 +1149,8 @@ def test_answer_runner_with_stub_judge(monkeypatch: pytest.MonkeyPatch) -> None:
     args = SimpleNamespace(
         answer_limit=7, score_threshold=0.1, no_judge=False, judge_model="judge-model"
     )
-    records = [{"metrics": {}}]
-    chat_ids = []
+    records: list[dict[str, Any]] = [{"metrics": {}}]
+    chat_ids: list[str] = []
     query = dataset.Query("q", "question", ("a.md",), "reference", expected_answer="reference")
     asyncio.run(
         runner._run_answers(
@@ -1165,7 +1175,7 @@ def test_answer_runner_with_stub_judge(monkeypatch: pytest.MonkeyPatch) -> None:
     assert records[0]["answer"]["judge_error"] is None
 
 
-def test_answer_run_cleans_up_after_chat_failure(
+def test_answer_run_cleans_up_when_the_answer_pass_fails(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     import asyncio
@@ -1207,11 +1217,14 @@ def test_answer_run_cleans_up_after_chat_failure(
     calls = 0
 
     async def create(*a: Any, **kw: Any) -> Any:
+        return SimpleNamespace(chat_id="created-chat", response="reference", sources=[])
+
+    def score_answer(*a: Any, **kw: Any) -> dict[str, float]:
+        # Chat failures are recorded and skipped, so fail inside the pass
+        # another way, after a conversation has been created.
         nonlocal calls
         calls += 1
-        if calls == 2:
-            raise runner.EvalError("chat unavailable")
-        return SimpleNamespace(chat_id="created-chat", response="reference", sources=[])
+        raise runner.EvalError("scoring broke")
 
     async def delete(chat_id: str) -> bool:
         deleted.append(chat_id)
@@ -1252,8 +1265,10 @@ def test_answer_run_cleans_up_after_chat_failure(
         ("_cleanup", cleanup),
     ):
         monkeypatch.setattr(runner, name, fn)
-    with pytest.raises(runner.EvalError, match="chat unavailable"):
+    monkeypatch.setattr(answers, "score_answer", score_answer)
+    with pytest.raises(runner.EvalError, match="scoring broke"):
         asyncio.run(runner.run(args))
+    assert calls == 1
     assert deleted == ["created-chat"]
     assert len(documents_cleaned) == 1 and documents_cleaned[0].endswith("-a.md")
 
@@ -1313,3 +1328,84 @@ def test_answer_settings_never_records_prompt(monkeypatch: pytest.MonkeyPatch) -
     assert snapshot["system_prompt_sha256"] == hashlib.sha256(b"private prompt").hexdigest()
     assert snapshot["judge_model"] == "granite"
     assert "private prompt" not in json.dumps(snapshot)
+
+
+def _answer_run(
+    runner: Any, outcomes: list[Exception | None]
+) -> tuple[list[dict[str, Any]], list[str], int]:
+    """Run the answer pass over one question per outcome: None answers, an exception fails."""
+    import asyncio
+    from types import SimpleNamespace
+
+    attempts = 0
+
+    async def create(*a: Any, **kw: Any) -> Any:
+        nonlocal attempts
+        outcome = outcomes[attempts]
+        attempts += 1
+        if outcome is not None:
+            raise outcome
+        return SimpleNamespace(
+            chat_id=f"chat-{attempts}",
+            response="reference",
+            sources=[SimpleNamespace(filename=PREFIX + "a.md", text="source")],
+        )
+
+    client = SimpleNamespace(chat=SimpleNamespace(create=create))
+    args = SimpleNamespace(answer_limit=10, score_threshold=0.0, no_judge=True, judge_model=None)
+    queries = [
+        dataset.Query(str(i), "question", ("a.md",), expected_answer="reference")
+        for i in range(len(outcomes))
+    ]
+    records: list[dict[str, Any]] = [{"metrics": {}} for _ in outcomes]
+    chat_ids: list[str] = []
+    asyncio.run(
+        runner._run_answers(
+            client, queries, {PREFIX + "a.md": "a.md"}, PREFIX, args, records, chat_ids
+        )
+    )
+    return records, chat_ids, attempts
+
+
+def test_a_failed_chat_is_recorded_and_the_pass_continues(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = load_answer_runner(monkeypatch)
+
+    records, chat_ids, attempts = _answer_run(runner, [None, TimeoutError("read timed out"), None])
+
+    assert attempts == 3
+    assert chat_ids == ["chat-1", "chat-3"]
+    failed = records[1]
+    assert failed["answer"]["chat_error"] == "TimeoutError: read timed out"
+    assert failed["metrics"] == {}  # no answer scores, so it is left out of the averages
+    assert records[0]["answer"]["chat_error"] is None
+    assert records[2]["metrics"]["answer_cited"] == 1.0
+    overall = metrics.aggregate([r["metrics"] for r in records], [[], [], []])["overall"]
+    assert overall == {"answer_cited": 1.0}
+
+    results = make_results([answer_query(2), answer_query(2)])
+    results["queries"][1]["id"] = "timed-out"
+    results["queries"][1]["answer"] = failed["answer"]
+    summary = report.render_summary(results)
+    assert "1 answers; 1 chat errors" in summary
+    assert "| timed-out | TimeoutError: read timed out |" in summary
+
+
+def test_the_answer_pass_stops_after_repeated_chat_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = load_answer_runner(monkeypatch)
+    down = RuntimeError("chat endpoint down")
+
+    records, chat_ids, attempts = _answer_run(runner, [None, down, down, down, None, None])
+
+    assert attempts == 4  # the last two questions are never sent
+    assert chat_ids == ["chat-1"]
+    assert all("skipped after 3 chat failures" in r["answer"]["chat_error"] for r in records[4:])
+
+
+@pytest.mark.parametrize("value", ["0", "-5"])
+def test_run_rejects_a_chat_timeout_that_is_not_positive(value: str) -> None:
+    completed = _run_cli("run", "--validate-only", "--chat-timeout", value)
+
+    assert completed.returncode == 2
+    assert "--chat-timeout must be positive" in completed.stderr

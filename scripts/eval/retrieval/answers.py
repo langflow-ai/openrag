@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-try:
-    from . import metrics
-except ImportError:  # Direct CLI execution.
-    import metrics
+# This file runs both as a top-level module (run_eval.py puts its directory on
+# sys.path) and as scripts.eval.retrieval.answers (the unit tests). A static
+# import cannot satisfy both, for Python or for mypy, so load the sibling
+# module by whichever name applies.
+metrics = importlib.import_module(f"{__package__}.metrics" if __package__ else "metrics")
 
 
 @dataclass(frozen=True)
@@ -75,33 +77,63 @@ def judge_messages(
     ]
 
 
+GROUNDED_VALUES = ("yes", "partial", "no")
+
+
+def _correctness(value: object) -> int | None:
+    """0, 1 or 2 from an int, a whole-number float or a numeric string; None otherwise."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        try:
+            value = float(value.strip())
+        except ValueError:
+            return None
+    if isinstance(value, float):
+        if not value.is_integer():
+            return None
+        value = int(value)
+    return value if isinstance(value, int) and value in (0, 1, 2) else None
+
+
+def _judgement(value: object) -> Judgement | None:
+    if not isinstance(value, dict):
+        return None
+    correctness = _correctness(value.get("correctness"))
+    grounded = value.get("grounded")
+    grounded = grounded.strip().lower() if isinstance(grounded, str) else None
+    reason = value.get("reason")
+    if correctness is None or grounded not in GROUNDED_VALUES:
+        return None
+    if not isinstance(reason, str) or not reason.strip():
+        return None
+    return Judgement(correctness, grounded, reason.strip())
+
+
 def parse_judgement(text: str) -> Judgement | None:
-    """Decode the first JSON object, allowing prose or Markdown around it."""
+    """Return the first valid judgement in ``text``, allowing prose or Markdown around it.
+
+    Models often wrap the JSON in prose, write ``"Yes"`` or ``2.0``, or echo
+    the schema before answering, so each JSON object is tried in turn and
+    those near-misses are accepted. Booleans, fractions and values outside the
+    rubric are still rejected.
+    """
     if not isinstance(text, str):
         return None
     decoder = json.JSONDecoder()
-    for position, char in enumerate(text):
-        if char != "{":
-            continue
+    position = text.find("{")
+    while position != -1:
         try:
-            value, _ = decoder.raw_decode(text[position:])
+            value, length = decoder.raw_decode(text, position)
         except RecursionError:
             return None
         except ValueError:
+            position = text.find("{", position + 1)
             continue
-        correctness = value.get("correctness")
-        grounded = value.get("grounded")
-        reason = value.get("reason")
-        if (
-            type(correctness) is not int
-            or correctness not in (0, 1, 2)
-            or not isinstance(grounded, str)
-            or grounded not in ("yes", "partial", "no")
-            or not isinstance(reason, str)
-            or not reason.strip()
-        ):
-            return None
-        return Judgement(correctness, grounded, reason)
+        judgement = _judgement(value)
+        if judgement is not None:
+            return judgement
+        position = text.find("{", position + length)
     return None
 
 

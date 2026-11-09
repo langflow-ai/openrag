@@ -570,12 +570,15 @@ def render_summary(results: Mapping[str, Any], diff: Mapping[str, Any] | None = 
         errors = [q for q in answer_rows if q["answer"].get("judge_error")]
         parse_errors = sum("could not be parsed" in q["answer"]["judge_error"] for q in errors)
         judged = sum(q["answer"].get("judgement") is not None for q in answer_rows)
+        chat_failed = [q for q in answer_rows if q["answer"].get("chat_error")]
         lines += [
             "",
             "## Answer quality",
             "",
-            f"{len(answer_rows)} answers; {judged} usable judgements; {len(errors)} judge errors "
-            f"({parse_errors} failed to parse). Missing judgements are excluded from averages.",
+            f"{len(answer_rows) - len(chat_failed)} answers; {len(chat_failed)} chat errors; "
+            f"{judged} usable judgements; {len(errors)} judge errors "
+            f"({parse_errors} failed to parse). Questions without an answer or judgement "
+            "are excluded from the averages.",
             "",
             "| Metric | Score |",
             "|---|---|",
@@ -618,6 +621,17 @@ def render_summary(results: Mapping[str, Any], diff: Mapping[str, Any] | None = 
                 )
         else:
             lines.append("No answers judged wrong.")
+        if chat_failed:
+            lines += [
+                "",
+                f"### Chat errors ({len(chat_failed)})",
+                "",
+                "| ID | Error |",
+                "|---|---|",
+            ]
+            lines += [
+                f"| {_cell(q['id'])} | {_cell(q['answer']['chat_error'])} |" for q in chat_failed
+            ]
 
     text = "\n".join(lines) + "\n"
     if diff is not None:
