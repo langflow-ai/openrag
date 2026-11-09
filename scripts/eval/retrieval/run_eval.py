@@ -2,12 +2,16 @@
 """Measure OpenRAG retrieval quality against a fixed corpus and labeled questions.
 
     uv run run_eval.py run [--baseline results/baseline.json]
+    uv run run_eval.py check
+    uv run run_eval.py cleanup [--yes]
     uv run run_eval.py compare <baseline.json> <current.json>
 
 ``run`` ingests the checked-in corpus under run-unique filenames, sends every
 question through ``/v1/search``, scores the ranking by file, writes results and
-a summary, and deletes the documents it uploaded. ``compare`` diffs two results
-files offline. See README.md.
+a summary, and deletes the documents it uploaded. ``check`` confirms a stack is
+ready for a run without uploading anything, and ``cleanup`` removes documents
+that interrupted runs left behind. ``compare`` diffs two results files offline.
+See README.md.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ import subprocess
 import sys
 import time
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -55,14 +59,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
-    run = commands.add_parser("run", help="ingest the corpus, run every question and score it")
-    run.add_argument("--url", default=os.environ.get("OPENRAG_URL", DEFAULT_URL))
-    run.add_argument(
+    # Options shared by every command that talks to a stack.
+    stack = argparse.ArgumentParser(add_help=False)
+    stack.add_argument(
+        "--url",
+        default=os.environ.get("OPENRAG_URL", DEFAULT_URL),
+        help=f"defaults to the OPENRAG_URL environment variable, then {DEFAULT_URL}",
+    )
+    stack.add_argument(
         "--api-key",
         default=os.environ.get("OPENRAG_API_KEY"),
         help="defaults to the OPENRAG_API_KEY environment variable",
     )
-    run.add_argument("--corpus", type=Path, default=HERE / "corpus")
+    stack.add_argument(
+        "--request-timeout", type=float, default=60.0, help="seconds per HTTP request"
+    )
+    stack.add_argument("--corpus", type=Path, default=HERE / "corpus")
+
+    run = commands.add_parser(
+        "run", parents=[stack], help="ingest the corpus, run every question and score it"
+    )
     run.add_argument("--queries", type=Path, default=HERE / "queries.jsonl")
     run.add_argument("--output-dir", type=Path, default=HERE / "results")
     run.add_argument("--baseline", type=Path, help="results file to compare this run against")
@@ -98,7 +114,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=120.0,
         help="seconds to wait for an ingested file to become searchable",
     )
-    run.add_argument("--request-timeout", type=float, default=60.0, help="seconds per HTTP request")
     run.add_argument(
         "--keep-documents",
         action="store_true",
@@ -108,6 +123,31 @@ def build_parser() -> argparse.ArgumentParser:
         "--validate-only",
         action="store_true",
         help="check the corpus and question file, then exit without contacting a stack",
+    )
+
+    check = commands.add_parser(
+        "check",
+        parents=[stack],
+        help="check that a stack is ready for a run, without uploading anything",
+    )
+    check.add_argument("--queries", type=Path, default=HERE / "queries.jsonl")
+
+    cleanup = commands.add_parser(
+        "cleanup",
+        parents=[stack],
+        help="list, and with --yes delete, documents that interrupted runs left behind",
+    )
+    cleanup.add_argument(
+        "--yes", action="store_true", help="delete the listed documents (default: list only)"
+    )
+    cleanup.add_argument(
+        "--min-age",
+        type=float,
+        default=60.0,
+        help=(
+            "only delete documents indexed at least this many minutes ago, so a run "
+            "still in progress is left alone (default: 60)"
+        ),
     )
 
     compare = commands.add_parser("compare", help="diff two results files offline")
@@ -429,6 +469,164 @@ async def run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _explain(exc: Exception, url: str) -> str:
+    """A reason for a failed request that says what to fix."""
+    status = getattr(exc, "status_code", None)
+    text = str(exc)
+    if status == 401:
+        return "the API key was rejected; create a new one under Settings → API Keys"
+    if status == 403:
+        return f"the API key lacks a permission this needs ({text})"
+    if "CERTIFICATE_VERIFY_FAILED" in text:
+        return (
+            f"the TLS certificate of {url} is not trusted; point SSL_CERT_FILE at the "
+            "CA bundle that signed it"
+        )
+    if type(exc).__name__ in ("ConnectError", "ConnectTimeout"):
+        return f"cannot reach {url}: {text or type(exc).__name__}"
+    return f"{type(exc).__name__}: {text}"
+
+
+async def _list_leftovers(client: Any, corpus_names: list[str]) -> list[dataset.Leftover]:
+    """Every document the stack lists for this key that an earlier run uploaded."""
+    files: list[tuple[str, str | None]] = []
+    after_key: str | None = None
+    while True:
+        page = await client.documents.list_files(search="eval-", page_size=500, after_key=after_key)
+        files += [(record.filename, record.indexed_time) for record in page.files]
+        if not page.files or not page.after_key:
+            break
+        after_key = json.dumps(page.after_key)
+    return dataset.find_leftovers(files, corpus_names)
+
+
+def _describe_runs(leftovers: list[dataset.Leftover]) -> str:
+    runs = sorted({item.run_id for item in leftovers})
+    noun = "run" if len(runs) == 1 else "runs"
+    return f"{len(leftovers)} documents from {len(runs)} earlier {noun}"
+
+
+async def check(args: argparse.Namespace) -> int:
+    """Check that a stack is ready for a run without uploading anything."""
+    corpus_names = dataset.list_corpus(args.corpus)
+    queries = dataset.load_queries(args.queries, corpus_names, args.corpus)
+    if not args.api_key:
+        raise EvalError("no API key: set OPENRAG_API_KEY or pass --api-key")
+
+    from openrag_sdk import OpenRAGClient, SearchFilters
+
+    target_url = report.redact_url(args.url)
+    print(f"Checking {target_url}")
+    print(f"  ok    dataset: {len(corpus_names)} documents, {len(queries)} questions")
+    failed = False
+    async with OpenRAGClient(
+        api_key=args.api_key, base_url=args.url, timeout=args.request_timeout
+    ) as client:
+        try:
+            # Scoped to a name no run uses, so nothing is returned.
+            await client.search.query(
+                "*", filters=SearchFilters(data_sources=["eval-check-0000"]), limit=1
+            )
+        except Exception as exc:
+            print(f"  FAIL  search: {_explain(exc, target_url)}")
+            return 1
+        print("  ok    search: the stack answered and accepted the API key")
+
+        settings, settings_note = await _settings_snapshot(client)
+        if settings is None:
+            failed = True
+            print(
+                f"  FAIL  settings: {settings_note}. A run would still score, but its "
+                "results could not be compared with a baseline or become one; the key "
+                "needs providers:read"
+            )
+        else:
+            print(
+                f"  ok    settings: {settings.get('embedding_provider')} "
+                f"{settings.get('embedding_model')}, chunk size {settings.get('chunk_size')}, "
+                f"overlap {settings.get('chunk_overlap')}"
+            )
+
+        try:
+            leftovers = await _list_leftovers(client, corpus_names)
+        except Exception as exc:
+            failed = True
+            print(f"  FAIL  documents: cannot list documents: {_explain(exc, target_url)}")
+        else:
+            if leftovers:
+                print(
+                    f"  note  documents: {_describe_runs(leftovers)} are still in the stack; "
+                    "`run_eval.py cleanup` lists them"
+                )
+            else:
+                print("  ok    documents: no earlier run left documents behind")
+
+    print(
+        "Not checked: uploading and deleting documents (knowledge:upload, "
+        "knowledge:delete:own) need a real run."
+    )
+    print("Not ready for a run." if failed else "Ready for a run.")
+    return 1 if failed else 0
+
+
+async def cleanup(args: argparse.Namespace) -> int:
+    """List the documents interrupted runs left behind and, with --yes, delete them."""
+    corpus_names = dataset.list_corpus(args.corpus)
+    if not args.api_key:
+        raise EvalError("no API key: set OPENRAG_API_KEY or pass --api-key")
+
+    from openrag_sdk import OpenRAGClient
+
+    target_url = report.redact_url(args.url)
+    min_age = timedelta(minutes=args.min_age)
+    now = datetime.now(UTC)
+    async with OpenRAGClient(
+        api_key=args.api_key, base_url=args.url, timeout=args.request_timeout
+    ) as client:
+        try:
+            leftovers = await _list_leftovers(client, corpus_names)
+        except Exception as exc:
+            raise EvalError(f"cannot list documents: {_explain(exc, target_url)}") from exc
+        if not leftovers:
+            print(f"No documents from earlier runs in {target_url}.")
+            return 0
+
+        to_delete = [item for item in leftovers if dataset.old_enough(item, now, min_age)]
+        kept = len(leftovers) - len(to_delete)
+        print(f"{_describe_runs(leftovers)} in {target_url}:")
+        for run_id in sorted({item.run_id for item in leftovers}):
+            files = [item for item in leftovers if item.run_id == run_id]
+            times = [item.indexed_time for item in files if item.indexed_time]
+            when = min(times).strftime("%Y-%m-%d %H:%M UTC") if times else "unknown time"
+            action = "delete" if all(item in to_delete for item in files) else "keep"
+            print(f"  {run_id}  {len(files)} documents, indexed {when}  → {action}")
+        if kept:
+            print(
+                f"Keeping {kept} documents indexed less than {args.min_age:g} minutes ago or "
+                "at an unknown time, since their run may still be going. Lower --min-age "
+                "to include them."
+            )
+        if not to_delete:
+            return 0
+        if not args.yes:
+            print(f"Run again with --yes to delete {len(to_delete)} documents.")
+            return 0
+
+        failures = []
+        for item in to_delete:
+            try:
+                response = await client.documents.delete(filename=item.filename)
+            except Exception as exc:
+                failures.append(f"{item.filename}: {_explain(exc, target_url)}")
+                continue
+            if not response.success:
+                failures.append(f"{item.filename}: {response.error or 'not deleted'}")
+    print(f"Deleted {len(to_delete) - len(failures)} of {len(to_delete)} documents.")
+    for failure in failures:
+        print(f"warning: {failure}", file=sys.stderr)
+    return 1 if failures else 0
+
+
 def compare(args: argparse.Namespace) -> int:
     diff = report.diff_results(
         report.load_results(args.baseline),
@@ -476,6 +674,12 @@ def main(argv: list[str] | None = None) -> int:
             return compare(args)
         if args.command == "promote":
             return promote(args)
+        if args.command == "check":
+            return asyncio.run(check(args))
+        if args.command == "cleanup":
+            if args.min_age < 0:
+                parser.error("--min-age must not be negative")
+            return asyncio.run(cleanup(args))
         return asyncio.run(run(args))
     except (dataset.DatasetError, report.ResultsError, EvalError) as exc:
         print(f"error: {exc}", file=sys.stderr)

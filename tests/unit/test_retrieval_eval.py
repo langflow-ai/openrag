@@ -11,7 +11,7 @@ import json
 import math
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -881,3 +881,66 @@ def test_promote_rejects_a_negative_min_gain(tmp_path: Path) -> None:
 
     assert completed.returncode == 2
     assert "--min-gain must not be negative" in completed.stderr
+
+
+# --- hosted environments: leftovers and preflight --------------------------
+
+
+def test_find_leftovers_matches_only_run_uploads_of_corpus_files() -> None:
+    files = [
+        ("eval-abc12345-b.md", "2026-11-03T10:00:00Z"),
+        ("eval-abc12345-a.md", "2026-11-03T10:00:00"),
+        ("eval-0000ffff-c.md", None),
+        ("eval-abc12345-notes.md", "2026-11-03T10:00:00Z"),  # not a corpus file
+        ("eval-plan-a.md", "2026-11-03T10:00:00Z"),  # a user's document
+        ("EVAL-abc12345-a.md", "2026-11-03T10:00:00Z"),
+        ("my-eval-abc12345-a.md", "2026-11-03T10:00:00Z"),
+    ]
+
+    leftovers = dataset.find_leftovers(files, CORPUS)
+
+    assert [(item.run_id, item.filename) for item in leftovers] == [
+        ("eval-0000ffff", "eval-0000ffff-c.md"),
+        ("eval-abc12345", "eval-abc12345-a.md"),
+        ("eval-abc12345", "eval-abc12345-b.md"),
+    ]
+    # A timestamp without a zone is read as UTC; a missing one stays unknown.
+    assert leftovers[1].indexed_time == datetime(2026, 11, 3, 10, tzinfo=UTC)
+    assert leftovers[0].indexed_time is None
+
+
+@pytest.mark.parametrize(
+    ("indexed_time", "expected"),
+    [
+        ("2026-11-03T09:00:00Z", True),  # exactly the minimum age
+        ("2026-11-03T08:00:00+00:00", True),
+        ("2026-11-03T09:30:00Z", False),  # may belong to a run still going
+        (None, False),
+        ("not a time", False),
+    ],
+)
+def test_old_enough_keeps_recent_and_undated_uploads(
+    indexed_time: str | None, expected: bool
+) -> None:
+    (leftover,) = dataset.find_leftovers([("eval-abc12345-a.md", indexed_time)], CORPUS)
+    now = datetime(2026, 11, 3, 10, tzinfo=UTC)
+
+    assert dataset.old_enough(leftover, now, timedelta(minutes=60)) is expected
+
+
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (["check"], "no API key"),
+        (["cleanup"], "no API key"),
+        (["cleanup", "--min-age", "-5", "--api-key", "x"], "--min-age must not be negative"),
+    ],
+)
+def test_check_and_cleanup_reject_unusable_arguments_before_contacting_a_stack(
+    argv: list[str], message: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("OPENRAG_API_KEY", raising=False)
+    completed = _run_cli(*argv)
+
+    assert completed.returncode != 0
+    assert message in completed.stderr
