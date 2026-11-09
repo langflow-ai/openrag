@@ -912,6 +912,17 @@ async def validate_provider_setup(
             if azure_api_base:
                 _require_https_provider_endpoint(azure_api_base, "Azure")
 
+        enhancement = get_provider_enhancement(provider_lower)
+        if provider_lower == "rhoai" and enhancement is not None:
+            # Validate both stored endpoints before the model probe can send
+            # the ServiceAccount token through LiteLLM.
+            from enhancements.providers.registry import credentials_for
+
+            credentials_for(
+                enhancement,
+                stored_credentials if stored_credentials is not None else supplied,
+            )
+
         # A provider enhancement has no bespoke model probe of its own: a real
         # call through LiteLLM *is* its model probe, and it is what makes
         # switching to a model the cluster does not serve fail instead of saving
@@ -921,7 +932,6 @@ async def validate_provider_setup(
         # provider does: polling inference every 30s holds a GPU slot (RHOAI) or
         # bills (watsonx.ai on-prem), and its pooled connections race the
         # model server's keep-alive and fail with "Server disconnected".
-        enhancement = get_provider_enhancement(provider_lower)
         azure_ai_foundry_endpoint = provider_lower == "azure" and is_azure_ai_foundry_endpoint(
             supplied.get("api_base")
         )

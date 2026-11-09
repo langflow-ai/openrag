@@ -101,9 +101,9 @@ CREDENTIAL_FIELDS: list[dict[str, Any]] = [
         "key": "api_base",
         "label": "Chat endpoint",
         "placeholder": "https://openrag-chat-predictor.openrag-models.svc.cluster.local:8443/v1",
-        "tooltip": "URL of the InferenceService serving your chat model, ending in /v1. "
+        "tooltip": "HTTPS URL of the InferenceService serving your chat model, ending in /v1. "
         "In-cluster, this is the predictor Service; otherwise, this is a Route or an "
-        "`oc port-forward`. "
+        "HTTPS endpoint reached through `oc port-forward`. "
         "This endpoint may also serve an embedding model.",
         "required": True,
         "field_type": "text",
@@ -309,29 +309,10 @@ def _values(stored: Mapping[str, Any] | None) -> dict[str, str]:
     return values
 
 
-def _warn_if_cleartext(label: str, api_base: str) -> None:
-    """Flag an `http://` endpoint once: the ServiceAccount token goes out in
-    the clear on every call to it.
-
-    A warning, not a rejection. A raw-deployment predictor on the cluster
-    network with auth disabled, or an `oc port-forward` to localhost, are
-    legitimately plain HTTP — but pasting the wrong scheme for a real Service
-    is silent otherwise, and it is the strictly weaker cousin of the disabled
-    TLS verification this module already warns about.
-    """
-    if not api_base:
-        return
-    parts = urlsplit(api_base)
-    if parts.scheme.lower() != "http":
-        return
-    _warn_once(
-        f"http:{parts.netloc}",
-        "The OpenShift AI endpoint uses plain HTTP; the ServiceAccount token will be "
-        "sent in cleartext on every request. Use https:// for anything beyond a "
-        "port-forward to localhost or a cluster-local endpoint with auth disabled.",
-        endpoint=label,
-        host=parts.netloc,
-    )
+def _require_https_endpoint(label: str, api_base: str) -> None:
+    """Refuse to send the ServiceAccount bearer token over an unencrypted URL."""
+    if api_base and urlsplit(api_base).scheme.lower() != "https":
+        raise ValueError(f"OpenShift AI {label} endpoint must use HTTPS")
 
 
 def endpoints(stored: Mapping[str, Any] | None) -> tuple[str, str]:
@@ -345,9 +326,9 @@ def endpoints(stored: Mapping[str, Any] | None) -> tuple[str, str]:
     values = _values(stored)
     chat = normalized_api_base(values.get("api_base"))
     embedding = normalized_api_base(values.get("embedding_api_base")) or chat
-    _warn_if_cleartext("chat", chat)
+    _require_https_endpoint("chat", chat)
     if embedding != chat:
-        _warn_if_cleartext("embedding", embedding)
+        _require_https_endpoint("embedding", embedding)
     return chat, embedding
 
 
