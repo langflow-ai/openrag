@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import io
 import json
 import os
@@ -25,10 +26,12 @@ import subprocess
 import sys
 import time
 import uuid
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import answers
 import dataset
 import metrics
 import report
@@ -131,6 +134,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="check that a stack is ready for a run, without uploading anything",
     )
     check.add_argument("--queries", type=Path, default=HERE / "queries.jsonl")
+
+    for command in (run, check):
+        command.add_argument(
+            "--answers", action="store_true", help="also evaluate chat answers (LLM calls)"
+        )
+        command.add_argument(
+            "--judge-model", help="judge model (default: stack default chat model)"
+        )
+        command.add_argument(
+            "--no-judge", action="store_true", help="deterministic answer checks only"
+        )
+        command.add_argument(
+            "--answer-limit", type=int, default=10, help="chat retrieval limit (default: 10)"
+        )
+    check.add_argument("--score-threshold", type=float, default=0.0)
 
     cleanup = commands.add_parser(
         "cleanup",
@@ -334,6 +352,7 @@ async def _run_queries(
                 "tags": list(query.tags),
                 "expected_files": list(query.expected_files),
                 "expected_text": query.expected_text,
+                "expected_answer": query.expected_answer,
                 "chunks_returned": len(chunks),
                 "unique_files_returned": len(ranked),
                 "ranked_files": [
@@ -352,6 +371,124 @@ async def _run_queries(
             }
         )
     return records
+
+
+async def _answer_settings(client: Any, args: argparse.Namespace) -> dict[str, Any]:
+    try:
+        agent = (await client.settings.get()).agent
+        return {
+            "llm_provider": agent.llm_provider,
+            "llm_model": agent.llm_model,
+            "system_prompt_sha256": hashlib.sha256(
+                (agent.system_prompt or "").encode()
+            ).hexdigest(),
+            "judge_model": args.judge_model or agent.llm_model,
+            "judge_enabled": not args.no_judge,
+            "answer_limit": args.answer_limit,
+        }
+    except Exception as exc:
+        return {
+            "error": f"could not read agent settings: {type(exc).__name__}: {exc}",
+            "judge_model": args.judge_model,
+            "judge_enabled": not args.no_judge,
+            "answer_limit": args.answer_limit,
+        }
+
+
+async def _judge(
+    client: Any, messages: list[dict[str, str]], model: str | None
+) -> answers.Judgement:
+    body: dict[str, Any] = {"messages": messages, "stream": False, "temperature": 0}
+    if model:
+        body["model"] = model
+    response = await client._request("POST", "/api/v1/chat/completions", json=body)
+    try:
+        text = response.json()["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise EvalError("judge response has no message content") from exc
+    judgement = answers.parse_judgement(text)
+    if judgement is None:
+        raise EvalError("judge reply could not be parsed")
+    return judgement
+
+
+async def _run_answers(
+    client: Any,
+    queries: list[dataset.Query],
+    manifest: dict[str, str],
+    run_prefix: str,
+    args: argparse.Namespace,
+    records: list[dict[str, Any]],
+    chat_ids: list[str],
+) -> None:
+    from openrag_sdk import SearchFilters
+
+    scope = SearchFilters(data_sources=sorted(manifest))
+    corpus_names = frozenset(manifest.values())
+    for index, (query, record) in enumerate(zip(queries, records, strict=True), 1):
+        print(f"  answer {index}/{len(queries)}: {query.id}", flush=True)
+        started = time.monotonic()
+        response = await client.chat.create(
+            query.query,
+            filters=scope,
+            limit=args.answer_limit,
+            score_threshold=args.score_threshold,
+        )
+        if response.chat_id:
+            chat_ids.append(response.chat_id)
+        elapsed = round((time.monotonic() - started) * 1000, 1)
+        sources = [
+            {"filename": source.filename, "text": source.text} for source in response.sources
+        ]
+        rank = answers.cited_rank(sources, run_prefix, corpus_names, query.expected_files)
+        judgement = None
+        judge_error = None
+        if not args.no_judge:
+            if query.expected_answer is None:
+                judge_error = "no expected_answer reference"
+            else:
+                try:
+                    judgement = await _judge(
+                        client,
+                        answers.judge_messages(
+                            query.query,
+                            query.expected_answer,
+                            response.response,
+                            sources,
+                        ),
+                        args.judge_model,
+                    )
+                except Exception as exc:
+                    judge_error = f"{type(exc).__name__}: {exc}"
+        record["answer"] = {
+            "text": response.response,
+            "chat_ms": elapsed,
+            "sources": [
+                {"filename": source["filename"], "rank": i} for i, source in enumerate(sources, 1)
+            ],
+            "cited_rank": rank,
+            "judgement": asdict(judgement) if judgement else None,
+            "judge_error": judge_error,
+        }
+        record["metrics"].update(
+            answers.score_answer(
+                response.response,
+                rank,
+                query.expected_text,
+                judgement,
+            )
+        )
+
+
+async def _cleanup_chats(client: Any, chat_ids: list[str]) -> list[str]:
+    warnings = []
+    for chat_id in dict.fromkeys(chat_ids):
+        try:
+            if not await client.chat.delete(chat_id):
+                warnings.append(f"conversation {chat_id} was not deleted (or was already absent)")
+        except Exception as exc:
+            warnings.append(f"could not delete conversation {chat_id}: {type(exc).__name__}: {exc}")
+    return warnings
 
 
 async def _cleanup(client: Any, manifest: dict[str, str]) -> list[str]:
@@ -404,6 +541,8 @@ async def run(args: argparse.Namespace) -> int:
     run_prefix = f"{run_id}-"
     manifest = {f"{run_prefix}{name}": name for name in corpus_names}
 
+    chat_ids: list[str] = []
+    answer_settings = None
     target_url = report.redact_url(args.url)
     print(f"Run {run_id}: {len(corpus_names)} documents, {len(queries)} questions → {target_url}")
     async with OpenRAGClient(
@@ -418,7 +557,12 @@ async def run(args: argparse.Namespace) -> int:
             settings, settings_note = await _settings_snapshot(client)
             print("Running questions...")
             records = await _run_queries(client, queries, manifest, run_prefix, args)
+            if args.answers:
+                answer_settings = await _answer_settings(client, args)
+                await _run_answers(client, queries, manifest, run_prefix, args, records, chat_ids)
         finally:
+            for warning in await _cleanup_chats(client, chat_ids):
+                print(f"warning: cleanup: {warning}", file=sys.stderr)
             if args.keep_documents:
                 print(f"Kept documents with prefix {run_prefix}")
             else:
@@ -439,6 +583,7 @@ async def run(args: argparse.Namespace) -> int:
             "query_count": len(queries),
             "passage_questions": sum(1 for query in queries if query.expected_text is not None),
             "queries_hash": dataset.hash_file(args.queries),
+            "retrieval_queries_hash": dataset.retrieval_queries_hash(args.queries),
             "k_values": args.k_values,
             "primary_k": metrics.primary_k(args.k_values),
             "fetch_limit": args.fetch_limit,
@@ -452,6 +597,8 @@ async def run(args: argparse.Namespace) -> int:
         ),
         "queries": records,
     }
+    if args.answers:
+        results["answer_settings"] = answer_settings
     diff = report.diff_results(baseline, results) if baseline is not None else None
     summary = report.render_summary(results, diff)
     written = report.write_results(results, summary, args.output_dir, started_at)
@@ -546,6 +693,37 @@ async def check(args: argparse.Namespace) -> int:
                 f"{settings.get('embedding_model')}, chunk size {settings.get('chunk_size')}, "
                 f"overlap {settings.get('chunk_overlap')}"
             )
+
+        if args.answers:
+            chat_ids: list[str] = []
+            try:
+                question = dataset.Query(
+                    "answer-check",
+                    "Reply with the word ready.",
+                    ("eval-check-0000",),
+                    expected_answer="ready",
+                )
+                records = [{"metrics": {}}]
+                await _run_answers(
+                    client,
+                    [question],
+                    {"eval-check-0000": "eval-check-0000"},
+                    "",
+                    args,
+                    records,
+                    chat_ids,
+                )
+                error = records[0]["answer"]["judge_error"]
+                if error:
+                    raise EvalError(error)
+                print("  ok    answers: chat" + (" and judge" if not args.no_judge else ""))
+            except Exception as exc:
+                failed = True
+                print(f"  FAIL  answers: {_explain(exc, target_url)}")
+            finally:
+                for warning in await _cleanup_chats(client, chat_ids):
+                    failed = True
+                    print(f"  FAIL  answers cleanup: {warning}")
 
         try:
             leftovers = await _list_leftovers(client, corpus_names)
@@ -655,6 +833,8 @@ def promote(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command in ("run", "check") and args.answer_limit < 1:
+        parser.error("--answer-limit must be positive")
     if args.command == "promote" and args.min_gain < 0:
         parser.error("--min-gain must not be negative")
     if args.command == "run" and args.max_recall_drop is not None:

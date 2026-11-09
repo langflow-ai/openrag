@@ -440,3 +440,78 @@ From the repository root:
 ```bash
 uv run pytest tests/unit/test_retrieval_eval.py
 ```
+
+## Answer quality
+
+Answer evaluation is opt-in and informational. The CI gate still checks file
+recall@5; answer scores do not affect gating or baseline promotion.
+
+```bash
+uv run run_eval.py check --answers
+uv run run_eval.py run --answers --output-dir results/answers
+# From the repository root:
+make eval-answers OUTPUT_DIR=results/answers BASELINE=results/answers/baseline.json
+```
+
+`make eval-answers` also accepts `EVAL_ARGS`. `--answer-limit` controls how many
+chunks chat may retrieve (default 10); it is independent of `--fetch-limit`.
+Chat uses the run's exact uploaded-file scope and the same score threshold as
+search. Every question starts a fresh conversation; conversations are deleted
+in the run's cleanup, including when a later request fails. `--keep-documents`
+keeps documents only, not conversations. Cleanup failures are printed as warnings.
+
+| Score | Meaning |
+|---|---|
+| Cites expected file | 1 when chat's returned sources include an expected file; 0 otherwise. This checks source metadata, not inline citation syntax. |
+| Contains answer phrase | 1 when the answer contains `expected_text`, ignoring case and whitespace; 0 otherwise. Only questions with that label contribute. A correct paraphrase can score 0. |
+| Answer correctness | Judge's 0–2 score divided by 2: wrong or absent = 0, partly correct or missing a key detail = 0.5, matches the reference = 1. |
+| Answer groundedness | Whether substantive claims are supported by the source text supplied to the judge: yes = 1, partial = 0.5, no = 0. |
+
+Add `expected_answer` as one or two non-empty sentences drawn from the corpus.
+Answer the question directly and include the essential conditions, units,
+plan limits or exceptions. It is a semantic reference, not a required verbatim
+phrase; keep `expected_text` for phrase matching. The field is optional; a
+question without it still gets deterministic scores but no judgement. The
+83 shipped references and their review status are described in
+[answer-label-review.md](answer-label-review.md).
+
+By default the judge calls the stack's OpenAI-compatible completions gateway
+with its default chat model, using the same API key. This can bias it toward
+its own answers. Choose another configured model with `--judge-model MODEL`
+to reduce that bias. `--no-judge` runs only the deterministic checks and avoids
+the judge calls. Unusable judge replies and request failures are recorded in
+`answer.judge_error`, counted in the summary and excluded from judged averages;
+they are never silently scored as wrong. Chat request failures fail the run
+and still trigger cleanup.
+
+A full 83-question pass adds 83 chat calls and up to 83 judge calls. Budget
+roughly 10–20 minutes, depending on the provider; tokens and charges depend
+on the configured model, retrieved text and answer lengths. `check --answers`
+also costs one chat call and one judge call, unless `--no-judge` is passed;
+it uploads nothing and deletes its test conversation. Besides the existing
+permissions, the key needs `chat:use` and `conversations:delete:own`.
+
+Answers and judgements can vary across identical runs. Trust the averages
+more than a single question flipping, and compare two unchanged runs to
+establish the noise level for your stack. No measured noise level is claimed
+until those live runs have been completed. Review roughly ten answers against
+the corpus, including every answer judged 0, before relying on a judge.
+
+Results record agent provider/model, a SHA-256 of the system prompt (never the
+prompt text), judge model, judge enablement and chat retrieval limit in the
+separate `answer_settings` object. Differences produce comparison notes,
+not retrieval warnings. The full question-file hash is retained for provenance;
+`retrieval_queries_hash` excludes additive answer references so they do not
+invalidate the phase-1 retrieval baseline. Other retrieval-label edits still
+produce comparison warnings. The JSON schema remains version 1.
+
+The summary includes overall and by-tag answer scores and answers judged
+wrong. Comparing two answer runs lists correctness changes of at least one
+point on the judge's raw 0–2 scale. Comparing against a run without answers
+adds a note. Save the first run before rerunning so it is not overwritten:
+
+```bash
+uv run run_eval.py run --answers --output-dir results/answers-first
+uv run run_eval.py run --answers --output-dir results/answers-second
+uv run run_eval.py compare results/answers-first/results.json results/answers-second/results.json
+```

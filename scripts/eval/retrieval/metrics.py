@@ -50,7 +50,7 @@ def canonical_name(filename: str, run_prefix: str, corpus_names: Collection[str]
     return name if name in corpus_names else None
 
 
-def _normalize(text: str) -> str:
+def normalize(text: str) -> str:
     # Chunking can re-wrap lines, so compare on case-folded, single-spaced text.
     return " ".join(text.casefold().split())
 
@@ -66,7 +66,7 @@ def rank_files(
     With ``expected_text``, each file also records whether any of its fetched
     chunks contains the snippet (case- and whitespace-insensitive).
     """
-    needle = _normalize(expected_text) if expected_text else None
+    needle = normalize(expected_text) if expected_text else None
     order: list[str] = []
     first_score: dict[str, float] = {}
     found: dict[str, bool] = {}
@@ -78,7 +78,7 @@ def rank_files(
             order.append(name)
             first_score[name] = chunk.score
             found[name] = False
-        if needle is not None and not found[name] and needle in _normalize(chunk.text):
+        if needle is not None and not found[name] and needle in normalize(chunk.text):
             found[name] = True
     return [
         RankedFile(
@@ -155,7 +155,7 @@ def passage_rank(
     Matching on text rather than chunk IDs keeps the rank meaningful when the
     chunk size changes.
     """
-    needle = _normalize(expected_text)
+    needle = normalize(expected_text)
     expected = set(expected_files)
     position = 0
     for chunk in chunks:
@@ -163,7 +163,7 @@ def passage_rank(
         if name is None:
             continue
         position += 1
-        if name in expected and needle in _normalize(chunk.text):
+        if name in expected and needle in normalize(chunk.text):
             return position
     return None
 
