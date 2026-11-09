@@ -248,3 +248,112 @@ class TestLangflowPasswordAndAutoLogin:
 
         assert env_manager.validate_config() is False
         assert "langflow_superuser_password" in env_manager.config.validation_errors
+
+
+# ---------------------------------------------------------------------------
+# Backend tracing settings
+# ---------------------------------------------------------------------------
+
+
+class TestBackendTracingSettings:
+    """The TUI manages backend tracing alongside the Langfuse keys it reuses."""
+
+    def test_tracing_flags_round_trip(self, env_manager, tmp_path):
+        from tui.managers.env_manager import EnvManager
+
+        env_manager.config.opensearch_password = "OpenSearchPass123!"
+        env_manager.config.langflow_superuser_password = "LangflowPass123!"
+        env_manager.config.langfuse_public_key = "pk-lf-test"
+        env_manager.config.openrag_tracing_enabled = "true"
+        env_manager.config.openrag_tracing_capture_content = "true"
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            assert env_manager.save_env_file() is True
+
+        content = (tmp_path / ".env").read_text()
+        assert content.count("OPENRAG_TRACING_ENABLED=") == 1
+        assert content.count("OPENRAG_TRACING_CAPTURE_CONTENT=") == 1
+
+        reloaded = EnvManager(env_file=tmp_path / ".env")
+        reloaded.load_existing_env()
+        assert reloaded.config.openrag_tracing_enabled == "true"
+        assert reloaded.config.openrag_tracing_capture_content == "true"
+
+    def test_unset_tracing_flags_are_not_written(self, env_manager, tmp_path):
+        env_manager.config.opensearch_password = "OpenSearchPass123!"
+        env_manager.config.langflow_superuser_password = "LangflowPass123!"
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            assert env_manager.save_env_file() is True
+
+        assert "OPENRAG_TRACING_" not in (tmp_path / ".env").read_text()
+
+    def test_tracing_fields_are_in_the_langfuse_section(self):
+        from tui.config_fields import CONFIG_SECTIONS
+
+        (langfuse,) = [s for s in CONFIG_SECTIONS if s.name == "Langfuse"]
+        env_vars = {f.env_var for f in langfuse.fields}
+        assert {"OPENRAG_TRACING_ENABLED", "OPENRAG_TRACING_CAPTURE_CONTENT"} <= env_vars
+
+
+class TestLangfuseBaseUrl:
+    """LANGFUSE_BASE_URL is the host name Langfuse's setup steps use; LANGFUSE_HOST is the older alias."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_langfuse_host_env(self, monkeypatch):
+        # load_dotenv writes into os.environ, so clear what earlier loads left.
+        for var in ("LANGFUSE_HOST", "LANGFUSE_BASE_URL"):
+            monkeypatch.setenv(var, "")
+            monkeypatch.delenv(var)
+
+    def _save(self, env_manager):
+        env_manager.config.opensearch_password = "OpenSearchPass123!"
+        env_manager.config.langflow_superuser_password = "LangflowPass123!"
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            assert env_manager.save_env_file() is True
+
+    def test_host_is_written_as_base_url(self, env_manager, tmp_path):
+        env_manager.config.langfuse_base_url = "https://us.cloud.langfuse.com"
+
+        self._save(env_manager)
+
+        from tui.managers.env_manager import EnvManager
+
+        assert "LANGFUSE_HOST" not in (tmp_path / ".env").read_text()
+        reloaded = EnvManager(env_file=tmp_path / ".env")
+        reloaded.load_existing_env()
+        assert reloaded.config.langfuse_base_url == "https://us.cloud.langfuse.com"
+
+    def test_legacy_langfuse_host_is_migrated_to_base_url(self, tmp_path):
+        from tui.managers.env_manager import EnvManager
+
+        (tmp_path / ".env").write_text("LANGFUSE_HOST=http://langfuse.internal:3000\n")
+        manager = EnvManager(env_file=tmp_path / ".env")
+        manager.load_existing_env()
+        assert manager.config.langfuse_base_url == "http://langfuse.internal:3000"
+
+        self._save(manager)
+
+        content = (tmp_path / ".env").read_text()
+        assert "LANGFUSE_BASE_URL=" in content
+        assert "LANGFUSE_HOST" not in content
+
+    def test_base_url_wins_over_legacy_host(self, tmp_path):
+        from tui.managers.env_manager import EnvManager
+
+        (tmp_path / ".env").write_text(
+            "LANGFUSE_BASE_URL=https://us.cloud.langfuse.com\n"
+            "LANGFUSE_HOST=https://cloud.langfuse.com\n"
+        )
+        manager = EnvManager(env_file=tmp_path / ".env")
+        manager.load_existing_env()
+
+        assert manager.config.langfuse_base_url == "https://us.cloud.langfuse.com"
+
+    def test_langfuse_section_offers_base_url(self):
+        from tui.config_fields import CONFIG_SECTIONS
+
+        (langfuse,) = [s for s in CONFIG_SECTIONS if s.name == "Langfuse"]
+        env_vars = {f.env_var for f in langfuse.fields}
+        assert "LANGFUSE_BASE_URL" in env_vars
+        assert "LANGFUSE_HOST" not in env_vars

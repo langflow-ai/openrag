@@ -1,0 +1,681 @@
+import importlib
+import json
+import sys
+from types import ModuleType, SimpleNamespace
+
+import pytest
+
+
+def _load_opensearch_module(monkeypatch: pytest.MonkeyPatch):
+    class Input:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self.name = kwargs.get("name", "")
+
+    class VectorStore:
+        inputs: list[object] = []
+
+    class Data(dict):
+        def __init__(self, text=None, **kwargs):
+            super().__init__(text=text, **kwargs)
+
+    class Table(list):
+        pass
+
+    logger = SimpleNamespace(
+        info=lambda *args, **kwargs: None,
+        warning=lambda *args, **kwargs: None,
+        error=lambda *args, **kwargs: None,
+        debug=lambda *args, **kwargs: None,
+    )
+
+    modules = {
+        "lfx": ModuleType("lfx"),
+        "lfx.base": ModuleType("lfx.base"),
+        "lfx.base.vectorstores": ModuleType("lfx.base.vectorstores"),
+        "lfx.base.vectorstores.model": ModuleType("lfx.base.vectorstores.model"),
+        "lfx.base.vectorstores.vector_store_connection_decorator": ModuleType(
+            "lfx.base.vectorstores.vector_store_connection_decorator"
+        ),
+        "lfx.io": ModuleType("lfx.io"),
+        "lfx.log": ModuleType("lfx.log"),
+        "lfx.schema": ModuleType("lfx.schema"),
+        "lfx.schema.data": ModuleType("lfx.schema.data"),
+        "lfx.schema.dataframe": ModuleType("lfx.schema.dataframe"),
+    }
+    vars(modules["lfx.base.vectorstores.model"])["LCVectorStoreComponent"] = VectorStore
+    vars(modules["lfx.base.vectorstores.model"])["check_cached_vector_store"] = lambda func: func
+    vars(modules["lfx.base.vectorstores.vector_store_connection_decorator"])[
+        "vector_store_connection"
+    ] = lambda cls: cls
+    for name in (
+        "BoolInput",
+        "DropdownInput",
+        "HandleInput",
+        "IntInput",
+        "MultilineInput",
+        "Output",
+        "SecretStrInput",
+        "StrInput",
+        "TableInput",
+    ):
+        setattr(modules["lfx.io"], name, Input)
+    vars(modules["lfx.log"])["logger"] = logger
+    vars(modules["lfx.schema.data"])["Data"] = Data
+    vars(modules["lfx.schema.dataframe"])["Table"] = Table
+    for name, module in modules.items():
+        monkeypatch.setitem(sys.modules, name, module)
+
+    sys.modules.pop("custom_components.openrag.opensearch_multimodal", None)
+    return importlib.import_module("custom_components.openrag.opensearch_multimodal")
+
+
+class _Indices:
+    def __init__(self, fields):
+        self.fields = fields
+
+    def get_mapping(self, *, index):
+        return {index: {"mappings": {"properties": self.fields}}}
+
+
+class _SearchClient:
+    def __init__(self, aggregation, fields):
+        self.aggregation = aggregation
+        self.indices = _Indices(fields)
+        self.query = None
+
+    def search(self, *, index, body, params):
+        if body.get("size") == 0:
+            aggregation_name = next(iter(body["aggs"]))
+            return {
+                "aggregations": {
+                    aggregation_name: self.aggregation["aggregations"].get(
+                        aggregation_name, {"buckets": []}
+                    )
+                }
+            }
+        self.query = body
+        return {"hits": {"hits": []}}
+
+
+def _component(module, client, embedding):
+    component = module.OpenSearchVectorStoreComponentMultimodalMultiEmbedding()
+    component.embedding = embedding
+    component.index_name = "documents"
+    component.ingest_data = None
+    component.filter_expression = ""
+    component.number_of_results = 10
+    component.num_candidates = 0
+    component.vector_field = "chunk_embedding"
+    component.build_client = lambda: client
+    component.log = lambda message: None
+    return component
+
+
+def test_detection_separates_provider_qualified_and_legacy_spaces(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    result = {
+        "aggregations": {
+            "embedding_spaces": {
+                "buckets": [{"key": {"space_id": "azure:text-embedding-3-small"}, "doc_count": 4}]
+            },
+            "legacy_embedding_models": {
+                "buckets": [{"key": {"model": "text-embedding-3-small"}, "doc_count": 3}],
+            },
+        }
+    }
+
+    spaces = module.embedding_spaces_from_aggregation(result)
+
+    assert [(space.space_id, space.route_model, space.field_identity) for space in spaces] == [
+        (
+            "azure:text-embedding-3-small",
+            "space:azure:text-embedding-3-small",
+            "azure:text-embedding-3-small",
+        ),
+        (
+            "legacy:text-embedding-3-small",
+            "legacy:text-embedding-3-small",
+            "text-embedding-3-small",
+        ),
+    ]
+
+
+def test_detection_ignores_missing_bucket_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    result = {
+        "aggregations": {
+            "embedding_spaces": {"buckets": [{"key": {}}, {"key": None}]},
+            "legacy_embedding_models": {"buckets": [{"key": {}}, {"key": None}]},
+        }
+    }
+
+    assert module.embedding_spaces_from_aggregation(result) == []
+
+
+def test_detection_aggregation_only_treats_documents_without_space_id_as_legacy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    aggregation = module.build_embedding_space_aggregation(size=25)
+
+    assert aggregation["embedding_spaces"]["composite"] == {
+        "size": 25,
+        "sources": [{"space_id": {"terms": {"field": "embedding_space_id"}}}],
+    }
+    assert aggregation["legacy_embedding_models"]["composite"] == {
+        "size": 25,
+        "sources": [{"model": {"terms": {"field": "embedding_model"}}}],
+    }
+
+
+def test_search_queries_every_resolvable_provider_space(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    aggregation = {
+        "aggregations": {
+            "embedding_spaces": {
+                "buckets": [{"key": {"space_id": "azure:text-embedding-3-small"}, "doc_count": 2}]
+            },
+            "legacy_embedding_models": {
+                "buckets": [{"key": {"model": "text-embedding-3-small"}, "doc_count": 2}]
+            },
+        }
+    }
+    fields = {
+        "chunk_embedding_azure_text_embedding_3_small": {
+            "type": "knn_vector",
+            "dimension": 2,
+        },
+        "chunk_embedding_text_embedding_3_small": {
+            "type": "knn_vector",
+            "dimension": 2,
+        },
+        "filename": {"type": "keyword"},
+    }
+    client = _SearchClient(aggregation, fields)
+    routes = []
+
+    class Child:
+        def __init__(self, route):
+            self.model = route
+
+        def embed_query(self, query):
+            return [0.1, 0.2]
+
+    class Root(Child):
+        deployment = "selected-model"
+
+        def for_model(self, route):
+            routes.append(route)
+            return Child(route)
+
+    _component(module, client, Root("selected-model")).search("needle")
+
+    assert routes == [
+        "space:azure:text-embedding-3-small",
+        "legacy:text-embedding-3-small",
+    ]
+    knn_queries = client.query["query"]["bool"]["should"][0]["dis_max"]["queries"]
+    assert {next(iter(query["knn"])) for query in knn_queries} == {
+        "chunk_embedding_azure_text_embedding_3_small",
+        "chunk_embedding_text_embedding_3_small",
+    }
+
+
+def test_detection_paginates_all_embedding_spaces(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_opensearch_module(monkeypatch)
+
+    class PagingClient:
+        def __init__(self):
+            self.calls = []
+
+        def search(self, *, index, body, params):
+            self.calls.append(body)
+            exact = body["aggs"].get("embedding_spaces")
+            if exact and exact["composite"].get("after"):
+                return {
+                    "aggregations": {
+                        "embedding_spaces": {"buckets": [{"key": {"space_id": "watsonx:slate"}}]}
+                    }
+                }
+            if exact:
+                return {
+                    "aggregations": {
+                        "embedding_spaces": {
+                            "buckets": [{"key": {"space_id": "azure:embed-v1"}}],
+                            "after_key": {"space_id": "azure:embed-v1"},
+                        }
+                    }
+                }
+            return {
+                "aggregations": {
+                    "legacy_embedding_models": {"buckets": []},
+                }
+            }
+
+    client = PagingClient()
+    component = _component(module, client, None)
+
+    spaces = component._detect_available_models(client)
+
+    assert [space.space_id for space in spaces] == ["azure:embed-v1", "watsonx:slate"]
+    assert len(client.calls) == 3
+    assert "legacy_embedding_models" not in client.calls[1]["aggs"]
+    assert client.calls[2]["query"]["bool"]["must_not"] == [
+        {"exists": {"field": "embedding_space_id"}}
+    ]
+
+
+def test_search_falls_back_to_keywords_when_no_space_resolves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    aggregation = {
+        "aggregations": {
+            "embedding_spaces": {"buckets": []},
+            "legacy_embedding_models": {
+                "buckets": [{"key": {"model": "unknown-model"}, "doc_count": 1}]
+            },
+        }
+    }
+    client = _SearchClient(aggregation, {"filename": {"type": "keyword"}})
+
+    class Root:
+        model = "selected-model"
+        deployment = "selected-model"
+
+        def for_model(self, route):
+            raise RuntimeError("unmapped legacy model")
+
+    _component(module, client, Root()).search("needle")
+
+    should = client.query["query"]["bool"]["should"]
+    assert len(should) == 1
+    assert "multi_match" in should[0]
+    assert client.query["query"]["bool"]["filter"] == []
+
+
+def test_search_remains_keyword_capable_without_embedding_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    aggregation = {
+        "aggregations": {
+            "embedding_spaces": {
+                "buckets": [{"key": {"space_id": "azure:text-embedding-3-small"}, "doc_count": 1}]
+            },
+            "legacy_embedding_models": {"buckets": []},
+        }
+    }
+    client = _SearchClient(aggregation, {"filename": {"type": "keyword"}})
+
+    _component(module, client, None).search("needle")
+
+    assert client.query["query"]["bool"]["should"] == [
+        {
+            "multi_match": {
+                "query": "needle",
+                "fields": ["text^2", "filename^1.5"],
+                "type": "best_fields",
+                "fuzziness": "AUTO",
+                "boost": 1.0,
+            }
+        }
+    ]
+
+
+def test_direct_ingest_persists_provider_qualified_space(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    component = module.OpenSearchVectorStoreComponentMultimodalMultiEmbedding()
+    component._openrag_ingest_callback_config = lambda: None
+    component.log = lambda message: None
+    captured = []
+    monkeypatch.setattr(
+        module.helpers, "bulk", lambda client, requests, **kwargs: captured.extend(requests)
+    )
+
+    component._bulk_ingest_embeddings(
+        client=object(),
+        index_name="documents",
+        embeddings=[[0.1, 0.2]],
+        texts=["hello"],
+        vector_field="chunk_embedding_azure_text_embedding_3_small",
+        embedding_model="text-embedding-3-small",
+        embedding_provider="azure",
+        embedding_space_id="azure:text-embedding-3-small",
+    )
+
+    assert captured[0]["embedding_model"] == "text-embedding-3-small"
+    assert captured[0]["embedding_provider"] == "azure"
+    assert captured[0]["embedding_space_id"] == "azure:text-embedding-3-small"
+
+
+def test_ingest_normalizes_kangxi_radicals_before_embedding_and_indexing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+
+    class _Doc:
+        text_key = "text"
+        default_value = ""
+
+        def model_dump_json(self):
+            return '{"text": "11 \\u2f49 27 \\u2f47 ( \\u2f4a )", "filename": "slip.pdf"}'
+
+    class _WatsonxEmbedding:
+        model = "ibm/granite-embedding-278m-multilingual"
+
+        def __init__(self):
+            self.embedded = []
+
+        def embed_documents(self, texts):
+            self.embedded.extend(texts)
+            return [[0.1, 0.2] for _ in texts]
+
+    embedding = _WatsonxEmbedding()
+    component = _component(module, client=object(), embedding=embedding)
+    component.embedding_model_name = ""
+    component.docs_metadata = []
+    component._prepare_ingest_data = lambda: [_Doc()]
+    component._openrag_ingest_callback_config = lambda: ("url", "token", "task")
+    indexed = []
+
+    def _bulk_ingest(**kwargs):
+        indexed.extend(kwargs["texts"])
+        return ["id"]
+
+    component._bulk_ingest_embeddings = _bulk_ingest
+
+    component._add_documents_to_vector_store(object())
+
+    assert embedding.embedded == ["11 月 27 日 ( 木 )"]
+    assert indexed == ["11 月 27 日 ( 木 )"]
+
+
+_RANGE = {"range": {"indexed_time": {"gte": "2026-10-07T00:00:00Z", "lte": "2026-10-10T23:59:59Z"}}}
+_PDF = {"term": {"mimetype": "application/pdf"}}
+
+
+@pytest.mark.parametrize(
+    ("filter_obj", "expected"),
+    [
+        ({"filter": [_RANGE]}, [_RANGE]),
+        ({"filter": [_PDF, _RANGE]}, [_PDF, _RANGE]),
+        ({"filter": [{"range": {"indexed_time": {}}}]}, []),
+        ({"filter": [{"range": {"indexed_time": {"gte": None}}}]}, []),
+        ({"filter": [{"range": "bad"}]}, []),
+        (
+            {"filter": [{"range": {"a": {"gte": 1}, "b": {"gte": 2}}}]},
+            [],
+        ),
+    ],
+)
+def test_filter_parser_keeps_valid_range_clauses(
+    monkeypatch: pytest.MonkeyPatch, filter_obj, expected
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    component = module.OpenSearchVectorStoreComponentMultimodalMultiEmbedding()
+
+    assert component._coerce_filter_clauses(filter_obj) == expected
+    assert component._coerce_filter_clauses(json.dumps(filter_obj)) == expected
+
+
+@pytest.mark.parametrize("clauses", [[_RANGE], [_PDF, _RANGE]], ids=["date-only", "pdf-plus-date"])
+def test_search_applies_date_filter_outside_and_inside_each_knn(
+    monkeypatch: pytest.MonkeyPatch, clauses
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    aggregation = {
+        "aggregations": {
+            "embedding_spaces": {
+                "buckets": [{"key": {"space_id": "azure:text-embedding-3-small"}, "doc_count": 2}]
+            },
+            "legacy_embedding_models": {"buckets": []},
+        }
+    }
+    fields = {
+        "chunk_embedding_azure_text_embedding_3_small": {
+            "type": "knn_vector",
+            "dimension": 2,
+            "method": {"engine": "jvector", "name": "disk_ann"},
+        }
+    }
+    client = _SearchClient(aggregation, fields)
+
+    class Child:
+        def embed_query(self, query):
+            return [0.1, 0.2]
+
+    class Root(Child):
+        deployment = "selected-model"
+
+        def for_model(self, route):
+            return Child()
+
+    component = _component(module, client, Root())
+    component.filter_expression = json.dumps({"filter": clauses})
+    component.search("needle")
+
+    bool_query = client.query["query"]["bool"]
+    assert bool_query["filter"] == clauses
+    knn_queries = bool_query["should"][0]["dis_max"]["queries"]
+    assert knn_queries
+    for query in knn_queries:
+        (knn,) = query["knn"].values()
+        assert knn["filter"] == {"bool": {"filter": clauses}}
+
+
+def test_search_without_filter_leaves_knn_unfiltered(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    aggregation = {
+        "aggregations": {
+            "embedding_spaces": {
+                "buckets": [{"key": {"space_id": "azure:text-embedding-3-small"}, "doc_count": 2}]
+            },
+            "legacy_embedding_models": {"buckets": []},
+        }
+    }
+    fields = {
+        "chunk_embedding_azure_text_embedding_3_small": {"type": "knn_vector", "dimension": 2}
+    }
+    client = _SearchClient(aggregation, fields)
+
+    class Child:
+        def embed_query(self, query):
+            return [0.1, 0.2]
+
+    class Root(Child):
+        deployment = "selected-model"
+
+        def for_model(self, route):
+            return Child()
+
+    _component(module, client, Root()).search("needle")
+
+    for query in client.query["query"]["bool"]["should"][0]["dis_max"]["queries"]:
+        (knn,) = query["knn"].values()
+        assert "filter" not in knn
+
+
+@pytest.mark.parametrize("use_callback", [True, False], ids=["callback", "direct_write"])
+def test_partial_embed_failure_aborts_before_any_write(
+    monkeypatch: pytest.MonkeyPatch, use_callback: bool
+) -> None:
+    """A document with a missing chunk must never be indexed, in either mode.
+
+    Direct writes carry no ingest_run_id, so the backend cannot clean up
+    survivors afterwards; a partial document would stay searchable and be
+    mistaken for a duplicate. The component therefore fails before writing.
+    """
+    module = _load_opensearch_module(monkeypatch)
+
+    class _Doc:
+        text_key = "text"
+        default_value = ""
+
+        def __init__(self, text):
+            self._text = text
+
+        def model_dump_json(self):
+            return json.dumps({"text": self._text, "document_id": "doc"})
+
+    class _Embedding:
+        model = "text-embedding-3-small"
+
+        def embed_documents(self, texts):
+            if texts == ["bad"]:
+                raise ValueError("embedding backend rejected the chunk")
+            return [[0.1, 0.2] for _ in texts]
+
+    class _Indices:
+        def exists(self, **kwargs):
+            raise AssertionError("index must not be touched")
+
+        create = put_mapping = get_mapping = exists
+
+    class _Client:
+        indices = _Indices()
+
+        def index(self, **kwargs):
+            raise AssertionError("direct write must not happen")
+
+    component = _component(module, client=_Client(), embedding=_Embedding())
+    component.embedding_model_name = ""
+    component.docs_metadata = []
+    component._prepare_ingest_data = lambda: [_Doc("ok-0"), _Doc("bad"), _Doc("ok-2")]
+    if use_callback:
+        component._openrag_ingest_callback_config = lambda: ("url", "token", "task")
+    else:
+        component._openrag_ingest_callback_config = lambda: None
+    writes: list[dict] = []
+    component._bulk_ingest_embeddings = lambda **kwargs: writes.append(kwargs)
+
+    with pytest.raises(RuntimeError, match=r"Embedding failed for 1 of 3 chunks"):
+        component._add_documents_to_vector_store(_Client())
+
+    assert writes == []
+
+
+@pytest.mark.parametrize(
+    ("engine", "expect_inner"),
+    [("jvector", True), ("lucene", True), ("faiss", True), ("nmslib", False), (None, False)],
+)
+def test_inner_knn_filter_only_for_engines_that_support_it(
+    monkeypatch: pytest.MonkeyPatch, engine, expect_inner
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    aggregation = {
+        "aggregations": {
+            "embedding_spaces": {
+                "buckets": [{"key": {"space_id": "azure:text-embedding-3-small"}, "doc_count": 2}]
+            },
+            "legacy_embedding_models": {"buckets": []},
+        }
+    }
+    field = {"type": "knn_vector", "dimension": 2}
+    if engine:
+        field["method"] = {"engine": engine, "name": "hnsw"}
+    client = _SearchClient(aggregation, {"chunk_embedding_azure_text_embedding_3_small": field})
+
+    class Child:
+        def embed_query(self, query):
+            return [0.1, 0.2]
+
+    class Root(Child):
+        deployment = "selected-model"
+
+        def for_model(self, route):
+            return Child()
+
+    component = _component(module, client, Root())
+    component.filter_expression = json.dumps({"filter": [_RANGE]})
+    component.search("needle")
+
+    bool_query = client.query["query"]["bool"]
+    assert bool_query["filter"] == [_RANGE]  # the outer filter is always kept
+    (clause,) = bool_query["should"][0]["dis_max"]["queries"]
+    if expect_inner:
+        (knn,) = clause["knn"].values()
+        assert knn["filter"] == {"bool": {"filter": [_RANGE]}}
+    else:
+        # nmslib cannot pre-filter: score the filtered documents exactly instead.
+        assert "knn" not in clause
+        script_score = clause["script_score"]
+        assert _RANGE in script_score["query"]["bool"]["filter"]
+        assert script_score["script"]["lang"] == "knn"
+        assert script_score["script"]["params"]["field"].startswith("chunk_embedding_")
+
+
+def test_unfiltered_nmslib_search_keeps_the_plain_knn_clause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    aggregation = {
+        "aggregations": {
+            "embedding_spaces": {
+                "buckets": [{"key": {"space_id": "azure:text-embedding-3-small"}, "doc_count": 2}]
+            },
+            "legacy_embedding_models": {"buckets": []},
+        }
+    }
+    field = {"type": "knn_vector", "dimension": 2, "method": {"engine": "nmslib"}}
+    client = _SearchClient(aggregation, {"chunk_embedding_azure_text_embedding_3_small": field})
+
+    class Child:
+        def embed_query(self, query):
+            return [0.1, 0.2]
+
+    class Root(Child):
+        deployment = "selected-model"
+
+        def for_model(self, route):
+            return Child()
+
+    _component(module, client, Root()).search("needle")
+
+    (clause,) = client.query["query"]["bool"]["should"][0]["dis_max"]["queries"]
+    assert "knn" in clause
+
+
+def test_unreadable_mapping_keeps_the_native_knn_clause(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    aggregation = {
+        "aggregations": {
+            "embedding_spaces": {
+                "buckets": [{"key": {"space_id": "azure:text-embedding-3-small"}, "doc_count": 2}]
+            },
+            "legacy_embedding_models": {"buckets": []},
+        }
+    }
+    client = _SearchClient(aggregation, {})
+    client.indices = type(
+        "Indices",
+        (),
+        {
+            "get_mapping": staticmethod(
+                lambda index: (_ for _ in ()).throw(module.OpenSearchException("denied"))
+            )
+        },
+    )()
+
+    class Child:
+        def embed_query(self, query):
+            return [0.1, 0.2]
+
+    class Root(Child):
+        deployment = "selected-model"
+
+        def for_model(self, route):
+            return Child()
+
+    component = _component(module, client, Root())
+    component.filter_expression = json.dumps({"filter": [_RANGE]})
+    component.search("needle")
+
+    (clause,) = client.query["query"]["bool"]["should"][0]["dis_max"]["queries"]
+    assert "script_score" not in clause
+    (knn,) = clause["knn"].values()
+    assert knn["filter"] == {"bool": {"filter": [_RANGE]}}

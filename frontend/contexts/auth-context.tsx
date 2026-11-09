@@ -8,11 +8,13 @@ import React, {
   useEffect,
   useState,
 } from "react";
+import { apiClient } from "@/lib/api-client";
 import { hasRbacPermission } from "@/lib/brand";
 import type { RunMode } from "@/lib/constants";
+import { frontendUrl } from "@/lib/frontend-base-path";
 import { encodeBase64 } from "@/lib/utils";
 
-interface User {
+export interface User {
   user_id: string;
   email: string;
   name: string;
@@ -84,15 +86,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const checkAuth = useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await fetch("/api/auth/me");
+      const response = await apiClient.get("/auth/me");
 
       // If we can't reach the backend, keep loading
-      if (!response.ok && (response.status === 0 || response.status >= 500)) {
+      if (response.status === 0 || response.status >= 500) {
         setTimeout(checkAuth, 2000);
         return;
       }
 
-      const data = await response.json();
+      const data = response.data;
       if (data.version) setVersion(data.version);
       if (data.run_mode) setRunMode(data.run_mode);
 
@@ -104,6 +106,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } else if (data.no_auth_mode) {
         setIsNoAuthMode(true);
         setIsIbmAuthMode(false);
+        // No-auth mode is always anonymous — no user identity.
         setUser(null);
       } else if (data.authenticated && data.user) {
         setIsNoAuthMode(false);
@@ -132,21 +135,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
 
     // Use the correct auth callback URL, not connectors callback
-    const redirectUri = `${window.location.origin}/auth/callback`;
+    const redirectUri = frontendUrl("/auth/callback");
 
-    fetch("/api/auth/init", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    apiClient
+      .post("/auth/init", {
         connector_type: "google_drive",
         purpose: "app_auth",
         name: "App Authentication",
         redirect_uri: redirectUri,
-      }),
-    })
-      .then((response) => response.json())
+      })
+      .then((response) => response.data)
       .then((result) => {
         if (result.oauth_config) {
           // Store that this is for app authentication
@@ -157,7 +155,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
           const state = isIbmAuthMode
             ? encodeBase64(
-                `id=${result.connection_id}&return=${window.location.origin}/auth/callback`,
+                `id=${result.connection_id}&return=${frontendUrl("/auth/callback")}`,
               )
             : result.connection_id;
 
@@ -181,14 +179,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   const loginWithIbm = async (username: string, password: string) => {
-    const response = await fetch("/api/auth/ibm/login", {
-      method: "POST",
+    const response = await apiClient.post("/auth/ibm/login", undefined, {
       headers: {
         Authorization: "Basic " + btoa(username + ":" + password),
       },
     });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
+    if (response.status < 200 || response.status >= 300) {
+      const data = response.data || {};
       throw new Error(data.detail || "Login failed");
     }
     await checkAuth();
@@ -200,9 +197,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
 
     try {
-      await fetch("/api/auth/logout", {
-        method: "POST",
-      });
+      await apiClient.post("/auth/logout");
       setUser(null);
     } catch (error) {
       console.error("Logout failed:", error);
@@ -232,12 +227,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const fetchPermissions = useCallback(async () => {
     try {
-      const r = await fetch("/api/users/me");
-      if (!r.ok) {
+      const r = await apiClient.get("/users/me");
+      if (r.status < 200 || r.status >= 300) {
         resetPermissionState();
         return;
       }
-      const data = await r.json();
+      const data = r.data;
       const perms: string[] = Array.isArray(data?.permissions)
         ? data.permissions
         : [];
@@ -271,9 +266,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const fetchOnboardingStatus = useCallback(async () => {
     try {
-      const r = await fetch("/api/onboarding-status");
-      if (!r.ok) return;
-      const data = await r.json();
+      const r = await apiClient.get("/onboarding-status");
+      if (r.status < 200 || r.status >= 300) return;
+      const data = r.data;
       setIsOnboarded(Boolean(data?.onboarded));
       const step = data?.current_step;
       setOnboardingStep(
@@ -296,7 +291,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (user || isNoAuthMode || isIbmAuthMode) {
       setPermissionsResolved(false);
       void fetchPermissions();
-    } else {
+    } else if (!isLoading) {
+      // Only resolve with empty permissions once auth has finished loading.
+      // While isLoading=true the final user/mode is not known yet, so resolving
+      // early creates a transient state (permissionsResolved=true, roles=[]) that
+      // can race with the post-checkAuth effect run that actually fetches roles.
       resetPermissionState();
       setPermissionsResolved(true);
     }
@@ -304,6 +303,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     user,
     isNoAuthMode,
     isIbmAuthMode,
+    isLoading,
     fetchPermissions,
     resetPermissionState,
   ]);

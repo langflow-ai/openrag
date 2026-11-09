@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { FunctionCall } from "@/app/chat/_types/types";
+import { apiClient } from "@/lib/api-client";
 
 export interface AgentSettings {
   llm_model?: string;
@@ -20,6 +21,7 @@ export interface KnowledgeSettings {
   chunk_overlap?: number;
   table_structure?: boolean;
   ocr?: boolean;
+  ocr_languages?: string[];
   picture_descriptions?: boolean;
   disable_ingest_with_langflow?: boolean;
   vlm_enabled?: boolean;
@@ -61,6 +63,7 @@ export interface ProviderSettings {
       configured?: boolean;
       credential_values?: Record<string, string>;
       secret_fields?: string[];
+      auth_method?: string | null;
     }
   >;
 }
@@ -104,16 +107,17 @@ export interface Settings {
   show_vlm_settings?: boolean;
   local_vlm_models?: string[];
   show_shared_upload_toggle?: boolean;
+  show_url_connector?: boolean;
   show_workspace_oauth_overrides?: boolean;
   segment_write_key?: string;
   environment?: string;
   langflow_port?: string | number | null;
 }
 
-async function getSettings(): Promise<Settings> {
-  const response = await fetch("/api/settings");
-  if (response.ok) {
-    return await response.json();
+export async function getSettings(): Promise<Settings> {
+  const response = await apiClient.get<Settings>("/settings");
+  if (response.status >= 200 && response.status < 300) {
+    return response.data;
   } else {
     throw new Error("Failed to fetch settings");
   }

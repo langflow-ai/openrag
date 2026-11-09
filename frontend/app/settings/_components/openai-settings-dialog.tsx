@@ -13,6 +13,10 @@ import { useGetOpenAIModelsQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import OpenAILogo from "@/components/icons/openai-logo";
+import {
+  canRemoveProvider,
+  isProviderConfigured,
+} from "@/components/models/model-helpers";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,13 +52,9 @@ const OpenAISettingsDialog = ({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const isOpenAIConfigured = settings.providers?.openai?.configured === true;
+  const isOpenAIConfigured = isProviderConfigured(settings.providers, "openai");
 
-  const canRemoveOpenAI =
-    isOpenAIConfigured &&
-    (settings.providers?.anthropic?.configured === true ||
-      settings.providers?.watsonx?.configured === true ||
-      settings.providers?.ollama?.configured === true);
+  const canRemoveOpenAI = canRemoveProvider(settings.providers, "openai");
 
   const methods = useForm<OpenAISettingsFormData>({
     mode: "onSubmit",
@@ -187,7 +187,7 @@ const OpenAISettingsDialog = ({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                 >
-                  <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
+                  <p className="rounded-lg border border-destructive p-4 min-w-0 wrap-anywhere">
                     {settingsMutation.error?.message}
                   </p>
                 </motion.div>
@@ -200,7 +200,7 @@ const OpenAISettingsDialog = ({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                   >
-                    <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
+                    <p className="rounded-lg border border-destructive p-4 min-w-0 wrap-anywhere">
                       {removeMutation.error?.message}
                     </p>
                   </motion.div>

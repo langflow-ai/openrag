@@ -19,6 +19,11 @@ covers the public vendors, but a self-hosted OpenAI-compatible gateway serves
 whatever its operator deployed, so those ids can only come from here. Declared
 ids are added to whatever the table already knows for that provider.
 
+A row may also declare `vision_models`: patterns for ids that accept images
+even though LiteLLM's table does not flag them `supports_vision`. The VLM
+picker lists only vision-capable models, so without this a provider whose
+table entries lag behind its deployment offers no VLM at all.
+
 ``OPENRAG_MODEL_PROVIDERS_CONFIG`` points at an alternate YAML file for a single
 deployment. If that file is missing or unreadable the shipped default is used;
 if the shipped default is unreadable too, ``_FALLBACK_PROVIDERS`` below keeps
@@ -54,6 +59,7 @@ _FALLBACK_PROVIDERS: tuple[dict[str, Any], ...] = (
         "models": (),
         "embedding_models": (),
         "exclude_models": (),
+        "vision_models": (),
     },
     {
         "name": "ollama",
@@ -62,6 +68,7 @@ _FALLBACK_PROVIDERS: tuple[dict[str, Any], ...] = (
         "models": (),
         "embedding_models": (),
         "exclude_models": (),
+        "vision_models": (),
     },
     {
         "name": "watsonx",
@@ -70,6 +77,7 @@ _FALLBACK_PROVIDERS: tuple[dict[str, Any], ...] = (
         "models": (),
         "embedding_models": (),
         "exclude_models": (),
+        "vision_models": (),
     },
     {
         "name": "anthropic",
@@ -78,6 +86,7 @@ _FALLBACK_PROVIDERS: tuple[dict[str, Any], ...] = (
         "models": (),
         "embedding_models": (),
         "exclude_models": (),
+        "vision_models": (),
     },
 )
 
@@ -138,9 +147,11 @@ def _normalize(entry: Any, seen: set[str]) -> dict[str, Any] | None:
     if not isinstance(raw_modes, dict):
         raw_modes = {}
     display_name = str(entry.get("display_name") or "").strip() or name
+    badge = str(entry.get("badge") or "").strip()
     return {
         "name": name,
         "display_name": display_name,
+        "badge": badge,
         # Missing keys stay missing here; `is_visible` reads them as False.
         "modes": {str(mode).strip().lower(): _as_bool(value) for mode, value in raw_modes.items()},
         # Optional: ids the catalogue cannot learn from LiteLLM's static table.
@@ -148,6 +159,8 @@ def _normalize(entry: Any, seen: set[str]) -> dict[str, Any] | None:
         "embedding_models": _model_ids(entry.get("embedding_models")),
         # Optional: ids to keep out of the pickers, `*`/`?` wildcards allowed.
         "exclude_models": _model_patterns(entry.get("exclude_models")),
+        # Optional: ids that accept images though LiteLLM does not say so.
+        "vision_models": _model_patterns(entry.get("vision_models")),
     }
 
 
@@ -239,6 +252,7 @@ class ProviderEntry(NamedTuple):
     models: tuple[str, ...]
     embedding_models: tuple[str, ...]
     exclude_models: tuple[str, ...]
+    vision_models: tuple[str, ...] = ()
 
 
 def visible_provider_entries(
@@ -252,6 +266,7 @@ def visible_provider_entries(
             entry["models"],
             entry["embedding_models"],
             entry["exclude_models"],
+            entry["vision_models"],
         )
         for entry in visible_providers(run_mode)
     )
@@ -271,7 +286,11 @@ def provider_visibility_payload(run_mode: str | None = None) -> dict[str, Any]:
     return {
         "run_mode": mode,
         "providers": [
-            {"name": entry["name"], "display_name": entry["display_name"]}
+            {
+                "name": entry["name"],
+                "display_name": entry["display_name"],
+                "badge": entry["badge"],
+            }
             for entry in visible_providers(mode)
         ],
     }

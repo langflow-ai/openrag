@@ -140,6 +140,20 @@ export class Chat {
           if (chunk.response?.text) {
             fullResponse = chunk.response.text; // final override
           }
+          if (chunk.error) {
+            fullResponse =
+              typeof chunk.error === "string"
+                ? chunk.error
+                : (chunk.error.message as string) ||
+                  JSON.stringify(chunk.error);
+          }
+          if (chunk.detail) {
+            fullResponse =
+              typeof chunk.detail === "string"
+                ? chunk.detail
+                : (chunk.detail.message as string) ||
+                  JSON.stringify(chunk.detail);
+          }
           if (chunk.item?.results?.length > 0) {
             for (const result of chunk.item.results) {
               if (result.filename && !fullResponse.includes(result.filename)) {
@@ -153,6 +167,15 @@ export class Chat {
       }
     } catch {
       // fallback to UI
+    }
+
+    if (!fullResponse.trim()) {
+      const errorLocator = this.page
+        .locator(".border-destructive\\/50, [class*='text-destructive']")
+        .last();
+      if (await errorLocator.isVisible({ timeout: 2000 }).catch(() => false)) {
+        fullResponse = (await errorLocator.textContent()) || "";
+      }
     }
 
     return fullResponse.trim();

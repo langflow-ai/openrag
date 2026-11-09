@@ -1,10 +1,11 @@
 """Async CRUD over the ``session_ownership`` table."""
 
 from datetime import UTC, datetime
-from typing import Optional
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 
 from db.models import SessionOwnership
 
@@ -13,29 +14,63 @@ class SessionOwnershipRepo:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get(self, response_id: str) -> Optional[SessionOwnership]:
+    async def get(self, response_id: str) -> SessionOwnership | None:
         return await self.session.get(SessionOwnership, response_id)
 
     async def claim(
-        self, response_id: str, user_id: str
+        self, response_id: str, user_id: str, conversation_id: str | None = None
     ) -> SessionOwnership:
-        """Idempotent claim. If the row exists, only update last_accessed
-        — never silently re-assign ownership (that would be a security
-        bug). The caller is responsible for ensuring the user_id matches
-        the existing owner before calling this for an existing row.
-        """
+        """Claim without transferring ownership or moving an existing alias."""
         existing = await self.get(response_id)
         now = datetime.now(UTC)
+        canonical_id = conversation_id or response_id
+        if canonical_id != response_id:
+            canonical = await self.get(canonical_id)
+            if canonical is None or canonical.user_id != user_id:
+                raise PermissionError("Conversation is not owned by this user")
         if existing is None:
             row = SessionOwnership(
                 response_id=response_id,
                 user_id=user_id,
+                conversation_id=canonical_id,
                 created_at=now,
                 last_accessed=now,
             )
-            self.session.add(row)
-            await self.session.flush()
-            return row
+            try:
+                # begin_nested flushes pending caller work before establishing
+                # its savepoint, so add only this claim inside the savepoint.
+                async with self.session.begin_nested():
+                    self.session.add(row)
+                    await self.session.flush()
+            except IntegrityError as exc:
+                # Only primary-key/unique violations can be an INSERT race.
+                # Never hide another constraint failure behind a matching row.
+                if (
+                    getattr(exc.orig, "sqlstate", None) != "23505"
+                    and getattr(exc.orig, "sqlite_errorname", None)
+                    != "SQLITE_CONSTRAINT_PRIMARYKEY"
+                ):
+                    raise
+                # The savepoint has rolled back only this insert; preserve the
+                # caller's transaction while reading the winning claim afresh.
+                existing = await self.session.get(
+                    SessionOwnership, response_id, populate_existing=True
+                )
+                if existing is None:
+                    raise
+                if canonical_id != response_id:
+                    canonical = await self.session.get(
+                        SessionOwnership, canonical_id, populate_existing=True
+                    )
+                    if canonical is None or canonical.user_id != user_id:
+                        raise PermissionError("Conversation is not owned by this user") from None
+            else:
+                return row
+        if existing.user_id != user_id or (
+            (existing.conversation_id or response_id) != canonical_id
+        ):
+            raise PermissionError("Session ownership or conversation conflict")
+        existing.conversation_id = canonical_id
         existing.last_accessed = now
         self.session.add(existing)
         await self.session.flush()
@@ -43,8 +78,18 @@ class SessionOwnershipRepo:
 
     async def list_for_user(self, user_id: str) -> list[str]:
         result = await self.session.execute(
-            select(SessionOwnership.response_id).where(
-                SessionOwnership.user_id == user_id
+            select(col(SessionOwnership.response_id)).where(
+                col(SessionOwnership.user_id) == user_id
+            )
+        )
+        return list(result.scalars().all())
+
+    async def list_for_conversation(self, conversation_id: str, user_id: str) -> list[str]:
+        result = await self.session.execute(
+            select(col(SessionOwnership.response_id)).where(
+                col(SessionOwnership.user_id) == user_id,
+                (col(SessionOwnership.conversation_id) == conversation_id)
+                | (col(SessionOwnership.response_id) == conversation_id),
             )
         )
         return list(result.scalars().all())
@@ -66,8 +111,9 @@ class SessionOwnershipRepo:
         self,
         response_id: str,
         user_id: str,
-        created_at: Optional[datetime] = None,
-        last_accessed: Optional[datetime] = None,
+        created_at: datetime | None = None,
+        last_accessed: datetime | None = None,
+        conversation_id: str | None = None,
     ) -> bool:
         """Used by the runtime migration to copy JSON rows verbatim
         without overwriting timestamps. Returns True when a row was inserted."""
@@ -77,6 +123,7 @@ class SessionOwnershipRepo:
         row = SessionOwnership(
             response_id=response_id,
             user_id=user_id,
+            conversation_id=conversation_id or response_id,
             created_at=created_at or datetime.now(UTC),
             last_accessed=last_accessed,
         )

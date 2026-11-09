@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 /** Component that failed, from GET /tasks/enhanced file metadata. */
 export type TaskFailureComponent =
@@ -61,6 +62,7 @@ export interface Task {
     | "completed"
     | "skipped"
     | "failed"
+    | "cancelled"
     | "error";
   total_files?: number;
   processed_files?: number;
@@ -74,6 +76,11 @@ export interface Task {
   result?: Record<string, unknown>;
   error?: string;
   files?: Record<string, TaskFileEntry>;
+  /** True when this task belongs to the shared anonymous store, not the
+   *  calling user. Shared tasks are visible to all signed-in users but can
+   *  only be bulk-cleared by the system (cleanup_old_tasks), not by any
+   *  individual user's "Clear all" action. */
+  is_shared?: boolean;
 }
 
 export interface TasksResponse {
@@ -83,13 +90,13 @@ export interface TasksResponse {
 export const TASKS_QUERY_KEY = ["tasks", "enhanced"] as const;
 
 async function getTasks(): Promise<Task[]> {
-  const response = await fetch("/api/tasks/enhanced");
+  const response = await apiClient.get<TasksResponse>("/tasks/enhanced");
 
-  if (!response.ok) {
+  if (response.status < 200 || response.status >= 300) {
     throw new Error("Failed to fetch tasks");
   }
 
-  const data: TasksResponse = await response.json();
+  const data = response.data;
   return data.tasks || [];
 }
 

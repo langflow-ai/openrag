@@ -182,6 +182,7 @@ export function useChatStreaming({
           // Process complete lines (JSON objects)
           const lines = buffer.split("\n");
           buffer = lines.pop() || ""; // Keep incomplete line in buffer
+          let parsedChunk = false;
 
           for (const line of lines) {
             if (line.trim()) {
@@ -203,6 +204,7 @@ export function useChatStreaming({
                   ) ||
                   parseOpenRAGChunk(chunk, content);
                 detectImplicitToolCall(chunk, currentFunctionCalls);
+                parsedChunk = true;
 
                 const streamError = extractStreamProviderError(chunk);
                 if (streamError) {
@@ -210,26 +212,27 @@ export function useChatStreaming({
                   providerStreamError = streamError;
                   break streamLoop;
                 }
-
-                if (
-                  !controller.signal.aborted &&
-                  thisStreamId === streamIdRef.current
-                ) {
-                  setStreamingMessage({
-                    role: "assistant",
-                    content: content.value,
-                    functionCalls:
-                      currentFunctionCalls.length > 0
-                        ? [...currentFunctionCalls]
-                        : undefined,
-                    timestamp: new Date(),
-                    isStreaming: true,
-                  });
-                }
               } catch (parseError) {
                 console.warn("Failed to parse chunk:", line, parseError);
               }
             }
+          }
+
+          if (
+            parsedChunk &&
+            !controller.signal.aborted &&
+            thisStreamId === streamIdRef.current
+          ) {
+            setStreamingMessage({
+              role: "assistant",
+              content: content.value,
+              functionCalls:
+                currentFunctionCalls.length > 0
+                  ? [...currentFunctionCalls]
+                  : undefined,
+              timestamp: new Date(),
+              isStreaming: true,
+            });
           }
         }
       } finally {

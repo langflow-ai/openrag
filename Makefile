@@ -24,6 +24,14 @@ REPO ?= https://github.com/langflow-ai/langflow.git
 
 # Auto-detect container runtime: prefer docker, fall back to podman
 CONTAINER_RUNTIME := $(shell command -v docker >/dev/null 2>&1 && echo "docker" || echo "podman")
+# Next.js compiles `basePath` into the frontend bundle. Production images carry
+# a placeholder that their entrypoint replaces at startup; the normalized path
+# is still used for local health checks and URLs.
+strip_trailing_slashes = $(if $(filter %/,$(1)),$(call strip_trailing_slashes,$(patsubst %/,%,$(1))),$(1))
+FRONTEND_NORMALIZED_BASE_PATH := $(call strip_trailing_slashes,$(strip $(OPENRAG_FRONTEND_BASE_PATH)))
+FRONTEND_NORMALIZED_BASE_PATH := $(if $(FRONTEND_NORMALIZED_BASE_PATH),$(if $(filter /%,$(FRONTEND_NORMALIZED_BASE_PATH)),$(FRONTEND_NORMALIZED_BASE_PATH),/$(FRONTEND_NORMALIZED_BASE_PATH)))
+FRONTEND_PORT ?= 3000
+FRONTEND_LOCAL_URL := http://localhost:$(FRONTEND_PORT)$(FRONTEND_NORMALIZED_BASE_PATH)
 
 # Host UID/GID — evaluated once at parse time and used in Docker-assisted chown commands
 # so that Alpine (running as root) can re-own volume directories back to the host user.
@@ -107,6 +115,7 @@ endef
        instana-agent-up instana-agent-down \
        shell-backend shell-frontend install \
        test test-unit test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
+       eval-validate eval-check eval-cleanup eval-run eval-baseline eval-compare \
        ci-build-images ci-save-images \
        backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
@@ -140,15 +149,29 @@ check_tools: ## Verify required tools are installed with correct versions
 	@command -v node >/dev/null 2>&1 || { echo "$(RED)✗ Node.js is not installed. Aborting.$(NC)"; exit 1; }
 	@NODE_VERSION=$$(node --version | sed 's/v//'); \
 	NODE_MAJOR=$$(echo $$NODE_VERSION | cut -d. -f1); \
-	if [ "$$NODE_MAJOR" -lt 18 ]; then \
-		echo "$(RED)✗ Node.js $$NODE_VERSION found, but 18+ required$(NC)"; exit 1; \
+	NODE_MINOR=$$(echo $$NODE_VERSION | cut -d. -f2); \
+	case "$$NODE_MAJOR.$$NODE_MINOR" in \
+		*[!0-9.]*|.*|*.) echo "$(RED)✗ Could not determine Node.js version (got '$$NODE_VERSION'); ^24.15.0 required$(NC)"; exit 1;; \
+	esac; \
+	if [ "$$NODE_MAJOR" -ne 24 ] || [ "$$NODE_MINOR" -lt 15 ]; then \
+		echo "$(RED)✗ Node.js $$NODE_VERSION found, but ^24.15.0 required. Install the latest 24.x (nvm: cd frontend && nvm install)$(NC)"; exit 1; \
 	else \
 		echo "$(PURPLE)✓ Node.js $$NODE_VERSION$(NC)"; \
 	fi
-	@# Check npm
+	@# Check npm (must satisfy frontend/package.json engines: ^11.12.1)
 	@command -v npm >/dev/null 2>&1 || { echo "$(RED)✗ npm is not installed. Aborting.$(NC)"; exit 1; }
 	@NPM_VERSION=$$(npm --version 2>/dev/null || echo "unknown"); \
-	echo "$(PURPLE)✓ npm $$NPM_VERSION$(NC)"
+	NPM_MAJOR=$$(echo "$$NPM_VERSION" | cut -d. -f1); \
+	NPM_MINOR=$$(echo "$$NPM_VERSION" | cut -d. -f2); \
+	NPM_PATCH=$$(echo "$$NPM_VERSION" | cut -d. -f3 | cut -d- -f1); \
+	case "$$NPM_MAJOR.$$NPM_MINOR.$$NPM_PATCH" in \
+		*[!0-9.]*|.*|*..*|*.) echo "$(RED)✗ Could not determine npm version (got '$$NPM_VERSION'); ^11.12.1 required$(NC)"; exit 1;; \
+	esac; \
+	if [ "$$NPM_MAJOR" -ne 11 ] || [ "$$NPM_MINOR" -lt 12 ] || { [ "$$NPM_MINOR" -eq 12 ] && [ "$$NPM_PATCH" -lt 1 ]; }; then \
+		echo "$(RED)✗ npm $$NPM_VERSION found, but ^11.12.1 required. Install: npm install -g npm@11$(NC)"; exit 1; \
+	else \
+		echo "$(PURPLE)✓ npm $$NPM_VERSION$(NC)"; \
+	fi
 	@# Check container runtime
 	@command -v $(CONTAINER_RUNTIME) >/dev/null 2>&1 || { echo "$(RED)✗ $(CONTAINER_RUNTIME) is not installed. Aborting.$(NC)"; exit 1; }
 	@CONTAINER_VERSION=$$($(CONTAINER_RUNTIME) --version 2>/dev/null | head -1 || echo "unknown"); \
@@ -338,6 +361,16 @@ help_test: ## Show testing commands
 	@echo "  $(PURPLE)make test-sdk$(NC)        - Run SDK integration tests"
 	@echo "                         (requires running OpenRAG at localhost:3000)"
 	@echo ''
+	@echo "$(PURPLE)Retrieval Evaluation:$(NC)"
+	@echo "  $(PURPLE)make eval-validate$(NC)   - Check the eval corpus and questions (no stack needed)"
+	@echo "  $(PURPLE)make eval-check$(NC)      - Check that OPENRAG_URL is ready for a run, without uploading anything"
+	@echo "  $(PURPLE)make eval-cleanup$(NC)    - List documents interrupted runs left behind (CONFIRM=1 to delete them)"
+	@echo "  $(PURPLE)make eval-run$(NC)        - Score search quality (requires running OpenRAG and OPENRAG_API_KEY)"
+	@echo "                         (BASELINE=results/baseline.json to compare with an earlier run)"
+	@echo "  $(PURPLE)make eval-baseline$(NC)   - Run the eval and save it as results/baseline.json"
+	@echo "  $(PURPLE)make eval-compare$(NC)    - Compare two results files offline"
+	@echo "                         (BASELINE=... CURRENT=..., default baseline vs latest run)"
+	@echo ''
 	@echo "$(PURPLE)Diagnostic Tests:$(NC)"
 	@echo "  $(PURPLE)make test-os-jwt$(NC)     - Test JWT authentication against OpenSearch"
 	@echo "                         (requires running OpenSearch)"
@@ -363,6 +396,21 @@ help_local: ## Show local development commands
 	@echo "  $(PURPLE)make azurite-down$(NC)    - Stop Azurite emulator"
 	@echo "  $(PURPLE)make instana-agent-up$(NC)   - Start the local Instana host agent (forwards to INSTANA_AGENT_ENDPOINT)"
 	@echo "  $(PURPLE)make instana-agent-down$(NC) - Stop the local Instana host agent"
+	@echo ''
+	@echo "$(PURPLE)Red Hat OpenShift AI (RHOAI) models:$(NC)"
+	@echo "  Set these in $(ENV_FILE); they are exported to $(CYAN)make backend$(NC) and passed"
+	@echo "  through to the backend container by $(CYAN)make dev$(NC) / $(CYAN)make dev-cpu$(NC)."
+	@echo "    $(CYAN)RHOAI_ENDPOINT$(NC)             - chat InferenceService URL, ending in /v1"
+	@echo "    $(CYAN)RHOAI_EMBEDDINGS_ENDPOINT$(NC)  - embedding InferenceService URL (vLLM serves one model each)"
+	@echo "    $(CYAN)RHOAI_API_KEY$(NC)              - ServiceAccount bearer token for both endpoints"
+	@echo "    $(CYAN)RHOAI_TLS_VERIFY$(NC)           - CA bundle path, or 'false' for a port-forward (dev only)"
+	@echo "    $(CYAN)RHOAI_EMBEDDING_MAX_CONCURRENCY$(NC) - max in-flight embedding calls (default 16 for GPU; use 4 for CPU; 0 = no limit)"
+	@echo "  In-cluster, use the predictor Service DNS and the projected service CA:"
+	@echo "    $(CYAN)/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt$(NC)"
+	@echo "  From a laptop, port-forward each InferenceService and set RHOAI_TLS_VERIFY=false:"
+	@echo "    $(CYAN)oc port-forward -n <ns> svc/<isvc>-predictor 8443:8443$(NC)"
+	@echo "  The provider is hidden in every run mode until $(CYAN)OPENRAG_MODEL_PROVIDERS_CONFIG$(NC)"
+	@echo "  points at a model_providers.yaml enabling it (see .env.example)."
 	@echo ''
 	@echo "$(PURPLE)Installation:$(NC)"
 	@echo "  $(PURPLE)make install$(NC)         - Install all dependencies"
@@ -497,7 +545,7 @@ dev: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack w
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Frontend:$(NC)   $(FRONTEND_LOCAL_URL)"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
@@ -507,7 +555,7 @@ dev-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start full sta
 	$(COMPOSE_CMD) up -d $(SERVICES)
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Frontend:$(NC)   $(FRONTEND_LOCAL_URL)"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
@@ -519,7 +567,7 @@ dev-build: ensure-langflow-data ensure-backend-volumes check-env ## Start full s
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Frontend:$(NC)   $(FRONTEND_LOCAL_URL)"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
@@ -531,7 +579,7 @@ dev-build-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start fu
 	$(COMPOSE_CMD) up -d
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
-	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:$${FRONTEND_PORT:-3000}"
+	@echo "   $(CYAN)Frontend:$(NC)   $(FRONTEND_LOCAL_URL)"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
@@ -833,7 +881,7 @@ backend: ## Run backend locally
 	uv run python src/main.py
 
 frontend: ## Run frontend locally
-	@echo "$(YELLOW)Starting frontend locally...$(NC)"
+	@echo "$(YELLOW)Starting frontend locally at $(FRONTEND_LOCAL_URL)...$(NC)"
 	@if [ ! -d "frontend/node_modules" ]; then echo "$(YELLOW)Installing frontend dependencies first...$(NC)"; cd frontend && npm install; fi
 	@ARCH=$$(uname -m); \
 	export ENV_FILE="$(abspath $(ENV_FILE))"; \
@@ -993,7 +1041,9 @@ test: ## Run all backend tests
 
 test-unit: ## Run unit tests only
 	@echo "$(YELLOW)Running unit tests...$(NC)"
-	uv run pytest tests/unit/ -v
+	@# A stale module that fails to import must not abort the whole suite;
+	@# the collection error is still reported and still fails the target.
+	uv run pytest tests/unit/ -v --continue-on-collection-errors
 	@echo "$(PURPLE)Unit tests complete.$(NC)"
 
 test-integration: ## Run integration tests (requires infrastructure)
@@ -1124,9 +1174,9 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml || TEST_RESULT=1; \
 	echo "::endgroup::"; \
 	echo ""; \
-	echo "$(YELLOW)Waiting for frontend at http://localhost:3000...$(NC)"; \
+	echo "$(YELLOW)Waiting for frontend at $(FRONTEND_LOCAL_URL)...$(NC)"; \
 	for i in $$(seq 1 60); do \
-		curl -s http://localhost:3000/ >/dev/null 2>&1 && break || sleep 2; \
+		curl -s $(FRONTEND_LOCAL_URL)/ >/dev/null 2>&1 && break || sleep 2; \
 	done; \
 	echo "::group::SDK Integration Tests (Python)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1134,7 +1184,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	uv pip install --quiet -e sdks/python; \
 	mkdir -p service-logs; \
-	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || TEST_RESULT=1; \
+	SDK_TESTS_ONLY=true OPENRAG_URL=$(FRONTEND_LOCAL_URL) uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || TEST_RESULT=1; \
 	echo "::endgroup::"; \
 	echo "::group::SDK Integration Tests (TypeScript)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1142,7 +1192,7 @@ test-ci: ensure-langflow-data ensure-backend-volumes ## Start infra, run integra
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	cd sdks/typescript && \
 	npm install && npm run build && \
-	OPENRAG_URL=http://localhost:3000 npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || TEST_RESULT=1; \
+	OPENRAG_URL=$(FRONTEND_LOCAL_URL) npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || TEST_RESULT=1; \
 	cd ../..; \
 	echo "::endgroup::"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1253,9 +1303,9 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	uv run pytest tests/integration/core -vv -s --log-file=service-logs/pytest-core.log --log-file-level=DEBUG --junitxml=service-logs/junit-core.xml || TEST_RESULT=1; \
 	echo "::endgroup::"; \
 	echo ""; \
-	echo "$(YELLOW)Waiting for frontend at http://localhost:3000...$(NC)"; \
+	echo "$(YELLOW)Waiting for frontend at $(FRONTEND_LOCAL_URL)...$(NC)"; \
 	for i in $$(seq 1 60); do \
-		curl -s http://localhost:3000/ >/dev/null 2>&1 && break || sleep 2; \
+		curl -s $(FRONTEND_LOCAL_URL)/ >/dev/null 2>&1 && break || sleep 2; \
 	done; \
 	echo "::group::SDK Integration Tests (Python)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1263,7 +1313,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	uv pip install --quiet -e sdks/python; \
 	mkdir -p service-logs; \
-	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || TEST_RESULT=1; \
+	SDK_TESTS_ONLY=true OPENRAG_URL=$(FRONTEND_LOCAL_URL) uv run pytest tests/integration/sdk/ -vv -s --log-file=service-logs/pytest-sdk.log --log-file-level=DEBUG --junitxml=service-logs/junit-sdk-python.xml || TEST_RESULT=1; \
 	echo "::endgroup::"; \
 	echo "::group::SDK Integration Tests (TypeScript)"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1271,7 +1321,7 @@ test-ci-local: ensure-langflow-data ensure-backend-volumes ## Same as test-ci bu
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
 	cd sdks/typescript && \
 	npm install && npm run build && \
-	OPENRAG_URL=http://localhost:3000 npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || TEST_RESULT=1; \
+	OPENRAG_URL=$(FRONTEND_LOCAL_URL) npm test -- --reporter=junit --outputFile=../../service-logs/junit-sdk-typescript.xml || TEST_RESULT=1; \
 	cd ../..; \
 	echo "::endgroup::"; \
 	echo "$(CYAN)════════════════════════════════════════$(NC)"; \
@@ -1303,11 +1353,38 @@ test-sdk: ## Run SDK integration tests (requires running OpenRAG at localhost:30
 	@echo "$(CYAN)════════════════════════════════════════$(NC)"
 	@echo "$(YELLOW)Make sure OpenRAG is running at localhost:3000 (make dev)$(NC)"
 	uv pip install -e sdks/python
-	SDK_TESTS_ONLY=true OPENRAG_URL=http://localhost:3000 uv run pytest tests/integration/sdk/ -vv -s
+	SDK_TESTS_ONLY=true OPENRAG_URL=$(FRONTEND_LOCAL_URL) uv run pytest tests/integration/sdk/ -vv -s
 	@echo ""
 	@echo "$(PURPLE)Running TypeScript SDK tests...$(NC)"
-	cd sdks/typescript && npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test
+	cd sdks/typescript && npm install && npm run build && OPENRAG_URL=$(FRONTEND_LOCAL_URL) npm test
 	@echo "$(PURPLE)SDK tests complete.$(NC)"
+
+EVAL_DIR := scripts/eval/retrieval
+# Paths below are relative to EVAL_DIR. Override OUTPUT_DIR (not --output-dir in
+# EVAL_ARGS) to change where results land, so eval-baseline's copy step always
+# matches what run_eval.py actually wrote.
+OUTPUT_DIR ?= results
+CURRENT ?= $(OUTPUT_DIR)/results.json
+
+eval-validate: ## Check the retrieval eval corpus and questions (no stack needed)
+	cd $(EVAL_DIR) && uv run run_eval.py run --validate-only $(EVAL_ARGS)
+
+eval-check: ## Check that the stack at OPENRAG_URL is ready for a retrieval eval run (uploads nothing)
+	cd $(EVAL_DIR) && uv run run_eval.py check $(EVAL_ARGS)
+
+eval-cleanup: ## List documents interrupted retrieval eval runs left behind; CONFIRM=1 to delete them
+	cd $(EVAL_DIR) && uv run run_eval.py cleanup $(if $(filter 1 true yes,$(CONFIRM)),--yes) $(EVAL_ARGS)
+
+eval-run: ## Run the retrieval eval (requires running OpenRAG and OPENRAG_API_KEY); BASELINE=file to compare
+	cd $(EVAL_DIR) && uv run run_eval.py run --output-dir $(OUTPUT_DIR) $(if $(BASELINE),--baseline $(BASELINE)) $(EVAL_ARGS)
+
+eval-baseline: ## Run the retrieval eval and save it as $(OUTPUT_DIR)/baseline.json
+	$(if $(findstring --output-dir,$(EVAL_ARGS)),$(error Set OUTPUT_DIR instead of passing --output-dir in EVAL_ARGS))
+	cd $(EVAL_DIR) && uv run run_eval.py run --output-dir $(OUTPUT_DIR) $(EVAL_ARGS) && cp $(OUTPUT_DIR)/results.json $(OUTPUT_DIR)/baseline.json
+	@echo "$(PURPLE)Saved $(EVAL_DIR)/$(OUTPUT_DIR)/baseline.json$(NC)"
+
+eval-compare: ## Compare two retrieval eval results files offline (BASELINE=..., CURRENT=...)
+	cd $(EVAL_DIR) && uv run run_eval.py compare $(or $(BASELINE),$(OUTPUT_DIR)/baseline.json) $(CURRENT)
 
 lint: ## Run linting checks
 	@echo "$(YELLOW)Running linting checks...$(NC)"
@@ -1325,7 +1402,7 @@ status: ## Show container status
 health: ## Check health of all services
 	@printf "$(PURPLE)Health check:$(NC)\n"
 	@printf "$(CYAN)Frontend:$(NC)   "
-	@if curl -s -k --fail http://127.0.0.1:$${FRONTEND_PORT:-3000}/ >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
+	@if curl -s -k --fail http://127.0.0.1:$${FRONTEND_PORT:-3000}$(OPENRAG_FRONTEND_BASE_PATH)/ >/dev/null 2>&1; then printf "$(GREEN)Healthy$(NC)\n"; else printf "$(RED)Not responding$(NC)\n"; fi
 	@printf "$(CYAN)Backend:$(NC)     "
 	@if curl -s -k --fail http://127.0.0.1:$${OPENRAG_BACKEND_PORT:-8000}/health >/dev/null 2>&1; then \
 		printf "$(GREEN)Healthy$(NC)\n"; \

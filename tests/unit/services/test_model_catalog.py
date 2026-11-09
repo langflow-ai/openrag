@@ -9,6 +9,8 @@ the same payload.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from config import model_providers
@@ -72,10 +74,27 @@ def test_openai_form_is_the_plain_one_not_the_compatible_variant() -> None:
     assert required == ["api_key"]
 
 
+def test_azure_openai_leaves_auth_fields_optional_for_method_selection() -> None:
+    """The UI selects one complete Azure auth method over LiteLLM's flat form."""
+    assert model_catalog.required_field_keys("azure") == ["api_base"]
+
+
 def test_an_unknown_provider_still_gets_a_usable_form() -> None:
     fields = model_catalog.credential_fields("some-private-gateway")
     assert [field["key"] for field in fields] == ["api_key", "api_base"]
     assert model_catalog.missing_required_fields("some-private-gateway", set()) == []
+
+
+def test_a_tls_verify_field_keeps_its_type_and_is_not_a_secret() -> None:
+    """The UI renders `tls_verify` as a switch, so normalizing must not turn it into text."""
+    fields = {field["key"]: field for field in model_catalog.credential_fields("rhoai")}
+    assert fields["ssl_verify"]["field_type"] == "tls_verify"
+    assert "ssl_verify" not in model_catalog.secret_field_keys("rhoai")
+
+
+def test_an_unrecognised_field_type_falls_back_to_text() -> None:
+    field = model_catalog._normalize_field({"key": "x", "field_type": "colour"})
+    assert field["field_type"] == "text"
 
 
 def test_openai_models_list_is_openai_compatible() -> None:
@@ -401,6 +420,110 @@ def test_the_shipped_config_keeps_the_legacy_openai_generation_out(monkeypatch) 
     assert any(name.startswith("gpt-5.6") for name in models)
 
 
+def test_the_shipped_config_keeps_broken_watsonx_models_out_of_live_inventory(
+    monkeypatch,
+) -> None:
+    """Undocumented or broken watsonx.ai ids must not be offered in its picker."""
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    excluded = [
+        "bigscience/mt0-xxl-13b",
+        "google/flan-t5-xl-3b",
+        "ibm/granite-guardian-3-2-2b",
+        "ibm/granite-guardian-3-3-8b",
+        "meta-llama/llama-4-maverick-17b",
+        "mistralai/mistral-small-2503",
+        "mistralai/pixtral-12b-2409",
+        "mistralai/mistral-medium-2505",
+        "ibm/granite-3-3-8b-instruct",
+        "ibm/granite-3-8b-instruct",
+        "meta-llama/llama-3-2-90b-vision-instruct",
+        "meta-llama/llama-3-2-11b-vision-instruct",
+        "meta-llama/llama-3-2-3b-instruct",
+        "meta-llama/llama-3-2-1b-instruct",
+        "mistralai/mistral-large",
+        "meta-llama/llama-guard-3-11b-vision",
+        "ibm/granite-vision-3-2-2b",
+        "ibm/granite-ttm-1536-96-r2",
+        "ibm/granite-ttm-1024-96-r2",
+        "ibm/granite-ttm-512-96-r2",
+        "core42/jais-13b-chat",
+        "ibm/granite-13b-chat-v2",
+        "ibm/granite-13b-instruct-v2",
+        "sdaia/allam-1-13b-instruct",
+        "bigscience/mt0-xxl",
+    ]
+    retained = [
+        "google/flan-t5-xl",
+        "ibm/granite-guardian-3-2b",
+        "ibm/granite-guardian-3-8b",
+        "meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
+        "mistralai/mistral-small-3-1-24b-instruct-2503",
+        "mistralai/pixtral-12b",
+        "ibm/granite-4-h-small",
+    ]
+    payload = {
+        "language_models": [{"value": model} for model in excluded + retained],
+        "embedding_models": [{"value": "ibm/slate-125m-english-rtrvr"}],
+    }
+
+    filtered = model_catalog.hide_excluded_live_models("watsonx", payload)
+
+    assert [entry["value"] for entry in filtered["language_models"]] == retained
+    assert filtered["embedding_models"] == payload["embedding_models"]
+    catalogued = {
+        entry["model"]
+        for provider in model_catalog.catalog()["providers"]
+        if provider["key"] == "watsonx"
+        for entry in provider["models"]
+    }
+    assert not catalogued.intersection(excluded)
+
+
+def test_a_configured_vision_model_is_tagged_vision(monkeypatch, tmp_path) -> None:
+    """`vision_models` adds the capability the VLM picker filters on.
+
+    Applies to LiteLLM's own rows and to declared ones alike, and leaves every
+    other model's capabilities as the table had them.
+    """
+    monkeypatch.setenv(
+        model_providers.CONFIG_PATH_ENV,
+        _write_providers(
+            tmp_path,
+            "providers:\n  - name: openai\n    modes:\n      oss: true\n"
+            "    models:\n      - house-tuned-gpt\n"
+            "    vision_models:\n      - gpt-5.5-cyber\n      - house-tuned-*\n",
+        ),
+    )
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    models = {entry["model"]: entry for entry in model_catalog.catalog()["providers"][0]["models"]}
+    assert "vision" in models["gpt-5.5-cyber"]["capabilities"]
+    assert "reasoning" in models["gpt-5.5-cyber"]["capabilities"]
+    assert models["house-tuned-gpt"]["capabilities"] == ["vision"]
+    assert "vision" not in models["gpt-5.5-cyber-preview"].get("capabilities", [])
+
+
+def test_the_shipped_config_offers_watsonx_vision_models(monkeypatch) -> None:
+    """The VLM picker shows only `vision` models, so watsonx needs some.
+
+    Every watsonx id LiteLLM flags as vision is withdrawn and excluded; the
+    ones watsonx.ai serves with image input are tagged by the config instead.
+    """
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+
+    vision = {
+        entry["model"]
+        for provider in model_catalog.catalog()["providers"]
+        if provider["key"] == "watsonx"
+        for entry in provider["models"]
+        if "vision" in entry.get("capabilities", [])
+    }
+    assert vision == {
+        "meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
+        "mistralai/mistral-small-3-1-24b-instruct-2503",
+    }
+
+
 def test_a_plain_name_also_excludes_its_regional_listings(monkeypatch, tmp_path) -> None:
     """Azure lists the same model per region; suppressing it means all of them."""
     monkeypatch.setenv(
@@ -427,3 +550,97 @@ def test_the_shipped_config_excludes_on_azure_as_well_as_openai(monkeypatch) -> 
     ids = {row["id"] for row in model_catalog.openai_models_list()["data"]}
 
     assert not [model_id for model_id in ids if "gpt-3.5" in model_id or "luna" in model_id]
+
+
+def test_an_exclusion_without_a_wildcard_leaves_the_dated_snapshots(monkeypatch) -> None:
+    """Why the shipped luna patterns end in `*`.
+
+    A pattern with no wildcard matches that id alone, so the provider's dated
+    snapshot of the same model stays in the picker — which is how
+    `gpt-5.6-luna-2026-07-09` survived an exclusion of `gpt-5.6-luna`. Pinned
+    because the fix is a single character in a YAML file and reads like a typo.
+    """
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    exact = model_catalog._matches("gpt-5.6-luna-2026-07-09", ("gpt-5.6-luna",))
+    wildcard = model_catalog._matches("gpt-5.6-luna-2026-07-09", ("gpt-5.6-luna*",))
+
+    assert not exact
+    assert wildcard
+    # The wildcard keeps covering the regional forms the bare name covered.
+    assert model_catalog._matches("us/gpt-5.6-luna", ("gpt-5.6-luna*",))
+
+
+def test_both_luna_generations_are_excluded_from_both_rows(monkeypatch) -> None:
+    """LiteLLM's table cannot be trusted for this, so the config carries it.
+
+    Every luna row reports `supports_function_calling: true`, including the 5.6
+    that refuses them in practice — which is why the exclusion is
+    hand-maintained. A new generation is treated as defective until proven
+    otherwise, since an excluded id can still be typed by hand but a broken one
+    offered in the picker fails at agent runtime.
+    """
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    for provider in ("openai", "azure"):
+        patterns = model_catalog.exclusions_for(provider)
+        assert any(pattern.startswith("gpt-5.6-luna") for pattern in patterns), provider
+        assert any(pattern.startswith("gpt-6-luna") for pattern in patterns), provider
+
+
+@pytest.mark.asyncio
+async def test_live_model_failure_does_not_block_other_provider_refreshes(monkeypatch):
+    calls: list[str] = []
+
+    async def fail(_credentials):
+        calls.append("broken")
+        raise ValueError("missing CA bundle")
+
+    async def succeed(_credentials):
+        calls.append("healthy")
+
+    broken = SimpleNamespace(PROVIDER_KEY="broken", fetch_models=fail)
+    healthy = SimpleNamespace(PROVIDER_KEY="healthy", fetch_models=succeed)
+    providers = SimpleNamespace(stored_credentials=lambda _provider: {"api_key": "secret"})
+
+    monkeypatch.setattr(model_catalog, "provider_enhancements", lambda: (broken, healthy))
+    monkeypatch.setattr(
+        model_catalog,
+        "supported_provider_keys",
+        lambda: frozenset({"broken", "healthy"}),
+    )
+    monkeypatch.setattr(
+        "config.settings.get_openrag_config",
+        lambda: SimpleNamespace(providers=providers),
+    )
+
+    await model_catalog.refresh_live_models()
+
+    assert calls == ["broken", "healthy"]
+
+
+@pytest.mark.asyncio
+async def test_refresh_live_models_can_be_narrowed_to_one_provider(monkeypatch):
+    """A caller asking about one provider must not wait on another's cluster."""
+    calls: list[str] = []
+
+    def lister(name):
+        async def fetch(_credentials):
+            calls.append(name)
+
+        return fetch
+
+    first = SimpleNamespace(PROVIDER_KEY="first", fetch_models=lister("first"))
+    second = SimpleNamespace(PROVIDER_KEY="second", fetch_models=lister("second"))
+    providers = SimpleNamespace(stored_credentials=lambda _provider: {"api_key": "secret"})
+
+    monkeypatch.setattr(model_catalog, "provider_enhancements", lambda: (first, second))
+    monkeypatch.setattr(
+        model_catalog, "supported_provider_keys", lambda: frozenset({"first", "second"})
+    )
+    monkeypatch.setattr(
+        "config.settings.get_openrag_config",
+        lambda: SimpleNamespace(providers=providers),
+    )
+
+    await model_catalog.refresh_live_models(" Second ")
+
+    assert calls == ["second"]

@@ -4,14 +4,15 @@ import { ChevronRight } from "lucide-react";
 import { useMemo } from "react";
 import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
-import type { ModelOption } from "@/app/onboarding/_components/model-selector";
-import { groupedCatalogOptions } from "@/app/settings/_helpers/catalog-models";
+import { LabelWrapper } from "@/components/label-wrapper";
+import { groupedCatalogOptions } from "@/components/models/catalog-models";
 import {
   getFallbackModels,
   type ModelProvider,
-} from "@/app/settings/_helpers/model-helpers";
-import { ModelSelectItems } from "@/app/settings/_helpers/model-select-item";
-import { LabelWrapper } from "@/components/label-wrapper";
+  requiresExplicitModelSelection,
+} from "@/components/models/model-helpers";
+import { ModelSelectItems } from "@/components/models/model-select-item";
+import type { ModelOption } from "@/components/models/model-selector";
 import {
   Collapsible,
   CollapsibleContent,
@@ -88,13 +89,17 @@ export const IngestSettings = ({
   );
 
   const defaultEmbedding = catalogEmbeddingModels[0]?.value;
+  const requiresExplicitEmbedding =
+    requiresExplicitModelSelection(currentProvider);
+  const savedEmbeddingModel = apiSettings.knowledge?.embedding_model?.trim();
 
   const defaultSettings: IngestSettingsType = {
     ...knowledgeToIngestSettings(apiSettings.knowledge),
     embeddingModel:
-      apiSettings.knowledge?.embedding_model?.trim() ||
-      defaultEmbedding ||
-      "text-embedding-3-small",
+      savedEmbeddingModel ||
+      (requiresExplicitEmbedding
+        ? ""
+        : defaultEmbedding || "text-embedding-3-small"),
   };
 
   const currentSettings = settings ?? defaultSettings;
@@ -129,7 +134,9 @@ export const IngestSettings = ({
       (m) => m.value === currentSettings.embeddingModel,
     ) && currentSettings.embeddingModel
       ? currentSettings.embeddingModel
-      : (embeddingSelectOptions[0]?.value ?? "text-embedding-3-small");
+      : requiresExplicitEmbedding
+        ? ""
+        : (embeddingSelectOptions[0]?.value ?? "text-embedding-3-small");
 
   const handleSettingsChange = (newSettings: Partial<IngestSettingsType>) => {
     onSettingsChange?.({ ...currentSettings, ...newSettings });
@@ -157,6 +164,11 @@ export const IngestSettings = ({
           <div className="mt-6">
             {/* Embedding model selection */}
             <LabelWrapper
+              description={
+                requiresExplicitEmbedding && !currentSettings.embeddingModel
+                  ? "Select an embedding model in Settings before ingesting files"
+                  : undefined
+              }
               helperText="Model used for knowledge ingest and retrieval"
               id="embedding-model-select"
               label="Embedding model"

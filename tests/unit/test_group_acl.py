@@ -188,29 +188,56 @@ def test_group_acl_service_invalidation_drops_cache_and_locks():
 def test_security_roles_include_acl_dls_queries():
     for rel_path in ("securityconfig/roles.yml", "cloud_securityconfig/roles.yml"):
         roles = yaml.safe_load((ROOT / rel_path).read_text())
-        index_permissions = roles["openrag_user_role"]["index_permissions"]
+        assert "openrag_user_acl_role" in roles
+
+        user_role = roles["openrag_user_role"]
+        acl_role = roles["openrag_user_acl_role"]
+        index_permissions = [
+            p for role in (user_role, acl_role) for p in role.get("index_permissions", [])
+        ]
         cluster_permissions = roles["openrag_user_role"]["cluster_permissions"]
         assert "indices:data/write/bulk" not in cluster_permissions
         assert "indices:data/write/index" not in cluster_permissions
         assert not any("alerting" in permission for permission in cluster_permissions)
+        assert acl_role["cluster_permissions"] == []
 
-        document_permission = index_permissions[0]
-        document_actions = document_permission["allowed_actions"]
-        assert "read" in document_actions
-        assert "crud" not in document_actions
-        assert "indices:data/write/index" not in document_actions
-        assert "indices:data/write/update/byquery" not in document_actions
-        assert "indices:admin/mappings/put" not in document_actions
+        legacy_document_permissions = [
+            p
+            for p in user_role.get("index_permissions", [])
+            if any("documents" in pattern for pattern in p.get("index_patterns", []))
+            and "read" in p.get("allowed_actions", [])
+        ]
+        acl_document_permissions = [
+            p
+            for p in acl_role.get("index_permissions", [])
+            if any("documents" in pattern for pattern in p.get("index_patterns", []))
+            and "read" in p.get("allowed_actions", [])
+        ]
+        assert len(legacy_document_permissions) == 1
+        assert len(acl_document_permissions) == 1
 
-        dls = index_permissions[0]["dls"]
-        assert '{"term":{"owner":"${user.name}"}}' in dls
-        assert '{"term":{"owner":"${attr.jwt.email}"}}' in dls
-        assert '{"term":{"allowed_users":"${user.name}"}}' in dls
-        assert '{"term":{"allowed_users":"${attr.jwt.email}"}}' in dls
-        assert '{"terms":{"allowed_groups":[${user.roles}]}}' not in dls
+        document_permissions = legacy_document_permissions + acl_document_permissions
+        for document_permission in document_permissions:
+            document_actions = document_permission["allowed_actions"]
+            assert "read" in document_actions
+            assert "crud" not in document_actions
+            assert "indices:data/write/index" not in document_actions
+            assert "indices:data/write/update/byquery" not in document_actions
+            assert "indices:admin/mappings/put" not in document_actions
+            assert len("".join(document_permission["dls"].split())) <= 256
+
+        legacy_dls = "".join(legacy_document_permissions[0]["dls"].split())
+        acl_dls = "".join(acl_document_permissions[0]["dls"].split())
+        assert '{"term":{"owner":"${user.name}"}}' in legacy_dls
+        assert '{"term":{"owner":"${attr.jwt.email}"}}' in legacy_dls
+        assert '{"term":{"allowed_users":"${user.name}"}}' not in legacy_dls
+        assert '{"term":{"allowed_users":"${user.name}"}}' in acl_dls
+        assert '{"term":{"allowed_users":"${attr.jwt.email}"}}' in acl_dls
+        assert '{"term":{"owner":"${user.name}"}}' not in acl_dls
+        assert '{"terms":{"allowed_groups":[${user.roles}]}}' not in acl_dls
         assert (
             '{"terms":{"allowed_principals":{"index":"openrag_dls_principals",'
-            '"id":"${user.name}","path":"principals"}}}' in dls
+            '"id":"${user.name}","path":"principals"}}}' in acl_dls
         )
         principal_permission = next(
             permission
@@ -461,6 +488,62 @@ async def test_dls_principal_service_disabled_refresh_cache_does_not_retain_lock
     assert len(opensearch_client.index_calls) == 2
     assert service._cache == {}
     assert service._locks == {}
+
+
+@pytest.mark.asyncio
+async def test_dls_principal_change_drops_that_users_cached_suggestions():
+    from services import search_cache
+    from services.dls_principal_service import DLSPrincipalService
+    from session_manager import User
+
+    current_principals = ["u:test:user-1", "g:test:engineering"]
+
+    class ConnectionManager:
+        async def list_connections(self, user_id=None):
+            return []
+
+        def get_auth_user_principals(self, user):
+            return list(current_principals)
+
+    class ConnectorService:
+        connection_manager = ConnectionManager()
+
+    class Indices:
+        async def exists(self, index):
+            return True
+
+    class OpenSearchClient:
+        indices = Indices()
+
+        async def index(self, **kwargs):
+            return None
+
+    service = DLSPrincipalService(
+        ConnectorService(), opensearch_client=OpenSearchClient(), refresh_ttl_seconds=0
+    )
+    user = User(user_id="user-1", email=None, name=None, provider="test")
+    other_key = ("user-2", "docling", "{}", 0, True)
+    user_key = ("user-1", "docling", "{}", 0, True)
+    other_space_key = ("user-2", "fp-2")
+    user_space_key = ("user-1", "fp-1")
+
+    await service.refresh_user_principals(user)
+    search_cache.SUGGEST_CACHE.set(user_key, {"files": ["old.pdf"]})
+    search_cache.SUGGEST_CACHE.set(other_key, {"files": ["other.pdf"]})
+    search_cache.SPACES_CACHE.set(user_space_key, ["space-1"])
+    search_cache.SPACES_CACHE.set(other_space_key, ["space-2"])
+
+    await service.refresh_user_principals(user)
+    assert search_cache.SUGGEST_CACHE.get(user_key) == {"files": ["old.pdf"]}
+    assert search_cache.SPACES_CACHE.get(user_space_key) == ["space-1"]
+
+    current_principals.remove("g:test:engineering")
+    await service.refresh_user_principals(user)
+
+    assert search_cache.SUGGEST_CACHE.get(user_key) is None
+    assert search_cache.SUGGEST_CACHE.get(other_key) == {"files": ["other.pdf"]}
+    assert search_cache.SPACES_CACHE.get(user_space_key) is None
+    assert search_cache.SPACES_CACHE.get(other_space_key) == ["space-2"]
 
 
 @pytest.mark.asyncio

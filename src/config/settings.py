@@ -19,6 +19,7 @@ from utils.embedding_fields import build_knn_vector_field
 from utils.env_utils import get_env_float, get_env_int, get_env_set
 from utils.logging_config import get_logger
 from utils.openai_compat import install_agentd_response_event_compat
+from utils.upload_limits import max_upload_mb_from_env
 
 # Import configuration manager
 from .config_manager import config_manager
@@ -33,6 +34,38 @@ logger = get_logger(__name__)
 # otherwise langflowless streaming chat dies on the first tool call.
 install_agentd_response_event_compat(agentd_patch)
 patch_openai_with_mcp = agentd_patch.patch_openai_with_mcp
+
+
+def get_legacy_embedding_provider_map_json() -> str | None:
+    """Return the operator-supplied legacy embedding provider mapping JSON."""
+    return os.getenv("OPENRAG_LEGACY_EMBEDDING_PROVIDER_MAP")
+
+
+def get_rhoai_env_credentials() -> dict[str, str | None]:
+    """Return the raw ``RHOAI_*`` first-boot seed values, keyed by credential field.
+
+    Seeds the ``rhoai`` provider enhancement (see
+    ``enhancements/providers/redhat/openshift_ai.py``). Values are passed through
+    unvalidated: the enhancement owns parsing, and an invalid
+    ``embedding_max_concurrency`` falls back to its default with a warning.
+    """
+    return {
+        "api_base": os.getenv("RHOAI_ENDPOINT"),
+        "embedding_api_base": os.getenv("RHOAI_EMBEDDINGS_ENDPOINT"),
+        "api_key": os.getenv("RHOAI_API_KEY"),
+        "ssl_verify": os.getenv("RHOAI_TLS_VERIFY"),
+        "embedding_max_concurrency": os.getenv("RHOAI_EMBEDDING_MAX_CONCURRENCY"),
+    }
+
+
+def get_opensearch_index_name_override() -> str | None:
+    """Return the raw ``OPENSEARCH_INDEX_NAME`` env override.
+
+    This is a role-gated infra setting, not a user preference; it is resolved
+    into the ``knowledge`` config by ``apply_index_name_env_override``.
+    """
+    return os.getenv("OPENSEARCH_INDEX_NAME")
+
 
 # Environment variables
 OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
@@ -109,17 +142,15 @@ LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or "1098eea1-6649-4e1
 
 
 def env_flag_enabled(name: str) -> bool:
-    """True when env var `name` is set to a truthy string."""
+    """True when environment variable ``name`` has a truthy value."""
     return os.getenv(name, "").strip().lower() in ("true", "1", "yes")
 
 
 def is_chat_with_langflow_disabled() -> bool:
-    """True when chat must bypass Langflow and run the in-process OpenRAG agent.
+    """Whether chat must bypass Langflow for the in-process OpenRAG agent.
 
-    The env var is an operator kill switch and is checked first: it stays
-    effective even when config.yaml is marked `edited` (which makes
-    config_manager skip env overrides) and even if the config was already
-    cached before the var was set. Otherwise defer to the settings-UI value.
+    The environment variable is an operator kill switch, so it takes priority
+    over persisted settings even after the configuration has been edited.
     """
     if env_flag_enabled("DISABLE_CHAT_WITH_LANGFLOW"):
         return True
@@ -127,10 +158,7 @@ def is_chat_with_langflow_disabled() -> bool:
 
 
 def is_ingest_with_langflow_disabled() -> bool:
-    """True when ingestion must bypass Langflow and use the OpenRAG processor.
-
-    Same kill-switch precedence as `is_chat_with_langflow_disabled`.
-    """
+    """Whether ingestion must bypass Langflow for the OpenRAG processor."""
     if env_flag_enabled("DISABLE_INGEST_WITH_LANGFLOW"):
         return True
     return bool(get_openrag_config().knowledge.disable_ingest_with_langflow)
@@ -160,14 +188,20 @@ OPENRAG_BACKEND_INTERNAL_URL = os.getenv(
 
 
 def get_langflow_llm_base_url() -> str:
-    """OpenAI-compatible base URL Langflow should call (must end with /v1).
+    """OpenAI-compatible base URL Langflow should call.
 
-    Override with OPENRAG_LLM_PROXY_URL when Langflow cannot reach
-    OPENRAG_BACKEND_INTERNAL_URL (rare; same cases as a custom ingest router).
+    When the narrowed backend router is enabled, Langflow uses its private,
+    unversioned LLM paths; the router maps them onto the backend's public /v1
+    API. SaaS network policy exposes that port rather than the full backend.
+
+    OPENRAG_LLM_PROXY_URL remains an explicit escape hatch for deployments
+    with a separate proxy or Service.
     """
     override = os.getenv("OPENRAG_LLM_PROXY_URL")
     if override:
         return override.rstrip("/")
+    if OPENRAG_BACKEND_ROUTER_ENABLE:
+        return OPENRAG_BACKEND_ROUTER_URL
     return f"{OPENRAG_BACKEND_INTERNAL_URL}/v1"
 
 
@@ -343,6 +377,21 @@ def is_dev_azure_blob_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def is_dev_aws_s3_enabled() -> bool:
+    """Local dev: enable the AWS S3 connector without IBM_AUTH_ENABLED.
+
+    Allows testing the S3 connector (e.g. against MinIO) in a local environment
+    where IBM auth is not configured. Never enable in production. Requires
+    ``OPENRAG_DEV_AWS_S3=true``.
+
+    S3 was the only bucket connector with no dev bypass, so it could not be
+    exercised end to end without standing up IBM auth — which is why its sync
+    behaviour has historically had less real-world validation than COS's.
+    """
+    raw = os.getenv("OPENRAG_DEV_AWS_S3", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def is_dev_ibm_cos_enabled() -> bool:
     """Local dev: enable the IBM COS connector without IBM_AUTH_ENABLED.
 
@@ -377,6 +426,70 @@ def is_ingest_preview_flag_enabled() -> bool:
     """
     raw = os.getenv("OPENRAG_INGEST_PREVIEW_ENABLED", "false").strip().lower()
     return raw in ("true", "1", "yes", "on")
+
+
+def is_url_connector_enabled() -> bool:
+    """Feature flag for the managed public-website connector.
+
+    The URL crawler is an opt-in feature while it is being rolled out. Read the
+    environment per-call so test and runtime overrides are reflected by the
+    connector availability, settings response, and route guard without relying
+    on a value captured at module import time.
+    """
+    raw = os.getenv("OPENRAG_URL_CONNECTOR_ENABLED", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_tracing_flag_enabled() -> bool:
+    """Opt-in flag for backend LLM/ingest/search tracing to Langfuse.
+
+    Default off. Gates registration of the LiteLLM ``langfuse_otel`` callback in
+    ``observability.tracing``; see that module for the content-capture policy.
+    """
+    raw = os.getenv("OPENRAG_TRACING_ENABLED", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_tracing_capture_content_flag_enabled() -> bool:
+    """Opt-in to put prompts, completions, chunk text, queries and filenames in traces.
+
+    Default off (metadata only). In SaaS run mode this alone is not enough;
+    ``OPENRAG_TRACING_ALLOW_CONTENT_IN_SAAS`` must also be set.
+    """
+    raw = os.getenv("OPENRAG_TRACING_CAPTURE_CONTENT", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_tracing_content_allowed_in_saas() -> bool:
+    """Second key required for trace content capture in SaaS run mode. Default off."""
+    raw = os.getenv("OPENRAG_TRACING_ALLOW_CONTENT_IN_SAAS", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def langfuse_keys_configured() -> bool:
+    """Whether both Langfuse API keys are set (shared with the Langflow container)."""
+    return bool(
+        os.getenv("LANGFUSE_PUBLIC_KEY", "").strip()
+        and os.getenv("LANGFUSE_SECRET_KEY", "").strip()
+    )
+
+
+# With no host set, the Langfuse SDK defaults to Langfuse Cloud EU while
+# LiteLLM's langfuse_otel defaults to Cloud US; follow the SDK.
+LANGFUSE_DEFAULT_HOST = "https://cloud.langfuse.com"
+
+
+def get_langfuse_host() -> str:
+    """Langfuse URL for backend tracing, shared by LiteLLM's exporter and our spans.
+
+    ``LANGFUSE_BASE_URL`` (the name Langfuse's setup steps use) first, then the
+    older ``LANGFUSE_HOST`` — Langflow's precedence — else Langfuse Cloud EU.
+    """
+    return (
+        os.getenv("LANGFUSE_BASE_URL", "").strip()
+        or os.getenv("LANGFUSE_HOST", "").strip()
+        or LANGFUSE_DEFAULT_HOST
+    )
 
 
 def is_workspace_oauth_overrides_enabled() -> bool:
@@ -643,6 +756,18 @@ DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false"
     "yes",
 )
 
+
+def embedding_overflow_policy() -> str:
+    """What the gateway does with an embedding input the model rejects as too long.
+
+    ``average`` (the default) embeds the input in pieces and returns their
+    averaged vector, so the caller still gets one vector per input. ``error``
+    returns the provider's rejection as a 400 instead.
+    """
+    raw = os.getenv("OPENRAG_EMBEDDING_OVERFLOW_POLICY", "").strip().lower()
+    return "error" if raw == "error" else "average"
+
+
 # Show the "+" file upload button in the chat input
 OPENRAG_INGEST_VIA_CHAT = os.getenv("OPENRAG_INGEST_VIA_CHAT", "false").lower() in (
     "true",
@@ -694,13 +819,69 @@ FETCH_OPENRAG_DOCS_AT_STARTUP = os.getenv("FETCH_OPENRAG_DOCS_AT_STARTUP", "fals
 # Maximum number of files to upload / ingest (in batch) per task when adding knowledge via folder
 UPLOAD_BATCH_SIZE = get_env_int("UPLOAD_BATCH_SIZE", 25)
 
+# Largest accepted upload, in mebibytes. Enforced before a task is created and
+# again before the file is posted to Docling Serve. This does not raise the
+# body limit on the proxy in front of docling-serve; set it to that proxy's
+# real limit when the proxy cannot be changed. Unset stays at 100. A value that
+# is set but not a positive integer is logged and replaced with 100.
+OPENRAG_MAX_UPLOAD_MB = max_upload_mb_from_env(os.getenv("OPENRAG_MAX_UPLOAD_MB"))
+
 # Langflow HTTP timeout configuration (in seconds)
 # For large documents (300+ pages), ingestion can take 30+ minutes
 # Default: 40 minutes total, 40 minutes read timeout
 LANGFLOW_TIMEOUT = get_env_float("LANGFLOW_TIMEOUT", 2400.0)  # 40 minutes
 LANGFLOW_CONNECT_TIMEOUT = get_env_float("LANGFLOW_CONNECT_TIMEOUT", 30.0)  # 30 seconds
 # Retries for transient Langflow HTTP failures (disconnects, 502/503/504).
+# Only idempotent requests are replayed after the server may have acted on
+# them; see `_retryable_langflow_statuses`.
 LANGFLOW_REQUEST_RETRIES = get_env_int("LANGFLOW_REQUEST_RETRIES", 2)
+
+#: RFC 9110 §9.2.2 idempotent methods: repeating one leaves the server in the
+#: same state, so a failure after the request was sent can be replayed safely.
+_IDEMPOTENT_HTTP_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
+#: Statuses retried for any method, because they arrive before the request is
+#: processed: 429 is a rate-limit rejection, and a 503 from Langflow itself is
+#: emitted before processing. RFC 9110 does not guarantee this for 503 in
+#: general: a proxy in front of Langflow (for example Envoy's "reset before
+#: headers") can send one after forwarding the request. This relies on the
+#: backend reaching Langflow directly, as it does in compose and over a
+#: Kubernetes Service with no service mesh.
+_LANGFLOW_ALWAYS_RETRYABLE_STATUSES = frozenset({429, 503})
+#: Statuses that can arrive *after* the server acted. Langflow answers 500 when
+#: a flow run's graph fails, so replaying `POST /api/v1/run` re-executes the
+#: whole flow (re-embedding, re-polling a Docling task that has since been
+#: deleted) and the replay's error masks the original one.
+_LANGFLOW_IDEMPOTENT_ONLY_STATUSES = frozenset({408, 500, 502, 504})
+#: Transport errors raised before the request reached the server.
+_LANGFLOW_PRE_SEND_ERRORS: tuple[type[httpx.RequestError], ...] = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.PoolTimeout,
+)
+
+
+def _is_idempotent_request(method: str, idempotent: bool | None) -> bool:
+    """Whether a request may be replayed after the server could have acted on it."""
+    if idempotent is not None:
+        return idempotent
+    return (method or "").upper() in _IDEMPOTENT_HTTP_METHODS
+
+
+def _retryable_langflow_statuses(idempotent: bool) -> frozenset[int]:
+    """HTTP statuses worth retrying for a request of the given idempotency."""
+    if idempotent:
+        return _LANGFLOW_ALWAYS_RETRYABLE_STATUSES | _LANGFLOW_IDEMPOTENT_ONLY_STATUSES
+    return _LANGFLOW_ALWAYS_RETRYABLE_STATUSES
+
+
+def _is_retry_safe_transport_error(exc: httpx.RequestError, idempotent: bool) -> bool:
+    """Whether a transport error may be retried without risking a double execution.
+
+    A read timeout or dropped connection can happen after Langflow started a
+    flow run; only connection-phase failures prove the request was never seen.
+    """
+    return idempotent or isinstance(exc, _LANGFLOW_PRE_SEND_ERRORS)
+
 
 # Per-file processing timeout for document ingestion tasks (in seconds)
 # Should be >= LANGFLOW_TIMEOUT to allow long-running ingestion to complete
@@ -824,8 +1005,19 @@ INDEX_BODY = {
             "embedding_model": {"type": "keyword"},
             "source_url": {"type": "keyword"},
             "connector_type": {"type": "keyword"},
+            "record_kind": {"type": "keyword"},
+            "web_source_id": {"type": "keyword"},
+            "web_page_id": {"type": "keyword"},
+            "web_page_depth": {"type": "integer"},
+            "web_child_count": {"type": "integer"},
+            "root_source_url": {"type": "keyword"},
+            "canonical_url": {"type": "keyword"},
+            "status": {"type": "keyword"},
+            "error": {"type": "text"},
             "ingest_run_id": {"type": "keyword"},
             "connector_file_id": {"type": "keyword"},
+            # Object-store entity tag of the source file, for sync change detection.
+            "content_etag": {"type": "keyword"},
             "owner": {"type": "keyword"},
             "allowed_users": {"type": "keyword"},
             "allowed_groups": {"type": "keyword"},
@@ -1102,16 +1294,7 @@ class AppClients:
             )
 
         # Initialize docling-serve HTTP client for document conversion
-        self.docling_http_client = httpx.AsyncClient(
-            verify=DOCLING_SERVE_VERIFY_SSL,
-            timeout=httpx.Timeout(
-                timeout=INGESTION_TIMEOUT,
-                connect=30.0,
-                read=INGESTION_TIMEOUT,
-                write=30.0,
-                pool=30.0,
-            ),
-        )
+        self._create_docling_http_client()
 
         # Eagerly initialize DoclingService to ensure thread-safety
         from services.docling_service import DoclingService
@@ -1121,21 +1304,7 @@ class AppClients:
         # Initialize Langflow HTTP client with extended timeouts for large documents
         # Must be created before wait_for_langflow / get_langflow_api_key
         # Use explicit timeout configuration to handle large PDF ingestion (300+ pages)
-        self.langflow_http_client = httpx.AsyncClient(
-            base_url=LANGFLOW_URL,
-            timeout=httpx.Timeout(
-                timeout=LANGFLOW_TIMEOUT,  # Total timeout
-                connect=LANGFLOW_CONNECT_TIMEOUT,  # Connection timeout
-                read=LANGFLOW_TIMEOUT,  # Read timeout (most important for large PDFs)
-                write=LANGFLOW_CONNECT_TIMEOUT,  # Write timeout
-                pool=LANGFLOW_CONNECT_TIMEOUT,  # Pool timeout
-            ),
-        )
-        logger.info(
-            "Initialized Langflow HTTP client with extended timeouts",
-            timeout_seconds=LANGFLOW_TIMEOUT,
-            connect_timeout_seconds=LANGFLOW_CONNECT_TIMEOUT,
-        )
+        self._create_langflow_http_client()
 
         # Wait for Langflow to be healthy before generating API key
         from utils.langflow_utils import wait_for_langflow
@@ -1164,6 +1333,51 @@ class AppClients:
             logger.warning("No Langflow client initialized yet, will attempt later on first use")
 
         return self
+
+    def _create_docling_http_client(self):
+        """Create a new AsyncClient for Docling bound to the currently running event loop."""
+        self.docling_http_client = httpx.AsyncClient(
+            verify=DOCLING_SERVE_VERIFY_SSL,
+            timeout=httpx.Timeout(
+                timeout=INGESTION_TIMEOUT,
+                connect=30.0,
+                read=INGESTION_TIMEOUT,
+                write=30.0,
+                pool=30.0,
+            ),
+        )
+        return self.docling_http_client
+
+    def _ensure_docling_http_client(self):
+        """Ensure docling_http_client is initialized and not closed."""
+        if self.docling_http_client is None or self.docling_http_client.is_closed:
+            return self._create_docling_http_client()
+        return self.docling_http_client
+
+    def _create_langflow_http_client(self):
+        """Create a new AsyncClient for Langflow bound to the currently running event loop."""
+        self.langflow_http_client = httpx.AsyncClient(
+            base_url=LANGFLOW_URL,
+            timeout=httpx.Timeout(
+                timeout=LANGFLOW_TIMEOUT,  # Total timeout
+                connect=LANGFLOW_CONNECT_TIMEOUT,  # Connection timeout
+                read=LANGFLOW_TIMEOUT,  # Read timeout (most important for large PDFs)
+                write=LANGFLOW_CONNECT_TIMEOUT,  # Write timeout
+                pool=LANGFLOW_CONNECT_TIMEOUT,  # Pool timeout
+            ),
+        )
+        logger.info(
+            "Initialized Langflow HTTP client with extended timeouts",
+            timeout_seconds=LANGFLOW_TIMEOUT,
+            connect_timeout_seconds=LANGFLOW_CONNECT_TIMEOUT,
+        )
+        return self.langflow_http_client
+
+    def _ensure_langflow_http_client(self):
+        """Ensure langflow_http_client is initialized and not closed."""
+        if self.langflow_http_client is None or self.langflow_http_client.is_closed:
+            return self._create_langflow_http_client()
+        return self.langflow_http_client
 
     async def ensure_langflow_client(self):
         """Ensure Langflow client exists; try to generate key and create client lazily."""
@@ -1242,6 +1456,27 @@ class AppClients:
                     os.environ["OLLAMA_BASE_URL"] = config.providers.ollama.endpoint
                     os.environ["OLLAMA_ENDPOINT"] = config.providers.ollama.endpoint
                     logger.debug("Loaded Ollama endpoint from config")
+
+                # Set Azure credentials
+                azure_creds = config.providers.credential_values("azure")
+                if azure_creds.get("api_key"):
+                    os.environ["AZURE_API_KEY"] = azure_creds["api_key"]
+                if azure_creds.get("api_base"):
+                    os.environ["AZURE_API_BASE"] = azure_creds["api_base"]
+                if azure_creds.get("api_version"):
+                    os.environ["AZURE_API_VERSION"] = azure_creds["api_version"]
+                if azure_creds:
+                    logger.debug("Loaded Azure OpenAI credentials from config")
+
+                azure_ai_creds = config.providers.credential_values("azure_ai")
+                if azure_ai_creds.get("api_key"):
+                    os.environ["AZURE_AI_API_KEY"] = azure_ai_creds["api_key"]
+                if azure_ai_creds.get("api_base"):
+                    os.environ["AZURE_AI_API_BASE"] = azure_ai_creds["api_base"]
+                if azure_ai_creds.get("api_version"):
+                    os.environ["AZURE_AI_API_VERSION"] = azure_ai_creds["api_version"]
+                if azure_ai_creds:
+                    logger.debug("Loaded Azure AI Foundry credentials from config")
 
                 # Determine model and provider for both probe and production client
                 model_name = config.knowledge.embedding_model or OPENAI_DEFAULT_EMBEDDING_MODEL
@@ -1346,11 +1581,6 @@ class AppClients:
         """Alias for patched_async_client - for backward compatibility with code expecting separate clients."""
         return self.patched_async_client
 
-    @property
-    def patched_embedding_client(self):
-        """Alias for patched_async_client - for backward compatibility with code expecting separate clients."""
-        return self.patched_async_client
-
     async def refresh_patched_client(self):
         """Reset patched client so next use picks up updated provider credentials."""
         if self._patched_async_client is not None:
@@ -1436,13 +1666,32 @@ class AppClients:
         """Alias for cleanup() for convenience."""
         await self.cleanup()
 
-    async def langflow_request(self, method: str, endpoint: str, **kwargs):
+    async def langflow_request(
+        self,
+        method: str,
+        endpoint: str,
+        *,
+        idempotent: bool | None = None,
+        **kwargs,
+    ):
         """Central method for all Langflow API requests.
 
-        Retries transient transport/server errors and once with a fresh API key on
-        auth failures (401/403).
+        Retries once with a fresh API key on auth failures (401/403), and retries
+        transient failures according to whether the request is safe to repeat:
+
+        - Any request is retried when it provably was not processed: connection
+          errors before the request was sent, 429, and 503.
+        - Only idempotent requests are also retried on 408/500/502/504 and on
+          transport errors after sending (read timeouts, dropped connections).
+
+        `idempotent` defaults to the method's RFC 9110 semantics (GET, HEAD,
+        OPTIONS, PUT, DELETE). Pass `idempotent=True` for a POST/PATCH that sets
+        absolute state and can be repeated harmlessly. Replaying a non-idempotent
+        request such as `POST /api/v1/run/{flow}` re-executes the flow, and the
+        replay's error hides the original failure.
         """
-        _TRANSIENT_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+        is_idempotent = _is_idempotent_request(method, idempotent)
+        retryable_statuses = _retryable_langflow_statuses(is_idempotent)
         max_attempts = max(1, LANGFLOW_REQUEST_RETRIES + 1)
         last_error: Exception | None = None
         auth_retry_attempted = False
@@ -1475,19 +1724,45 @@ class AppClients:
 
             url = f"{LANGFLOW_URL}{endpoint}"
 
+            client = self._ensure_langflow_http_client()
+
             try:
-                response = await self.langflow_http_client.request(
+                response = await client.request(
                     method=method, url=url, headers=headers, **request_kwargs
                 )
+            except RuntimeError as exc:
+                if "Event loop is closed" in str(exc) or "event loop" in str(exc).lower():
+                    logger.warning(
+                        "Langflow HTTP client event loop was closed, recreating client for active event loop",
+                        endpoint=endpoint,
+                    )
+                    client = self._create_langflow_http_client()
+                    response = await client.request(
+                        method=method, url=url, headers=headers, **request_kwargs
+                    )
+                else:
+                    raise
             except httpx.RequestError as exc:
                 last_error = exc
                 if attempt + 1 < max_attempts:
+                    if not _is_retry_safe_transport_error(exc, is_idempotent):
+                        logger.warning(
+                            "Langflow request failed; not retrying non-idempotent request",
+                            method=method,
+                            endpoint=endpoint,
+                            attempt=attempt + 1,
+                            error_type=type(exc).__name__,
+                            error=str(exc),
+                        )
+                        raise
                     delay = min(2**attempt, 4)
                     logger.warning(
                         "Langflow request transport error, retrying",
+                        method=method,
                         endpoint=endpoint,
                         attempt=attempt + 1,
                         max_attempts=max_attempts,
+                        error_type=type(exc).__name__,
                         error=str(exc),
                         retry_in_seconds=delay,
                     )
@@ -1507,12 +1782,36 @@ class AppClients:
                 if api_key:
                     headers["x-api-key"] = api_key
                     try:
-                        response = await self.langflow_http_client.request(
+                        client = self._ensure_langflow_http_client()
+                        response = await client.request(
                             method=method, url=url, headers=headers, **request_kwargs
                         )
+                    except RuntimeError as exc:
+                        if "Event loop is closed" in str(exc) or "event loop" in str(exc).lower():
+                            logger.warning(
+                                "Langflow auth retry HTTP client event loop was closed, recreating client for active event loop",
+                                endpoint=endpoint,
+                            )
+                            client = self._create_langflow_http_client()
+                            response = await client.request(
+                                method=method, url=url, headers=headers, **request_kwargs
+                            )
+                        else:
+                            raise
                     except httpx.RequestError as exc:
                         last_error = exc
                         if attempt + 1 < max_attempts:
+                            if not _is_retry_safe_transport_error(exc, is_idempotent):
+                                logger.warning(
+                                    "Langflow auth retry failed; not retrying "
+                                    "non-idempotent request",
+                                    method=method,
+                                    endpoint=endpoint,
+                                    attempt=attempt + 1,
+                                    error_type=type(exc).__name__,
+                                    error=str(exc),
+                                )
+                                raise
                             delay = min(2**attempt, 4)
                             logger.warning(
                                 "Langflow auth retry transport error, retrying",
@@ -1539,10 +1838,26 @@ class AppClients:
                 await asyncio.sleep(delay)
                 continue
 
-            if response.status_code in _TRANSIENT_STATUS_CODES and attempt + 1 < max_attempts:
+            if (
+                response.status_code in _LANGFLOW_IDEMPOTENT_ONLY_STATUSES
+                and response.status_code not in retryable_statuses
+                and attempt + 1 < max_attempts
+            ):
+                # Surface the first failure as-is: a replay would re-execute
+                # the request (e.g. a whole flow run) and could mask the error.
+                logger.warning(
+                    "Langflow request failed; not retrying non-idempotent request",
+                    method=method,
+                    endpoint=endpoint,
+                    status_code=response.status_code,
+                    attempt=attempt + 1,
+                )
+
+            if response.status_code in retryable_statuses and attempt + 1 < max_attempts:
                 delay = min(2**attempt, 4)
                 logger.warning(
                     "Langflow request returned transient status, retrying",
+                    method=method,
                     endpoint=endpoint,
                     status_code=response.status_code,
                     attempt=attempt + 1,
@@ -1717,7 +2032,10 @@ class AppClients:
             }
 
             patch_response = await self.langflow_request(
-                "PATCH", f"/api/v1/variables/{variable_id}", json=update_payload
+                "PATCH",
+                f"/api/v1/variables/{variable_id}",
+                json=update_payload,
+                idempotent=True,
             )
 
             if patch_response.status_code == 200:

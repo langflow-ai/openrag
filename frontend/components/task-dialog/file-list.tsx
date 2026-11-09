@@ -1,12 +1,13 @@
 "use client";
 
-import { ArrowUpAZ, ChevronDown, FileText } from "lucide-react";
+import { ArrowUpAZ, ChevronDown, FileText, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { TaskFileEntry } from "@/app/api/queries/useGetTasksQuery";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import type { Task } from "@/contexts/task-context";
 import { analyzeTaskFileIngestionFailure } from "@/lib/task-error-display";
 import {
+  getDeletedAtSourceMessage,
   getTaskFileDialogStatusLabel,
   getTaskFileName,
   isTaskFileFailed,
@@ -39,6 +40,7 @@ interface TaskDialogFileListProps {
   selectedCount: number;
   retryIngestionSelectedCount: number;
   retryingTarget?: "all" | "selected" | string | null;
+  onCancelFile: (taskId: string, filePath: string) => Promise<void>;
 }
 
 export function TaskDialogFileList({
@@ -62,6 +64,7 @@ export function TaskDialogFileList({
   selectedCount,
   retryIngestionSelectedCount,
   retryingTarget = null,
+  onCancelFile,
 }: TaskDialogFileListProps) {
   const isCloudBrand = useIsCloudBrand();
   const [activeTab, setActiveTab] =
@@ -115,8 +118,8 @@ export function TaskDialogFileList({
         ? cn(
             "rounded-none border-0 border-b-2",
             isActive
-              ? "border-[var(--border-border-interactive)] bg-muted text-foreground"
-              : "border-transparent bg-transparent text-muted-foreground hover:border-[var(--border-border-interactive)]",
+              ? "border-(--border-border-interactive) bg-muted text-foreground"
+              : "border-transparent bg-transparent text-muted-foreground hover:border-(--border-border-interactive)",
           )
         : cn(
             "border-0",
@@ -130,7 +133,7 @@ export function TaskDialogFileList({
   const listScrollClass = "min-h-0 flex-1 overflow-y-auto overscroll-contain";
 
   const rowGridClass =
-    "grid min-h-10 grid-cols-[auto_auto_1fr_auto] items-center gap-3";
+    "grid min-h-10 grid-cols-[auto_auto_1fr_auto_auto] items-center gap-3";
 
   const renderFileRows = (listEntries: Array<[string, TaskFileEntry]>) =>
     listEntries.map(([filePath, fileInfo]) => {
@@ -225,15 +228,33 @@ export function TaskDialogFileList({
             <span
               className={cn(
                 "shrink-0 text-sm",
-                failed
-                  ? "text-destructive"
-                  : rowStatusLabel === "Complete"
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : "text-muted-foreground",
+                rowStatusLabel === "Cancelled"
+                  ? "text-muted-foreground"
+                  : failed
+                    ? "text-destructive"
+                    : rowStatusLabel === "Complete" ||
+                        rowStatusLabel === "Removed"
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-muted-foreground",
               )}
+              title={getDeletedAtSourceMessage(fileInfo)}
             >
               {statusLabel}
             </span>
+            {fileInfo.status === "processing" ||
+            fileInfo.status === "running" ||
+            fileInfo.status === "pending" ? (
+              <button
+                type="button"
+                aria-label="Cancel file ingestion"
+                className="inline-flex shrink-0 items-center justify-center rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                onClick={() => void onCancelFile(task.task_id, filePath)}
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+            ) : (
+              <span className="h-5 w-5 shrink-0" aria-hidden />
+            )}
           </div>
 
           {failed && isExpanded && analysis && (

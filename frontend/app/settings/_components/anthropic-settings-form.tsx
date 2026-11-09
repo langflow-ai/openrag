@@ -33,7 +33,7 @@ export function AnthropicSettingsForm({
             {...register("apiKey", {
               required: "API key is required",
             })}
-            className={apiKeyError ? "!border-destructive" : ""}
+            className={apiKeyError ? "border-destructive!" : ""}
             id="api-key"
             type="password"
             autoComplete="new-password"
@@ -43,7 +43,7 @@ export function AnthropicSettingsForm({
         {apiKeyError && (
           <p
             data-testid="provider-connection-error"
-            className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]"
+            className="text-sm text-destructive min-w-0 wrap-anywhere"
           >
             {apiKeyError}
           </p>

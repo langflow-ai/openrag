@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import io
 import json
 import time
@@ -19,6 +20,7 @@ from config.settings import (
 )
 from services.document_index_writer import DocumentIndexContext
 from utils.hash_utils import hash_id
+from utils.langflow_utils import enable_mcp_none_for_project
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -130,25 +132,32 @@ class LangflowFileService:
         embedding_provider: str | None,
     ) -> int:
         """Generate one probe embedding so mapping dimensions match the provider."""
-        from services.models_service import ModelsService
 
         cache_key = f"{embedding_provider or ''}:{embedding_model}"
         cached = self._embedding_dimension_cache.get(cache_key)
         if cached:
             return cached
 
-        litellm_model_name = await ModelsService().get_litellm_model_name(
-            embedding_model,
-            provider=embedding_provider,
-        )
-        response = await clients.patched_embedding_client.embeddings.create(
-            model=litellm_model_name,
-            input=["dimension probe"],
-        )
-        if not response.data:
+        # Through the gateway, like ingestion: the probe decides the index
+        # mapping's vector width, so it has to reach the same endpoint the real
+        # embedding call will. The direct client resolved credentials from
+        # process-global environment instead of from config.
+        from observability.tracing import trace_context
+        from services.llm_gateway import embeddings as gateway_embeddings
+        from services.llm_gateway import qualified_model_id
+
+        with trace_context(purpose="dimension_probe"):
+            response = await gateway_embeddings(
+                {
+                    "model": qualified_model_id(embedding_provider, embedding_model),
+                    "input": ["dimension probe"],
+                }
+            )
+        data = response.get("data") or []
+        if not data:
             raise RuntimeError("Embedding provider returned no data for dimension probe")
 
-        first = response.data[0]
+        first = data[0]
         embedding = first["embedding"] if isinstance(first, dict) else first.embedding
         dimensions = len(embedding)
         if dimensions <= 0:
@@ -166,27 +175,38 @@ class LangflowFileService:
         try:
             from config.embedding_constants import get_declared_default_embedding_model
             from config.settings import get_index_name, get_openrag_config
-            from utils.embedding_fields import ensure_embedding_field_exists
+            from utils.embedding_fields import (
+                ensure_embedding_field_exists,
+                get_embedding_space_id,
+            )
             from utils.embeddings import create_index_body
 
             config = get_openrag_config()
             index_name = get_index_name()
-            model_name = embedding_model or get_declared_default_embedding_model(
-                config.knowledge.embedding_provider
-            )
+            embedding_provider = config.knowledge.embedding_provider or "openai"
+            model_name = embedding_model or get_declared_default_embedding_model(embedding_provider)
             embedding_dimensions = await self._detect_embedding_dimensions(
                 model_name,
-                config.knowledge.embedding_provider,
+                embedding_provider,
+            )
+            embedding_space_id = get_embedding_space_id(
+                embedding_provider,
+                model_name,
             )
             if not await clients.opensearch.indices.exists(index=index_name):
                 await clients.opensearch.indices.create(
                     index=index_name,
-                    body=await create_index_body(model_name, embedding_dimensions),
+                    body=await create_index_body(
+                        model_name,
+                        embedding_dimensions,
+                        embedding_provider=embedding_provider,
+                        embedding_space_id=embedding_space_id,
+                    ),
                 )
 
             await ensure_embedding_field_exists(
                 clients.opensearch,
-                model_name,
+                embedding_space_id,
                 index_name,
                 embedding_dimensions,
             )
@@ -253,7 +273,11 @@ class LangflowFileService:
             )
             return None, None
 
-        from config.settings import get_index_name
+        from config.settings import get_index_name, get_openrag_config
+
+        embedding_provider = (
+            getattr(get_openrag_config().knowledge, "embedding_provider", None) or "openai"
+        )
 
         ingest_run_id = f"{document_id}-{uuid.uuid4().hex}"
         context = DocumentIndexContext(
@@ -261,6 +285,7 @@ class LangflowFileService:
             filename=filename,
             mimetype=mimetype,
             embedding_model=embedding_model,
+            embedding_provider=embedding_provider,
             owner=owner,
             owner_name=owner_name,
             owner_email=owner_email,
@@ -278,6 +303,7 @@ class LangflowFileService:
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             connector_file_id=connector_file_id,
+            indexed_time=datetime.datetime.now(datetime.UTC).isoformat(),
         )
         token = self.ingest_token_service.create_token(context)
         logger.info(
@@ -473,6 +499,7 @@ class LangflowFileService:
 
         # Get the current embedding model and provider credentials from config
         from config.settings import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE
+        from services.langflow_llm_token_service import HOP_PURPOSE_INGEST
         from utils.langflow_headers import (
             add_provider_credentials_to_headers,
             build_model_provider_headers,
@@ -553,6 +580,7 @@ class LangflowFileService:
             flows_service=self.flows_service,
             jwt_token=jwt_token,
             user_id=owner,
+            purpose=HOP_PURPOSE_INGEST,
         )
         if self.ingest_token_service is None:
             await self._ensure_langflow_ingest_index(embedding_model)
@@ -633,7 +661,20 @@ class LangflowFileService:
 
                 raise
             return resp_json
+        except asyncio.CancelledError:
+            # Clean up partial ingestion before propagating cancellation
+            try:
+                await asyncio.shield(
+                    self._cleanup_failed_callback_ingest(
+                        ingest_token=ingest_token,
+                        ingest_run_id=ingest_run_id,
+                    )
+                )
+            except Exception:
+                pass  # Best-effort cleanup; don't block cancellation
+            raise
         except Exception as e:
+            # Handle ordinary ingestion failures with cleanup
             await self._cleanup_failed_callback_ingest(
                 ingest_token=ingest_token,
                 ingest_run_id=ingest_run_id,
@@ -666,6 +707,7 @@ class LangflowFileService:
             tweaks = {}
 
         from config.settings import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, get_openrag_config
+        from services.langflow_llm_token_service import HOP_PURPOSE_INGEST
         from utils.langflow_headers import (
             add_provider_credentials_to_headers,
             build_model_provider_headers,
@@ -728,6 +770,7 @@ class LangflowFileService:
             flows_service=self.flows_service,
             jwt_token=jwt_token,
             user_id=owner,
+            purpose=HOP_PURPOSE_INGEST,
         )
         if self.ingest_token_service is None:
             await self._ensure_langflow_ingest_index(embedding_model)
@@ -775,7 +818,20 @@ class LangflowFileService:
                 )
 
             return resp.json()
+        except asyncio.CancelledError:
+            # Clean up partial ingestion before propagating cancellation
+            try:
+                await asyncio.shield(
+                    self._cleanup_failed_callback_ingest(
+                        ingest_token=ingest_token,
+                        ingest_run_id=ingest_run_id,
+                    )
+                )
+            except Exception:
+                pass  # Best-effort cleanup; don't block cancellation
+            raise
         except Exception as e:
+            # Handle ordinary ingestion failures with cleanup
             await self._cleanup_failed_callback_ingest(
                 ingest_token=ingest_token,
                 ingest_run_id=ingest_run_id,
@@ -809,6 +865,14 @@ class LangflowFileService:
                         "GET", f"/api/v1/flows/{configured_flow_id}"
                     )
                     if check_resp.status_code < 400:
+                        try:
+                            project_id = check_resp.json().get("folder_id")
+                            if project_id:
+                                await enable_mcp_none_for_project(project_id)
+                        except Exception as err:
+                            logger.warning(
+                                f"[LF] Failed to configure MCP project auth on check: {err}"
+                            )
                         return configured_flow_id
                     if check_resp.status_code != 404:
                         if self._is_transient_status(check_resp.status_code):
@@ -869,6 +933,14 @@ class LangflowFileService:
 
                 flow_data = create_resp.json()
                 imported_flow_id = flow_data.get("id")
+                project_id = flow_data.get("folder_id")
+                if project_id:
+                    try:
+                        await enable_mcp_none_for_project(project_id)
+                    except Exception as err:
+                        logger.warning(
+                            f"[LF] Failed to configure MCP project auth after import: {err}"
+                        )
                 if not imported_flow_id:
                     raise ValueError("Langflow flow import succeeded but no flow id was returned")
 
@@ -964,6 +1036,9 @@ class LangflowFileService:
                 "DoclingService is not configured. Ensure DOCLING_SERVE_URL is set "
                 "and the service was injected correctly."
             )
+        from services.docling_service import DoclingPayloadTooLarge
+        from utils.upload_limits import UploadTooLarge
+
         try:
             task_id = await self.docling_service.upload_to_docling_direct_async(
                 filename,
@@ -984,6 +1059,8 @@ class LangflowFileService:
                 "[LF] Docling submission failed",
                 extra={"error": str(e), "filename": filename},
             )
+            if isinstance(e, (UploadTooLarge, DoclingPayloadTooLarge)):
+                raise
             raise Exception(f"Docling upload failed: {str(e)}") from e
 
     async def upload_and_ingest_file(
@@ -1103,9 +1180,18 @@ class LangflowFileService:
                         "elapsed_seconds": round(poll_result.elapsed_seconds, 2),
                     },
                 )
+                from services.docling_service import password_protected_pdf_error
+
+                detail = poll_result.detail
+                if (
+                    poll_result.outcome == PollOutcome.FAILED
+                    and detail
+                    and isinstance(content, bytes)
+                ):
+                    detail = password_protected_pdf_error(detail, content) or detail
                 raise Exception(
                     f"Docling conversion did not complete ({poll_result.outcome.value}): "
-                    f"{poll_result.detail or 'no detail provided'}"
+                    f"{detail or 'no detail provided'}"
                 )
 
             if file_task is not None:

@@ -141,4 +141,9 @@ def create_blob_service_client(config: dict[str, Any]):
         account=creds["account_name"]
     )
     logger.debug("Creating Azure Blob client with account key for %s", account_url)
-    return BlobServiceClient(account_url=account_url, credential=creds["account_key"])
+    # Pass the account name explicitly: with a bare key string the SDK infers it
+    # from the URL, which fails for custom hostnames (e.g. http://azurite:10000/...).
+    return BlobServiceClient(
+        account_url=account_url,
+        credential={"account_name": creds["account_name"], "account_key": creds["account_key"]},
+    )

@@ -225,6 +225,9 @@ async def _ingest_default_documents_langflow(
         replace_duplicates=True,
         connector_type=connector_type,
         temp_file_paths=[],
+        # The system refreshing its own ownerless sample documents, not a user
+        # replacing someone else's — no user permission applies.
+        allow_anonymous_delete=True,
     )
 
     logger.info(
@@ -653,6 +656,9 @@ async def _ingest_default_documents_openrag(
         owner_email=anonymous_user.email,
         is_sample_data=True,
         connector_type=connector_type,
+        # The system ingesting its own ownerless sample documents, not a user
+        # replacing someone else's — no user permission applies.
+        allow_anonymous_delete=True,
     )
 
     task_id = await task_service.create_custom_task("anonymous", file_paths, processor)

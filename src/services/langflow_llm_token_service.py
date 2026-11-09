@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from typing import Any
 
 import jwt
 
@@ -28,15 +29,33 @@ LANGFLOW_HOP_AUDIENCES = frozenset(
     }
 )
 
+#: What a Langflow run's hop token is for, carried as its `purpose` claim. The
+#: gateway gives `chat` embedding calls (query retrieval) their own lane so they
+#: are not queued behind a bulk ingest. Anything else, including no claim at
+#: all, is treated as bulk traffic.
+HOP_PURPOSE_CHAT = "chat"
+HOP_PURPOSE_INGEST = "ingest"
 
-def langflow_hop_audience(token: str) -> str | None:
-    """Unverified `aud` when `token` is a Langflow hop token, else None."""
+
+def langflow_hop_audience(
+    token: str,
+    secret: str | Any | None = None,
+    algorithm: str | None = None,
+) -> str | None:
+    """Verified `aud` when `token` is a Langflow hop token, else None."""
     if not token or token.startswith("orag_"):
         return None
     try:
+        if secret is not None:
+            verification_key = secret
+            algo = algorithm or ("HS256" if isinstance(secret, str) else "RS256")
+        else:
+            _, verification_key, algo = _resolve_default_signing_config()
         claims = jwt.decode(
             token,
-            options={"verify_signature": False, "verify_aud": False, "verify_exp": False},
+            verification_key,
+            algorithms=[algo],
+            options={"verify_aud": False},
         )
     except jwt.PyJWTError:
         return None
@@ -77,6 +96,7 @@ class LangflowLlmTokenService:
         user_id: str,
         email: str | None = None,
         name: str | None = None,
+        purpose: str | None = None,
     ) -> str:
         now = int(time.time())
         subject = (user_id or "").strip() or "anonymous"
@@ -91,9 +111,15 @@ class LangflowLlmTokenService:
             "email": (email or subject),
             "name": (name or subject),
         }
+        if purpose:
+            payload["purpose"] = purpose
         return jwt.encode(payload, self._signing_key, algorithm=self.algorithm)
 
     def validate_token(self, token: str) -> User:
+        return self.user_from_claims(self.validate_claims(token))
+
+    def validate_claims(self, token: str) -> dict[str, Any]:
+        """Verified claims of a hop token; raises `ValueError` if it is not one."""
         try:
             payload = jwt.decode(
                 token,
@@ -115,7 +141,11 @@ class LangflowLlmTokenService:
         user_id = str(payload.get("user_id") or payload.get("sub") or "").strip()
         if not user_id:
             raise ValueError("Langflow LLM proxy token is missing user_id")
+        return payload
 
+    @staticmethod
+    def user_from_claims(payload: dict[str, Any]) -> User:
+        user_id = str(payload.get("user_id") or payload.get("sub") or "").strip()
         return User(
             user_id=user_id,
             email=str(payload.get("email") or user_id),

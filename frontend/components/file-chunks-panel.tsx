@@ -2,8 +2,12 @@
 
 import { Check, Copy, Loader2 } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { useFileScopedChunksQuery } from "@/app/api/queries/useFileScopedChunksQuery";
+import {
+  useDocumentScopedChunksQuery,
+  useFileScopedChunksQuery,
+} from "@/app/api/queries/useFileScopedChunksQuery";
 import type { ChunkResult } from "@/app/api/queries/useGetSearchQuery";
+import { HighlightedText } from "@/components/highlighted-text";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +24,7 @@ function compareChunksByDocumentOrder(a: ChunkResult, b: ChunkResult): number {
 
 export interface FileChunksPanelProps {
   filename: string;
+  documentId?: string | null;
   /** Compact layout for dialogs (e.g. ingest review). */
   compact?: boolean;
   /** When false, show metadata only (no chunk body). Default true. */
@@ -36,6 +41,8 @@ export interface FileChunksPanelProps {
   onFilterQueryChange?: (query: string) => void;
   /** Grow to fill parent height (ingest-review expand); replaces compact max-height. */
   fillHeight?: boolean;
+  /** Original search query from the knowledge page — used to fetch highlighted chunks. */
+  searchQuery?: string;
 }
 
 function chunkMatches(chunk: ChunkResult, needle: string): boolean {
@@ -122,11 +129,14 @@ function FileChunkCard({
       {showContents ? (
         <blockquote
           className={cn(
-            "min-w-0 text-foreground leading-relaxed break-words [overflow-wrap:anywhere] whitespace-pre-wrap",
+            "min-w-0 text-foreground leading-relaxed wrap-break-word wrap-anywhere whitespace-pre-wrap",
             compact ? "text-xs" : "text-sm ml-1.5",
           )}
         >
-          {chunk.text}
+          <HighlightedText
+            highlights={chunk.highlights ?? []}
+            fallbackText={chunk.text}
+          />
         </blockquote>
       ) : (
         <p className="text-xs text-muted-foreground">
@@ -154,6 +164,7 @@ function FileChunkCard({
  */
 export function FileChunksPanel({
   filename,
+  documentId,
   compact = false,
   showContents = true,
   selectedPage,
@@ -164,8 +175,11 @@ export function FileChunksPanel({
   filterQuery,
   onFilterQueryChange,
   fillHeight = false,
+  searchQuery,
 }: FileChunksPanelProps) {
-  const { file, isFetching } = useFileScopedChunksQuery(filename);
+  const filenameQuery = useFileScopedChunksQuery(filename, searchQuery);
+  const documentQuery = useDocumentScopedChunksQuery(documentId, searchQuery);
+  const { file, isFetching } = documentId ? documentQuery : filenameQuery;
   const allChunks = useMemo(() => {
     const sorted = [...(file?.chunks ?? [])].sort(compareChunksByDocumentOrder);
     return sorted.map((chunk, i) => ({

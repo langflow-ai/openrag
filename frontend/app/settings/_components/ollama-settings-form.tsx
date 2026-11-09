@@ -33,7 +33,7 @@ export function OllamaSettingsForm({
             {...register("endpoint", {
               required: "Ollama base URL is required",
             })}
-            className={endpointError ? "!border-destructive" : ""}
+            className={endpointError ? "border-destructive!" : ""}
             id="endpoint"
             type="text"
             placeholder="http://localhost:11434"
@@ -42,7 +42,7 @@ export function OllamaSettingsForm({
         {endpointError && (
           <p
             data-testid="provider-connection-error"
-            className="text-sm text-destructive min-w-0 [overflow-wrap:anywhere]"
+            className="text-sm text-destructive min-w-0 wrap-anywhere"
           >
             {endpointError}
           </p>

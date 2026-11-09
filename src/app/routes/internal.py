@@ -131,13 +131,40 @@ def register_internal_routes(app: FastAPI):
         methods=["POST"],
         tags=["internal"],
     )
+    app.add_api_route(
+        "/tasks/{task_id}",
+        tasks.delete_task,
+        methods=["DELETE"],
+        tags=["internal"],
+        responses={
+            200: {"model": tasks._DeletedTaskResponse},
+            404: {"model": tasks._TaskNotFoundResponse},
+            409: {"model": tasks._TaskInProgressResponse},
+        },
+    )
+    app.add_api_route(
+        "/tasks",
+        tasks.delete_all_terminal_tasks,
+        methods=["DELETE"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/tasks/{task_id}/files/cancel",
+        tasks.cancel_file,
+        methods=["POST"],
+        tags=["internal"],
+    )
 
     # Search endpoint
     app.add_api_route("/search", search.search, methods=["POST"], tags=["internal"])
+    app.add_api_route("/search/suggest", search.suggest, methods=["POST"], tags=["internal"])
 
     # File listing/search endpoints
     app.add_api_route("/files", files.list_files, methods=["GET"], tags=["internal"])
     app.add_api_route("/files/search", files.search_files, methods=["GET"], tags=["internal"])
+    app.add_api_route(
+        "/files/upload-histogram", files.upload_histogram, methods=["GET"], tags=["internal"]
+    )
 
     # Knowledge Filter endpoints
     app.add_api_route(
@@ -436,6 +463,18 @@ def register_internal_routes(app: FastAPI):
         "/models/ollama", models.get_ollama_models, methods=["GET"], tags=["internal"]
     )
     app.add_api_route("/models/ibm", models.get_ibm_models, methods=["POST"], tags=["internal"])
+    app.add_api_route(
+        "/models/watsonx_onprem/spaces",
+        models.get_watsonx_onprem_spaces,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    app.add_api_route(
+        "/models/{provider}/discover",
+        models.discover_provider_models,
+        methods=["POST"],
+        tags=["internal"],
+    )
     app.add_api_route(
         "/models/catalog", models.get_model_catalog, methods=["GET"], tags=["internal"]
     )

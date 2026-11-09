@@ -126,7 +126,7 @@ test.describe("Tasks Menu Functionality @33219224 , @34581216", () => {
     // Check task status for docling.pdf
     let result1 = await tasksMenu.waitForTaskCompletionAndGetLog();
 
-    if (result1.status === "Complete" || result1.status === "COMPLETED") {
+    if (result1.status === "Completed") {
       logger.info(`✅ SUCCESS: ${file1} - ${result1.statusLine}`);
     } else {
       logger.info(`❌ FAILED: ${file1} - ${result1.statusLine}`);
@@ -173,7 +173,7 @@ test.describe("Tasks Menu Functionality @33219224 , @34581216", () => {
     // Check task status for industry.csv
     let result2 = await tasksMenu.waitForTaskCompletionAndGetLog();
 
-    if (result2.status === "Complete" || result2.status === "COMPLETED") {
+    if (result2.status === "Completed") {
       logger.info(`✅ SUCCESS: ${file2} - ${result2.statusLine}`);
     } else {
       logger.info(`❌ FAILED: ${file2} - ${result2.statusLine}`);
@@ -193,14 +193,8 @@ test.describe("Tasks Menu Functionality @33219224 , @34581216", () => {
     // Close Tasks Menu
     await tasksMenu.close();
 
-    expect(
-      result1.status === "Complete" || result1.status === "COMPLETED",
-      result1.statusLine,
-    ).toBe(true);
-    expect(
-      result2.status === "Complete" || result2.status === "COMPLETED",
-      result2.statusLine,
-    ).toBe(true);
+    expect(result1.status === "Completed", result1.statusLine).toBe(true);
+    expect(result2.status === "Completed", result2.statusLine).toBe(true);
   });
 
   //  test('Negative: Cancel file upload from Tasks Menu and verify failed status', async ({ page, knowledge }) => {

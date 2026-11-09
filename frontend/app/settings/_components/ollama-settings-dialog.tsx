@@ -13,6 +13,10 @@ import { useGetOllamaModelsQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import OllamaLogo from "@/components/icons/ollama-logo";
+import {
+  canRemoveProvider,
+  isProviderConfigured,
+} from "@/components/models/model-helpers";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,14 +52,9 @@ const OllamaSettingsDialog = ({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const isOllamaConfigured = settings.providers?.ollama?.configured === true;
+  const isOllamaConfigured = isProviderConfigured(settings.providers, "ollama");
 
-  const otherProviderConfigured =
-    settings.providers?.openai?.configured === true ||
-    settings.providers?.anthropic?.configured === true ||
-    settings.providers?.watsonx?.configured === true;
-
-  const canRemoveOllama = isOllamaConfigured && otherProviderConfigured;
+  const canRemoveOllama = canRemoveProvider(settings.providers, "ollama");
 
   const methods = useForm<OllamaSettingsFormData>({
     mode: "onSubmit",
@@ -180,7 +179,7 @@ const OllamaSettingsDialog = ({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                 >
-                  <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
+                  <p className="rounded-lg border border-destructive p-4 min-w-0 wrap-anywhere">
                     {settingsMutation.error?.message}
                   </p>
                 </motion.div>
@@ -193,7 +192,7 @@ const OllamaSettingsDialog = ({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                   >
-                    <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
+                    <p className="rounded-lg border border-destructive p-4 min-w-0 wrap-anywhere">
                       {removeMutation.error?.message}
                     </p>
                   </motion.div>

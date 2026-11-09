@@ -1,4 +1,5 @@
 import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 export interface ApiKey {
   key_id: string;
@@ -13,9 +14,9 @@ export interface GetApiKeysResponse {
 }
 
 async function getApiKeys(): Promise<GetApiKeysResponse> {
-  const response = await fetch("/api/keys");
-  if (response.ok) {
-    return await response.json();
+  const response = await apiClient.get<GetApiKeysResponse>("/keys");
+  if (response.status >= 200 && response.status < 300) {
+    return response.data;
   }
   throw new Error("Failed to fetch API keys");
 }

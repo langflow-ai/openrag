@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+import { useCancelFileMutation } from "@/app/api/mutations/useCancelFileMutation";
 import { useCancelTaskMutation } from "@/app/api/mutations/useCancelTaskMutation";
 import type { SearchResult } from "@/app/api/queries/useGetSearchQuery";
 import {
@@ -28,16 +29,23 @@ import {
   getKnowledgeFileIdentity,
   inferTaskFileConnectorType,
 } from "@/lib/knowledge-table-state";
-import { getTaskFailureToastDescription } from "@/lib/task-error-display";
+import {
+  getTaskFailureToastDescription,
+  isFileCancelled,
+  resolveTaskFileError,
+} from "@/lib/task-error-display";
 import {
   didTaskReachCompleted,
   didTaskReachTerminalState,
   finalizeProcessingOverlaysForEnhancedTask,
   findTaskFileOverlayIndex,
+  getDuplicateContentFileCount,
   getEnhancedListDisappearedFilePaths,
   getFailedFileCount,
+  getSkippedFileCount,
   getSuccessfulFileCount,
   hasFailedFileEntries,
+  isDeletedAtSourceFile,
   isTaskInProgressStatus,
   isTerminalFailedTask,
 } from "@/lib/task-utils";
@@ -51,11 +59,18 @@ export interface TaskFile {
   source_url: string;
   size: number;
   connector_type: string;
-  status: "active" | "failed" | "processing";
+  status: "active" | "failed" | "processing" | "cancelled" | "skipped";
   task_id: string;
   created_at: string;
   updated_at: string;
   error?: string;
+  /**
+   * Skip reason forwarded from result.reason (e.g. "duplicate_content",
+   * "deleted_at_source"). Only set when status === "skipped".
+   */
+  skip_reason?: string;
+  /** Warning message surfaced for skipped files (e.g. duplicate_content). */
+  warning?: string;
   embedding_model?: string;
   embedding_dimensions?: number;
 }
@@ -71,6 +86,7 @@ interface TaskContextType {
   markTaskFilesProcessing: (taskId: string, sourceUrls: string[]) => void;
   refreshTasks: () => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
+  cancelFile: (taskId: string, filePath: string) => Promise<void>;
   isPolling: boolean;
   isFetching: boolean;
   isMenuOpen: boolean;
@@ -155,25 +171,42 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   const cancelTaskMutation = useCancelTaskMutation({
     onSuccess: (_data, variables) => {
-      // Immediately remove from React Query cache
+      // Transition the task to "cancelled" in cache rather than removing it, so
+      // the useEffect that watches `tasks` sees the pending→cancelled transition
+      // and runs the normal terminal-state cleanup (stops spinner, clears
+      // processing overlays, etc.).
       queryClient.setQueryData(
         [...TASKS_QUERY_KEY],
         (oldTasks: Task[] | undefined) => {
           if (!oldTasks) return [];
-          return oldTasks.filter((task) => task.task_id !== variables.taskId);
+          return oldTasks.map((task) => {
+            if (task.task_id !== variables.taskId) return task;
+            // Mark the task and every file in it as cancelled/failed so the existing
+            // terminal-state logic in the useEffect handles clean-up.
+            const updatedFiles = task.files
+              ? Object.fromEntries(
+                  Object.entries(task.files).map(([path, info]) => [
+                    path,
+                    info?.status === "pending" || info?.status === "running"
+                      ? {
+                          ...info,
+                          status: "failed" as const,
+                          error: "Task cancelled by user",
+                        }
+                      : info,
+                  ]),
+                )
+              : task.files;
+            // Note: the useEffect that processes tasks maps "failed" file entries
+            // to "cancelled" TaskFile status when the parent task is "cancelled",
+            // so no extra mapping is needed here.
+            return {
+              ...task,
+              status: "cancelled" as const,
+              files: updatedFiles,
+            };
+          });
         },
-      );
-
-      clearTaskMetadata(variables.taskId);
-
-      // Update file to display as cancelled
-      setFiles((prevFiles) =>
-        prevFiles.map((file) => {
-          if (file.task_id === variables.taskId) {
-            return { ...file, status: "failed" };
-          }
-          return file;
-        }),
       );
 
       toast.success("Task cancelled", {
@@ -184,6 +217,54 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       toast.error("Failed to cancel task", {
         description: error.message,
       });
+    },
+  });
+
+  const cancelFileMutation = useCancelFileMutation({
+    onSuccess: (_data, variables) => {
+      queryClient.setQueryData(
+        [...TASKS_QUERY_KEY],
+        (oldTasks: Task[] | undefined) => {
+          if (!oldTasks) return [];
+          return oldTasks.map((task) => {
+            if (task.task_id !== variables.taskId) return task;
+            const updatedFiles = task.files
+              ? Object.fromEntries(
+                  Object.entries(task.files).map(([path, info]) => {
+                    if (path === variables.filePath) {
+                      return [
+                        path,
+                        {
+                          ...info,
+                          status: "failed" as const,
+                          error: "File cancelled by user",
+                        },
+                      ];
+                    }
+                    return [path, info];
+                  }),
+                )
+              : task.files;
+            return { ...task, files: updatedFiles };
+          });
+        },
+      );
+
+      toast.success("File cancelled", {
+        description: "File has been cancelled successfully",
+      });
+    },
+    onError: (error) => {
+      // Handle the case where the file already finished processing
+      if (error.message.includes("File not found or cannot be cancelled")) {
+        toast.info("File already completed", {
+          description: "This file has already finished processing",
+        });
+      } else {
+        toast.error("Failed to cancel file", {
+          description: error.message,
+        });
+      }
     },
   });
 
@@ -301,9 +382,33 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               // Use the filename from backend if available, otherwise extract from path
               const fileName =
                 fileInfoEntry.filename || filePath.split("/").pop() || filePath;
+
+              // Source-deleted cleanup is completed, not an ingest. Drop any
+              // processing overlay so the knowledge table does not show a ghost row.
+              if (isDeletedAtSourceFile(fileInfoEntry)) {
+                setFiles((prevFiles) => {
+                  const existingFileIndex = findTaskFileOverlayIndex(
+                    prevFiles,
+                    currentTask.task_id,
+                    filePath,
+                    fileName,
+                  );
+                  if (existingFileIndex < 0) {
+                    return prevFiles;
+                  }
+                  return prevFiles.filter(
+                    (_, index) => index !== existingFileIndex,
+                  );
+                });
+                return;
+              }
+
               const fileStatus = fileInfoEntry.status ?? "processing";
 
-              // Map backend file status to our TaskFile status
+              // Map backend file status to our TaskFile status.
+              // When the parent task is "cancelled", failed files are shown as
+              // "cancelled" rather than "failed" so the table row reads
+              // "Cancelled" instead of "Failed".
               let mappedStatus: TaskFile["status"];
               switch (fileStatus) {
                 case "pending":
@@ -314,34 +419,43 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                   mappedStatus = "active";
                   break;
                 case "failed":
-                  mappedStatus = "failed";
+                  mappedStatus =
+                    currentTask.status === "cancelled" ? "cancelled" : "failed";
+                  break;
+                case "skipped":
+                  mappedStatus = "skipped";
                   break;
                 default:
                   mappedStatus = "processing";
               }
 
               const fileError = (() => {
-                if (
-                  typeof fileInfoEntry.user_facing_message === "string" &&
-                  fileInfoEntry.user_facing_message.trim().length > 0
-                ) {
-                  return fileInfoEntry.user_facing_message.trim();
-                }
-                if (
-                  typeof fileInfoEntry.error === "string" &&
-                  fileInfoEntry.error.trim().length > 0
-                ) {
-                  return fileInfoEntry.error.trim();
-                }
-                if (
-                  mappedStatus === "failed" &&
-                  typeof currentTask.error === "string" &&
-                  currentTask.error.trim().length > 0
-                ) {
-                  return currentTask.error.trim();
-                }
-                return undefined;
+                const resolved = resolveTaskFileError(
+                  fileInfoEntry,
+                  mappedStatus === "failed" ? currentTask.error : undefined,
+                );
+                return resolved === "Unknown error" ? undefined : resolved;
               })();
+
+              // Extract skip reason and warning from result (set by the backend).
+              // Only surface duplicate-specific UI for duplicate_content skips;
+              // other reasons (e.g. deleted_at_source) are silent/informational.
+              const skipReason =
+                mappedStatus === "skipped"
+                  ? ((
+                      fileInfoEntry.result as
+                        | Record<string, unknown>
+                        | undefined
+                    )?.reason as string | undefined)
+                  : undefined;
+              const fileWarning =
+                mappedStatus === "skipped" &&
+                skipReason === "duplicate_content" &&
+                typeof (fileInfoEntry.result as Record<string, unknown>)
+                  ?.warning === "string"
+                  ? ((fileInfoEntry.result as Record<string, unknown>)
+                      .warning as string)
+                  : undefined;
 
               setFiles((prevFiles) => {
                 const existingFileIndex = findTaskFileOverlayIndex(
@@ -381,6 +495,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                       ? fileInfoEntry.updated_at
                       : now,
                   error: fileError,
+                  skip_reason: skipReason,
+                  warning: fileWarning,
                   embedding_model:
                     typeof fileInfoEntry.embedding_model === "string"
                       ? fileInfoEntry.embedding_model
@@ -438,8 +554,17 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           currentTask.status === "completed"
         ) {
           const successfulFiles = getSuccessfulFileCount(currentTask);
+          const skippedFiles = getSkippedFileCount(currentTask);
+          const duplicateFiles = getDuplicateContentFileCount(currentTask);
           const failedFiles = getFailedFileCount(currentTask);
           const isTotalFailure = failedFiles > 0 && successfulFiles === 0;
+
+          // Check if all failures are user cancellations
+          const allFailuresAreCancellations = currentTask.files
+            ? Object.values(currentTask.files).every(
+                (file) => file.status !== "failed" || isFileCancelled(file),
+              )
+            : false;
 
           const firstFile = currentTask.files
             ? Object.values(currentTask.files)[0]
@@ -451,7 +576,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             taskSourcesRef.current.get(currentTask.task_id) ||
             (connectorType === "local" ? "file" : "connector");
 
-          if (isTotalFailure) {
+          if (isTotalFailure && !allFailuresAreCancellations) {
             trackProcessFailure({
               processType: "Ingestion",
               process: "Document Upload",
@@ -482,11 +607,29 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
           let description = "";
           if (failedFiles > 0) {
+            if (allFailuresAreCancellations) {
+              description = `${failedFiles} file${
+                failedFiles !== 1 ? "s" : ""
+              } cancelled`;
+            } else {
+              description = `${successfulFiles} file${
+                successfulFiles !== 1 ? "s" : ""
+              } uploaded successfully, ${failedFiles} file${
+                failedFiles !== 1 ? "s" : ""
+              } failed`;
+            }
+          } else if (duplicateFiles > 0 && successfulFiles === 0) {
+            // All files were duplicate-skipped — no new content was indexed.
+            description = `${duplicateFiles} file${
+              duplicateFiles !== 1 ? "s" : ""
+            } skipped — duplicate content already in knowledge base`;
+          } else if (duplicateFiles > 0) {
+            // Mix of uploaded and skipped.
             description = `${successfulFiles} file${
               successfulFiles !== 1 ? "s" : ""
-            } uploaded successfully, ${failedFiles} file${
-              failedFiles !== 1 ? "s" : ""
-            } failed`;
+            } uploaded successfully, ${duplicateFiles} file${
+              duplicateFiles !== 1 ? "s" : ""
+            } skipped (duplicate content)`;
           } else {
             description = `${successfulFiles} file${
               successfulFiles !== 1 ? "s" : ""
@@ -501,9 +644,23 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 setIsRecentTasksExpanded(true);
               },
             };
-            if (isTotalFailure) {
+            if (isTotalFailure && !allFailuresAreCancellations) {
               toast.error("Task failed", {
                 description: getTaskFailureToastDescription(currentTask),
+                action: toastAction,
+              });
+            } else if (allFailuresAreCancellations && failedFiles > 0) {
+              toast.info("File ingestion cancelled", {
+                description,
+                action: toastAction,
+              });
+            } else if (
+              duplicateFiles > 0 &&
+              successfulFiles === 0 &&
+              failedFiles === 0
+            ) {
+              toast.warning("Duplicate file skipped", {
+                description,
                 action: toastAction,
               });
             } else {
@@ -577,6 +734,16 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                   }
                   if (file.status === "failed") {
                     return completedHasFailures;
+                  }
+                  // Keep duplicate-content skipped overlays so the user sees the
+                  // "Duplicate" badge — unless the same filename was later
+                  // successfully indexed (a subsequent upload supersedes it).
+                  if (file.status === "skipped") {
+                    const filename = file.filename?.trim();
+                    if (filename && indexedFilenames.has(filename)) {
+                      return false;
+                    }
+                    return true;
                   }
                   if (file.status === "processing") {
                     return false;
@@ -694,9 +861,16 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   const cancelTask = useCallback(
     async (taskId: string) => {
-      cancelTaskMutation.mutate({ taskId });
+      await cancelTaskMutation.mutateAsync({ taskId });
     },
     [cancelTaskMutation],
+  );
+
+  const cancelFile = useCallback(
+    async (taskId: string, filePath: string) => {
+      await cancelFileMutation.mutateAsync({ taskId, filePath });
+    },
+    [cancelFileMutation],
   );
 
   const toggleMenu = useCallback(() => {
@@ -730,6 +904,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     markTaskFilesProcessing,
     refreshTasks,
     cancelTask,
+    cancelFile,
     isPolling,
     isFetching,
     isMenuOpen,

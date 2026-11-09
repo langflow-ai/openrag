@@ -1,5 +1,7 @@
 from time import perf_counter
 
+import httpx
+
 from api.schemas.status import ComponentBuild, ComponentState, ComponentStatus
 from config.settings import DOCLING_SERVE_URL, LANGFLOW_URL, clients, get_openrag_config
 from services.component_logs import record_check_result
@@ -8,7 +10,36 @@ from utils.version_utils import OPENRAG_VERSION
 
 logger = get_logger(__name__)
 
-_CHECK_TIMEOUT_S = 2.0
+# Per-phase httpx budget (connect, read, ... each), not a total deadline. Keep it well
+# below status_service.CHECK_TIMEOUT_S, or that outer deadline cancels the check first and
+# the specific diagnosis below is replaced by a generic UNKNOWN.
+_CHECK_TIMEOUT_S = 5.0
+
+
+def _record_http_check_failure(
+    component: str,
+    exc: Exception,
+    target_url: str,
+    *,
+    unreachable_message: str,
+    slow_message: str,
+) -> tuple[ComponentState, str, str]:
+    """Classify a failed HTTP probe and record it; returns (state, message, last_error).
+
+    A timeout after the connection opened means the service is busy, not down: a
+    single-worker Langflow or docling-serve stalls for seconds under ingest load and
+    then catches up. That reads as DEGRADED. A connect timeout or any other failure
+    means nothing answered, which is UNHEALTHY.
+    """
+    if isinstance(exc, httpx.TimeoutException) and not isinstance(exc, httpx.ConnectTimeout):
+        state, message = ComponentState.DEGRADED, slow_message
+        # str() of an httpx timeout is usually empty; say how long we waited instead.
+        detail = f"{type(exc).__name__} after {_CHECK_TIMEOUT_S}s — target: {target_url}"
+    else:
+        state, message = ComponentState.UNHEALTHY, unreachable_message
+        detail = f"{type(exc).__name__}: {exc} — target: {target_url}"
+    record_check_result(component, state, message, detail=detail)
+    return state, message, detail
 
 
 async def check_openrag_backend() -> ComponentStatus:
@@ -109,16 +140,14 @@ async def check_docling() -> ComponentStatus:
             )
             last_error = message
     except Exception as e:
-        logger.warning("Docling status check failed", error=str(e))
-        message = "Docling Serve unreachable"
-        status = ComponentState.UNHEALTHY
-        record_check_result(
+        logger.warning("Docling status check failed", error_type=type(e).__name__, error=str(e))
+        status, message, last_error = _record_http_check_failure(
             "docling",
-            ComponentState.UNHEALTHY,
-            message,
-            detail=f"{type(e).__name__}: {e} — target: {target_url}",
+            e,
+            target_url,
+            unreachable_message="Docling Serve unreachable",
+            slow_message="Docling Serve is slow to respond",
         )
-        last_error = f"{type(e).__name__}: {e} — target: {target_url}"
 
     return ComponentStatus(
         name="docling",
@@ -174,16 +203,14 @@ async def check_langflow() -> ComponentStatus:
             )
             last_error = message
     except Exception as e:
-        logger.warning("Langflow status check failed", error=str(e))
-        message = "Langflow is unreachable"
-        status = ComponentState.UNHEALTHY
-        record_check_result(
+        logger.warning("Langflow status check failed", error_type=type(e).__name__, error=str(e))
+        status, message, last_error = _record_http_check_failure(
             "langflow",
-            ComponentState.UNHEALTHY,
-            message,
-            detail=f"{type(e).__name__}: {e} — target: {target_url}",
+            e,
+            target_url,
+            unreachable_message="Langflow is unreachable",
+            slow_message="Langflow is slow to respond",
         )
-        last_error = f"{type(e).__name__}: {e} — target: {target_url}"
 
     return ComponentStatus(
         name="langflow",

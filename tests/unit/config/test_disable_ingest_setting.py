@@ -104,6 +104,7 @@ async def test_traditional_upload_ingest_task(monkeypatch):
         session_manager=mock_session_manager,
         task_service=mock_task_service,
         user=mock_user,
+        allow_anonymous_delete=True,
     )
 
     assert response.status_code == 202
@@ -168,6 +169,7 @@ async def test_langflow_upload_ingest_task(monkeypatch):
         session_manager=mock_session_manager,
         task_service=mock_task_service,
         user=mock_user,
+        allow_anonymous_delete=True,
     )
 
     assert response.status_code == 202
@@ -230,6 +232,7 @@ async def test_traditional_upload_ingest_mime_fallback(monkeypatch):
         session_manager=mock_session_manager,
         task_service=mock_task_service,
         user=mock_user,
+        allow_anonymous_delete=True,
     )
 
     assert response.status_code == 202

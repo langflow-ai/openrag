@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -30,6 +31,18 @@ async def test_langflow_chat_passes_owner_metadata(monkeypatch):
     monkeypatch.setattr(
         "utils.langflow_headers.add_provider_credentials_to_headers",
         AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "config.settings.get_openrag_config",
+        lambda: SimpleNamespace(
+            knowledge=SimpleNamespace(
+                embedding_model="text-embedding-3-small",
+                embedding_provider=None,
+                chunk_size=1000,
+                chunk_overlap=200,
+                index_name="documents",
+            )
+        ),
     )
 
     # Mock async_langflow_chat to prevent actual network/langflow calls
@@ -66,6 +79,7 @@ async def test_langflow_chat_passes_owner_metadata(monkeypatch):
     assert context.owner == "user-123"
     assert context.owner_name == "Test User"
     assert context.owner_email == "test@example.com"
+    assert context.embedding_provider == "openai"
 
 
 @pytest.mark.asyncio
@@ -85,6 +99,18 @@ async def test_upload_context_chat_passes_owner_metadata(monkeypatch):
     monkeypatch.setattr(
         "utils.langflow_headers.add_provider_credentials_to_headers",
         AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "config.settings.get_openrag_config",
+        lambda: SimpleNamespace(
+            knowledge=SimpleNamespace(
+                embedding_model="text-embedding-3-small",
+                embedding_provider=None,
+                chunk_size=1000,
+                chunk_overlap=200,
+                index_name="documents",
+            )
+        ),
     )
 
     # Mock async_langflow to prevent actual network/langflow calls
@@ -123,3 +149,4 @@ async def test_upload_context_chat_passes_owner_metadata(monkeypatch):
     assert context.owner == "user-456"
     assert context.owner_name == "Another User"
     assert context.owner_email == "another@example.com"
+    assert context.embedding_provider == "openai"

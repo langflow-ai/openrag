@@ -42,6 +42,7 @@ async def test_langflow_upload_passes_preview_mode_to_task_service():
             session_manager=MagicMock(),
             task_service=mock_task_service,
             user=user,
+            allow_anonymous_delete=True,
         )
 
     assert response.status_code == 202
@@ -91,6 +92,8 @@ async def test_upload_ingest_router_ignores_preview_when_disabled():
             task_service=mock_task_service,
             document_service=MagicMock(),
             user=user,
+            request=MagicMock(),
+            rbac=MagicMock(has_permission=AsyncMock(return_value=True)),
         )
 
     assert response.status_code == 202

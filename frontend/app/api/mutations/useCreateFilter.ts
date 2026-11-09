@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 import { KnowledgeFilter } from "../queries/useGetFiltersSearchQuery";
 
 export interface CreateFilterRequest {
@@ -16,27 +17,23 @@ export interface CreateFilterResponse {
 async function createFilter(
   data: CreateFilterRequest,
 ): Promise<CreateFilterResponse> {
-  const response = await fetch("/api/knowledge-filter", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const response = await apiClient.post<CreateFilterResponse>(
+    "/knowledge-filter",
+    {
       name: data.name,
       description: data.description ?? "",
       queryData: data.queryData,
-    }),
-  });
+    },
+  );
 
-  const json = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
+  if (response.status < 200 || response.status >= 300) {
     const errorMessage =
-      (json && (json.error as string)) || "Failed to create knowledge filter";
+      (response.data as { error?: string }).error ||
+      "Failed to create knowledge filter";
     throw new Error(errorMessage);
   }
 
-  return json as CreateFilterResponse;
+  return response.data;
 }
 
 export const useCreateFilter = () => {

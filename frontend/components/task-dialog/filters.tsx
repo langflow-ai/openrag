@@ -102,9 +102,9 @@ function FileTypeMenu({
             className={cn(
               "px-2",
               isCloudBrand &&
-                "bg-layer-contextual text-layer-contextual-foreground hover:bg-muted focus:bg-muted data-[highlighted]:bg-muted",
+                "bg-layer-contextual text-layer-contextual-foreground hover:bg-muted focus:bg-muted data-highlighted:bg-muted",
               fileType === value &&
-                "bg-muted text-foreground focus:bg-muted data-[highlighted]:bg-muted",
+                "bg-muted text-foreground focus:bg-muted data-highlighted:bg-muted",
             )}
           >
             {label}
@@ -136,8 +136,8 @@ function TaskDialogSearchField({
       icon={<Search className="h-4 w-4" aria-hidden />}
       inputClassName={
         isCloudBrand
-          ? "h-10 min-w-0 !rounded-none !border-0 bg-layer-contextual text-layer-contextual-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-          : "h-10 rounded-md !bg-canvas"
+          ? "h-10 min-w-0 rounded-none! border-0! bg-layer-contextual text-layer-contextual-foreground placeholder:text-muted-foreground focus:outline-hidden disabled:cursor-not-allowed disabled:opacity-50"
+          : "h-10 rounded-md bg-canvas!"
       }
     />
   );

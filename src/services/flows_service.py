@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from cachetools import LRUCache
@@ -18,12 +18,14 @@ from config.settings import (
     clients,
     get_openrag_config,
 )
+from utils.langflow_utils import enable_mcp_none_for_project
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
 
 _UNSET = object()
+_FLOW_FILE_MTIME_TAG_PREFIX = "openrag:file-mtime:"
 
 
 class FlowsService:
@@ -517,7 +519,10 @@ class FlowsService:
         """Unlock a flow before making changes."""
         try:
             response = await clients.langflow_request(
-                "PATCH", f"/api/v1/flows/{flow_id}", json={"locked": False}
+                "PATCH",
+                f"/api/v1/flows/{flow_id}",
+                json={"locked": False},
+                idempotent=True,
             )
             if response.status_code not in (200, 404):
                 logger.warning(
@@ -530,7 +535,10 @@ class FlowsService:
         """Lock a flow after making changes."""
         try:
             response = await clients.langflow_request(
-                "PATCH", f"/api/v1/flows/{flow_id}", json={"locked": True}
+                "PATCH",
+                f"/api/v1/flows/{flow_id}",
+                json={"locked": True},
+                idempotent=True,
             )
             if response.status_code not in (200, 404):
                 logger.warning(
@@ -552,6 +560,7 @@ class FlowsService:
         try:
             with open(flow_path) as f:
                 flow_data = json.load(f)
+            self._stamp_flow_with_file_mtime(flow_data, flow_path)
             logger.info(
                 f"Successfully loaded flow data for {flow_type} from {os.path.basename(flow_path)}"
             )
@@ -562,14 +571,26 @@ class FlowsService:
 
         await self._unlock_flow(flow_id)
 
-        # Make PATCH request to Langflow API to update the flow using shared client
+        # Replace the complete flow so the stamped source timestamp is persisted.
         try:
             response = await clients.langflow_request(
-                "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
+                "PUT",
+                f"/api/v1/flows/{flow_id}",
+                json=flow_data,
+                idempotent=True,
             )
 
             if response.status_code == 200:
                 await self._lock_flow(flow_id)
+                try:
+                    res_json = response.json()
+                    project_id = res_json.get("folder_id")
+                    if project_id and (
+                        flow_type == "url_ingest" or flow_id == LANGFLOW_URL_INGEST_FLOW_ID
+                    ):
+                        await enable_mcp_none_for_project(project_id)
+                except Exception as err:
+                    logger.warning(f"Failed to enable unauthenticated MCP for {flow_type}: {err}")
                 logger.info(
                     f"Successfully reset {flow_type} flow",
                     flow_id=flow_id,
@@ -719,7 +740,10 @@ class FlowsService:
 
         # Update the flow via PATCH request
         patch_response = await clients.langflow_request(
-            "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
+            "PATCH",
+            f"/api/v1/flows/{flow_id}",
+            json=flow_data,
+            idempotent=True,
         )
 
         if patch_response.status_code != 200:
@@ -867,7 +891,13 @@ class FlowsService:
         self, flow_type: str, flow_id: str, flow_data: dict[str, Any] | None = None
     ) -> dict[str, Any] | None:
         """
-        Check if a flow has a newer version on disk compared to Langflow.
+        Check whether the source flow file is newer than the version stored in Langflow.
+
+        The backend stamps each uploaded flow with an
+        ``openrag:file-mtime:<nanoseconds>`` tag. Comparing the current file
+        timestamp to that tag avoids relying on Langflow's unrelated
+        ``updated_at`` value.
+
         Returns flow update info dict if an update is available, None otherwise.
         """
         if not flow_id:
@@ -875,7 +905,12 @@ class FlowsService:
         flow_path = self._find_flow_file_by_id(flow_id)
         if not flow_path or not os.path.exists(flow_path):
             return None
-        local_mtime = os.path.getmtime(flow_path)
+
+        try:
+            source_mtime = os.stat(flow_path).st_mtime_ns
+        except OSError as error:
+            logger.warning(f"Could not stat bundled flow {flow_path} for update check: {error}")
+            return None
 
         if flow_data is None:
             try:
@@ -887,26 +922,42 @@ class FlowsService:
                 logger.error(f"Failed to fetch flow {flow_id} for update check: {e}")
                 return None
 
-        langflow_updated_at_str = flow_data.get("updated_at")
-        langflow_mtime: float = 0.0
-        if langflow_updated_at_str:
-            if langflow_updated_at_str.endswith("Z"):
-                langflow_updated_at_str = langflow_updated_at_str[:-1] + "+00:00"
-            try:
-                dt = datetime.fromisoformat(langflow_updated_at_str)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=UTC)
-                langflow_mtime = dt.timestamp()
-            except ValueError:
-                pass
-
-        if local_mtime > langflow_mtime + 1.0:
+        stored_mtime = self._get_flow_file_mtime_tag(flow_data)
+        if stored_mtime is None or source_mtime > stored_mtime:
             is_locked = flow_data.get("locked", False)
             return {
                 "flow_type": flow_type,
                 "flow_id": flow_id,
                 "is_custom": not is_locked,
             }
+        return None
+
+    @staticmethod
+    def _stamp_flow_with_file_mtime(flow_data: dict[str, Any], flow_path: str) -> None:
+        """Embed the source flow's modification timestamp into its Langflow tags."""
+        tags = flow_data.get("tags")
+        if tags is None:
+            tags = []
+        if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
+            raise ValueError(f"Flow {flow_data.get('id', '<unknown>')} has invalid tags")
+        flow_data["tags"] = [
+            *[tag for tag in tags if not tag.startswith(_FLOW_FILE_MTIME_TAG_PREFIX)],
+            f"{_FLOW_FILE_MTIME_TAG_PREFIX}{os.stat(flow_path).st_mtime_ns}",
+        ]
+
+    @staticmethod
+    def _get_flow_file_mtime_tag(flow_data: dict[str, Any]) -> int | None:
+        """Return the source-file modification timestamp recorded on a Langflow flow."""
+        tags = flow_data.get("tags")
+        if not isinstance(tags, list):
+            return None
+        for tag in tags:
+            if not isinstance(tag, str) or not tag.startswith(_FLOW_FILE_MTIME_TAG_PREFIX):
+                continue
+            try:
+                return int(tag.removeprefix(_FLOW_FILE_MTIME_TAG_PREFIX))
+            except ValueError:
+                continue
         return None
 
     async def ensure_flows_exist(self) -> set[str]:
@@ -937,6 +988,12 @@ class FlowsService:
                     logger.info(
                         f"Flow {flow_type} (ID: {flow_id}) already exists, skipping creation"
                     )
+                    try:
+                        project_id = response.json().get("folder_id")
+                        if project_id and flow_type == "url_ingest":
+                            await enable_mcp_none_for_project(project_id)
+                    except Exception as err:
+                        logger.warning(f"Failed to check MCP project auth for {flow_type}: {err}")
                     return None
 
                 if response.status_code != 404:
@@ -955,6 +1012,7 @@ class FlowsService:
 
                 with open(flow_path) as f:
                     flow_data = json.load(f)
+                self._stamp_flow_with_file_mtime(flow_data, flow_path)
 
                 response = await clients.langflow_request(
                     "PUT", f"/api/v1/flows/{flow_id}", json=flow_data
@@ -963,6 +1021,12 @@ class FlowsService:
                     logger.info(
                         f"Created {flow_type} flow (ID: {flow_id}) from {os.path.basename(flow_path)}"
                     )
+                    try:
+                        project_id = response.json().get("folder_id")
+                        if project_id and flow_type == "url_ingest":
+                            await enable_mcp_none_for_project(project_id)
+                    except Exception as err:
+                        logger.warning(f"Failed to check MCP project auth for {flow_type}: {err}")
                     return flow_type
                 else:
                     logger.warning(
@@ -993,6 +1057,23 @@ class FlowsService:
                 logger.error(f"Failed to reapply settings for newly created flows: {e}")
 
         return created_flow_types
+
+    async def enable_mcp_none_for_url_ingest_flow(self) -> bool:
+        """Configure auth_type='none' for MCP on the URL ingest flow project."""
+        flow_id = LANGFLOW_URL_INGEST_FLOW_ID
+        if not flow_id:
+            return False
+        try:
+            resp = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+            if resp.status_code == 200:
+                project_id = resp.json().get("folder_id")
+                if project_id:
+                    return await enable_mcp_none_for_project(project_id)
+        except Exception as e:
+            logger.warning(
+                f"Error enabling MCP auth_type='none' for URL ingest flow {flow_id}: {e}"
+            )
+        return False
 
     async def change_langflow_model_value(
         self,
@@ -1280,7 +1361,10 @@ class FlowsService:
 
         # PATCH the updated flow
         response = await clients.langflow_request(
-            "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
+            "PATCH",
+            f"/api/v1/flows/{flow_id}",
+            json=flow_data,
+            idempotent=True,
         )
 
         if response.status_code != 200:

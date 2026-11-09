@@ -1,14 +1,28 @@
 import asyncio
 import os
 import random
+import re
 import time
 import traceback
 import uuid
 from collections.abc import Coroutine
 from typing import Any, TypeVar
 
-from models.tasks import DoclingPhaseStatus, FileTask, IngestionPhase, TaskStatus, UploadTask
+from models.tasks import (
+    DoclingPhaseStatus,
+    FileTask,
+    IngestionPhase,
+    TaskDeleteResult,
+    TaskStatus,
+    UploadTask,
+)
+from observability.tracing import trace_context
 from session_manager import AnonymousUser
+from utils.filename_claims import (
+    INFLIGHT_CLAIM_WINNER_FAILED_ERROR,
+    claim_holder,
+    filename_claims,
+)
 from utils.gpu_detection import get_worker_count
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
@@ -82,6 +96,7 @@ def _is_ocr_required_file(filename: str) -> bool:
 
 _TASK_CANCELLATION_ERROR_MARKERS = (
     "task cancelled by user",
+    "file cancelled by user",
     "file processing task cancelled",
 )
 
@@ -89,6 +104,60 @@ _TASK_CANCELLATION_ERROR_MARKERS = (
 def _is_task_cancellation_error(error: str) -> bool:
     lowered = error.lower()
     return any(marker in lowered for marker in _TASK_CANCELLATION_ERROR_MARKERS)
+
+
+# opensearch-py renders transport failures as "ClassName(<status>, ...)". For the
+# by-query APIs (_update_by_query / _delete_by_query) the response carries no
+# top-level "error" key, so Connection._raise_error falls back to using the whole
+# JSON response body as the exception message — several hundred characters of
+# payload where a reason string would normally be.
+#
+# Classifying these early matters twice over: an infrastructure fault never
+# reaches the UI as a raw exception repr, and the JSON body cannot trip the
+# substring heuristics further down (a mapper_parsing_exception body contains
+# "failed to parse", which would otherwise read as a corrupted file).
+#
+# ConnectionError / ConnectionTimeout are deliberately excluded: they render with
+# a different __str__ and are already covered by _is_transient_connectivity_error.
+_OPENSEARCH_TRANSPORT_ERROR_RE = re.compile(
+    r"\b(?:ConflictError|NotFoundError|RequestError|TransportError"
+    r"|AuthenticationException|AuthorizationException)\((\d{3})[,)]"
+)
+
+
+def _opensearch_failure_metadata(error: str) -> dict | None:
+    """Classify an opensearch-py transport failure surfaced as a task error.
+
+    Returns None when the error is not an OpenSearch transport failure, so the
+    caller falls through to the existing classification branches.
+    """
+    if not error:
+        return None
+    match = _OPENSEARCH_TRANSPORT_ERROR_RE.search(error)
+    if not match:
+        return None
+
+    status = match.group(1)
+    if status == "409":
+        message = (
+            "The search index was busy and this change conflicted with another "
+            "update. Nothing is wrong with the file — retry ingestion."
+        )
+    else:
+        message = (
+            f"The search index rejected this document (OpenSearch error {status}). "
+            "This is an infrastructure problem, not a problem with the file. "
+            "Retry ingestion, and check the backend logs if it persists."
+        )
+    # RETRYABLE across the board: of the two available values, USER_ACTIONABLE
+    # would be actively wrong — there is nothing the uploader can change about
+    # their file to fix a search-index fault.
+    return {
+        "component": "opensearch",
+        "failure_phase": "indexing",
+        "user_facing_message": message,
+        "actionable_by": "RETRYABLE",
+    }
 
 
 def _provider_credential_failure_metadata(error: str) -> dict | None:
@@ -109,6 +178,32 @@ def _provider_credential_failure_metadata(error: str) -> dict | None:
         "component": "openrag",
         "failure_phase": "embedding",
         "user_facing_message": cleaned,
+        "actionable_by": "USER_ACTIONABLE",
+    }
+
+
+def _context_window_failure_metadata(error: str) -> dict | None:
+    """Classify a chunk the embedding model rejected as longer than its input limit."""
+    from api.provider_validation import context_window_token_counts, is_context_window_error
+
+    if not is_context_window_error(error):
+        return None
+
+    limit, requested = context_window_token_counts(error)
+    if limit and requested:
+        size = f" ({requested} tokens; the limit is {limit})"
+    elif limit:
+        size = f" (the limit is {limit} tokens)"
+    else:
+        size = ""
+    return {
+        "component": "openrag",
+        "failure_phase": "embedding",
+        "user_facing_message": (
+            f"A section of this document is longer than the embedding model accepts{size}. "
+            "Try a smaller chunk size or an embedding model with a larger input limit, "
+            "then retry ingestion."
+        ),
         "actionable_by": "USER_ACTIONABLE",
     }
 
@@ -198,6 +293,8 @@ class TaskService:
         # Locks for task counter updates, keyed by task_id
         # Kept separate from UploadTask to maintain serialization compatibility
         self._task_locks: dict[str, asyncio.Lock] = {}
+        # Track individual file processing tasks for cancellation: (task_id, file_path) -> asyncio.Task
+        self._file_tasks: dict[tuple[str, str], asyncio.Task] = {}
         # Global semaphore to limit concurrent file processing across all tasks.
         # TaskService is a singleton, so this limits concurrency system-wide.
         self._worker_count = get_worker_count()
@@ -276,8 +373,16 @@ class TaskService:
         replace_duplicates: bool = False,
         settings: dict | None = None,
         preview_mode: bool = False,
+        *,
+        allow_anonymous_delete: bool,
+        existing_task_id: str | None = None,
     ) -> str:
-        """Create a new upload task for bulk file processing"""
+        """Create a new upload task for bulk file processing.
+
+        ``allow_anonymous_delete`` is the uploading user's resolved
+        ``knowledge:delete:anonymous`` and has no default; see
+        ``TaskProcessor.delete_document_by_filename``.
+        """
         # Use default DocumentFileProcessor with user context
         from models.processors import DocumentFileProcessor
 
@@ -292,6 +397,7 @@ class TaskService:
             replace_duplicates=replace_duplicates,
             session_manager=self.session_manager,
             settings=settings,
+            allow_anonymous_delete=allow_anonymous_delete,
         )
         return await self.create_custom_task(
             user_id,
@@ -300,6 +406,7 @@ class TaskService:
             original_filenames=original_filenames,
             temp_file_paths=file_paths,
             preview_mode=preview_mode,
+            existing_task_id=existing_task_id,
         )
 
     async def create_langflow_upload_task(
@@ -320,8 +427,15 @@ class TaskService:
         existing_task_id: str = None,
         temp_file_paths: list | None = None,
         preview_mode: bool = False,
+        *,
+        allow_anonymous_delete: bool,
     ) -> str:
-        """Create a new upload task for Langflow file processing with upload and ingest"""
+        """Create a new upload task for Langflow file processing with upload and ingest.
+
+        ``allow_anonymous_delete`` is the uploading user's resolved
+        ``knowledge:delete:anonymous`` and has no default; see
+        ``TaskProcessor.delete_document_by_filename``.
+        """
         # Use LangflowFileProcessor with user context
         from models.processors import LangflowFileProcessor
 
@@ -339,6 +453,7 @@ class TaskService:
             connector_type=connector_type,
             docling_polling_service=self.docling_polling_service,
             preview_mode=preview_mode,
+            allow_anonymous_delete=allow_anonymous_delete,
         )
         return await self.create_custom_task(
             user_id,
@@ -349,6 +464,54 @@ class TaskService:
             temp_file_paths=temp_file_paths if temp_file_paths is not None else file_paths,
             preview_mode=preview_mode,
         )
+
+    def record_rejected_uploads(
+        self,
+        user_id: str,
+        rejections: list[tuple[str, int]],
+        *,
+        task_id: str | None = None,
+    ) -> str:
+        """Keep files the client did not send because they exceed the upload limit.
+
+        Attached to ``task_id`` when that task exists, already counted as
+        failed, so the panel shows them after the toasts are gone. Otherwise a
+        completed task that contains only these failures.
+        """
+        from utils.upload_limits import max_upload_mb, upload_too_large_message
+
+        if not rejections:
+            raise ValueError("rejections must not be empty")
+
+        limit_mb = max_upload_mb()
+        store_user_id = user_id or AnonymousUser().user_id
+        upload_task = self._find_upload_task(task_id) if task_id else None
+        created = upload_task is None
+        if upload_task is None:
+            upload_task = UploadTask(
+                task_id=task_id or str(uuid.uuid4()),
+                total_files=0,
+                status=TaskStatus.COMPLETED,
+            )
+            if store_user_id not in self.task_store:
+                self.task_store[store_user_id] = {}
+            self.task_store[store_user_id][upload_task.task_id] = upload_task
+
+        for index, (filename, size_bytes) in enumerate(rejections):
+            key = f"over-limit:{upload_task.task_id}:{index}:{filename}"
+            upload_task.file_tasks[key] = FileTask(
+                file_path=key,
+                filename=filename,
+                status=TaskStatus.FAILED,
+                error=upload_too_large_message(filename, size_bytes, limit_mb),
+            )
+            upload_task.total_files += 1
+            upload_task.failed_files += 1
+            upload_task.processed_files += 1
+        upload_task.updated_at = time.time()
+        if created:
+            upload_task.status = TaskStatus.COMPLETED
+        return upload_task.task_id
 
     async def create_url_upload_task(
         self,
@@ -445,11 +608,12 @@ class TaskService:
             for item in items
         }
 
-        if (
+        task_already_exists = (
             existing_task_id
             and store_user_id in self.task_store
             and existing_task_id in self.task_store[store_user_id]
-        ):
+        )
+        if task_already_exists:
             upload_task = self.task_store[store_user_id][existing_task_id]
             upload_task.file_tasks.update(file_tasks)
             upload_task.total_files += len(items)
@@ -489,8 +653,10 @@ class TaskService:
         self.background_tasks.add(background_task)
         background_task.add_done_callback(self.background_tasks.discard)
 
-        # Store reference to background task for cancellation if newly created
-        if not existing_task_id:
+        # Store the task whenever this call creates one. URL sources reserve an
+        # ID before enqueueing, so `existing_task_id` alone does not mean the
+        # task existed already.
+        if not task_already_exists:
             upload_task.background_task = background_task
 
         # Send telemetry event for task creation with metadata
@@ -541,6 +707,76 @@ class TaskService:
 
         return f"{hours}h {mins}m {secs}s"
 
+    def _find_upload_task(self, task_id: str) -> UploadTask | None:
+        """The task with this id, whichever user's store holds it.
+
+        A claim conflict is not confined to one task: the registry keys names by
+        ownership scope, not by task, so a file in one task can lose a name to a
+        file in another — two uploads in flight at once, or an upload racing a
+        connector sync.
+        """
+        for tasks in self.task_store.values():
+            found = tasks.get(task_id)
+            if found is not None:
+                return found
+        return None
+
+    async def _fail_files_stranded_by(self, refused_holders: set[str]) -> None:
+        """Fail the files that were skipped for a name this one never indexed.
+
+        The duplicate gate decides a losing file's outcome the moment it loses
+        the claim, before the winner has ingested anything. When the winner then
+        fails, nothing landed under that name, so the loser's "skipped, a file
+        with this name already exists" describes something that never happened —
+        and it is counted as a successful file, which is a document the user
+        never got. SKIPPED is also not a retry candidate (retry_failed_files
+        takes FAILED only), so nothing would ever recover it.
+
+        Failing it instead says what happened and puts it back within reach of a
+        retry, which re-runs the gate and resolves correctly either way: it
+        ingests if the name is genuinely free, and skips again as a duplicate if
+        something else holds it by then.
+
+        Each loser is corrected inside its own task, which may not be this one
+        and may already have finished. That stays consistent: processed_files is
+        untouched, one successful file becomes a failed one under that task's
+        lock, and a COMPLETED task carrying failures is the ordinary shape retry
+        operates on — it refuses only while a task is still RUNNING. The
+        completion event for such a task was emitted with the earlier counts,
+        which leaves a stale statistic behind rather than inconsistent state.
+        """
+        for holder in refused_holders:
+            loser_task_id, _, file_key = holder.partition(":")
+            if not file_key:
+                continue
+            owning_task = self._find_upload_task(loser_task_id)
+            if owning_task is None:
+                # Task already evicted from the store; nothing left to correct.
+                continue
+            stranded = owning_task.file_tasks.get(file_key)
+            if stranded is None or stranded.status != TaskStatus.SKIPPED:
+                continue
+            # Only the in-flight skip is ours to reverse; a file skipped against
+            # something already indexed is unaffected by this failure.
+            if (stranded.result or {}).get("reason") != "duplicate_filename":
+                continue
+
+            stranded.status = TaskStatus.FAILED
+            stranded.error = INFLIGHT_CLAIM_WINNER_FAILED_ERROR
+            stranded.result = None
+            stranded.updated_at = time.time()
+            async with self._get_task_lock(loser_task_id):
+                if owning_task.successful_files > 0:
+                    owning_task.successful_files -= 1
+                owning_task.failed_files += 1
+                owning_task.updated_at = time.time()
+            logger.info(
+                "Reversed an in-flight duplicate skip after the ingesting file failed",
+                task_id=loser_task_id,
+                file_path=stranded.file_path,
+                filename=stranded.filename,
+            )
+
     async def background_custom_processor(
         self, user_id: str, task_id: str, items: list, processor=None
     ) -> None:
@@ -569,6 +805,43 @@ class TaskService:
             async def process_with_semaphore(item, item_key: str):
                 async with self._processing_semaphore:
                     file_task = upload_task.file_tasks[item_key]
+
+                    # Skip files that were already cancelled or failed before reaching the worker
+                    if file_task.status in [
+                        TaskStatus.FAILED,
+                        TaskStatus.COMPLETED,
+                        TaskStatus.SKIPPED,
+                    ]:
+                        logger.info(
+                            "File processing task skipped (already terminal)",
+                            task_number=upload_task.sequence_number,
+                            task_id=task_id,
+                            file_path=file_task.file_path,
+                            status=file_task.status.value,
+                        )
+                        # Increment processed_files for cancelled files so task can complete
+                        async with self._get_task_lock(task_id):
+                            upload_task.processed_files += 1
+                        return
+
+                    # Check again after acquiring semaphore - file may have been cancelled while waiting
+                    if file_task.status in [
+                        TaskStatus.FAILED,
+                        TaskStatus.COMPLETED,
+                        TaskStatus.SKIPPED,
+                    ]:
+                        logger.info(
+                            "File processing task skipped (cancelled while waiting for semaphore)",
+                            task_number=upload_task.sequence_number,
+                            task_id=task_id,
+                            file_path=file_task.file_path,
+                            status=file_task.status.value,
+                        )
+                        # Increment processed_files for cancelled files so task can complete
+                        async with self._get_task_lock(task_id):
+                            upload_task.processed_files += 1
+                        return
+
                     file_task.status = TaskStatus.RUNNING
                     file_task.updated_at = time.time()
 
@@ -581,10 +854,15 @@ class TaskService:
 
                     try:
                         # Add timeout protection to prevent indefinite hangs
-                        await self._process_with_timeout(
-                            processor.process_item(upload_task, item, file_task),
-                            timeout_seconds=self.ingestion_timeout,
-                        )
+                        # Traces opened for this file (and its model calls)
+                        # carry the task; an upload's files share a session.
+                        with trace_context(
+                            session_id=task_id, attributes={"openrag.task_id": task_id}
+                        ):
+                            await self._process_with_timeout(
+                                processor.process_item(upload_task, item, file_task),
+                                timeout_seconds=self.ingestion_timeout,
+                            )
 
                         logger.info(
                             "File processing task succeeded",
@@ -636,8 +914,10 @@ class TaskService:
                         # Only update timestamp if processor didn't already set it
                         if file_task.status == TaskStatus.RUNNING:
                             file_task.status = TaskStatus.FAILED
-                        if not file_task.error:
-                            file_task.error = str(e) or repr(e)
+                        # Don't overwrite cancellation errors - preserve user cancellation message
+                        if file_task.error != "File cancelled by user":
+                            if not file_task.error:
+                                file_task.error = str(e) or repr(e)
 
                         logger.error(
                             "File processing task exception encountered",
@@ -650,6 +930,13 @@ class TaskService:
                         )
 
                     finally:
+                        # Hand back the filename this file held while in flight
+                        # (utils.filename_claims), so the next task — or a retry
+                        # of this one — can take it. Every file passes through
+                        # here, including the ones that never claimed anything.
+                        refused = filename_claims.release(claim_holder(task_id, item_key))
+                        if refused and file_task.status == TaskStatus.FAILED:
+                            await self._fail_files_stranded_by(refused)
                         file_task.updated_at = time.time()
                         # Only increment processed_files if the file reached a terminal state
                         # This prevents counter inconsistency on cancellation.
@@ -666,9 +953,26 @@ class TaskService:
                                 upload_task.processed_files += 1
                         upload_task.updated_at = time.time()
 
-            tasks = [process_with_semaphore(item, str(item)) for item in items]
+            # Create tasks and track them for file-level cancellation
+            tasks = []
+            for item in items:
+                item_key = str(item)
+                task = asyncio.create_task(process_with_semaphore(item, item_key))
+                tasks.append(task)
+                # Track file task for cancellation (will be cleaned up in finally block)
+                file_task = upload_task.file_tasks.get(item_key)
+                if file_task:
+                    self._file_tasks[(task_id, file_task.file_path)] = task
 
-            await asyncio.gather(*tasks, return_exceptions=True)
+            try:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            finally:
+                # Clean up file task references even if parent task is cancelled
+                for item in items:
+                    item_key = str(item)
+                    file_task = upload_task.file_tasks.get(item_key)
+                    if file_task:
+                        self._file_tasks.pop((task_id, file_task.file_path), None)
 
             # Mark task as completed if all files (including appended ones) are done
             if upload_task.processed_files >= upload_task.total_files:
@@ -983,6 +1287,17 @@ class TaskService:
             "status": "accepted",
         }
 
+    @staticmethod
+    def _keep_completed_file_in_list(file_task: FileTask) -> bool:
+        """Source-deleted cleanups stay visible so the UI can show Removed.
+
+        Normal completed ingests are omitted from the task file list to keep it
+        tidy. A file that was removed from the index because it disappeared at
+        the source is also completed, but dropping it would hide the cleanup.
+        """
+        result = file_task.result or {}
+        return result.get("reason") == "deleted_at_source"
+
     def _serialize_file_task(self, file_task: FileTask) -> dict:
         """Serialize a FileTask to the standard dict shape."""
         return {
@@ -1020,7 +1335,42 @@ class TaskService:
                 "actionable_by": "USER_ACTIONABLE",
             }
 
-        if "incorrect password" in error.lower():  # for password protected pdf cases
+        from utils.upload_limits import is_upload_size_error, upload_size_user_message
+
+        # A size refusal is stored while docling_status is still PENDING, because
+        # the proxy rejects the body before a Docling task exists. Later branches
+        # would drop that text.
+        if is_upload_size_error(error):
+            return {
+                "component": "docling",
+                "failure_phase": "parsing",
+                "user_facing_message": upload_size_user_message(error),
+                "actionable_by": "USER_ACTIONABLE",
+            }
+
+        # Before the substring heuristics below, which would otherwise read this
+        # as a plain duplicate: the file was never ingested, and retrying is
+        # exactly the right move.
+        if error == INFLIGHT_CLAIM_WINNER_FAILED_ERROR:
+            return {
+                "component": "openrag",
+                "failure_phase": "unknown",
+                "user_facing_message": (
+                    f"{INFLIGHT_CLAIM_WINNER_FAILED_ERROR} Retry to ingest it."
+                ),
+                "actionable_by": "RETRYABLE",
+            }
+
+        # Before any substring heuristic: an OpenSearch transport failure carries a
+        # JSON payload whose contents would otherwise match the file-corruption and
+        # "already exists" markers below.
+        opensearch_meta = _opensearch_failure_metadata(error)
+        if opensearch_meta:
+            return opensearch_meta
+
+        # Password-protected PDFs. Newer docling no longer names the reason, so the
+        # backend recovers it from the file bytes (docling_service.password_protected_pdf_error).
+        if "incorrect password" in error.lower():
             return {
                 "component": "docling",
                 "failure_phase": "parsing",
@@ -1115,6 +1465,13 @@ class TaskService:
             }
 
         if phase == IngestionPhase.DOCLING and docling_status == DoclingPhaseStatus.PROCESSING:
+            # Check if this was actually a cancellation before assuming timeout
+            if _is_task_cancellation_error(error):
+                return {
+                    "failure_phase": "cancelled",
+                    "user_facing_message": "Ingestion was cancelled.",
+                    "actionable_by": "USER_ACTIONABLE",
+                }
             return {
                 "component": "docling",
                 "failure_phase": "parsing",
@@ -1158,6 +1515,12 @@ class TaskService:
         if credential_meta:
             return credential_meta
 
+        # Before the Langflow fallbacks, which would report the provider's raw
+        # sentence as a retryable failure: retrying the same chunk fails again.
+        context_window_meta = _context_window_failure_metadata(error)
+        if context_window_meta:
+            return context_window_meta
+
         if _is_transient_connectivity_error(error) or _is_langflow_transport_failure(error):
             return {
                 "component": "langflow",
@@ -1197,19 +1560,26 @@ class TaskService:
                 and "}" not in cleaned
             ):
                 lowered = cleaned.lower()
-                user_actionable = is_provider_credential_error(cleaned) or any(
-                    marker in lowered
-                    for marker in (
-                        "model",
-                        "project",
-                        "not found",
-                        "not properly configured",
-                        "no models",
-                        "unauthorized",
-                        "forbidden",
-                        "permission",
-                        "quota",
-                        "rate limit",
+                missing_deployment = "deployment" in lowered and any(
+                    marker in lowered for marker in ("not found", "does not exist")
+                )
+                user_actionable = (
+                    is_provider_credential_error(cleaned)
+                    or missing_deployment
+                    or any(
+                        marker in lowered
+                        for marker in (
+                            "model",
+                            "project",
+                            "not found",
+                            "not properly configured",
+                            "no models",
+                            "unauthorized",
+                            "forbidden",
+                            "permission",
+                            "quota",
+                            "rate limit",
+                        )
                     )
                 )
                 return {
@@ -1323,6 +1693,8 @@ class TaskService:
         """
         tasks_by_id = {}
 
+        is_shared = False
+
         def add_tasks_from_store(store_user_id):
             if store_user_id not in self.task_store:
                 return
@@ -1339,7 +1711,13 @@ class TaskService:
                     # the list tidy. Preview-mode tasks instead need every file
                     # (including completed ones) so the live preview carousel can
                     # still enumerate them and render their cached Docling layout.
-                    if file_task.status != TaskStatus.COMPLETED or upload_task.preview_mode:
+                    # Source-deleted cleanups are completed but must stay visible
+                    # as successful removals, not vanish like a normal ingest.
+                    if (
+                        file_task.status != TaskStatus.COMPLETED
+                        or upload_task.preview_mode
+                        or self._keep_completed_file_in_list(file_task)
+                    ):
                         entry = self._serialize_file_task(file_task)
                         if file_task.status == TaskStatus.FAILED:
                             metadata = self._infer_failure_metadata(file_task)
@@ -1365,9 +1743,11 @@ class TaskService:
                     "updated_at": upload_task.updated_at,
                     "duration_seconds": upload_task.duration_seconds,
                     "files": file_statuses,
+                    "is_shared": is_shared,
                 }
 
         add_tasks_from_store(user_id)
+        is_shared = True
         add_tasks_from_store(AnonymousUser().user_id)
 
         tasks = list(tasks_by_id.values())
@@ -1383,6 +1763,8 @@ class TaskService:
         """
         tasks_by_id = {}
 
+        is_shared = False
+
         def add_tasks_from_store(store_user_id):
             if store_user_id not in self.task_store:
                 return
@@ -1396,7 +1778,9 @@ class TaskService:
                 file_statuses = {}
 
                 for file_path, file_task in upload_task.file_tasks.items():
-                    if file_task.status.value != "completed":
+                    if file_task.status.value != "completed" or self._keep_completed_file_in_list(
+                        file_task
+                    ):
                         file_statuses[file_path] = {
                             "status": file_task.status.value,
                             "result": file_task.result,
@@ -1429,10 +1813,12 @@ class TaskService:
                     "updated_at": upload_task.updated_at,
                     "duration_seconds": upload_task.duration_seconds,
                     "files": file_statuses,
+                    "is_shared": is_shared,
                 }
 
         # First, add user-owned tasks; then shared anonymous;
         add_tasks_from_store(user_id)
+        is_shared = True
         add_tasks_from_store(AnonymousUser().user_id)
 
         tasks = list(tasks_by_id.values())
@@ -1457,9 +1843,9 @@ class TaskService:
         for user_id in list(self.task_store.keys()):
             for task_id in list(self.task_store[user_id].keys()):
                 task = self.task_store[user_id][task_id]
-                # Only cleanup completed or failed tasks that are old enough
+                # Only cleanup completed, failed, or cancelled tasks that are old enough
                 if (
-                    task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]
+                    task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]
                     and current_time - task.updated_at > max_age_seconds
                 ):
                     # Task is leaving memory; reclaim any retained upload temps
@@ -1489,6 +1875,85 @@ class TaskService:
         """Cancel a task if it exists and is not already completed.
 
         Supports cancellation of shared default tasks stored under the anonymous user.
+        The outer task lock is held for the entire operation so that concurrent
+        cancel requests (e.g. rapid UI clicks) are serialised: only the first
+        caller performs the actual cancellation, subsequent ones see a terminal
+        status and return False immediately.
+        """
+        # Resolve which user bucket owns the task before acquiring the lock.
+        candidate_user_ids = [user_id, AnonymousUser().user_id]
+
+        store_user_id = None
+        for candidate_user_id in candidate_user_ids:
+            if (
+                candidate_user_id in self.task_store
+                and task_id in self.task_store[candidate_user_id]
+            ):
+                store_user_id = candidate_user_id
+                break
+
+        if store_user_id is None:
+            return False
+
+        upload_task = self.task_store[store_user_id][task_id]
+
+        # Phase 1: idempotency check — hold the lock only long enough to read
+        # the current status and signal cancellation.  We must NOT hold the lock
+        # while awaiting the background task: the background task's CancelledError
+        # handler also acquires _get_task_lock (to increment failed_files), which
+        # would deadlock with cancel_task holding that same lock.
+        async with self._get_task_lock(task_id):
+            # Can only cancel pending or running tasks.
+            if upload_task.status in [
+                TaskStatus.COMPLETED,
+                TaskStatus.FAILED,
+                TaskStatus.CANCELLED,
+            ]:
+                return False
+            # Mark in-flight immediately so a concurrent cancel sees CANCELLED
+            # and returns False without repeating the work below.
+            upload_task.status = TaskStatus.CANCELLED
+
+        # Phase 2: cancel and await the background task OUTSIDE the lock so the
+        # background task's own lock acquisitions (failed_files increment, etc.)
+        # can complete without deadlocking.
+        if hasattr(upload_task, "background_task") and not upload_task.background_task.done():
+            upload_task.background_task.cancel()
+            try:
+                await upload_task.background_task
+            except asyncio.CancelledError:
+                pass  # Expected when we cancel the task
+            except Exception:
+                pass  # Ignore other errors during cancellation
+
+        # Phase 3: finalise state — background task is done, so no concurrent
+        # writer can touch the file tasks any more.  Lock is still used for
+        # safety in case a second cancel slipped through between phases.
+        async with self._get_task_lock(task_id):
+            upload_task.updated_at = time.time()
+            now = time.time()
+            for file_task in upload_task.file_tasks.values():
+                if file_task.status in [TaskStatus.PENDING, TaskStatus.RUNNING]:
+                    # PENDING files cancelled before entering process_with_semaphore
+                    # need processed_files incremented here, since the finally block
+                    # won't run. RUNNING files normally cancelled are already counted
+                    # by the finally block, but incrementing here is safe (phase 3 runs
+                    # after background task completes, so no double-counting).
+                    upload_task.processed_files += 1
+                    upload_task.failed_files += 1
+                    file_task.status = TaskStatus.FAILED
+                    file_task.error = "Task cancelled by user"
+                    file_task.updated_at = now
+
+        self._cleanup_upload_temp_files(upload_task, force=True)
+
+        return True
+
+    async def cancel_file(self, user_id: str, task_id: str, file_path: str) -> bool:
+        """Cancel a single file within a task.
+
+        Marks the file as FAILED with "cancelled by user" error. The file will be
+        skipped if it's still PENDING, or marked as cancelled if already RUNNING.
         """
         # Check candidate user IDs first, then anonymous to find which user ID the task is mapped to
         candidate_user_ids = [user_id, AnonymousUser().user_id]
@@ -1507,40 +1972,102 @@ class TaskService:
 
         upload_task = self.task_store[store_user_id][task_id]
 
-        # Can only cancel pending or running tasks
-        if upload_task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
+        # Find the file task
+        file_task = upload_task.file_tasks.get(file_path)
+        if not file_task:
             return False
 
-        # Cancel the background task to stop scheduling new work
-        if hasattr(upload_task, "background_task") and not upload_task.background_task.done():
-            upload_task.background_task.cancel()
-            # Wait for the background task to actually stop to avoid race conditions
-            try:
-                await upload_task.background_task
-            except asyncio.CancelledError:
-                pass  # Expected when we cancel the task
-            except Exception:
-                pass  # Ignore other errors during cancellation
+        # Lock to prevent race conditions
+        async with self._get_task_lock(task_id):
+            # Can only cancel pending or running files
+            if file_task.status not in [TaskStatus.PENDING, TaskStatus.RUNNING]:
+                return False
 
-        # Mark task as failed (cancelled)
-        upload_task.status = TaskStatus.FAILED
-        upload_task.updated_at = time.time()
+            # Mark file as failed (cancelled)
+            was_running = file_task.status == TaskStatus.RUNNING
+            file_task.status = TaskStatus.FAILED
+            file_task.error = "File cancelled by user"
+            file_task.updated_at = time.time()
 
-        # Mark all pending and running file tasks as failed
-        for file_task in upload_task.file_tasks.values():
-            # Lock the entire check-and-modify to prevent race with background tasks
-            async with self._get_task_lock(task_id):
-                if file_task.status in [TaskStatus.PENDING, TaskStatus.RUNNING]:
-                    # Increment failed_files counter for both pending and running
-                    # (running files haven't been counted yet in either counter)
-                    upload_task.failed_files += 1
-                    file_task.status = TaskStatus.FAILED
-                    file_task.error = "Task cancelled by user"
-                    file_task.updated_at = time.time()
+            # Increment failed counter
+            upload_task.failed_files += 1
 
-        self._cleanup_upload_temp_files(upload_task, force=True)
+            # If it was running, it will be counted in processed_files by the worker's finally block
+            # If it was pending, we need to count it now since it will never enter the worker
+            if not was_running:
+                upload_task.processed_files += 1
+
+            upload_task.updated_at = time.time()
+
+        # Cancel the running asyncio task if it exists (outside the lock to avoid deadlock)
+        file_task_key = (task_id, file_path)
+        if file_task_key in self._file_tasks:
+            asyncio_task = self._file_tasks[file_task_key]
+            if not asyncio_task.done():
+                asyncio_task.cancel()
+                logger.info(
+                    "Cancelled asyncio task for file",
+                    task_id=task_id,
+                    file_path=file_path,
+                )
 
         return True
+
+    def delete_task(self, user_id: str, task_id: str) -> TaskDeleteResult:
+        """Remove a terminal (completed/failed/cancelled) task from memory.
+
+        Deletes tasks owned by the calling user or shared anonymous tasks that
+        are visible to the user (same set exposed by get_all_tasks).
+
+        Returns:
+            TaskDeleteResult.DELETED      – task found and removed.
+            TaskDeleteResult.NOT_FOUND    – task ID does not exist for this user.
+            TaskDeleteResult.IN_PROGRESS  – task exists but is not yet terminal.
+        """
+        resolved = self._resolve_upload_task_store(user_id, task_id)
+        if resolved is None:
+            return TaskDeleteResult.NOT_FOUND
+        store_user_id, upload_task = resolved
+        if upload_task.status not in [
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+        ]:
+            return TaskDeleteResult.IN_PROGRESS
+        self._cleanup_upload_temp_files(upload_task, force=True)
+        del self.task_store[store_user_id][task_id]
+        self._task_locks.pop(task_id, None)
+        if not self.task_store[store_user_id]:
+            del self.task_store[store_user_id]
+        return TaskDeleteResult.DELETED
+
+    def delete_all_terminal_tasks(self, user_id: str) -> list[str]:
+        """Remove all completed/failed/cancelled tasks owned by a user.
+
+        Only touches the calling user's own store. Shared tasks stored under
+        the anonymous key are intentionally excluded: they are visible to all
+        authenticated users, so a bulk clear by one user must not remove them
+        for everyone else. Those tasks are aged out by cleanup_old_tasks.
+
+        Returns the list of deleted task IDs.
+        """
+        if user_id not in self.task_store:
+            return []
+
+        to_delete = [
+            tid
+            for tid, t in self.task_store[user_id].items()
+            if t.status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]
+        ]
+        for tid in to_delete:
+            task = self.task_store[user_id][tid]
+            self._cleanup_upload_temp_files(task, force=True)
+            del self.task_store[user_id][tid]
+            self._task_locks.pop(tid, None)
+        if not self.task_store.get(user_id):
+            self.task_store.pop(user_id, None)
+
+        return to_delete
 
     def _file_task_for_temp_path(self, upload_task: UploadTask, temp_path: str) -> FileTask | None:
         """Resolve the FileTask for a staged upload temp path."""
@@ -1568,9 +2095,38 @@ class TaskService:
         metadata = self._infer_failure_metadata(file_task)
         return bool(metadata and metadata.get("actionable_by") == "RETRYABLE")
 
+    def _is_unsettled_claim_loser_temp(self, upload_task: UploadTask, temp_path: str) -> bool:
+        """True when a staged temp belongs to a file skipped for a name another
+        in-flight file still holds.
+
+        Such a skip is provisional: if the file holding the name fails, nothing
+        was indexed under it and _fail_files_stranded_by turns this file into a
+        retryable failure. That correction can land after this task has already
+        finished — the holder may belong to another task entirely — and a retry
+        then needs the staged source that cleanup would otherwise have deleted.
+
+        Retention is bounded the same way a retryable failure's is: whichever
+        way the holder ends, the temp is reclaimed when the task ages out of the
+        store (cleanup_old_tasks force-cleans what it evicts).
+        """
+        if not os.path.isabs(temp_path):
+            return False
+        file_task = self._file_task_for_temp_path(upload_task, temp_path)
+        if file_task is None or file_task.status != TaskStatus.SKIPPED:
+            return False
+        if (file_task.result or {}).get("reason") != "duplicate_filename":
+            return False
+        # Local uploads key file_tasks by the staged path, which is what the
+        # claim holder was built from.
+        return filename_claims.is_awaiting_outcome(
+            claim_holder(upload_task.task_id, file_task.file_path)
+        )
+
     def _should_retain_upload_temp(self, upload_task: UploadTask, temp_path: str) -> bool:
         """Return True when an upload temp should be kept after processing."""
         if self._is_retryable_local_upload_temp(upload_task, temp_path):
+            return True
+        if self._is_unsettled_claim_loser_temp(upload_task, temp_path):
             return True
         if (
             os.path.isabs(temp_path)

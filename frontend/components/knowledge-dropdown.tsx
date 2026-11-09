@@ -13,9 +13,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { File as SearchFile } from "@/app/api/queries/useGetSearchQuery";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
 import { IngestReviewDialog } from "@/components/ingest-review";
+import { KnowledgeUrlIcon } from "@/components/knowledge-url-icon";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,6 +34,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { UrlSourceDialog } from "@/components/url-source-dialog";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useTask } from "@/contexts/task-context";
@@ -43,6 +46,7 @@ import {
   trackProcessFailure,
   trackStartProcess,
 } from "@/lib/analytics";
+import { apiClient } from "@/lib/api-client";
 import {
   getConnectorDescriptor,
   getConnectorDescriptors,
@@ -53,9 +57,14 @@ import {
   type PreviewDialogState,
 } from "@/lib/ingest-preview";
 import {
+  countSentDuplicates,
   duplicateCheck,
+  folderUploadSuccessText,
+  getMaxUploadBytes,
+  packUploadBatches,
   uploadFiles,
   uploadFile as uploadFileUtil,
+  uploadTooLargeMessage,
 } from "@/lib/upload-utils";
 import { cn } from "@/lib/utils";
 
@@ -99,7 +108,11 @@ const FolderIconWithColor = ({ className }: { className?: string }) => (
 );
 
 export function KnowledgeDropdown() {
-  const { runMode } = useAuth();
+  const { runMode, isAuthenticated, isNoAuthMode } = useAuth();
+  const { data: apiSettings } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
+  const showUrlConnector = apiSettings?.show_url_connector ?? false;
   const { supportedExtensions, supportedExtensionSet } =
     useSupportedFileTypes();
   const { can } = usePermissions();
@@ -114,6 +127,7 @@ export function KnowledgeDropdown() {
   });
   const [mounted, setMounted] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [urlDialogOpen, setUrlDialogOpen] = useState(false);
   const [showFolderDialog, setShowFolderDialog] = useState(false);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [uploadBatchSize, setUploadBatchSize] = useState(25);
@@ -162,30 +176,33 @@ export function KnowledgeDropdown() {
           (d) => d.kind === "bucket",
         );
 
-        // Check upload batch size and bucket connector availability in parallel
-        const [uploadOptionsRes, ...bucketResponses] = await Promise.all([
-          fetch("/api/upload_options"),
-          ...bucketDescriptors.map((d) =>
-            fetch(`/api/connectors/${d.connectorType}/defaults`),
-          ),
-        ]);
-
-        if (uploadOptionsRes.ok) {
-          const uploadOptionsData = await uploadOptionsRes.json();
-          if (
-            typeof uploadOptionsData.upload_batch_size === "number" &&
-            uploadOptionsData.upload_batch_size > 0
-          ) {
-            setUploadBatchSize(uploadOptionsData.upload_batch_size);
+        try {
+          const uploadOptionsRes = await apiClient.get("/upload_options");
+          if (uploadOptionsRes.status >= 200 && uploadOptionsRes.status < 300) {
+            const uploadOptionsData = uploadOptionsRes.data;
+            if (
+              typeof uploadOptionsData.upload_batch_size === "number" &&
+              uploadOptionsData.upload_batch_size > 0
+            ) {
+              setUploadBatchSize(uploadOptionsData.upload_batch_size);
+            }
           }
+        } catch (err) {
+          console.error("Failed to load upload options", err);
         }
+
+        const bucketResponses = await Promise.all(
+          bucketDescriptors.map((d) =>
+            apiClient.get(`/connectors/${d.connectorType}/defaults`),
+          ),
+        );
 
         const configured: Record<string, boolean> = {};
         await Promise.all(
           bucketResponses.map(async (res, i) => {
             const descriptor = bucketDescriptors[i];
-            if (!res.ok) return;
-            const data = await res.json();
+            if (res.status < 200 || res.status >= 300) return;
+            const data = res.data;
             // Generic predicate: connection_id set OR any *_set boolean is true.
             const anySetFlag = Object.entries(data).some(
               ([k, v]) => k.endsWith("_set") && v === true,
@@ -198,9 +215,9 @@ export function KnowledgeDropdown() {
         setBucketConnectorConfigured(configured);
 
         // Check cloud connectors
-        const connectorsRes = await fetch("/api/connectors");
-        if (connectorsRes.ok) {
-          const connectorsResult = await connectorsRes.json();
+        const connectorsRes = await apiClient.get("/connectors");
+        if (connectorsRes.status >= 200 && connectorsRes.status < 300) {
+          const connectorsResult = connectorsRes.data;
 
           // Bucket connector availability mirrors the backend `is_available()`
           // gate (IBM auth, or the dev flag for Azure Blob), so the dropdown
@@ -245,10 +262,12 @@ export function KnowledgeDropdown() {
           await Promise.all(
             availableTypes.map(async (type) => {
               try {
-                const statusRes = await fetch(`/api/connectors/${type}/status`);
-                if (!statusRes.ok) return;
+                const statusRes = await apiClient.get(
+                  `/connectors/${type}/status`,
+                );
+                if (statusRes.status < 200 || statusRes.status >= 300) return;
 
-                const statusData = await statusRes.json();
+                const statusData = statusRes.data;
                 const connections = statusData.connections || [];
                 const activeConnection = connections.find(
                   (conn: { is_active: boolean; connection_id: string }) =>
@@ -259,11 +278,11 @@ export function KnowledgeDropdown() {
                 connectorInfo[type].connected = true;
 
                 try {
-                  const tokenRes = await fetch(
-                    `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`,
+                  const tokenRes = await apiClient.get(
+                    `/connectors/${type}/token?connection_id=${activeConnection.connection_id}`,
                   );
-                  if (tokenRes.ok) {
-                    const tokenData = await tokenRes.json();
+                  if (tokenRes.status >= 200 && tokenRes.status < 300) {
+                    const tokenData = tokenRes.data;
                     if (tokenData.access_token) {
                       connectorInfo[type].hasToken = true;
                     }
@@ -289,6 +308,15 @@ export function KnowledgeDropdown() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (
+      showUrlConnector &&
+      new URLSearchParams(window.location.search).get("add") === "url"
+    ) {
+      setUrlDialogOpen(true);
+    }
+  }, [showUrlConnector]);
 
   const handleFileUpload = () => {
     fileInputRef.current?.click();
@@ -439,79 +467,128 @@ export function KnowledgeDropdown() {
   const uploadFolderBatches = async (
     filesToUpload: File[],
     replace: boolean,
-  ) => {
+  ): Promise<{
+    sentCount: number;
+    sentNames: string[];
+    oversizedCount: number;
+  }> => {
+    const maxUploadBytes = await getMaxUploadBytes();
+    const { batches, oversized } = packUploadBatches(
+      filesToUpload,
+      uploadBatchSize,
+      maxUploadBytes,
+    );
+    if (oversized.length > 0) {
+      toast.error(
+        oversized.length === 1
+          ? "1 file is over the upload limit"
+          : `${oversized.length} files are over the upload limit`,
+        {
+          description: oversized
+            .map((file) =>
+              uploadTooLargeMessage(file.name, file.size, maxUploadBytes),
+            )
+            .join("\n"),
+          duration: Number.POSITIVE_INFINITY,
+          closeButton: true,
+          classNames: { description: "whitespace-pre-line" },
+        },
+      );
+    }
+    const filesToSend = batches.flat();
+    if (filesToSend.length === 0) {
+      if (oversized.length > 0) {
+        try {
+          const recorded = await uploadFiles([], false, false, {
+            rejectedFiles: oversized,
+          });
+          addTask(recorded.taskId, { source: "folder" });
+          refetchTasks();
+        } catch (error) {
+          console.error(
+            "[Folder Upload] Could not record skipped files:",
+            error,
+          );
+        }
+      }
+      return { sentCount: 0, sentNames: [], oversizedCount: oversized.length };
+    }
+
     trackStartProcess({
       processType: "Ingestion",
       process: "Document Upload",
       category: "Knowledge",
       source: "folder",
-      total_files: filesToUpload.length,
+      total_files: filesToSend.length,
     });
 
-    openPreviewForFiles(filesToUpload, `${filesToUpload.length} files`);
-
-    const batches: File[][] = [];
-    for (let i = 0; i < filesToUpload.length; i += uploadBatchSize) {
-      batches.push(filesToUpload.slice(i, i + uploadBatchSize));
-    }
+    openPreviewForFiles(filesToSend, `${filesToSend.length} files`);
 
     const taskIdsByBatch: (string | undefined)[] = [];
     const failedBatchIndexes: number[] = [];
-    // Cap parallel batch uploads so large folders don't open every request at once.
-    const batchConcurrency = Math.min(2, batches.length);
-    let nextBatchIndex = 0;
+    // Later batches join this task, so a folder that has to be split to stay
+    // under the request size still shows as one operation.
+    let sharedTaskId: string | undefined;
     // Set by any worker that gets previewMode=true; checked once after all
     // batches finish so a concurrent false cannot close a successful open.
     let previewModeConfirmed = false;
 
-    const runNextBatch = async () => {
-      while (nextBatchIndex < batches.length) {
-        const batchIndex = nextBatchIndex;
-        nextBatchIndex += 1;
-        const batch = batches[batchIndex];
-        if (!batch) continue;
+    const sendBatch = async (batchIndex: number, attachRejected: boolean) => {
+      const batch = batches[batchIndex];
+      if (!batch) return;
 
-        try {
-          const result = await uploadFiles(
-            batch,
-            replace,
-            ingestPreviewEnabled,
+      try {
+        const result = await uploadFiles(batch, replace, ingestPreviewEnabled, {
+          existingTaskId: batchIndex === 0 ? undefined : sharedTaskId,
+          rejectedFiles: attachRejected ? oversized : undefined,
+        });
+        if (batchIndex === 0) sharedTaskId = result.taskId;
+        addTask(result.taskId, { source: "folder" });
+        if (result.previewMode) {
+          previewModeConfirmed = true;
+          taskIdsByBatch[batchIndex] = result.taskId;
+          attachPreviewTaskIds(
+            taskIdsByBatch.filter((id): id is string => id !== undefined),
+            {
+              files: filesToSend,
+              filename: `${filesToSend.length} files`,
+            },
           );
-          addTask(result.taskId, { source: "folder" });
-          if (result.previewMode) {
-            previewModeConfirmed = true;
-            taskIdsByBatch[batchIndex] = result.taskId;
-            attachPreviewTaskIds(
-              taskIdsByBatch.filter((id): id is string => id !== undefined),
-              {
-                files: filesToUpload,
-                filename: `${filesToUpload.length} files`,
-              },
-            );
-            refetchTasks();
-          }
-        } catch (error) {
-          failedBatchIndexes.push(batchIndex);
-          trackProcessFailure({
-            processType: "Ingestion",
-            process: "Document Upload",
-            category: "Knowledge",
-            source: "folder",
-            resultValue:
-              error instanceof Error ? error.message : "Unknown error",
-          });
-          console.error("[Folder Upload] Batch upload failed:", error);
-          toast.error("Batch upload failed", {
-            description:
-              error instanceof Error ? error.message : "Unknown error",
-          });
+          refetchTasks();
         }
+      } catch (error) {
+        failedBatchIndexes.push(batchIndex);
+        trackProcessFailure({
+          processType: "Ingestion",
+          process: "Document Upload",
+          category: "Knowledge",
+          source: "folder",
+          resultValue: error instanceof Error ? error.message : "Unknown error",
+        });
+        console.error("[Folder Upload] Batch upload failed:", error);
+        toast.error("Batch upload failed", {
+          description: error instanceof Error ? error.message : "Unknown error",
+        });
       }
     };
 
-    await Promise.all(
-      Array.from({ length: batchConcurrency }, () => runNextBatch()),
-    );
+    await sendBatch(0, true);
+    const remaining = batches.length - 1;
+    if (remaining > 0) {
+      // Cap parallel batch uploads so large folders don't open every request at once.
+      const batchConcurrency = Math.min(2, remaining);
+      let nextBatchIndex = 1;
+      const runNextBatch = async () => {
+        while (nextBatchIndex < batches.length) {
+          const batchIndex = nextBatchIndex;
+          nextBatchIndex += 1;
+          await sendBatch(batchIndex, false);
+        }
+      };
+      await Promise.all(
+        Array.from({ length: batchConcurrency }, () => runNextBatch()),
+      );
+    }
 
     // Close the optimistic open only after all workers finish. Doing this
     // inside a worker races: a late previewMode=false can wipe a sibling's
@@ -527,6 +604,12 @@ export function KnowledgeDropdown() {
         `${failedBatchIndexes.length} of ${batches.length} batch upload(s) failed`,
       );
     }
+
+    return {
+      sentCount: filesToSend.length,
+      sentNames: filesToSend.map((file) => file.name),
+      oversizedCount: oversized.length,
+    };
   };
 
   const handleOverwriteFile = async () => {
@@ -535,14 +618,20 @@ export function KnowledgeDropdown() {
       const { allFiles, duplicateNames, unsupportedCount } =
         pendingFolderUpload;
       try {
-        await uploadFolderBatches(allFiles, true);
-        const unsupportedMessage =
-          unsupportedCount > 0
-            ? `, skipped ${unsupportedCount} unsupported`
-            : "";
-        toast.success(
-          `Processed ${allFiles.length} file(s), including ${duplicateNames.length} overwrite(s)${unsupportedMessage}`,
+        const result = await uploadFolderBatches(allFiles, true);
+        const overwriteCount = countSentDuplicates(
+          result.sentNames,
+          duplicateNames,
         );
+        const success = folderUploadSuccessText(
+          result.sentCount,
+          result.oversizedCount,
+          `Processed ${result.sentCount} file(s), including ${overwriteCount} overwrite(s)`,
+          unsupportedCount > 0
+            ? [`skipped ${unsupportedCount} unsupported`]
+            : [],
+        );
+        if (success) toast.success(success);
       } catch (error) {
         toast.error("Folder upload incomplete", {
           description: error instanceof Error ? error.message : "Unknown error",
@@ -589,7 +678,7 @@ export function KnowledgeDropdown() {
           pendingFolderUpload;
         if (nonDuplicateFiles.length > 0) {
           try {
-            await uploadFolderBatches(nonDuplicateFiles, false);
+            const result = await uploadFolderBatches(nonDuplicateFiles, false);
             const extraParts: string[] = [];
             if (duplicateNames.length > 0) {
               extraParts.push(`skipped ${duplicateNames.length} duplicate(s)`);
@@ -597,11 +686,13 @@ export function KnowledgeDropdown() {
             if (unsupportedCount > 0) {
               extraParts.push(`skipped ${unsupportedCount} unsupported`);
             }
-            const suffix =
-              extraParts.length > 0 ? `, ${extraParts.join(", ")}` : "";
-            toast.success(
-              `Processed ${nonDuplicateFiles.length} file(s)${suffix}`,
+            const success = folderUploadSuccessText(
+              result.sentCount,
+              result.oversizedCount,
+              `Processed ${result.sentCount} file(s)`,
+              extraParts,
             );
+            if (success) toast.success(success);
           } catch (error) {
             toast.error("Folder upload incomplete", {
               description:
@@ -711,12 +802,14 @@ export function KnowledgeDropdown() {
         return;
       }
 
-      await uploadFolderBatches(nonDuplicateFiles, false);
-      const unsupportedMessage =
-        unsupportedCount > 0 ? `, skipped ${unsupportedCount} unsupported` : "";
-      toast.success(
-        `Successfully processed ${nonDuplicateFiles.length} file(s)${unsupportedMessage}`,
+      const result = await uploadFolderBatches(nonDuplicateFiles, false);
+      const success = folderUploadSuccessText(
+        result.sentCount,
+        result.oversizedCount,
+        `Successfully processed ${result.sentCount} file(s)`,
+        unsupportedCount > 0 ? [`skipped ${unsupportedCount} unsupported`] : [],
       );
+      if (success) toast.success(success);
     } catch (error) {
       console.error("Folder upload error:", error);
       toast.error("Folder upload failed", {
@@ -743,15 +836,11 @@ export function KnowledgeDropdown() {
     });
 
     try {
-      const response = await fetch("/api/upload_path", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ path: folderPath }),
+      const response = await apiClient.post("/upload_path", {
+        path: folderPath,
       });
 
-      const result = await response.json();
+      const result = response.data;
 
       if (response.status === 201) {
         const taskId = result.task_id || result.id;
@@ -764,7 +853,7 @@ export function KnowledgeDropdown() {
         setFolderPath("");
         // Refetch tasks to show the new task
         refetchTasks();
-      } else if (response.ok) {
+      } else if (response.status >= 200 && response.status < 300) {
         setFolderPath("");
         // Refetch tasks even for direct uploads in case tasks were created
         refetchTasks();
@@ -853,6 +942,15 @@ export function KnowledgeDropdown() {
       icon: FolderIconWithColor,
       onClick: () => folderInputRef.current?.click(),
     },
+    ...(showUrlConnector
+      ? [
+          {
+            label: "URL",
+            icon: KnowledgeUrlIcon,
+            onClick: () => setUrlDialogOpen(true),
+          },
+        ]
+      : []),
     ...bucketConnectorItems,
     ...cloudConnectorItems,
   ];
@@ -865,13 +963,13 @@ export function KnowledgeDropdown() {
       <div className="flex h-12 pointer-events-none">
         <Button
           variant="outline"
-          className="h-12 px-6 rounded-l-lg rounded-r-none border-r-0 text-[var(--icon-disabled)] cursor-not-allowed"
+          className="h-12 px-6 rounded-l-lg rounded-r-none border-r-0 text-(--icon-disabled) cursor-not-allowed"
         >
           <span>Add {isCloudBrand ? `knowledge` : `Knowledge`}</span>
         </Button>
         <Button
           variant="outline"
-          className="h-12 w-12 flex-shrink-0 rounded-r-lg rounded-l-none border-l border-border text-[var(--icon-disabled)] cursor-not-allowed"
+          className="h-12 w-12 shrink-0 rounded-r-lg rounded-l-none border-l border-border text-(--icon-disabled) cursor-not-allowed"
           aria-label="Open add knowledge menu"
         >
           <ChevronDown className="h-5 w-5" />
@@ -914,7 +1012,7 @@ export function KnowledgeDropdown() {
                 variant="default"
                 size="icon"
                 disabled={isLoading}
-                className="h-12 w-12 flex-shrink-0 border-l border-placeholder bg-blue-600 text-primary-foreground hover:bg-blue-700"
+                className="h-12 w-12 shrink-0 border-l border-placeholder bg-blue-600 text-primary-foreground hover:bg-blue-700"
                 aria-label="Open add knowledge menu"
               >
                 {!isLoading && (
@@ -1043,6 +1141,16 @@ export function KnowledgeDropdown() {
         taskIds={preview.taskIds}
         previewFiles={preview.files}
       />
+      {showUrlConnector && (
+        <UrlSourceDialog
+          open={urlDialogOpen}
+          onOpenChange={setUrlDialogOpen}
+          onCreated={(taskId) => {
+            if (taskId) addTask(taskId, { connectorType: "url" });
+            void queryClient.invalidateQueries({ queryKey: ["listFiles"] });
+          }}
+        />
+      )}
     </>
   );
 }

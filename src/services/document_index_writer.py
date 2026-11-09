@@ -7,18 +7,41 @@ indexing chunks into the documents index.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import hashlib
 import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from utils.embedding_fields import ensure_embedding_field_exists
+from services.search_cache import invalidate_corpus_caches
+from utils.embedding_fields import ensure_embedding_field_exists, get_embedding_space_id
 from utils.embeddings import create_index_body
 from utils.group_acl import unique_acl_principal_labels, unique_acl_principals
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# A bulk() call executes every item independently. Thus, if one item hits a
+# transient condition (cluster under load, shard unavailable) the whole response
+# gets errors: true even though the rest of the document chunks wrote
+# successfully. This makes the entire file look like it "failed" in task
+# counters even when it's actually indexed and visible. But every op is an
+# idempotent upsert so retries are safe — only the items still failing are
+# resent, not the whole body.
+_BULK_RETRYABLE_ERROR_TYPES = frozenset(
+    {
+        "es_rejected_execution_exception",
+        "process_cluster_event_timeout_exception",
+        "unavailable_shards_exception",
+        "timeout_exception",
+        # version_conflicts are intentionally excluded — they result from
+        # concurrent writes to the same document ID, not transient failures.
+        # Retrying would just hit the same conflict again and waste the budget.
+    }
+)
+_MAX_BULK_RETRIES = 2
+_BULK_RETRY_DELAY_SECONDS = 0.5
 
 
 @dataclass
@@ -26,6 +49,7 @@ class DocumentIndexContext:
     document_id: str
     mimetype: str
     embedding_model: str
+    embedding_provider: str | None = None
     filename: str | None = None
     owner: str | None = None
     owner_name: str | None = None
@@ -44,6 +68,13 @@ class DocumentIndexContext:
     parser: str | None = None
     chunk_size: int | None = None
     chunk_overlap: int | None = None
+    indexed_time: str | None = None
+    record_kind: str | None = None
+    web_source_id: str | None = None
+    web_page_id: str | None = None
+    web_page_depth: int | None = None
+    root_source_url: str | None = None
+    canonical_url: str | None = None
 
 
 @dataclass
@@ -96,16 +127,19 @@ class DocumentIndexWriter:
             raise ValueError("Cannot index chunks with empty embeddings")
 
         dimensions = len(first_vector)
+        embedding_space_id = self._embedding_space_id(context)
         client = self._get_write_client()
         index_name = context.index_name or get_index_name()
         embedding_field = await self._ensure_index_and_embedding_field(
             client,
             index_name=index_name,
             embedding_model=context.embedding_model,
+            embedding_provider=context.embedding_provider,
+            embedding_space_id=embedding_space_id,
             dimensions=dimensions,
         )
 
-        now = datetime.datetime.now(datetime.UTC).isoformat()
+        now = context.indexed_time or datetime.datetime.now(datetime.UTC).isoformat()
         bulk_body: list[dict[str, Any]] = []
         for chunk in chunks:
             if len(chunk.vector) != dimensions:
@@ -130,10 +164,14 @@ class DocumentIndexWriter:
                 )
             )
 
-        result = await client.bulk(body=bulk_body, refresh=refresh)
-        self._raise_for_bulk_errors(result)
-        if final:
-            await self._refresh(index_name)
+        try:
+            result = await self._bulk_with_retry(client, bulk_body, refresh=refresh)
+            self._raise_for_bulk_errors(result)
+            if final:
+                await self._refresh(index_name)
+        finally:
+            # Even a failed batch may have written some chunks.
+            invalidate_corpus_caches()
 
         logger.info(
             "Indexed document chunks",
@@ -172,6 +210,7 @@ class DocumentIndexWriter:
             conflicts="proceed",
         )
         deleted = int(response.get("deleted", 0)) if isinstance(response, dict) else 0
+        invalidate_corpus_caches()
         logger.info(
             "Deleted failed ingest run chunks",
             index_name=resolved_index,
@@ -186,19 +225,33 @@ class DocumentIndexWriter:
         *,
         index_name: str,
         embedding_model: str,
+        embedding_provider: str | None,
+        embedding_space_id: str,
         dimensions: int,
     ) -> str:
         if not await client.indices.exists(index=index_name):
             await client.indices.create(
                 index=index_name,
-                body=await create_index_body(embedding_model, dimensions),
+                body=await create_index_body(
+                    embedding_model,
+                    dimensions,
+                    embedding_provider=embedding_provider,
+                    embedding_space_id=embedding_space_id,
+                ),
             )
         return await ensure_embedding_field_exists(
             client,
-            embedding_model,
+            embedding_space_id,
             index_name,
             dimensions,
         )
+
+    @staticmethod
+    def _embedding_space_id(context: DocumentIndexContext) -> str:
+        """Use exact provider provenance when present; preserve legacy ids otherwise."""
+        if context.embedding_provider:
+            return get_embedding_space_id(context.embedding_provider, context.embedding_model)
+        return context.embedding_model
 
     def _build_chunk_document(
         self,
@@ -237,6 +290,10 @@ class DocumentIndexWriter:
             "metadata": metadata.get("metadata", {}),
         }
 
+        if context.embedding_provider:
+            doc["embedding_provider"] = context.embedding_provider.strip().lower()
+            doc["embedding_space_id"] = self._embedding_space_id(context)
+
         parser = context.parser or metadata.get("parser")
         if parser:
             doc["parser"] = parser
@@ -266,6 +323,17 @@ class DocumentIndexWriter:
             doc["connector_file_id"] = metadata["connector_file_id"]
         if context.is_sample_data:
             doc["is_sample_data"] = "true"
+        for field_name in (
+            "record_kind",
+            "web_source_id",
+            "web_page_id",
+            "web_page_depth",
+            "root_source_url",
+            "canonical_url",
+        ):
+            value = getattr(context, field_name)
+            if value is not None:
+                doc[field_name] = value
         for time_field in ("created_time", "modified_time"):
             if metadata.get(time_field):
                 doc[time_field] = metadata[time_field]
@@ -292,6 +360,88 @@ class DocumentIndexWriter:
         if "filesize" in normalized and "file_size" not in normalized:
             normalized["file_size"] = normalized["filesize"]
         return normalized
+
+    @staticmethod
+    def _item_error(item: Any) -> dict[str, Any] | None:
+        action = item.get("index") or item.get("create") or item.get("update") or item
+        return action.get("error")
+
+    @classmethod
+    def _item_error_is_retryable(cls, item: Any) -> bool:
+        error = cls._item_error(item)
+        # When there is no error the item succeeded — we treat it as retryable
+        # so a successful item never blocks a retry when this runs over the
+        # still_pending list (which only ever holds items that actually failed).
+        return not error or error.get("type") in _BULK_RETRYABLE_ERROR_TYPES
+
+    async def _bulk_with_retry(
+        self, client: Any, bulk_body: list[dict[str, Any]], *, refresh: bool | str
+    ) -> Any:
+        """Only retry the items that actually failed, not the whole bulk body.
+
+        Each entry in the bulk response lines up by position with the
+        action/document pairs we sent. If we resend everything on retry we
+        end up re-submitting pairs that already succeeded — and under heavy
+        load a different subset can fail each time, meaning the file still
+        gets marked failed even though every pair succeeded at some point.
+        Instead we track each pair by its original position and only rebuild
+        the retry body from the ones still failing.
+        """
+        if len(bulk_body) % 2 != 0:
+            raise ValueError(
+                f"bulk_body must contain action/document pairs; got {len(bulk_body)} elements"
+            )
+        pairs = [tuple(bulk_body[i : i + 2]) for i in range(0, len(bulk_body), 2)]
+        pending_indices = list(range(len(pairs)))
+        final_items: list[Any] = [None] * len(pairs)
+
+        for attempt in range(_MAX_BULK_RETRIES + 1):
+            retry_body = [part for i in pending_indices for part in pairs[i]]
+            result = await client.bulk(body=retry_body, refresh=refresh)
+            if not isinstance(result, dict):
+                return result
+
+            items = result.get("items", [])
+
+            # Guard against a bad or cut-short response — the server should
+            # return exactly one item for each request we sent. If the list
+            # is short or empty we can't safely match results back to the
+            # right slots, so we treat it as an error rather than leaving
+            # gaps filled with None.
+            if len(items) != len(pending_indices):
+                raise RuntimeError(
+                    f"OpenSearch bulk response returned {len(items)} items for "
+                    f"{len(pending_indices)} requests — malformed response"
+                )
+
+            still_pending = []
+            for original_index, item in zip(pending_indices, items, strict=True):
+                final_items[original_index] = item
+                if self._item_error(item):
+                    still_pending.append(original_index)
+
+            if not still_pending:
+                # Keep the top-level error flag as-is — if the server
+                # said errors: true but none of the individual items show
+                # an error, we still want to surface that rather than
+                # quietly calling it a success.
+                return {**result, "items": final_items, "errors": result.get("errors", False)}
+
+            all_retryable = all(
+                self._item_error_is_retryable(final_items[i]) for i in still_pending
+            )
+            if not all_retryable or attempt == _MAX_BULK_RETRIES:
+                return {**result, "items": final_items, "errors": True}
+
+            logger.warning(
+                "Retrying OpenSearch bulk write after transient error",
+                attempt=attempt + 1,
+                remaining_items=len(still_pending),
+            )
+            await asyncio.sleep(_BULK_RETRY_DELAY_SECONDS * (attempt + 1))
+            pending_indices = still_pending
+
+        return {"items": final_items, "errors": True}
 
     @staticmethod
     def _raise_for_bulk_errors(result: Any) -> None:

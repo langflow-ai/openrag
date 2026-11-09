@@ -72,7 +72,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   });
 
   const { isUnhealthy: isDoclingUnhealthy } = useDoclingHealth();
-  const { isUnhealthy: isProviderUnhealthy } = useProviderHealth();
+  const { isUnhealthy: isProviderUnhealthy, isDegraded: isProviderDegraded } =
+    useProviderHealth();
 
   if (isAuthPage) {
     return <div className="h-full">{children}</div>;
@@ -101,7 +102,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={cn(
-        "h-screen w-screen flex flex-col relative",
+        "h-screen w-full max-w-full flex flex-col relative overflow-x-hidden",
         isCloudBrand ? "bg-background" : "bg-muted dark:bg-black",
       )}
     >
@@ -120,7 +121,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           {settings?.edited && isOnboardingComplete && (
             <AnimatedConditional
               vertical
-              isOpen={isProviderUnhealthy}
+              isOpen={isProviderUnhealthy || isProviderDegraded}
               className="w-full"
             >
               <ProviderHealthBanner />
@@ -192,9 +193,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         runMode === "oss" && (
           <ConsoleStatusPanel isOpen={isStatusOpen} onClose={closeStatus} />
         )}
-      {(isAuthenticated || isNoAuthMode) && runMode === "oss" && (
-        <FlowsUpdateDialog />
-      )}
+      {(isAuthenticated || isNoAuthMode) && <FlowsUpdateDialog />}
     </div>
   );
 }

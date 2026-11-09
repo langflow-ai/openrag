@@ -1,0 +1,208 @@
+/**
+ * Provider ordering and chrome.
+ *
+ * Which providers exist is the backend's call (config/model_providers.yaml
+ * filtered by OPENRAG_RUN_MODE); the frontend only decides what order to show
+ * them in and what to call them. These pin that a provider the backend adds
+ * still renders, and that a hidden one can never be re-introduced by the
+ * preference lists.
+ */
+
+import assert from "node:assert/strict";
+import type { ReactElement } from "react";
+import { describe, it } from "vitest";
+import OpenShiftAILogo from "@/components/icons/openshift-ai-logo";
+import {
+  canRemoveProvider,
+  EMBEDDING_PROVIDER_ORDER,
+  getModelLogo,
+  getProviderChrome,
+  isProviderConfigured,
+  LLM_PROVIDER_ORDER,
+  orderProviders,
+  requiresExplicitModelSelection,
+} from "./model-helpers";
+
+describe("orderProviders", () => {
+  it("ranks preferred providers first and keeps the rest in API order", () => {
+    assert.deepEqual(
+      orderProviders(
+        ["openai", "watsonx", "azure_ai", "anthropic"],
+        ["anthropic", "openai"],
+      ),
+      ["anthropic", "openai", "watsonx", "azure_ai"],
+    );
+  });
+
+  it("never adds a provider the backend did not offer", () => {
+    // SaaS hides Ollama, so no preference list may put it back.
+    assert.deepEqual(
+      orderProviders(["openai", "watsonx"], LLM_PROVIDER_ORDER),
+      ["openai", "watsonx"],
+    );
+    assert.deepEqual(orderProviders(["openai"], EMBEDDING_PROVIDER_ORDER), [
+      "openai",
+    ]);
+  });
+
+  it("keeps a provider that no preference list mentions", () => {
+    assert.deepEqual(orderProviders(["azure_ai"], LLM_PROVIDER_ORDER), [
+      "azure_ai",
+    ]);
+  });
+});
+
+describe("getProviderChrome", () => {
+  it("names an unknown provider by its API display name", () => {
+    assert.equal(getProviderChrome("groq", "Groq Cloud").name, "Groq Cloud");
+  });
+
+  it("falls back to the provider key when the API sent no name", () => {
+    assert.equal(getProviderChrome("groq").name, "groq");
+  });
+
+  it("lets the API display name override a built-in label", () => {
+    assert.equal(getProviderChrome("openai").name, "OpenAI");
+    assert.equal(
+      getProviderChrome("openai", "House Gateway").name,
+      "House Gateway",
+    );
+  });
+
+  it("gives each Azure service its own Microsoft mark", () => {
+    // Foundry and Azure OpenAI are drawn differently by Microsoft, and neither
+    // is the generic Azure logo. `azure` had no chrome row at all, so its card
+    // fell through to the placeholder while the model rows beside it were
+    // already branded.
+    const foundry = getProviderChrome("azure_ai");
+    const openai = getProviderChrome("azure");
+    const placeholder = getProviderChrome("groq").logo;
+
+    assert.equal(foundry.name, "Azure AI Foundry");
+    assert.equal(openai.name, "Azure OpenAI");
+    assert.notEqual(foundry.logo, openai.logo);
+    assert.notEqual(foundry.logo, placeholder);
+    assert.notEqual(openai.logo, placeholder);
+  });
+});
+
+describe("getModelLogo", () => {
+  it("draws the OpenShift AI mark for the rhoai provider", () => {
+    // RHOAI (KServe + vLLM, PROVIDER_CHROME's `rhoai` row) is a distinct
+    // branch from the watsonx/azure/local ones above and below it, so it
+    // needs its own pin rather than relying on the neighbors.
+    const icon = getModelLogo(
+      "granite-3.1-8b-instruct",
+      "rhoai",
+    ) as ReactElement;
+    assert.equal(icon.type, OpenShiftAILogo);
+  });
+});
+
+describe("isProviderConfigured", () => {
+  it("returns true when configured in custom or legacy fields", () => {
+    assert.equal(
+      isProviderConfigured({ openai: { configured: true } }, "openai"),
+      true,
+    );
+    assert.equal(
+      isProviderConfigured(
+        { custom: { azure: { configured: true } } },
+        "azure",
+      ),
+      true,
+    );
+    assert.equal(
+      isProviderConfigured({ openai: { configured: false } }, "openai"),
+      false,
+    );
+    assert.equal(isProviderConfigured(undefined, "openai"), false);
+  });
+});
+
+describe("canRemoveProvider", () => {
+  it("returns false if the provider is not configured", () => {
+    assert.equal(
+      canRemoveProvider({ openai: { configured: true } }, "watsonx"),
+      false,
+    );
+  });
+
+  it("returns false if it is the only configured provider", () => {
+    assert.equal(
+      canRemoveProvider({ watsonx: { configured: true } }, "watsonx"),
+      false,
+    );
+    assert.equal(
+      canRemoveProvider({ custom: { azure: { configured: true } } }, "azure"),
+      false,
+    );
+  });
+
+  it("returns false when the only other configured provider is anthropic (no embedding model)", () => {
+    const providers = {
+      watsonx: { configured: true },
+      anthropic: { configured: true },
+    };
+    assert.equal(canRemoveProvider(providers, "watsonx"), false);
+
+    const withCustom = {
+      custom: {
+        azure: { configured: true },
+        anthropic: { configured: true },
+      },
+    };
+    assert.equal(canRemoveProvider(withCustom, "azure"), false);
+  });
+
+  it("allows removing anthropic when another provider with an embedding model is configured", () => {
+    const providers = {
+      watsonx: { configured: true },
+      anthropic: { configured: true },
+    };
+    assert.equal(canRemoveProvider(providers, "anthropic"), true);
+
+    const withCustom = {
+      custom: {
+        azure: { configured: true },
+        anthropic: { configured: true },
+      },
+    };
+    assert.equal(canRemoveProvider(withCustom, "anthropic"), true);
+  });
+
+  it("allows removing a provider when another provider with embedding is configured", () => {
+    // Legacy fields
+    const legacy = {
+      watsonx: { configured: true },
+      openai: { configured: true },
+    };
+    assert.equal(canRemoveProvider(legacy, "watsonx"), true);
+    assert.equal(canRemoveProvider(legacy, "openai"), true);
+
+    // Custom catalog providers (like azure)
+    const custom = {
+      custom: {
+        watsonx: { configured: true },
+        azure: { configured: true },
+        anthropic: { configured: true },
+      },
+    };
+    assert.equal(canRemoveProvider(custom, "watsonx"), true);
+    assert.equal(canRemoveProvider(custom, "azure"), true);
+    assert.equal(canRemoveProvider(custom, "anthropic"), true);
+  });
+});
+
+describe("requiresExplicitModelSelection", () => {
+  it("covers both Azure providers, whose deployment names are operator-chosen", () => {
+    assert.equal(requiresExplicitModelSelection("azure"), true);
+    assert.equal(requiresExplicitModelSelection("azure_ai"), true);
+  });
+
+  it("does not stop other providers defaulting to their top-ranked model", () => {
+    assert.equal(requiresExplicitModelSelection("openai"), false);
+    assert.equal(requiresExplicitModelSelection("anthropic"), false);
+    assert.equal(requiresExplicitModelSelection(undefined), false);
+  });
+});

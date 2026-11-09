@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 import { getApiError } from "@/lib/status-utils";
 import type {
   ComponentState,
@@ -46,12 +47,11 @@ export function useComponentSyncMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (component: string): Promise<ComponentActionResponse> => {
-      const res = await fetch(
-        `/api/status/${encodeURIComponent(component)}/sync`,
-        { method: "POST" },
+      const res = await apiClient.post<ComponentActionResponse>(
+        `/status/${encodeURIComponent(component)}/sync`,
       );
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      const body = res.data ?? {};
+      if (res.status < 200 || res.status >= 300) {
         throw new Error(getApiError(body, res.status));
       }
       return body as ComponentActionResponse;
@@ -87,12 +87,12 @@ export const useComponentDiagnoseQuery = (component: string | null) =>
   useQuery({
     queryKey: ["component-diagnose", component],
     queryFn: async ({ signal }) => {
-      const res = await fetch(
-        `/api/status/${encodeURIComponent(component as string)}/diagnose`,
+      const res = await apiClient.get<DiagnosisResponse>(
+        `/status/${encodeURIComponent(component as string)}/diagnose`,
         { signal },
       );
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      const body = res.data ?? {};
+      if (res.status < 200 || res.status >= 300) {
         throw new Error(getApiError(body, res.status));
       }
       return body as DiagnosisResponse;

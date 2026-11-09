@@ -53,7 +53,7 @@ The reason identifies which part of your [image and registry configuration](/ref
 This check only covers the OpenRAG-owned images.
 The OpenSearch Dashboards image isn't validated in advance, so an incorrect `DASHBOARDS_REGISTRY` value doesn't produce one of the errors above.
 Instead, the deployment fails later with a pull error from Docker or Podman.
-Because the repository path and tag for that image are fixed, confirm that the mirrored image is available at `DASHBOARDS_REGISTRY/opensearchproject/opensearch-dashboards:3.6.0`, and make sure `DASHBOARDS_REGISTRY` is set correctly.
+Because the repository path and tag for that image are fixed, confirm that the mirrored image is available at `DASHBOARDS_REGISTRY/opensearchproject/opensearch-dashboards:3.8.0`, and make sure `DASHBOARDS_REGISTRY` is set correctly.
 
 For instructions on mirroring the images, see [Deploy OpenRAG from a private registry](/docker#private-registry).
 

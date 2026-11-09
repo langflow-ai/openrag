@@ -95,7 +95,7 @@ export class TasksMenu {
    */
   async verifyTaskFailed(filename: string) {
     const completedBadge = this.page
-      .getByText("Complete", { exact: true })
+      .getByText("Completed", { exact: true })
       .first();
     const failedBadge = this.page.getByText("FAILED", { exact: true }).first();
 
@@ -126,14 +126,12 @@ export class TasksMenu {
    * Waits for a task to complete (or fail) and returns the status and failure log (if any).
    */
   async waitForTaskCompletionAndGetLog(): Promise<{
-    status: "Complete" | "COMPLETED" | "FAILED";
+    status: "Completed" | "FAILED";
     statusLine: string;
     failureLog: string;
   }> {
-    // Match both "Complete" and "COMPLETED" (case-insensitive)
-    const completedBadge = this.page
-      .getByText(/^(Complete|COMPLETED)$/i)
-      .first();
+    // Match "Completed" badge text (the UI renders "Completed", not "Complete")
+    const completedBadge = this.page.getByText(/^Completed$/i).first();
     const failedBadge = this.page.getByText(/^(Failed|FAILED)$/i).first();
 
     // Wait for either badge to appear - use .first() to avoid strict mode violation
@@ -179,11 +177,7 @@ export class TasksMenu {
     }
 
     return {
-      status: isCompleted
-        ? (((await completedBadge.textContent()) || "Complete") as
-            | "Complete"
-            | "COMPLETED")
-        : "FAILED",
+      status: isCompleted ? "Completed" : "FAILED",
       statusLine,
       failureLog,
     };

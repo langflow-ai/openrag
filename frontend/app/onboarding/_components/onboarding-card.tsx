@@ -1,5 +1,6 @@
 "use client";
 
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
@@ -18,13 +19,14 @@ import {
 } from "@/app/api/queries/useGetSettingsQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
+import { useDoclingHealth } from "@/components/docling-health-banner";
+import { providerDiscoversModels } from "@/components/models/catalog-models";
 import {
   EMBEDDING_PROVIDER_ORDER,
   getProviderChrome,
   LLM_PROVIDER_ORDER,
   orderProviders,
-} from "@/app/settings/_helpers/model-helpers";
-import { useDoclingHealth } from "@/components/docling-health-banner";
+} from "@/components/models/model-helpers";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -44,6 +46,11 @@ import { AnthropicOnboarding } from "./anthropic-onboarding";
 import { GenericOnboarding } from "./generic-onboarding";
 import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
+import {
+  canCompleteOnboarding,
+  fetchEditedForRollbackCheck,
+  shouldRollbackFailedOnboarding,
+} from "./onboarding-completion";
 import { OpenAIOnboarding } from "./openai-onboarding";
 import { TabTrigger } from "./tab-trigger";
 
@@ -60,7 +67,9 @@ const STEP_LIST = [
 ];
 
 // Providers whose model inventory is read live from the running service, so an
-// empty catalogue list says nothing about what they can serve.
+// empty catalogue list says nothing about what they can serve. Provider
+// enhancements that list their models from typed credentials
+// (`discovers_models`) are in the same position until onboarding asks them.
 const LIVE_MODEL_PROVIDERS = new Set(["ollama", "watsonx"]);
 
 const EMBEDDING_STEP_LIST = [
@@ -75,8 +84,6 @@ const OnboardingCard = ({
   isEmbedding = false,
   isCompleted = false,
 }: OnboardingCardProps) => {
-  const { isHealthy: isDoclingHealthy } = useDoclingHealth();
-
   // Which providers this deployment offers comes from the backend, filtered by
   // OPENRAG_RUN_MODE (config/model_providers.yaml). Onboarding renders that
   // list; it does not decide availability from the UI brand.
@@ -95,6 +102,13 @@ const OnboardingCard = ({
       ),
     [availableProviders],
   );
+  const providerBadges = useMemo(
+    () =>
+      Object.fromEntries(
+        availableProviders.map(({ name, badge }) => [name, badge]),
+      ),
+    [availableProviders],
+  );
   const providerKeys = useMemo(
     () =>
       orderProviders(
@@ -109,13 +123,18 @@ const OnboardingCard = ({
   // The embedding step must not offer a provider that serves no embedding
   // models — Anthropic being the standing example. The catalogue answers that
   // for every provider except the two whose inventory comes from the running
-  // server rather than LiteLLM's bundled list.
+  // server rather than LiteLLM's bundled list, and those that discover their
+  // models from the credentials typed here — for them an empty list means "not
+  // asked yet", and hiding the tab would leave nowhere to type them.
   const tabProviders = useMemo(() => {
     if (!isEmbedding) {
       return providerKeys;
     }
     return providerKeys.filter((providerKey) => {
-      if (LIVE_MODEL_PROVIDERS.has(providerKey)) {
+      if (
+        LIVE_MODEL_PROVIDERS.has(providerKey) ||
+        providerDiscoversModels(catalog, providerKey)
+      ) {
         return true;
       }
       const entry = catalog?.providers?.find(
@@ -189,6 +208,29 @@ const OnboardingCard = ({
       }
     }
   }
+
+  // Why Submit must wait, per provider tab — a generic provider whose endpoint
+  // changed needs its saved secret typed again. Keyed by provider so a tab
+  // reporting late can never block another one.
+  const [credentialBlockers, setCredentialBlockers] = useState<
+    Record<string, string>
+  >({});
+  const handleCompletionBlockerChange = (
+    provider: string,
+    blocker: string | null,
+  ) => {
+    setCredentialBlockers((prev) => {
+      if ((prev[provider] ?? null) === blocker) return prev;
+      const next = { ...prev };
+      if (blocker) {
+        next[provider] = blocker;
+      } else {
+        delete next[provider];
+      }
+      return next;
+    });
+  };
+  const credentialBlocker = credentialBlockers[modelProvider] ?? null;
 
   const handleSetModelProvider = (provider: string) => {
     setModelProvider(provider);
@@ -329,7 +371,7 @@ const OnboardingCard = ({
         setCurrentStep(0);
       }
     },
-    onError: (error) => {
+    onError: async (error) => {
       const message = formatProviderErrorMessage(error.message);
       trackProcessFailure({
         processType: "Onboarding",
@@ -338,8 +380,17 @@ const OnboardingCard = ({
         category: "Setup",
       });
       setError(message);
-      setCurrentStep(totalSteps);
-      rollbackMutation.mutate({ embedding_only: isEmbedding });
+
+      const freshEdited = await fetchEditedForRollbackCheck(
+        queryClient,
+        currentSettings?.edited,
+      );
+      if (shouldRollbackFailedOnboarding(freshEdited)) {
+        setCurrentStep(totalSteps);
+        rollbackMutation.mutate({ embedding_only: isEmbedding });
+      } else {
+        setCurrentStep(null);
+      }
     },
   });
 
@@ -500,6 +551,12 @@ const OnboardingCard = ({
       toast.error("Please complete all required fields");
       return;
     }
+    // The button is disabled too; this keeps a stale secret from ever being
+    // submitted for a changed endpoint, which the backend would refuse.
+    if (credentialBlocker) {
+      toast.error(credentialBlocker);
+      return;
+    }
 
     // Clear any previous error
     setError(null);
@@ -541,6 +598,17 @@ const OnboardingCard = ({
     if (generic && Object.keys(generic).length > 0) {
       onboardingData.provider_credentials = { [currentProvider]: generic };
     }
+    const credentialRemovals =
+      settings.provider_credential_removals?.[currentProvider];
+    if (credentialRemovals && credentialRemovals.length > 0) {
+      onboardingData.provider_credential_removals = {
+        [currentProvider]: credentialRemovals,
+      };
+    }
+    const authMethod = settings.provider_auth_methods?.[currentProvider];
+    if (authMethod) {
+      onboardingData.provider_auth_methods = { [currentProvider]: authMethod };
+    }
 
     trackButton({
       CTA: isEmbedding ? "Complete - Embedding Setup" : "Complete - LLM Setup",
@@ -560,9 +628,12 @@ const OnboardingCard = ({
     setCurrentStep(0);
   };
 
-  const isComplete =
-    (isEmbedding && !!settings.embedding_model) ||
-    (!isEmbedding && !!settings.llm_model && isDoclingHealthy);
+  const isComplete = canCompleteOnboarding({
+    isEmbedding,
+    llmModel: settings.llm_model ?? "",
+    embeddingModel: settings.embedding_model ?? "",
+    credentialBlocker,
+  });
 
   return (
     <AnimatePresence mode="wait">
@@ -599,7 +670,7 @@ const OnboardingCard = ({
                 value={modelProvider}
                 onValueChange={handleSetModelProvider}
               >
-                <TabsList className="mb-1 pb-3 w-full justify-start gap-1 overflow-x-auto">
+                <TabsList className="mb-1">
                   {tabProviders.map((providerKey) => {
                     const chrome = getProviderChrome(
                       providerKey,
@@ -608,41 +679,65 @@ const OnboardingCard = ({
                     const Logo = chrome.logo;
                     const selected = modelProvider === providerKey;
                     return (
-                      <TabsTrigger
-                        key={providerKey}
-                        value={providerKey}
-                        data-testid={`${providerKey}-${isEmbedding ? "embedding" : "llm"}-tab`}
-                        className={cn(
-                          error &&
-                            selected &&
-                            "data-[state=active]:border-destructive",
-                          "min-w-40",
-                        )}
-                      >
-                        <TabTrigger
-                          selected={selected}
-                          isLoading={isLoadingModels}
-                        >
-                          <div
+                      <Tooltip key={providerKey}>
+                        <TooltipTrigger asChild>
+                          <TabsTrigger
+                            value={providerKey}
+                            data-testid={`${providerKey}-${isEmbedding ? "embedding" : "llm"}-tab`}
                             className={cn(
-                              "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
-                              selected
-                                ? (chrome.tabLogoBgColor ?? chrome.logoBgColor)
-                                : "bg-muted",
+                              error &&
+                                selected &&
+                                "data-[state=active]:border-destructive",
+                              // Fixed 3-up basis so every card is the same width
+                              // (like a grid) while flex still fills the row.
+                              "min-w-52 grow-0 basis-[calc((100%-1.5rem)/3)]",
                             )}
                           >
-                            <Logo
-                              className={cn(
-                                "w-4 h-4 shrink-0",
-                                selected
-                                  ? (chrome.tabLogoColor ?? chrome.logoColor)
-                                  : "text-muted-foreground",
+                            <TabTrigger
+                              selected={selected}
+                              isLoading={isLoadingModels}
+                            >
+                              <div
+                                className={cn(
+                                  "flex items-center justify-center gap-2 w-8 h-8 rounded-none border",
+                                  selected
+                                    ? (chrome.tabLogoBgColor ??
+                                        chrome.logoBgColor)
+                                    : "bg-muted",
+                                )}
+                              >
+                                <Logo
+                                  className={cn(
+                                    "w-4 h-4 shrink-0",
+                                    selected
+                                      ? (chrome.tabLogoColor ??
+                                          chrome.logoColor)
+                                      : "text-muted-foreground",
+                                  )}
+                                />
+                              </div>
+                              {chrome.name}
+                              {providerBadges[providerKey] && (
+                                <span className="absolute right-0 top-0 rounded border border-muted-foreground/40 bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                                  {providerBadges[providerKey]}
+                                </span>
                               )}
-                            />
-                          </div>
+                            </TabTrigger>
+                          </TabsTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          side="bottom"
+                          sideOffset={6}
+                          className="bg-black text-white border-none rounded-md px-2.5 py-1.5 text-xs shadow-lg [&>svg]:fill-black"
+                        >
                           {chrome.name}
-                        </TabTrigger>
-                      </TabsTrigger>
+                          <TooltipPrimitive.Arrow
+                            className="fill-black"
+                            width={10}
+                            height={5}
+                          />
+                        </TooltipContent>
+                      </Tooltip>
                     );
                   })}
                 </TabsList>
@@ -708,6 +803,9 @@ const OnboardingCard = ({
                         setSettings={setSettings}
                         isEmbedding={isEmbedding}
                         providers={currentSettings?.providers}
+                        onCompletionBlockerChange={(blocker) =>
+                          handleCompletionBlockerChange(providerKey, blocker)
+                        }
                       />
                     )}
                   </TabsContent>
@@ -732,11 +830,8 @@ const OnboardingCard = ({
                   <TooltipContent>
                     {isLoadingModels
                       ? "Loading models..."
-                      : settings.llm_model &&
-                          settings.embedding_model &&
-                          !isDoclingHealthy
-                        ? "docling-serve must be running to continue"
-                        : "Please fill in all required fields"}
+                      : (credentialBlocker ??
+                        "Please fill in all required fields")}
                   </TooltipContent>
                 )}
               </Tooltip>

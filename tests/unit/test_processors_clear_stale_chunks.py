@@ -72,6 +72,7 @@ def _patch_embedding_pipeline(monkeypatch, chunk_count: int, write_client=None):
     # Embedding model resolution path (config + fallback).
     fake_config = MagicMock()
     fake_config.knowledge.embedding_model = "text-embedding-3-small"
+    fake_config.knowledge.embedding_provider = "openai"
     monkeypatch.setattr(processors_mod, "get_openrag_config", lambda: fake_config)
     monkeypatch.setattr(processors_mod, "get_embedding_model", lambda: "text-embedding-3-small")
     monkeypatch.setattr(processors_mod, "get_index_name", lambda: "test-index")
@@ -86,19 +87,18 @@ def _patch_embedding_pipeline(monkeypatch, chunk_count: int, write_client=None):
         lambda texts, max_tokens=8000: [list(texts)],
     )
 
-    # patched_embedding_client.embeddings.create — return one embedding per text.
-    # `clients` is the singleton imported at module scope; replace it wholesale
-    # (the real one's `patched_embedding_client` is a read-only @property).
-    class _FakeEmbedResp:
-        def __init__(self, n):
-            self.data = [{"embedding": [0.1, 0.2, 0.3]} for _ in range(n)]
+    # Embeddings go through the gateway for every provider, so stub it at its
+    # source module — `process_document_standard` imports it lazily per call.
+    from services import llm_gateway as gateway_mod
 
-    fake_embed_client = MagicMock()
-    fake_embed_client.embeddings.create = AsyncMock(
-        side_effect=lambda model, input: _FakeEmbedResp(len(input))
-    )
+    async def _fake_embeddings(body, **_kwargs):
+        return {"data": [{"embedding": [0.1, 0.2, 0.3]} for _ in body["input"]]}
+
+    monkeypatch.setattr(gateway_mod, "embeddings", _fake_embeddings)
+
+    # `clients` is the singleton imported at module scope; replace it wholesale
+    # so the OpenSearch write client is the test's.
     fake_clients = MagicMock()
-    fake_clients.patched_embedding_client = fake_embed_client
     fake_clients.opensearch = write_client
     monkeypatch.setattr(processors_mod, "clients", fake_clients)
 
@@ -145,6 +145,7 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
     opensearch_client.search = AsyncMock(side_effect=_search)
     opensearch_client.delete = AsyncMock(side_effect=_delete)
     processor.document_service.document_index_writer = _FakeDocumentIndexWriter()
+    before_index_write = AsyncMock()
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
         tmp.write(b"hello world")
@@ -157,6 +158,7 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
             owner_user_id="alice",
             original_filename="renamed.txt",
             connector_type="sharepoint",
+            before_index_write=before_index_write,
         )
     finally:
         Path(tmp_path).unlink(missing_ok=True)
@@ -193,10 +195,44 @@ async def test_stale_chunks_cleared_before_reindex(monkeypatch):
     assert index_call["context"].filename == "renamed.txt"
     assert len(index_call["chunks"]) == 3
     assert index_call["final"] is True
+    assert before_index_write.await_count == 1
 
     # 5) delete_by_query must NEVER be used (DLS would silently filter it).
     if hasattr(opensearch_client, "delete_by_query"):
         opensearch_client.delete_by_query.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_source_deletion_guard_aborts_before_cleanup_or_indexing(monkeypatch):
+    """A source deleted mid-crawl must not be recreated by this page write."""
+    processor, opensearch_client = _make_processor_with_mocks()
+    _patch_embedding_pipeline(monkeypatch, chunk_count=1, write_client=opensearch_client)
+    # The document-exists check runs before the source-deletion guard. Return
+    # no existing document there, then verify the later stale-cleanup search
+    # never starts.
+    opensearch_client.search = AsyncMock(return_value={"hits": {"hits": []}})
+    index_chunks = AsyncMock()
+    processor.document_service.document_index_writer = MagicMock(index_chunks=index_chunks)
+    before_index_write = AsyncMock(side_effect=RuntimeError("Website source is deleting"))
+
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
+        tmp.write(b"hello world")
+        tmp_path = tmp.name
+
+    try:
+        with pytest.raises(RuntimeError, match="source is deleting"):
+            await processor.process_document_standard(
+                file_path=tmp_path,
+                file_hash="abc123",
+                owner_user_id="alice",
+                before_index_write=before_index_write,
+            )
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+    before_index_write.assert_awaited_once()
+    opensearch_client.search.assert_awaited_once()
+    index_chunks.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -314,7 +350,7 @@ async def test_connector_file_id_absent_when_not_provided(monkeypatch):
         Path(tmp_path).unlink(missing_ok=True)
 
     assert len(index_calls) == 1
-    assert index_calls[0]["chunks"][0].metadata == {}
+    assert "connector_file_id" not in index_calls[0]["chunks"][0].metadata
 
 
 def test_document_index_writer_outputs_connector_file_id_when_present():

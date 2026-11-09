@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { apiClient } from "@/lib/api-client";
 import IBMCOSIcon from "./icon";
 import { type IBMCOSFormData, IBMCOSSettingsForm } from "./settings-form";
 import { useIBMCOSConfigureMutation } from "./useIBMCOSConfigureMutation";
@@ -80,11 +81,12 @@ export default function IBMCOSSettingsDialog({
       });
 
       // Then list buckets using the connection
-      const res = await fetch(
-        `/api/connectors/ibm_cos/${result.connection_id}/buckets`,
+      const res = await apiClient.get(
+        `/connectors/ibm_cos/${result.connection_id}/buckets`,
       );
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to list buckets");
+      const json = res.data;
+      if (res.status < 200 || res.status >= 300)
+        throw new Error(json.error || "Failed to list buckets");
 
       const fetchedBuckets: string[] = json.buckets;
       setBuckets(fetchedBuckets);
@@ -115,8 +117,8 @@ export default function IBMCOSSettingsDialog({
       const latestDefaults = await queryClient.fetchQuery({
         queryKey: ["ibm-cos-defaults"],
         queryFn: async () => {
-          const res = await fetch("/api/connectors/ibm_cos/defaults");
-          return res.json();
+          const res = await apiClient.get("/connectors/ibm_cos/defaults");
+          return res.data;
         },
         staleTime: 0,
       });

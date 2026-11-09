@@ -10,6 +10,8 @@ import {
   useGetSearchAggregations,
 } from "@/app/api/queries/useGetSearchAggregations";
 import { FilterIconPopover } from "@/components/filter-icon-popover";
+import { useDateRangeFilterEnabled } from "@/components/knowledge-date-range-filter";
+import { KnowledgeFilterDateField } from "@/components/knowledge-filter-date-field";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -27,6 +29,15 @@ import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import { trackButton } from "@/lib/analytics";
 import type { FilterColor, IconKey } from "@/lib/filter-constants";
+import {
+  applySelection,
+  displayRangeFromSaved,
+  foreignTimeZone,
+  hasDateBounds,
+  NO_DATE_RANGE,
+  type SavedDateRange,
+  savedDateRangeOf,
+} from "@/lib/saved-date-range";
 
 interface AvailableFacets {
   data_sources: FacetBucket[];
@@ -96,6 +107,9 @@ export function KnowledgeFilterPanel() {
     owners: ["*"] as string[], // Default to wildcard
     connector_types: ["*"] as string[], // Default to wildcard
   });
+  // Unsaved draft of the filter's date range; the toolbar's temporary range is separate.
+  const [dateDraft, setDateDraft] = useState<SavedDateRange>(NO_DATE_RANGE);
+  const dateRangeEnabled = useDateRangeFilterEnabled();
   const [resultLimit, setResultLimit] = useState(10);
   const [scoreThreshold, setScoreThreshold] = useState(0);
 
@@ -127,6 +141,7 @@ export function KnowledgeFilterPanel() {
       };
 
       setSelectedFilters(processedFilters);
+      setDateDraft(savedDateRangeOf(parsedFilterData));
       setResultLimit(parsedFilterData.limit || 10);
       setScoreThreshold(parsedFilterData.scoreThreshold || 0);
       setName(selectedFilter.name);
@@ -149,6 +164,7 @@ export function KnowledgeFilterPanel() {
         owners: filters.owners ?? ["*"],
         connector_types: filters.connector_types ?? ["*"],
       });
+      setDateDraft(savedDateRangeOf(parsedFilterData));
       setResultLimit(parsedFilterData.limit || 10);
       setScoreThreshold(parsedFilterData.scoreThreshold || 0);
       setName("");
@@ -162,7 +178,7 @@ export function KnowledgeFilterPanel() {
   const { data: aggregations } = useGetSearchAggregations("*", 1, 0, {
     enabled: isPanelOpen,
     placeholderData: (prev) => prev,
-    staleTime: 60_000,
+    staleTime: 0,
     gcTime: 5 * 60_000,
   });
 
@@ -200,7 +216,17 @@ export function KnowledgeFilterPanel() {
     }
     const filterData = {
       query,
-      filters: selectedFilters,
+      filters: {
+        ...selectedFilters,
+        ...(dateDraft.createdAfter && {
+          created_after: dateDraft.createdAfter,
+        }),
+        ...(dateDraft.createdBefore && {
+          created_before: dateDraft.createdBefore,
+        }),
+      },
+      ...(hasDateBounds(dateDraft) &&
+        dateDraft.context && { date_range_context: dateDraft.context }),
       limit: resultLimit,
       scoreThreshold,
       color,
@@ -323,7 +349,7 @@ export function KnowledgeFilterPanel() {
                 />
               </div>
             </div>
-            <div className="text-xs min-h-[1.25rem]">
+            <div className="text-xs min-h-5">
               {nameError ? (
                 <span className="text-destructive">{nameError}</span>
               ) : (
@@ -431,6 +457,19 @@ export function KnowledgeFilterPanel() {
               />
             </div>
 
+            {dateRangeEnabled && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Date ingested</Label>
+                <KnowledgeFilterDateField
+                  value={displayRangeFromSaved(dateDraft)}
+                  onChange={(next) =>
+                    setDateDraft((prev) => applySelection(prev, next))
+                  }
+                  savedTimeZone={foreignTimeZone(dateDraft)}
+                />
+              </div>
+            )}
+
             {/* Result Limit Control - exactly like search page */}
             <div className="space-y-4">
               <div className="space-y-2">
@@ -450,7 +489,7 @@ export function KnowledgeFilterPanel() {
                       );
                       setResultLimit(newLimit);
                     }}
-                    className="h-6 text-xs text-right px-2 bg-muted/30 !border-0 rounded ml-auto focus:ring-0 focus:outline-none"
+                    className="h-6 text-xs text-right px-2 bg-muted/30 border-0! rounded ml-auto focus:ring-0 focus:outline-hidden"
                     style={{ width: "70px" }}
                   />
                 </div>
@@ -479,7 +518,7 @@ export function KnowledgeFilterPanel() {
                     onChange={(e) =>
                       setScoreThreshold(parseFloat(e.target.value) || 0)
                     }
-                    className="h-6 text-xs text-right px-2 bg-muted/30 !border-0 rounded ml-auto focus:ring-0 focus:outline-none"
+                    className="h-6 text-xs text-right px-2 bg-muted/30 border-0! rounded ml-auto focus:ring-0 focus:outline-hidden"
                     style={{ width: "70px" }}
                   />
                 </div>

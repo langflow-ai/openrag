@@ -1,11 +1,17 @@
 """Provider validation utilities for testing API keys and models during onboarding."""
 
+import ast
 import asyncio
 import json
 import re
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
+from enhancements.providers.registry import get as get_provider_enhancement
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
@@ -48,8 +54,19 @@ _PROVIDER_CREDENTIAL_ERROR_MARKERS = (
     "could not authenticate",
 )
 
+# ``unauthorized`` is a reliable signal in provider exceptions, but ordinary
+# assistant replies can use it in policy language ("unauthorized absence" or
+# "unauthorized access").  Content needs an error-shaped use of the word.
+_UNAUTHORIZED_PROVIDER_ERROR_CONTENT_RE = re.compile(
+    r"(?:\berror\b[:\s]*|\b(?:401|403)\b[:\s]*)unauthorized\b"
+    r"|^\s*unauthorized\s*(?:[.!]?\s*$|:)",
+    re.IGNORECASE,
+)
 
-_PROVIDER_ERROR_CONTENT_MARKERS = _PROVIDER_CREDENTIAL_ERROR_MARKERS + (
+
+_PROVIDER_ERROR_CONTENT_MARKERS = tuple(
+    marker for marker in _PROVIDER_CREDENTIAL_ERROR_MARKERS if marker != "unauthorized"
+) + (
     "rate limit",
     "rate_limit",
     "permission denied",
@@ -60,25 +77,29 @@ _PROVIDER_ERROR_CONTENT_MARKERS = _PROVIDER_CREDENTIAL_ERROR_MARKERS + (
 
 
 def _extract_balanced_json_object(text: str) -> str | None:
-    """Return the first top-level `{...}` substring, ignoring trailing junk."""
+    """Return the first top-level `{...}` substring, ignoring trailing junk.
+
+    Either quote opens a string: the OpenAI SDK prints an error body as a
+    Python dict, which quotes with `'` wherever the text allows.
+    """
     start = text.find("{")
     if start < 0:
         return None
     depth = 0
-    in_string = False
+    quote = ""
     escape = False
     for i in range(start, len(text)):
         ch = text[i]
-        if in_string:
+        if quote:
             if escape:
                 escape = False
             elif ch == "\\":
                 escape = True
-            elif ch == '"':
-                in_string = False
+            elif ch == quote:
+                quote = ""
             continue
-        if ch == '"':
-            in_string = True
+        if ch in "\"'":
+            quote = ch
         elif ch == "{":
             depth += 1
         elif ch == "}":
@@ -126,6 +147,160 @@ def is_provider_credential_error(text: str | BaseException | None) -> bool:
     return any(marker in lowered for marker in _PROVIDER_CREDENTIAL_ERROR_MARKERS)
 
 
+#: Markers for a TLS trust failure, which is neither a bad credential nor an
+#: unreachable host: the request never left because this deployment does not
+#: trust the certificate the provider presented. Common on an on-prem cluster
+#: fronted by an internal or self-signed CA.
+_PROVIDER_TLS_ERROR_MARKERS = (
+    "certificate_verify_failed",
+    "certificate verify failed",
+    "sslcertverificationerror",
+    "ssl: certificate",
+    "self-signed certificate",
+    "self signed certificate",
+    "unable to get local issuer certificate",
+    "certificate has expired",
+    "hostname mismatch",
+)
+
+
+def is_provider_tls_error(text: str | BaseException | None) -> bool:
+    """True when the call failed because the provider's certificate is not trusted."""
+    if text is None:
+        return False
+    lowered = (str(text) if not isinstance(text, str) else text).lower()
+    return any(marker in lowered for marker in _PROVIDER_TLS_ERROR_MARKERS)
+
+
+#: Markers for a response the connection dropped before it finished: the server
+#: promised more body than arrived. Nearly always something between OpenRAG and
+#: the model server closing a long response — an authenticating proxy with a
+#: fixed request timeout (RHOAI's kube-rbac-proxy cuts at 30s), a load balancer
+#: idle timeout. aiohttp names it with a "400" of its own, which reads like the
+#: model rejecting the request.
+_PROVIDER_TRUNCATED_RESPONSE_MARKERS = (
+    "transferencodingerror",
+    "response payload is not completed",
+    "not enough data to satisfy transfer length",
+    "incomplete chunked read",
+)
+
+
+def is_provider_truncated_response_error(text: str | BaseException | None) -> bool:
+    """True when the provider's response was cut off mid-transfer."""
+    if text is None:
+        return False
+    lowered = (str(text) if not isinstance(text, str) else text).lower()
+    return any(marker in lowered for marker in _PROVIDER_TRUNCATED_RESPONSE_MARKERS)
+
+
+#: How deep to follow `__cause__` / `__context__`. LiteLLM wraps the transport
+#: error three times (its exception, the provider's, `httpx.ReadError`).
+_MAX_EXCEPTION_CHAIN_DEPTH = 8
+
+
+def is_provider_stale_connection_error(exc: BaseException | None) -> bool:
+    """True when the connection closed before any response to the request began.
+
+    Nearly always a pooled keep-alive connection the model server had already
+    closed: LiteLLM keeps idle connections for 120s, vLLM (uvicorn) closes them
+    after 5s, and a request sent while the close is still in flight finds a
+    dead socket. The server never saw the request, so sending it again on a
+    fresh connection is safe. Matched on the transport's own exception type,
+    not its text: a response cut off mid-body raises a different error
+    (`is_provider_truncated_response_error`) and must not be replayed.
+    """
+    disconnect_types: tuple[type[BaseException], ...] = ()
+    try:
+        from aiohttp import ServerDisconnectedError
+    except ImportError:  # pragma: no cover - aiohttp ships with LiteLLM
+        pass
+    else:
+        disconnect_types = (ServerDisconnectedError,)
+
+    current = exc
+    for _ in range(_MAX_EXCEPTION_CHAIN_DEPTH):
+        if current is None:
+            return False
+        if isinstance(current, disconnect_types):
+            return True
+        # The same failure on LiteLLM's httpx transport (a provider handed its
+        # own client). Other RemoteProtocolErrors can follow a partial response.
+        if isinstance(current, httpx.RemoteProtocolError) and (
+            "without sending a response" in str(current).lower()
+        ):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+#: Markers for a prompt that does not fit the model's context window. That is a
+#: property of one request — a long conversation, a lot of retrieved text, an
+#: oversized chunk sent for embedding — and says nothing about whether the
+#: provider is serving.
+_CONTEXT_WINDOW_ERROR_MARKERS = (
+    "maximum context length",
+    "context_length_exceeded",
+    "contextwindowexceeded",
+    "prompt is too long",
+    # The wordings LiteLLM itself recognises (ExceptionCheckers
+    # .is_error_str_context_window_exceeded), for the providers whose errors it
+    # does not already raise as ContextWindowExceededError.
+    "exceed context limit",
+    "maximum context limit",
+    "longer than the model's context length",
+    "input tokens exceed the configured limit",
+    "exceeds the available context size",
+    "exceeds the maximum number of tokens allowed",
+)
+
+
+def is_context_window_error(text: str | BaseException | None) -> bool:
+    """True when the call failed because the prompt exceeds the model's context window."""
+    if text is None:
+        return False
+    lowered = (str(text) if not isinstance(text, str) else text).lower()
+    return any(marker in lowered for marker in _CONTEXT_WINDOW_ERROR_MARKERS)
+
+
+_CONTEXT_LIMIT_RE = re.compile(r"maximum context length is (\d+)", re.IGNORECASE)
+#: Tried in order: vLLM's chat wording also says "requested 0 output tokens",
+#: which is not the size of the prompt.
+_CONTEXT_REQUESTED_RES = (
+    re.compile(r"prompt contains (?:at least )?(\d+) input tokens", re.IGNORECASE),
+    re.compile(r"resulted in (\d+) tokens", re.IGNORECASE),
+    re.compile(r"requested (\d+) tokens", re.IGNORECASE),
+)
+#: Anthropic: "prompt is too long: 210000 tokens > 200000 maximum".
+_CONTEXT_COMPARISON_RE = re.compile(r"(\d+) tokens > (\d+) maximum", re.IGNORECASE)
+
+
+def context_window_token_counts(
+    text: str | BaseException | None,
+) -> tuple[int | None, int | None]:
+    """The `(limit, requested)` token counts a context-window error states.
+
+    Either is None when the provider did not say. Callers use the pair to tell
+    how far over the limit an input was, so a wrong number is worse than none:
+    only wordings that name the quantity outright are read.
+    """
+    if text is None:
+        return None, None
+    message = str(text) if not isinstance(text, str) else text
+    comparison = _CONTEXT_COMPARISON_RE.search(message)
+    if comparison:
+        return int(comparison.group(2)), int(comparison.group(1))
+    limit = _CONTEXT_LIMIT_RE.search(message)
+    requested = next(
+        (found for pattern in _CONTEXT_REQUESTED_RES if (found := pattern.search(message))),
+        None,
+    )
+    return (
+        int(limit.group(1)) if limit else None,
+        int(requested.group(1)) if requested else None,
+    )
+
+
 _GENERIC_UPSTREAM_ERROR_MARKERS = (
     "an unknown error occurred",
     "an error occurred while generating a response",
@@ -145,6 +320,9 @@ def is_generic_upstream_error(text: str | BaseException | None) -> bool:
     return lowered in generics
 
 
+_ERROR_OBJECT_KEY_RE = re.compile(r"[\"'](?:error|errormessage|errorcode|errors)[\"']")
+
+
 def looks_like_provider_error_content(text: str | None) -> bool:
     """True when assistant text looks like a provider/auth failure rather than a normal reply."""
     if not text or not text.strip():
@@ -155,15 +333,13 @@ def looks_like_provider_error_content(text: str | None) -> bool:
     if is_generic_upstream_error(content):
         return True
     lowered = content.lower()
-    if any(marker in lowered for marker in _PROVIDER_ERROR_CONTENT_MARKERS):
-        return True
-    # Raw provider payloads often embed JSON error objects.
-    if "{" in content and (
-        '"error"' in lowered
-        or '"errormessage"' in lowered
-        or '"errorcode"' in lowered
-        or '"errors"' in lowered
+    if any(marker in lowered for marker in _PROVIDER_ERROR_CONTENT_MARKERS) or (
+        _UNAUTHORIZED_PROVIDER_ERROR_CONTENT_RE.search(lowered)
     ):
+        return True
+    # Raw provider payloads often embed an error object: as JSON, or as the
+    # Python dict the OpenAI SDK prints (`Error code: 400 - {'error': {...}}`).
+    if "{" in content and _ERROR_OBJECT_KEY_RE.search(lowered):
         return True
     return False
 
@@ -186,7 +362,10 @@ def sanitize_provider_error_content(text: str | BaseException | None) -> str:
         # Strip the first JSON object as a last resort.
         json_start = cleaned.find("{")
         prefix = cleaned[:json_start].rstrip(": ").strip()
-        return prefix or "An error occurred while generating a response."
+        # "Error code: 502 - {...}" leaves "502 -", which names no cause at all.
+        if not any(ch.isalpha() for ch in prefix):
+            return "An error occurred while generating a response."
+        return prefix
     return cleaned
 
 
@@ -217,6 +396,7 @@ async def _probe_provider_credential_error(
     project_id: str | None = None,
     embedding_model: str | None = None,
     llm_model: str | None = None,
+    credentials: dict[str, str] | None = None,
 ) -> str | None:
     """Run a lightweight provider check; return a cleaned credential error if auth fails."""
     if not provider:
@@ -230,12 +410,49 @@ async def _probe_provider_credential_error(
             endpoint=endpoint,
             project_id=project_id,
             test_completion=False,
+            credentials=credentials,
         )
     except Exception as probe_exc:
         cleaned = sanitize_provider_error_content(probe_exc)
         if is_provider_credential_error(probe_exc) or is_provider_credential_error(cleaned):
             return cleaned
     return None
+
+
+def _provider_probe_inputs(
+    config: Any,
+    provider: str,
+    provider_config: Any,
+    *,
+    kind: str = "chat",
+) -> tuple[str | None, str | None, str | None, dict[str, str]]:
+    """Return legacy fields plus the complete LiteLLM credential map.
+
+    The original four providers expose attributes such as ``api_key`` and
+    ``endpoint``. Generic providers (Azure, Bedrock, Gemini, and others) keep
+    every LiteLLM keyword argument in ``ProvidersConfig.credentials`` instead.
+    Recovery probes must use both representations because they run specifically
+    when Langflow has hidden the provider's real failure.
+
+    ``kind`` (``"chat"`` or ``"embedding"``) selects the endpoint for a provider
+    that serves the two from different places (Red Hat OpenShift AI), so an
+    embedding probe hits the endpoint the real embedding call will.
+    """
+    credentials: dict[str, str] = {}
+    credential_values = getattr(getattr(config, "providers", None), "credential_values", None)
+    if callable(credential_values):
+        values = credential_values(provider, kind=kind)
+        if isinstance(values, dict):
+            credentials = dict(values)
+
+    api_key = getattr(provider_config, "api_key", None) or credentials.get("api_key")
+    endpoint = (
+        getattr(provider_config, "resolved_endpoint", None)
+        or getattr(provider_config, "endpoint", None)
+        or credentials.get("api_base")
+    )
+    project_id = getattr(provider_config, "project_id", None) or credentials.get("project_id")
+    return api_key, endpoint, project_id, credentials
 
 
 async def probe_provider_credential_error() -> str | None:
@@ -270,28 +487,29 @@ async def probe_provider_credential_error() -> str | None:
         if not provider or provider in checked or provider_config is None:
             continue
         checked.add(provider)
-        api_key = getattr(provider_config, "api_key", None)
-        endpoint = getattr(provider_config, "endpoint", None)
+        api_key, endpoint, project_id, credentials = _provider_probe_inputs(
+            config,
+            provider,
+            provider_config,
+            kind="embedding" if embedding_model else "chat",
+        )
         if provider == "ollama":
             if not endpoint:
                 continue
-        elif (
-            provider
-            not in (
-                config.knowledge.embedding_provider,
-                config.agent.llm_provider,
-            )
-            and not api_key
-        ):
+        elif provider not in (
+            config.knowledge.embedding_provider,
+            config.agent.llm_provider,
+        ) and not (api_key or credentials):
             continue
 
         error = await _probe_provider_credential_error(
             provider=provider,
             api_key=api_key,
             endpoint=endpoint,
-            project_id=getattr(provider_config, "project_id", None),
+            project_id=project_id,
             embedding_model=embedding_model,
             llm_model=llm_model,
+            credentials=credentials,
         )
         if error:
             return error
@@ -318,12 +536,15 @@ async def probe_chat_llm_error() -> str | None:
     if provider_config is None:
         return None
 
-    api_key = getattr(provider_config, "api_key", None)
-    endpoint = getattr(provider_config, "endpoint", None)
+    api_key, endpoint, project_id, credentials = _provider_probe_inputs(
+        config,
+        provider,
+        provider_config,
+    )
     if provider == "ollama":
         if not endpoint:
             return None
-    elif not api_key:
+    elif not (api_key or credentials):
         return None
 
     try:
@@ -334,8 +555,9 @@ async def probe_chat_llm_error() -> str | None:
             api_key=api_key,
             llm_model=llm_model,
             endpoint=endpoint,
-            project_id=getattr(provider_config, "project_id", None),
+            project_id=project_id,
             test_completion=True,
+            credentials=credentials,
         )
     except Exception as probe_exc:
         return sanitize_provider_error_content(probe_exc)
@@ -356,12 +578,16 @@ async def probe_embedding_error() -> str | None:
     if provider_config is None:
         return None
 
-    api_key = getattr(provider_config, "api_key", None)
-    endpoint = getattr(provider_config, "endpoint", None)
+    api_key, endpoint, project_id, credentials = _provider_probe_inputs(
+        config,
+        provider,
+        provider_config,
+        kind="embedding",
+    )
     if provider == "ollama":
         if not endpoint:
             return None
-    elif not api_key:
+    elif not (api_key or credentials):
         return None
 
     try:
@@ -370,8 +596,9 @@ async def probe_embedding_error() -> str | None:
             api_key=api_key,
             embedding_model=embedding_model,
             endpoint=endpoint,
-            project_id=getattr(provider_config, "project_id", None),
+            project_id=project_id,
             test_completion=True,
+            credentials=credentials,
         )
     except Exception as probe_exc:
         return sanitize_provider_error_content(probe_exc)
@@ -467,11 +694,25 @@ async def resolve_chat_stream_error_message_async(
     return cleaned
 
 
+def _load_error_body(error_text: str) -> Any:
+    """Parse an error body sent as JSON or printed as a Python literal.
+
+    The OpenAI SDK formats its exceptions as `Error code: 400 - {'error': ...}`,
+    a dict repr that `json.loads` rejects. That is the form a gateway error
+    takes by the time Langflow relays it.
+    """
+    try:
+        return json.loads(error_text)
+    except ValueError:
+        if not error_text.lstrip().startswith("{"):
+            raise
+        return ast.literal_eval(error_text)
+
+
 def _parse_json_error_message(error_text: str) -> str:
     """Parse JSON error message and extract just the message field."""
     try:
-        # Try to parse as JSON
-        error_data = json.loads(error_text)
+        error_data = _load_error_body(error_text)
 
         if isinstance(error_data, dict):
             # WatsonX format: {"errors": [{"code": "...", "message": "..."}], ...}
@@ -504,7 +745,7 @@ def _parse_json_error_message(error_text: str) -> str:
             # Generic format: {"detail": "..."}
             if "detail" in error_data:
                 return error_data["detail"]
-    except (json.JSONDecodeError, ValueError, TypeError):
+    except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
         pass
 
     # Return original text if not JSON or can't parse
@@ -568,6 +809,43 @@ def _extract_error_details(response: httpx.Response) -> str:
         return response_text
 
 
+#: Providers with a validation path of their own, so they are never handed to
+#: the generic LiteLLM probe. Everything else is validated by making a real call,
+#: which needs a model name.
+_NATIVELY_VALIDATED_PROVIDERS = frozenset({"openai", "azure", "watsonx", "ollama", "anthropic"})
+
+
+def is_azure_ai_foundry_endpoint(api_base: str | None) -> bool:
+    """Whether ``api_base`` is an Azure AI Foundry resource endpoint.
+
+    LiteLLM accepts the resource root and appends its own Foundry request path.
+    Such an endpoint must not use the Azure OpenAI-specific HTTP health check.
+    """
+    if not api_base:
+        return False
+    return (urlparse(api_base).hostname or "").endswith(".services.ai.azure.com")
+
+
+@dataclass(frozen=True)
+class ProbeResult:
+    """What a successful `validate_provider_setup()` call actually exercised.
+
+    Passing validation is weaker evidence than it looks: depending on the
+    provider and arguments it may have listed deployments, checked a key, or
+    made no call at all. Callers deciding whether a provider is *serving* — as
+    the health check does before erasing a real-traffic failure — need to know
+    which.
+
+    ``model_probed``: a real call was made to the model under test — the
+    embedding model when one was given, otherwise the LLM.
+    ``tools_exercised``: that call was a completion carrying tool definitions,
+    the shape the agent's own traffic has.
+    """
+
+    model_probed: bool = False
+    tools_exercised: bool = False
+
+
 async def validate_provider_setup(
     provider: str,
     api_key: str = None,
@@ -577,7 +855,9 @@ async def validate_provider_setup(
     project_id: str = None,
     test_completion: bool = False,
     credentials: dict[str, str] | None = None,
-) -> None:
+    stored_credentials: Mapping[str, Any] | None = None,
+    verify_model: bool = False,
+) -> ProbeResult:
     """
     Validate provider setup by testing completion with tool calling and embedding.
 
@@ -590,6 +870,20 @@ async def validate_provider_setup(
         project_id: Project ID (required for watsonx)
         test_completion: If True, performs full validation with completion/embedding tests (consumes credits).
                         If False, performs lightweight validation (no credits consumed). Default: False.
+        credentials: LiteLLM kwargs for the provider, as the real call will be made.
+        stored_credentials: The provider's credentials as the operator entered them, untranslated.
+                        Only a provider enhancement's lightweight check reads it: a provider with
+                        separate chat and embedding endpoints has ``credentials`` narrowed to one
+                        of them, and the check has to see both to probe both.
+        verify_model: Call the given model through LiteLLM even without ``test_completion``.
+                        The settings save passes it: for a provider enhancement that real call
+                        is the only check that rejects a model the cluster does not serve
+                        before it is stored. Without it, and without ``test_completion``, an
+                        enhancement gets its model-free lightweight check like any other
+                        provider.
+
+    Returns:
+        ProbeResult: what the successful validation exercised.
 
     Raises:
         Exception: If validation fails, raises the original exception with the actual error message.
@@ -608,14 +902,62 @@ async def validate_provider_setup(
             f"Starting validation for provider: {provider_lower} (test_completion={test_completion})"
         )
 
-        if provider_lower not in {"openai", "watsonx", "ollama", "anthropic"}:
+        # A provider enhancement has no bespoke model probe of its own: a real
+        # call through LiteLLM *is* its model probe, and it is what makes
+        # switching to a model the cluster does not serve fail instead of saving
+        # silently. It runs only when asked for — on save (`verify_model`) or a
+        # full check (`test_completion`). The polled health check asks for
+        # neither and gets the model-free lightweight check, as every other
+        # provider does: polling inference every 30s holds a GPU slot (RHOAI) or
+        # bills (watsonx.ai on-prem), and its pooled connections race the
+        # model server's keep-alive and fail with "Server disconnected".
+        enhancement = get_provider_enhancement(provider_lower)
+        azure_ai_foundry_endpoint = provider_lower == "azure" and is_azure_ai_foundry_endpoint(
+            supplied.get("api_base")
+        )
+        probes_the_model = (
+            bool(embedding_model or llm_model) and (test_completion or verify_model)
+            if enhancement is not None
+            else (
+                provider_lower not in _NATIVELY_VALIDATED_PROVIDERS
+                # Preserve main's Azure/LiteLLM route for Foundry resource URLs.
+                or (azure_ai_foundry_endpoint and bool(embedding_model or llm_model))
+            )
+        )
+        if probes_the_model:
+            runtime_kwargs: dict[str, Any] = {}
+            if enhancement is not None:
+                from enhancements.providers.registry import runtime_kwargs_for
+
+                runtime_kwargs = runtime_kwargs_for(
+                    enhancement,
+                    stored_credentials if stored_credentials is not None else supplied,
+                )
             await _test_litellm_provider(
                 provider=provider_lower,
                 credentials=supplied,
+                runtime_kwargs=runtime_kwargs,
                 embedding_model=embedding_model,
                 llm_model=llm_model,
             )
+            # The LiteLLM probe is a plain completion: it proves the model
+            # answers, not that it can take the tool-calling request the agent
+            # sends.
+            result = ProbeResult(model_probed=True)
         elif test_completion:
+            if provider_lower == "azure":
+                # Azure deployments are user-defined, so a model completion is
+                # not a safe generic probe during onboarding. The deployments
+                # request still verifies the selected authentication method.
+                await test_lightweight_health(
+                    provider=provider_lower,
+                    api_key=api_key,
+                    endpoint=endpoint,
+                    project_id=project_id,
+                    credentials=supplied,
+                    stored_credentials=stored_credentials,
+                )
+                return ProbeResult()
             # Full validation with completion/embedding tests (consumes credits)
             if embedding_model:
                 # Test embedding
@@ -626,6 +968,7 @@ async def validate_provider_setup(
                     endpoint=endpoint,
                     project_id=project_id,
                 )
+                result = ProbeResult(model_probed=True)
             elif llm_model:
                 # Test completion with tool calling
                 await test_completion_with_tools(
@@ -635,6 +978,10 @@ async def validate_provider_setup(
                     endpoint=endpoint,
                     project_id=project_id,
                 )
+                result = ProbeResult(model_probed=True, tools_exercised=True)
+            else:
+                # No model to test with, so nothing was called at all.
+                result = ProbeResult()
         else:
             # Lightweight validation (no credits consumed)
             await test_lightweight_health(
@@ -642,9 +989,13 @@ async def validate_provider_setup(
                 api_key=api_key,
                 endpoint=endpoint,
                 project_id=project_id,
+                credentials=supplied,
+                stored_credentials=stored_credentials,
             )
+            result = ProbeResult()
 
         logger.info(f"Validation successful for provider: {provider_lower}")
+        return result
 
     except Exception as e:
         logger.error(f"Validation failed for provider {provider_lower}: {str(e)}")
@@ -655,29 +1006,62 @@ async def validate_provider_setup(
 async def _test_litellm_provider(
     *,
     provider: str,
-    credentials: dict[str, str],
+    credentials: Mapping[str, Any],
+    runtime_kwargs: Mapping[str, Any],
     embedding_model: str | None,
     llm_model: str | None,
 ) -> None:
     """Validate arbitrary providers through the same LiteLLM adapter used at runtime."""
     import litellm
 
+    from observability.tracing import gateway_trace_kwargs
+    from services.llm_gateway import LlmGatewayError, with_stale_connection_retry
+    from services.model_catalog import litellm_provider_key
+
     model = embedding_model or llm_model
     if not model:
         raise ValueError("A model is required to validate the provider")
-    litellm_model = f"{provider}/{model}"
+    # Same aliasing the gateway applies, so the probe hits the route the real
+    # call will: `watsonx_onprem/<model>` is not a prefix LiteLLM can resolve.
+    try:
+        route = litellm_provider_key(provider, credentials)
+    except ValueError as exc:
+        raise LlmGatewayError(str(exc), 400) from exc
+    litellm_model = f"{route}/{model}"
+    # And the same retry: a dead pooled connection is not a provider failure,
+    # and reporting one would block a save or raise the banner for nothing.
     if embedding_model:
-        await litellm.aembedding(
+        await with_stale_connection_retry(
+            lambda: litellm.aembedding(
+                model=litellm_model,
+                # A list, never a bare string. OpenAI accepts either and LiteLLM
+                # forwards whatever it is given, so a string reaches watsonx.ai as
+                # `"inputs": "..."` where it requires `[]string` — the cluster then
+                # answers "Mismatch type []string with value string" and the
+                # pre-save check fails for every embedding model, which leaves a
+                # wrongly-chosen one impossible to change.
+                input=["OpenRAG provider validation"],
+                **credentials,
+                **(runtime_kwargs or {}),
+                **gateway_trace_kwargs("embedding", "provider_check", provider=provider),
+            ),
+            provider=provider,
             model=litellm_model,
-            input="OpenRAG provider validation",
-            **credentials,
+            kind="embedding",
         )
         return
-    await litellm.acompletion(
+    await with_stale_connection_retry(
+        lambda: litellm.acompletion(
+            model=litellm_model,
+            messages=[{"role": "user", "content": "Reply with OK."}],
+            max_tokens=4,
+            **credentials,
+            **(runtime_kwargs or {}),
+            **gateway_trace_kwargs("chat", "provider_check", provider=provider),
+        ),
+        provider=provider,
         model=litellm_model,
-        messages=[{"role": "user", "content": "Reply with OK."}],
-        max_tokens=4,
-        **credentials,
+        kind="chat",
     )
 
 
@@ -686,17 +1070,32 @@ async def test_lightweight_health(
     api_key: str = None,
     endpoint: str = None,
     project_id: str = None,
+    credentials: dict[str, str] | None = None,
+    stored_credentials: Mapping[str, Any] | None = None,
 ) -> None:
-    """Test provider health with lightweight check (no credits consumed)."""
+    """Test provider health with lightweight check (no credits consumed).
+
+    ``stored_credentials`` is the untranslated form and is what a provider
+    enhancement's check is given when the caller has it; ``credentials`` is the
+    LiteLLM form and the fallback. See ``validate_provider_setup``.
+    """
 
     if provider == "openai":
         await _test_openai_lightweight_health(api_key)
+    elif provider == "azure":
+        await _test_azure_lightweight_health(
+            credentials or {"api_key": api_key, "api_base": endpoint}
+        )
     elif provider == "watsonx":
         await _test_watsonx_lightweight_health(api_key, endpoint, project_id)
     elif provider == "ollama":
         await _test_ollama_lightweight_health(endpoint)
     elif provider == "anthropic":
         await _test_anthropic_lightweight_health(api_key)
+    elif enhancement := get_provider_enhancement(provider):
+        await enhancement.lightweight_health_check(
+            stored_credentials if stored_credentials is not None else (credentials or {})
+        )
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -851,6 +1250,69 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
     except Exception as e:
         logger.error(f"OpenAI lightweight health check failed: {str(e)}")
         raise
+
+
+async def _test_azure_lightweight_health(credentials: dict[str, str]) -> None:
+    """Validate Azure OpenAI credentials without selecting or billing a deployment.
+
+    Azure deployment enumeration is an Azure Resource Manager operation, not an
+    Azure OpenAI data-plane operation. Both Azure OpenAI Service and Foundry
+    resource roots expose authenticated, read-only model listing routes.
+    """
+    api_base = credentials.get("api_base")
+    api_version = credentials.get("api_version")
+    api_key = credentials.get("api_key")
+    access_token = credentials.get("azure_ad_token")
+    if not (api_key or access_token or credentials.get("client_secret")):
+        raise ValueError("Azure credentials are required")
+    if not api_base:
+        raise ValueError("API Base is required")
+
+    if not access_token and credentials.get("client_secret"):
+        tenant_id = credentials.get("tenant_id")
+        client_id = credentials.get("client_id")
+        if not tenant_id or not client_id:
+            raise ValueError("tenant_id and client_id are required for Azure service principal")
+        token_response = await _http_request_with_retry(
+            "POST",
+            f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+            data={
+                "client_id": client_id,
+                "client_secret": credentials["client_secret"],
+                "grant_type": "client_credentials",
+                "scope": "https://cognitiveservices.azure.com/.default",
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=30.0,
+        )
+        if token_response.status_code != 200:
+            raise Exception(_extract_error_details(token_response))
+        access_token = token_response.json().get("access_token")
+        if not access_token:
+            raise ValueError("Azure service principal did not return an access token")
+
+    headers = {"Content-Type": "application/json"}
+    if access_token:
+        headers["Authorization"] = f"Bearer {access_token}"
+    else:
+        headers["api-key"] = api_key or ""
+    if is_azure_ai_foundry_endpoint(api_base):
+        # Azure OpenAI deployments on Foundry resource roots use the OpenAI v1
+        # route. The older /models/info route excludes Azure OpenAI endpoints.
+        url = f"{api_base.rstrip('/')}/openai/v1/models"
+        params = None
+    else:
+        url = f"{api_base.rstrip('/')}/openai/models"
+        params = {"api-version": api_version or "2024-10-21"}
+    response = await _http_request_with_retry(
+        "GET",
+        url,
+        headers=headers,
+        params=params,
+        timeout=30.0,
+    )
+    if response.status_code != 200:
+        raise Exception(_extract_error_details(response))
 
 
 async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> None:

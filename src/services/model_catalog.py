@@ -26,11 +26,21 @@ from __future__ import annotations
 
 import datetime
 import json
+from collections.abc import Mapping
 from fnmatch import fnmatch
 from functools import lru_cache
 from typing import Any
 
 from config.model_providers import ProviderEntry, visible_provider_entries
+from enhancements.providers.registry import (
+    credential_field_overrides,
+    litellm_route_for,
+    model_discovery_for,
+    route_aliases,
+)
+from enhancements.providers.registry import (
+    enhancements as provider_enhancements,
+)
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -86,7 +96,38 @@ GENERIC_CREDENTIAL_FIELDS: list[dict[str, Any]] = [
     },
 ]
 
-KNOWN_FIELD_TYPES = frozenset({"text", "password", "select", "textarea", "upload"})
+#: `tls_verify` is a provider's `ssl_verify`: rendered as a "verify" switch plus
+#: an optional CA bundle path, stored as one string.
+KNOWN_FIELD_TYPES = frozenset({"text", "password", "select", "textarea", "upload", "tls_verify"})
+
+#: OpenRAG provider keys LiteLLM cannot route under their own name, mapped to
+#: the key it routes them as. A row here is for a deployment shape that needs
+#: its own credentials and its own model list but reaches the same API — the
+#: alternative, reusing the upstream key, would make the two share one set of
+#: stored credentials.
+PROVIDER_ROUTE_ALIASES: dict[str, str] = route_aliases()
+
+#: Credential forms LiteLLM's `provider_create_fields.json` cannot supply,
+#: because the provider is one of OpenRAG's own aliases.
+_CREDENTIAL_FIELD_OVERRIDES: dict[str, list[dict[str, Any]]] = credential_field_overrides()
+
+
+def litellm_provider_key(provider: str, stored: Mapping[str, Any] | None = None) -> str:
+    """The name LiteLLM routes `provider` under, which is usually itself.
+
+    `stored` is the provider's untranslated credentials. Pass them whenever the
+    caller has them: a provider whose transport depends on how it was
+    configured — Azure AI Foundry, where the endpoint decides which LiteLLM
+    handler can build a correct URL — can only answer with them in hand.
+    Without them the static alias is used, which every enhancement keeps as its
+    safe default.
+    """
+    key = (provider or "").strip().lower()
+    if stored:
+        dynamic = litellm_route_for(key, stored)
+        if dynamic:
+            return dynamic
+    return PROVIDER_ROUTE_ALIASES.get(key, key)
 
 
 class CatalogUnavailableError(RuntimeError):
@@ -155,8 +196,12 @@ def _normalize_field(field: dict[str, Any]) -> dict[str, Any]:
 
 def credential_fields(provider: str) -> list[dict[str, Any]]:
     """The form spec for `provider`, normalized, never empty."""
+    key = (provider or "").strip().lower()
+    override = _CREDENTIAL_FIELD_OVERRIDES.get(key)
+    if override is not None:
+        return [_normalize_field(field) for field in override]
     try:
-        spec = _provider_field_specs().get((provider or "").strip().lower())
+        spec = _provider_field_specs().get(key)
     except Exception:
         logger.warning("Could not read LiteLLM's provider field specs", exc_info=True)
         return [dict(field) for field in GENERIC_CREDENTIAL_FIELDS]
@@ -198,10 +243,11 @@ def _model_entry(name: str, info: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
-def _excluded(name: str, patterns: tuple[str, ...]) -> bool:
-    """Whether a model id is one the config file keeps out of the pickers.
+def _matches(name: str, patterns: tuple[str, ...]) -> bool:
+    """Whether a model id matches a config pattern list.
 
-    Matched on the id as the picker shows it — `gpt-3.5-turbo`, not
+    Used for `exclude_models` (ids kept out of the pickers) and `vision_models`
+    (ids tagged as accepting images). Matched on the id as the picker shows it — `gpt-3.5-turbo`, not
     `openai/gpt-3.5-turbo` — because that is the name an operator reads off the
     screen when deciding what to suppress. `*` and `?` work, so a whole
     generation goes in one line.
@@ -228,6 +274,40 @@ def _declared_entries(names: tuple[str, ...], mode: str) -> list[dict[str, Any]]
     return [{"model": name, "mode": mode} for name in names]
 
 
+def _with_vision(entry: dict[str, Any]) -> dict[str, Any]:
+    """`entry` with the `vision` capability, for a config `vision_models:` match.
+
+    LiteLLM's table lags the providers: watsonx.ai serves Llama 4 Maverick and
+    Mistral Small 3.1 with image input, but the table flags neither, while
+    every watsonx id it does flag has been withdrawn.
+    """
+    capabilities = entry.get("capabilities") or []
+    if "vision" in capabilities:
+        return entry
+    return {**entry, "capabilities": [*capabilities, "vision"]}
+
+
+def _picker_rows(
+    rows: list[dict[str, Any]],
+    *,
+    excluded: tuple[str, ...],
+    vision: tuple[str, ...],
+    chat: bool,
+) -> list[dict[str, Any]]:
+    """Apply a provider's config to its rows: `exclude_models`, then `vision_models`.
+
+    The one place both rules live, so the catalogue and draft discovery cannot
+    disagree about an id. Exclusion runs first, so it wins over a `models:`
+    row, a live listing and a `vision_models` match alike — a deployment that
+    suppresses an id means it, wherever the id came from. Only chat rows are
+    tagged: an embedding model takes no images.
+    """
+    kept = [entry for entry in rows if not _matches(entry["model"], excluded)]
+    if not chat or not vision:
+        return kept
+    return [_with_vision(entry) if _matches(entry["model"], vision) else entry for entry in kept]
+
+
 @lru_cache(maxsize=8)
 def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
     """Payload for `providers`, given as `config.model_providers` entries.
@@ -241,6 +321,12 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
         raise CatalogUnavailableError("litellm is not installed on the server") from exc
 
     specs = _provider_field_specs()
+    # Matched on OpenRAG's own key, never the aliased LiteLLM one: a provider
+    # that routes as `watsonx` but serves whatever an operator deployed on
+    # their cluster must not inherit IBM Cloud's catalogue. Two providers
+    # sharing model ids would also leave `catalog_owner` unable to say which of
+    # them owns an id, and a legacy slash-form id would resolve to neither.
+    # An aliased provider's models come from its `models:` rows instead.
     keys = {entry.name for entry in providers}
     chat_by_provider: dict[str, list[dict[str, Any]]] = {}
     embed_by_provider: dict[str, list[dict[str, Any]]] = {}
@@ -271,7 +357,7 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
         bucket.setdefault(provider, []).append(_model_entry(name, info))
 
     entries = []
-    for key, display_name, declared_chat, declared_embed, excluded in providers:
+    for key, display_name, declared_chat, declared_embed, excluded, vision in providers:
         if not is_known_provider(key):
             # The catalogue would still render, but `split_model_id` cannot
             # recognise the prefix, so every id would be billed to the default
@@ -291,10 +377,9 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
             tuple(name for name in declared_embed if name not in known_embed), EMBEDDING_MODE
         )
         # Applied last, so `exclude_models` also wins over a `models:` row —
-        # a deployment that suppresses an id means it, wherever the id came
-        # from, and the alternative is two lines that quietly contradict.
-        chat = [entry for entry in chat if not _excluded(entry["model"], excluded)]
-        embed = [entry for entry in embed if not _excluded(entry["model"], excluded)]
+        # the alternative is two lines that quietly contradict.
+        chat = _picker_rows(chat, excluded=excluded, vision=vision, chat=True)
+        embed = _picker_rows(embed, excluded=excluded, vision=vision, chat=False)
         entries.append(
             {
                 "key": key,
@@ -303,6 +388,9 @@ def _catalog(providers: tuple[ProviderEntry, ...]) -> dict[str, Any]:
                 "name": display_name or (specs.get(key) or {}).get("provider_display_name") or key,
                 "credential_fields": credential_fields(key),
                 "model_placeholder": (specs.get(key) or {}).get("default_model_placeholder"),
+                # Whether `POST /models/{provider}/discover` can list what this
+                # provider serves from credentials that are not saved yet.
+                "discovers_models": model_discovery_for(key) is not None,
                 "models": sorted(chat, key=lambda entry: entry["model"]),
                 "embedding_models": sorted(embed, key=lambda entry: entry["model"]),
             }
@@ -332,13 +420,46 @@ def _catalog_for(today: datetime.date, providers: tuple[ProviderEntry, ...]) -> 
     return {"providers": entries}
 
 
+def _provider_entry(provider: str) -> ProviderEntry | None:
+    """The visible `model_providers.yaml` row for `provider`, or None."""
+    key = (provider or "").strip().lower()
+    return next((entry for entry in visible_provider_entries() if entry.name == key), None)
+
+
 def exclusions_for(provider: str) -> tuple[str, ...]:
     """The `exclude_models` patterns configured for `provider`."""
-    key = (provider or "").strip().lower()
-    for entry in visible_provider_entries():
-        if entry.name == key:
-            return entry.exclude_models
-    return ()
+    entry = _provider_entry(provider)
+    return entry.exclude_models if entry is not None else ()
+
+
+def discovered_model_payload(provider: str, listed: Any) -> dict[str, Any]:
+    """Catalogue rows for what a cluster said it serves, per picker.
+
+    `listed` is an enhancement's `ClusterModels` (or None). A half is None when
+    that endpoint could not be listed — the caller keeps the catalogue's rows
+    for it — and a list otherwise. The provider's `exclude_models` and
+    `vision_models` apply exactly as they do to the catalogue (`_picker_rows`),
+    so an id reads the same before and after its credentials are saved.
+    """
+    entry = _provider_entry(provider)
+    excluded = entry.exclude_models if entry is not None else ()
+    vision = entry.vision_models if entry is not None else ()
+
+    def _rows(names: Any, mode: str) -> list[dict[str, Any]] | None:
+        if names is None:
+            return None
+        declared = _declared_entries(tuple(str(name) for name in names), mode)
+        return _picker_rows(declared, excluded=excluded, vision=vision, chat=mode != EMBEDDING_MODE)
+
+    chat = _rows(getattr(listed, "chat", None), "chat")
+    embedding = _rows(getattr(listed, "embedding", None), EMBEDDING_MODE)
+    logger.debug(
+        "Built discovered model rows",
+        provider=provider,
+        chat=None if chat is None else len(chat),
+        embedding=None if embedding is None else len(embedding),
+    )
+    return {"models": chat, "embedding_models": embedding}
 
 
 #: Keys in a live `/models/{provider}` payload that hold model lists.
@@ -365,10 +486,89 @@ def hide_excluded_live_models(provider: str, payload: Any) -> Any:
         filtered[key] = [
             model
             for model in models
-            if not _excluded(str((model or {}).get("value", "")), patterns)
+            if not _matches(str((model or {}).get("value", "")), patterns)
             if isinstance(model, dict)
         ]
     return filtered
+
+
+def _catalog_entries() -> tuple[ProviderEntry, ...]:
+    """The visible providers, with a live model list swapped in where we have one.
+
+    A Cloud Pak for Data cluster serves whatever its operator deployed, so its
+    `models:` rows in `model_providers.yaml` can only ever be a guess. Once the
+    cluster has said what it actually has, that wins — a model it does not
+    serve must not sit in the picker waiting to be chosen. The configured rows
+    stay as the fallback for when it cannot be reached — per list, since a
+    provider with separate chat and embedding endpoints can have an answer
+    from one and not the other.
+
+    Entries are the `_catalog()` cache key, so substituting here rebuilds the
+    payload rather than serving a stale one.
+    """
+    entries = visible_provider_entries()
+    live_models = {
+        enhancement.PROVIDER_KEY: enhancement.cached_models()
+        for enhancement in provider_enhancements()
+        if hasattr(enhancement, "cached_models")
+    }
+    return tuple(
+        entry._replace(
+            models=entry.models if live.chat is None else live.chat,
+            embedding_models=entry.embedding_models if live.embedding is None else live.embedding,
+        )
+        if (live := live_models.get(entry.name)) is not None
+        else entry
+        for entry in entries
+    )
+
+
+async def refresh_live_models(provider: str | None = None) -> None:
+    """Re-list the models on any provider that can only answer for itself.
+
+    Called by the catalogue routes before the payload is built. The provider
+    caches with a TTL, so this is a network call once every few minutes rather
+    than once per request, and a failure leaves the previous answer — or the
+    configured fallback — in place.
+
+    `provider` narrows it to that one provider. The catalogue needs every
+    listing; a caller asking about one provider — the health check — should not
+    wait on a slow cluster that belongs to another.
+    """
+    from config.settings import get_openrag_config
+
+    only = (provider or "").strip().lower() or None
+    for enhancement in provider_enhancements():
+        if only is not None and enhancement.PROVIDER_KEY != only:
+            continue
+        if enhancement.PROVIDER_KEY not in supported_provider_keys() or not hasattr(
+            enhancement, "fetch_models"
+        ):
+            continue
+        try:
+            # The stored form, not the LiteLLM one: a provider whose chat and
+            # embedding endpoints differ has its credentials narrowed to one of
+            # them by `credential_values()`, and listing models needs both.
+            providers = get_openrag_config().providers
+            credentials = (
+                providers.stored_credentials(enhancement.PROVIDER_KEY)
+                if hasattr(providers, "stored_credentials")
+                else providers.credential_values(enhancement.PROVIDER_KEY)
+            )
+        except Exception:
+            logger.debug(
+                "Could not read credentials for %s", enhancement.PROVIDER_KEY, exc_info=True
+            )
+            continue
+        if credentials:
+            try:
+                await enhancement.fetch_models(credentials)
+            except Exception:
+                logger.warning(
+                    "Provider model discovery failed; keeping configured fallback models",
+                    provider=enhancement.PROVIDER_KEY,
+                    exc_info=True,
+                )
 
 
 def supported_provider_keys() -> frozenset[str]:
@@ -378,14 +578,21 @@ def supported_provider_keys() -> frozenset[str]:
 
 def catalog(today: datetime.date | None = None) -> dict[str, Any]:
     """Picker payload for the providers this run mode exposes, and their models."""
-    return _catalog_for(today or datetime.date.today(), visible_provider_entries())
+    return _catalog_for(today or datetime.date.today(), _catalog_entries())
 
 
 def is_known_provider(provider: str) -> bool:
-    """Whether LiteLLM recognises `provider` at all."""
+    """Whether `provider` names a route the gateway can resolve.
+
+    That is LiteLLM's own provider list, plus OpenRAG's aliases — an alias is
+    routable by definition, since it is only ever a second front door onto a
+    provider LiteLLM already knows.
+    """
     key = (provider or "").strip().lower()
     if not key:
         return False
+    if key in PROVIDER_ROUTE_ALIASES:
+        return True
     try:
         import litellm
 
@@ -424,20 +631,25 @@ def _model_owners(providers: tuple[ProviderEntry, ...]) -> dict[str, tuple[str, 
     return {model: tuple(sorted(keys)) for model, keys in owners.items()}
 
 
+def catalog_owners(model: str) -> tuple[str, ...]:
+    """Every provider in this run mode whose catalogue lists `model`."""
+    name = (model or "").strip()
+    if not name:
+        return ()
+    try:
+        return _model_owners(_catalog_entries()).get(name) or ()
+    except Exception:
+        return ()
+
+
 def catalog_owner(model: str) -> str | None:
     """The single provider that serves `model`, if exactly one does.
 
     Used to disambiguate vendor-qualified names such as `openai/gpt-oss-120b`,
     which watsonx serves and whose own prefix names a different provider.
     """
-    name = (model or "").strip()
-    if not name:
-        return None
-    try:
-        owners = _model_owners(visible_provider_entries()).get(name)
-    except Exception:
-        return None
-    return owners[0] if owners and len(owners) == 1 else None
+    owners = catalog_owners(model)
+    return owners[0] if len(owners) == 1 else None
 
 
 def PROVIDER_SEPARATOR_SAFE_CHECK() -> list[str]:
@@ -447,7 +659,7 @@ def PROVIDER_SEPARATOR_SAFE_CHECK() -> list[str]:
     Exposed so a test can fail loudly if a future model id breaks the property.
     """
     ambiguous = []
-    for model in _model_owners(visible_provider_entries()):
+    for model in _model_owners(_catalog_entries()):
         head, sep, rest = model.partition(":")
         if sep and rest and is_known_provider(head.lower()):
             ambiguous.append(model)
@@ -467,10 +679,14 @@ def public_model_id(provider: str, model: str) -> str:
     The tag uses `provider:model`, not `provider/model`: watsonx serves
     `openai/gpt-oss-120b`, so a slash-joined id is indistinguishable from that
     model's own name.
-    """
-    from services.llm_gateway import PROVIDER_SEPARATOR
 
-    return model if provider == "openai" else f"{provider}{PROVIDER_SEPARATOR}{model}"
+    Delegates the tagging itself, so the rules for what counts as an existing
+    tag — including the legacy `provider/` spelling — live in one place rather
+    than drifting between two modules that differ only in this OpenAI case.
+    """
+    from services.llm_gateway import qualified_model_id
+
+    return model if provider == "openai" else qualified_model_id(provider, model)
 
 
 def openai_models_list(today: datetime.date | None = None) -> dict[str, Any]:

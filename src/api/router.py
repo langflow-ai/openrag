@@ -5,7 +5,7 @@ import mimetypes
 import os
 import tempfile
 
-from fastapi import Depends, File, Form, UploadFile
+from fastapi import Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from config.settings import get_openrag_config
@@ -13,19 +13,66 @@ from dependencies import (
     get_current_user,
     get_document_service,
     get_langflow_file_service,
+    get_rbac_service,
     get_session_manager,
     get_task_service,
+    has_effective_permission,
 )
 from session_manager import User
 from utils.ingest_preview_flag import is_ingest_preview_enabled
 from utils.logging_config import get_logger
+from utils.upload_limits import UploadTooLarge, read_upload_within_limit
 
 logger = get_logger(__name__)
 
 
+def _form_str(value) -> str | None:
+    """A real form string. A direct call leaves FastAPI's Form default in place."""
+    return value if isinstance(value, str) else None
+
+
+def _rejected_uploads(raw: str | None) -> list[tuple[str, int]]:
+    """Files the client kept out of the body because they exceed the limit."""
+    if not isinstance(raw, str) or not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    rejections: list[tuple[str, int]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("filename")
+        size = item.get("size")
+        if isinstance(name, str) and name and isinstance(size, int) and size >= 0:
+            rejections.append((name, size))
+    return rejections
+
+
+def _rejection_only_response(task_service, user_id: str, rejections: list[tuple[str, int]]):
+    if not rejections:
+        return None
+    task_id = task_service.record_rejected_uploads(user_id, rejections)
+    return JSONResponse(
+        {
+            "task_id": task_id,
+            "message": f"{len(rejections)} file(s) were over the upload limit",
+            "file_count": 0,
+            "preview_mode": False,
+        },
+        status_code=202,
+    )
+
+
 async def upload_ingest_router(
-    file: list[UploadFile] = File(...),
+    request: Request,
+    file: list[UploadFile] | None = File(None),
     session_id: str | None = Form(None),
+    existing_task_id: str | None = Form(None),
+    rejected_files: str | None = Form(None),
     settings_json: str | None = Form(None, alias="settings"),
     tweaks_json: str | None = Form(None, alias="tweaks"),
     replace_duplicates: str = Form("true"),
@@ -36,6 +83,7 @@ async def upload_ingest_router(
     session_manager=Depends(get_session_manager),
     task_service=Depends(get_task_service),
     user: User = Depends(get_current_user),
+    rbac=Depends(get_rbac_service),
 ):
     """
     Router endpoint that automatically routes upload requests based on configuration.
@@ -54,22 +102,36 @@ async def upload_ingest_router(
         preview_mode=preview_mode,
     )
 
+    # Resolved here, where the request and the RBAC service are, and carried
+    # down to the processor. Overwriting a file whose name belongs to a shared
+    # (ownerless) document deletes that document for the whole instance, so it
+    # takes the same permission the explicit delete endpoints ask for.
+    allow_anonymous_delete = await has_effective_permission(
+        request, user, rbac, "knowledge:delete:anonymous"
+    )
+    upload_files = file or []
+    existing_task_id = _form_str(existing_task_id)
+    rejections = _rejected_uploads(rejected_files)
+
     if disable_ingest_with_langflow:
         logger.debug("Routing to traditional OpenRAG upload via task service")
         return await _traditional_upload_ingest_task(
-            upload_files=file,
+            upload_files=upload_files,
             replace_duplicates=replace_duplicates.lower() == "true",
             create_filter=create_filter.lower() == "true",
             preview_mode=preview_mode,
             session_manager=session_manager,
             task_service=task_service,
             user=user,
+            allow_anonymous_delete=allow_anonymous_delete,
             settings_json=settings_json,
+            existing_task_id=existing_task_id,
+            rejected_uploads=rejections,
         )
 
     logger.debug("Routing to Langflow upload-ingest pipeline via task service")
     return await _langflow_upload_ingest_task(
-        upload_files=file,
+        upload_files=upload_files,
         session_id=session_id,
         settings_json=settings_json,
         tweaks_json=tweaks_json,
@@ -80,6 +142,9 @@ async def upload_ingest_router(
         session_manager=session_manager,
         task_service=task_service,
         user=user,
+        allow_anonymous_delete=allow_anonymous_delete,
+        existing_task_id=existing_task_id,
+        rejected_uploads=rejections,
     )
 
 
@@ -91,11 +156,18 @@ async def _traditional_upload_ingest_task(
     session_manager,
     task_service,
     user: User,
+    allow_anonymous_delete: bool,
     settings_json: str | None = None,
+    existing_task_id: str | None = None,
+    rejected_uploads: list[tuple[str, int]] | None = None,
 ):
     """Task-based traditional upload and ingest for single/multiple files"""
+    rejections = rejected_uploads or []
     try:
         if not upload_files:
+            only_rejections = _rejection_only_response(task_service, user.user_id, rejections)
+            if only_rejections is not None:
+                return only_rejections
             return JSONResponse({"error": "Missing files"}, status_code=400)
 
         settings = None
@@ -115,7 +187,7 @@ async def _traditional_upload_ingest_task(
 
         try:
             for upload_file in upload_files:
-                content = await upload_file.read()
+                content = await read_upload_within_limit(upload_file)
                 original_filenames.append(upload_file.filename)
                 # Generate unique temp file with the original extension to assist docling/format detection
                 suffix = os.path.splitext(upload_file.filename)[1] if upload_file.filename else ""
@@ -153,7 +225,11 @@ async def _traditional_upload_ingest_task(
                 replace_duplicates=replace_duplicates,
                 settings=settings,
                 preview_mode=preview_mode,
+                allow_anonymous_delete=allow_anonymous_delete,
+                existing_task_id=existing_task_id,
             )
+            if rejections and not existing_task_id:
+                task_service.record_rejected_uploads(user_id, rejections, task_id=task_id)
 
             return JSONResponse(
                 {
@@ -174,6 +250,8 @@ async def _traditional_upload_ingest_task(
                 safe_unlink(temp_path)
             raise
 
+    except UploadTooLarge as e:
+        return JSONResponse({"error": str(e)}, status_code=413)
     except Exception as e:
         logger.error("Task-based traditional upload_ingest failed", error=str(e))
         import traceback
@@ -197,10 +275,17 @@ async def _langflow_upload_ingest_task(
     session_manager,
     task_service,
     user: User,
+    allow_anonymous_delete: bool,
+    existing_task_id: str | None = None,
+    rejected_uploads: list[tuple[str, int]] | None = None,
 ):
     """Task-based langflow upload and ingest for single/multiple files"""
+    rejections = rejected_uploads or []
     try:
         if not upload_files:
+            only_rejections = _rejection_only_response(task_service, user.user_id, rejections)
+            if only_rejections is not None:
+                return only_rejections
             return JSONResponse({"error": "Missing files"}, status_code=400)
 
         settings = None
@@ -228,7 +313,7 @@ async def _langflow_upload_ingest_task(
 
         try:
             for upload_file in upload_files:
-                content = await upload_file.read()
+                content = await read_upload_within_limit(upload_file)
                 original_filenames.append(upload_file.filename)
                 # Generate unique temp file with the original extension to assist docling/format detection
                 suffix = os.path.splitext(upload_file.filename)[1] if upload_file.filename else ""
@@ -265,7 +350,11 @@ async def _langflow_upload_ingest_task(
                 settings=settings,
                 replace_duplicates=replace_duplicates,
                 preview_mode=preview_mode,
+                allow_anonymous_delete=allow_anonymous_delete,
+                existing_task_id=existing_task_id,
             )
+            if rejections and not existing_task_id:
+                task_service.record_rejected_uploads(user_id, rejections, task_id=task_id)
 
             return JSONResponse(
                 {
@@ -286,6 +375,8 @@ async def _langflow_upload_ingest_task(
                 safe_unlink(temp_path)
             raise
 
+    except UploadTooLarge as e:
+        return JSONResponse({"error": str(e)}, status_code=413)
     except Exception as e:
         logger.error("Task-based langflow upload_ingest failed", error=str(e))
         import traceback

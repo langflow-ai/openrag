@@ -35,7 +35,7 @@ services:
     restart: unless-stopped
 
   dashboards:
-    image: docker.io/opensearchproject/opensearch-dashboards:3.6.0
+    image: docker.io/opensearchproject/opensearch-dashboards:3.8.0
     container_name: ${COMPOSE_PROJECT_NAME:-openrag}-dashboards
     depends_on:
       - opensearch
@@ -68,6 +68,7 @@ services:
       - LANGFLOW_URL_INGEST_FLOW_ID=${LANGFLOW_URL_INGEST_FLOW_ID}
       - DISABLE_INGEST_WITH_LANGFLOW=${DISABLE_INGEST_WITH_LANGFLOW:-false}
       - DISABLE_CHAT_WITH_LANGFLOW=${DISABLE_CHAT_WITH_LANGFLOW:-false}
+      - OPENRAG_EMBEDDING_OVERFLOW_POLICY=${OPENRAG_EMBEDDING_OVERFLOW_POLICY:-}
       - INGEST_SAMPLE_DATA=${INGEST_SAMPLE_DATA:-true}
       - NUDGES_FLOW_ID=${NUDGES_FLOW_ID}
       - OPENSEARCH_PORT=${OPENSEARCH_INTERNAL_PORT:-9200}
@@ -77,10 +78,25 @@ services:
       # so default the node-count check off here (override to re-enable).
       - OPENSEARCH_NODE_COUNT_CHECK_ENABLED=${OPENSEARCH_NODE_COUNT_CHECK_ENABLED:-false}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-${AZURE_API_KEY:-}}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-${AZURE_API_BASE:-}}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-${AZURE_API_VERSION:-}}
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - WATSONX_API_KEY=${WATSONX_API_KEY}
       - WATSONX_ENDPOINT=${WATSONX_ENDPOINT}
       - WATSONX_PROJECT_ID=${WATSONX_PROJECT_ID}
+      # Red Hat OpenShift AI. Two endpoints because vLLM serves one model per
+      # InferenceService; RHOAI_TLS_VERIFY is a CA bundle path (or `false` for a
+      # port-forward in development only).
+      - RHOAI_ENDPOINT=${RHOAI_ENDPOINT:-}
+      - RHOAI_EMBEDDINGS_ENDPOINT=${RHOAI_EMBEDDINGS_ENDPOINT:-}
+      - RHOAI_API_KEY=${RHOAI_API_KEY:-}
+      - RHOAI_TLS_VERIFY=${RHOAI_TLS_VERIFY:-}
+      - RHOAI_EMBEDDING_MAX_CONCURRENCY=${RHOAI_EMBEDDING_MAX_CONCURRENCY:-}
       - OLLAMA_ENDPOINT=${OLLAMA_ENDPOINT}
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
       - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
@@ -119,13 +135,25 @@ services:
       - LANGFLOW_CONNECT_TIMEOUT=${LANGFLOW_CONNECT_TIMEOUT:-30}
       - INGESTION_TIMEOUT=${INGESTION_TIMEOUT:-3600}
       - UPLOAD_BATCH_SIZE=${UPLOAD_BATCH_SIZE:-25}
+      - OPENRAG_MAX_UPLOAD_MB=${OPENRAG_MAX_UPLOAD_MB:-100}
       - MAX_WORKERS=${MAX_WORKERS:-4}
       - IBM_AUTH_ENABLED=${IBM_AUTH_ENABLED:-false}
       - OPENRAG_AZURE_BLOB_ENABLED=${OPENRAG_AZURE_BLOB_ENABLED:-true}
+      - OPENRAG_URL_CONNECTOR_ENABLED=${OPENRAG_URL_CONNECTOR_ENABLED:-false}
       - PLATFORM_AUTH_DEV_MODE=${PLATFORM_AUTH_DEV_MODE:-false}
       - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://host.docker.internal:5001}
       - DOCLING_SERVE_VERIFY_SSL=${DOCLING_SERVE_VERIFY_SSL:-true}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS-http://localhost:3000}
+      # Backend LLM tracing to Langfuse (opt-in, default off). Shares the
+      # LANGFUSE_* keys with the langflow service below so both land in one
+      # project. Metadata only unless content capture is opted into.
+      - OPENRAG_TRACING_ENABLED=${OPENRAG_TRACING_ENABLED:-false}
+      - OPENRAG_TRACING_CAPTURE_CONTENT=${OPENRAG_TRACING_CAPTURE_CONTENT:-false}
+      - OPENRAG_TRACING_ALLOW_CONTENT_IN_SAAS=${OPENRAG_TRACING_ALLOW_CONTENT_IN_SAAS:-false}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
       # Instana APM (opt-in, default off — see the INSTANA_* block in .env.example).
       # The agent runs on the HOST (`make instana-agent-up`, host networking), so a
       # containerized backend reaches it via the host.docker.internal alias mapped
@@ -188,6 +216,7 @@ services:
       - openrag-backend
     environment:
       - OPENRAG_BACKEND_HOST=openrag-backend
+      - OPENRAG_FRONTEND_BASE_PATH=${OPENRAG_FRONTEND_BASE_PATH:-}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
 
@@ -200,18 +229,15 @@ services:
     ports:
       - "${LANGFLOW_PORT:-7860}:7860"
     volumes:
-      - ${OPENRAG_FLOWS_PATH:-./flows}:/app/flows:U,z
       - ${LANGFLOW_DATA_PATH:-./langflow-data}:/app/langflow-data:U,z
     # Linux: Docker Engine does not auto-inject host.docker.internal; map it to the host gateway
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       - LANGFLOW_ALLOW_CUSTOM_COMPONENTS=${LANGFLOW_ALLOW_CUSTOM_COMPONENTS:-false}
-      # Prefer the bind-mounted index so `scripts/update_openrag_component_index.py`
-      # takes effect on `docker compose restart langflow` without an image rebuild.
-      - LANGFLOW_COMPONENTS_INDEX_PATH=/app/flows/component_index.json
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-}
       - LANGFLOW_DEACTIVATE_TRACING
       # Hop token is injected per Langflow run. Seed a non-empty placeholder
@@ -260,7 +286,7 @@ services:
       - FILESIZE=0
       - SELECTED_EMBEDDING_MODEL=${SELECTED_EMBEDDING_MODEL:-text-embedding-3-small}
       - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,DOCLING_SERVE_URL,DOCLING_SERVE_VERIFY_SSL,DOCLING_TASK_ID,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,ALLOWED_PRINCIPALS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,OPENRAG_LLM_TOKEN,OPENRAG_LLM_BASE_URL,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,OPENSEARCH_INDEX_NAME,OPENRAG_INGEST_URL,OPENRAG_INGEST_TOKEN,OPENRAG_INGEST_RUN_ID,OPENRAG_INGEST_BATCH_SIZE
-      - LANGFLOW_LOG_LEVEL=DEBUG
+      - LANGFLOW_LOG_LEVEL=${LANGFLOW_LOG_LEVEL:-INFO}
       - LANGFLOW_WORKERS=${LANGFLOW_WORKERS:-1}
       - LANGFLOW_RATE_LIMIT_PER_MINUTE=${LANGFLOW_RATE_LIMIT_PER_MINUTE:-100}
       - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN}

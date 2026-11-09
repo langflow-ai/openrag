@@ -1,16 +1,21 @@
 "use client";
 
-import { Loader2, Zap } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, Upload, Zap } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useTask } from "@/contexts/task-context";
+import { useFileDrag } from "@/hooks/use-file-drag";
 import { useOnboardingState } from "@/hooks/use-onboarding-state";
+import { useSupportedFileTypes } from "@/hooks/use-supported-file-types";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
 import { trackLLMCall } from "@/lib/analytics";
+import { apiClient } from "@/lib/api-client";
 import {
   dedupeConsecutiveErrorMessages,
   formatProviderErrorMessage,
@@ -18,7 +23,13 @@ import {
 } from "@/lib/chat-stream-errors";
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
 import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
-import { uploadFileForContext } from "@/lib/upload-utils";
+import {
+  EMPTY_IME_STATE,
+  handleInputKeyDown,
+  type ImeCompositionState,
+} from "@/lib/ime-composition";
+import { uploadFailureText, uploadFileForContext } from "@/lib/upload-utils";
+import { resolveDisplayName } from "@/lib/user";
 import { cn } from "@/lib/utils";
 import { useGetConversationsQuery } from "../api/queries/useGetConversationsQuery";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
@@ -35,7 +46,7 @@ import type {
   RequestBody,
   ToolCallResult,
 } from "./_types/types";
-import { INITIAL_ASSISTANT_MESSAGE } from "./_types/types";
+import { makeInitialMessage, PLACEHOLDER_GREETING } from "./_types/types";
 
 function ChatPage() {
   const isDebugMode = process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
@@ -58,12 +69,31 @@ function ChatPage() {
     setConversationFilter,
     loading,
     setLoading,
+    setChatError,
   } = useChat();
-  const [messages, setMessages] = useState<Message[]>([
-    INITIAL_ASSISTANT_MESSAGE,
-  ]);
+  const { user, isNoAuthMode, isLoading: isAuthLoading } = useAuth();
+  const displayName = isNoAuthMode ? null : resolveDisplayName(user);
+  const [messages, setMessages] = useState<Message[]>([PLACEHOLDER_GREETING]);
+
+  // PLACEHOLDER_GREETING is deterministic so SSR and hydration agree.
+  // After mount (and once auth has settled), replace it with the real
+  // time/day/name greeting. New Chat already does this via makeInitialMessage;
+  // first load after login previously never did, because displayName is
+  // already set when ChatPage mounts behind ProtectedRoute.
+  useEffect(() => {
+    if (isAuthLoading || conversationData) return;
+    setMessages((prev) => {
+      if (
+        prev.length === 1 &&
+        prev[0].isGreeting &&
+        prev[0].role === "assistant"
+      ) {
+        return [makeInitialMessage(displayName)];
+      }
+      return prev;
+    });
+  }, [displayName, isAuthLoading, conversationData]);
   const [input, setInput] = useState("");
-  const { setChatError } = useChat();
   const [asyncMode, setAsyncMode] = useState(true);
   const [expandedFunctionCalls, setExpandedFunctionCalls] = useState<
     Set<string>
@@ -77,6 +107,36 @@ function ChatPage() {
   const [waitingTooLong, setWaitingTooLong] = useState(false);
 
   const chatInputRef = useRef<ChatInputHandle>(null);
+
+  const { supportedFileTypes } = useSupportedFileTypes();
+
+  const handleFileDrop = useCallback(
+    (file: File) => {
+      const acceptedMimeTypes = Object.keys(supportedFileTypes);
+      const acceptedExtensions = Object.values(supportedFileTypes).flat();
+      const ext = `.${file.name.split(".").pop()?.toLowerCase() ?? ""}`;
+      const isAccepted =
+        acceptedMimeTypes.includes(file.type) ||
+        acceptedExtensions.includes(ext);
+
+      if (!isAccepted) {
+        const isImage = file.type.startsWith("image/");
+        const message = isImage
+          ? "Enable OCR in Settings to attach images"
+          : "Unsupported file type";
+        toast.error(message, {
+          duration: 1500,
+          className: "animate-toast-shake",
+        });
+        return;
+      }
+      setUploadedFile(file);
+    },
+    [supportedFileTypes],
+  );
+
+  // useFileDrag listens at the window level — fires on a drop anywhere on screen.
+  const isDraggingFile = useFileDrag(handleFileDrop);
 
   const { scrollToBottom } = useStickToBottomContext();
 
@@ -283,11 +343,12 @@ function ChatPage() {
       setChatError(true);
       const errorMessage: Message = {
         role: "assistant",
-        content: `❌ Failed to process document. Please try again.`,
+        content: `❌ ${uploadFailureText(error)}`,
         timestamp: new Date(),
         error: true,
       };
       setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
+      return { type: "failed" as const };
     } finally {
       setIsUploading(false);
       setLoading(false);
@@ -315,7 +376,7 @@ function ChatPage() {
       // Abort any in-flight streaming so it doesn't bleed into new chat
       abortStream();
       // Reset chat UI even if context state was already 'new'
-      setMessages([INITIAL_ASSISTANT_MESSAGE]);
+      setMessages([makeInitialMessage(displayName)]);
       setInput("");
       setExpandedFunctionCalls(new Set());
       setIsFilterHighlighted(false);
@@ -339,7 +400,7 @@ function ChatPage() {
       window.removeEventListener("newConversation", handleNewConversation);
       window.removeEventListener("focusInput", handleFocusInput);
     };
-  }, [abortStream, setLoading]);
+  }, [abortStream, setLoading, displayName]);
 
   // Load conversation data from context
   useEffect(() => {
@@ -595,7 +656,7 @@ function ChatPage() {
   useEffect(() => {
     let focusTimeoutId: NodeJS.Timeout;
     if (placeholderConversation && currentConversationId === null) {
-      setMessages([INITIAL_ASSISTANT_MESSAGE]);
+      setMessages([makeInitialMessage(displayName)]);
       lastLoadedConversationRef.current = null;
 
       // Focus input when starting a new conversation
@@ -722,17 +783,14 @@ function ChatPage() {
           requestBody.filter_id = conversationFilter.id;
         }
 
-        const response = await fetch(apiEndpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(requestBody),
-        });
+        const response = await apiClient.post(
+          apiEndpoint.replace(/^\/api/, ""),
+          requestBody,
+        );
 
-        const result = await response.json();
+        const result = response.data;
 
-        if (response.ok) {
+        if (response.status >= 200 && response.status < 300) {
           const assistantMessage: Message = {
             role: "assistant",
             content: result.response,
@@ -805,6 +863,14 @@ function ChatPage() {
     if (uploadedFile) {
       const uploadResult = await handleFileUpload(uploadedFile);
       setUploadedFile(null);
+
+      if (
+        uploadResult &&
+        typeof uploadResult === "object" &&
+        uploadResult.type === "failed"
+      ) {
+        return;
+      }
 
       if (uploadResult && typeof uploadResult === "object") {
         // File is being processed asynchronously — don't send the message yet.
@@ -907,8 +973,67 @@ function ChatPage() {
     handleSendMessage(suggestion);
   };
 
+  const handleChatInputKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+    imeState?: ImeCompositionState,
+  ) => {
+    // Handle backspace for filter clearing
+    if (e.key === "Backspace" && selectedFilter && input.trim() === "") {
+      e.preventDefault();
+      if (isFilterHighlighted) {
+        // Second backspace - remove the filter
+        setConversationFilter(null);
+        setIsFilterHighlighted(false);
+      } else {
+        // First backspace - highlight the filter
+        setIsFilterHighlighted(true);
+      }
+      return;
+    }
+
+    handleInputKeyDown(
+      e,
+      imeState ?? chatInputRef.current?.getImeState() ?? EMPTY_IME_STATE,
+      () => {
+        if (input.trim() && !loading) {
+          const form = e.currentTarget.closest("form");
+          if (form) {
+            form.requestSubmit();
+          }
+        }
+      },
+    );
+  };
+
   return (
     <>
+      {/* Full-screen drag & drop overlay */}
+      <div
+        className={cn(
+          "fixed inset-0 z-50 pointer-events-none transition-[opacity,visibility] duration-200",
+          isDraggingFile ? "opacity-100 visible" : "opacity-0 invisible",
+        )}
+      >
+        {/* Blur + blue tint over page content */}
+        <div className="absolute inset-0 backdrop-blur-md bg-blue-500/10" />
+        {/* Blue glowing border ring */}
+        <div
+          className="absolute inset-0 border-[3px] border-blue-500 rounded-sm"
+          style={{
+            boxShadow:
+              "inset 0 0 0 1px rgb(59 130 246 / 0.4), 0 0 0 1px rgb(59 130 246 / 0.4)",
+          }}
+        />
+        {/* Drop label */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <Upload className="h-8 w-8 text-blue-400 drop-shadow-md" />
+            <p className="text-sm text-blue-300 font-semibold tracking-widest uppercase">
+              Drop to attach file
+            </p>
+          </div>
+        </div>
+      </div>
       {/* Debug header - only show in debug mode */}
       {isDebugMode && (
         <div className="flex items-center justify-between p-6">
@@ -958,9 +1083,11 @@ function ChatPage() {
       )}
 
       <StickToBottom.Content
-        className={cn("flex flex-col min-h-full overflow-x-hidden p-6")}
+        className={cn(
+          "flex flex-col min-h-full overflow-x-hidden px-3 py-6 sm:p-6",
+        )}
       >
-        <div className="flex flex-col place-self-center space-y-6 max-w-content w-full mx-auto">
+        <div className="flex flex-col space-y-6 max-w-content w-full sm:mx-auto">
           {messages.length === 0 && !streamingMessage ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               <div className="text-center">
@@ -1037,12 +1164,7 @@ function ChatPage() {
                             onFork={(e) => handleForkConversation(index, e)}
                             animate={false}
                             isInactive={index < messages.length - 1}
-                            isInitialGreeting={
-                              index === 0 &&
-                              messages.length === 1 &&
-                              message.content ===
-                                INITIAL_ASSISTANT_MESSAGE.content
-                            }
+                            isInitialGreeting={!!message.isGreeting}
                             usage={message.usage}
                             timestamp={message.timestamp}
                           />
@@ -1081,7 +1203,7 @@ function ChatPage() {
             </>
           )}
           {!streamingMessage && (
-            <div className="pl-10">
+            <div className="pl-0 sm:pl-10">
               <Nudges
                 nudges={loading ? [] : (nudges as string[])}
                 handleSuggestionClick={handleSuggestionClick}
@@ -1090,7 +1212,7 @@ function ChatPage() {
           )}
         </div>
       </StickToBottom.Content>
-      <div className="p-6 pt-0 max-w-content mx-auto w-full">
+      <div className="px-3 pb-6 pt-0 max-w-content w-full sm:px-6 sm:mx-auto">
         {/* Input Area - Fixed at bottom */}
         <ChatInput
           ref={chatInputRef}
@@ -1102,37 +1224,7 @@ function ChatPage() {
           uploadedFile={uploadedFile}
           onSubmit={handleSubmit}
           onChange={setInput}
-          onKeyDown={(e) => {
-            // Handle backspace for filter clearing
-            if (
-              e.key === "Backspace" &&
-              selectedFilter &&
-              input.trim() === ""
-            ) {
-              e.preventDefault();
-              if (isFilterHighlighted) {
-                // Second backspace - remove the filter
-                setConversationFilter(null);
-                setIsFilterHighlighted(false);
-              } else {
-                // First backspace - highlight the filter
-                setIsFilterHighlighted(true);
-              }
-              return;
-            }
-
-            // Handle Enter key for form submission
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              if (input.trim() && !loading) {
-                // Trigger form submission by finding the form and calling submit
-                const form = e.currentTarget.closest("form");
-                if (form) {
-                  form.requestSubmit();
-                }
-              }
-            }
-          }}
+          onKeyDown={handleChatInputKeyDown}
           ingestViaChat={settings?.ingest_via_chat ?? false}
           onFilterSelect={handleFilterSelect}
           onFilePickerClick={handleFilePickerClick}
@@ -1154,7 +1246,7 @@ export default function ProtectedChatPage() {
           "flex w-full h-full overflow-hidden",
           isCloudBrand && "ibm-chat-page",
           isCloudBrand &&
-            "bg-[var(--chat-surface-bg)] [background-image:linear-gradient(0deg,var(--chat-surface-gradient),transparent_280px)]",
+            "bg-(--chat-surface-bg) bg-[linear-gradient(0deg,var(--chat-surface-gradient),transparent_280px)]",
         )}
       >
         <StickToBottom

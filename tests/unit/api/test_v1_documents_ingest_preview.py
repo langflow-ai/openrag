@@ -30,6 +30,8 @@ async def test_v1_ingest_forwards_preview_as_string():
             session_manager=MagicMock(),
             task_service=MagicMock(),
             user=user,
+            request=MagicMock(),
+            rbac=MagicMock(),
         )
 
     call_kwargs = mock_router.await_args.kwargs

@@ -50,14 +50,14 @@ const ModelProviderDialogFooter = ({
   if (showRemoveConfirm) {
     const hasAffected = !!affectedModels && affectedModels.length > 0;
     return (
-      <DialogFooter className="mt-4 flex flex-col items-stretch gap-3 rounded-lg border border-red-500/10 bg-red-500/5 px-4 py-3 animate-in fade-in-0 slide-in-from-bottom-2 duration-150 sm:flex-row sm:items-center">
-        <div className="min-w-0 flex-1 border-l-2 border-destructive pl-3 text-sm text-red-100">
+      <DialogFooter className="mt-4 flex flex-col items-stretch gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 animate-in fade-in-0 slide-in-from-bottom-2 duration-150 sm:flex-row sm:items-center">
+        <div className="min-w-0 flex-1 border-l-2 border-destructive pl-3 text-sm text-foreground">
           {hasAffected ? (
             <div className="flex flex-col gap-1">
               <span>
                 Semantic search will break for documents embedded with:
               </span>
-              <ul className="list-disc pl-5 text-xs text-red-200/80">
+              <ul className="list-disc pl-5 text-xs text-muted-foreground">
                 {affectedModels!.map((m) => (
                   <li key={m.model}>
                     <span className="font-mono">{m.model}</span>{" "}

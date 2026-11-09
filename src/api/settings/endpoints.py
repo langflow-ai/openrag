@@ -13,7 +13,11 @@ import json
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from api.provider_validation import sanitize_provider_error_content, validate_provider_setup
+from api.provider_validation import (
+    get_provider_enhancement,
+    sanitize_provider_error_content,
+    validate_provider_setup,
+)
 from api.settings.helpers import (
     _affected_embedding_models,
     _create_openrag_docs_filter,
@@ -23,6 +27,7 @@ from api.settings.helpers import (
     _first_configured_embedding_provider,
     _first_configured_llm_provider,
     _get_flows_service,
+    _has_other_configured_provider,
 )
 from api.settings.langflow_sync import (
     _background_tasks,
@@ -60,6 +65,7 @@ from api.settings.models import (
 from config.config_manager import (
     ALLOWED_INDEX_NAME_PATTERNS,
     DEFAULT_SYSTEM_PROMPT,
+    CredentialTargetChangedError,
     is_permitted_index_name,
 )
 from config.settings import (
@@ -81,6 +87,7 @@ from config.settings import (
     clients,
     config_manager,
     get_openrag_config,
+    is_url_connector_enabled,
     is_workspace_oauth_overrides_enabled,
 )
 from dependencies import (
@@ -96,6 +103,7 @@ from dependencies import (
     get_task_service,
     require_permission,
 )
+from services import provider_error_log
 from services.docling_service import DoclingConfig, get_docling_preset_configs
 from services.model_catalog import secret_field_keys
 from services.rbac_service import is_rbac_enforced
@@ -107,6 +115,8 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 from utils.version_utils import OPENRAG_VERSION
 
 logger = get_logger(__name__)
+
+WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE = 500
 
 
 def _provider_key(provider: str | None) -> str:
@@ -142,6 +152,7 @@ def _custom_providers_for_settings(openrag_config) -> dict[str, GenericProviderC
             configured = configured or stored.configured
         return GenericProviderConfig(
             configured=configured,
+            auth_method=getattr(stored, "auth_method", None),
             credential_values={key: value for key, value in values.items() if value},
             secret_fields=list(dict.fromkeys(secrets)),
         )
@@ -343,6 +354,7 @@ async def get_settings(
                 chunk_overlap=knowledge_config.chunk_overlap,
                 table_structure=knowledge_config.table_structure,
                 ocr=knowledge_config.ocr,
+                ocr_languages=knowledge_config.ocr_languages,
                 picture_descriptions=knowledge_config.picture_descriptions,
                 index_name=knowledge_config.index_name,
                 disable_ingest_with_langflow=knowledge_config.disable_ingest_with_langflow,
@@ -372,6 +384,7 @@ async def get_settings(
             show_vlm_settings=OPENRAG_SHOW_VLM_SETTINGS,
             local_vlm_models=await asyncio.to_thread(_detect_local_vlm_models),
             show_shared_upload_toggle=OPENRAG_SHOW_SHARED_UPLOAD_TOGGLE,
+            show_url_connector=is_url_connector_enabled(),
             show_workspace_oauth_overrides=is_workspace_oauth_overrides_enabled(),
             segment_write_key=SEGMENT_WRITE_KEY or None,
             environment=ENVIRONMENT or None,
@@ -416,9 +429,22 @@ async def update_settings(
             "watsonx_project_id",
             "ollama_endpoint",
             "provider_credentials",
+            "provider_credential_removals",
             "remove_provider_config",
         ]
-
+        submitted_credentials = {
+            _provider_key(name): values
+            for name, values in (body.provider_credentials or {}).items()
+        }
+        removals_by_provider = {
+            _provider_key(name): set(fields)
+            for name, fields in (body.provider_credential_removals or {}).items()
+        }
+        provider_update_keys = set(submitted_credentials) | set(removals_by_provider)
+        auth_methods_by_provider = {
+            _provider_key(name): method
+            for name, method in (body.provider_auth_methods or {}).items()
+        }
         should_validate = any(getattr(body, field) is not None for field in provider_fields)
 
         # Docling VLM settings reuse provider credentials, so they are gated
@@ -456,6 +482,55 @@ async def update_settings(
             try:
                 logger.info("Running provider validation before modifying config")
 
+                # A generic provider save normally has no selected model to
+                # probe. Azure is the exception: both OpenAI Service and
+                # Foundry resource endpoints have a read-only auth probe.
+                # Provider enhancements are the other exception: each carries
+                # a model-free `lightweight_health_check`, so a bad URL or
+                # token is rejected here rather than on the first chat or
+                # ingest.
+                for provider_key in provider_update_keys:
+                    submitted = submitted_credentials.get(provider_key, {})
+                    removals = removals_by_provider.get(provider_key, set())
+                    auth_method = auth_methods_by_provider.get(provider_key)
+                    credentials = current_config.providers.pending_credentials(
+                        provider_key, submitted, remove=removals, auth_method=auth_method
+                    )
+                    if provider_key == "azure":
+                        required_by_method = {
+                            "api_key": {"api_key"},
+                            "entra_token": {"azure_ad_token"},
+                            "service_principal": {"tenant_id", "client_id", "client_secret"},
+                        }
+                        required = required_by_method.get(auth_method or "")
+                        if required is None:
+                            raise ValueError("Choose an Azure authentication method")
+                        missing = sorted(
+                            name for name in required | {"api_base"} if not credentials.get(name)
+                        )
+                        if missing:
+                            raise ValueError(f"{', '.join(missing)} is required for Azure OpenAI")
+                        await validate_provider_setup(
+                            provider=provider_key,
+                            api_key=credentials.get("api_key") or credentials.get("azure_ad_token"),
+                            endpoint=credentials.get("api_base"),
+                            credentials=credentials,
+                        )
+                    elif get_provider_enhancement(provider_key) is not None:
+                        # No model is passed, so the validator runs the
+                        # enhancement's lightweight check. It is given the
+                        # untranslated pending form because that is the only
+                        # one carrying every endpoint the operator entered —
+                        # both OpenShift AI `InferenceService` URLs, not the
+                        # single one `credentials` was narrowed to.
+                        await validate_provider_setup(
+                            provider=provider_key,
+                            credentials=credentials,
+                            stored_credentials=current_config.providers.pending_stored_credentials(
+                                provider_key, submitted, remove=removals, auth_method=auth_method
+                            ),
+                        )
+
                 # Validate LLM provider if being changed
                 if body.llm_provider is not None or body.llm_model is not None:
                     llm_provider = (
@@ -477,12 +552,12 @@ async def update_settings(
                     endpoint = getattr(llm_provider_config, "endpoint", None)
                     project_id = getattr(llm_provider_config, "project_id", None)
                     llm_provider_key = _provider_key(llm_provider)
-                    submitted_credentials = {
-                        _provider_key(name): values
-                        for name, values in (body.provider_credentials or {}).items()
-                    }
-                    credentials = current_config.providers.credential_values(llm_provider_key)
-                    credentials.update(submitted_credentials.get(llm_provider_key, {}))
+                    credentials = current_config.providers.pending_credentials(
+                        llm_provider_key,
+                        submitted_credentials.get(llm_provider_key, {}),
+                        remove=removals_by_provider.get(llm_provider_key, set()),
+                        auth_method=auth_methods_by_provider.get(llm_provider_key),
+                    )
                     api_key = credentials.get("api_key", api_key)
                     endpoint = credentials.get("api_base", endpoint)
                     project_id = credentials.get("project_id", project_id)
@@ -504,6 +579,15 @@ async def update_settings(
                         endpoint=endpoint,
                         project_id=project_id,
                         credentials=credentials,
+                        stored_credentials=current_config.providers.pending_stored_credentials(
+                            llm_provider_key,
+                            submitted_credentials.get(llm_provider_key, {}),
+                            remove=removals_by_provider.get(llm_provider_key, set()),
+                            auth_method=auth_methods_by_provider.get(llm_provider_key),
+                        ),
+                        # A model the cluster does not serve must fail the
+                        # save, not the first chat.
+                        verify_model=True,
                     )
                     logger.info(f"LLM provider validation successful for {llm_provider}")
 
@@ -530,12 +614,13 @@ async def update_settings(
                     endpoint = getattr(embedding_provider_config, "endpoint", None)
                     project_id = getattr(embedding_provider_config, "project_id", None)
                     embedding_provider_key = _provider_key(embedding_provider)
-                    submitted_credentials = {
-                        _provider_key(name): values
-                        for name, values in (body.provider_credentials or {}).items()
-                    }
-                    credentials = current_config.providers.credential_values(embedding_provider_key)
-                    credentials.update(submitted_credentials.get(embedding_provider_key, {}))
+                    credentials = current_config.providers.pending_credentials(
+                        embedding_provider_key,
+                        submitted_credentials.get(embedding_provider_key, {}),
+                        kind="embedding",
+                        remove=removals_by_provider.get(embedding_provider_key, set()),
+                        auth_method=auth_methods_by_provider.get(embedding_provider_key),
+                    )
                     api_key = credentials.get("api_key", api_key)
                     endpoint = credentials.get("api_base", endpoint)
                     project_id = credentials.get("project_id", project_id)
@@ -557,11 +642,28 @@ async def update_settings(
                         endpoint=endpoint,
                         project_id=project_id,
                         credentials=credentials,
+                        stored_credentials=current_config.providers.pending_stored_credentials(
+                            embedding_provider_key,
+                            submitted_credentials.get(embedding_provider_key, {}),
+                            remove=removals_by_provider.get(embedding_provider_key, set()),
+                            auth_method=auth_methods_by_provider.get(embedding_provider_key),
+                        ),
+                        verify_model=True,
                     )
                     logger.info(
                         f"Embedding provider validation successful for {embedding_provider}"
                     )
 
+            except CredentialTargetChangedError as e:
+                # Raised before any probe is sent; the message names form
+                # labels only, so it is returned as-is rather than run through
+                # the provider-error humaniser.
+                logger.warning(
+                    "Settings update refused: a credential target changed without its secrets",
+                    provider=e.provider,
+                    fields=list(e.fields),
+                )
+                return JSONResponse({"error": str(e)}, status_code=400)
             except Exception as e:
                 logger.error(f"Provider validation failed: {str(e)}")
                 return JSONResponse({"error": sanitize_provider_error_content(e)}, status_code=400)
@@ -647,6 +749,20 @@ async def update_settings(
 
         if body.ocr is not None:
             working_config.knowledge.ocr = body.ocr
+            config_updated = True
+            await TelemetryClient.send_event(
+                Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_DOCLING_UPDATED
+            )
+
+            # Also update the flow with the new docling settings
+            try:
+                flows_service = _get_flows_service()
+                await _update_langflow_docling_settings(working_config, flows_service)
+            except Exception as e:
+                logger.error(f"Failed to update docling settings in flow: {str(e)}")
+
+        if body.ocr_languages is not None:
+            working_config.knowledge.ocr_languages = body.ocr_languages
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_DOCLING_UPDATED
@@ -780,14 +896,20 @@ async def update_settings(
         # intentionally NOT synced into the Langflow flow JSON.
         if body.vlm_enabled:
             effective_vlm_provider = body.vlm_provider or current_config.knowledge.vlm_provider
-            if effective_vlm_provider in ("openai", "watsonx", "anthropic"):
+            if effective_vlm_provider in ("openai", "watsonx", "anthropic", "azure", "azure_ai"):
                 vlm_provider_config = current_config.providers.get_provider_config(
                     effective_vlm_provider
                 )
-                vlm_provider_missing = (
-                    not getattr(vlm_provider_config, "api_key", "")
-                    or not vlm_provider_config.configured
-                )
+                credentials = current_config.providers.credential_values(effective_vlm_provider)
+
+                # Whether the provider is usable at all is the provider's own
+                # question, and `configured` already answers it against that
+                # provider's required fields.
+                vlm_provider_missing = not vlm_provider_config.configured
+                if effective_vlm_provider in ("azure", "azure_ai"):
+                    vlm_provider_missing = vlm_provider_missing or not credentials.get(
+                        "api_base", ""
+                    )
                 if effective_vlm_provider == "watsonx":
                     vlm_provider_missing = (
                         vlm_provider_missing
@@ -800,6 +922,37 @@ async def update_settings(
                             "error": (
                                 f"Cannot enable Docling VLM: provider '{effective_vlm_provider}' "
                                 "is not configured. Configure it in Settings > Providers first."
+                            )
+                        },
+                        status_code=400,
+                    )
+
+                # Separately: docling-serve calls the model endpoint itself,
+                # with headers OpenRAG builds for it, and every remote branch
+                # in `docling_service` builds an API-key header. So VLM needs a
+                # key even where the provider itself can authenticate other
+                # ways — Azure OpenAI already accepts a Microsoft Entra token
+                # or a service principal for inference.
+                #
+                # This is a limit of the VLM integration, not of the provider,
+                # and it is reported as one. Rolling it into "provider is not
+                # configured" above sent operators to re-enter credentials that
+                # were already valid, and wrote "an API key is the only way to
+                # authenticate" into a gate that has no business saying so.
+                # Entra for VLM needs token acquisition, refresh and
+                # propagation to docling-serve, and is a separate change.
+                api_key = getattr(vlm_provider_config, "api_key", "") or credentials.get(
+                    "api_key", ""
+                )
+                if not api_key:
+                    return JSONResponse(
+                        {
+                            "error": (
+                                f"Cannot enable Docling VLM: provider "
+                                f"'{effective_vlm_provider}' is configured, but image "
+                                "descriptions are sent to the document converter, which "
+                                "authenticates with an API key. Add one in "
+                                "Settings > Providers, or turn off image descriptions."
                             )
                         },
                         status_code=400,
@@ -838,8 +991,21 @@ async def update_settings(
 
         # Update provider-specific settings
         provider_updated = False
-        for provider, credentials in (body.provider_credentials or {}).items():
-            working_config.providers.set_credentials(provider, credentials)
+        for provider in provider_update_keys:
+            removals = removals_by_provider.get(provider, set())
+            auth_method = auth_methods_by_provider.get(provider)
+            logger.info(
+                "Saving provider credentials",
+                provider=provider,
+                auth_method=auth_method,
+                removed=sorted(removals),
+            )
+            working_config.providers.set_credentials(
+                provider,
+                submitted_credentials.get(provider, {}),
+                auth_method=auth_method,
+                remove=removals,
+            )
             config_updated = True
             provider_updated = True
 
@@ -880,12 +1046,7 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_ollama_config:
-            other_providers_configured = (
-                working_config.providers.openai.configured
-                or working_config.providers.anthropic.configured
-                or working_config.providers.watsonx.configured
-            )
-            if not other_providers_configured:
+            if not _has_other_configured_provider(working_config, "ollama"):
                 return JSONResponse(
                     {
                         "error": "Cannot remove Ollama configuration: configure another model provider first."
@@ -912,12 +1073,7 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_openai_config:
-            other_providers_configured = (
-                working_config.providers.anthropic.configured
-                or working_config.providers.watsonx.configured
-                or working_config.providers.ollama.configured
-            )
-            if not other_providers_configured:
+            if not _has_other_configured_provider(working_config, "openai"):
                 return JSONResponse(
                     {
                         "error": "Cannot remove OpenAI configuration: configure another model provider first."
@@ -944,12 +1100,7 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_anthropic_config:
-            other_providers_configured = (
-                working_config.providers.openai.configured
-                or working_config.providers.watsonx.configured
-                or working_config.providers.ollama.configured
-            )
-            if not other_providers_configured:
+            if not _has_other_configured_provider(working_config, "anthropic"):
                 return JSONResponse(
                     {
                         "error": "Cannot remove Anthropic configuration: configure another model provider first."
@@ -967,12 +1118,7 @@ async def update_settings(
             provider_updated = True
 
         if body.remove_watsonx_config:
-            other_providers_configured = (
-                working_config.providers.openai.configured
-                or working_config.providers.anthropic.configured
-                or working_config.providers.ollama.configured
-            )
-            if not other_providers_configured:
+            if not _has_other_configured_provider(working_config, "watsonx"):
                 return JSONResponse(
                     {
                         "error": "Cannot remove IBM watsonx.ai configuration: configure another model provider first."
@@ -1003,8 +1149,7 @@ async def update_settings(
         if body.remove_provider_config:
             provider = body.remove_provider_config.strip().lower()
             if provider in working_config.providers.custom:
-                del working_config.providers.custom[provider]
-                if not working_config.providers.any_configured():
+                if not _has_other_configured_provider(working_config, provider):
                     return JSONResponse(
                         {
                             "error": (
@@ -1014,6 +1159,7 @@ async def update_settings(
                         },
                         status_code=400,
                     )
+                del working_config.providers.custom[provider]
                 if working_config.agent.llm_provider == provider:
                     fallback = _first_configured_llm_provider(working_config, provider)
                     working_config.agent.llm_provider = fallback
@@ -1038,6 +1184,10 @@ async def update_settings(
             return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
 
         provider_health_cache.invalidate()
+        if should_validate or provider_updated:
+            # A recorded failure describes the provider setup that just changed.
+            # Real traffic re-raises it if the new setup fails the same way.
+            provider_error_log.clear()
 
         # Refresh patched client immediately so subsequent requests pick up latest config.
         await clients.refresh_patched_client()
@@ -1082,6 +1232,15 @@ async def update_settings(
         # Preserve intentional client-error status codes (e.g. 422 validation
         # failures) instead of letting the catch-all below flatten them to 500.
         raise
+    except CredentialTargetChangedError as e:
+        # Normally caught during validation; this covers a save that skipped it.
+        # The changes were staged on `working_config`, so nothing was applied.
+        logger.warning(
+            "Settings update refused: a credential target changed without its secrets",
+            provider=e.provider,
+            fields=list(e.fields),
+        )
+        return JSONResponse({"error": str(e)}, status_code=400)
     except Exception:
         logger.exception("Failed to update settings")
         await TelemetryClient.send_event(
@@ -1107,8 +1266,10 @@ async def onboarding(
 
         log_bootstrap_env(logger, "onboarding")
 
-        # Get current configuration
-        current_config = get_openrag_config()
+        # Onboarding validation can fail before anything is persisted. Work on
+        # a copy so rejected credentials or deployment names do not leak into
+        # the process-wide cached configuration.
+        current_config = copy.deepcopy(get_openrag_config())
 
         # Warn if config was already edited (onboarding being re-run)
         if current_config.edited:
@@ -1148,6 +1309,7 @@ async def onboarding(
         # Update knowledge settings (embedding)
         embedding_model_selected = None
         embedding_provider_selected = None
+        chunk_size_adjusted_to = None
 
         if body.embedding_model:
             embedding_model_selected = body.embedding_model.strip()
@@ -1172,6 +1334,19 @@ async def onboarding(
             logger.info(
                 f"Embedding provider selected during onboarding: {embedding_provider_selected}"
             )
+            if (
+                embedding_provider_selected.lower() == "watsonx_onprem"
+                and current_config.knowledge.chunk_size > WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+            ):
+                current_config.knowledge.chunk_size = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+                if current_config.knowledge.chunk_overlap >= WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE:
+                    current_config.knowledge.chunk_overlap = 200
+                chunk_size_adjusted_to = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+                logger.info(
+                    "Reduced chunk size for watsonx.ai on-prem embedding compatibility",
+                    chunk_size=chunk_size_adjusted_to,
+                    chunk_overlap=current_config.knowledge.chunk_overlap,
+                )
 
         # Update provider-specific credentials
         if body.openai_api_key:
@@ -1204,8 +1379,44 @@ async def onboarding(
             current_config.providers.ollama.configured = True
             config_updated = True
 
-        for provider, credentials in (body.provider_credentials or {}).items():
-            current_config.providers.set_credentials(provider, credentials)
+        submitted_credentials = {
+            _provider_key(name): values
+            for name, values in (body.provider_credentials or {}).items()
+        }
+        removals_by_provider = {
+            _provider_key(name): set(fields)
+            for name, fields in (body.provider_credential_removals or {}).items()
+        }
+        auth_methods_by_provider = {
+            _provider_key(name): method
+            for name, method in (body.provider_auth_methods or {}).items()
+        }
+        for provider in set(submitted_credentials) | set(removals_by_provider):
+            removals = removals_by_provider.get(provider, set())
+            auth_method = auth_methods_by_provider.get(provider)
+            logger.info(
+                "Saving provider credentials during onboarding",
+                provider=provider,
+                auth_method=auth_method,
+                removed=sorted(removals),
+            )
+            try:
+                current_config.providers.set_credentials(
+                    provider,
+                    submitted_credentials.get(provider, {}),
+                    auth_method=auth_method,
+                    remove=removals,
+                )
+            except CredentialTargetChangedError as e:
+                # Refused before the validation probe below could send the
+                # stored secret to the new target; `current_config` is a copy,
+                # so nothing was applied.
+                logger.warning(
+                    "Onboarding refused: a credential target changed without its secrets",
+                    provider=e.provider,
+                    fields=list(e.fields),
+                )
+                return JSONResponse({"error": str(e)}, status_code=400)
             config_updated = True
 
         # Mark providers as configured if they were chosen during onboarding
@@ -1229,6 +1440,12 @@ async def onboarding(
             elif llm_provider == "ollama" and current_config.providers.ollama.endpoint:
                 current_config.providers.ollama.configured = True
                 logger.info("Marked Ollama as configured (chosen as LLM provider)")
+            elif (
+                llm_provider in current_config.providers.custom
+                and current_config.providers.custom[llm_provider].credentials
+            ):
+                current_config.providers.custom[llm_provider].configured = True
+                logger.info(f"Marked {llm_provider} as configured (chosen as LLM provider)")
 
         # Check embedding provider
         if body.embedding_provider:
@@ -1247,6 +1464,14 @@ async def onboarding(
             elif embedding_provider == "ollama" and current_config.providers.ollama.endpoint:
                 current_config.providers.ollama.configured = True
                 logger.info("Marked Ollama as configured (chosen as embedding provider)")
+            elif (
+                embedding_provider in current_config.providers.custom
+                and current_config.providers.custom[embedding_provider].credentials
+            ):
+                current_config.providers.custom[embedding_provider].configured = True
+                logger.info(
+                    f"Marked {embedding_provider} as configured (chosen as embedding provider)"
+                )
 
         should_ingest_sample_data = INGEST_SAMPLE_DATA
         if should_ingest_sample_data:
@@ -1275,6 +1500,7 @@ async def onboarding(
                     project_id=getattr(llm_provider_config, "project_id", None),
                     test_completion=True,  # Full validation with completion test - ensures provider health
                     credentials=current_config.providers.credential_values(llm_provider),
+                    stored_credentials=current_config.providers.stored_credentials(llm_provider),
                 )
                 logger.info(
                     f"LLM provider setup validation completed successfully for {llm_provider}"
@@ -1295,7 +1521,12 @@ async def onboarding(
                     endpoint=getattr(embedding_provider_config, "endpoint", None),
                     project_id=getattr(embedding_provider_config, "project_id", None),
                     test_completion=True,  # Full validation with completion test - ensures provider health
-                    credentials=current_config.providers.credential_values(embedding_provider),
+                    credentials=current_config.providers.credential_values(
+                        embedding_provider, kind="embedding"
+                    ),
+                    stored_credentials=current_config.providers.stored_credentials(
+                        embedding_provider
+                    ),
                 )
                 logger.info(
                     f"Embedding provider setup validation completed successfully for {embedding_provider}"
@@ -1487,6 +1718,7 @@ async def onboarding(
 
         if config_manager.save_config_file(current_config):
             provider_health_cache.invalidate()
+            provider_error_log.clear()
             set_fields = [k for k, v in body.model_dump(exclude_unset=True).items()]
             logger.info(
                 "Onboarding configuration updated successfully",
@@ -1558,6 +1790,7 @@ async def onboarding(
             sample_data_ingested=should_ingest_sample_data,
             openrag_docs_filter_id=openrag_docs_filter_id,
             task_id=task_id,
+            chunk_size_adjusted_to=chunk_size_adjusted_to,
         )
 
     except Exception as e:
@@ -1887,8 +2120,13 @@ async def update_docling_preset(
                 ),
             }
 
-        # Get the preset configuration
-        preset_config_dict = get_docling_preset_configs(**settings_toggles)
+        # Get the preset configuration. OCR languages are not part of this legacy
+        # preset API, so carry the configured ones through rather than dropping
+        # them from the flow's docling options.
+        preset_config_dict = get_docling_preset_configs(
+            **settings_toggles,
+            ocr_languages=get_openrag_config().knowledge.ocr_languages,
+        )
         preset_config = DoclingConfig(**preset_config_dict)
 
         # Use the helper function to update the flow

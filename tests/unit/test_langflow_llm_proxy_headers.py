@@ -22,6 +22,7 @@ def test_build_model_provider_headers_forces_openai_client():
     assert headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL"] == "claude-sonnet-4-5"
     assert headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_LANGUAGE_MODEL_PROVIDER"] == "OpenAI"
     assert headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] == "text-embedding-3-small"
+    assert headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_PROVIDER"] == "watsonx"
     assert headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL_PROVIDER"] == "OpenAI"
 
 

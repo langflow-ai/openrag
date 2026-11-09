@@ -56,7 +56,7 @@ def test_settings_default_pool_maxsize_fallback():
         env=env,
         cwd=str(ROOT),
     )
-    assert result.stdout.splitlines()[-1].strip() == "8"
+    assert result.stdout.splitlines()[-1].strip() == "10"
 
 
 def test_opensearch_client_uses_configured_pool_maxsize():

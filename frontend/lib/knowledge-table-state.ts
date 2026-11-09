@@ -142,6 +142,10 @@ function taskOverlayPriority(status?: string): number {
       return 3;
     case "failed":
       return 2;
+    case "cancelled":
+      return 2;
+    case "skipped":
+      return 2;
     case "active":
       return 1;
     default:
@@ -184,6 +188,8 @@ export function buildKnowledgeTableRows(
   searchData: SearchFile[],
   taskFiles: TaskFile[],
   hasActiveFilter = false,
+  dateRange?: { from?: Date; to?: Date } | null,
+  bounds?: { createdAfter?: string; createdBefore?: string },
 ): SearchFile[] {
   const taskFilesAsFiles: SearchFile[] = taskFiles.map((taskFile) => {
     const normalizedFilename =
@@ -193,12 +199,15 @@ export function buildKnowledgeTableRows(
 
     return {
       filename: normalizedFilename,
+      indexed_time: taskFile.created_at || undefined,
       mimetype: taskFile.mimetype,
       source_url: taskFile.source_url || "",
       size: taskFile.size,
       connector_type: taskFile.connector_type,
       status: taskFile.status,
       error: taskFile.error,
+      skip_reason: taskFile.skip_reason,
+      warning: taskFile.warning,
       embedding_model: taskFile.embedding_model,
       embedding_dimensions: taskFile.embedding_dimensions,
     };
@@ -214,7 +223,10 @@ export function buildKnowledgeTableRows(
     if (taskFile) {
       const backendStatus = file.status ?? "active";
       const status =
-        taskFile.status === "processing" || taskFile.status === "failed"
+        taskFile.status === "processing" ||
+        taskFile.status === "failed" ||
+        taskFile.status === "cancelled" ||
+        taskFile.status === "skipped"
           ? taskFile.status
           : backendStatus;
       return {
@@ -231,9 +243,13 @@ export function buildKnowledgeTableRows(
             ),
         status,
         error: taskFile.error,
+        skip_reason: taskFile.skip_reason,
+        warning: taskFile.warning,
         embedding_model: taskFile.embedding_model ?? file.embedding_model,
         embedding_dimensions:
           taskFile.embedding_dimensions ?? file.embedding_dimensions,
+        // Preserve task_id so getTaskIdForRow can match correctly for cancellation
+        task_id: taskFile.task_id,
       };
     }
     return file;
@@ -271,7 +287,55 @@ export function buildKnowledgeTableRows(
     return backendFiles;
   }
 
-  return [...backendFiles, ...filteredTaskFiles];
+  // Effective UTC bounds win over the display days so in-flight rows agree with
+  // the server results even when the range was saved in another timezone.
+  const boundFrom = bounds?.createdAfter
+    ? new Date(bounds.createdAfter).getTime()
+    : undefined;
+  const boundTo = bounds?.createdBefore
+    ? new Date(bounds.createdBefore).getTime()
+    : undefined;
+  const rangeFrom = dateRange?.from;
+  const rangeTo = dateRange?.to;
+  const useBounds = bounds !== undefined;
+  const hasRange = useBounds
+    ? boundFrom !== undefined || boundTo !== undefined
+    : Boolean(rangeFrom ?? rangeTo);
+  const dateFilteredTaskFiles = hasRange
+    ? filteredTaskFiles.filter((f) => {
+        if (!f.indexed_time) return true;
+        const d = new Date(f.indexed_time);
+        if (Number.isNaN(d.getTime())) return true;
+        if (useBounds) {
+          if (boundFrom !== undefined && d.getTime() < boundFrom) return false;
+          if (boundTo !== undefined && d.getTime() > boundTo) return false;
+          return true;
+        }
+        if (rangeFrom) {
+          const start = new Date(
+            rangeFrom.getFullYear(),
+            rangeFrom.getMonth(),
+            rangeFrom.getDate(),
+          );
+          if (d < start) return false;
+        }
+        if (rangeTo) {
+          const end = new Date(
+            rangeTo.getFullYear(),
+            rangeTo.getMonth(),
+            rangeTo.getDate(),
+            23,
+            59,
+            59,
+            999,
+          );
+          if (d > end) return false;
+        }
+        return true;
+      })
+    : filteredTaskFiles;
+
+  return [...backendFiles, ...dateFilteredTaskFiles];
 }
 
 export function buildActiveSourceOptions(

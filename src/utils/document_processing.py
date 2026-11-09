@@ -1,4 +1,6 @@
 import os
+import re
+import unicodedata
 from collections import defaultdict
 
 from utils.logging_config import get_logger
@@ -6,6 +8,58 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 IMAGE_PLACEHOLDER = "<!-- image -->"
+
+# Some PDF fonts map common kanji (日, 月, 木, 金, 土, ...) to the look-alike
+# Kangxi Radical code points in their /ToUnicode CMap, and Docling copies them
+# through unchanged. Map just those blocks back to CJK Unified Ideographs;
+# full NFKC would also rewrite full-width digits, ㈱, ①, half-width katakana.
+_CJK_RADICAL_TABLE = {
+    cp: unicodedata.normalize("NFKC", chr(cp))
+    for cp in range(0x2E80, 0x2FE0)  # CJK Radicals Supplement + Kangxi Radicals
+    if unicodedata.normalize("NFKC", chr(cp)) != chr(cp)
+}
+
+
+def normalize_cjk_radicals(text: str) -> str:
+    """Replace Kangxi/CJK radical code points with their unified ideographs."""
+    return text.translate(_CJK_RADICAL_TABLE)
+
+
+_SENTENCE_END = re.compile(r"(?<=[。．！？.!?])")
+
+
+def split_to_size(
+    text: str, limit: int, levels: tuple[str, ...] = ("line", "sentence")
+) -> list[str]:
+    """Split text into pieces of at most ``limit`` characters.
+
+    Cuts on line breaks first, then after sentence-ending punctuation, and only
+    then at a fixed character count, so pieces end at natural boundaries when
+    the text has any.
+    """
+    if len(text) <= limit:
+        return [text]
+    if not levels:
+        return [text[i : i + limit] for i in range(0, len(text), limit)]
+    if levels[0] == "line":
+        parts, joiner = text.split("\n"), "\n"
+    else:
+        parts, joiner = _SENTENCE_END.split(text), ""
+
+    pieces: list[str] = []
+    current = ""
+    for part in parts:
+        for sub in split_to_size(part, limit, levels[1:]):
+            candidate = f"{current}{joiner}{sub}" if current else sub
+            if len(candidate) <= limit:
+                current = candidate
+            else:
+                if current:
+                    pieces.append(current)
+                current = sub
+    if current:
+        pieces.append(current)
+    return pieces
 
 
 def process_text_file(file_path: str) -> dict:
@@ -39,8 +93,12 @@ def process_text_file(file_path: str) -> dict:
     current_chunk = ""
     chunk_index = 0
 
-    for para in paragraphs:
-        para = para.strip()
+    # A file with no blank lines is one paragraph, so oversized paragraphs are
+    # cut on lines and sentences before packing.
+    pieces = (
+        piece.strip() for para in paragraphs for piece in split_to_size(para.strip(), chunk_size)
+    )
+    for para in pieces:
         if not para:
             continue
 
@@ -176,6 +234,9 @@ def extract_relevant(doc_dict: dict) -> dict:
                 "text": IMAGE_PLACEHOLDER,
             }
         )
+
+    for chunk in chunks:
+        chunk["text"] = normalize_cjk_radicals(chunk["text"])
 
     return {
         "id": origin.get("binary_hash"),

@@ -1,3 +1,7 @@
+.ag-center-header .ag-header-cell-label {
+  justify-content: center;
+}
+
 body {
   --ag-text-color: hsl(var(--muted-foreground));
   --ag-background-color: hsl(var(--background));
@@ -14,7 +18,7 @@ body {
 
   /* Checkbox styling */
   --ag-checkbox-background-color: hsl(var(--background));
-  --ag-checkbox-border-color: hsl(var(--input));
+  --ag-checkbox-border-color: hsl(var(--muted-foreground));
   --ag-checkbox-checked-color: hsl(var(--primary));
   --ag-checkbox-unchecked-color: transparent;
 
@@ -30,7 +34,7 @@ body {
   }
 
   .ag-checkbox-input-wrapper {
-    border: 1px solid hsl(var(--input));
+    border: 1px solid hsl(var(--muted-foreground));
     background-color: hsl(var(--background));
   }
 

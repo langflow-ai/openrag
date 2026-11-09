@@ -4,10 +4,7 @@ import { completeOnboarding } from "../utils/onboarding";
 test.describe.configure({ mode: "serial" });
 
 test.beforeEach(async ({ page }) => {
-  await completeOnboarding(page, {
-    llmProvider: "openai",
-    embeddingProvider: "openai",
-  });
+  await completeOnboarding(page);
 });
 
 type MockTaskStatus =

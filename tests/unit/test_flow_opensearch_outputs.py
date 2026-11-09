@@ -31,7 +31,9 @@ def test_embedded_opensearch_nodes_expose_json_search_results():
         "flows/openrag_url_mcp.json",
     ):
         flow = _load_flow(flow_path)
-        for node in _opensearch_nodes(flow):
+        nodes = _opensearch_nodes(flow)
+        assert nodes, f"{flow_path} has no OpenSearch nodes"
+        for node in nodes:
             outputs = node["data"]["node"]["outputs"]
             if any(output.get("name") == "component_as_tool" for output in outputs):
                 continue
@@ -99,13 +101,29 @@ def test_embedded_opensearch_nodes_fence_untrusted_text():
         "flows/openrag_url_mcp.json",
     ):
         flow = _load_flow(flow_path)
-        for node in _opensearch_nodes(flow):
+        nodes = _opensearch_nodes(flow)
+        assert nodes, f"{flow_path} has no OpenSearch nodes"
+        for node in nodes:
             embedded_code = node["data"]["node"]["template"]["code"]["value"]
             assert embedded_code == py_code, (
                 f"{flow_path} node {node.get('id')} embedded code is out of sync with "
                 "custom_components/openrag/opensearch_multimodal.py — re-run "
                 "scripts/update_flow_components.py"
             )
+
+
+def test_embedded_opensearch_nodes_bind_exact_embedding_provider():
+    for flow_path in (
+        "flows/ingestion_flow.json",
+        "flows/openrag_agent.json",
+        "flows/openrag_nudges.json",
+        "flows/openrag_url_mcp.json",
+    ):
+        flow = _load_flow(flow_path)
+        for node in _opensearch_nodes(flow):
+            provider_input = node["data"]["node"]["template"]["embedding_provider_name"]
+            assert provider_input["load_from_db"] is True
+            assert provider_input["value"] == "SELECTED_EMBEDDING_PROVIDER"
 
 
 def test_query_filter_text_input_feeds_opensearch_filter_expression():

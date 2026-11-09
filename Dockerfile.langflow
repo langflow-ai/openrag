@@ -1,18 +1,35 @@
 # syntax=docker/dockerfile:1.4
-FROM langflowai/langflow:base-0.11.2
 
-# Install uv and pre-create the Langflow data directory.
-# The base image already runs as uid=1000 and owns /app, so no root or chown needed.
-# Upgrade pip first to patch CVE-2026-8643 (fixed in 26.1.2) in the base image.
-RUN pip install --no-cache-dir --upgrade "pip>=26.1.2" \
-    && pip install --no-cache-dir uv \
-    && mkdir -p /app/langflow-data
+FROM langflowai/langflow:base-1.12.10
+
+# Install uv, then pre-create the Langflow data directory as root.
+# Langflow 1.12's base image runs as uid=1000, but /app itself is not writable.
+# The base image already ships pip 26.2.1, which patches CVE-2026-8643.
+RUN pip install --no-cache-dir uv
+
+USER root
+# Langflow 1.12.9 supplies the fixed lxml, OS, and Python dependencies. Its
+# bundled npm still contains an older nested undici, so replace that package
+# directly; installing a newer npm is unnecessary and would downgrade
+# ip-address below the fixed version supplied by the base image.
+RUN mkdir -p /tmp/npm-patches \
+    && npm pack --pack-destination /tmp/npm-patches undici@8.12.2 \
+    && rm -rf /usr/local/lib/node_modules/npm/node_modules/undici \
+    && mkdir -p /usr/local/lib/node_modules/npm/node_modules/undici \
+    && tar -xzf /tmp/npm-patches/undici-8.12.2.tgz --strip-components=1 \
+        -C /usr/local/lib/node_modules/npm/node_modules/undici \
+    && rm -rf /tmp/npm-patches \
+    && npm cache clean --force \
+    && mkdir -p /app/langflow-data \
+    && chmod 0777 /app/langflow-data
+USER 1000
 
 RUN pip install --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cpu \
-    torch==2.10.0 \
-    torchvision==0.25.0 \
-    docling \
+    torch==2.13.0 \
+    torchvision==0.28.0 \
+    "transformers>=5.10.1,<6.0.0" \
+    "docling-core<3.0.0" \
     openai \
     langchain-openai \
     anthropic \
@@ -25,24 +42,23 @@ RUN pip install --no-cache-dir \
     "ibm-watsonx-ai>=1.3.1,<2.0.0" \
     "langchain-ibm~=1.1.0"
 
-COPY flows/ /app/flows/
 COPY custom_components/ /app/custom_components/
 
-# Copy the entrypoint before switching to root so the COPY runs as uid=1000
-# (which owns /app), then switch to root so the entrypoint can correct
-# bind-mount permissions at runtime before dropping back to uid=1000.
+# Switch to root so the entrypoint can correct bind-mount permissions at
+# runtime before dropping back to uid=1000.
 COPY --chmod=755 scripts/langflow-entrypoint.py /usr/local/bin/langflow-entrypoint
 COPY scripts/patch_langflow_openrag_bundle.py /tmp/patch_langflow_openrag_bundle.py
-COPY flows/component_index.json /app/component_index.json
 USER root
-RUN rm -f /app/flows/component_index.json \
-    && python3 /tmp/patch_langflow_openrag_bundle.py
+RUN python3 /tmp/patch_langflow_openrag_bundle.py
 ENV LANGFLOW_SSRF_ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal
 ENV LANGFLOW_LOG_TRACE_LOCALS=false
+ENV LANGFLOW_LOG_FORMAT=key_value
 ENV LANGFLOW_BLOCK_CODE_INTERPRETER_COMPONENTS=true
 ENV LANGFLOW_COMPONENTS_PATH=/app/custom_components
-ENV LANGFLOW_COMPONENTS_INDEX_PATH=/app/component_index.json
 ENV LANGFLOW_ALLOW_CUSTOM_COMPONENTS=false
+ENV LANGFLOW_DANGEROUSLY_ALLOW_MULTI_WORKER_WITHOUT_SHARED_QUEUE=true
+ENV LANGFLOW_DISABLE_TRACK_APIKEY_USAGE=true
+
 
 # CWE-426 fix: explicitly set PATH so system-owned directories are always resolved
 # first. App venv and ubi python dirs are appended last so they cannot shadow system binaries.

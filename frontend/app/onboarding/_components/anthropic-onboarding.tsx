@@ -121,7 +121,7 @@ export function AnthropicOnboarding({
             <LabelInput
               label="Anthropic API key"
               helperText="The API key for your Anthropic account."
-              className={showModelsError ? "!border-destructive" : ""}
+              className={showModelsError ? "border-destructive!" : ""}
               id="api-key"
               type="password"
               required

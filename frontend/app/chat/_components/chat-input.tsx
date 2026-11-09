@@ -2,9 +2,7 @@ import Fuse from "fuse.js";
 import { ArrowRight, Check, Funnel, Loader2, Plus } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useImperativeHandle, useMemo, useRef, useState } from "react";
-import { useDropzone } from "react-dropzone";
 import TextareaAutosize from "react-textarea-autosize";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -13,8 +11,10 @@ import {
 } from "@/components/ui/popover";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useFileDrag } from "@/hooks/use-file-drag";
+import { useImeComposition } from "@/hooks/use-ime-composition";
 import { useSupportedFileTypes } from "@/hooks/use-supported-file-types";
 import type { FilterColor } from "@/lib/filter-constants";
+import type { ImeCompositionState } from "@/lib/ime-composition";
 import { cn } from "@/lib/utils";
 import { useGetAllFiltersQuery } from "../../api/queries/useGetAllFiltersQuery";
 import type { KnowledgeFilterData } from "../_types/types";
@@ -24,6 +24,8 @@ import { SelectedKnowledgeFilter } from "./selected-knowledge-filter";
 export interface ChatInputHandle {
   focusInput: () => void;
   clickFileInput: () => void;
+  /** Snapshot of the open or just-finished IME session, including `now`. */
+  getImeState: () => ImeCompositionState;
 }
 
 interface ChatInputProps {
@@ -36,7 +38,10 @@ interface ChatInputProps {
   uploadedFile: File | null;
   onSubmit: (e: React.FormEvent) => void;
   onChange: (value: string) => void;
-  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onKeyDown: (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+    imeState: ImeCompositionState,
+  ) => void;
   onFilterSelect: (filter: KnowledgeFilterData | null) => void;
   onFilePickerClick: () => void;
   setSelectedFilter: (filter: KnowledgeFilterData | null) => void;
@@ -66,11 +71,12 @@ export function ChatInput({
 }: ChatInputProps & { ref?: React.Ref<ChatInputHandle> }) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const ime = useImeComposition();
   const [isWrapped, setIsWrapped] = useState(false);
   const isMultiline = input.includes("\n") || isWrapped;
   const isDragging = useFileDrag();
   const isCloudBrand = useIsCloudBrand();
-  const { supportedFileTypes, supportedExtensions } = useSupportedFileTypes();
+  const { supportedExtensions } = useSupportedFileTypes();
 
   // Internal state for filter dropdown
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
@@ -103,20 +109,6 @@ export function ChatInput({
     return results.map((result) => result.item).slice(0, 20);
   }, [allFilters, filterSearchTerm]);
 
-  const { getRootProps, getInputProps } = useDropzone({
-    accept: supportedFileTypes,
-    maxFiles: 1,
-    disabled: !isDragging,
-    onDrop: (acceptedFiles, fileRejections) => {
-      if (fileRejections.length > 0) {
-        const message = fileRejections.at(0)?.errors.at(0)?.message;
-        toast.error(message || "Failed to upload file");
-        return;
-      }
-      onFileSelected(acceptedFiles[0]);
-    },
-  });
-
   useImperativeHandle(ref, () => ({
     focusInput: () => {
       inputRef.current?.focus();
@@ -124,6 +116,7 @@ export function ChatInput({
     clickFileInput: () => {
       fileInputRef.current?.click();
     },
+    getImeState: () => ime.readState(),
   }));
 
   const handleFilePickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -154,7 +147,6 @@ export function ChatInput({
       }
     } else {
       setIsFilterDropdownOpen(false);
-      setAnchorPosition(null);
     }
   };
 
@@ -274,6 +266,14 @@ export function ChatInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // One snapshot for this keydown, shared with the parent submit handler.
+    // Confirming a Kanji (or other IME) candidate fires Enter and must not
+    // select a filter or submit the message.
+    const imeState = ime.readState();
+    if (ime.blockEnter(e, imeState)) {
+      return;
+    }
+
     if (isFilterDropdownOpen) {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -315,6 +315,10 @@ export function ChatInput({
       }
 
       if (e.key === " ") {
+        // Space cycles IME candidates. A space after compositionend is a real space.
+        if (ime.isImeCandidateKey(e.nativeEvent)) {
+          return;
+        }
         // Select filter on space if we're typing an @ mention
         const cursorPos = e.currentTarget.selectionStart || 0;
         const textBeforeCursor = input.slice(0, cursorPos);
@@ -330,7 +334,7 @@ export function ChatInput({
     }
 
     // Pass through to parent onKeyDown for other key handling
-    onKeyDown(e);
+    onKeyDown(e, imeState);
   };
 
   return (
@@ -338,21 +342,17 @@ export function ChatInput({
       <form onSubmit={onSubmit} className="relative">
         {/* Outer container - flex-col to stack file preview above input */}
         <div
-          {...getRootProps()}
           className={cn(
             "flex flex-col w-full p-2 rounded-xl border transition-all",
-            isCloudBrand
-              ? "border-[color:var(--chat-input-border)]"
-              : "border-input",
-            isCloudBrand ? "bg-[var(--chat-prompt-bg)]" : "bg-transparent",
+            isCloudBrand ? "border-(--chat-input-border)" : "border-input",
+            isCloudBrand ? "bg-(--chat-prompt-bg)" : "bg-transparent",
             !isDragging &&
               (isCloudBrand
-                ? "hover:[&:not(:focus-within)]:border-muted-foreground focus-within:border-[color:var(--chat-input-border)]"
-                : "hover:[&:not(:focus-within)]:border-muted-foreground focus-within:border-foreground"),
+                ? "hover:not-focus-within:border-muted-foreground focus-within:border-(--chat-input-border)"
+                : "hover:not-focus-within:border-muted-foreground focus-within:border-foreground"),
             isDragging && "border-dashed",
           )}
         >
-          <input {...getInputProps()} />
           {/* File Preview Section - Always above */}
           <AnimatePresence>
             {uploadedFile && (
@@ -419,7 +419,7 @@ export function ChatInput({
                     className={cn(
                       "h-8 w-8 p-0 rounded-md",
                       isCloudBrand
-                        ? "hover:bg-[var(--layered-select-bg)]"
+                        ? "hover:bg-(--layered-select-bg)"
                         : "hover:bg-muted/50",
                     )}
                     onMouseDown={(e) => {
@@ -436,6 +436,7 @@ export function ChatInput({
                   ref={inputRef}
                   value={input}
                   onChange={handleChange}
+                  {...ime.inputProps}
                   onKeyDown={handleKeyDown}
                   maxRows={7}
                   autoComplete="off"
@@ -443,7 +444,7 @@ export function ChatInput({
                   placeholder="Ask a question..."
                   data-testid="chat-input"
                   disabled={loading}
-                  className={`w-full text-sm bg-transparent focus-visible:outline-none resize-none`}
+                  className={`w-full text-sm bg-transparent focus-visible:outline-hidden resize-none`}
                   rows={1}
                 />
               </div>
@@ -471,7 +472,7 @@ export function ChatInput({
                     className={cn(
                       "h-8 w-8 p-0 rounded-md",
                       isCloudBrand
-                        ? "hover:bg-[var(--layered-select-bg)]"
+                        ? "hover:bg-(--layered-select-bg)"
                         : "hover:bg-muted/50",
                     )}
                     onMouseDown={(e) => {
@@ -492,9 +493,9 @@ export function ChatInput({
                     onClick={onFilePickerClick}
                     disabled={isUploading}
                     className={cn(
-                      "h-8 w-8 p-0 !rounded-md",
+                      "h-8 w-8 p-0 rounded-md!",
                       isCloudBrand
-                        ? "hover:bg-[var(--layered-select-bg)]"
+                        ? "hover:bg-(--layered-select-bg)"
                         : "hover:bg-muted/50",
                     )}
                   >
@@ -506,7 +507,7 @@ export function ChatInput({
                   type="submit"
                   size="iconSm"
                   disabled={(!input.trim() && !uploadedFile) || loading}
-                  className="chat-submit !rounded-md h-8 w-8 p-0"
+                  className="chat-submit rounded-md! h-8 w-8 p-0"
                   data-testid="send-button"
                 >
                   {loading ? (
@@ -579,11 +580,11 @@ export function ChatInput({
                       className={cn(
                         "w-full text-left px-2 py-2 text-sm rounded flex items-center justify-between",
                         isCloudBrand
-                          ? "hover:bg-[var(--layered-select-bg)]"
+                          ? "hover:bg-(--layered-select-bg)"
                           : "hover:bg-muted/50",
                         selectedFilterIndex === -1 &&
                           (isCloudBrand
-                            ? "bg-[var(--layered-select-bg)]"
+                            ? "bg-(--layered-select-bg)"
                             : "bg-muted/50"),
                       )}
                     >
@@ -601,11 +602,11 @@ export function ChatInput({
                       className={cn(
                         "w-full overflow-hidden text-left px-2 py-2 gap-2 text-sm rounded flex items-center justify-between",
                         isCloudBrand
-                          ? "hover:bg-[var(--layered-select-bg)]"
+                          ? "hover:bg-(--layered-select-bg)"
                           : "hover:bg-muted/50",
                         index === selectedFilterIndex &&
                           (isCloudBrand
-                            ? "bg-[var(--layered-select-bg)]"
+                            ? "bg-(--layered-select-bg)"
                             : "bg-muted/50"),
                       )}
                     >

@@ -5,23 +5,43 @@ import {
   type CheckboxSelectionCallbackParams,
   type ColDef,
   type ColumnState,
-  type GetRowIdParams,
-  themeQuartz,
   type ValueFormatterParams,
   type ValueGetterParams,
 } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
-import { AlertTriangle, Cloud, FileIcon, Globe, RefreshCw } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  ChevronRight,
+  Cloud,
+  FileIcon,
+  Globe,
+  RefreshCw,
+} from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  BOLD_MATCH_CLASS,
+  HighlightedText,
+  PREVIEW_TEXT_CLASS,
+} from "@/components/highlighted-text";
+import { KnowledgeDataTable } from "@/components/knowledge-data-table";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
+import { KnowledgeUrlIcon } from "@/components/knowledge-url-icon";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
-import { Button } from "@/components/ui/button";
 import { useOpenTaskMenu } from "@/contexts/console-status-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { trackButton } from "@/lib/analytics";
+import { buildChunksUrl } from "@/lib/chunks-url";
+import { isFileCancelled } from "@/lib/task-error-display";
 import {
   EMPTY_SEARCH_RESULT,
   type File,
@@ -32,18 +52,19 @@ import { useListFiles } from "../api/queries/useListFiles";
 import "@/components/AgGrid/registerAgGridModules";
 import "@/components/AgGrid/agGridStyles.css";
 import { toast } from "sonner";
+import { CancelIngestionButton } from "@/components/cancel-ingestion-button";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
 import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-bar";
 import { KnowledgePaginationFooter } from "@/components/knowledge-pagination-footer";
 import { KnowledgeSearchBar } from "@/components/knowledge-search-bar";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
-import { RequirePermission } from "@/components/require-permission";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { WebsitePagesView } from "@/components/website-pages-view";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { getConnectorDescriptor } from "@/lib/connectors/registry";
 import { formatFileSize } from "@/lib/file-format";
@@ -52,20 +73,19 @@ import {
   buildKnowledgeTableRows,
   getKnowledgeFileIdentity,
 } from "@/lib/knowledge-table-state";
+import {
+  computeTopPreviews,
+  type SearchPreview,
+  stripMarks,
+} from "@/lib/search-preview";
 import { parseTimestampMs } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
 import {
   DeleteConfirmationDialog,
   formatFilesToDelete,
 } from "../../components/delete-confirmation-dialog";
-import { SyncConfirmDialog } from "../../components/sync-confirm-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
-import { useRefreshOpenragDocs } from "../api/mutations/useRefreshOpenragDocs";
-import {
-  type SyncAllPreviewResponse,
-  useSyncAllConnectors,
-  useSyncAllConnectorsPreview,
-} from "../api/mutations/useSyncConnector";
+import { useDeleteWebsiteSourcePageMutation } from "../api/mutations/useWebsiteSourceMutation";
 
 function sameFileSelection(a: File[], b: File[]): boolean {
   if (a.length !== b.length) {
@@ -104,21 +124,19 @@ function pruneNonDeletableGridSelection(
 }
 
 // Function to get the appropriate icon for a connector type
-function getSourceIcon(connectorType?: string) {
+export function getSourceIcon(connectorType?: string) {
+  if (connectorType === "openrag_docs" || connectorType === "url") {
+    return <KnowledgeUrlIcon className="h-4 w-4 text-muted-foreground" />;
+  }
   if (connectorType) {
     const Icon = getConnectorDescriptor(connectorType)?.Icon;
-    if (Icon) return <Icon className="h-4 w-4 text-foreground flex-shrink-0" />;
+    if (Icon) return <Icon className="h-4 w-4 text-foreground shrink-0" />;
   }
   switch (connectorType) {
-    case "openrag_docs":
-    case "url":
-      return <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />;
     case "s3":
-      return <Cloud className="h-4 w-4 text-foreground flex-shrink-0" />;
+      return <Cloud className="h-4 w-4 text-foreground shrink-0" />;
     default:
-      return (
-        <FileIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-      );
+      return <FileIcon className="h-4 w-4 text-muted-foreground shrink-0" />;
   }
 }
 
@@ -128,8 +146,7 @@ const AG_FIELD_TO_SORT_BY: Record<string, string> = {
   mimetype: "mimetype",
   owner: "owner",
   chunkCount: "chunk_count",
-  embedding_model: "embedding_model",
-  embedding_dimensions: "embedding_dimensions",
+  indexed_time: "indexed_time",
   status: "status",
 };
 
@@ -154,8 +171,265 @@ function buildFilterPageResetKey(
   });
 }
 
+export function getStatusSortRank(status?: File["status"]): number {
+  switch (status) {
+    case "active":
+      return 0;
+    case "processing":
+      return 1;
+    case "sync":
+      return 2;
+    case "failed":
+      return 3;
+    case "skipped":
+      return 4;
+    case "cancelled":
+      return 5;
+    case "unavailable":
+      return 6;
+    case "hidden":
+      return 7;
+    default:
+      return 0;
+  }
+}
+
+export function getSkippedWarningText(warning?: string): string {
+  return warning ?? "Duplicate content — already exists in the knowledge base.";
+}
+
+/** Returns true only for skipped+duplicate_content rows; other skip reasons use the normal StatusBadge. */
+export function isSkippedStatus(
+  rawStatus?: string,
+  skipReason?: string,
+): boolean {
+  return rawStatus === "skipped" && skipReason === "duplicate_content";
+}
+
+export function SkippedStatusCell({ warning }: { warning?: string }) {
+  const warningText = getSkippedWarningText(warning);
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex items-center gap-1 text-sm text-amber-600 dark:text-amber-400 cursor-default">
+          Duplicate
+        </span>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        align="end"
+        className="max-w-80 whitespace-pre-wrap wrap-break-word"
+      >
+        {warningText}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function getOwnerLabel(file?: File): string {
+  return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
+}
+
+export function formatAvgScoreLabel(value: unknown): string {
+  return typeof value === "number" ? value.toFixed(2) : "-";
+}
+
+export function formatChunkCountLabel(chunkCount?: number): string {
+  return chunkCount?.toString() ?? "-";
+}
+
+/** Promotes "failed" to "cancelled" when the file's task was cancelled. */
+export function resolveDisplayStatus(
+  rawStatus: string,
+  isCancelled: boolean,
+): string {
+  return rawStatus === "failed" && isCancelled ? "cancelled" : rawStatus;
+}
+
+export function formatSizeLabel(value: unknown): string {
+  return value ? formatFileSize(value as number) : "-";
+}
+
+/** Always returns 0 — passed to ag-grid columns whose ordering is server-side. */
+export function serverSideComparator(): number {
+  return 0;
+}
+
+export function compareStatusRank(
+  valueA?: File["status"],
+  valueB?: File["status"],
+): number {
+  return getStatusSortRank(valueA) - getStatusSortRank(valueB);
+}
+
+export function compareAvgScore(
+  valueA: number | undefined,
+  valueB: number | undefined,
+): number {
+  return (valueA || 0) - (valueB || 0);
+}
+
+export function getFileStatus(status?: File["status"]): string {
+  return status || "active";
+}
+
+// Lives in lib/ so components can build the link without importing this page.
+export { buildChunksUrl };
+
+export function buildWebsitePagesUrl(
+  sourceId: string,
+  effectiveSearchText: string,
+): string {
+  const params = new URLSearchParams({ website: sourceId });
+  const trimmed = effectiveSearchText.trim();
+  if (trimmed && trimmed !== "*") {
+    params.set("q", trimmed);
+  }
+  return `/knowledge?${params.toString()}`;
+}
+
+const AVG_SCORE_TOOLTIP =
+  "Average relevance score across the matched chunks of this file. Higher means a stronger match — sort by this column to rank results by relevance.";
+
+export function AvgScoreCellContent({ value }: { value: unknown }) {
+  const label = formatAvgScoreLabel(value);
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded cursor-default">
+          {label}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-56 text-center">
+        {AVG_SCORE_TOOLTIP}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function StatusCellContent({
+  data,
+  isCloudBrand,
+  isOpenragDocsRow,
+  hasOpenragRefreshCue,
+  selectTask,
+  getTaskIdForRow,
+  openTaskMenu,
+  setRecentTasksExpanded,
+}: {
+  data?: File;
+  isCloudBrand: boolean;
+  isOpenragDocsRow: (file?: File) => boolean;
+  hasOpenragRefreshCue: boolean;
+  selectTask: (taskId: string | null) => void;
+  getTaskIdForRow: (data?: File) => string | null;
+  openTaskMenu: () => void;
+  setRecentTasksExpanded: (v: boolean) => void;
+}) {
+  const rawStatus = data?.status || "active";
+  const status = resolveDisplayStatus(
+    rawStatus,
+    data != null && isFileCancelled(data),
+  );
+  const showOpenragRefreshCue = isOpenragDocsRow(data) && hasOpenragRefreshCue;
+
+  if (showOpenragRefreshCue) {
+    if (isCloudBrand) {
+      return (
+        <div className="inline-flex items-center gap-2 text-primary">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          <span className="text-sm font-medium">Refreshing</span>
+        </div>
+      );
+    }
+    return (
+      <div className="inline-flex items-center justify-center h-5 w-5">
+        <RefreshCw
+          className="h-4 w-4 text-primary animate-spin"
+          aria-label="OpenRAG doc is refreshing"
+        />
+      </div>
+    );
+  }
+
+  if (status === "failed") {
+    const button = (
+      <button
+        type="button"
+        className={cn(
+          "inline-flex items-center h-full transition",
+          isCloudBrand
+            ? "text-destructive hover:opacity-80"
+            : "w-full text-red-500 hover:text-red-400",
+        )}
+        aria-label={
+          data?.error
+            ? `View ingestion error: ${data.error}`
+            : "View ingestion error"
+        }
+        data-testid="failed-status-cell-trigger"
+        onClick={() => {
+          selectTask(getTaskIdForRow(data));
+          openTaskMenu();
+          setRecentTasksExpanded(true);
+        }}
+      >
+        <StatusBadge status={status} className="pointer-events-none" />
+      </button>
+    );
+
+    if (!data?.error) {
+      return button;
+    }
+
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent
+          side="top"
+          align="end"
+          className="max-w-80 whitespace-pre-wrap wrap-break-word"
+        >
+          {data.error}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  if (status === "cancelled") {
+    return <StatusBadge status="cancelled" />;
+  }
+
+  if (isSkippedStatus(rawStatus, data?.skip_reason)) {
+    return <SkippedStatusCell warning={data?.warning} />;
+  }
+
+  return <StatusBadge status={status} />;
+}
+
+export function resolveActionsVariant(
+  status: string,
+  taskId: string | null | undefined,
+  filePath: string,
+): "cancel" | "dropdown" | null {
+  if (status === "processing") {
+    if (!taskId || !filePath) return null;
+    return "cancel";
+  }
+  if (status !== "active") return null;
+  return "dropdown";
+}
+
 function SearchPage() {
   const isCloudBrand = useIsCloudBrand();
+  const [isNarrow, setIsNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 640px)");
+    setIsNarrow(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsNarrow(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
   const queryClient = useQueryClient();
   const router = useRouter();
   const {
@@ -164,6 +438,7 @@ function SearchPage() {
     refreshTasks,
     setRecentTasksExpanded,
     selectTask,
+    cancelFile,
   } = useTask();
   const openTaskMenu = useOpenTaskMenu();
   const {
@@ -171,6 +446,8 @@ function SearchPage() {
     queryOverride,
     selectedFilter,
     setSelectedSources,
+    dateRange,
+    effectiveDateRange,
   } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
 
@@ -189,14 +466,7 @@ function SearchPage() {
   const seenFailedFileKeysRef = useRef<Set<string>>(new Set());
 
   const deleteDocumentMutation = useDeleteDocument();
-  const syncAllConnectorsMutation = useSyncAllConnectors();
-  const syncAllPreviewMutation = useSyncAllConnectorsPreview();
-  const refreshOpenragDocsMutation = useRefreshOpenragDocs();
-  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
-  const [syncPreview, setSyncPreview] = useState<SyncAllPreviewResponse | null>(
-    null,
-  );
-
+  const deleteWebsiteSourceMutation = useDeleteWebsiteSourcePageMutation();
   const [currentPage, setCurrentPage] = useState(1);
   const [currentPageSize, setCurrentPageSize] = useState(25);
 
@@ -206,45 +476,6 @@ function SearchPage() {
   if (!cursorCacheRef.current) {
     cursorCacheRef.current = new Map();
   }
-
-  const handleOpenSyncDialog = useCallback(async () => {
-    setSyncPreview(null);
-    setSyncDialogOpen(true);
-    try {
-      const preview = await syncAllPreviewMutation.mutateAsync();
-      setSyncPreview(preview);
-    } catch (error) {
-      setSyncDialogOpen(false);
-      toast.error(
-        error instanceof Error ? error.message : "Failed to preview sync",
-      );
-    }
-  }, [syncAllPreviewMutation]);
-
-  const handleConfirmSync = useCallback(async () => {
-    try {
-      const result = await syncAllConnectorsMutation.mutateAsync();
-      if (result.status === "no_files") {
-        toast.info(
-          result.message ||
-            "No cloud files to sync. Add files from cloud connectors first.",
-        );
-      } else if (
-        result.synced_connectors &&
-        result.synced_connectors.length > 0
-      ) {
-        toast.success(
-          `Sync started for ${result.synced_connectors.join(", ")}. Check task notifications for progress.`,
-        );
-      } else if (result.errors && result.errors.length > 0) {
-        toast.error("Some connectors failed to sync");
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to sync connectors",
-      );
-    }
-  }, [syncAllConnectorsMutation]);
 
   useEffect(() => {
     refreshTasks();
@@ -261,11 +492,17 @@ function SearchPage() {
       if (!file) return null;
       const sourceUrl = file.source_url || "";
       const filename = file.filename || "";
-      const matches = taskFiles.filter(
-        (taskFile) =>
-          (sourceUrl && taskFile.source_url === sourceUrl) ||
-          taskFile.filename === filename,
-      );
+
+      // Prioritize exact source URL match to avoid confusion with duplicate filenames
+      const matches = taskFiles.filter((taskFile) => {
+        if (sourceUrl) {
+          // If row has source URL, match only by source URL
+          return taskFile.source_url === sourceUrl;
+        }
+        // Fall back to filename matching only when no source URL
+        return taskFile.filename === filename;
+      });
+
       if (matches.length === 0) return null;
 
       const failedMatches =
@@ -349,12 +586,18 @@ function SearchPage() {
   const effectiveSearchText =
     queryOverride.trim() || parsedFilterData?.query?.trim() || "";
   const hasActiveFilters = parsedFilterData?.filters
-    ? buildSearchPayloadFilters(parsedFilterData.filters) !== undefined
+    ? buildSearchPayloadFilters(parsedFilterData.filters, {
+        includeDates: false,
+      }) !== undefined
     : false;
   const isWildcardQuery =
     (effectiveSearchText === "" || effectiveSearchText === "*") &&
     !hasActiveFilters;
   const filterPageResetKey = buildFilterPageResetKey(parsedFilterData);
+
+  // Retrieval uses the effective UTC bounds as-is; `dateRange` is display-only.
+  const createdAfter = effectiveDateRange.createdAfter;
+  const createdBefore = effectiveDateRange.createdBefore;
 
   const {
     data: listFilesData,
@@ -379,6 +622,8 @@ function SearchPage() {
       dataSources: listFilesFilterValues(
         parsedFilterData?.filters?.data_sources,
       ),
+      createdAfter,
+      createdBefore,
     },
     {
       refetchInterval: 5000,
@@ -391,9 +636,13 @@ function SearchPage() {
     isLoading: isSearchLoading,
     error: searchError,
     isError: isSearchError,
-  } = useGetSearchQuery(queryOverride, parsedFilterData, {
-    enabled: !isWildcardQuery,
-  });
+  } = useGetSearchQuery(
+    queryOverride,
+    parsedFilterData,
+    { enabled: !isWildcardQuery },
+    { resultMode: "knowledge_sources" },
+    { createdAfter, createdBefore },
+  );
 
   const { files: searchFiles, warnings: searchWarnings } =
     searchData as SearchResult;
@@ -403,6 +652,16 @@ function SearchPage() {
   const isFetching = isWildcardQuery ? isListFilesFetching : isSearchLoading;
   const error = isWildcardQuery ? listFilesError : searchError;
   const isError = isWildcardQuery ? isListFilesError : isSearchError;
+
+  // One-line "why it matched" for the most relevant files across the whole
+  // result set (not just the visible page).
+  const topPreviews = useMemo(
+    () =>
+      isWildcardQuery
+        ? new Map<string, SearchPreview>()
+        : computeTopPreviews(searchFiles, effectiveSearchText),
+    [isWildcardQuery, searchFiles, effectiveSearchText],
+  );
 
   const effectiveData: File[] = isWildcardQuery
     ? (listFilesData?.files ?? [])
@@ -437,29 +696,6 @@ function SearchPage() {
     [effectiveData],
   );
 
-  const getOwnerLabel = useCallback((file?: File): string => {
-    return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
-  }, []);
-
-  const getStatusSortRank = useCallback((status?: File["status"]): number => {
-    switch (status) {
-      case "active":
-        return 0;
-      case "processing":
-        return 1;
-      case "sync":
-        return 2;
-      case "failed":
-        return 3;
-      case "unavailable":
-        return 4;
-      case "hidden":
-        return 5;
-      default:
-        return 0;
-    }
-  }, []);
-
   const hasOpenragRefreshCueFromTasks = tasks.some((task) => {
     const isTaskActive =
       task.status === "pending" ||
@@ -476,8 +712,7 @@ function SearchPage() {
       );
     });
   });
-  const hasOpenragRefreshCue =
-    refreshOpenragDocsMutation.isPending || hasOpenragRefreshCueFromTasks;
+  const hasOpenragRefreshCue = hasOpenragRefreshCueFromTasks;
 
   // Show toast notification for search errors
   useEffect(() => {
@@ -501,6 +736,8 @@ function SearchPage() {
     effectiveData,
     taskFiles,
     Boolean(selectedFilter),
+    dateRange,
+    { createdAfter, createdBefore },
   );
 
   const serverTotal = isWildcardQuery
@@ -512,7 +749,7 @@ function SearchPage() {
   useEffect(() => {
     cursorCacheRef.current = new Map();
     setCurrentPage(1);
-  }, [effectiveSearchText, filterPageResetKey]);
+  }, [effectiveSearchText, filterPageResetKey, createdAfter, createdBefore]);
 
   // when the server responds with an after_key for page N, cache it as the cursor for page N+1
   useEffect(() => {
@@ -578,14 +815,21 @@ function SearchPage() {
     setSelectedRows((current) =>
       sameFileSelection(current, nextSelected) ? current : nextSelected,
     );
+    api.refreshCells({ force: true });
   }, [gridRowsSelectionKey, isDeletableKnowledgeRow, getGridApi]);
 
-  const columnDefs: ColDef<File>[] = [
-    {
+  // ── Shared column fragments ──────────────────────────────────────────────
+  const colSource: ColDef<File> = useMemo(
+    () => ({
       field: "filename",
       headerName: "Source",
       sortable: true,
-      comparator: () => 0,
+      comparator: serverSideComparator,
+      valueGetter: (params: ValueGetterParams<File>) =>
+        `${params.data?.filename ?? ""}::${params.data?.status ?? "active"}`,
+      valueFormatter: (params: ValueFormatterParams<File>) =>
+        params.data?.filename ??
+        (typeof params.value === "string" ? params.value.split("::")[0] : "-"),
       checkboxSelection: (params: CheckboxSelectionCallbackParams<File>) =>
         isDeletableKnowledgeRow(params?.data),
       headerCheckboxSelection: true,
@@ -593,10 +837,18 @@ function SearchPage() {
         ? { flex: 2.2, minWidth: 260 }
         : { initialFlex: 2, minWidth: 220 }),
       cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
+        const filename =
+          data?.filename ??
+          (typeof value === "string" ? value.split("::")[0] : "");
         const status = data?.status || "active";
         const isActive = status === "active";
+        const isParentWebsiteSource =
+          data?.connector_type === "url" &&
+          Boolean(data.web_source_id) &&
+          !data.web_page_id;
         const showOpenragSourceAnimation =
           isOpenragDocsRow(data) && hasOpenragRefreshCue;
+        const preview = topPreviews.get(getKnowledgeFileIdentity(data));
         return (
           <div className="flex items-center overflow-hidden w-full min-w-0 h-full">
             <div
@@ -607,7 +859,8 @@ function SearchPage() {
             <button
               type="button"
               className={cn(
-                "flex items-center gap-2 text-left flex-1 overflow-hidden transition-colors",
+                "flex gap-2 text-left flex-1 overflow-hidden transition-colors",
+                preview ? "items-start" : "items-center",
                 isActive
                   ? isCloudBrand
                     ? "cursor-pointer hover:text-primary"
@@ -616,210 +869,251 @@ function SearchPage() {
               )}
               onClick={() => {
                 if (!isActive) return;
-                router.push(
-                  `/knowledge/chunks?filename=${encodeURIComponent(
-                    data?.filename ?? "",
-                  )}`,
-                );
+                if (data?.connector_type === "url" && data.web_source_id) {
+                  router.push(
+                    buildWebsitePagesUrl(
+                      data.web_source_id,
+                      effectiveSearchText,
+                    ),
+                  );
+                  return;
+                }
+                router.push(buildChunksUrl(filename, effectiveSearchText));
               }}
             >
               {getSourceIcon(data?.connector_type)}
-              <Tooltip>
-                <TooltipTrigger asChild>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      className={cn(
+                        "font-medium truncate min-w-0",
+                        showOpenragSourceAnimation
+                          ? "text-primary animate-pulse"
+                          : "text-foreground",
+                      )}
+                    >
+                      {filename}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" align="start">
+                    {filename}
+                  </TooltipContent>
+                </Tooltip>
+                {preview && (
                   <span
                     className={cn(
-                      "font-medium truncate min-w-0",
-                      showOpenragSourceAnimation
-                        ? "text-primary animate-pulse"
-                        : "text-foreground",
+                      "block truncate text-xs font-normal",
+                      PREVIEW_TEXT_CLASS,
                     )}
+                    title={stripMarks(preview.text)}
                   >
-                    {value}
+                    {preview.kind === "keyword" ? (
+                      <HighlightedText
+                        highlights={[preview.text]}
+                        fallbackText=""
+                        markClassName={BOLD_MATCH_CLASS}
+                      />
+                    ) : (
+                      preview.text
+                    )}
                   </span>
-                </TooltipTrigger>
-                <TooltipContent side="top" align="start">
-                  {value}
-                </TooltipContent>
-              </Tooltip>
+                )}
+              </span>
+              {isParentWebsiteSource && (
+                <ChevronRight
+                  aria-hidden="true"
+                  className="ml-auto size-5 shrink-0 text-link-primary"
+                />
+              )}
             </button>
           </div>
         );
       },
+    }),
+    [
+      isCloudBrand,
+      isDeletableKnowledgeRow,
+      isOpenragDocsRow,
+      hasOpenragRefreshCue,
+      effectiveSearchText,
+      router,
+      topPreviews,
+    ],
+  );
+
+  // Rows that carry a preview line need extra height. The cloud grid already
+  // uses a 64px row, which fits two lines.
+  const getRowHeight = useCallback(
+    (params: { data?: File }) =>
+      topPreviews.has(getKnowledgeFileIdentity(params.data)) ? 56 : undefined,
+    [topPreviews],
+  );
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: topPreviews changes which rows are tall, so heights must be recomputed.
+  useEffect(() => {
+    getGridApi()?.resetRowHeights();
+  }, [topPreviews, getGridApi]);
+
+  const colSize: ColDef<File> = {
+    field: "size",
+    headerName: "Size",
+    ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
+    sortable: true,
+    comparator: serverSideComparator,
+    valueFormatter: (params: ValueFormatterParams<File>) =>
+      formatSizeLabel(params.value),
+    cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
+  };
+
+  const colType: ColDef<File> = {
+    field: "mimetype",
+    headerName: "Type",
+    ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
+    cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
+    sortable: true,
+  };
+
+  const colOwner: ColDef<File> = {
+    field: "owner",
+    headerName: "Owner",
+    ...(isCloudBrand ? { flex: 1.4, minWidth: 180 } : {}),
+    valueFormatter: (params: ValueFormatterParams<File>) =>
+      getOwnerLabel(params.data),
+    cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
+    sortable: true,
+    valueGetter: (params: ValueGetterParams<File>) =>
+      getOwnerLabel(params.data),
+    comparator: serverSideComparator,
+  };
+
+  const colIndexedTime: ColDef<File> = {
+    field: "indexed_time",
+    headerName: "Date Ingested",
+    ...(isCloudBrand ? { flex: 1.2, minWidth: 140 } : { minWidth: 130 }),
+    sortable: true,
+    comparator: serverSideComparator,
+    cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
+    valueFormatter: ({ value }: ValueFormatterParams<File>) => {
+      if (!value) return "—";
+      const d = new Date(value);
+      return Number.isNaN(d.getTime())
+        ? "—"
+        : d.toLocaleDateString(undefined, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          });
     },
-    {
-      field: "size",
-      headerName: "Size",
-      ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
-      sortable: true,
-      comparator: () => 0,
-      valueFormatter: (params: ValueFormatterParams<File>) =>
-        params.value ? formatFileSize(params.value) : "-",
-      cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
-    },
-    {
-      field: "mimetype",
-      headerName: "Type",
-      ...(isCloudBrand ? { flex: 1, minWidth: 110 } : {}),
-      cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
-      sortable: true,
-    },
-    {
-      field: "owner",
-      headerName: "Owner",
-      ...(isCloudBrand ? { flex: 1.4, minWidth: 180 } : {}),
-      valueFormatter: (params: ValueFormatterParams<File>) =>
-        params.data?.owner_name || params.data?.owner_email || "—",
-      cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
-      sortable: true,
-      valueGetter: (params: ValueGetterParams<File>) =>
-        getOwnerLabel(params.data),
-      comparator: () => 0,
-    },
-    {
-      field: "chunkCount",
-      headerName: "Chunks",
-      ...(isCloudBrand ? { flex: 0.9, minWidth: 95 } : {}),
-      sortable: true,
-      comparator: () => 0,
-      valueFormatter: (params: ValueFormatterParams<File>) =>
-        params.data?.chunkCount?.toString() || "-",
-      cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
-    },
-    {
-      field: "avgScore",
-      headerName: "Avg score",
-      ...(isCloudBrand ? { flex: 1, minWidth: 120 } : {}),
-      sortable: true,
-      comparator: (valueA?: number, valueB?: number) =>
-        (valueA || 0) - (valueB || 0),
-      cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
-        if (isCloudBrand) {
-          return (
-            <span className="text-muted-foreground">
-              {typeof value === "number" ? value.toFixed(2) : "-"}
-            </span>
-          );
-        }
+  };
+
+  const colChunks: ColDef<File> = {
+    field: "chunkCount",
+    headerName: "Chunks",
+    ...(isCloudBrand ? { flex: 0.9, minWidth: 95 } : { width: 95 }),
+    sortable: true,
+    comparator: serverSideComparator,
+    headerClass: "ag-center-header",
+    cellStyle: { textAlign: "center" },
+    cellClass: isCloudBrand ? "text-muted-foreground" : undefined,
+    valueFormatter: (params: ValueFormatterParams<File>) =>
+      formatChunkCountLabel(params.data?.chunkCount),
+  };
+
+  const colAvgScore: ColDef<File> = {
+    field: "avgScore",
+    headerName: "Avg score",
+    hide: isWildcardQuery,
+    ...(isCloudBrand ? { flex: 1, minWidth: 120 } : { width: 120 }),
+    sortable: true,
+    comparator: compareAvgScore,
+    cellRenderer: ({ value }: CustomCellRendererProps<File>) => (
+      <AvgScoreCellContent value={value} />
+    ),
+  };
+
+  const colStatus: ColDef<File> = {
+    field: "status",
+    headerName: "Status",
+    ...(isCloudBrand ? { flex: 1, minWidth: 130 } : { width: 130 }),
+    sortable: true,
+    valueGetter: (params: ValueGetterParams<File>) =>
+      getFileStatus(params.data?.status),
+    comparator: compareStatusRank,
+    cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
+      <StatusCellContent
+        data={data}
+        isCloudBrand={isCloudBrand}
+        isOpenragDocsRow={isOpenragDocsRow}
+        hasOpenragRefreshCue={hasOpenragRefreshCue}
+        selectTask={selectTask}
+        getTaskIdForRow={getTaskIdForRow}
+        openTaskMenu={openTaskMenu}
+        setRecentTasksExpanded={setRecentTasksExpanded}
+      />
+    ),
+  };
+
+  const colActions: ColDef<File> = {
+    colId: "actions",
+    headerName: "",
+    width: 56,
+    minWidth: 56,
+    ...(isCloudBrand ? { maxWidth: 56 } : { initialFlex: 0 }),
+    sortable: false,
+    filter: false,
+    resizable: false,
+    suppressMovable: true,
+    cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
+      const status = getFileStatus(data?.status);
+      const taskId = getTaskIdForRow(data);
+      const filePath = data?.source_url || data?.filename || "";
+      const variant = resolveActionsVariant(status, taskId, filePath);
+      if (variant === "cancel" && data && taskId) {
         return (
-          <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded">
-            {value?.toFixed(2) ?? "-"}
-          </span>
+          <CancelIngestionButton
+            taskId={taskId}
+            filePath={filePath}
+            onCancel={cancelFile}
+          />
         );
-      },
-    },
-    {
-      field: "embedding_model",
-      headerName: "Embedding model",
-      ...(isCloudBrand ? { flex: 1.4 } : {}),
-      sortable: true,
-      minWidth: 200,
-      cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
-        <span className="text-xs text-muted-foreground">
-          {data?.embedding_model || "—"}
-        </span>
-      ),
-    },
-    {
-      field: "embedding_dimensions",
-      headerName: "Dimensions",
-      ...(isCloudBrand ? { flex: 0.9, minWidth: 110 } : { width: 110 }),
-      sortable: true,
-      comparator: () => 0,
-      cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
-        <span className="text-xs text-muted-foreground">
-          {typeof data?.embedding_dimensions === "number"
-            ? data.embedding_dimensions.toString()
-            : "—"}
-        </span>
-      ),
-    },
-    {
-      field: "status",
-      headerName: "Status",
-      ...(isCloudBrand ? { flex: 1, minWidth: 130 } : {}),
-      sortable: true,
-      valueGetter: (params: ValueGetterParams<File>) =>
-        params.data?.status || "active",
-      comparator: (valueA?: File["status"], valueB?: File["status"]) =>
-        getStatusSortRank(valueA) - getStatusSortRank(valueB),
-      cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
-        const status = data?.status || "active";
-        const showOpenragRefreshCue =
-          isOpenragDocsRow(data) && hasOpenragRefreshCue;
-
-        if (showOpenragRefreshCue) {
-          if (isCloudBrand) {
-            return (
-              <div className="inline-flex items-center gap-2 text-primary">
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                <span className="text-sm font-medium">Refreshing</span>
-              </div>
-            );
-          }
-          return (
-            <div className="inline-flex items-center justify-center h-5 w-5">
-              <RefreshCw
-                className="h-4 w-4 text-primary animate-spin"
-                aria-label="OpenRAG doc is refreshing"
-              />
-            </div>
-          );
-        }
-
-        if (status === "failed") {
-          return (
-            <button
-              type="button"
-              className={cn(
-                "inline-flex items-center h-full transition",
-                isCloudBrand
-                  ? "text-destructive hover:opacity-80"
-                  : "w-full text-red-500 hover:text-red-400",
-              )}
-              aria-label="View ingestion error"
-              data-testid="failed-status-cell-trigger"
-              onClick={() => {
-                selectTask(getTaskIdForRow(data));
-                openTaskMenu();
-                setRecentTasksExpanded(true);
-              }}
-            >
-              <StatusBadge status={status} className="pointer-events-none" />
-            </button>
-          );
-        }
-
-        return <StatusBadge status={status} />;
-      },
-    },
-    {
-      colId: "actions",
-      headerName: "",
-      width: isCloudBrand ? 56 : 40,
-      minWidth: isCloudBrand ? 56 : 0,
-      ...(isCloudBrand ? { maxWidth: 56 } : { initialFlex: 0 }),
-      sortable: false,
-      filter: false,
-      resizable: false,
-      suppressMovable: true,
-      cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
-        const status = data?.status || "active";
-        if (status !== "active") return null;
+      }
+      if (variant === "dropdown") {
         return (
           <KnowledgeActionsDropdown
             filename={data?.filename || ""}
             connectorType={data?.connector_type}
+            webSourceId={data?.web_source_id}
+            webPageId={data?.web_page_id}
+            webChildCount={data?.web_child_count}
+            searchQuery={effectiveSearchText}
           />
         );
-      },
-      cellStyle: {
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 0,
-      },
+      }
+      return null;
     },
-  ];
+    cellStyle: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 0,
+    },
+  };
+
+  // ── Layout-aware column sets ─────────────────────────────────────────────
+  const columnDefs: ColDef<File>[] = isNarrow
+    ? [colSource, colChunks, colAvgScore, colStatus, colActions]
+    : [
+        colSource,
+        colSize,
+        colType,
+        colOwner,
+        colIndexedTime,
+        colChunks,
+        colAvgScore,
+        colStatus,
+        colActions,
+      ];
 
   const defaultColDef: ColDef<File> = {
     resizable: false,
@@ -850,9 +1144,13 @@ function SearchPage() {
     try {
       const deleteResults = await Promise.allSettled(
         rowsToDelete.map((row) =>
-          deleteDocumentMutation.mutateAsync({
-            filename: resolveDeleteFilename(row),
-          }),
+          row.web_source_id
+            ? deleteWebsiteSourceMutation.mutateAsync({
+                sourceId: row.web_source_id,
+              })
+            : deleteDocumentMutation.mutateAsync({
+                filename: resolveDeleteFilename(row),
+              }),
         ),
       );
 
@@ -865,18 +1163,7 @@ function SearchPage() {
       ]);
 
       const deleted = deleteResults.filter(
-        (
-          result,
-        ): result is PromiseFulfilledResult<
-          Awaited<ReturnType<typeof deleteDocumentMutation.mutateAsync>>
-        > =>
-          result.status === "fulfilled" &&
-          (result.value.deleted_chunks || 0) > 0,
-      );
-      const noChunks = deleteResults.filter(
-        (result) =>
-          result.status === "fulfilled" &&
-          (result.value.deleted_chunks || 0) === 0,
+        (result) => result.status === "fulfilled",
       );
       const failed = deleteResults.filter(
         (result): result is PromiseRejectedResult =>
@@ -886,16 +1173,6 @@ function SearchPage() {
       if (deleted.length > 0) {
         toast.success(
           `Deleted ${deleted.length} document${deleted.length > 1 ? "s" : ""}`,
-        );
-      } else if (failed.length === 0) {
-        toast.warning(
-          "No document chunks were deleted. Files may be missing or not deletable in your current context.",
-        );
-      }
-
-      if (noChunks.length > 0 && deleted.length > 0) {
-        toast.warning(
-          `${noChunks.length} selected file${noChunks.length > 1 ? "s had" : " had"} no matching chunks.`,
         );
       }
 
@@ -935,8 +1212,14 @@ function SearchPage() {
               isCloudBrand && "ibm-section-title",
             )}
           >
-            Project knowledge
+            Project Knowledge
           </h2>
+          {!isCloudBrand && isNarrow && (
+            <KnowledgeSearchInput
+              placeholder="Search..."
+              className="max-w-[180px]"
+            />
+          )}
         </div>
         {isCloudBrand ? (
           <div className="relative overflow-hidden h-12 shrink-0">
@@ -969,80 +1252,10 @@ function SearchPage() {
             </div>
           </div>
         ) : (
-          /* Search Input Area */
-          <div className="flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
-            <KnowledgeSearchInput />
-
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-lg flex-shrink-0"
-              disabled={
-                syncAllConnectorsMutation.isPending ||
-                syncAllPreviewMutation.isPending
-              }
-              onClick={handleOpenSyncDialog}
-            >
-              {syncAllConnectorsMutation.isPending ||
-              syncAllPreviewMutation.isPending ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Sync
-                </>
-              )}
-            </Button>
-            <RequirePermission perm="config:write">
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-lg flex-shrink-0"
-                disabled={refreshOpenragDocsMutation.isPending}
-                onClick={async () => {
-                  trackButton({
-                    CTA: "Fetch Latest Docs",
-                    elementId: "fetch-latest-docs-button",
-                    namespace: "knowledge",
-                  });
-                  try {
-                    toast.info("Refreshing OpenRAG docs...");
-                    const result =
-                      await refreshOpenragDocsMutation.mutateAsync();
-                    toast.success(result.message);
-                  } catch (error) {
-                    toast.error(
-                      error instanceof Error
-                        ? error.message
-                        : "Failed to refresh OpenRAG docs",
-                    );
-                  }
-                }}
-              >
-                {refreshOpenragDocsMutation.isPending ? (
-                  <>Refreshing docs...</>
-                ) : (
-                  <>Fetch latest docs</>
-                )}
-              </Button>
-            </RequirePermission>
-            {selectedRows.length > 0 && (
-              <Button
-                type="button"
-                variant="destructive"
-                className="rounded-lg flex-shrink-0"
-                onClick={() => setShowBulkDeleteDialog(true)}
-              >
-                Delete
-              </Button>
-            )}
-            <div className="ml-auto">
-              <KnowledgeDropdown />
-            </div>
-          </div>
+          <KnowledgeSearchBar
+            selectedCount={selectedRows.length}
+            onDeleteSelected={() => setShowBulkDeleteDialog(true)}
+          />
         )}
         {!isWildcardQuery && searchWarnings.length > 0 && (
           <div className="mb-4 flex flex-col gap-2">
@@ -1081,75 +1294,31 @@ function SearchPage() {
             })}
           </div>
         )}
-        {isCloudBrand ? (
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <AgGridReact
-              className="w-full h-full border"
-              columnDefs={columnDefs as ColDef<File>[]}
-              defaultColDef={defaultColDef}
-              loading={isLoading || deleteDocumentMutation.isPending}
-              ref={gridRef}
-              theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
-              rowData={gridRows}
-              rowSelection="multiple"
-              getRowId={(params: GetRowIdParams<File>) =>
-                getFileIdentity(params.data)
+        <KnowledgeDataTable
+          rows={gridRows}
+          columnDefs={columnDefs}
+          defaultColDef={defaultColDef}
+          loading={
+            isLoading ||
+            deleteDocumentMutation.isPending ||
+            deleteWebsiteSourceMutation.isPending
+          }
+          gridRef={gridRef}
+          isCloudBrand={isCloudBrand}
+          rowSelection="multiple"
+          getRowId={(params) => getFileIdentity(params.data)}
+          isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
+          onGridReady={handleGridReady}
+          onGridPreDestroyed={handleGridPreDestroyed}
+          onSelectionChanged={onSelectionChanged}
+          onSortChanged={onSortChanged}
+          {...(dateRange && serverTotal === 0
+            ? {
+                emptyTitle: "No results for the selected date range",
+                emptyDescription: "Try a wider range or clear the date filter.",
               }
-              isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
-              domLayout="normal"
-              onGridReady={handleGridReady}
-              onGridPreDestroyed={handleGridPreDestroyed}
-              onSelectionChanged={onSelectionChanged}
-              onSortChanged={onSortChanged}
-              headerHeight={64}
-              rowHeight={64}
-              noRowsOverlayComponent={() => (
-                <div className="text-center pb-[45px]">
-                  <div className="text-lg text-primary font-semibold">
-                    No knowledge
-                  </div>
-                  <div className="text-sm mt-1 text-muted-foreground">
-                    Add files from local or your preferred cloud.
-                  </div>
-                </div>
-              )}
-            />
-          </div>
-        ) : (
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <AgGridReact
-              className="w-full h-full"
-              columnDefs={columnDefs as ColDef<File>[]}
-              defaultColDef={defaultColDef}
-              loading={isLoading || deleteDocumentMutation.isPending}
-              ref={gridRef}
-              theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
-              rowData={gridRows}
-              rowSelection="multiple"
-              rowMultiSelectWithClick={false}
-              suppressRowClickSelection={true}
-              getRowId={(params: GetRowIdParams<File>) =>
-                getFileIdentity(params.data)
-              }
-              isRowSelectable={(params) => isDeletableKnowledgeRow(params.data)}
-              domLayout="normal"
-              onGridReady={handleGridReady}
-              onGridPreDestroyed={handleGridPreDestroyed}
-              onSelectionChanged={onSelectionChanged}
-              onSortChanged={onSortChanged}
-              noRowsOverlayComponent={() => (
-                <div className="text-center pb-[45px]">
-                  <div className="text-lg text-primary font-semibold">
-                    No knowledge
-                  </div>
-                  <div className="text-sm mt-1 text-muted-foreground">
-                    Add files from local or your preferred cloud.
-                  </div>
-                </div>
-              )}
-            />
-          </div>
-        )}
+            : {})}
+        />
 
         <KnowledgePaginationFooter
           currentPage={currentPage}
@@ -1171,7 +1340,10 @@ function SearchPage() {
         description={`Are you sure you want to delete ${selectedRows.length} document${selectedRows.length > 1 ? "s" : ""}?`}
         confirmText={selectedRows.length > 1 ? "Delete all" : "Delete"}
         onConfirm={handleBulkDelete}
-        isLoading={deleteDocumentMutation.isPending}
+        isLoading={
+          deleteDocumentMutation.isPending ||
+          deleteWebsiteSourceMutation.isPending
+        }
       >
         <p className="my-2">
           This will remove all chunks and data associated with these documents.
@@ -1180,26 +1352,33 @@ function SearchPage() {
         <p className="my-2">Documents to be deleted:</p>
         {formatFilesToDelete(selectedRows)}
       </DeleteConfirmationDialog>
-
-      <SyncConfirmDialog
-        open={syncDialogOpen}
-        onOpenChange={setSyncDialogOpen}
-        onConfirm={handleConfirmSync}
-        isLoading={syncAllPreviewMutation.isPending || syncPreview === null}
-        isSyncing={syncAllConnectorsMutation.isPending}
-        isSyncAll
-        orphansByType={syncPreview?.orphans_by_type}
-        orphansAvailableByType={syncPreview?.orphans_available_by_type}
-        syncedCountByType={syncPreview?.synced_count_by_type}
-      />
     </>
+  );
+}
+
+function ProtectedSearchPageContent() {
+  const searchParams = useSearchParams();
+  const websiteId = searchParams.get("website");
+  const websiteSearch = searchParams.get("q") ?? "";
+  return (
+    <ProtectedRoute>
+      {websiteId ? (
+        <WebsitePagesView
+          key={`${websiteId}:${websiteSearch}`}
+          sourceId={websiteId}
+          initialSearch={websiteSearch}
+        />
+      ) : (
+        <SearchPage />
+      )}
+    </ProtectedRoute>
   );
 }
 
 export default function ProtectedSearchPage() {
   return (
-    <ProtectedRoute>
-      <SearchPage />
-    </ProtectedRoute>
+    <Suspense fallback={null}>
+      <ProtectedSearchPageContent />
+    </Suspense>
   );
 }

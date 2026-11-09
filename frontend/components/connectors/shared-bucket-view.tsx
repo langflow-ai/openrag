@@ -7,13 +7,14 @@ import { toast } from "sonner";
 import type { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { IngestSettings } from "@/components/cloud-picker/ingest-settings";
-import { getIngestChunkSettingsError } from "@/components/cloud-picker/types";
+import { validateIngestSettingsOrToast } from "@/components/cloud-picker/types";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
 import { FileBrowserDialog } from "@/components/file-browser-dialog";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { useSessionIngestSettings } from "@/hooks/useSessionIngestSettings";
 import { trackProcessFailure, trackStartProcess } from "@/lib/analytics";
+import { apiClient } from "@/lib/api-client";
 
 interface BucketDuplicateFile {
   id: string;
@@ -98,10 +99,14 @@ export function SharedBucketView({
   const [pendingDuplicates, setPendingDuplicates] = useState<{
     duplicateNames: string[];
     duplicateCount: number;
-    duplicateFiles: BucketDuplicateFile[];
     nonDuplicateFiles: BucketDuplicateFile[];
   } | null>(null);
   const isOverwriteConfirmedRef = useRef(false);
+  // Tracks the "ingest anyway" toast shown when the duplicate check fails, so
+  // it can be dismissed instead of left to fire its captured (and
+  // increasingly stale) request after the selection changes or the view
+  // goes away.
+  const checkFailedToastIdRef = useRef<string | number | null>(null);
 
   useEffect(() => {
     if (
@@ -120,6 +125,27 @@ export function SharedBucketView({
       }
     }
   }, [buckets, initialSelectedBuckets, selectedBuckets.size]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A changed selection or ingest setting means the "ingest anyway" toast's
+  // captured request no longer matches what the user is looking at, so drop
+  // it rather than let a later click submit the old choice.
+  useEffect(() => {
+    if (checkFailedToastIdRef.current !== null) {
+      toast.dismiss(checkFailedToastIdRef.current);
+      checkFailedToastIdRef.current = null;
+    }
+  }, [selectedBuckets, ingestSettings, showSharedToggle]);
+
+  // The toast outlives the component by default; dismiss it on unmount so it
+  // can't fire a sync whose onSuccess/onError callbacks (addTask, onDone)
+  // belong to a view that's no longer there.
+  useEffect(() => {
+    return () => {
+      if (checkFailedToastIdRef.current !== null) {
+        toast.dismiss(checkFailedToastIdRef.current);
+      }
+    };
+  }, []);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: invalidateQueryKey });
@@ -177,9 +203,12 @@ export function SharedBucketView({
   };
 
   // Full bucket sync: backend classifies new/changed/unchanged itself and
-  // re-ingests both new and changed blobs (used both when there are no
-  // duplicates and when the user chooses to overwrite them).
-  const runBucketSync = () => {
+  // re-ingests both new and changed blobs. With `replaceDuplicates`, it instead
+  // re-ingests the whole selection and replaces what is already indexed — the
+  // overwrite path. Either way the bucket names travel instead of the file
+  // list, so the request stays the same size for a 10-object bucket and a
+  // 10,000-object one.
+  const runBucketSync = (replaceDuplicates = false) => {
     syncMutation.mutate(
       {
         connectorType: connector.type,
@@ -187,31 +216,6 @@ export function SharedBucketView({
           connection_id: connector.connectionId!,
           selected_files: [],
           bucket_filter: Array.from(selectedBuckets),
-          settings: ingestSettings,
-          shared: showSharedToggle
-            ? (ingestSettings.shared ?? false)
-            : undefined,
-        },
-      },
-      { onSuccess: onSyncSuccess, onError: onSyncError },
-    );
-  };
-
-  // Sync explicit files. `replaceDuplicates` forces an unconditional
-  // re-ingest (bypassing the bucket_filter path's modified-time gate) —
-  // used when the user confirms "Overwrite duplicates" so an already
-  // up-to-date file still gets re-ingested, matching what "overwrite" means
-  // for the OAuth connectors.
-  const runSelectedFilesSync = (
-    files: BucketDuplicateFile[],
-    replaceDuplicates = false,
-  ) => {
-    syncMutation.mutate(
-      {
-        connectorType: connector.type,
-        body: {
-          connection_id: connector.connectionId!,
-          selected_files: files,
           settings: ingestSettings,
           replace_duplicates: replaceDuplicates,
           shared: showSharedToggle
@@ -223,12 +227,30 @@ export function SharedBucketView({
     );
   };
 
+  // Sync an explicit subset of the listing — how "skip duplicates" ingests
+  // only the files that are not already indexed. (Overwrite goes through
+  // runBucketSync(true) instead: it needs the whole selection, and naming the
+  // buckets says that in one line.)
+  const runSelectedFilesSync = (files: BucketDuplicateFile[]) => {
+    syncMutation.mutate(
+      {
+        connectorType: connector.type,
+        body: {
+          connection_id: connector.connectionId!,
+          selected_files: files,
+          settings: ingestSettings,
+          replace_duplicates: false,
+          shared: showSharedToggle
+            ? (ingestSettings.shared ?? false)
+            : undefined,
+        },
+      },
+      { onSuccess: onSyncSuccess, onError: onSyncError },
+    );
+  };
+
   const ingestSelected = async () => {
-    const chunkErr = getIngestChunkSettingsError(ingestSettings);
-    if (chunkErr) {
-      toast.error("Could not start ingest", { description: chunkErr });
-      return;
-    }
+    if (!validateIngestSettingsOrToast(ingestSettings)) return;
     trackStartProcess({
       processType: "Ingestion",
       process: "Document Upload",
@@ -240,24 +262,19 @@ export function SharedBucketView({
 
     setIsCheckingDuplicates(true);
     try {
-      const checkResponse = await fetch(
-        `/api/connectors/${connector.type}/check-duplicates`,
+      const checkResponse = await apiClient.post(
+        `/connectors/${connector.type}/check-duplicates`,
         {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            connection_id: connector.connectionId,
-            bucket_filter: Array.from(selectedBuckets),
-          }),
+          connection_id: connector.connectionId,
+          bucket_filter: Array.from(selectedBuckets),
         },
       );
 
-      if (!checkResponse.ok) {
+      if (checkResponse.status < 200 || checkResponse.status >= 300) {
         throw new Error(`Duplicate check failed: ${checkResponse.statusText}`);
       }
 
-      const checkData =
-        (await checkResponse.json()) as BucketDuplicateCheckResponse;
+      const checkData = checkResponse.data as BucketDuplicateCheckResponse;
       const duplicateNames = checkData.duplicate_names || [];
       const duplicateCount =
         typeof checkData.duplicate_count === "number"
@@ -272,15 +289,36 @@ export function SharedBucketView({
       setPendingDuplicates({
         duplicateNames,
         duplicateCount,
-        duplicateFiles: checkData.duplicate_files || [],
         nonDuplicateFiles: checkData.non_duplicate_files || [],
       });
       setDuplicateDialogOpen(true);
     } catch (err) {
       console.error("[Bucket Sync] Duplicate check failed:", err);
-      // Fallback: proceed with the normal full sync (backend still handles
-      // new/changed reconciliation on its own).
-      runBucketSync();
+      // Don't fall through to the sync by default. Proceeding would silently
+      // take the "skip duplicates" path — the ingest runs, every colliding
+      // file is skipped with "a file with this name already exists", and the
+      // user never got the choice the check exists to offer. That outcome is
+      // indistinguishable from "there were no duplicates", which is how it
+      // gets reported as the duplicate dialog not appearing.
+      //
+      // A deterministic timeout (the likeliest failure on a large bucket,
+      // since the check lists every blob in the selection) would otherwise
+      // leave no way to ingest that bucket from the UI at all, so the toast
+      // offers the old behavior as an explicit, conscious choice instead of a
+      // silent fallback.
+      checkFailedToastIdRef.current = toast.error(
+        "Could not check for existing files",
+        {
+          description:
+            "Nothing was ingested. Try again — if it keeps failing, the selected " +
+            `${resourceLabelPlural} may be too large to check. Ingesting anyway ` +
+            "skips files that already exist.",
+          action: {
+            label: "Ingest, skip existing",
+            onClick: () => runBucketSync(),
+          },
+        },
+      );
     } finally {
       setIsCheckingDuplicates(false);
     }
@@ -289,8 +327,7 @@ export function SharedBucketView({
   const handleOverwriteDuplicates = () => {
     if (!pendingDuplicates) return;
     isOverwriteConfirmedRef.current = true;
-    const { duplicateFiles, nonDuplicateFiles } = pendingDuplicates;
-    runSelectedFilesSync([...duplicateFiles, ...nonDuplicateFiles], true);
+    runBucketSync(true);
     setPendingDuplicates(null);
   };
 

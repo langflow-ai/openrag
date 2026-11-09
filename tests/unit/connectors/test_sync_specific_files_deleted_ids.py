@@ -57,6 +57,7 @@ async def test_deleted_ids_are_kept_alongside_live_files():
         user_id="user-1",
         file_ids=["live-1", "deleted-1"],
         jwt_token="jwt",
+        allow_anonymous_delete=True,
     )
 
     assert task_id == "task-1"
@@ -72,6 +73,7 @@ async def test_delete_only_batch_no_longer_raises():
         user_id="user-1",
         file_ids=["deleted-1", "deleted-2"],
         jwt_token="jwt",
+        allow_anonymous_delete=True,
     )
 
     assert task_id == "task-1"
@@ -90,6 +92,7 @@ async def test_known_folder_ids_are_not_readded():
         file_ids=["folder-1"],
         jwt_token="jwt",
         file_infos=[{"id": "folder-1", "name": "Folder", "isFolder": True}],
+        allow_anonymous_delete=True,
     )
 
     assert _synced_ids(service) == ["child-1"]

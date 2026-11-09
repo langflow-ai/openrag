@@ -2,7 +2,7 @@
 
 import { AnimatePresence, domAnimation, LazyMotion, m } from "motion/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import {
@@ -12,6 +12,17 @@ import {
 } from "@/app/api/mutations/useUpdateSettingsMutation";
 import { useGetModelCatalogQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import type { CatalogCredentialField } from "@/components/models/catalog-models";
+import {
+  canRemoveProvider,
+  getProviderChrome,
+  type ModelProvider,
+} from "@/components/models/model-helpers";
+import {
+  activeCredentialKeys,
+  credentialTargetChanged,
+  secretsToReenter,
+} from "@/components/models/provider-credentials";
 import {
   Dialog,
   DialogContent,
@@ -19,11 +30,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/auth-context";
-import type { CatalogCredentialField } from "../_helpers/catalog-models";
-import {
-  getProviderChrome,
-  type ModelProvider,
-} from "../_helpers/model-helpers";
 import ModelProviderDialogFooter from "./model-provider-dialog-footer";
 import {
   ProviderSettingsForm,
@@ -39,10 +45,13 @@ const EMPTY_FIELDS: CatalogCredentialField[] = [];
  * generic `provider_credentials` payload, so adding a provider row to
  * `config/model_providers.yaml` is enough to make it configurable here.
  *
- * There is no live key check on save — OpenRAG has no generic
- * "list this provider's models" endpoint to probe with. The credentials are
- * validated the first time a model from this provider is selected in Agent or
- * Ingestion settings, which reports the provider's own error.
+ * Most generic providers have no credential-only check on save; they are
+ * validated when a model is selected in Agent or Ingestion settings. Azure
+ * OpenAI is an exception: the backend probes its key before persisting it.
+ *
+ * A saved secret belongs to the endpoint and TLS setting it was saved for:
+ * once either is edited (or a saved one cleared), the backend refuses to reuse
+ * it, so the form stops offering "leave blank to keep" and requires it again.
  */
 const ProviderSettingsDialog = ({
   provider,
@@ -60,6 +69,8 @@ const ProviderSettingsDialog = ({
   const [affectedModels, setAffectedModels] = useState<
     AffectedEmbeddingModel[] | undefined
   >(undefined);
+  const [azureAuthMethod, setAzureAuthMethod] = useState("api_key");
+  const [onPremAuthMethod, setOnPremAuthMethod] = useState("username_api_key");
   const router = useRouter();
 
   const { data: settings = {} } = useGetSettingsQuery({
@@ -78,38 +89,64 @@ const ProviderSettingsDialog = ({
   const saved = settings.providers?.custom?.[provider];
   const isConfigured = saved?.configured === true;
   const savedSecretFields = saved?.secret_fields ?? [];
+  const formValues = useMemo(
+    () =>
+      open
+        ? {
+            credentials: Object.fromEntries(
+              fields.map((field) => [
+                field.key,
+                saved?.credential_values?.[field.key] ?? "",
+              ]),
+            ),
+          }
+        : { credentials: {} },
+    [fields, open, saved],
+  );
 
-  // Removing the last configured provider would leave the agent with nothing
-  // to call, so mirror the bespoke dialogs and require another one first.
-  const canRemove =
-    isConfigured &&
-    Object.entries(settings.providers?.custom ?? {}).some(
-      ([key, value]) => key !== provider && value?.configured === true,
-    );
+  // Removing the last configured provider with an embedding model would leave
+  // the agent with nothing to embed documents, so require another one first.
+  const canRemove = canRemoveProvider(settings.providers, provider);
 
   const methods = useForm<ProviderSettingsFormData>({
     mode: "onSubmit",
-    defaultValues: { credentials: {} },
+    values: formValues,
   });
 
-  // Seed on open, and again if the catalogue or the saved settings land after
-  // it. Both are react-query results, so their identity is stable while the
-  // dialog is open and this cannot stomp on what the user is typing.
-  useEffect(() => {
-    if (!open) {
-      return;
+  const savedAuthMethod = saved?.auth_method;
+  const authMethodSeed = `${open}:${provider}:${savedAuthMethod ?? ""}`;
+  const [previousAuthMethodSeed, setPreviousAuthMethodSeed] =
+    useState<string>();
+  if (authMethodSeed !== previousAuthMethodSeed) {
+    setPreviousAuthMethodSeed(authMethodSeed);
+    if (provider === "azure") setAzureAuthMethod(savedAuthMethod ?? "api_key");
+    if (provider === "watsonx_onprem") {
+      setOnPremAuthMethod(savedAuthMethod ?? "username_api_key");
     }
-    methods.reset({
-      credentials: Object.fromEntries(
-        fields.map((field) => [
-          field.key,
-          saved?.credential_values?.[field.key] ?? "",
-        ]),
-      ),
-    });
-  }, [open, fields, saved, methods]);
+  }
 
   const { handleSubmit } = methods;
+
+  // Merged over the saved values so a target field the catalogue form does not
+  // render reads as unchanged rather than cleared.
+  const watchedCredentials = methods.watch("credentials") ?? {};
+  const savedCredentialValues = saved?.credential_values ?? {};
+  const targetChanged = credentialTargetChanged(
+    { ...savedCredentialValues, ...watchedCredentials },
+    savedCredentialValues,
+  );
+  const activeKeys = activeCredentialKeys(
+    provider,
+    azureAuthMethod,
+    onPremAuthMethod,
+  );
+  const reenterSecretFields = secretsToReenter(
+    watchedCredentials,
+    new Set(savedSecretFields),
+    activeKeys,
+    targetChanged,
+  );
+  const reusableSecretFields = targetChanged ? [] : savedSecretFields;
 
   const settingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
@@ -143,23 +180,42 @@ const ProviderSettingsDialog = ({
   });
 
   const onSubmit = (data: ProviderSettingsFormData) => {
-    // Blank means "leave the stored value alone": the backend ignores empty
-    // values, and secrets are never echoed back for us to resubmit.
+    // Secret inputs stay blank when a value is stored, so an empty secret means
+    // "leave unchanged". Empty non-secret fields explicitly remove saved data.
     const credentials: Record<string, string> = {};
+    const removals: string[] = [];
+    // Values typed for another auth method stay in the form but are not sent.
+    const fieldsByKey = new Map(fields.map((field) => [field.key, field]));
     for (const [key, value] of Object.entries(data.credentials ?? {})) {
+      if (activeKeys && !activeKeys.has(key)) continue;
       const trimmed = (value ?? "").trim();
       if (trimmed !== "") {
         credentials[key] = trimmed;
+      } else {
+        const field = fieldsByKey.get(key);
+        const isSecret =
+          field?.field_type === "password" || field?.field_type === "textarea";
+        if (!isSecret && saved?.credential_values?.[key]) {
+          removals.push(key);
+        }
       }
     }
 
-    if (Object.keys(credentials).length === 0) {
+    if (Object.keys(credentials).length === 0 && removals.length === 0) {
       methods.setError("root", { message: "Enter at least one credential" });
       return;
     }
 
     settingsMutation.mutate({
       provider_credentials: { [provider]: credentials },
+      ...(removals.length > 0
+        ? { provider_credential_removals: { [provider]: removals } }
+        : {}),
+      ...(provider === "azure"
+        ? { provider_auth_methods: { azure: azureAuthMethod } }
+        : provider === "watsonx_onprem"
+          ? { provider_auth_methods: { watsonx_onprem: onPremAuthMethod } }
+          : {}),
     });
   };
 
@@ -174,13 +230,16 @@ const ProviderSettingsDialog = ({
         setOpen(o);
       }}
     >
-      <DialogContent autoFocus={false} className="max-w-2xl overflow-hidden">
+      <DialogContent
+        autoFocus={false}
+        className="max-w-2xl max-h-[95vh] flex flex-col overflow-hidden"
+      >
         <FormProvider {...methods}>
           <form
             onSubmit={handleSubmit(onSubmit)}
-            className="grid min-w-0 gap-4"
+            className="flex flex-col min-h-0 flex-1"
           >
-            <DialogHeader className="mb-2">
+            <DialogHeader className="shrink-0 mb-2">
               <DialogTitle className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded flex items-center justify-center bg-white border">
                   <Logo className="w-4 h-4 text-black" />
@@ -189,66 +248,80 @@ const ProviderSettingsDialog = ({
               </DialogTitle>
             </DialogHeader>
 
-            <ProviderSettingsForm
-              providerName={chrome.name}
-              fields={fields}
-              savedSecretFields={savedSecretFields}
-              saveError={methods.formState.errors.root?.message}
-            />
+            <div className="flex-1 min-h-0 overflow-y-auto min-w-0 px-1 -mx-1 py-1 space-y-4">
+              <ProviderSettingsForm
+                provider={provider}
+                providerName={chrome.name}
+                fields={fields}
+                savedSecretFields={reusableSecretFields}
+                reenterSecretFields={reenterSecretFields}
+                savedCredentialValues={savedCredentialValues}
+                saveError={methods.formState.errors.root?.message}
+                azureAuthMethod={azureAuthMethod}
+                onAzureAuthMethodChange={setAzureAuthMethod}
+                onPremAuthMethod={onPremAuthMethod}
+                onOnPremAuthMethodChange={setOnPremAuthMethod}
+              />
 
-            <LazyMotion features={domAnimation}>
-              <AnimatePresence mode="wait">
-                {settingsMutation.isError && (
-                  <m.div
-                    key="error"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                  >
-                    <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
-                      {settingsMutation.error?.message}
-                    </p>
-                  </m.div>
-                )}
-                {removeMutation.isError &&
-                  !isEmbeddingProviderInUseError(removeMutation.error) && (
+              <LazyMotion features={domAnimation}>
+                <AnimatePresence mode="wait">
+                  {settingsMutation.isError && (
                     <m.div
-                      key="remove-error"
+                      key="error"
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
                     >
-                      <p className="rounded-lg border border-destructive p-4 min-w-0 [overflow-wrap:anywhere]">
-                        {removeMutation.error?.message}
+                      <p
+                        data-testid="provider-connection-error"
+                        className="rounded-lg border border-destructive p-4 min-w-0 wrap-anywhere"
+                      >
+                        {settingsMutation.error?.message}
                       </p>
                     </m.div>
                   )}
-              </AnimatePresence>
-            </LazyMotion>
+                  {removeMutation.isError &&
+                    !isEmbeddingProviderInUseError(removeMutation.error) && (
+                      <m.div
+                        key="remove-error"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                      >
+                        <p className="rounded-lg border border-destructive p-4 min-w-0 wrap-anywhere">
+                          {removeMutation.error?.message}
+                        </p>
+                      </m.div>
+                    )}
+                </AnimatePresence>
+              </LazyMotion>
+            </div>
 
-            <ModelProviderDialogFooter
-              showRemoveConfirm={showRemoveConfirm}
-              onCancelRemove={() => {
-                setShowRemoveConfirm(false);
-                setAffectedModels(undefined);
-              }}
-              onConfirmRemove={() =>
-                removeMutation.mutate({
-                  remove_provider_config: provider,
-                  force_remove: !!affectedModels,
-                })
-              }
-              isRemovePending={removeMutation.isPending}
-              isConfigured={isConfigured}
-              canRemove={canRemove}
-              providerKey={provider}
-              removeDisabledTooltip={`Configure another model provider before removing ${chrome.name}`}
-              onRequestRemove={() => setShowRemoveConfirm(true)}
-              onCancel={() => setOpen(false)}
-              isSavePending={settingsMutation.isPending}
-              isValidating={false}
-              affectedModels={affectedModels}
-            />
+            <div className="shrink-0">
+              <ModelProviderDialogFooter
+                showRemoveConfirm={showRemoveConfirm}
+                onCancelRemove={() => {
+                  setShowRemoveConfirm(false);
+                  setAffectedModels(undefined);
+                }}
+                onConfirmRemove={() =>
+                  removeMutation.mutate({
+                    remove_provider_config: provider,
+                    force_remove: !!affectedModels,
+                  })
+                }
+                isRemovePending={removeMutation.isPending}
+                isConfigured={isConfigured}
+                canRemove={canRemove}
+                providerKey={provider}
+                removeDisabledTooltip={`Configure another model provider before removing ${chrome.name}`}
+                onRequestRemove={() => setShowRemoveConfirm(true)}
+                onCancel={() => setOpen(false)}
+                isSavePending={settingsMutation.isPending}
+                isValidating={false}
+                affectedModels={affectedModels}
+              />
+            </div>
           </form>
         </FormProvider>
       </DialogContent>

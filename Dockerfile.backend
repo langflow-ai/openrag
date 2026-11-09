@@ -48,11 +48,12 @@ WORKDIR /app
 
 # Dependency layer: reuse as long as lockfile and pyproject don't change
 # --extra apm bakes in the Instana tracer so the published image can turn APM on
-# with INSTANA_ENABLED alone. The extra exists so source installs that will never
-# enable it don't pay for the tracer; images ship with the capability present.
+# with INSTANA_ENABLED alone, and --extra tracing does the same for Langfuse
+# tracing (OPENRAG_TRACING_ENABLED). The extras exist so source installs that will never
+# enable them don't pay for the tracers; images ship with the capability present.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv,uid=0,gid=0 \
-    uv sync --extra apm
+    uv sync --extra apm --extra tracing
 
 # Application (invalidates after deps only when src/flows change)
 COPY src/ ./src/

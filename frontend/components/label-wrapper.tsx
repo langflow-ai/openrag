@@ -43,7 +43,7 @@ export function LabelWrapper({
           htmlFor={id}
           className={cn(
             "font-medium flex items-center gap-1.5",
-            description ? "!text-sm" : "!text-mmd",
+            description ? "text-sm!" : "text-mmd!",
           )}
           data-disabled={disabled}
         >
@@ -51,7 +51,7 @@ export function LabelWrapper({
           {required && <span className="text-red-500">*</span>}
           {helperText && (
             <Tooltip>
-              <TooltipTrigger>
+              <TooltipTrigger type="button">
                 <Info className="w-3.5 h-3.5 text-muted-foreground" />
               </TooltipTrigger>
               <TooltipContent side="right">{helperText}</TooltipContent>

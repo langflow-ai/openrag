@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { useChat } from "@/contexts/chat-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import { apiClient } from "@/lib/api-client";
 import { useGetSettingsQuery } from "./useGetSettingsQuery";
 import { useGetTasksQuery } from "./useGetTasksQuery";
 
@@ -12,6 +13,20 @@ export interface ProviderHealthDetails {
   llm_model: string;
   embedding_model: string;
   endpoint?: string | null;
+}
+
+/**
+ * Something degraded that is not a provider failure, reported beside the
+ * verdict rather than in it — e.g. `stale_embedding_space`: documents indexed
+ * with a model the provider no longer serves. The fix is in the corpus, not in
+ * provider settings.
+ */
+export interface ProviderHealthWarning {
+  code: string;
+  provider: string;
+  message: string;
+  models?: string[];
+  served?: string[];
 }
 
 export interface ProviderHealthResponse {
@@ -23,10 +38,12 @@ export interface ProviderHealthResponse {
   llm_error?: string | null;
   embedding_error?: string | null;
   details?: ProviderHealthDetails;
+  warnings?: ProviderHealthWarning[];
 }
 
 export interface ProviderHealthParams {
-  provider?: "openai" | "ollama" | "watsonx";
+  /** Any provider key recognised by the backend's LiteLLM catalogue. */
+  provider?: string;
   test_completion?: boolean;
 }
 
@@ -77,16 +94,18 @@ export const useProviderHealthQuery = (
         url.searchParams.set("test_completion", "true");
       }
 
-      const response = await fetch(url.toString());
+      const response = await apiClient.get<ProviderHealthResponse>(
+        `/provider/health${url.search}`,
+      );
 
-      if (response.ok) {
-        const data = (await response.json()) as ProviderHealthResponse;
+      if (response.status >= 200 && response.status < 300) {
+        const data = response.data;
         if (hasChatError) {
           setChatError(false);
         }
         return data;
       } else if (response.status === 503) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = response.data ?? {};
         return {
           status: "unhealthy",
           message: errorData.message || "Provider validation failed",
@@ -96,9 +115,10 @@ export const useProviderHealthQuery = (
           llm_error: errorData.llm_error,
           embedding_error: errorData.embedding_error,
           details: errorData.details,
+          warnings: errorData.warnings,
         };
       } else {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = response.data ?? {};
         return {
           status: "error",
           message: errorData.message || "Failed to check provider health",

@@ -4,6 +4,7 @@ import {
   Clock,
   type LucideIcon,
   TriangleAlert,
+  XCircle,
 } from "lucide-react";
 import type { TaskFileStatusCategory } from "@/lib/task-utils";
 
@@ -24,6 +25,12 @@ export const CATEGORY_CHIPS: Array<{
     label: "System error",
     icon: AlertCircle,
     iconClassName: "text-destructive",
+  },
+  {
+    id: "cancelled",
+    label: "Cancelled",
+    icon: XCircle,
+    iconClassName: "text-muted-foreground",
   },
   {
     id: "warning",

@@ -125,6 +125,22 @@ def test_ingest_token_round_trips_connector_file_id():
     assert restored_context.connector_file_id == "my-bucket::報告書.pdf"
 
 
+def test_ingest_token_round_trips_embedding_provider() -> None:
+    token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
+    context = DocumentIndexContext(
+        document_id="doc-1",
+        filename="report.pdf",
+        mimetype="application/pdf",
+        embedding_model="text-embedding-3-small",
+        embedding_provider="azure",
+        ingest_run_id="run-1",
+    )
+
+    restored_context, _jti = token_service.validate_token(token_service.create_token(context))
+
+    assert restored_context.embedding_provider == "azure"
+
+
 @pytest.mark.asyncio
 async def test_langflow_ingest_callback_rewrites_langflow_chunk_ids():
     token_service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
@@ -427,3 +443,58 @@ def test_ingest_token_prefers_jwt_signing_key_over_session_secret(monkeypatch):
     session_service = LangflowIngestTokenService(secret=session_secret, ttl_seconds=60)
     with pytest.raises(ValueError, match="Invalid Langflow ingest token"):
         session_service.validate_token(token)
+
+
+def test_ingest_token_round_trips_indexed_time():
+    from services.langflow_ingest_token_service import LangflowIngestTokenService
+
+    payload = LangflowIngestTokenService._context_to_payload(
+        DocumentIndexContext(
+            document_id="d",
+            mimetype="application/pdf",
+            embedding_model="m",
+            indexed_time="2026-01-01T00:00:00+00:00",
+        )
+    )
+    context = LangflowIngestTokenService._payload_to_context(payload)
+
+    assert context.indexed_time == "2026-01-01T00:00:00+00:00"
+
+
+def _token_context(**overrides):
+    return DocumentIndexContext(
+        document_id="d", mimetype="application/pdf", embedding_model="m", **overrides
+    )
+
+
+def test_create_token_defaults_indexed_time_to_issue_time():
+    import datetime
+
+    import jwt
+
+    service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
+    original = _token_context()
+
+    token = service.create_token(original)
+
+    iat = jwt.decode(token, options={"verify_signature": False})["iat"]
+    context, _ = service.validate_token(token)
+    assert context.indexed_time == datetime.datetime.fromtimestamp(iat, datetime.UTC).isoformat()
+
+
+def test_create_token_preserves_explicit_indexed_time():
+    service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
+
+    token = service.create_token(_token_context(indexed_time="2026-01-01T00:00:00+00:00"))
+
+    context, _ = service.validate_token(token)
+    assert context.indexed_time == "2026-01-01T00:00:00+00:00"
+
+
+def test_create_token_does_not_mutate_callers_context():
+    service = LangflowIngestTokenService(secret="test-secret" * 4, ttl_seconds=60)
+    original = _token_context()
+
+    service.create_token(original)
+
+    assert original.indexed_time is None

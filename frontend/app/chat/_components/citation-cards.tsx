@@ -56,7 +56,7 @@ export function CitationCards({
         const hasUrl = interactive && !!item.source_url;
         const isActive = index === activeCardIndex;
 
-        const className = `group relative flex items-center px-3 py-2 rounded-lg border transition-all duration-200 shadow-sm text-left ${
+        const className = `group relative flex items-center px-3 py-2 rounded-lg border transition-all duration-200 shadow-xs text-left ${
           interactive ? "cursor-pointer" : "cursor-default"
         } ${
           isActive

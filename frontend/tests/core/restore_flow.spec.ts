@@ -41,10 +41,9 @@ test.describe("Restore Flow", () => {
       logger.info(
         "\n🔧 Non-default settings detected during setup, restoring defaults...",
       );
-      const restoreFlowButton = page
-        .locator("text=Knowledge Ingest")
-        .locator("..")
-        .getByRole("button", { name: /restore flow/i });
+      const restoreFlowButton = page.getByRole("button", {
+        name: /restore flow/i,
+      });
       await restoreFlowButton.scrollIntoViewIfNeeded();
       await restoreFlowButton.click();
 
@@ -130,10 +129,9 @@ test.describe("Restore Flow", () => {
     // Click on "Restore flow" button
     logger.info("\n🔄 Restoring default settings...");
     await page.waitForTimeout(500);
-    const restoreFlowButton = page
-      .locator("text=Knowledge Ingest")
-      .locator("..")
-      .getByRole("button", { name: /restore flow/i });
+    const restoreFlowButton = page.getByRole("button", {
+      name: /restore flow/i,
+    });
     await restoreFlowButton.scrollIntoViewIfNeeded();
     await expect(restoreFlowButton).toBeVisible();
     await restoreFlowButton.click();
@@ -259,10 +257,9 @@ test.describe("Restore Flow", () => {
     // Click on "Restore flow" button even though settings are already default
     logger.info("\n🔄 Clicking restore on already default settings...");
     await page.waitForTimeout(500);
-    const restoreFlowButton = page
-      .locator("text=Knowledge Ingest")
-      .locator("..")
-      .getByRole("button", { name: /restore flow/i });
+    const restoreFlowButton = page.getByRole("button", {
+      name: /restore flow/i,
+    });
     await restoreFlowButton.scrollIntoViewIfNeeded();
     await expect(restoreFlowButton).toBeVisible();
     await restoreFlowButton.click();

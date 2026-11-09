@@ -504,7 +504,16 @@ async def resolve_api_key_user(request: Request, api_key_service, session_manage
         token = raw_jwt[7:].strip() if raw_jwt.startswith("Bearer ") else raw_jwt.strip()
         from services.langflow_llm_token_service import langflow_hop_audience
 
-        hop_aud = langflow_hop_audience(token)
+        secret = None
+        algo = None
+        app_state = getattr(getattr(request, "app", None), "state", None)
+        services = getattr(app_state, "services", None) or {}
+        llm_svc = services.get("langflow_llm_token_service")
+        if llm_svc is not None:
+            secret = getattr(llm_svc, "_verification_key", None)
+            algo = getattr(llm_svc, "algorithm", None)
+
+        hop_aud = langflow_hop_audience(token, secret=secret, algorithm=algo)
         if hop_aud:
             raise HTTPException(
                 status_code=401,

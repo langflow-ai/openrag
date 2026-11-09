@@ -3,8 +3,12 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 import { formatProviderErrorMessage } from "@/lib/chat-stream-errors";
-import { useGetCurrentProviderModelsQuery } from "../queries/useGetModelsQuery";
+import {
+  refreshModelCatalog,
+  useGetCurrentProviderModelsQuery,
+} from "../queries/useGetModelsQuery";
 import type { Settings } from "../queries/useGetSettingsQuery";
 
 export interface UpdateSettingsRequest {
@@ -19,6 +23,7 @@ export interface UpdateSettingsRequest {
   chunk_overlap?: number;
   table_structure?: boolean;
   ocr?: boolean;
+  ocr_languages?: string[];
   picture_descriptions?: boolean;
   disable_ingest_with_langflow?: boolean;
   embedding_model?: string;
@@ -55,6 +60,8 @@ export interface UpdateSettingsRequest {
   // Bypass the "this provider's embedding models are still in use" guard.
   force_remove?: boolean;
   provider_credentials?: Record<string, Record<string, string>>;
+  provider_credential_removals?: Record<string, string[]>;
+  provider_auth_methods?: Record<string, string>;
   remove_provider_config?: string;
 }
 
@@ -105,20 +112,20 @@ export interface UpdateSettingsResponse {
 async function updateSettings(
   variables: UpdateSettingsRequest,
 ): Promise<UpdateSettingsResponse> {
-  const response = await fetch("/api/settings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(variables),
-  });
+  const response = await apiClient.post<UpdateSettingsResponse>(
+    "/settings",
+    variables,
+  );
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+  if (response.status < 200 || response.status >= 300) {
+    const errorData = (response.data ?? {}) as unknown as Record<
+      string,
+      unknown
+    >;
     throw new UpdateSettingsError(response.status, errorData);
   }
 
-  return response.json();
+  return response.data;
 }
 
 export const useUpdateSettingsMutation = (
@@ -136,6 +143,9 @@ export const useUpdateSettingsMutation = (
       queryClient.invalidateQueries({
         queryKey: ["settings"],
       });
+      // A cluster-hosted provider's models are listed with its *saved*
+      // credentials, so a save can change what the catalogue offers.
+      refreshModelCatalog(queryClient);
       refetchModels(); // Refetch models for the settings page
       options?.onSuccess?.(...args);
     },

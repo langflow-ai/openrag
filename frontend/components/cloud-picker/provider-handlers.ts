@@ -1,5 +1,6 @@
 "use client";
 
+import axios from "axios";
 import { SharePointV8Handler } from "./sharepoint-v8-handler";
 import {
   CloudFile,
@@ -114,16 +115,20 @@ class GoogleDriveHandler {
             files.map(async (file) => {
               if (!file.size && !file.isFolder) {
                 try {
-                  const response = await fetch(
+                  const response = await axios.get<{
+                    size?: string;
+                    modifiedTime?: string;
+                  }>(
                     `https://www.googleapis.com/drive/v3/files/${file.id}?fields=size,modifiedTime`,
                     {
                       headers: {
                         Authorization: `Bearer ${this.accessToken}`,
                       },
+                      validateStatus: () => true,
                     },
                   );
-                  if (response.ok) {
-                    const fileDetails = await response.json();
+                  if (response.status >= 200 && response.status < 300) {
+                    const fileDetails = response.data;
                     return {
                       ...file,
                       size: fileDetails.size
@@ -225,11 +230,12 @@ class OneDriveHandler {
               if (driveId && itemId) {
                 try {
                   const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}`;
-                  const res = await fetch(url, {
+                  const res = await axios.get(url, {
                     headers: { Authorization: `Bearer ${this.accessToken}` },
+                    validateStatus: () => true,
                   });
-                  if (res.ok) {
-                    const meta = await res.json();
+                  if (res.status >= 200 && res.status < 300) {
+                    const meta = res.data;
 
                     let mimeType = meta.file?.mimeType;
                     if (!mimeType && meta.name) {
@@ -271,7 +277,9 @@ class OneDriveHandler {
                     console.warn(
                       "Graph API metadata fetch failed:",
                       res.status,
-                      await res.text(),
+                      typeof res.data === "string"
+                        ? res.data
+                        : JSON.stringify(res.data),
                     );
                   }
                 } catch (e) {

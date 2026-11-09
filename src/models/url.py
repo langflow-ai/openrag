@@ -61,6 +61,9 @@ class UrlProcessor(TaskProcessor):
                 owner_email=self.owner_email,
                 is_sample_data=self.is_sample_data,
                 connector_type=self.connector_type,
+                # Only process_document_standard runs on this instance; the
+                # duplicate gate, and so the delete, never does.
+                allow_anonymous_delete=False,
             )
             result = await processor.process_document_standard(
                 file_path=temp_file_path,

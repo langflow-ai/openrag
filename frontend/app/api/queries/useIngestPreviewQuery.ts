@@ -1,4 +1,5 @@
 import { type QueryKey, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 export interface DoclingPreviewStats {
   page_count: number;
@@ -72,14 +73,14 @@ async function fetchPreviewJson<T>(
   filePath?: string | null,
   options?: { notFoundAsNull?: boolean },
 ): Promise<T | null> {
-  const response = await fetch(withFileParam(path, filePath));
+  const response = await apiClient.get<T>(withFileParam(path, filePath));
   if (options?.notFoundAsNull && response.status === 404) {
     return null;
   }
-  if (!response.ok) {
+  if (response.status < 200 || response.status >= 300) {
     throw new Error(`Preview unavailable (${response.status})`);
   }
-  return response.json() as Promise<T>;
+  return response.data;
 }
 
 /**
@@ -99,7 +100,7 @@ export function useDoclingPreviewQuery(
       queryKey: ingestPreviewQueryKeys.docling(taskId, filePath),
       queryFn: () =>
         fetchPreviewJson<DoclingPreviewResponse>(
-          `/api/ingest/preview/${taskId}/docling`,
+          `/ingest/preview/${taskId}/docling`,
           filePath,
           { notFoundAsNull: true },
         ),
@@ -133,7 +134,7 @@ export function useIndexProofQuery(
       queryKey: ingestPreviewQueryKeys.indexProof(taskId, filePath) as QueryKey,
       queryFn: () =>
         fetchPreviewJson<IndexProofResponse>(
-          `/api/ingest/preview/${taskId}/index-proof`,
+          `/ingest/preview/${taskId}/index-proof`,
           filePath,
         ),
       enabled: enabled && !!taskId,

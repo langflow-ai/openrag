@@ -1,0 +1,1073 @@
+"""Red Hat OpenShift AI (RHOAI) — models served in the customer's own cluster.
+
+RHOAI serves models through `KServe` + `vLLM`, and `vLLM` speaks the OpenAI HTTP
+API. So there is no new transport here: the provider routes through LiteLLM's
+`hosted_vllm` key, the same one any self-hosted vLLM endpoint uses. What differs
+is everything around the call:
+
+- **One endpoint per model.** `vLLM` serves a single model per deployment, so a
+  RAG stack needs *two* `InferenceService`s — one for chat, one for embeddings —
+  at two different URLs. That is the whole reason this module exists rather than
+  a plain `hosted_vllm` row in `model_providers.yaml`: LiteLLM takes one
+  `api_base` per call, so something has to choose which one, and only the caller
+  knows whether it is embedding or completing. `litellm_credentials` therefore
+  takes a `kind`, which is the optional half of the enhancement contract (see
+  `credentials_for` in `enhancements/providers/registry.py`).
+- **Authentication is a Kubernetes bearer token.** An `InferenceService`
+  annotated `security.opendatahub.io/enable-auth: "true"` is fronted by a
+  `kube-rbac-proxy` that runs a `TokenReview` and then a `SubjectAccessReview`:
+  the token's subject needs `get` on `inferenceservices` in the model namespace.
+  A `ServiceAccount` token is what an operator has in hand, and it goes out as
+  an ordinary `Authorization: Bearer`, which is exactly what `api_key` becomes.
+- **Models are whatever the operator deployed**, so the catalogue ids come from
+  each endpoint's own `GET /v1/models` rather than LiteLLM's price table, which
+  knows no `hosted_vllm` models at all.
+
+The provider key is OpenRAG's own; `LITELLM_PROVIDER` is what it routes as.
+Nothing here imports OpenRAG config — `config_manager`, `model_catalog` and
+`llm_gateway` all read this module, so it has to stay a leaf.
+
+Verified end to end against an `RHOAI` 3.5.0 cluster (`vLLM 0.24.0+rhaiv.9`,
+CPU x86 runtime): model listing, chat and embeddings on both endpoints, with the
+`ServiceAccount` token and the projected service CA.
+
+Why `hosted_vllm` and not `openai_like`
+---------------------------------------
+Both are OpenAI-compatible passthrough keys, and either would carry the traffic.
+`hosted_vllm` is the one that carries the **TLS setting** with it. Verified
+against litellm 1.84 and a live cluster, both chat and embeddings:
+
+- `hosted_vllm` dispatches through `base_llm_http_handler`, which reads
+  `litellm_params["ssl_verify"]` — a per-call `ssl_verify=` is honoured.
+- `openai_like` dispatches through `OpenAILikeChatHandler` /
+  `OpenAILikeEmbeddingHandler`, neither of which mentions `ssl_verify`. The
+  kwarg is silently dropped and the call fails with
+  `ssl:True [SSLCertVerificationError: ... self-signed certificate in
+  certificate chain]` against a cluster CA — or, worse, would quietly verify
+  against the system store when the operator believed they had configured trust.
+
+That difference is the whole reason TLS trust can be a per-provider field here
+rather than the process-wide `SSL_CERT_FILE` that watsonx.ai on-prem is stuck
+with (see `enhancements/providers/watsonx/onprem.py`). Do not "simplify" this to
+`openai_like`.
+
+TLS: trusting the cluster's service-serving CA
+----------------------------------------------
+An in-cluster `Service` presents a certificate signed by OpenShift's
+service-serving CA, which is not in any container's default trust store.
+OpenShift projects that CA into every pod, so the fix is a path, not a mount::
+
+    RHOAI_TLS_VERIFY=/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+
+`ssl_verify` rides in the credential bag and is scoped to this provider only —
+unlike `SSL_CERT_FILE`, which *replaces* certifi's roots process-wide and would
+break every public provider in the same deployment.
+
+`RHOAI_TLS_VERIFY=false` disables verification and exists for one case: an
+`oc port-forward` to `localhost`, where the certificate cannot match. It is
+development-only and must never be set on a deployed environment.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import time
+from collections.abc import Collection, Mapping
+from typing import Any, Literal, NamedTuple
+from urllib.parse import urlsplit, urlunsplit
+
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+#: OpenRAG's key for the provider: the name in `model_providers.yaml`, in the
+#: settings payload, and in a `rhoai:<model>` id.
+PROVIDER_KEY = "rhoai"
+
+#: The LiteLLM provider it is routed as. `rhoai/<model>` is not a prefix LiteLLM
+#: can resolve, so the gateway swaps in this key when it builds the model
+#: string. See the module docstring for why this is `hosted_vllm`.
+LITELLM_PROVIDER = "hosted_vllm"
+
+#: The two kinds of call the gateway makes. `litellm_credentials` picks an
+#: endpoint from this, which is the one thing a generic provider never has to do.
+CallKind = Literal["chat", "embedding"]
+
+#: Credential form for the settings dialog. LiteLLM publishes a `hosted_vllm`
+#: form, but it asks for a single `api_base` — which is exactly the assumption
+#: that does not hold here, since chat and embeddings are separate deployments.
+CREDENTIAL_FIELDS: list[dict[str, Any]] = [
+    {
+        "key": "api_base",
+        "label": "Chat endpoint",
+        "placeholder": "https://openrag-chat-predictor.openrag-models.svc.cluster.local:8443/v1",
+        "tooltip": "URL of the InferenceService serving your chat model, ending in /v1. "
+        "In-cluster, this is the predictor Service; otherwise, this is a Route or an "
+        "`oc port-forward`. "
+        "This endpoint may also serve an embedding model.",
+        "required": True,
+        "field_type": "text",
+        "options": None,
+        "default_value": None,
+    },
+    {
+        "key": "embedding_api_base",
+        "label": "Embeddings endpoint",
+        "placeholder": "https://openrag-embed-predictor.openrag-models.svc.cluster.local:8443/v1",
+        "tooltip": "URL of the InferenceService serving your embedding model, ending in /v1. "
+        "vLLM serves one model per deployment, so this is a second InferenceService.",
+        "required": False,
+        "field_type": "text",
+        "options": None,
+        "default_value": None,
+    },
+    {
+        "key": "api_key",
+        # The Kubernetes kind name: a proper noun, so it reads correctly where
+        # it is interpolated mid-sentence (CredentialTargetChangedError).
+        "label": "ServiceAccount token",
+        "placeholder": None,
+        "tooltip": "A Kubernetes bearer token whose subject has `get` on inferenceservices in "
+        "the model namespace. Both endpoints are authenticated with the same token.",
+        "required": True,
+        "field_type": "password",
+        "options": None,
+        "default_value": None,
+    },
+    {
+        "key": "ssl_verify",
+        "label": "Verify TLS certificates",
+        "placeholder": "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt",
+        "tooltip": "Path to the CA bundle that signs the endpoint's certificate. In-cluster, "
+        "this is OpenShift's projected service CA.",
+        "required": False,
+        # A switch plus a CA path; blank (`default_value` None) means verify.
+        "field_type": "tls_verify",
+        "options": None,
+        "default_value": None,
+    },
+    {
+        "key": "embedding_max_concurrency",
+        "label": "Max concurrent embedding requests",
+        "placeholder": "16",
+        "tooltip": "How many embedding requests OpenRAG sends to the embedding endpoint at "
+        "once; the rest wait in OpenRAG. One slot is kept for search and chat queries so "
+        "they never wait behind ingestion. Leave blank for the default of 16, sized for a "
+        "GPU-served model. Lower to 4 if ingestion fails with 502s on a slow CPU-served "
+        "model. 0 means no limit.",
+        "required": False,
+        "field_type": "text",
+        "options": None,
+        "default_value": None,
+    },
+]
+
+#: Fields an operator fills in that are not LiteLLM kwargs. The embedding
+#: endpoint is selected *into* `api_base` per call; forwarding it as well would
+#: land it in the request body, since LiteLLM passes kwargs it does not
+#: recognise straight through. The concurrency limit is enforced by the
+#: gateway (`embedding_max_concurrency`), never sent to the endpoint.
+_LOCAL_ONLY_FIELDS = frozenset({"embedding_api_base", "embedding_max_concurrency"})
+
+#: Concurrent embedding calls allowed when the operator sets no limit, sized for
+#: a GPU-served model, the production norm. Ingestion sends one chunk per call,
+#: so vLLM's single API-server process (HTTP, tokenization, JSON) saturates
+#: long before the GPU does: granite-embedding-english-r2 on an H100 served
+#: about 200 calls/s at 16 in flight (p95 under 170ms) and topped out near 430
+#: calls/s at 64-128, with the GPU about 20% busy. 16 leaves that headroom to
+#: other OpenRAG instances sharing the endpoint. On CPU, vLLM binds one OpenMP
+#: thread per *node* core whatever the pod's CPU limit, so a small limit spends
+#: most of its time throttled: 2 cores gave 1.65s per ~1000-character chunk and
+#: ~0.85 calls/s. With requests = limits = 6 and `VLLM_CPU_OMP_THREADS_BIND=0-5`
+#: the same model served 0.13s per chunk and ~10 calls/s, p95 2s at 16 in
+#: flight. Only an endpoint still slower than about a second per chunk needs 4,
+#: or 16 in flight queues calls past the 30s `kube-rbac-proxy` upstream timeout.
+DEFAULT_EMBEDDING_MAX_CONCURRENCY = 16
+
+#: LiteLLM kwargs that must not become request-body fields. `ssl_verify` is
+#: read for TLS *and* — on the `hosted_vllm` chat path, verified against litellm
+#: 1.84 with a capturing proxy — copied verbatim into the JSON sent to the
+#: endpoint (`{"model": ..., "messages": ..., "ssl_verify": false}`). vLLM
+#: ignores the unknown field; a stricter OpenAI-compatible server may 400 on
+#: it, and either way a client TLS setting has no business on the wire.
+#: `additional_drop_params` strips it from the body while leaving the TLS
+#: effect intact, on chat, streaming and embeddings alike.
+_BODY_DROP_PARAMS: tuple[str, ...] = ("ssl_verify",)
+
+#: Values of `ssl_verify` that mean "do not verify". Spelled out rather than
+#: parsed loosely: this switch turns off certificate checking, so an unrecognised
+#: value must fail closed (be treated as a CA path) rather than open.
+_FALSE_VALUES = frozenset({"false", "0", "no", "off"})
+_TRUE_VALUES = frozenset({"true", "1", "yes", "on"})
+
+#: TLS settings already reported. `resolve_ssl_verify` runs on every request, so
+#: without this the "verification is disabled" warning — which has to be a
+#: warning, since it is the one setting that silently weakens the deployment —
+#: would be emitted once per chat message and per embedded chunk.
+_reported_tls_settings: set[str] = set()
+
+
+def _warn_once(setting: str, message: str, **fields: Any) -> None:
+    """Report a TLS (or plain-HTTP) setting the first time this process sees it."""
+    if setting in _reported_tls_settings:
+        return
+    _reported_tls_settings.add(setting)
+    logger.warning(message, **fields)
+
+
+def forget_tls_warnings() -> None:
+    """Allow the TLS warnings to be emitted again. For tests."""
+    _reported_tls_settings.clear()
+
+
+#: The path segment every vLLM OpenAI endpoint is served under. Appended when an
+#: operator pastes the Service URL without it — the single most common cause of
+#: "works with curl, fails from OpenRAG", because curl was given the full path.
+_API_SUFFIX = "/v1"
+
+
+def normalized_api_base(value: Any) -> str:
+    """An endpoint URL as LiteLLM needs it: no trailing slash, ending in `/v1`.
+
+    Appends the suffix rather than rejecting the URL. An operator reads the
+    predictor `Service` address off `oc get svc`, which has no path, and the
+    alternative is a 404 from the endpoint's own router that says nothing about
+    what is wrong.
+    """
+    raw = str(value or "").strip().rstrip("/")
+    if not raw:
+        return ""
+    parts = urlsplit(raw)
+    path = parts.path.rstrip("/")
+    if path.endswith(_API_SUFFIX) or f"{_API_SUFFIX}/" in f"{path}/":
+        return raw
+    normalized = urlunsplit((parts.scheme, parts.netloc, f"{path}{_API_SUFFIX}", "", ""))
+    logger.debug(
+        "Appended the OpenAI path to the OpenShift AI endpoint",
+        original=raw,
+        normalized=normalized,
+    )
+    return normalized
+
+
+def resolve_ssl_verify(value: Any) -> bool | str:
+    """The TLS setting for one endpoint: `True`, `False`, or a CA bundle path.
+
+    Blank means "verify normally". A recognised false-y word disables
+    verification. Anything else is taken as a filesystem path — including a path
+    that does not exist, which is *warned about and passed through* so the call
+    fails on the missing CA instead of quietly succeeding against the system
+    trust store, which is not what the operator asked for.
+    """
+    raw = str(value if value is not None else "").strip()
+    if not raw:
+        return True
+    lowered = raw.lower()
+    if lowered in _FALSE_VALUES:
+        _warn_once(
+            "disabled",
+            "TLS verification is disabled for OpenShift AI. This is a development-only "
+            "setting for a port-forwarded endpoint; never use it on a deployed environment.",
+        )
+        return False
+    if lowered in _TRUE_VALUES:
+        return True
+
+    import os
+
+    if not os.path.exists(raw):
+        _warn_once(
+            f"missing:{raw}",
+            "The OpenShift AI CA bundle path does not exist; TLS verification will fail "
+            "until it does. In a pod the projected service CA is at "
+            "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt.",
+            path=raw,
+        )
+    return raw
+
+
+def _values(stored: Mapping[str, Any] | None) -> dict[str, str]:
+    """Credential values as trimmed strings, with blanks dropped.
+
+    Accepts either the stored form or the LiteLLM one `litellm_credentials`
+    builds from it — the health check and model discovery are handed both by
+    different callers. That is why a bool is spelled out rather than tested for
+    truth: a translated `ssl_verify=False` must come back as `"false"`, not
+    vanish as a blank, or verification is quietly switched back on. Lists
+    (`additional_drop_params`) are not credentials and are skipped.
+    """
+    values: dict[str, str] = {}
+    for name, value in (stored or {}).items():
+        if isinstance(value, bool):
+            text = "true" if value else "false"
+        elif value is None or isinstance(value, (list, tuple, dict, set)):
+            continue
+        else:
+            text = str(value).strip()
+        if text:
+            values[str(name)] = text
+    return values
+
+
+def _warn_if_cleartext(label: str, api_base: str) -> None:
+    """Flag an `http://` endpoint once: the ServiceAccount token goes out in
+    the clear on every call to it.
+
+    A warning, not a rejection. A raw-deployment predictor on the cluster
+    network with auth disabled, or an `oc port-forward` to localhost, are
+    legitimately plain HTTP — but pasting the wrong scheme for a real Service
+    is silent otherwise, and it is the strictly weaker cousin of the disabled
+    TLS verification this module already warns about.
+    """
+    if not api_base:
+        return
+    parts = urlsplit(api_base)
+    if parts.scheme.lower() != "http":
+        return
+    _warn_once(
+        f"http:{parts.netloc}",
+        "The OpenShift AI endpoint uses plain HTTP; the ServiceAccount token will be "
+        "sent in cleartext on every request. Use https:// for anything beyond a "
+        "port-forward to localhost or a cluster-local endpoint with auth disabled.",
+        endpoint=label,
+        host=parts.netloc,
+    )
+
+
+def endpoints(stored: Mapping[str, Any] | None) -> tuple[str, str]:
+    """`(chat_base, embedding_base)`, both normalized, either possibly empty.
+
+    The embedding endpoint falls back to the chat one: a deployment that serves
+    both from a single endpoint is unusual for `vLLM` but perfectly valid for
+    another OpenAI-compatible gateway fronting the cluster, and it keeps the
+    second field optional.
+    """
+    values = _values(stored)
+    chat = normalized_api_base(values.get("api_base"))
+    embedding = normalized_api_base(values.get("embedding_api_base")) or chat
+    _warn_if_cleartext("chat", chat)
+    if embedding != chat:
+        _warn_if_cleartext("embedding", embedding)
+    return chat, embedding
+
+
+def ssl_verify_for(stored: Mapping[str, Any] | None) -> bool | str:
+    """The TLS setting this module's own httpx calls should use.
+
+    Model discovery and the health check talk to the endpoint directly rather
+    than through LiteLLM, so without this they could fail on a certificate the
+    gateway accepts, or the reverse.
+    """
+    return resolve_ssl_verify(_values(stored).get("ssl_verify"))
+
+
+def litellm_credentials(stored: Mapping[str, Any], *, kind: CallKind = "chat") -> dict[str, Any]:
+    """Stored form values as LiteLLM kwargs for `hosted_vllm`, for one call kind.
+
+    This is the only place the two-endpoint shape collapses into the single
+    `api_base` LiteLLM takes. `kind` is supplied by the gateway, the health check
+    and the pre-save validator, so all three exercise the same endpoint the real
+    traffic will.
+
+    Returns nothing at all when no endpoint is configured. That is deliberate
+    and not merely tidiness: LiteLLM falls back to `HOSTED_VLLM_API_BASE` from
+    the process environment when `api_base` is absent, so handing it a bare
+    `api_key` could send the cluster's ServiceAccount token to an unrelated host
+    that happens to be configured there.
+    """
+    values = _values(stored)
+    chat_base, embedding_base = endpoints(values)
+    api_base = embedding_base if kind == "embedding" else chat_base
+    if not api_base:
+        return {}
+
+    credentials: dict[str, Any] = {
+        name: value
+        for name, value in values.items()
+        if name not in _LOCAL_ONLY_FIELDS and name not in {"api_base", "ssl_verify"}
+    }
+    credentials["api_base"] = api_base
+    credentials["ssl_verify"] = resolve_ssl_verify(values.get("ssl_verify"))
+    credentials["additional_drop_params"] = list(_BODY_DROP_PARAMS)
+    return credentials
+
+
+def embedding_max_concurrency(stored: Mapping[str, Any] | None) -> int | None:
+    """How many embedding calls the gateway may have in flight to this endpoint.
+
+    Optional member of the enhancement contract, read through
+    `registry.embedding_concurrency_for`. Returns `None` for "no limit".
+
+    Blank means the default. `0` switches the limit off. A value that is not a
+    non-negative integer falls back to the default with a one-time warning
+    rather than disabling the limit: failing open here is exactly the overload
+    this setting exists to prevent.
+    """
+    raw = _values(stored).get("embedding_max_concurrency", "")
+    if not raw:
+        return DEFAULT_EMBEDDING_MAX_CONCURRENCY
+    try:
+        limit = int(raw)
+    except ValueError:
+        limit = -1
+    if limit < 0:
+        _warn_once(
+            f"concurrency:{raw}",
+            "Ignoring an invalid OpenShift AI embedding concurrency limit; using the default.",
+            value=raw,
+            default=DEFAULT_EMBEDDING_MAX_CONCURRENCY,
+        )
+        return DEFAULT_EMBEDDING_MAX_CONCURRENCY
+    return limit or None
+
+
+# --------------------------------------------------------------------------
+# Model discovery
+# --------------------------------------------------------------------------
+
+#: How long a fetched model list is reused. The set of served models changes
+#: when an administrator deploys an InferenceService, not per request.
+MODELS_TTL_SECONDS = 300
+
+#: Guard against a hung endpoint holding up a catalogue request. The catalogue
+#: has a configured fallback, so failing fast is better than waiting.
+MODELS_TIMEOUT_SECONDS = 10.0
+
+#: Same, for the pre-save health check, which a human is waiting on.
+HEALTH_TIMEOUT_SECONDS = 10.0
+
+#: Retries for the health check. Fewer than the catalogue path: one retry still
+#: rides out a pod mid-rollout, and a human is waiting on the answer.
+HEALTH_MAX_RETRIES = 1
+
+#: Retries for onboarding's draft discovery. Fewer than the catalogue path for
+#: the same reason as the health check: one retry still rides out a pod
+#: mid-rollout, and a human is watching the picker wait.
+DISCOVERY_MAX_RETRIES = 1
+
+#: Upper bound on the whole pre-save check, both endpoints, retries and backoff
+#: included. Without it two unreachable endpoints × attempts × timeout adds up
+#: to a minute during which the settings save just hangs.
+HEALTH_TOTAL_BUDGET_SECONDS = 25.0
+
+#: The listing path, relative to an `api_base` that already ends in `/v1`.
+MODELS_PATH = "/models"
+
+
+class ClusterModels(NamedTuple):
+    """What the cluster is known to serve, one list per endpoint.
+
+    A half is None when that endpoint could not be asked and nothing fresh is
+    remembered for it. The catalogue then keeps its configured fallback for
+    that half alone — a rolling embedding deployment must not empty the
+    embedding picker, let alone for the whole cache TTL.
+    """
+
+    chat: tuple[str, ...] | None
+    embedding: tuple[str, ...] | None
+
+
+class _Listing(NamedTuple):
+    """One endpoint's answer and when it was fetched."""
+
+    models: tuple[str, ...]
+    at: float
+
+
+#: Each endpoint is remembered on its own clock, so a failed listing leaves
+#: that half on its previous answer (until it ages out) instead of stamping
+#: an empty list with a fresh timestamp.
+_models_cache: dict[str, Any] = {"key": None, "chat": None, "embedding": None}
+
+
+def _fresh(listing: _Listing | None) -> tuple[str, ...] | None:
+    if listing is None or time.monotonic() - listing.at > MODELS_TTL_SECONDS:
+        return None
+    return listing.models
+
+
+def cached_models() -> ClusterModels | None:
+    """The last model lists fetched from the cluster, where still fresh.
+
+    None when neither endpoint has a fresh answer; otherwise a half that has
+    aged out is None on its own, and the caller falls back for just that one.
+    """
+    models = ClusterModels(
+        chat=_fresh(_models_cache["chat"]), embedding=_fresh(_models_cache["embedding"])
+    )
+    if models.chat is None and models.embedding is None:
+        return None
+    return models
+
+
+def forget_models() -> None:
+    """Drop the cached lists. For tests and for a credential change."""
+    _models_cache.update(key=None, chat=None, embedding=None)
+
+
+def _cache_key(stored: Mapping[str, Any] | None) -> str:
+    """Identifies the endpoints and the token a cached list was fetched with."""
+    values = _values(stored)
+    chat, embedding = endpoints(values)
+    return f"{chat}|{embedding}|{values.get('api_key', '')}"
+
+
+def models_url(api_base: str) -> str:
+    """The model-listing URL on `api_base`, however the operator typed it."""
+    return f"{normalized_api_base(api_base)}{MODELS_PATH}"
+
+
+def _auth_headers(api_key: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
+
+
+def _content_type(response: Any) -> str:
+    """The response's media type, lower-cased and without parameters, or ''."""
+    try:
+        headers = getattr(response, "headers", None) or {}
+        value = headers.get("content-type", "") or ""
+        return str(value).split(";", 1)[0].strip().lower()
+    except Exception:
+        return ""
+
+
+def _looks_like_html(response: Any) -> bool:
+    """Whether a response is a web page rather than an API answer.
+
+    An OAuth proxy, SSO gateway or captive portal in front of the route answers
+    with its login page. The content type usually says so; when it is missing,
+    the start of the body does.
+    """
+    if "html" in _content_type(response):
+        return True
+    try:
+        head = str(getattr(response, "text", "") or "").lstrip()[:64].lower()
+    except Exception:
+        return False
+    return head.startswith(("<!doctype html", "<html"))
+
+
+def _error_details(response: Any) -> str:
+    """The concise error an OpenAI-compatible endpoint returned.
+
+    A web page is described rather than quoted: half a kilobyte of login-page
+    markup helps nobody in a Settings error or a log line.
+    """
+    if _looks_like_html(response):
+        return f"The response was an HTML page ({_content_type(response) or 'text/html'})."
+    try:
+        body = response.json()
+    except (ValueError, TypeError):
+        return str(getattr(response, "text", ""))[:500]
+    if isinstance(body, Mapping):
+        error = body.get("error")
+        if isinstance(error, Mapping):
+            return str(error.get("message") or error.get("code") or "")[:500]
+        return (
+            str(body.get("message") or body.get("detail") or "")[:500]
+            or str(getattr(response, "text", ""))[:500]
+        )
+    return str(getattr(response, "text", ""))[:500]
+
+
+async def _http_request_with_retry(
+    method: str,
+    url: str,
+    *,
+    client: Any,
+    max_retries: int = 2,
+    backoff_factor: float = 0.5,
+    **kwargs: Any,
+) -> Any:
+    """Retry endpoint reads without depending on API validation helpers.
+
+    A `vLLM` pod that is still loading weights answers 503, and a `ModelCar`
+    cold start takes minutes — so a single attempt would report a healthy
+    deployment as broken during a rollout.
+    """
+    import httpx
+
+    for attempt in range(max_retries + 1):
+        try:
+            response = await client.request(method, url, **kwargs)
+            if response.status_code not in (429, 500, 502, 503, 504) or attempt == max_retries:
+                return response
+        except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError) as error:
+            if attempt == max_retries:
+                raise error
+        await asyncio.sleep(backoff_factor * (2**attempt))
+    raise RuntimeError(f"OpenShift AI request to {url} failed after retries")
+
+
+def model_ids(body: Any) -> tuple[str, ...]:
+    """Model ids out of one OpenAI `GET /v1/models` body.
+
+    Order is preserved and duplicates dropped. Anything that is not a list of
+    objects with an `id` yields nothing, so a proxy answering with an error page
+    leaves that half on its configured fallback rather than putting garbage in
+    a picker.
+    """
+    if not isinstance(body, Mapping):
+        return ()
+    data = body.get("data")
+    if not isinstance(data, list):
+        return ()
+    ids: list[str] = []
+    for entry in data:
+        if not isinstance(entry, Mapping):
+            continue
+        model_id = str(entry.get("id") or "").strip()
+        if model_id and model_id not in ids:
+            ids.append(model_id)
+    return tuple(ids)
+
+
+def is_model_listing(body: Any) -> bool:
+    """Whether `body` has the shape of an OpenAI `GET /v1/models` answer.
+
+    Only the shape is checked — an object whose `data` is a list. An empty list
+    still counts: a `vLLM` pod that is still loading its weights is a real
+    endpoint, and the health check deliberately does not depend on a model
+    having been chosen. `model_ids` cannot answer this, because it returns
+    nothing both for a wrong shape and for an empty listing.
+    """
+    return isinstance(body, Mapping) and isinstance(body.get("data"), list)
+
+
+async def _list_models(
+    client: Any, api_base: str, api_key: str, *, max_retries: int = 2
+) -> tuple[str, ...] | None:
+    """The models one endpoint serves, or None if it could not be asked."""
+    url = models_url(api_base)
+    logger.debug("Listing models on the OpenShift AI endpoint", url=url)
+    try:
+        response = await _http_request_with_retry(
+            "GET",
+            url,
+            client=client,
+            max_retries=max_retries,
+            headers=_auth_headers(api_key),
+            timeout=MODELS_TIMEOUT_SECONDS,
+        )
+    except Exception as error:
+        logger.warning(
+            "Could not reach the OpenShift AI endpoint to list models",
+            url=url,
+            error=str(error),
+        )
+        return None
+    if response.status_code != 200:
+        logger.warning(
+            "The OpenShift AI endpoint rejected the model listing",
+            url=url,
+            status_code=response.status_code,
+            details=_error_details(response),
+        )
+        return None
+    try:
+        models = model_ids(response.json())
+    except (ValueError, TypeError) as error:
+        logger.warning(
+            "The OpenShift AI endpoint returned a model listing that could not be read",
+            url=url,
+            error=str(error),
+        )
+        return None
+    logger.debug("Listed models on the OpenShift AI endpoint", url=url, models=len(models))
+    return models
+
+
+#: The two pickers, each filled from its own endpoint.
+_HALVES: tuple[CallKind, ...] = ("chat", "embedding")
+
+
+async def _list_halves(
+    values: Mapping[str, str],
+    *,
+    halves: Collection[CallKind] = _HALVES,
+    max_retries: int = 2,
+) -> dict[str, tuple[str, ...] | None]:
+    """What each endpoint in `halves` serves, asked at once.
+
+    The one place the endpoints are asked; `fetch_models()` adds the
+    catalogue's cache on top and `list_cluster_models()` the draft form's
+    fallbacks. When one endpoint serves both, it is asked once and its answer
+    fills both halves, whichever were asked for. A half is None when its
+    endpoint could not be asked. Errors building the client — a CA path that
+    does not exist — propagate, so each caller keeps its own fallback.
+    """
+    import httpx
+
+    chat_base, embedding_base = endpoints(values)
+    api_key = values.get("api_key", "")
+    async with httpx.AsyncClient(
+        verify=ssl_verify_for(values), timeout=MODELS_TIMEOUT_SECONDS
+    ) as client:
+        if chat_base == embedding_base:
+            shared = await _list_models(client, chat_base, api_key, max_retries=max_retries)
+            return {"chat": shared, "embedding": shared}
+        bases = {"chat": chat_base, "embedding": embedding_base}
+        wanted = [half for half in _HALVES if half in halves]
+        listed = await asyncio.gather(
+            *(
+                _list_models(client, bases[half], api_key, max_retries=max_retries)
+                for half in wanted
+            )
+        )
+    return dict(zip(wanted, listed, strict=True))
+
+
+async def fetch_models(credentials: Mapping[str, Any]) -> ClusterModels | None:
+    """Ask each configured endpoint which models it actually serves.
+
+    An `InferenceService` serves whatever its operator deployed, so this is the
+    only truthful source for the pickers — LiteLLM's bundled table has no
+    `hosted_vllm` models at all, and the `models:` rows in
+    `model_providers.yaml` are the fallback for when the cluster cannot be
+    reached.
+
+    Chat and embedding are told apart by *which endpoint answered*, which needs
+    no capability sniffing and cannot be wrong. When one endpoint serves both
+    (no separate embedding URL), its ids go into both lists: `GET /v1/models`
+    does not say what a model is for, and emptying a picker on a guess is worse
+    than offering an id that fails loudly if it is picked for the wrong job.
+
+    Each endpoint is listed and remembered on its own: only a half whose cached
+    answer has aged out is asked again, and a half that fails to answer keeps
+    the answer it had, or is None so the caller falls back for that half only.
+    Returns None when nothing is known at all, so a catalogue request never
+    fails because the cluster is unreachable; the caller keeps whatever it had.
+    """
+    values = _values(credentials)
+    chat_base, embedding_base = endpoints(values)
+    api_key = values.get("api_key", "")
+    if not chat_base or not api_key:
+        logger.warning(
+            "Not listing models on OpenShift AI: credentials are incomplete. A chat endpoint "
+            "and a ServiceAccount token are needed; the configured model list is used "
+            "until then.",
+            has_chat_endpoint=bool(chat_base),
+            has_token=bool(api_key),
+        )
+        return None
+
+    key = _cache_key(values)
+    if _models_cache["key"] != key:
+        # Remembered for other endpoints or another token: none of it applies.
+        forget_models()
+    known = cached_models() or ClusterModels(chat=None, embedding=None)
+    if known.chat is not None and known.embedding is not None:
+        return known
+
+    logger.info(
+        "Listing models on OpenShift AI",
+        chat_endpoint=chat_base,
+        embedding_endpoint=embedding_base,
+        shared_endpoint=chat_base == embedding_base,
+    )
+    needed = [half for half in _HALVES if getattr(known, half) is None]
+    try:
+        listed = await _list_halves(values, halves=needed)
+    except Exception as error:
+        logger.warning(
+            "Could not list models on OpenShift AI; keeping the configured list",
+            error=str(error),
+        )
+        return cached_models()
+
+    if not any(listed.values()) and not any(known):
+        # Nothing usable from any endpoint, and nothing remembered. An empty
+        # listing is far more likely one we could not interpret than an
+        # endpoint serving nothing; emptying both pickers on that guess would
+        # be worse than showing the fallback, so nothing is cached.
+        if any(models is not None for models in listed.values()):
+            logger.warning("OpenShift AI listed no usable models; keeping the configured list")
+        else:
+            logger.warning("Could not list models on OpenShift AI; keeping the configured list")
+        return None
+
+    now = time.monotonic()
+    for half, models in listed.items():
+        # A half that failed or listed nothing keeps its previous answer and its
+        # older timestamp, so it is asked again next time rather than parked for
+        # a whole TTL — and an empty answer never replaces the configured
+        # fallback for that half.
+        if models:
+            _models_cache[half] = _Listing(models=models, at=now)
+    _models_cache["key"] = key
+
+    result = cached_models() or ClusterModels(chat=None, embedding=None)
+    logger.info(
+        "Listed models on OpenShift AI",
+        chat=len(result.chat) if result.chat is not None else "fallback",
+        embedding=len(result.embedding) if result.embedding is not None else "fallback",
+    )
+    return result
+
+
+async def list_cluster_models(
+    credentials: Mapping[str, Any], *, kind: CallKind | None = None
+) -> ClusterModels:
+    """Ask each endpoint what it serves, without touching the catalogue's cache.
+
+    For credentials that have not been saved yet — the onboarding form asking
+    what a cluster serves while the operator is still typing. `fetch_models()`
+    cannot be used for that: its cache is keyed on one set of credentials, and
+    `cached_models()` hands whatever it holds to the catalogue, so a draft
+    listing would replace the saved cluster's models in every picker.
+
+    `kind` asks only the endpoint behind that picker; None asks both. Each
+    onboarding step shows one picker, so an unreachable embedding endpoint must
+    not hold up the language step for its whole retry window. A half that was
+    not asked is None, like one that failed.
+
+    A half is None when its endpoint could not be asked or listed nothing
+    usable, so the caller falls back to the configured list for that half.
+
+    Someone is watching the picker wait, so it retries less than the catalogue
+    does (`DISCOVERY_MAX_RETRIES`): a mistyped host gives up after about 20s
+    rather than a minute.
+    """
+    values = _values(credentials)
+    chat_base, embedding_base = endpoints(values)
+    api_key = values.get("api_key", "")
+    if not chat_base or not api_key:
+        return ClusterModels(chat=None, embedding=None)
+
+    halves: tuple[CallKind, ...] = _HALVES if kind is None else (kind,)
+    logger.info(
+        "Listing draft models on OpenShift AI",
+        kind=kind or "both",
+        shared_endpoint=chat_base == embedding_base,
+    )
+    try:
+        listed = await _list_halves(values, halves=halves, max_retries=DISCOVERY_MAX_RETRIES)
+    except Exception as error:
+        logger.warning(
+            "Could not list models on OpenShift AI", kind=kind or "both", error=str(error)
+        )
+        return ClusterModels(chat=None, embedding=None)
+
+    # `_list_halves()` returns only the halves it asked (both, for a shared
+    # endpoint), so read with `.get()`. An empty listing is far more likely one
+    # we could not interpret than an endpoint serving nothing, so it falls back
+    # like a failure does.
+    result = ClusterModels(
+        chat=listed.get("chat") or None, embedding=listed.get("embedding") or None
+    )
+
+    def _summary(half: CallKind) -> int | str:
+        if half not in listed:
+            return "not asked"
+        models = getattr(result, half)
+        return len(models) if models is not None else "fallback"
+
+    logger.info(
+        "Listed draft models on OpenShift AI",
+        kind=kind or "both",
+        chat=_summary("chat"),
+        embedding=_summary("embedding"),
+    )
+    return result
+
+
+# --------------------------------------------------------------------------
+# Health
+# --------------------------------------------------------------------------
+
+
+async def lightweight_health_check(credentials: Mapping[str, Any]) -> None:
+    """Validate connectivity and the token without selecting a model.
+
+    `GET /v1/models` needs no model, no prompt and no tokens billed, which is
+    what makes it a check the provider can pass before anything has been chosen
+    in Settings. Both endpoints are checked when they differ — an operator who
+    got the embedding URL wrong should find out here, not on the first ingest.
+
+    For that to happen the caller has to pass the *stored* form, which still
+    carries `embedding_api_base`; `validate_provider_setup(stored_credentials=...)`
+    is how it gets here. Given only the LiteLLM form, the one endpoint it was
+    narrowed to is checked.
+
+    A 200 only passes when its body is an OpenAI-shaped model listing: an
+    OAuth proxy or SSO gateway in front of the route can answer 200 with its
+    login page, which would otherwise read as healthy and fail on first use.
+    """
+    import httpx
+
+    values = _values(credentials)
+    chat_base, embedding_base = endpoints(values)
+    if not chat_base:
+        raise Exception("No chat endpoint is configured for Red Hat OpenShift AI")
+    api_key = values.get("api_key", "")
+    if not api_key:
+        raise Exception(
+            "No ServiceAccount token is configured for Red Hat OpenShift AI. "
+            "Create one with `oc create token <serviceaccount> -n <namespace>`."
+        )
+
+    targets = [("chat", chat_base)]
+    if embedding_base and embedding_base != chat_base:
+        targets.append(("embeddings", embedding_base))
+
+    logger.info("Checking the OpenShift AI endpoints", endpoints=len(targets))
+    try:
+        # `asyncio.timeout` raises the builtin `TimeoutError`, not httpx's, so
+        # both are caught below.
+        async with (
+            httpx.AsyncClient(verify=ssl_verify_for(values)) as client,
+            asyncio.timeout(HEALTH_TOTAL_BUDGET_SECONDS),
+        ):
+            for label, api_base in targets:
+                await _check_endpoint(client, label, api_base, api_key)
+    except (httpx.TimeoutException, TimeoutError):
+        logger.error("OpenShift AI health check timed out")
+        raise Exception("The OpenShift AI endpoint did not respond in time") from None
+    logger.info("OpenShift AI health check passed", endpoints=len(targets))
+
+
+async def _check_endpoint(client: Any, label: str, api_base: str, api_key: str) -> None:
+    """One endpoint's `GET /v1/models`, with a message that names the fix."""
+    import httpx
+
+    url = models_url(api_base)
+    logger.debug("Checking the OpenShift AI endpoint", endpoint=label, url=url)
+    try:
+        response = await _http_request_with_retry(
+            "GET",
+            url,
+            client=client,
+            max_retries=HEALTH_MAX_RETRIES,
+            headers=_auth_headers(api_key),
+            timeout=HEALTH_TIMEOUT_SECONDS,
+        )
+    except (httpx.TimeoutException, TimeoutError):
+        raise
+    except Exception as error:
+        logger.error(
+            "Could not reach the OpenShift AI endpoint",
+            endpoint=label,
+            url=url,
+            error=str(error),
+        )
+        raise Exception(
+            f"Could not reach the OpenShift AI {label} endpoint at {api_base}: {error}"
+        ) from error
+
+    if 300 <= response.status_code < 400:
+        # httpx does not follow redirects, and should not here: the target is
+        # a login page, and the token must not be carried to it.
+        location = _redirect_location(response)
+        logger.error(
+            "The OpenShift AI endpoint redirected instead of answering",
+            endpoint=label,
+            url=url,
+            status_code=response.status_code,
+            location=location,
+        )
+        raise Exception(
+            f"The OpenShift AI {label} endpoint at {api_base} redirected to "
+            f"{location or 'another page'} instead of answering /v1/models. This is usually "
+            "an OAuth proxy or SSO login page in front of the route; point the URL at the "
+            "model's inference route or predictor Service, which accepts a ServiceAccount token."
+        )
+
+    if response.status_code == 200:
+        _require_model_listing(response, label, api_base, url)
+        return
+
+    details = _error_details(response)
+    logger.error(
+        "The OpenShift AI endpoint rejected the request",
+        endpoint=label,
+        url=url,
+        status_code=response.status_code,
+        details=details,
+    )
+    if response.status_code in (401, 403):
+        raise Exception(
+            f"The OpenShift AI {label} endpoint rejected the token. Check that its subject "
+            "has `get` on inferenceservices in the model namespace, and that the token has "
+            f"not expired. {details}".strip()
+        )
+    if response.status_code == 404:
+        raise Exception(
+            f"The OpenShift AI {label} endpoint has no /v1/models at {api_base}. Check the "
+            f"URL points at the predictor Service and ends in /v1. {details}".strip()
+        )
+    raise Exception(
+        f"The OpenShift AI {label} endpoint returned {response.status_code}: {details}".strip()
+    )
+
+
+def _redirect_location(response: Any) -> str:
+    """Where a redirect points, without its query string.
+
+    An OAuth redirect's query carries `state`, `client_id` and a nested
+    `redirect_uri`, which make the message unreadable and say nothing the
+    host and path do not.
+    """
+    try:
+        headers = getattr(response, "headers", None) or {}
+        location = str(headers.get("location", "") or "").strip()
+        if not location:
+            return ""
+        parts = urlsplit(location)
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+    except Exception:
+        return ""
+
+
+def _require_model_listing(response: Any, label: str, api_base: str, url: str) -> None:
+    """Fail a 200 whose body is not a model listing, naming the likely cause."""
+    try:
+        body = response.json()
+    except (ValueError, TypeError):
+        body = None
+
+    if is_model_listing(body):
+        models = model_ids(body)
+        if models:
+            logger.debug(
+                "OpenShift AI endpoint answered with a model list",
+                endpoint=label,
+                url=url,
+                models=len(models),
+            )
+        else:
+            # Still a real endpoint — vLLM may be loading its weights — so
+            # this passes; the warning is for whoever wonders why the picker
+            # shows the configured fallback.
+            logger.warning(
+                "The OpenShift AI endpoint answered with an empty model list",
+                endpoint=label,
+                url=url,
+            )
+        return
+
+    content_type = _content_type(response)
+    if _looks_like_html(response):
+        logger.error(
+            "The OpenShift AI endpoint answered with a web page instead of a model list",
+            endpoint=label,
+            url=url,
+            content_type=content_type,
+        )
+        raise Exception(
+            f"The OpenShift AI {label} endpoint at {api_base} returned a web page "
+            f"({content_type or 'text/html'}) instead of a model list. This is usually an "
+            "OAuth proxy or SSO login page in front of the route; point the URL at the "
+            "model's inference route or predictor Service, which accepts a ServiceAccount token."
+        )
+    logger.error(
+        "The OpenShift AI endpoint answered with something other than a model list",
+        endpoint=label,
+        url=url,
+        content_type=content_type,
+        body_type=type(body).__name__,
+    )
+    raise Exception(
+        f"The OpenShift AI {label} endpoint at {api_base} answered /v1/models with something "
+        "other than an OpenAI-compatible model list. Check the URL points at the model's "
+        "inference route and ends in /v1."
+    )

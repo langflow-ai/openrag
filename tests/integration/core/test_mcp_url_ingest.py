@@ -1,5 +1,4 @@
 import asyncio
-import json
 import os
 from typing import Any
 
@@ -7,6 +6,7 @@ import pytest
 
 OPENRAG_MCP_SERVER_NAME = "lf-starter_project"
 LANGFLOW_GLOBAL_VAR_PREFIX = "x-langflow-global-var-"
+MCP_CREDENTIAL_MASK = "********"
 
 
 async def _wait_for_langflow_client(timeout_s: float = 60.0):
@@ -64,14 +64,14 @@ def _extract_server_headers(server_config: dict[str, Any]) -> dict[str, str]:
     return headers
 
 
-def _assert_no_persisted_langflow_globals(headers: dict[str, str]) -> None:
-    persisted_global_headers = [
-        key for key in headers if key.lower().startswith(LANGFLOW_GLOBAL_VAR_PREFIX)
-    ]
-    assert not persisted_global_headers, (
-        "MCP server config must not persist Langflow global-var headers: "
-        f"{persisted_global_headers}"
-    )
+def _assert_has_redacted_required_global_headers(headers: dict[str, str]) -> None:
+    from services.langflow_mcp_service import REQUIRED_MCP_HEADERS
+
+    for key in REQUIRED_MCP_HEADERS:
+        assert headers.get(key) == MCP_CREDENTIAL_MASK, (
+            f"Expected required MCP header {key} to be redacted in the Langflow response, "
+            f"got {headers.get(key)!r}"
+        )
 
 
 @pytest.mark.asyncio
@@ -104,11 +104,11 @@ async def test_openrag_mcp_server_url_is_patched_without_persisting_request_glob
             f"MCP server URLs were not rewritten to LANGFLOW_URL={expected_base!r}: {urls}"
         )
 
-    _assert_no_persisted_langflow_globals(_extract_server_headers(server_config))
+    _assert_has_redacted_required_global_headers(_extract_server_headers(server_config))
 
 
 @pytest.mark.asyncio
-async def test_loaded_agent_flow_routes_request_globals_into_mcp_headers():
+async def test_loaded_chat_flow_includes_url_ingestion_integration():
     from config.settings import LANGFLOW_CHAT_FLOW_ID, clients
 
     langflow_client = await _wait_for_langflow_client()
@@ -123,23 +123,5 @@ async def test_loaded_agent_flow_routes_request_globals_into_mcp_headers():
         f"/api/v1/flows/{LANGFLOW_CHAT_FLOW_ID}",
     )
     response.raise_for_status()
-    flow_text = json.dumps(response.json())
 
-    assert "opensearch_url_ingestion_flow" in flow_text
-    assert OPENRAG_MCP_SERVER_NAME in flow_text
-    assert '"name": "headers"' in flow_text
-
-    for global_var_name in [
-        "JWT",
-        "OPENRAG_LLM_TOKEN",
-        "OPENSEARCH_URL",
-        "SELECTED_EMBEDDING_MODEL",
-        "WATSONX_APIKEY",
-        "WATSONX_PROJECT_ID",
-        "OPENSEARCH_INDEX_NAME",
-        "OPENRAG_INGEST_URL",
-        "OPENRAG_INGEST_TOKEN",
-        "OPENRAG_INGEST_RUN_ID",
-        "OPENRAG_INGEST_BATCH_SIZE",
-    ]:
-        assert f"X-Langflow-Global-Var-{global_var_name}" in flow_text
+    assert "opensearch_url_ingestion_flow" in response.text

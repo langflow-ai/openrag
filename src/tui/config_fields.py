@@ -383,14 +383,29 @@ CONFIG_SECTIONS: list[ConfigSection] = [
                 secret=True,
             ),
             ConfigField(
-                "langfuse_host",
-                "LANGFUSE_HOST",
+                "langfuse_base_url",
+                "LANGFUSE_BASE_URL",
                 "Host",
                 placeholder="https://cloud.langfuse.com",
                 helper_text="Leave empty for Langfuse Cloud, or set for self-hosted",
             ),
+            ConfigField(
+                "openrag_tracing_enabled",
+                "OPENRAG_TRACING_ENABLED",
+                "Trace Backend",
+                placeholder="false",
+                helper_text="If true, the OpenRAG backend also traces its model calls to Langfuse",
+            ),
+            ConfigField(
+                "openrag_tracing_capture_content",
+                "OPENRAG_TRACING_CAPTURE_CONTENT",
+                "Capture Content",
+                placeholder="false",
+                advanced=True,
+                helper_text="If true, backend traces include prompts, completions and document text",
+            ),
         ],
-        gate_prompt="Configure Langfuse tracing?",
+        gate_prompt="Configure Langfuse tracing (Langflow and backend)?",
     ),
     # ── Storage ─────────────────────────────────────────────────
     ConfigSection(

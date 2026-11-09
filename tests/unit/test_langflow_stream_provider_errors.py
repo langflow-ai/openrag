@@ -1,9 +1,4 @@
-"""Provider errors must reach the client as a final stream error chunk.
-
-These tests mock the upstream stream to raise exceptions shaped like real
-provider failures (watsonx rate limit, invalid key, permission). That proves
-the yield path without hardcoding a raise in production code.
-"""
+"""Langflow provider-error formatting and stream error regressions."""
 
 from __future__ import annotations
 
@@ -99,8 +94,15 @@ def store_in_memory(monkeypatch):
         agent_module.active_conversations[user_id][response_id] = conversation_state
 
     class _Ownership:
-        async def claim_session(self, user_id, session_id):
+        async def claim_session(self, user_id, session_id, conversation_id=None):
             claimed.append((user_id, session_id))
+            return True
+
+        async def get_session_owner(self, session_id):
+            return next((user_id for user_id, sid in claimed if sid == session_id), None)
+
+        async def get_conversation_sessions(self, user_id, session_id):
+            return []
 
     monkeypatch.setattr(agent_module, "store_conversation_thread", _store)
     monkeypatch.setattr(
@@ -161,6 +163,99 @@ async def test_langflow_stream_yields_provider_error_chunk(
     assert not stored_id.startswith("error_")
     assert error_chunk.get("id") == stored_id
     assert stored_id in agent_module.active_conversations.get(user_id, {})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "response_text",
+    [
+        "Unauthorized absence may be treated as disciplinary.",
+        "Unauthorized access to payroll records is prohibited.",
+    ],
+)
+async def test_langflow_stream_keeps_policy_text_with_unauthorized(
+    monkeypatch, store_in_memory, response_text
+):
+    """Ordinary policy language must not turn a successful turn into an error."""
+
+    async def stream_policy(*_args, **_kwargs) -> AsyncIterator[bytes]:
+        yield (
+            json.dumps(
+                {
+                    "id": "resp-policy",
+                    "delta": {"content": response_text},
+                }
+            )
+            + "\n"
+        ).encode("utf-8")
+
+    monkeypatch.setattr(agent_module, "async_stream", stream_policy)
+
+    user_id = "test-policy-text-user"
+    agent_module.active_conversations.pop(user_id, None)
+    chunks = await _collect_error_chunks(
+        agent_module.async_langflow_chat_stream(
+            langflow_client=object(),
+            flow_id="flow-id",
+            prompt="What does the leave policy say?",
+            user_id=user_id,
+        )
+    )
+
+    assert chunks == [
+        {
+            "id": "resp-policy",
+            "delta": {"content": response_text},
+        }
+    ]
+    assert not any(chunk.get("status") == "failed" for chunk in chunks)
+    assert (
+        agent_module.active_conversations[user_id]["resp-policy"]["messages"][-1]["error"]
+        is not True
+    )
+
+
+@pytest.mark.asyncio
+async def test_langflow_stream_marks_explanatory_unauthorized_as_error(
+    monkeypatch, store_in_memory
+):
+    response_text = "Unauthorized: Access token is expired"
+
+    async def stream_error_text(*_args, **_kwargs) -> AsyncIterator[bytes]:
+        yield (
+            json.dumps(
+                {
+                    "id": "resp-unauthorized",
+                    "delta": {"content": response_text},
+                }
+            )
+            + "\n"
+        ).encode("utf-8")
+
+    monkeypatch.setattr(agent_module, "async_stream", stream_error_text)
+
+    user_id = "test-unauthorized-error-user"
+    agent_module.active_conversations.pop(user_id, None)
+    chunks = await _collect_error_chunks(
+        agent_module.async_langflow_chat_stream(
+            langflow_client=object(),
+            flow_id="flow-id",
+            prompt="Why did this request fail?",
+            user_id=user_id,
+        )
+    )
+
+    assert chunks[-1] == {
+        "status": "failed",
+        "finish_reason": "error",
+        "error": {"message": response_text},
+        "id": "resp-unauthorized",
+        "response_id": "resp-unauthorized",
+    }
+    assert (
+        agent_module.active_conversations[user_id]["resp-unauthorized"]["messages"][-1]["error"]
+        is True
+    )
 
 
 @pytest.mark.asyncio
@@ -377,7 +472,7 @@ async def test_langflow_stream_treats_credential_dump_content_as_error(
     error_chunk = next(c for c in chunks if c.get("status") == "failed")
     assert "{" not in error_chunk["error"]["message"]
     assert "Provided API key is Invalid" in error_chunk["error"]["message"]
-    assert store_in_memory["stored"] == [(user_id, "resp_dump")]
+    assert store_in_memory["stored"] == [(user_id, "resp_dump")] * 2
     assert store_in_memory["claimed"] == [(user_id, "resp_dump")]
     stored = agent_module.active_conversations[user_id]["resp_dump"]
     assert stored["messages"][-1]["error"] is True
@@ -417,7 +512,7 @@ async def test_langflow_stream_keeps_partial_text_with_provider_error(monkeypatc
     assert len(chunks) == 2
     assert chunks[0]["delta"]["content"] == "Here is a partial answer"
     assert chunks[1]["error"]["message"] == (f"Here is a partial answer\n\n{provider_message}")
-    assert store_in_memory["stored"] == [(user_id, "resp_partial")]
+    assert store_in_memory["stored"] == [(user_id, "resp_partial")] * 2
     assert store_in_memory["claimed"] == [(user_id, "resp_partial")]
 
 

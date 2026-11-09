@@ -5,6 +5,8 @@ on:
     paths:
       - 'src/**/*.py'
       - 'tests/**/*.py'
+      - 'scripts/ci/**/*.py'
+      - 'scripts/eval/**/*.py'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/lint-backend.yml'
@@ -21,14 +23,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # Need the full base ref locally so we can compute the diff
           # against the PR's merge base.
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
 
@@ -87,3 +89,18 @@ jobs:
           if [ "${#test_files[@]}" -gt 0 ]; then
             uv run mypy "${test_files[@]}"
           fi
+          scripts_files=()
+          for f in ${{ steps.changed.outputs.files }}; do
+            case "$f" in
+              scripts/*) scripts_files+=("$f") ;;
+            esac
+          done
+          if [ "${#scripts_files[@]}" -gt 0 ]; then
+            uv run mypy "${scripts_files[@]}"
+          fi
+
+      - name: Run scripts/ci tests
+        if: |
+          contains(steps.changed.outputs.files, 'scripts/ci/')
+        run: |
+          uv run python3 scripts/ci/test_update_upstream_version.py -v

@@ -1,0 +1,187 @@
+"""Generic LiteLLM providers must be accepted by the provider-health endpoint."""
+
+import json
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+
+import config.model_providers as model_providers
+from api import models as models_api
+from api.provider_health import check_provider_health
+
+
+@pytest.mark.asyncio
+async def test_provider_health_accepts_configured_azure_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    azure = SimpleNamespace(
+        api_key=None,
+        endpoint=None,
+        project_id=None,
+    )
+    stored = {
+        "api_key": "azure-secret",
+        "api_base": "https://example.openai.azure.com",
+        "api_version": "2024-10-21",
+    }
+    providers = SimpleNamespace(
+        get_provider_config=lambda provider: azure,
+        credential_values=lambda provider, kind="chat": dict(stored),
+        stored_credentials=lambda provider: dict(stored),
+    )
+    config = SimpleNamespace(
+        providers=providers,
+        agent=SimpleNamespace(llm_provider="openai", llm_model="gpt-4o-mini"),
+        knowledge=SimpleNamespace(
+            embedding_provider="azure",
+            embedding_model="embedding-deployment",
+        ),
+    )
+    validate = AsyncMock()
+    monkeypatch.setattr("api.provider_health.get_openrag_config", lambda: config)
+    monkeypatch.setattr("api.provider_health.validate_provider_setup", validate)
+
+    response = await check_provider_health(
+        provider="azure",
+        embedding_model_override="embedding-deployment",
+        test_completion=True,
+        user=None,
+    )
+
+    assert response.status_code == 200
+    assert json.loads(response.body)["provider"] == "azure"
+    validate.assert_awaited_once_with(
+        provider="azure",
+        api_key=None,
+        embedding_model="embedding-deployment",
+        llm_model=None,
+        endpoint=None,
+        project_id=None,
+        test_completion=True,
+        credentials=stored,
+        stored_credentials=stored,
+    )
+
+
+@pytest.mark.asyncio
+async def test_provider_health_forwards_the_stored_form_for_multi_endpoint_providers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OpenShift AI keeps two endpoints; `credential_values` narrows to one of
+    them for the LiteLLM probe, so the enhancement's health check is handed the
+    stored form separately, or the embedding endpoint is never checked."""
+    stored = {
+        "api_base": "https://chat.svc:8443/v1",
+        "embedding_api_base": "https://embed.svc:8443/v1",
+        "api_key": "sha256~token",
+        "ssl_verify": "false",
+    }
+    translated = {"api_key": "sha256~token", "api_base": stored["api_base"], "ssl_verify": False}
+    providers = SimpleNamespace(
+        get_provider_config=lambda provider: SimpleNamespace(
+            api_key=None, endpoint=None, project_id=None
+        ),
+        credential_values=lambda provider, kind="chat": dict(translated),
+        stored_credentials=lambda provider: dict(stored),
+    )
+    config = SimpleNamespace(
+        providers=providers,
+        agent=SimpleNamespace(llm_provider="openai", llm_model="gpt-4o-mini"),
+        knowledge=SimpleNamespace(embedding_provider="openai", embedding_model="ada"),
+    )
+    validate = AsyncMock()
+    monkeypatch.setattr("api.provider_health.get_openrag_config", lambda: config)
+    monkeypatch.setattr("api.provider_health.validate_provider_setup", validate)
+    monkeypatch.setattr("api.provider_health.is_known_provider", lambda provider: True)
+
+    response = await check_provider_health(provider="rhoai", user=None)
+
+    assert response.status_code == 200
+    # Not selected for either role, so there is no model to probe with: one
+    # lightweight check, handed both forms.
+    validate.assert_awaited_once()
+    kwargs = validate.await_args.kwargs
+    assert kwargs["llm_model"] is None
+    assert kwargs["embedding_model"] is None
+    assert kwargs["credentials"] == translated
+    assert kwargs["stored_credentials"] == stored
+
+
+@pytest.mark.asyncio
+async def test_provider_health_probes_each_role_of_a_dual_role_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider selected for both roles is probed once per role, each with
+    that role's credentials. The validator tests one model per call, so a single
+    call would probe the embedding model only and report the chat model as
+    validated without ever touching its endpoint."""
+    by_kind = {
+        "chat": {"api_key": "sha256~token", "api_base": "https://chat.svc:8443/v1"},
+        "embedding": {"api_key": "sha256~token", "api_base": "https://embed.svc:8443/v1"},
+    }
+    stored = {
+        "api_key": "sha256~token",
+        "api_base": by_kind["chat"]["api_base"],
+        "embedding_api_base": by_kind["embedding"]["api_base"],
+    }
+    providers = SimpleNamespace(
+        get_provider_config=lambda provider: SimpleNamespace(
+            api_key=None, endpoint=None, project_id=None
+        ),
+        credential_values=lambda provider, kind="chat": dict(by_kind[kind]),
+        stored_credentials=lambda provider: dict(stored),
+    )
+    config = SimpleNamespace(
+        providers=providers,
+        agent=SimpleNamespace(llm_provider="rhoai", llm_model="granite-3.3-2b-instruct"),
+        knowledge=SimpleNamespace(
+            embedding_provider="rhoai", embedding_model="granite-embedding-english-r2"
+        ),
+    )
+    validate = AsyncMock()
+    monkeypatch.setattr("api.provider_health.get_openrag_config", lambda: config)
+    monkeypatch.setattr("api.provider_health.validate_provider_setup", validate)
+    monkeypatch.setattr("api.provider_health.is_known_provider", lambda provider: True)
+
+    response = await check_provider_health(provider="rhoai", user=None)
+
+    assert response.status_code == 200
+    body = json.loads(response.body)
+    assert body["details"] == {
+        "llm_model": "granite-3.3-2b-instruct",
+        "embedding_model": "granite-embedding-english-r2",
+        "endpoint": None,
+    }
+    assert validate.await_count == 2
+    chat, embedding = (call.kwargs for call in validate.await_args_list)
+    assert (chat["llm_model"], chat["embedding_model"]) == ("granite-3.3-2b-instruct", None)
+    assert chat["credentials"] == by_kind["chat"]
+    assert (embedding["llm_model"], embedding["embedding_model"]) == (
+        None,
+        "granite-embedding-english-r2",
+    )
+    assert embedding["credentials"] == by_kind["embedding"]
+    assert all(call.kwargs["stored_credentials"] == stored for call in validate.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_provider_page_catalog_contract_includes_azure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The two provider-page discovery requests agree that Azure is available."""
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "oss")
+    model_providers.reload()
+    try:
+        providers_response = await models_api.get_model_providers(user=SimpleNamespace())
+        catalog_response = await models_api.get_model_catalog(user=SimpleNamespace())
+    finally:
+        model_providers.reload()
+
+    providers = json.loads(providers_response.body)["providers"]
+    catalog = json.loads(catalog_response.body)["providers"]
+
+    assert providers_response.status_code == 200
+    assert catalog_response.status_code == 200
+    assert "azure" in {provider["name"] for provider in providers}
+    assert "azure" in {provider["key"] for provider in catalog}

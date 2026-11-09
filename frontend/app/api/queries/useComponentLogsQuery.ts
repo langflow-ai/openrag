@@ -1,4 +1,5 @@
 import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 import { getApiError } from "@/lib/status-utils";
 
 export interface LogEntry {
@@ -19,15 +20,15 @@ async function fetchComponentLogs(
   tail = 100,
   signal?: AbortSignal,
 ): Promise<ComponentLogsResponse> {
-  const response = await fetch(
-    `/api/status/${encodeURIComponent(component)}/logs?tail=${tail}`,
+  const response = await apiClient.get<ComponentLogsResponse>(
+    `/status/${encodeURIComponent(component)}/logs?tail=${tail}`,
     { signal },
   );
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
+  if (response.status < 200 || response.status >= 300) {
+    const body = response.data ?? {};
     throw new Error(getApiError(body, response.status));
   }
-  return response.json() as Promise<ComponentLogsResponse>;
+  return response.data;
 }
 
 export const useComponentLogsQuery = (

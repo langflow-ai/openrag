@@ -1,0 +1,51 @@
+diff --git a/node_modules/@docusaurus/core/lib/commands/utils/openBrowser/openBrowser.js b/node_modules/@docusaurus/core/lib/commands/utils/openBrowser/openBrowser.js
+index c605040..3cedaf1 100644
+--- a/node_modules/@docusaurus/core/lib/commands/utils/openBrowser/openBrowser.js
++++ b/node_modules/@docusaurus/core/lib/commands/utils/openBrowser/openBrowser.js
+@@ -7,7 +7,6 @@
+  */
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.default = openBrowser;
+-const tslib_1 = require("tslib");
+ // This code was initially in CRA/react-dev-utils (deprecated in 2025)
+ // We copied and refactored it
+ // See https://github.com/facebook/docusaurus/pull/10956
+@@ -15,7 +14,6 @@ const tslib_1 = require("tslib");
+ /* eslint-disable */
+ const child_process_1 = require("child_process");
+ const util_1 = require("util");
+-const open_1 = tslib_1.__importDefault(require("open"));
+ const logger_1 = require("@docusaurus/logger");
+ const execPromise = (0, util_1.promisify)(child_process_1.exec);
+ // Not sure if we need this, but let's keep a secret escape hatch
+@@ -96,14 +94,14 @@ async function tryOpenWithAppleScript({ url, browser, }) {
+     }
+     return false;
+ }
+-function toOpenApp(params) {
++function toOpenApp(params, apps) {
+     if (!params.browser) {
+         return undefined;
+     }
+     // Handles "cross-platform" shortcuts like "chrome", "firefox", "edge"
+-    if (open_1.default.apps[params.browser]) {
++    if (apps[params.browser]) {
+         return {
+-            name: open_1.default.apps[params.browser],
++            name: apps[params.browser],
+             arguments: params.browserArgs,
+         };
+     }
+@@ -118,8 +116,10 @@ async function startBrowserProcess(params) {
+         return true;
+     }
+     try {
+-        await (0, open_1.default)(params.url, {
+-            app: toOpenApp(params),
++        // open 11 is ESM and exposes apps as a named export.
++        const { default: open, apps } = await import("open");
++        await open(params.url, {
++            app: toOpenApp(params, apps),
+             wait: false,
+         });
+         return true;
