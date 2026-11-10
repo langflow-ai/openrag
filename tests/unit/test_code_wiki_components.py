@@ -595,6 +595,51 @@ class TestUnpackArchive:
             rl.unpack_archive(str(plain), str(tmp_path / "out"))
 
 
+class TestWalkFilesSymlinks:
+    """A cloned repo or local_path directory can contain real symlinks (unlike archives, whose
+    link entries are skipped at unpack time). walk_files must never read through them."""
+
+    def _repo_with_secret(self, tmp_path):
+        secret = tmp_path / "server_secret.env"
+        secret.write_text("OPENSEARCH_PASSWORD=hunter2\n")
+        repo = tmp_path / "repo"
+        (repo / "pkg").mkdir(parents=True)
+        (repo / "pkg/ok.py").write_text("x = 1\n")
+        return repo, secret
+
+    def test_symlinked_file_is_skipped(self, rl, tmp_path):
+        repo, secret = self._repo_with_secret(tmp_path)
+        (repo / "settings.py").symlink_to(secret)
+        files = rl.walk_files(repo)
+        assert [f["repo_path"] for f in files] == ["pkg/ok.py"]
+        assert not any("hunter2" in f["text"] for f in files)
+
+    def test_symlinked_directory_is_skipped(self, rl, tmp_path):
+        repo, secret = self._repo_with_secret(tmp_path)
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "leak.py").write_text(secret.read_text())
+        (repo / "linked").symlink_to(outside, target_is_directory=True)
+        assert _repo_paths(rl, repo) == ["pkg/ok.py"]
+
+    def test_link_to_a_file_inside_the_repo_is_skipped_too(self, rl, tmp_path):
+        repo, _secret = self._repo_with_secret(tmp_path)
+        (repo / "alias.py").symlink_to(repo / "pkg/ok.py")
+        assert _repo_paths(rl, repo) == ["pkg/ok.py"]
+
+    def test_non_regular_files_are_not_read(self, rl, tmp_path):
+        repo, _secret = self._repo_with_secret(tmp_path)
+        assert rl._read_text(tmp_path) is None  # a directory
+        assert rl._read_text(repo / "pkg/ok.py") == "x = 1\n"
+
+    def test_local_path_directory_with_a_symlink(self, rl, tmp_path):
+        repo, secret = self._repo_with_secret(tmp_path)
+        (repo / "config.py").symlink_to(secret)
+        data = _make(rl.RepoLoader, local_path=str(repo)).load_repo().data["repo"]
+        assert [f["repo_path"] for f in data["files"]] == ["pkg/ok.py"]
+        assert repo.exists(), "a user-supplied local_path is never deleted"
+
+
 # --------------------------------------------------------------------------------------
 # RepoLoader: where the repo comes from
 # --------------------------------------------------------------------------------------
@@ -651,7 +696,21 @@ def git(monkeypatch, rl):
     stub = _GitStub()
     monkeypatch.setattr(subprocess, "run", stub)
     monkeypatch.setattr(rl.shutil, "which", lambda _name: "/usr/bin/git")
+    # Repo hosts in these tests resolve to a public address; no real DNS lookups.
+    monkeypatch.setattr(
+        rl.socket,
+        "getaddrinfo",
+        lambda host, port, *_a, **_k: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port or 443))
+        ],
+    )
     return stub
+
+
+def _git_config(env):
+    """GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n pairs as a dict."""
+    n = int(env.get("GIT_CONFIG_COUNT", "0"))
+    return {env[f"GIT_CONFIG_KEY_{i}"]: env[f"GIT_CONFIG_VALUE_{i}"] for i in range(n)}
 
 
 class TestGitClone:
@@ -689,8 +748,12 @@ class TestGitClone:
 
     def test_git_transports_are_restricted_and_prompts_disabled(self, rl, git):
         _make(rl.RepoLoader, repo_url="https://github.com/o/r")._obtain_repo()
-        assert git.env["GIT_ALLOW_PROTOCOL"] == "https:http:ssh"
+        assert git.env["GIT_ALLOW_PROTOCOL"] == "https:ssh"
         assert git.env["GIT_TERMINAL_PROMPT"] == "0"
+
+    def test_symlinks_are_checked_out_as_plain_files(self, rl, git):
+        _make(rl.RepoLoader, repo_url="https://github.com/o/r")._obtain_repo()
+        assert _git_config(git.env)["core.symlinks"] == "false"
 
     def test_token_travels_in_the_environment_only(self, rl, git, monkeypatch):
         monkeypatch.setenv("GITHUB_TOKEN", "ghp_SECRET123")
@@ -699,8 +762,7 @@ class TestGitClone:
         assert not any("SECRET123" in part for part in git.cmd)
         assert "SECRET123" not in url
         assert "SECRET123" not in str(getattr(loader, "status", ""))
-        assert git.env["GIT_CONFIG_KEY_0"] == "http.extraHeader"
-        header = git.env["GIT_CONFIG_VALUE_0"].split("Basic ")[1]
+        header = _git_config(git.env)["http.extraHeader"].split("Basic ")[1]
         import base64
 
         assert base64.b64decode(header).decode() == "x-access-token:ghp_SECRET123"
@@ -712,19 +774,67 @@ class TestGitClone:
         _make(rl.RepoLoader, repo_url="https://github.com/o/r", access_token=secret)._obtain_repo()
         import base64
 
-        header = git.env["GIT_CONFIG_VALUE_0"].split("Basic ")[1]
+        header = _git_config(git.env)["http.extraHeader"].split("Basic ")[1]
         assert base64.b64decode(header).decode() == "x-access-token:from-input"
 
     def test_no_token_is_sent_to_an_untrusted_host(self, rl, git, monkeypatch):
         monkeypatch.setenv("GITHUB_TOKEN", "ghp_SECRET123")
         _make(rl.RepoLoader, repo_url="https://evil.example.com/o/r")._obtain_repo()
-        assert "GIT_CONFIG_VALUE_0" not in git.env
+        assert "http.extraHeader" not in _git_config(git.env)
 
     def test_ssh_urls_are_cloned_without_an_http_header(self, rl, git, monkeypatch):
         monkeypatch.setenv("GITHUB_TOKEN", "ghp_SECRET123")
         _make(rl.RepoLoader, repo_url="git@github.com:owner/repo.git")._obtain_repo()
         assert git.cmd[-2] == "git@github.com:owner/repo.git"
-        assert "GIT_CONFIG_VALUE_0" not in git.env
+        assert "http.extraHeader" not in _git_config(git.env)
+
+    def test_plain_http_url_is_refused(self, rl, git, monkeypatch):
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_SECRET123")
+        with pytest.raises(ValueError, match="Plain http"):
+            _make(rl.RepoLoader, repo_url="http://github.com/o/r")._obtain_repo()
+        assert git.cmd == []
+
+    def test_http_is_allowed_with_the_opt_in_but_never_carries_the_token(
+        self, rl, git, monkeypatch
+    ):
+        monkeypatch.setenv("CODEWIKI_ALLOW_PRIVATE_HOSTS", "1")
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_SECRET123")
+        _make(rl.RepoLoader, repo_url="http://github.com/o/r")._obtain_repo()
+        assert git.cmd[-2] == "http://github.com/o/r"
+        assert "http.extraHeader" not in _git_config(git.env)
+        assert git.env["GIT_ALLOW_PROTOCOL"] == "https:http:ssh"
+        assert not any("Authorization" in v for v in _git_config(git.env).values())
+
+    @pytest.mark.parametrize("ip", ["10.0.0.5", "127.0.0.1", "169.254.169.254", "192.168.1.9"])
+    def test_clone_from_an_internal_host_is_refused(self, rl, git, monkeypatch, ip):
+        monkeypatch.setattr(
+            rl.socket,
+            "getaddrinfo",
+            lambda *_a, **_k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 443))],
+        )
+        with pytest.raises(RuntimeError, match="not a public address"):
+            _make(rl.RepoLoader, repo_url="https://git.internal.example/o/r")._obtain_repo()
+        assert git.cmd == []
+
+    def test_ssh_to_an_internal_host_is_refused(self, rl, git, monkeypatch):
+        monkeypatch.setattr(
+            rl.socket,
+            "getaddrinfo",
+            lambda *_a, **_k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.1.2.3", 22))],
+        )
+        with pytest.raises(RuntimeError, match="not a public address"):
+            _make(rl.RepoLoader, repo_url="git@gitserver.corp:team/repo.git")._obtain_repo()
+        assert git.cmd == []
+
+    def test_internal_git_hosts_can_be_allowed_explicitly(self, rl, git, monkeypatch):
+        monkeypatch.setenv("CODEWIKI_ALLOW_PRIVATE_HOSTS", "1")
+        monkeypatch.setattr(
+            rl.socket,
+            "getaddrinfo",
+            lambda *_a, **_k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 443))],
+        )
+        _make(rl.RepoLoader, repo_url="https://git.internal.example/o/r")._obtain_repo()
+        assert git.cmd[-2] == "https://git.internal.example/o/r"
 
     def test_failure_message_does_not_leak_the_token(self, rl, monkeypatch):
         def failing(cmd, **_kwargs):
@@ -758,6 +868,66 @@ class TestGitClone:
         assert git.cmd == []
 
 
+class TestTempDirCleanup:
+    """Clone / unpack directories are deleted once load_repo has read the files into memory."""
+
+    @pytest.fixture
+    def tempdirs(self, rl, monkeypatch, tmp_path):
+        made = []
+        real = rl.tempfile.mkdtemp
+
+        def tracking(**kw):
+            d = real(dir=tmp_path, **kw)
+            made.append(Path(d))
+            return d
+
+        monkeypatch.setattr(rl.tempfile, "mkdtemp", tracking)
+        return made
+
+    def test_clone_directory_is_removed_after_a_successful_load(self, rl, git, tempdirs):
+        data = _make(rl.RepoLoader, repo_url="https://github.com/o/r").load_repo().data["repo"]
+        assert sorted(f["repo_path"] for f in data["files"]) == ["other/b.py", "src/pkg/a.py"]
+        assert len(tempdirs) == 1
+        assert not tempdirs[0].exists()
+
+    def test_clone_directory_is_removed_when_git_fails(self, rl, monkeypatch, tempdirs):
+        def failing(cmd, **_kwargs):
+            raise subprocess.CalledProcessError(128, cmd, stderr="fatal: not found")
+
+        monkeypatch.setattr(subprocess, "run", failing)
+        monkeypatch.setattr(rl.shutil, "which", lambda _name: "/usr/bin/git")
+        monkeypatch.setattr(
+            rl.socket,
+            "getaddrinfo",
+            lambda *_a, **_k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))],
+        )
+        with pytest.raises(RuntimeError, match="git clone failed"):
+            _make(rl.RepoLoader, repo_url="https://github.com/o/r").load_repo()
+        assert tempdirs and not any(d.exists() for d in tempdirs)
+
+    def test_unpacked_local_archive_is_removed(self, rl, tmp_path, tempdirs):
+        z = _make_zip(tmp_path / "repo.zip", {"a.py": "x = 1\n"})
+        _make(rl.RepoLoader, local_path=str(z)).load_repo()
+        assert len(tempdirs) == 1
+        assert not tempdirs[0].exists()
+        assert z.exists(), "the user's archive itself is never deleted"
+
+    def test_directory_is_removed_when_walking_fails(self, rl, git, tempdirs, monkeypatch):
+        def boom(*_a, **_k):
+            raise OSError("disk error")
+
+        monkeypatch.setattr(rl, "walk_files", boom)
+        with pytest.raises(OSError, match="disk error"):
+            _make(rl.RepoLoader, repo_url="https://github.com/o/r").load_repo()
+        assert tempdirs and not any(d.exists() for d in tempdirs)
+
+    def test_local_path_directory_is_kept(self, rl, tmp_path, tempdirs):
+        (tmp_path / "a.py").write_text("x = 1\n")
+        _make(rl.RepoLoader, local_path=str(tmp_path)).load_repo()
+        assert tempdirs == []
+        assert (tmp_path / "a.py").exists()
+
+
 class TestGitlessTarball:
     """No git binary (hosted Langflow image): the repo is fetched as a tarball over HTTPS."""
 
@@ -772,16 +942,34 @@ class TestGitlessTarball:
 
         monkeypatch.setattr(rl.RepoLoader, "_fetch", fake_fetch)
         monkeypatch.setattr(rl.shutil, "which", lambda _name: None)
+        monkeypatch.setattr(
+            rl.socket,
+            "getaddrinfo",
+            lambda host, port, *_a, **_k: [
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port or 443))
+            ],
+        )
         return calls
 
     def test_github_com(self, rl, fetched, monkeypatch):
         monkeypatch.setenv("GITHUB_TOKEN", "ghp_T")
         loader = _make(rl.RepoLoader, repo_url="https://github.com/owner/repo/tree/dev/sub")
         root, *_ = loader._obtain_repo()
-        url, headers, _guard = fetched[-1]
+        url, headers, guard = fetched[-1]
         assert url == "https://api.github.com/repos/owner/repo/tarball/dev"
         assert headers["Authorization"] == "Bearer ghp_T"
+        assert guard is True, "tarball downloads use the public-https guard on every hop"
         assert _repo_paths(rl, root) == ["m.py"]
+
+    def test_internal_host_with_a_github_label_is_refused(self, rl, fetched, monkeypatch):
+        monkeypatch.setattr(
+            rl.socket,
+            "getaddrinfo",
+            lambda *_a, **_k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 443))],
+        )
+        with pytest.raises(RuntimeError, match="not a public address"):
+            _make(rl.RepoLoader, repo_url="https://github.internal.corp/team/proj")._obtain_repo()
+        assert fetched == []
 
     def test_github_enterprise_uses_api_v3_and_gets_no_token_by_default(
         self, rl, fetched, monkeypatch

@@ -189,8 +189,11 @@ def module_of(repo_path: str) -> str:
 
 
 def _read_text(path: Path) -> str | None:
+    """Read a regular file as text (utf-8, then latin-1). ``None`` if it is too big, not a
+    regular file, or unreadable."""
     try:
-        if path.stat().st_size > MAX_FILE_BYTES:
+        st = path.stat()
+        if not stat.S_ISREG(st.st_mode) or st.st_size > MAX_FILE_BYTES:
             return None
     except OSError:
         return None
@@ -212,21 +215,43 @@ def _under_subtrees(repo_path: str, subtrees: list[str]) -> bool:
     return False
 
 
+def _inside(path: Path, root_real: Path) -> bool:
+    try:
+        path.relative_to(root_real)
+    except ValueError:
+        return False
+    return True
+
+
 def walk_files(root, subtrees=None, max_files: int = 0) -> list[dict[str, Any]]:
+    """Collect the repo's ingestible files as ``{repo_path, language, text, is_doc}``.
+
+    Symlinks are never followed. A cloned repository (or a ``local_path`` directory) can contain
+    links such as ``config.py -> /proc/self/environ``; reading through them would index server
+    files and secrets into the wiki. Every file is also checked to resolve inside ``root``, and is
+    read through that resolved path."""
     root = Path(root)
+    root_real = root.resolve()
     subtrees = subtrees or []
     out: list[dict[str, Any]] = []
     for p in sorted(root.rglob("*")):
-        if any(is_ignored_dir(part) for part in p.relative_to(root).parts[:-1]):
+        rel_parts = p.relative_to(root).parts
+        if any(is_ignored_dir(part) for part in rel_parts[:-1]):
+            continue
+        # A symlinked file, or any file under a symlinked directory, is skipped.
+        if any((root.joinpath(*rel_parts[: i + 1])).is_symlink() for i in range(len(rel_parts))):
             continue
         if not p.is_file():
+            continue
+        real = p.resolve()
+        if not _inside(real, root_real):
             continue
         rel = p.relative_to(root).as_posix()
         if is_ignored_dir(p.parent.name) or is_ignored_file(rel):
             continue
         if not _under_subtrees(rel, subtrees):
             continue
-        text = _read_text(p)
+        text = _read_text(real)
         if text is None or not text.strip():
             continue
         out.append(
@@ -797,24 +822,41 @@ def _display_url(url: str) -> str:
     return f"{sp.scheme}://{sp.hostname or ''}{sp.path}"
 
 
+def _private_hosts_allowed() -> bool:
+    """True when CODEWIKI_ALLOW_PRIVATE_HOSTS opts in to internal hosts and plain http."""
+    return os.environ.get("CODEWIKI_ALLOW_PRIVATE_HOSTS", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def _assert_public_host(host: str, port: int | None = None) -> None:
+    """Refuse a host that resolves to any private, loopback or link-local address (the URL can
+    come from an uploaded file, so the server must not be pointed at internal services). Set
+    CODEWIKI_ALLOW_PRIVATE_HOSTS=1 to allow internal hosts."""
+    if _private_hosts_allowed():
+        return
+    if not host:
+        raise RuntimeError("repo URL has no host")
+    try:
+        addrs = {ai[4][0] for ai in socket.getaddrinfo(host, port or 443)}
+    except OSError as e:
+        raise RuntimeError(f"cannot resolve host {host!r}") from e
+    if not addrs or not all(ipaddress.ip_address(a.split("%")[0]).is_global for a in addrs):
+        raise RuntimeError(
+            f"host {host!r} is not a public address (set CODEWIKI_ALLOW_PRIVATE_HOSTS=1 "
+            "to allow internal hosts)"
+        )
+
+
 def _assert_public_https(url: str) -> None:
-    """Refuse non-https URLs and hosts that resolve to private, loopback or link-local addresses
-    (the URL can come from an uploaded file, so the server must not be pointed at internal
-    services). Set CODEWIKI_ALLOW_PRIVATE_HOSTS=1 to allow internal hosts."""
+    """Refuse non-https URLs and hosts that resolve to non-public addresses (see
+    ``_assert_public_host``)."""
     sp = urlsplit(url)
     if sp.scheme != "https" or not sp.hostname:
         raise RuntimeError("only https:// archive URLs are allowed")
-    if os.environ.get("CODEWIKI_ALLOW_PRIVATE_HOSTS", "").strip().lower() in ("1", "true", "yes"):
-        return
-    try:
-        addrs = {ai[4][0] for ai in socket.getaddrinfo(sp.hostname, sp.port or 443)}
-    except OSError as e:
-        raise RuntimeError(f"cannot resolve host {sp.hostname!r}") from e
-    if not addrs or not all(ipaddress.ip_address(a.split("%")[0]).is_global for a in addrs):
-        raise RuntimeError(
-            f"host {sp.hostname!r} is not a public address (set CODEWIKI_ALLOW_PRIVATE_HOSTS=1 "
-            "to allow internal hosts)"
-        )
+    _assert_public_host(sp.hostname, sp.port)
 
 
 # ---------------------------------------------------------------------------
@@ -1173,22 +1215,43 @@ class RepoLoader(Component):
 
     @staticmethod
     def _git_env(host: str, scheme: str, token: str) -> dict[str, str]:
+        """Environment for ``git clone``: no prompts, restricted transports, symlinks checked out
+        as plain files, and (https only) the access token as an HTTP header."""
         env = dict(os.environ)
         env["GIT_TERMINAL_PROMPT"] = "0"
-        # Block ext:: / file:: transports: the URL can come from an uploaded file.
-        env["GIT_ALLOW_PROTOCOL"] = "https:http:ssh"
-        if token and scheme in ("http", "https"):
+        # Block ext:: / file:: transports: the URL can come from an uploaded file. Plain http is
+        # allowed only with the same opt-in as internal hosts.
+        env["GIT_ALLOW_PROTOCOL"] = "https:http:ssh" if _private_hosts_allowed() else "https:ssh"
+        config = [("core.symlinks", "false")]
+        if token and scheme == "https":
             # Passed through the environment, not argv or the clone URL, so it isn't visible in the
-            # process list and isn't written to the clone's .git/config.
+            # process list and isn't written to the clone's .git/config. Never sent over http.
             user = "oauth2" if host_kind(host) == "gitlab" else "x-access-token"
             basic = base64.b64encode(f"{user}:{token}".encode()).decode()
-            env["GIT_CONFIG_COUNT"] = "1"
-            env["GIT_CONFIG_KEY_0"] = "http.extraHeader"
-            env["GIT_CONFIG_VALUE_0"] = f"Authorization: Basic {basic}"
+            config.append(("http.extraHeader", f"Authorization: Basic {basic}"))
+        env["GIT_CONFIG_COUNT"] = str(len(config))
+        for i, (key, value) in enumerate(config):
+            env[f"GIT_CONFIG_KEY_{i}"] = key
+            env[f"GIT_CONFIG_VALUE_{i}"] = value
         return env
 
-    def _unpack_to_temp(self, archive_path: str) -> str:
+    def _new_temp_dir(self) -> str:
+        """Create a ``codewiki_*`` work directory. ``load_repo`` deletes it after reading."""
         tmp = tempfile.mkdtemp(prefix="codewiki_")
+        owned = getattr(self, "_temp_dirs", None)
+        if owned is None:
+            owned = []
+            self._temp_dirs = owned
+        owned.append(tmp)
+        return tmp
+
+    def _cleanup_temp_dirs(self) -> None:
+        for tmp in getattr(self, "_temp_dirs", None) or []:
+            shutil.rmtree(tmp, ignore_errors=True)
+        self._temp_dirs = []
+
+    def _unpack_to_temp(self, archive_path: str) -> str:
+        tmp = self._new_temp_dir()
         try:
             return unpack_archive(archive_path, os.path.join(tmp, "src"))
         except Exception:
@@ -1223,7 +1286,8 @@ class RepoLoader(Component):
 
         info = parse_repo_url(repo_url)
         url, host, scheme = info["url"], info["host"], info["scheme"]
-        token = self._resolve_token(host) if scheme in ("http", "https") else ""
+        # The token is only ever sent over https.
+        token = self._resolve_token(host) if scheme == "https" else ""
         if info["kind"] == "archive":
             return self._download_archive_url(info, token), url, ref_in, ""
         if scheme not in ("http", "https", "ssh"):
@@ -1231,6 +1295,13 @@ class RepoLoader(Component):
                 f"Unsupported repo URL {repo_url!r}: use an https:// URL, git@host:owner/repo, or "
                 "a direct .zip / .tar.gz URL, or set 'local_path'."
             )
+        if scheme == "http" and not _private_hosts_allowed():
+            raise ValueError(
+                f"Plain http repo URLs are not allowed ({_display_url(url)}): use https:// "
+                "(set CODEWIKI_ALLOW_PRIVATE_HOSTS=1 to allow http for internal git servers)."
+            )
+        # The URL can come from an uploaded pointer file: don't let it reach internal hosts.
+        _assert_public_host(host)
         ref = ref_in or info["ref"]
         subdir = info["subdir"]
 
@@ -1239,7 +1310,7 @@ class RepoLoader(Component):
             return self._download_tarball(info, ref, token), url, ref, subdir
 
         depth = max(1, int(getattr(self, "clone_depth", 1) or 1))
-        tmp = tempfile.mkdtemp(prefix="codewiki_")
+        tmp = self._new_temp_dir()
         cmd = ["git", "clone", "--depth", str(depth), "--single-branch"]
         if ref:
             cmd += ["--branch", ref]
@@ -1254,8 +1325,10 @@ class RepoLoader(Component):
                 env=self._git_env(host, scheme, token),
             )
         except FileNotFoundError:  # git disappeared between the which() check and the call
+            shutil.rmtree(tmp, ignore_errors=True)
             return self._download_tarball(info, ref, token), url, ref, subdir
         except subprocess.CalledProcessError as e:
+            shutil.rmtree(tmp, ignore_errors=True)
             detail = self._scrub((e.stderr or e.stdout or "").strip()[:400], token)
             hint = "" if token else " If the repo is private, set 'Access token'."
             raise RuntimeError(f"git clone failed: {detail}{hint}") from e
@@ -1300,7 +1373,7 @@ class RepoLoader(Component):
     def _download_and_unpack(
         self, archive_url: str, headers: dict[str, str], *, guard: bool, label: str
     ) -> str:
-        tmp = tempfile.mkdtemp(prefix="codewiki_")
+        tmp = self._new_temp_dir()
         path = os.path.join(tmp, "download")
         try:
             try:
@@ -1360,16 +1433,24 @@ class RepoLoader(Component):
             f"git unavailable; downloading {host} archive for {owner}/{repo}"
             f"{('@' + ref) if ref else ''}…"
         )
+        # guard=True: https only, public hosts only, checked again on every redirect hop. A host
+        # name with a "github"/"gitlab" label can still be an internal server.
         return self._download_and_unpack(
-            archive_url, headers, guard=False, label=f"{owner}/{repo}@{ref or 'default'}"
+            archive_url, headers, guard=True, label=f"{owner}/{repo}@{ref or 'default'}"
         )
 
     def load_repo(self) -> Data:
+        """Obtain the repo, read its files into memory, and build the manifest and edges. Any
+        clone or unpack directory created on the way is deleted before returning (a user-supplied
+        ``local_path`` directory is never touched)."""
         pointer_url, pointer_ref, pointer_subtree = self._parse_pointer()
-        root, repo_url, repo_ref, url_subdir = self._obtain_repo(pointer_url, pointer_ref)
-        subtree_src = pointer_subtree or (getattr(self, "subtree", "") or "") or url_subdir
-        subtrees = [s.strip() for s in subtree_src.split(",") if s.strip()]
-        files = walk_files(root, subtrees, int(getattr(self, "max_files", 0) or 0))
+        try:
+            root, repo_url, repo_ref, url_subdir = self._obtain_repo(pointer_url, pointer_ref)
+            subtree_src = pointer_subtree or (getattr(self, "subtree", "") or "") or url_subdir
+            subtrees = [s.strip() for s in subtree_src.split(",") if s.strip()]
+            files = walk_files(root, subtrees, int(getattr(self, "max_files", 0) or 0))
+        finally:
+            self._cleanup_temp_dirs()
         if not files:
             raise RuntimeError(
                 f"RepoLoader found 0 ingestible files under {root} "
