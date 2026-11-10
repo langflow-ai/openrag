@@ -9,10 +9,17 @@ from typing import Any
 
 from fastapi import Depends, HTTPException, Query, Request
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.connectors import _connector_access_denied
 from connectors.connection_manager import ConnectionConfig
 from connectors.registry import get_plugin_connector_class, plugin_config_fields
-from dependencies import get_connector_service, get_session_manager, require_permission
+from dependencies import (
+    get_connector_service,
+    get_db_session,
+    get_session_manager,
+    require_permission,
+)
 from session_manager import User
 from utils.encryption import encrypt_secret, get_master_secret
 from utils.run_mode_utils import is_run_mode_saas
@@ -46,6 +53,16 @@ def _plugin(connector_type: str):
     cls = get_plugin_connector_class(connector_type)
     if cls is None:
         raise HTTPException(404, "Connector not available")
+    return cls
+
+
+async def _allowed_plugin(connector_type: str, request: Request, session: AsyncSession):
+    """Resolve an enabled plugin class and enforce the workspace connector-access
+    policy, as every generic connector route does. Called before the body is
+    parsed or the source contacted, so a blocked connector stores nothing."""
+    cls = _plugin(connector_type)
+    if await _connector_access_denied(request, session, connector_type):
+        raise HTTPException(403, "Connector not available")
     return cls
 
 
@@ -118,11 +135,13 @@ def _require_encryption(cls, config: dict[str, str], user_id: str) -> None:
 
 async def plugin_defaults(
     connector_type: str,
+    request: Request,
     connection_id: str | None = Query(default=None, max_length=128),
     connector_service=Depends(get_connector_service),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
 ):
-    cls = _plugin(connector_type)
+    cls = await _allowed_plugin(connector_type, request, session)
     manager = connector_service.connection_manager
     connection = await _existing_connection(manager, connector_type, user.user_id, connection_id)
     fields = plugin_config_fields(cls)
@@ -152,9 +171,10 @@ async def plugin_test(
     request: Request,
     connector_service=Depends(get_connector_service),
     user: User = Depends(require_permission("connectors:create")),
+    session: AsyncSession = Depends(get_db_session),
 ):
+    cls = await _allowed_plugin(connector_type, request, session)
     body = await _body(request)
-    cls = _plugin(connector_type)
     manager = connector_service.connection_manager
     existing = await _existing_connection(manager, connector_type, user.user_id, body.connection_id)
     config = _validated_config(cls, body.config, existing)
@@ -172,9 +192,10 @@ async def plugin_configure(
     request: Request,
     connector_service=Depends(get_connector_service),
     user: User = Depends(require_permission("connectors:create")),
+    session: AsyncSession = Depends(get_db_session),
 ):
+    cls = await _allowed_plugin(connector_type, request, session)
     body = await _body(request)
-    cls = _plugin(connector_type)
     manager = connector_service.connection_manager
     existing = await _existing_connection(manager, connector_type, user.user_id, body.connection_id)
     config = _validated_config(cls, body.config, existing)
@@ -221,14 +242,16 @@ async def plugin_configure(
 async def plugin_picker_children(
     connector_type: str,
     connection_id: str,
+    request: Request,
     parent_id: str | None = Query(default=None, max_length=2048),
     cursor: str | None = Query(default=None, max_length=2048),
     page_size: int = Query(default=100, ge=1, le=200),
     connector_service=Depends(get_connector_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
 ):
-    cls = _plugin(connector_type)
+    cls = await _allowed_plugin(connector_type, request, session)
     if cls.BROWSE_CAPABILITY not in ("hierarchical", "flat"):
         raise HTTPException(404, "Picker unavailable")
     manager = connector_service.connection_manager
