@@ -1,37 +1,6 @@
 # syntax=docker/dockerfile:1.4
 
-# -----------------------------------------------------------------------------
-# Stage: lxml-build
-# lxml's PyPI wheels statically bundle their own libxml2 (2.14.6 as of lxml
-# 6.1.1), which is vulnerable to CVE-2026-86140 (fixed upstream in 2.15.4).
-# Rebuild lxml from source so it links against the patched system libxml2
-# supplied by the Langflow base image (2.12.5-10.el10_2.4).
-#
-# TODO: Remove the CVE-2026-74860 / CVE-2026-86140 workarounds once the
-# langflowai/langflow base image ships both fixes. Check with:
-#   rpm -q libxml2   -> 2.12.5-10.el10_2.4 or later
-#   python -c "import lxml.etree as e; print(e.LIBXML_VERSION)"   -> (2, 15, 4) or later
-# Then delete: this lxml-build stage, the libxslt install in the runtime root
-# step, and the lxml wheel swap after the pip install.
-# -----------------------------------------------------------------------------
-FROM langflowai/langflow:base-1.12.8 AS lxml-build
-
-USER root
-RUN microdnf install -y \
-    gcc \
-    libxml2-devel \
-    libxslt-devel \
-    python3.14-devel \
-    && microdnf clean all \
-    && rm -rf /var/cache/yum
-# Build the same lxml version the base image ships so only the linkage changes.
-RUN pip wheel --no-cache-dir --no-deps --no-binary lxml -w /wheels \
-    "lxml==$(pip show lxml | awk '/^Version:/ {print $2}')"
-
-# -----------------------------------------------------------------------------
-# Stage: runtime
-# -----------------------------------------------------------------------------
-FROM langflowai/langflow:base-1.12.8
+FROM langflowai/langflow:base-1.12.10
 
 # Install uv, then pre-create the Langflow data directory as root.
 # Langflow 1.12's base image runs as uid=1000, but /app itself is not writable.
@@ -39,28 +8,28 @@ FROM langflowai/langflow:base-1.12.8
 RUN pip install --no-cache-dir uv
 
 USER root
-# Patch base-image CVEs in system packages:
-#   libxslt is the runtime library for the source-built lxml. TODO: remove
-#     once the lxml workaround above is removed.
-#   npm 12.2.1 (bundles brace-expansion 5.0.12): CVE-2026-102276, CVE-2026-102278
-RUN microdnf install -y libxslt \
-    && npm install -g --no-audit --no-fund npm@12.2.1 \
+# Langflow 1.12.9 supplies the fixed lxml, OS, and Python dependencies. Its
+# bundled npm still contains an older nested undici, so replace that package
+# directly; installing a newer npm is unnecessary and would downgrade
+# ip-address below the fixed version supplied by the base image.
+RUN mkdir -p /tmp/npm-patches \
+    && npm pack --pack-destination /tmp/npm-patches undici@8.12.2 \
+    && rm -rf /usr/local/lib/node_modules/npm/node_modules/undici \
+    && mkdir -p /usr/local/lib/node_modules/npm/node_modules/undici \
+    && tar -xzf /tmp/npm-patches/undici-8.12.2.tgz --strip-components=1 \
+        -C /usr/local/lib/node_modules/npm/node_modules/undici \
+    && rm -rf /tmp/npm-patches \
     && npm cache clean --force \
-    && microdnf clean all \
-    && rm -rf /var/cache/yum \
     && mkdir -p /app/langflow-data \
     && chmod 0777 /app/langflow-data
 USER 1000
 
-# Mako 1.4.2 patches CVE-2026-102991. pypdf, pyjwt, and urllib3 are already
-# patched in langflowai/langflow:base-1.12.8, so do not override them here.
 RUN pip install --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     torch==2.13.0 \
     torchvision==0.28.0 \
     "transformers>=5.10.1,<6.0.0" \
     "docling-core<3.0.0" \
-    "mako>=1.4.2,<2.0.0" \
     openai \
     langchain-openai \
     anthropic \
@@ -72,11 +41,6 @@ RUN pip install --no-cache-dir \
     langfuse \
     "ibm-watsonx-ai>=1.3.1,<2.0.0" \
     "langchain-ibm~=1.1.0"
-
-# Swap in the source-built lxml last so no later install restores the bundled
-# wheel. TODO: remove (see lxml-build).
-COPY --from=lxml-build /wheels /tmp/lxml-wheels
-RUN pip install --no-cache-dir --no-deps --force-reinstall /tmp/lxml-wheels/lxml-*.whl
 
 COPY custom_components/ /app/custom_components/
 
