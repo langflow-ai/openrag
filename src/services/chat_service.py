@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from agent import async_chat, async_chat_stream, async_langflow
+from agent import async_langflow
 from auth_context import set_auth_context
 from config.settings import (
     LANGFLOW_CHAT_FLOW_ID,
@@ -31,35 +31,50 @@ class ChatService:
         filter_id: str = None,
         storage_user_id: str = None,
     ):
-        """Handle chat requests using the patched OpenAI client"""
+        """Handle chat requests with OpenRAG's native Python agent."""
         if not prompt:
             raise ValueError("Prompt is required")
         conversation_user_id = storage_user_id or user_id
+
+        from config.settings import get_openrag_config
+
+        config = get_openrag_config()
+        agent_config = getattr(config, "agent", None)
+        knowledge_config = getattr(config, "knowledge", None)
+        logger.info(
+            "[CHAT] Native OpenRAG chat request",
+            stream=stream,
+            continuing=bool(previous_response_id),
+            prompt_chars=len(prompt),
+            llm_provider=getattr(agent_config, "llm_provider", None),
+            llm_model=getattr(agent_config, "llm_model", None),
+            embedding_provider=getattr(knowledge_config, "embedding_provider", None),
+            embedding_model=getattr(knowledge_config, "embedding_model", None),
+        )
 
         # Set authentication context for this request so tools can access it
         if user_id and jwt_token:
             set_auth_context(user_id, jwt_token)
 
+        from services.native_chat_agent import native_chat_agent
+
         if stream:
-            return async_chat_stream(
-                clients.patched_llm_client,
-                prompt,
-                conversation_user_id,
+            return native_chat_agent.stream(
+                prompt=prompt,
+                user_id=conversation_user_id,
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
             )
-        else:
-            response_text, response_id = await async_chat(
-                clients.patched_llm_client,
-                prompt,
-                conversation_user_id,
-                previous_response_id=previous_response_id,
-                filter_id=filter_id,
-            )
-            response_data = {"response": response_text}
-            if response_id:
-                response_data["response_id"] = response_id
-            return response_data
+        response_text, response_id, sources = await native_chat_agent.run(
+            prompt=prompt,
+            user_id=conversation_user_id,
+            previous_response_id=previous_response_id,
+            filter_id=filter_id,
+        )
+        response_data = {"response": response_text, "response_id": response_id}
+        if sources:
+            response_data["sources"] = sources
+        return response_data
 
     async def langflow_chat(
         self,
@@ -598,21 +613,20 @@ class ChatService:
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
             )
-        else:  # chat
-            # Set auth context for chat tools and provide user_id
-            if user_id and jwt_token:
-                set_auth_context(user_id, jwt_token)
-            response_text, response_id = await async_chat(
-                clients.patched_llm_client,
+        else:  # native chat
+            response = await self.chat(
                 document_prompt,
-                conversation_user_id,
+                user_id,
+                jwt_token,
                 previous_response_id=previous_response_id,
+                storage_user_id=conversation_user_id,
             )
+            response_text, response_id = response["response"], response["response_id"]
 
         return response_text, response_id
 
-    async def get_chat_history(self, user_id: str):
-        """Get chat conversation history for a user"""
+    async def _legacy_get_chat_history(self, user_id: str):
+        """Deprecated in-memory history reader retained for migration diagnostics."""
         from agent import active_conversations, get_user_conversations
 
         if not user_id:
@@ -718,6 +732,14 @@ class ChatService:
             "conversations": conversations,
             "total_conversations": len(conversations),
         }
+
+    async def get_chat_history(self, user_id: str):
+        """Get durable native-agent history (never Langflow messages)."""
+        if not user_id:
+            return {"error": "User ID is required", "conversations": []}
+        from services.native_chat_history_service import native_chat_history_service
+
+        return await native_chat_history_service.history(user_id)
 
     @staticmethod
     def _messages_from_active_conversation(conversation_state: dict) -> list[dict]:
@@ -917,6 +939,20 @@ class ChatService:
 
     async def delete_session(self, user_id: str, session_id: str):
         """Delete a session from both local storage and Langflow"""
+        if is_chat_with_langflow_disabled():
+            from services.native_chat_history_service import native_chat_history_service
+            from services.session_ownership_service import session_ownership_service
+
+            deleted = await native_chat_history_service.delete(session_id, user_id)
+            if deleted:
+                await session_ownership_service.release_session(user_id, session_id)
+            return {
+                "success": deleted,
+                "not_found": not deleted,
+                "local_deleted": deleted,
+                "langflow_deleted": False,
+                "error": None if deleted else "Conversation not found",
+            }
         try:
             # Resolve the complete, owned group before removing any associations.
             from agent import delete_user_conversation
@@ -1008,6 +1044,11 @@ class ChatService:
 
     async def delete_all_user_sessions(self, user_id: str):
         """Delete all sessions for a user from both local storage and Langflow"""
+        if is_chat_with_langflow_disabled():
+            from services.native_chat_history_service import native_chat_history_service
+
+            deleted_count = await native_chat_history_service.delete_all(user_id)
+            return {"success": True, "deleted_count": deleted_count, "total_count": deleted_count}
         from agent import get_user_conversations
 
         conversations = await get_user_conversations(user_id)

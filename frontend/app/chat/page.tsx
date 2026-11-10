@@ -141,6 +141,7 @@ function ChatPage() {
   const { scrollToBottom } = useStickToBottomContext();
 
   const lastLoadedConversationRef = useRef<string | null>(null);
+  const lastEndpointRef = useRef<EndpointType>(endpoint);
   // Set when a live stream fails so history sync cannot replace one error card
   // with Langflow's duplicated copies of the same failure.
   const liveErrorConversationRef = useRef<string | null>(null);
@@ -268,6 +269,25 @@ function ChatPage() {
       }));
     },
   });
+
+  // The saved setting can switch sources while this page is mounted. Do not
+  // leave a transcript from the other source visible while the matching
+  // history query reloads.
+  useEffect(() => {
+    if (lastEndpointRef.current === endpoint) return;
+
+    lastEndpointRef.current = endpoint;
+    abortStream();
+    setMessages([]);
+    setInput("");
+    setExpandedFunctionCalls(new Set());
+    setIsFilterHighlighted(false);
+    setIsForkingInProgress(false);
+    setWaitingTooLong(false);
+    setLoading(false);
+    lastLoadedConversationRef.current = null;
+    liveErrorConversationRef.current = null;
+  }, [abortStream, endpoint, setLoading]);
 
   // Show warning if waiting too long (20 seconds)
   const hasStreamingMessage = !!streamingMessage;
@@ -451,7 +471,7 @@ function ChatPage() {
       const convertedMessages: Message[] = conversationData.messages.map(
         (msg: {
           role: string;
-          content: string;
+          content: string | null;
           timestamp?: string;
           response_id?: string;
           error?: boolean;
@@ -478,15 +498,19 @@ function ChatPage() {
           }>;
           response_data?: unknown;
         }) => {
+          // Older native-chat records may contain tool-only assistant rows
+          // whose content is NULL. Rendering must treat those as empty text;
+          // the structured chunk data below carries the tool activity.
+          const content = typeof msg.content === "string" ? msg.content : "";
           const isProviderError =
             Boolean(msg.error) ||
             (msg.role === "assistant" &&
-              looksLikeProviderErrorContent(msg.content || ""));
+              looksLikeProviderErrorContent(content));
           const message: Message = {
             role: msg.role as "user" | "assistant",
             content: isProviderError
-              ? formatProviderErrorMessage(msg.content)
-              : msg.content,
+              ? formatProviderErrorMessage(content)
+              : content,
             timestamp: new Date(msg.timestamp || new Date()),
             error: isProviderError,
           };
@@ -665,7 +689,7 @@ function ChatPage() {
       }, 100);
     }
     return () => clearTimeout(focusTimeoutId);
-  }, [placeholderConversation, currentConversationId]);
+  }, [placeholderConversation, currentConversationId, displayName]);
 
   const { isOnboardingComplete } = useOnboardingState();
 
@@ -1104,7 +1128,7 @@ function ChatPage() {
             <>
               {messages.map((message, index) =>
                 message.role === "user"
-                  ? (messages[index]?.content.match(FILES_REGEX)?.[0] ??
+                  ? (messages[index]?.content?.match(FILES_REGEX)?.[0] ??
                       null) === null && (
                       <div
                         key={`${currentConversationId ?? "new"}-${
@@ -1120,7 +1144,7 @@ function ChatPage() {
                           }
                           content={
                             index >= 2 &&
-                            (messages[index - 2]?.content.match(
+                            (messages[index - 2]?.content?.match(
                               FILES_REGEX,
                             )?.[0] ??
                               undefined) &&
@@ -1130,7 +1154,7 @@ function ChatPage() {
                           }
                           files={
                             index >= 2
-                              ? (messages[index - 2]?.content.match(
+                              ? (messages[index - 2]?.content?.match(
                                   FILES_REGEX,
                                 )?.[0] ?? undefined)
                               : undefined
@@ -1140,7 +1164,7 @@ function ChatPage() {
                     )
                   : message.role === "assistant" &&
                     (index < 1 ||
-                      (messages[index - 1]?.content.match(FILES_REGEX)?.[0] ??
+                      (messages[index - 1]?.content?.match(FILES_REGEX)?.[0] ??
                         null) === null) && (
                       <div
                         key={`${currentConversationId ?? "new"}-${

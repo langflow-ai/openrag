@@ -90,6 +90,7 @@ from config.settings import (
     is_url_connector_enabled,
     is_workspace_oauth_overrides_enabled,
 )
+from config.storage_mode import get_storage_mode
 from dependencies import (
     get_chat_service,
     get_current_user,
@@ -372,6 +373,7 @@ async def get_settings(
                 llm_model=agent_config.llm_model,
                 llm_provider=agent_config.llm_provider,
                 disable_chat_with_langflow=agent_config.disable_chat_with_langflow,
+                native_chat_available=get_storage_mode() == "db",
                 system_prompt=agent_config.system_prompt,
                 default_system_prompt=DEFAULT_SYSTEM_PROMPT,
             ),
@@ -799,6 +801,11 @@ async def update_settings(
             )
 
         if body.disable_chat_with_langflow is not None:
+            if get_storage_mode() != "db":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Native chat requires OPENRAG_STORAGE_MODE=db",
+                )
             working_config.agent.disable_chat_with_langflow = body.disable_chat_with_langflow
             config_updated = True
             logger.info(f"Disable Langflow chat changed to {body.disable_chat_with_langflow}")

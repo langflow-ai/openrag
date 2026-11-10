@@ -366,26 +366,28 @@ export function AgentSettingsSection() {
             />
           )}
         </div>
-        <div className="flex items-center justify-between gap-4 border-b border-border py-3">
-          <div className="flex-1">
-            <Label
-              htmlFor="disable-chat-with-langflow"
-              className="cursor-pointer text-base font-medium"
-            >
-              Disable Langflow chat
-            </Label>
-            <p className="text-sm text-muted-foreground">
-              Run chat in OpenRAG against the language model above instead of
-              sending it to the Langflow flow.
-            </p>
+        {settings.agent?.native_chat_available && (
+          <div className="flex items-center justify-between gap-4 border-b border-border py-3">
+            <div className="flex-1">
+              <Label
+                htmlFor="disable-chat-with-langflow"
+                className="cursor-pointer text-base font-medium"
+              >
+                Disable Langflow chat
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Run chat in OpenRAG against the language model above instead of
+                sending it to the Langflow flow.
+              </p>
+            </div>
+            <Switch
+              id="disable-chat-with-langflow"
+              checked={settings.agent?.disable_chat_with_langflow ?? false}
+              onCheckedChange={handleDisableChatWithLangflowChange}
+              disabled={updateSettingsMutation.isPending}
+            />
           </div>
-          <Switch
-            id="disable-chat-with-langflow"
-            checked={settings.agent?.disable_chat_with_langflow ?? false}
-            onCheckedChange={handleDisableChatWithLangflowChange}
-            disabled={updateSettingsMutation.isPending}
-          />
-        </div>
+        )}
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-4">
             <Label htmlFor="system-prompt" className="font-medium text-mmd!">

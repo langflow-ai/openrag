@@ -1,4 +1,4 @@
-"""Async CRUD over the ``conversations`` table — chat-history metadata."""
+"""Async CRUD over ``langflow_conversations`` — Langflow history metadata."""
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -8,21 +8,21 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
-from db.models import Conversation
+from db.models import LangflowConversation
 
 
-class ConversationRepo:
+class LangflowConversationRepo:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get(self, response_id: str) -> Conversation | None:
-        return await self.session.get(Conversation, response_id)
+    async def get(self, response_id: str) -> LangflowConversation | None:
+        return await self.session.get(LangflowConversation, response_id)
 
-    async def list_for_user(self, user_id: str, limit: int = 200) -> list[Conversation]:
+    async def list_for_user(self, user_id: str, limit: int = 200) -> list[LangflowConversation]:
         result = await self.session.execute(
-            select(Conversation)
-            .where(col(Conversation.user_id) == user_id)
-            .order_by(col(Conversation.last_activity).desc())
+            select(LangflowConversation)
+            .where(col(LangflowConversation.user_id) == user_id)
+            .order_by(col(LangflowConversation.last_activity).desc())
             .limit(limit)
         )
         return list(result.scalars().all())
@@ -39,11 +39,11 @@ class ConversationRepo:
         total_messages: int = 0,
         created_at: datetime | None = None,
         last_activity: datetime | None = None,
-    ) -> Conversation:
+    ) -> LangflowConversation:
         now = datetime.now(UTC)
         existing = await self.get(response_id)
         if existing is None:
-            row = Conversation(
+            row = LangflowConversation(
                 response_id=response_id,
                 user_id=user_id,
                 title=title,
@@ -103,12 +103,12 @@ class ConversationRepo:
         # UTCDateTime, which rejects naive values and normalises aware ones to UTC.
         cutoff = datetime.now(UTC) - timedelta(days=ttl_days)
         result: CursorResult = await self.session.execute(  # type: ignore[assignment]
-            delete(Conversation).where(col(Conversation.last_activity) < cutoff)
+            delete(LangflowConversation).where(col(LangflowConversation.last_activity) < cutoff)
         )
         await self.session.flush()
         return result.rowcount or 0
 
-    async def to_metadata_dict(self, c: Conversation) -> dict[str, Any]:
+    async def to_metadata_dict(self, c: LangflowConversation) -> dict[str, Any]:
         """JSON-shaped dict matching the legacy conversations.json
         per-conversation payload. Used by the service to keep API
         compatibility with existing call sites."""
@@ -122,3 +122,7 @@ class ConversationRepo:
             "created_at": c.created_at.isoformat() if c.created_at else None,
             "last_activity": c.last_activity.isoformat() if c.last_activity else None,
         }
+
+
+# Backwards-compatible import while callers move to the explicit Langflow name.
+ConversationRepo = LangflowConversationRepo

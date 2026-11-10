@@ -8,6 +8,8 @@ langflowless /chat endpoint instead of /langflow.
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from config.config_manager import ConfigManager
 
 
@@ -30,6 +32,17 @@ def test_disable_chat_env_override(monkeypatch):
             cm = ConfigManager(config_file=str(cfg_file))
             config = cm.load_config()
             assert config.agent.disable_chat_with_langflow is expected, value
+
+
+def test_disable_chat_env_requires_database_storage(monkeypatch):
+    """Native history has no JSON/hybrid fallback, so reject an unsafe env switch."""
+    monkeypatch.setenv("DISABLE_CHAT_WITH_LANGFLOW", "true")
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg_file = Path(tmp) / "config.yaml"
+        cm = ConfigManager(config_file=str(cfg_file))
+        with pytest.raises(ValueError, match="OPENRAG_STORAGE_MODE=db"):
+            cm.load_config()
 
 
 def test_disable_chat_preserves_on_save(monkeypatch):

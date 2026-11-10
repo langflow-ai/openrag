@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import uuid
 from contextlib import aclosing
 from typing import Any
@@ -14,6 +15,23 @@ logger = get_logger(__name__)
 
 # In-memory storage for active conversation threads (preserves function calls)
 active_conversations: dict[str, dict[str, Any]] = {}
+
+
+async def _close_response_stream(response: Any) -> None:
+    """Close either an OpenAI async stream or an async-generator compatibility stream.
+
+    agentd wraps Responses API streaming calls in an async generator when MCP
+    tool handling is enabled. Native OpenAI streams expose ``close()``, while
+    async generators expose ``aclose()``. Supporting both keeps cleanup from
+    masking an otherwise successful chat response.
+    """
+    close = getattr(response, "aclose", None) or getattr(response, "close", None)
+    if not callable(close):
+        return
+
+    result = close()
+    if inspect.isawaitable(result):
+        await result
 
 
 def _format_provider_error_message(exc: BaseException) -> str:
@@ -433,7 +451,7 @@ async def async_response_stream(
     finally:
         if response is not None:
             with anyio.CancelScope(shield=True):
-                await response.close()
+                await _close_response_stream(response)
 
 
 # Generic async response function for non-streaming
@@ -476,7 +494,7 @@ async def async_response(
         except (AttributeError, TypeError):
             output_text = None
 
-        if output_text is not None:
+        if isinstance(output_text, str) and output_text.strip():
             response_text = output_text
             logger.info("Response generated", log_prefix=log_prefix, response=response_text)
 
@@ -485,7 +503,7 @@ async def async_response(
 
             return response_text, response_id, response
         else:
-            msg = "Nudge response missing output_text"
+            msg = "The language model returned an empty response. Please try again or choose another model."
             error = getattr(response, "error", None)
             if error:
                 error_msg = getattr(error, "message", None)

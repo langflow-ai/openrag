@@ -99,11 +99,12 @@ interface ChatProviderProps {
 }
 
 export function ChatProvider({ children }: ChatProviderProps) {
-  // Langflow stays the default until settings load. The kill switch then
-  // selects the in-process /chat endpoint for new conversations. An explicit
-  // endpoint choice or a loaded conversation remains authoritative.
+  // Langflow stays the default until settings load. The persisted kill switch
+  // owns the source selection; the debug endpoint selector can only override
+  // the initial, still-loading settings value.
   const [endpoint, setEndpointState] = useState<EndpointType>("langflow");
   const endpointChosen = useRef(false);
+  const configuredEndpoint = useRef<EndpointType | null>(null);
   const { data: settings } = useGetSettingsQuery();
   const disableChatWithLangflow = settings?.agent?.disable_chat_with_langflow;
 
@@ -112,10 +113,6 @@ export function ChatProvider({ children }: ChatProviderProps) {
     setEndpointState(next);
   }, []);
 
-  useEffect(() => {
-    if (endpointChosen.current || disableChatWithLangflow === undefined) return;
-    setEndpointState(disableChatWithLangflow ? "chat" : "langflow");
-  }, [disableChatWithLangflow]);
   const [currentConversationId, setCurrentConversationId] = useState<
     string | null
   >(null);
@@ -198,6 +195,40 @@ export function ChatProvider({ children }: ChatProviderProps) {
     setRefreshTriggerSilent((prev) => prev + 1);
   }, []);
 
+  useEffect(() => {
+    if (disableChatWithLangflow === undefined) return;
+
+    const nextEndpoint: EndpointType = disableChatWithLangflow
+      ? "chat"
+      : "langflow";
+    const settingsChanged =
+      configuredEndpoint.current !== null &&
+      configuredEndpoint.current !== nextEndpoint;
+    configuredEndpoint.current = nextEndpoint;
+
+    // Preserve a deliberate debug selection made before settings finish
+    // loading. Once the persisted toggle changes, it must always win.
+    if (endpointChosen.current && !settingsChanged) return;
+    endpointChosen.current = false;
+
+    if (endpoint === nextEndpoint) return;
+
+    setEndpointState(nextEndpoint);
+    setCurrentConversationId(null);
+    setPreviousResponseIds({ chat: null, langflow: null });
+    setConversationData(null);
+    setConversationDocs([]);
+    setPlaceholderConversation(null);
+    setConversationLoaded(false);
+    setConversationFilterState(null);
+    setChatError(false);
+    setLoading(false);
+
+    // A new key forces the selected source to be fetched even if its previous
+    // history is still fresh in React Query's cache.
+    refreshConversations(true);
+  }, [disableChatWithLangflow, endpoint, refreshConversations]);
+
   const loadConversation = useCallback(
     async (conversation: ConversationData) => {
       setCurrentConversationId(conversation.response_id);
@@ -251,7 +282,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
       // Clear conversation docs to prevent duplicates when switching conversations
       setConversationDocs([]);
     },
-    [conversationData?.response_id],
+    [conversationData?.response_id, setEndpoint],
   );
 
   const startNewConversation = useCallback(
@@ -430,6 +461,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
     }),
     [
       endpoint,
+      setEndpoint,
       currentConversationId,
       previousResponseIds,
       refreshConversations,

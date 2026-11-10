@@ -14,6 +14,18 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatProvider, useChat } from "./chat-context";
 
+const { settingsState } = vi.hoisted(() => ({
+  settingsState: {
+    current: {
+      agent: { disable_chat_with_langflow: false },
+    } as { agent?: { disable_chat_with_langflow?: boolean } } | undefined,
+  },
+}));
+
+vi.mock("@/app/api/queries/useGetSettingsQuery", () => ({
+  useGetSettingsQuery: () => ({ data: settingsState.current }),
+}));
+
 // Stub out useOnboardingState — it fetches settings and is unrelated to what
 // we are testing here.
 vi.mock("@/hooks/use-onboarding-state", () => ({
@@ -34,6 +46,9 @@ function renderChatHook() {
 describe("ChatProvider — startNewConversation", () => {
   beforeEach(() => {
     localStorage.clear();
+    settingsState.current = {
+      agent: { disable_chat_with_langflow: false },
+    };
   });
 
   afterEach(() => {
@@ -48,6 +63,51 @@ describe("ChatProvider — startNewConversation", () => {
     expect(result.current.currentConversationId).toBeNull();
     expect(result.current.placeholderConversation).toBeNull();
     expect(typeof result.current.startNewConversation).toBe("function");
+  });
+
+  it("switches sources and clears conversation state when the kill switch changes", async () => {
+    const { result, rerender } = renderChatHook();
+
+    await act(async () => {
+      await result.current.loadConversation({
+        response_id: "langflow-conversation",
+        title: "Langflow conversation",
+        endpoint: "langflow",
+        messages: [],
+      });
+      result.current.setPreviousResponseIds({
+        chat: "chat-response",
+        langflow: "langflow-response",
+      });
+      result.current.setConversationFilter(
+        {
+          id: "filter-1",
+          name: "Filter",
+          description: "",
+          query_data: "{}",
+          owner: "user-1",
+          created_at: "",
+          updated_at: "",
+        },
+        null,
+      );
+    });
+
+    settingsState.current = {
+      agent: { disable_chat_with_langflow: true },
+    };
+    rerender();
+
+    await waitFor(() => {
+      expect(result.current.endpoint).toBe("chat");
+    });
+    expect(result.current.currentConversationId).toBeNull();
+    expect(result.current.conversationData).toBeNull();
+    expect(result.current.previousResponseIds).toEqual({
+      chat: null,
+      langflow: null,
+    });
+    expect(result.current.conversationFilter).toBeNull();
   });
 
   // lines 240-242, 245, 249-253 — showPlaceholder=true (default): clears state

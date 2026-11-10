@@ -152,6 +152,13 @@ def is_chat_with_langflow_disabled() -> bool:
     The environment variable is an operator kill switch, so it takes priority
     over persisted settings even after the configuration has been edited.
     """
+    from config.storage_mode import get_storage_mode
+
+    # Native messages deliberately have no file/hybrid fallback. Avoid showing
+    # or activating a switch that could make history disappear on a deployment
+    # without the database as its sole source of truth.
+    if get_storage_mode() != "db":
+        return False
     if env_flag_enabled("DISABLE_CHAT_WITH_LANGFLOW"):
         return True
     return bool(get_openrag_config().agent.disable_chat_with_langflow)

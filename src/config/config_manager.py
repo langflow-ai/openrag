@@ -906,6 +906,13 @@ class ConfigManager:
         if truthy("DISABLE_INGEST_WITH_LANGFLOW"):
             config_data["knowledge"]["disable_ingest_with_langflow"] = True
         if truthy("DISABLE_CHAT_WITH_LANGFLOW"):
+            from config.storage_mode import get_storage_mode
+
+            if get_storage_mode() != "db":
+                raise ValueError(
+                    "DISABLE_CHAT_WITH_LANGFLOW requires OPENRAG_STORAGE_MODE=db because "
+                    "native chat history is stored only in the database."
+                )
             config_data["agent"]["disable_chat_with_langflow"] = True
 
     @staticmethod

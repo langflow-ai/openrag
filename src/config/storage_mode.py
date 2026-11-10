@@ -13,7 +13,7 @@ Three modes — one env var, no per-domain proliferation:
 Backwards compat: the legacy ``OPENRAG_DISABLE_DB_WORKSPACE_CONFIG=true``
 kill switch is still honored — if set, mode is forced to ``files``.
 
-``workspace_config``, ``session_ownership`` and ``conversations`` all
+``workspace_config``, ``session_ownership`` and ``langflow_conversations`` all
 consult this flag. The default is now ``db`` so fresh installs never
 write JSON state to disk. Existing installs with JSON files are
 upgraded once at boot via the runtime migrations

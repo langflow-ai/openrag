@@ -44,6 +44,12 @@ _LITELLM_FORWARDED_PARAMS = (
     "stream_options",
 )
 
+# The watsonx text-chat endpoint accepts an omitted generation limit, but some
+# deployments of gpt-oss return a successful, empty ``stop`` completion in
+# that case. Langflow's shipped OpenRAG flow represents "use default" as 0,
+# so make the default explicit at the one shared provider boundary instead.
+_WATSONX_DEFAULT_MAX_TOKENS = 1024
+
 
 class LlmGatewayError(Exception):
     """Gateway failure. `status_code` is an HTTP status.
@@ -1266,6 +1272,17 @@ def _log_completion_shape(payload: dict[str, Any], provider: str, model: str) ->
         logger.debug("Could not summarise completion shape", exc_info=True)
 
 
+def _completion_is_empty(payload: dict[str, Any]) -> bool:
+    """Whether a provider returned a completed assistant turn with nothing usable."""
+    choices = payload.get("choices") or []
+    if not choices or not isinstance(choices[0], dict):
+        return False
+    message = choices[0].get("message") or {}
+    if not isinstance(message, dict):
+        return False
+    return not str(message.get("content") or "").strip() and not message.get("tool_calls")
+
+
 #: Models seen to refuse function tools alongside their own default reasoning
 #: effort. OpenAI applies a non-none default to reasoning models and rejects
 #: that combination on /v1/chat/completions; the remedy its error names is an
@@ -1372,11 +1389,28 @@ async def chat_completions(
     litellm_model, provider, credentials = resolve_call(body.get("model"), kind="chat", config=cfg)
     runtime_kwargs = _provider_runtime_kwargs(provider, cfg)
     kwargs = {key: body[key] for key in _LITELLM_FORWARDED_PARAMS if key in body}
+    if provider == "watsonx" and not kwargs.get("max_tokens"):
+        kwargs["max_tokens"] = _WATSONX_DEFAULT_MAX_TOKENS
     stream = bool(body.get("stream"))
     if litellm_model in _TOOLS_NEED_REASONING_OFF:
         # Already learned about this model; do not spend a round-trip relearning.
         _reasoning_off_retry(litellm_model, kwargs, provider)
     messages, repairs = _sanitise_messages(body.get("messages"))
+    # Metadata only: enough to correlate an empty UI response with the exact
+    # provider/model route, without logging prompts, completions, credentials,
+    # or tool arguments.
+    logger.info(
+        "LLM chat completion requested",
+        provider=provider,
+        model=litellm_model,
+        requested_model=body.get("model"),
+        stream=stream,
+        messages=len(messages) if isinstance(messages, list) else None,
+        tools=len(body.get("tools") or []) if isinstance(body.get("tools"), list) else 0,
+        tool_choice=bool(body.get("tool_choice")),
+        max_tokens=kwargs.get("max_tokens"),
+        max_completion_tokens=kwargs.get("max_completion_tokens"),
+    )
     if repairs:
         logger.warning(
             "Repaired malformed tool calls in the request's conversation",
@@ -1455,10 +1489,16 @@ async def chat_completions(
         # A stream can still fail mid-flight, so _stream_sse clears the record
         # itself once the provider has actually delivered something.
         return _stream_sse(result, provider, litellm_model, credentials)
-    provider_error_log.record_success(provider, "chat")
     payload = _to_openai_dict(result)
     _repair_completion_payload(payload, provider, litellm_model)
     _log_completion_shape(payload, provider, litellm_model)
+    if _completion_is_empty(payload):
+        message = "The language model returned an empty response. Please try again or choose another model."
+        provider_error_log.record_failure(provider, "chat", message)
+        raise LlmGatewayError(
+            message, 502, detail="upstream completion had no content or tool calls"
+        )
+    provider_error_log.record_success(provider, "chat")
     return payload
 
 

@@ -1545,6 +1545,18 @@ async def _test_watsonx_completion_with_tools(
                 parsed_details = _parse_json_error_message(error_details)
                 raise Exception(parsed_details)
 
+            try:
+                payload = response.json()
+                choice = (payload.get("choices") or [{}])[0]
+                message = choice.get("message") or {}
+                if not str(message.get("content") or "").strip() and not message.get(
+                    "tool_calls"
+                ):
+                    raise ValueError("WatsonX returned an empty completion")
+            except (ValueError, TypeError, IndexError, KeyError) as exc:
+                logger.error("IBM Watson completion test returned no usable output")
+                raise Exception("WatsonX returned an empty completion") from exc
+
             logger.info("IBM Watson completion with tool calling test passed")
 
     except httpx.TimeoutException:

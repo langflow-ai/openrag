@@ -719,7 +719,7 @@ async def test_restart_alias_only_continuation_keeps_durable_canonical(
     assert after_restart["created_at"] == before_restart["created_at"]
     assert after_restart["filter_id"] == "knowledge-filter"
     assert after_restart["total_messages"] == 6
-    history = await ChatService().get_chat_history("alice")
+    history = await ChatService().get_langflow_history("alice")
     restored = next(c for c in history["conversations"] if c["response_id"] == "canonical")
     assert restored["created_at"] == before_restart["created_at"]
     assert restored["title"] == "First question"
@@ -758,7 +758,7 @@ async def test_restart_invalid_creation_time_keeps_default(
             object(), "flow", "Follow-up", "alice", previous_response_id="alias"
         )
     )
-    history = await ChatService().get_chat_history("alice")
+    history = await ChatService().get_langflow_history("alice")
     restored = next(c for c in history["conversations"] if c["response_id"] == "canonical")
     assert started <= datetime.fromisoformat(restored["created_at"]) <= datetime.now()
     assert restored["title"] == "Saved title"

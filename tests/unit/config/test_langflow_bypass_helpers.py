@@ -52,3 +52,10 @@ def test_falls_back_to_config_when_env_unset(monkeypatch):
     with patch("config.settings.get_openrag_config", return_value=_Cfg(chat=False, ingest=False)):
         assert is_chat_with_langflow_disabled() is False
         assert is_ingest_with_langflow_disabled() is False
+
+
+def test_chat_bypass_is_unavailable_outside_database_mode(monkeypatch):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
+    monkeypatch.setenv("DISABLE_CHAT_WITH_LANGFLOW", "true")
+    with patch("config.settings.get_openrag_config", return_value=_Cfg(chat=True, ingest=False)):
+        assert is_chat_with_langflow_disabled() is False

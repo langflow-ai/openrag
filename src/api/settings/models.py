@@ -282,6 +282,7 @@ class AgentConfig(BaseModel):
     llm_model: str | None
     llm_provider: str | None
     disable_chat_with_langflow: bool | None = None
+    native_chat_available: bool = False
     system_prompt: str | None
     default_system_prompt: str | None = None
 
