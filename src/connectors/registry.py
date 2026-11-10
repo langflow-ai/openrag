@@ -8,10 +8,11 @@ connector classes via this module instead of hard-coding imports/branches.
 """
 
 import inspect
-import os
 import re
 from importlib.metadata import entry_points
 from typing import Literal, TypedDict
+
+from config.settings import get_connector_plugin_allowlist
 
 from .aws_s3 import S3Connector
 from .base import BaseConnector
@@ -50,11 +51,7 @@ def _load_plugins() -> tuple[type[BaseConnector], ...]:
     if _plugin_connectors is not None:
         return _plugin_connectors
 
-    allowed = {
-        name.strip()
-        for name in os.getenv("OPENRAG_CONNECTOR_PLUGINS", "").split(",")
-        if name.strip()
-    }
+    allowed = get_connector_plugin_allowlist()
     if not allowed:
         _plugin_connectors = ()
         return _plugin_connectors

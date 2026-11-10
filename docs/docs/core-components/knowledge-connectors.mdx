@@ -123,7 +123,7 @@ You can do this during [initial set up](/docker#setup), or you can add the crede
 </TabItem>
 </Tabs>
 
-## Self-managed custom connectors (preview)
+## Self-managed custom connectors (preview) {#self-managed-custom-connectors}
 
 Self-managed deployments can install a trusted Python connector wheel in a derived backend image and explicitly enable its `openrag.connectors.v1` entry point with `OPENRAG_CONNECTOR_PLUGINS`. The generic Settings form and Add Knowledge picker use the connector's declared fields and browsing capability; they do not require an OAuth app or a custom frontend bundle. This does not install wheels into a running server or enable untrusted customer code on hosted deployments.
 
