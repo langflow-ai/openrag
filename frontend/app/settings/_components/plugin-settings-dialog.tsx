@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { apiClient } from "@/lib/api-client";
 
 interface Defaults {
   connection_id?: string | null;
@@ -25,10 +26,18 @@ interface Defaults {
   error?: string;
 }
 
-async function request(url: string, options?: RequestInit): Promise<Defaults> {
-  const response = await fetch(url, options);
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok)
+async function request(
+  url: string,
+  options?: { method?: "GET" | "POST"; data?: unknown },
+): Promise<Defaults> {
+  const response = await apiClient.request({
+    url,
+    method: options?.method ?? "GET",
+    data: options?.data,
+  });
+  const data =
+    response.data && typeof response.data === "object" ? response.data : {};
+  if (response.status < 200 || response.status >= 300)
     throw new Error(
       data.error || data.detail || `Request failed (${response.status})`,
     );
@@ -52,7 +61,7 @@ export default function PluginSettingsDialog({
     queryKey: ["plugin-defaults", connector.type],
     queryFn: () =>
       request(
-        `/api/connectors/${encodeURIComponent(connector.type)}/plugin-defaults`,
+        `/connectors/${encodeURIComponent(connector.type)}/plugin-defaults`,
       ),
     retry: false,
   });
@@ -114,11 +123,10 @@ export default function PluginSettingsDialog({
     setBusy(mode);
     try {
       const result = await request(
-        `/api/connectors/${encodeURIComponent(connector.type)}/${mode === "test" ? "plugin-test" : "plugin-configure"}`,
+        `/connectors/${encodeURIComponent(connector.type)}/${mode === "test" ? "plugin-test" : "plugin-configure"}`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+          data: {
             config: Object.fromEntries(
               Object.entries(config).filter(
                 ([name, value]) =>
@@ -129,7 +137,7 @@ export default function PluginSettingsDialog({
               ),
             ),
             ...(connectionId ? { connection_id: connectionId } : {}),
-          }),
+          },
         },
       );
       if (mode === "test") {

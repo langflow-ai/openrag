@@ -1,6 +1,6 @@
 import { waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HttpResponse, http } from "msw";
+import { delay, HttpResponse, http } from "msw";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiClient } from "@/lib/api-client";
@@ -263,5 +263,56 @@ describe("Add Knowledge connector menu", () => {
     await waitFor(() =>
       expect(mockRouter.push).toHaveBeenCalledWith("/upload/acme_flat"),
     );
+  });
+
+  it("lists built-in connectors while a plug-in status check is still pending", async () => {
+    renderWithProviders(<KnowledgeDropdown />, {
+      providers: ["auth", "brand", "task"],
+      auth: authPresets.rbacDisabled,
+      handlers: [
+        http.get("/api/upload_options", () =>
+          HttpResponse.json({ upload_batch_size: 25 }),
+        ),
+        http.get("/api/connectors/:type/defaults", () =>
+          HttpResponse.json({ connection_id: null }),
+        ),
+        http.get("/api/connectors", () =>
+          HttpResponse.json({
+            connectors: {
+              google_drive: { name: "Google Drive", available: true },
+              acme_flat: {
+                name: "Acme Files",
+                available: true,
+                browse_capability: "flat",
+              },
+            },
+          }),
+        ),
+        // An unreachable on-prem server: the plug-in check never answers.
+        http.get("/api/connectors/acme_flat/status", async () => {
+          await delay("infinite");
+          return HttpResponse.json({ connections: [] });
+        }),
+        http.get("/api/connectors/google_drive/status", () =>
+          HttpResponse.json({
+            connections: [{ connection_id: "drive-1", is_active: true }],
+          }),
+        ),
+        http.get("/api/connectors/google_drive/token", () =>
+          HttpResponse.json({ access_token: "token" }),
+        ),
+      ],
+    });
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Add Knowledge" }),
+    );
+    const drive = await screen.findByRole("menuitem", {
+      name: /Google Drive$/,
+    });
+    expect(drive).not.toHaveAttribute("data-disabled");
+    expect(
+      screen.queryByRole("menuitem", { name: "Acme Files" }),
+    ).not.toBeInTheDocument();
   });
 });
