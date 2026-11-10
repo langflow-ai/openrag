@@ -18,6 +18,7 @@ from connectors.base import (
     DocumentACL,
     normalize_etag,
 )
+from connectors.bucket_errors import is_s3_object_missing, object_missing_error
 from utils.logging_config import get_logger
 
 from .auth import create_ibm_cos_client, create_ibm_cos_resource
@@ -207,8 +208,9 @@ class IBMCOSConnector(BaseConnector):
             logger.debug("IBM COS auto-discovered %d bucket(s)", len(buckets))
             return buckets
         except Exception as exc:
+            # An empty list would read as "no files anywhere" to orphan cleanup.
             logger.warning(f"IBM COS could not auto-discover buckets: {exc}")
-            return []
+            raise
 
     async def list_files(
         self,
@@ -227,6 +229,9 @@ class IBMCOSConnector(BaseConnector):
             dict with keys:
                 "files": list of file dicts (id, name, bucket, size, modified_time)
                 "next_page_token": always None (SDK handles pagination internally)
+
+        Raises if bucket discovery or any bucket's listing fails, rather than
+        returning the buckets that did list.
         """
         handle = self._get_handle()
         files: list[dict[str, Any]] = []
@@ -294,8 +299,10 @@ class IBMCOSConnector(BaseConnector):
                             break
 
             except Exception as exc:
-                logger.error("Failed to list objects in IBM COS bucket: %s", exc)
-                continue
+                # Never return a partial inventory: orphan cleanup would read
+                # every indexed file in the skipped bucket as deleted.
+                logger.error("Failed to list objects in IBM COS bucket %s: %s", bucket_name, exc)
+                raise
 
         return {"files": files, "next_page_token": None}
 
@@ -316,11 +323,18 @@ class IBMCOSConnector(BaseConnector):
 
         # Both client.get_object() and resource.Object().get() return the same
         # response dict: Body stream + ContentType, ContentLength, LastModified.
-        if self._is_hmac:
-            response = handle.Object(bucket_name, key).get()  # resource
-        else:
-            response = handle.get_object(Bucket=bucket_name, Key=key)  # client
-        content: bytes = response["Body"].read()
+        try:
+            if self._is_hmac:
+                response = handle.Object(bucket_name, key).get()  # resource
+            else:
+                response = handle.get_object(Bucket=bucket_name, Key=key)  # client
+            content: bytes = response["Body"].read()
+        except Exception as exc:
+            # Only NoSuchKey proves deletion; a missing bucket, denied access or
+            # a transient failure must not remove the indexed copy.
+            if is_s3_object_missing(exc):
+                raise object_missing_error(file_id) from exc
+            raise
 
         last_modified: datetime = response.get("LastModified") or datetime.now(UTC)
         size: int = response.get("ContentLength", len(content))

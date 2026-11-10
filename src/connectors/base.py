@@ -240,7 +240,12 @@ class BaseConnector(ABC):
     async def list_files(
         self, page_token: str | None = None, max_files: int | None = None, **kwargs: Any
     ) -> dict[str, Any]:
-        """List all files. Returns files and next_page_token if any."""
+        """List all files. Returns files and next_page_token if any.
+
+        Raise if any part of the source (a bucket, container, folder or page)
+        cannot be listed; never return what was readable. Orphan cleanup
+        treats a file missing from a successful listing as deleted.
+        """
         pass
 
     async def list_selected_files(
@@ -279,7 +284,14 @@ class BaseConnector(ABC):
 
     @abstractmethod
     async def get_file_content(self, file_id: str) -> ConnectorDocument:
-        """Get file content and metadata"""
+        """Get file content and metadata.
+
+        Raise ``FileNotFoundError`` only on positive proof that this file no
+        longer exists at the source (e.g. Graph 404/410, S3 ``NoSuchKey``,
+        Azure ``BlobNotFound``): the processor deletes its indexed chunks on
+        it. A missing bucket/container/site, an auth failure or a transient
+        error must propagate as itself, so the indexed copy is kept.
+        """
         pass
 
     @abstractmethod
