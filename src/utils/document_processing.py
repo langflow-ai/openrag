@@ -291,14 +291,48 @@ def resplit_chunks_character_windows(
     return out
 
 
+def _split_text_to_max_tokens(text: str, encoding, max_tokens: int) -> list[str]:
+    """Cut ``text`` into pieces that each encode to at most ``max_tokens``.
+
+    Slices the original string. Decoding a token window and encoding it again
+    can come back longer than the window (a 500-token Watsonx cut re-encodes
+    to 501), and the decoded window can replace a character with U+FFFD.
+    A piece is then one embedding input, and the pieces join back to ``text``.
+    """
+    if len(encoding.encode(text)) <= max_tokens:
+        return [text]
+
+    pieces: list[str] = []
+    remaining = text
+    while remaining:
+        if len(encoding.encode(remaining)) <= max_tokens:
+            pieces.append(remaining)
+            break
+        low = 1
+        high = len(remaining)
+        # A single code point can itself be over the cap. Keep one so the
+        # cursor always advances.
+        best = 1
+        while low <= high:
+            mid = (low + high) // 2
+            if len(encoding.encode(remaining[:mid])) <= max_tokens:
+                best = mid
+                low = mid + 1
+            else:
+                high = mid - 1
+        pieces.append(remaining[:best])
+        remaining = remaining[best:]
+    return pieces
+
+
 def split_chunks_by_max_tokens(
     chunks: list[dict], max_tokens: int, model: str | None = None
 ) -> list[dict]:
     """Split any chunks whose token count exceeds max_tokens.
 
-    Ensures that when chunk texts are sent to the embedding model, they don't get
-    further split by token limits in the batching helper, allowing the final
-    embeddings and chunks to align 1-to-1.
+    Each resulting chunk encodes to at most ``max_tokens`` (unless a single
+    code point is already over the cap), so the embedding batcher can keep one
+    vector per chunk.
     """
     import tiktoken
 
@@ -317,17 +351,9 @@ def split_chunks_by_max_tokens(
             new_chunks.append(chunk)
             continue
 
-        tokens = encoding.encode(text)
-        if len(tokens) <= max_tokens:
-            new_chunks.append(chunk)
-            continue
-
-        # Split tokens into segments of at most max_tokens size
-        for i in range(0, len(tokens), max_tokens):
-            chunk_tokens = tokens[i : i + max_tokens]
-            chunk_text = encoding.decode(chunk_tokens)
+        for piece in _split_text_to_max_tokens(text, encoding, max_tokens):
             new_chunk = dict(chunk)
-            new_chunk["text"] = chunk_text
+            new_chunk["text"] = piece
             new_chunks.append(new_chunk)
 
     return new_chunks
