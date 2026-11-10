@@ -27,6 +27,8 @@ make frontend                  # in another terminal
 
 The card should appear at `http://localhost:3000/settings/connectors` even before configuring a connection. The **Test connection** and **Save** actions require a reachable, approved SharePoint farm, a valid NTLM account, `OPENRAG_SHAREPOINT_ALLOWED_ORIGINS` and a stable `OPENRAG_ENCRYPTION_KEY` in your private `.env`; set `OPENRAG_SHAREPOINT_CA_BUNDLE` for a private CA. Do not invent a permissive origin or disable TLS just to exercise the form. `make backend` neither installs the customer package nor enables its allowlist: restart with `make backend-sharepoint-onprem` to use this opt-in. The dedicated target installs the package *after* syncing the venv and uses `uv run --no-sync` to keep it available to the backend process. Production deployments use the pinned derived-image procedure in the parent guide, not an editable development install.
 
+Run this package's tests from the repository root with `make test-customer-connectors`; CI runs the same command on every pull request that touches the backend or `customer_connectors/`. The tests clear every `OPENRAG_SHAREPOINT_*` variable first, so your `.env` settings do not change their outcome.
+
 The operator configures a connection in OpenRAG Settings after the approved wheel is loaded:
 
 | Field | Meaning |
