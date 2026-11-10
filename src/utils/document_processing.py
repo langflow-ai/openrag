@@ -291,16 +291,6 @@ def resplit_chunks_character_windows(
     return out
 
 
-def _token_index_after(
-    offsets: list[int], token_index: int, char_index: int, token_count: int
-) -> int:
-    """First token that starts at or after ``char_index``."""
-    token_index += 1
-    while token_index < token_count and offsets[token_index] < char_index:
-        token_index += 1
-    return token_index
-
-
 def _split_text_by_code_points(text: str, encoding, max_tokens: int) -> list[str]:
     """Pack code points when token offsets do not round-trip to ``text``."""
     pieces: list[str] = []
@@ -336,31 +326,33 @@ def _split_text_to_max_tokens(text: str, encoding, max_tokens: int) -> list[str]
         return _split_text_by_code_points(text, encoding, max_tokens)
 
     pieces: list[str] = []
+    char_pos = 0
     token_index = 0
     token_count = len(tokens)
     text_length = len(text)
-    while token_index < token_count:
-        char_start = offsets[token_index]
-        if char_start >= text_length:
-            break
+    while char_pos < text_length:
+        # The character cursor can sit inside a token after a one-character
+        # fallback. The next piece must start there, not at the next token.
+        while token_index + 1 < token_count and offsets[token_index + 1] <= char_pos:
+            token_index += 1
         cut = min(token_count, token_index + max_tokens)
-        while cut < token_count and offsets[cut] <= char_start:
+        while cut < token_count and offsets[cut] <= char_pos:
             cut += 1
         while True:
             char_end = text_length if cut >= token_count else offsets[cut]
-            if char_end <= char_start:
-                pieces.append(text[char_start : char_start + 1])
-                token_index = _token_index_after(offsets, token_index, char_start + 1, token_count)
+            if char_end <= char_pos:
+                pieces.append(text[char_pos : char_pos + 1])
+                char_pos += 1
                 break
-            piece = text[char_start:char_end]
+            piece = text[char_pos:char_end]
             over_cap = len(encoding.encode(piece)) > max_tokens
             if not over_cap or len(piece) == 1:
                 pieces.append(piece)
-                token_index = token_count if cut >= token_count else cut
+                char_pos = char_end
                 break
             if cut <= token_index + 1:
-                pieces.append(text[char_start : char_start + 1])
-                token_index = _token_index_after(offsets, token_index, char_start + 1, token_count)
+                pieces.append(text[char_pos : char_pos + 1])
+                char_pos += 1
                 break
             cut -= 1
     return pieces

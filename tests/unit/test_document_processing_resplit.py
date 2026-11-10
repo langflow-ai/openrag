@@ -175,6 +175,21 @@ def test_chunk_texts_keeps_one_input_when_text_exceeds_cap():
     assert batches == [[_WATSONX_CAP_OVERFLOW]]
 
 
+def test_split_inside_token_keeps_every_character():
+    import tiktoken
+
+    from src.utils.document_processing import _split_text_to_max_tokens
+
+    # The leading space and "ра" share one cl100k token whose next token starts
+    # at "б". A one-character fallback must continue inside that token.
+    text = " раб"
+    encoding = tiktoken.get_encoding("cl100k_base")
+    pieces = _split_text_to_max_tokens(text, encoding, 1)
+    assert "".join(pieces) == text
+    for piece in pieces:
+        assert len(encoding.encode(piece)) <= 1 or len(piece) == 1
+
+
 def test_split_keeps_single_code_point_over_cap():
     from src.utils.document_processing import split_chunks_by_max_tokens
 
