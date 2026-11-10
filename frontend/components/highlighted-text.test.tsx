@@ -187,4 +187,19 @@ describe("HighlightedText", () => {
       "Document processing, OCR, layout extraction",
     );
   });
+
+  it("applies semantic highlight span to matching unspaced CJK sentence when isSemanticMatch is true", () => {
+    const { container } = render(
+      <HighlightedText
+        highlights={[]}
+        fallbackText="これは最初の文です。全文検索エンジンは高速です。最後の文です。"
+        isSemanticMatch
+        searchQuery="検索"
+      />,
+    );
+    const mark = container.querySelector("mark");
+    expect(mark).toBeInTheDocument();
+    expect(mark?.textContent).toBe("全文検索エンジンは高速です。");
+    expect(mark?.className).toContain("bg-emerald-100");
+  });
 });

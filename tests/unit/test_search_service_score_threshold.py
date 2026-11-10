@@ -1,10 +1,12 @@
 """
 Unit tests for search query structure after the hybrid-search refactor.
 
-With the normalization processor, OpenSearch returns scores in [0, 1] and
-the frontend applies the relevance threshold via min-max normalisation.
-The backend no longer wraps queries in function_score/min_score; instead it
-emits a hybrid query and attaches the normalization pipeline param.
+With the normalization processor, OpenSearch returns scores in [0, 1] for
+non-DLS users. Under DLS the pipeline is silently bypassed, so the backend
+min-max normalizes raw scores itself and flags the response as normalized;
+the frontend then trusts the score directly. The backend no longer wraps
+queries in function_score/min_score; instead it emits a hybrid query and
+attaches the normalization pipeline param.
 num_candidates is not sent because jvector uses k only.
 
 Verifies:
@@ -30,7 +32,11 @@ from auth_context import (
     set_search_limit,
     set_search_result_mode,
 )
-from services.search_service import SearchService
+from services.search_service import (
+    SearchService,
+    _emulate_pipeline_scores,
+    _ensure_normalized_scores,
+)
 from utils.opensearch_queries import build_date_range_query
 
 
@@ -222,7 +228,9 @@ async def test_knowledge_source_search_keeps_website_page_chunks_for_parent_aggr
 
     await service.search_tool("baseball")
 
-    filters = os_client.bodies[-1]["query"]["hybrid"].get("filter", [])
+    filters = (
+        os_client.bodies[-1]["query"]["hybrid"].get("filter", {}).get("bool", {}).get("filter", [])
+    )
     assert not any(
         clause.get("bool", {}).get("must_not") == [{"exists": {"field": "web_page_id"}}]
         for clause in filters
@@ -238,7 +246,7 @@ async def test_chunk_search_excludes_website_manifests_but_not_page_chunks(monke
 
     await service.search_tool("baseball")
 
-    filters = os_client.bodies[-1]["query"]["hybrid"].get("filter", [])
+    filters = os_client.bodies[-1]["query"]["hybrid"]["filter"]["bool"]["filter"]
     assert {"terms": {"record_kind": ["web_page_manifest", "web_source"]}} in [
         clause["bool"]["must_not"][0]
         for clause in filters
@@ -514,6 +522,229 @@ async def test_dls_fallback_is_single_step(monkeypatch):
     assert response["results"][0]["filename"] == "result.pdf"
 
 
+def test_ensure_normalized_scores_rescales_raw_scores():
+    """Raw (>1) scores are min-max rescaled: best -> 1, worst -> 0; returns True."""
+    chunks = [{"score": 6.0}, {"score": 4.0}, {"score": 1.0}]
+    assert _ensure_normalized_scores(chunks) is True
+    assert chunks[0]["score"] == 1.0
+    assert chunks[1]["score"] == 0.6
+    assert chunks[2]["score"] == 0.0
+
+
+def test_ensure_normalized_scores_leaves_pipeline_scores_untouched():
+    """Scores already in [0,1] (the pipeline did the work) are not double-normalized."""
+    chunks = [{"score": 0.7}, {"score": 0.2}, {"score": 0.05}]
+    assert _ensure_normalized_scores(chunks) is False
+    assert [c["score"] for c in chunks] == [0.7, 0.2, 0.05]
+
+
+def test_ensure_normalized_scores_single_raw_hit_maps_to_one():
+    chunks = [{"score": 42.0}]
+    assert _ensure_normalized_scores(chunks) is True
+    assert chunks[0]["score"] == 1.0
+
+
+def test_emulate_pipeline_scores_applies_weighted_per_leg_blend():
+    """Per-leg min-max + 0.7/0.3 blend; a missing leg contributes 0 (like the pipeline)."""
+    chunks = [
+        {"_matched": {"semantic": 1.0, "keyword": 10.0}},  # tops both legs
+        {"_matched": {"semantic": 0.0, "keyword": 0.0}},  # worst on both
+        {"_matched": {"keyword": 5.0}},  # keyword only, mid
+    ]
+    assert _emulate_pipeline_scores(chunks) is True
+    # sem bounds (0,1); kw bounds (0,10). weights 0.7/0.3.
+    assert chunks[0]["score"] == pytest.approx(0.7 * 1.0 + 0.3 * 1.0)  # 1.0
+    assert chunks[1]["score"] == pytest.approx(0.0)
+    assert chunks[2]["score"] == pytest.approx(0.3 * 0.5)  # 0.15
+
+
+def test_emulate_pipeline_scores_without_matched_data_returns_false():
+    assert _emulate_pipeline_scores([{"score": 6.0}, {"score": 2.0}]) is False
+
+
+@pytest.mark.asyncio
+async def test_dls_raw_scores_are_normalized_in_the_response(monkeypatch):
+    """On OpenSearch 3.9 the hybrid query runs under DLS but the pipeline is
+    silently bypassed, so hits come back with raw scores. The backend must
+    rescale them to [0,1] and flag the response as normalized."""
+
+    class _RawScoreOpenSearch:
+        async def search(self, *, index, body, params):
+            if body.get("size") == 0:
+                return {
+                    "aggregations": {
+                        "embedding_spaces": {"buckets": []},
+                        "legacy_embedding_models": {"buckets": []},
+                    }
+                }
+            return {
+                "hits": {
+                    "hits": [
+                        {"_score": 6.87, "_source": {"filename": "a.pdf", "text": "content a"}},
+                        {"_score": 4.65, "_source": {"filename": "b.pdf", "text": "content b"}},
+                        {"_score": 2.0, "_source": {"filename": "c.pdf", "text": "content c"}},
+                    ]
+                },
+                "aggregations": {},
+            }
+
+    service = _make_service(_RawScoreOpenSearch(), monkeypatch)
+    _set_context(0)
+
+    response = await service.search_tool("MCP")
+
+    # Raw scores -> the backend rescaled them, so the path is reported "default".
+    assert response["normalized"] == "default"
+    scores = [c["score"] for c in response["results"]]
+    assert max(scores) == 1.0 and min(scores) == 0.0
+    assert all(0 <= s <= 1 for s in scores)
+
+
+@pytest.mark.asyncio
+async def test_bypassed_dls_emulates_weighted_blend_from_per_leg_scores(monkeypatch):
+    """Under filter-level DLS the pipeline is bypassed (raw scores), but per-leg
+    scores from matched_queries let the backend emulate the weighted blend."""
+    monkeypatch.setattr("config.search_constants.DEFAULT_SEARCH_SCORE_THRESHOLD", 0)
+
+    class _BypassedHybridOpenSearch:
+        async def search(self, *, index, body, params):
+            if body.get("size") == 0:
+                return {
+                    "aggregations": {
+                        "embedding_spaces": {"buckets": []},
+                        "legacy_embedding_models": {"buckets": []},
+                    }
+                }
+            # Raw combined scores (pipeline bypassed) + per-leg scores.
+            return {
+                "hits": {
+                    "hits": [
+                        {
+                            "_score": 10.5,
+                            "matched_queries": {"semantic": 1.0, "keyword": 10.0},
+                            "_source": {"filename": "both.pdf", "text": "content one"},
+                        },
+                        {
+                            "_score": 7.0,
+                            "matched_queries": {"keyword": 5.0},
+                            "_source": {"filename": "kw_only.pdf", "text": "content two"},
+                        },
+                        {
+                            "_score": 2.0,
+                            "matched_queries": {"semantic": 0.0, "keyword": 0.0},
+                            "_source": {"filename": "worst.pdf", "text": "content three"},
+                        },
+                    ]
+                },
+                "aggregations": {},
+            }
+
+    service = _make_service(_BypassedHybridOpenSearch(), monkeypatch)
+    _set_context(0)
+
+    response = await service.search_tool("MCP")
+
+    assert response["normalized"] == "default"
+    by_name = {c["filename"]: c["score"] for c in response["results"]}
+    assert by_name["both.pdf"] == pytest.approx(1.0)
+    assert by_name["kw_only.pdf"] == pytest.approx(0.3 * 0.5)  # keyword-only -> <= 0.3
+    assert by_name["worst.pdf"] == pytest.approx(0.0)
+    # Internal per-leg field must never leak to the API response.
+    assert all("_matched" not in c for c in response["results"])
+
+
+@pytest.mark.asyncio
+async def test_emulated_results_are_reranked_by_weighted_score(monkeypatch):
+    """A keyword-heavy doc with a high raw _score but low weighted score must be
+    re-ranked below a semantically-strong doc (OpenSearch returned raw order)."""
+    monkeypatch.setattr("config.search_constants.DEFAULT_SEARCH_SCORE_THRESHOLD", 0)
+
+    class _RawOrderOpenSearch:
+        async def search(self, *, index, body, params):
+            if body.get("size") == 0:
+                return {
+                    "aggregations": {
+                        "embedding_spaces": {"buckets": []},
+                        "legacy_embedding_models": {"buckets": []},
+                    }
+                }
+            # Returned in RAW _score order: keyword-heavy first.
+            return {
+                "hits": {
+                    "hits": [
+                        {
+                            "_score": 10.0,
+                            "matched_queries": {"semantic": 0.0, "keyword": 10.0},
+                            "_source": {"filename": "keyword_heavy.pdf", "text": "content one"},
+                        },
+                        {
+                            "_score": 5.0,
+                            "matched_queries": {"semantic": 1.0, "keyword": 2.0},
+                            "_source": {"filename": "semantic_strong.pdf", "text": "content two"},
+                        },
+                    ]
+                },
+                "aggregations": {},
+            }
+
+    service = _make_service(_RawOrderOpenSearch(), monkeypatch)
+    _set_context(0)
+
+    response = await service.search_tool("MCP")
+
+    names = [c["filename"] for c in response["results"]]
+    scores = [c["score"] for c in response["results"]]
+    # semantic_strong (0.70) now outranks keyword_heavy (0.30), despite lower raw score.
+    assert names == ["semantic_strong.pdf", "keyword_heavy.pdf"]
+    assert scores == sorted(scores, reverse=True)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_scores_are_flagged_pipeline(monkeypatch):
+    """When hits already arrive in [0,1] (pipeline ran), the path is "pipeline"."""
+    monkeypatch.setattr("config.search_constants.DEFAULT_SEARCH_SCORE_THRESHOLD", 0)
+
+    class _NormalizedOpenSearch:
+        async def search(self, *, index, body, params):
+            if body.get("size") == 0:
+                return {
+                    "aggregations": {
+                        "embedding_spaces": {"buckets": []},
+                        "legacy_embedding_models": {"buckets": []},
+                    }
+                }
+            return {
+                "hits": {
+                    "hits": [
+                        {"_score": 0.7, "_source": {"filename": "a.pdf", "text": "content a"}},
+                        {"_score": 0.2, "_source": {"filename": "b.pdf", "text": "content b"}},
+                    ]
+                },
+                "aggregations": {},
+            }
+
+    service = _make_service(_NormalizedOpenSearch(), monkeypatch)
+    _set_context(0)
+
+    response = await service.search_tool("MCP")
+
+    assert response["normalized"] == "pipeline"
+    # Pipeline scores are passed through untouched (no re-normalization).
+    assert [c["score"] for c in response["results"]] == [0.7, 0.2]
+
+
+@pytest.mark.asyncio
+async def test_wildcard_response_is_flagged_default(monkeypatch):
+    """Wildcard scores are uniform and carry no relevance signal."""
+    os_client = _OpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+
+    response = await service.search_tool("*")
+
+    assert response["normalized"] == "default"
+
+
 _DATE = {"created_after": "2024-01-01T00:00:00Z"}
 _DATE_CLAUSE = build_date_range_query("indexed_time", gte="2024-01-01T00:00:00Z")
 
@@ -572,7 +803,7 @@ async def test_nmslib_scores_the_filtered_documents_exactly(monkeypatch):
     assert script["lang"] == "knn"
     assert script["params"]["space_type"] == "cosinesimil"
     assert _DATE_CLAUSE in clause["script_score"]["query"]["bool"]["filter"]
-    assert _DATE_CLAUSE in hybrid["filter"]  # the outer filter is kept
+    assert _DATE_CLAUSE in hybrid["filter"]["bool"]["filter"]  # the outer filter is kept
 
 
 @pytest.mark.asyncio

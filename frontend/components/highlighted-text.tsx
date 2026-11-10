@@ -70,6 +70,9 @@ function parseFragment(
   });
 }
 
+const CJK_REGEX =
+  /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/;
+
 function isFormattingNoise(s: string): boolean {
   const trimmed = s.trim();
   if (!trimmed || trimmed.length < 4) return true;
@@ -77,7 +80,7 @@ function isFormattingNoise(s: string): boolean {
   if (/^[-*=_]{3,}$/.test(trimmed)) return true;
   if (/^`{3,}/.test(trimmed)) return true;
   if (/^#{1,6}\s*$/.test(trimmed)) return true;
-  if (!/[a-zA-Z]{3,}/.test(trimmed)) return true;
+  if (!/[a-zA-Z]{3,}/.test(trimmed) && !CJK_REGEX.test(trimmed)) return true;
   return false;
 }
 
@@ -90,7 +93,7 @@ function highlightSemanticSpan(
 
   const markClass = SEMANTIC_MARK_CLASS[tier];
 
-  const segments = text.match(/[^.!?\n]+[.!?\n]*/g) || [text];
+  const segments = text.match(/[^.!?\n。！？]+[.!?\n。！？]*/g) || [text];
   if (segments.length <= 1) {
     if (isFormattingNoise(text)) return text;
     return <mark className={markClass}>{text}</mark>;
@@ -99,7 +102,7 @@ function highlightSemanticSpan(
   const queryTerms = query
     .toLowerCase()
     .split(/\s+/)
-    .filter((t) => t.length > 2);
+    .filter((t) => t.length > 2 || CJK_REGEX.test(t));
 
   let bestIdx = -1;
   let bestScore = -1;
@@ -108,8 +111,13 @@ function highlightSemanticSpan(
     if (isFormattingNoise(segment)) return;
 
     const sLower = segment.toLowerCase();
-    const wordCount = (segment.match(/[a-zA-Z]{2,}/g) || []).length;
-    if (wordCount < 3) return; // Skip tiny fragments
+    const latinWords = (segment.match(/[a-zA-Z]{2,}/g) || []).length;
+    const cjkChars = (
+      segment.match(
+        /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/g,
+      ) || []
+    ).length;
+    if (latinWords < 3 && cjkChars < 3) return; // Skip tiny fragments
 
     let score = 0;
     queryTerms.forEach((term) => {
@@ -118,7 +126,7 @@ function highlightSemanticSpan(
         score += 2;
     });
 
-    score += Math.min(wordCount, 15) * 0.2;
+    score += Math.min(latinWords + cjkChars * 0.5, 15) * 0.2;
 
     if (score > bestScore) {
       bestScore = score;

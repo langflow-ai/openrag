@@ -1,9 +1,15 @@
-import type {
-  ChunkResult,
-  File,
-  RelevanceTier,
+import {
+  type ChunkResult,
+  type File,
+  RELEVANCE_HIGH_THRESHOLD,
+  RELEVANCE_MED_THRESHOLD,
+  type RelevanceTier,
 } from "@/app/api/queries/useGetSearchQuery";
 import { cn } from "@/lib/utils";
+
+/** High/medium cutoffs as percentages (config stores them as [0,1] fractions). */
+const RELEVANCE_HIGH_PCT = RELEVANCE_HIGH_THRESHOLD * 100;
+const RELEVANCE_MED_PCT = RELEVANCE_MED_THRESHOLD * 100;
 
 export interface RelevanceBreakdown {
   tier: RelevanceTier;
@@ -33,7 +39,11 @@ export const RELEVANCE_TEXT_COLORS: Record<RelevanceTier, string> = {
 };
 
 export function getScoreTier(pct: number): RelevanceTier {
-  return pct >= 65 ? "high" : pct >= 35 ? "medium" : "low";
+  return pct >= RELEVANCE_HIGH_PCT
+    ? "high"
+    : pct >= RELEVANCE_MED_PCT
+      ? "medium"
+      : "low";
 }
 
 /**
@@ -72,7 +82,11 @@ export function getRelevanceReasoning(data?: File): RelevanceBreakdown {
   const isSemanticMatch = Boolean(data?.isSemanticMatch);
   const score = data?.maxScore ?? 0;
   const meaningTier: RelevanceTier =
-    score >= 0.65 ? "high" : score >= 0.35 ? "medium" : "low";
+    score >= RELEVANCE_HIGH_THRESHOLD
+      ? "high"
+      : score >= RELEVANCE_MED_THRESHOLD
+        ? "medium"
+        : "low";
 
   const meaningDetail =
     meaningTier === "high"
@@ -200,9 +214,9 @@ export function getChunkRelevanceReasoning(
 
   const meaningTier: RelevanceTier =
     chunkScorePct !== null
-      ? chunkScorePct >= 65
+      ? chunkScorePct >= RELEVANCE_HIGH_PCT
         ? "high"
-        : chunkScorePct >= 35
+        : chunkScorePct >= RELEVANCE_MED_PCT
           ? "medium"
           : "low"
       : tier;

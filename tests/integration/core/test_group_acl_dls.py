@@ -49,7 +49,7 @@ async def _search_visible_document_ids(opensearch_client, index_name: str) -> se
     return {hit["_source"]["document_id"] for hit in response.get("hits", {}).get("hits", [])}
 
 
-async def test_opensearch_dls_filters_group_and_user_acl_documents():
+async def test_opensearch_dls_filters_group_and_user_acl_documents(monkeypatch):
     """Prove user and connector principal ACLs are enforced by OpenSearch DLS.
 
     This test avoids live connector dependencies. The admin client seeds a
@@ -66,6 +66,8 @@ async def test_opensearch_dls_filters_group_and_user_acl_documents():
     )
     from session_manager import SessionManager, User
     from utils.opensearch_utils import setup_opensearch_security
+
+    monkeypatch.setattr("config.settings.is_no_auth_mode", lambda: False)
 
     admin_client = _build_admin_opensearch_client()
     try:

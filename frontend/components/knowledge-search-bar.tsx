@@ -246,10 +246,8 @@ export const KnowledgeSearchBar = ({
           Delete
         </Button>
       )}
+      {/* Add Knowledge lives in the page header row (non-cloud); see page.tsx. */}
       <KnowledgeDateRangeFilter />
-      <div className="ml-auto">
-        <KnowledgeDropdown />
-      </div>
     </>
   );
 

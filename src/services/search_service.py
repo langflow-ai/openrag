@@ -1,5 +1,4 @@
 import asyncio
-import copy
 import json
 import os
 import re
@@ -10,7 +9,12 @@ from agentd.tool_decorator import tool
 
 from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
-from config.search_constants import DEFAULT_SEARCH_SCORE_THRESHOLD, HYBRID_PIPELINE_NAME
+from config.search_constants import (
+    DEFAULT_SEARCH_SCORE_THRESHOLD,
+    HYBRID_PIPELINE_NAME,
+    KEYWORD_WEIGHT,
+    SEMANTIC_WEIGHT,
+)
 from config.settings import get_embedding_model, get_index_name, get_openrag_config
 from observability.spans import Span, trace_root, trace_span
 from services.llm_gateway import LlmGatewayError
@@ -479,6 +483,102 @@ def _record_search_response(span: Span, response: dict[str, Any]) -> None:
     )
 
 
+# Named sub-queries of the hybrid query, so per-leg scores can be recovered via
+# ``include_named_queries_score`` when filter-level DLS bypasses the pipeline.
+_SEMANTIC_LEG = "semantic"
+_KEYWORD_LEG = "keyword"
+
+
+def _emulate_pipeline_scores(chunks: list[dict[str, Any]]) -> bool:
+    """Reproduce the OpenSearch hybrid pipeline's weighted score in Python.
+
+    Under filter-level DLS the pipeline is bypassed and hits return raw combined
+    scores, but ``include_named_queries_score`` still exposes each leg's raw score
+    in ``_matched``. This mirrors the ``min_max`` + weighted ``arithmetic_mean``
+    the pipeline would have applied: min-max each leg independently across the
+    returned hits, then combine ``SEMANTIC_WEIGHT * semantic + KEYWORD_WEIGHT *
+    keyword`` (a leg a hit did not match contributes 0, exactly as the pipeline
+    treats it). This restores the semantic weighting that a raw min-max of the
+    combined score throws away.
+
+    Returns ``True`` when it had the per-leg scores to do this, ``False`` when the
+    hits carry no ``_matched`` data (caller should fall back to combined min-max).
+    """
+    weights = {_SEMANTIC_LEG: SEMANTIC_WEIGHT, _KEYWORD_LEG: KEYWORD_WEIGHT}
+    raw: dict[str, list[float]] = {leg: [] for leg in weights}
+    for chunk in chunks:
+        matched = chunk.get("_matched") or {}
+        for leg in weights:
+            value = matched.get(leg)
+            if isinstance(value, int | float):
+                raw[leg].append(value)
+    if not any(raw.values()):
+        return False
+
+    bounds = {leg: (min(values), max(values)) for leg, values in raw.items() if values}
+
+    def leg_norm(leg: str, matched: dict[str, Any]) -> float:
+        value = matched.get(leg)
+        if not isinstance(value, int | float) or leg not in bounds:
+            return 0.0
+        lo, hi = bounds[leg]
+        return (value - lo) / (hi - lo) if hi > lo else 1.0
+
+    for chunk in chunks:
+        matched = chunk.get("_matched") or {}
+        chunk["score"] = sum(weight * leg_norm(leg, matched) for leg, weight in weights.items())
+    return True
+
+
+def _ensure_normalized_scores(chunks: list[dict[str, Any]]) -> bool:
+    """Guarantee chunk ``score`` values lie in [0,1], min-max normalizing in place.
+
+    The OpenSearch hybrid normalization pipeline already yields [0,1] scores for
+    non-DLS users. But under filter-level Document-Level Security (forced by a
+    terms-lookup DLS, e.g. the ACL role) the security plugin wraps the query and
+    the pipeline is silently bypassed, so hybrid hits come back with raw, unbounded
+    combined scores; keyword-only queries never use the pipeline either. This is
+    the single place that rescales those raw scores so every search path hands the
+    frontend a comparable [0,1] relevance score.
+
+    Returns ``True`` when it had to rescale (i.e. the pipeline did not deliver the
+    scores), ``False`` when the scores were already in [0,1] and left untouched.
+    A max score already <= 1 means the pipeline did the work (or the scores are
+    trivially bounded), so nothing is changed and no double-normalization occurs.
+    Min-max convention: best -> 1, worst -> 0, single hit -> 1.
+    """
+    scores = [c["score"] for c in chunks if isinstance(c.get("score"), int | float)]
+    if not scores or max(scores) <= 1.0 + 1e-9:
+        return False
+    lo, hi = min(scores), max(scores)
+    spread = hi - lo
+    for chunk in chunks:
+        score = chunk.get("score")
+        if isinstance(score, int | float):
+            chunk["score"] = (score - lo) / spread if spread > 0 else 1.0
+    return True
+
+
+def _build_dls_fallback_body(
+    search_body: dict[str, Any], all_filters: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    """Rebuild a hybrid search body as an equivalent bool/should (no pipeline).
+
+    Used only when a DLS function_score wrapper makes OpenSearch reject the
+    top-level hybrid query. Reuses the hybrid sub-query objects and copies only
+    the small envelope around them, so it avoids deep-copying the vector-laden
+    body — and is built lazily in the error path rather than on every search.
+    """
+    try:
+        hybrid = search_body["query"]["hybrid"]
+    except (KeyError, TypeError):
+        return None
+    bool_query: dict[str, Any] = {"should": hybrid["queries"], "minimum_should_match": 1}
+    if all_filters:
+        bool_query["filter"] = all_filters
+    return {**search_body, "query": {"bool": bool_query}}
+
+
 def register_search_service(service: "SearchService") -> None:
     """
     Explicitly register the active search service for the @tool wrapper.
@@ -908,21 +1008,29 @@ class SearchService:
                 # hybrid query: normalization processor handles score blending.
                 # Filters are pushed into the hybrid clause directly so DLS can
                 # still wrap the top-level query without breaking the pipeline.
+                # Legs are named so that when filter-level DLS bypasses the
+                # pipeline, ``include_named_queries_score`` still reports each
+                # leg's score and the backend can emulate the weighted blend.
                 semantic_clause = {
                     "dis_max": {
                         "tie_breaker": 0.0,
                         "queries": knn_queries,
+                        "_name": _SEMANTIC_LEG,
                     }
                 }
-                query_block = {
-                    "hybrid": {
-                        "queries": [semantic_clause, *keyword_clauses],
-                        "filter": all_filters if all_filters else None,
+                # The pipeline has one weight per hybrid sub-query, so all keyword
+                # clauses must be grouped into a single sub-query.
+                keyword_clause = {
+                    "bool": {
+                        "should": keyword_clauses,
+                        "minimum_should_match": 1,
+                        "_name": _KEYWORD_LEG,
                     }
                 }
-                # Remove None filter key so OpenSearch doesn't choke on it
-                if query_block["hybrid"]["filter"] is None:
-                    del query_block["hybrid"]["filter"]
+                query_block = {"hybrid": {"queries": [semantic_clause, keyword_clause]}}
+                if all_filters:
+                    # hybrid.filter takes a single query object, not a list
+                    query_block["hybrid"]["filter"] = {"bool": {"filter": all_filters}}
             else:
                 # Keyword-only fallback: plain bool, no pipeline needed
                 query_block = {
@@ -988,26 +1096,11 @@ class SearchService:
                 "require_field_match": False,
             }
 
-        # DLS fallback: pre-build a bool/should version of the hybrid query so the
-        # security plugin's function_score wrapper (which hybrid cannot be nested inside)
-        # doesn't abort the search for JWT-authenticated users.
-        dls_fallback_body: dict[str, Any] | None = None
-        if not is_wildcard_match_all and query_embeddings:
-            try:
-                dls_fallback_body = copy.deepcopy(search_body)
-                hybrid = dls_fallback_body["query"]["hybrid"]
-                bool_filters = hybrid.get("filter") or all_filters
-                dls_fallback_body["query"] = {
-                    "bool": {
-                        "should": hybrid["queries"],
-                        "minimum_should_match": 1,
-                        "filter": bool_filters if bool_filters else None,
-                    }
-                }
-                if dls_fallback_body["query"]["bool"]["filter"] is None:
-                    del dls_fallback_body["query"]["bool"]["filter"]
-            except (KeyError, AttributeError, TypeError):
-                dls_fallback_body = None
+        # DLS fallback eligibility: on some clusters the security plugin's
+        # function_score wrapper makes OpenSearch reject the top-level hybrid query.
+        # The bool/should replacement is only built (lazily) if that error fires —
+        # see the except branch — so the common success path pays nothing.
+        dls_fallback_eligible = not is_wildcard_match_all and bool(query_embeddings)
 
         # Authentication required - ACL filter is applied at the application layer above
         logger.debug(
@@ -1036,6 +1129,11 @@ class SearchService:
         pipeline_active = not is_wildcard_match_all and bool(query_embeddings)
         if pipeline_active:
             search_params["search_pipeline"] = HYBRID_PIPELINE_NAME
+            # Ask for per-leg scores so that if filter-level DLS bypasses the
+            # pipeline we can still emulate its weighted blend (see
+            # _emulate_pipeline_scores). Harmless when the pipeline does run.
+            # OpenSearch requires the literal string "true", not Python's "True".
+            search_params["include_named_queries_score"] = "true"
 
         with trace_span("search.query", knn_fields=len(query_embeddings), size=limit) as query_span:
             try:
@@ -1052,10 +1150,13 @@ class SearchService:
                         error=error_message,
                     )
                     raise OpenSearchDiskSpaceError(DISK_SPACE_ERROR_MESSAGE) from e
-                if (
-                    dls_fallback_body is not None
+                dls_fallback_body = (
+                    _build_dls_fallback_body(search_body, all_filters)
+                    if dls_fallback_eligible
                     and "hybrid query must be a top level query" in error_message.lower()
-                ):
+                    else None
+                )
+                if dls_fallback_body is not None:
                     # DLS (Document Level Security) wraps the query in function_score,
                     # which the hybrid query type cannot be nested inside. Fall back to
                     # bool/should so DLS users get keyword+semantic results without the
@@ -1116,6 +1217,12 @@ class SearchService:
             raw_highlights: list[str] = hit.get("highlight", {}).get("text") or []
             chunks.append(
                 {
+                    # Per-leg scores from include_named_queries_score, used only to
+                    # emulate the pipeline under filter-level DLS; stripped before
+                    # the response is returned. A dict {leg: score} when present.
+                    "_matched": hit.get("matched_queries")
+                    if isinstance(hit.get("matched_queries"), dict)
+                    else None,
                     "filename": source.get("filename"),
                     "mimetype": source.get("mimetype"),
                     "page": source.get("page"),
@@ -1173,6 +1280,47 @@ class SearchService:
             is_wildcard_match_all=is_wildcard_match_all,
         )
 
+        # Guarantee [0,1] scores on every non-wildcard path so the frontend can
+        # trust ``score`` directly instead of re-normalizing. The ``normalized``
+        # field reports which path produced the scores:
+        #   "pipeline" - the OpenSearch hybrid pipeline normalized them (weighted
+        #                semantic/keyword blend; non-DLS and lucene-level DLS).
+        #   "default"  - the pipeline did not apply, so the backend normalized
+        #                here (filter-level DLS or keyword-only), or there is no
+        #                relevance signal (wildcard).
+        if is_wildcard_match_all:
+            normalized = "default"
+        else:
+            # The pipeline delivered the scores only if it was attached AND they
+            # came back in [0,1]; filter-level DLS bypasses it and returns raw
+            # scores > 1. Only scan the scores when a pipeline was actually attached.
+            pipeline_ran = False
+            if pipeline_active:
+                numeric = [c["score"] for c in chunks if isinstance(c.get("score"), int | float)]
+                pipeline_ran = not numeric or max(numeric) <= 1.0 + 1e-9
+            if pipeline_ran:
+                normalized = "pipeline"
+            else:
+                # Pipeline bypassed (filter-level DLS) or keyword-only. For a
+                # bypassed hybrid we have per-leg scores, so emulate the weighted
+                # blend; otherwise fall back to a plain min-max of the combined score.
+                if not (query_embeddings and _emulate_pipeline_scores(chunks)):
+                    _ensure_normalized_scores(chunks)
+                normalized = "default"
+
+        for chunk in chunks:
+            chunk.pop("_matched", None)
+
+        # Re-scoring (emulation or min-max) changes the ranking relative to the
+        # raw _score order OpenSearch returned, so re-rank most- to least-relevant.
+        # The pipeline path is already sorted by its blended score; wildcard has
+        # no relevance signal.
+        if normalized == "default" and not is_wildcard_match_all:
+            chunks.sort(
+                key=lambda c: c["score"] if isinstance(c.get("score"), int | float) else 0.0,
+                reverse=True,
+            )
+
         # Return both transformed results and aggregations. Surface degraded
         # semantic-search signals so the UI can show a non-fatal warning
         # instead of treating partial-embedding failure as a hard error.
@@ -1180,6 +1328,7 @@ class SearchService:
             "results": chunks,
             "aggregations": aggregations,
             "total": len(chunks),
+            "normalized": normalized,
         }
         if failed_models:
             response["warnings"] = [

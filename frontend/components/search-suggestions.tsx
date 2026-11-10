@@ -1,4 +1,4 @@
-import { FileIcon, Info, Search } from "lucide-react";
+import { FileIcon, History, Info, Search } from "lucide-react";
 import {
   type KeyboardEvent,
   type ReactElement,
@@ -23,7 +23,7 @@ import {
   PopoverContent,
 } from "@/components/ui/popover";
 import type { FilterInput } from "@/lib/filter-normalization";
-import { splitOnQuery } from "@/lib/search-preview";
+import { expandMarksToWords, splitOnQuery } from "@/lib/search-preview";
 import { cn } from "@/lib/utils";
 
 export type SuggestionItem =
@@ -34,7 +34,24 @@ export type SuggestionItem =
       files: number;
       chunks: number;
     }
-  | { kind: "file"; key: string; file: SuggestFile };
+  | { kind: "file"; key: string; file: SuggestFile }
+  | { kind: "recent"; key: string; text: string };
+
+const NO_RECENT_SEARCHES: string[] = [];
+
+/** Recent searches shown while typing; the empty box shows the full list. */
+const RECENT_WHILE_TYPING_MAX = 3;
+
+function buildRecentItems(recent: string[], query: string): SuggestionItem[] {
+  const needle = query.toLowerCase();
+  const matches = recent.filter((text) => {
+    const lower = text.toLowerCase();
+    return needle ? lower.includes(needle) && lower !== needle : true;
+  });
+  return (needle ? matches.slice(0, RECENT_WHILE_TYPING_MAX) : matches).map(
+    (text): SuggestionItem => ({ kind: "recent", key: `r:${text}`, text }),
+  );
+}
 
 function buildSuggestionItems(
   data: SearchSuggestResult | undefined,
@@ -63,6 +80,8 @@ interface UseSearchSuggestionsBoxOptions {
   filters: FilterInput | undefined;
   enabled: boolean;
   scoreThreshold?: number;
+  /** Previously submitted searches, newest first. */
+  recentSearches?: string[];
   onPickSuggestion: (text: string) => void;
   onPickFile: (filename: string) => void;
 }
@@ -78,6 +97,7 @@ export function useSearchSuggestionsBox({
   filters,
   enabled,
   scoreThreshold,
+  recentSearches = NO_RECENT_SEARCHES,
   onPickSuggestion,
   onPickFile,
 }: UseSearchSuggestionsBoxOptions) {
@@ -92,7 +112,17 @@ export function useSearchSuggestionsBox({
     enabled && focused,
     scoreThreshold,
   );
-  const items = useMemo(() => buildSuggestionItems(data), [data]);
+  const trimmedQuery = query.trim();
+  const queryIsSearchable = trimmedQuery.length >= SUGGEST_MIN_CHARS;
+  const suggestionItems = useMemo(() => buildSuggestionItems(data), [data]);
+  const recentItems = useMemo(
+    () => buildRecentItems(recentSearches, trimmedQuery),
+    [recentSearches, trimmedQuery],
+  );
+  const items = useMemo(
+    () => [...recentItems, ...(queryIsSearchable ? suggestionItems : [])],
+    [recentItems, suggestionItems, queryIsSearchable],
+  );
 
   const [prevItems, setPrevItems] = useState(items);
   if (prevItems !== items) {
@@ -102,15 +132,14 @@ export function useSearchSuggestionsBox({
 
   // Compared trimmed: submitting commits the trimmed text, which would
   // otherwise differ from the dismissed value and reopen the dropdown.
-  const trimmedQuery = query.trim();
   const open =
     enabled &&
     focused &&
-    trimmedQuery.length >= SUGGEST_MIN_CHARS &&
+    (queryIsSearchable || recentItems.length > 0) &&
     dismissedQuery !== trimmedQuery;
 
   const pick = (item: SuggestionItem) => {
-    if (item.kind === "suggestion") {
+    if (item.kind === "suggestion" || item.kind === "recent") {
       setDismissedQuery(item.text);
       onPickSuggestion(item.text);
     } else {
@@ -145,6 +174,7 @@ export function useSearchSuggestionsBox({
     dismiss: () => setDismissedQuery(trimmedQuery),
     data,
     items,
+    queryIsSearchable,
     isRefining,
     isError,
     activeIndex,
@@ -206,9 +236,6 @@ function SuggestionRows({
   box: SearchSuggestionsBox;
   query: string;
 }) {
-  const suggestionCount = box.items.filter(
-    (item) => item.kind === "suggestion",
-  ).length;
   const rows = box.items.map((item, index) => {
     const active = index === box.activeIndex;
     const base = cn(
@@ -225,6 +252,15 @@ function SuggestionRows({
       onMouseEnter: () => box.setActiveIndex(index),
       onClick: () => box.pick(item),
     };
+
+    if (item.kind === "recent") {
+      return (
+        <button key={item.key} {...handlers} className={base}>
+          <History className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <MatchedText text={item.text} query={query} />
+        </button>
+      );
+    }
 
     if (item.kind === "suggestion") {
       return (
@@ -248,7 +284,7 @@ function SuggestionRows({
           {file.preview &&
             (file.preview.kind === "keyword" ? (
               <HighlightedText
-                highlights={[file.preview.text]}
+                highlights={[expandMarksToWords(file.preview.text)]}
                 fallbackText=""
                 className={cn("block truncate text-xs", PREVIEW_TEXT_CLASS)}
                 markClassName={BOLD_MATCH_CLASS}
@@ -268,12 +304,24 @@ function SuggestionRows({
     );
   });
 
+  const section = (kind: SuggestionItem["kind"], label: string) => {
+    const indexes = box.items.flatMap((item, index) =>
+      item.kind === kind ? [index] : [],
+    );
+    if (indexes.length === 0) return null;
+    return (
+      <>
+        <SectionLabel>{label}</SectionLabel>
+        {indexes.map((index) => rows[index])}
+      </>
+    );
+  };
+
   return (
     <>
-      {suggestionCount > 0 && <SectionLabel>Suggestions</SectionLabel>}
-      {rows.slice(0, suggestionCount)}
-      {rows.length > suggestionCount && <SectionLabel>Files</SectionLabel>}
-      {rows.slice(suggestionCount)}
+      {section("recent", "Recent searches")}
+      {section("suggestion", "Suggestions")}
+      {section("file", "Files")}
     </>
   );
 }
@@ -291,7 +339,8 @@ export function SearchSuggestionsPopover({
   children,
 }: SearchSuggestionsPopoverProps) {
   const trimmed = query.trim();
-  const empty = box.data && box.items.length === 0;
+  const searchable = box.queryIsSearchable;
+  const empty = searchable && box.data && box.items.length === 0;
 
   return (
     <Popover open={box.open} onOpenChange={box.onOpenChange}>
@@ -314,10 +363,12 @@ export function SearchSuggestionsPopover({
         <div
           id={box.listId}
           role="listbox"
-          aria-label={`Search suggestions for ${trimmed}`}
+          aria-label={
+            trimmed ? `Search suggestions for ${trimmed}` : "Recent searches"
+          }
           className="max-h-96 overflow-y-auto pb-1"
         >
-          {!box.data && !box.isError && (
+          {searchable && !box.data && !box.isError && (
             <div
               role="presentation"
               className="px-3 py-3 text-sm text-muted-foreground"
@@ -325,7 +376,7 @@ export function SearchSuggestionsPopover({
               Searching…
             </div>
           )}
-          {box.isError && (
+          {searchable && box.isError && (
             <div
               role="presentation"
               className="px-3 py-3 text-sm text-muted-foreground"
@@ -343,15 +394,17 @@ export function SearchSuggestionsPopover({
           )}
           <SuggestionRows box={box} query={trimmed} />
         </div>
-        <div className="flex items-center gap-2 border-t px-3 py-2 text-xs text-muted-foreground">
-          <Info className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">
-            Searching file names and content ·{" "}
-            {box.isRefining
-              ? "Refining with meaning…"
-              : "Hybrid (keyword + meaning)"}
-          </span>
-        </div>
+        {searchable && (
+          <div className="flex items-center gap-2 border-t px-3 py-2 text-xs text-muted-foreground">
+            <Info className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              Searching file names and content ·{" "}
+              {box.isRefining
+                ? "Refining with meaning…"
+                : "Hybrid (keyword + meaning)"}
+            </span>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );

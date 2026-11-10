@@ -71,6 +71,11 @@ export function useAuth() {
   return context;
 }
 
+/** `useAuth` without the provider requirement, for components that only scope data per user. */
+export function useOptionalAuth() {
+  return use(AuthContext) ?? null;
+}
+
 interface AuthProviderProps {
   children: ReactNode;
 }

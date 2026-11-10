@@ -363,10 +363,6 @@ export function FileChunksPanel({
     const isSearchActive =
       Boolean(searchQuery?.trim()) && searchQuery!.trim() !== "*";
     if (!isSearchActive) return () => undefined;
-    const scores = allChunks.map((c) => c.score ?? 0);
-    const min = Math.min(...scores);
-    const max = Math.max(...scores);
-    const spread = max - min;
     return (chunk) => {
       const rawScore = chunk.score ?? 0;
       if (rawScore === 0) {
@@ -376,15 +372,9 @@ export function FileChunksPanel({
           isSemanticMatch: false,
         };
       }
-      const hasGlobalNorm =
-        typeof chunk.normalizedScore === "number" && chunk.normalizedScore >= 0;
-      const norm = hasGlobalNorm
-        ? chunk.normalizedScore!
-        : spread > 0
-          ? (rawScore - min) / spread
-          : rawScore > 0
-            ? 1
-            : 0;
+      // Scores arrive already normalised to [0, 1] (useGetSearchQuery /
+      // useFileScopedChunksQuery), so use them directly.
+      const norm = chunk.normalizedScore ?? 0;
       const tier: RelevanceTier =
         norm >= RELEVANCE_HIGH_THRESHOLD
           ? "high"
@@ -405,7 +395,7 @@ export function FileChunksPanel({
         isSemanticMatch,
       };
     };
-  }, [allChunks, searchQuery, isSearchFetching]);
+  }, [searchQuery, isSearchFetching]);
 
   const filterControlled = filterQuery !== undefined;
   const [internalQuery, setInternalQuery] = useState("");

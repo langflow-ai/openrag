@@ -29,7 +29,7 @@ export interface ChunkResult {
   /** OpenSearch highlight fragments with matched terms wrapped in `<mark>` tags. Empty when no keyword match. */
   highlights?: string[];
   score: number;
-  /** Normalized score [0, 1] relative to the active search result set. */
+  /** Relevance score in [0, 1], normalized by the backend (see useGetSearchQuery). */
   normalizedScore?: number;
   source_url?: string;
   owner?: string;
@@ -70,9 +70,7 @@ export interface File {
   filename: string;
   mimetype: string;
   chunkCount?: number;
-  /** Average raw score across matched chunks for this file. */
-  avgScore?: number;
-  /** Highest min-max normalised chunk score [0, 1] for this file. Undefined for wildcard queries. */
+  /** Highest normalised chunk score [0, 1] for this file. */
   maxScore?: number;
   /** Relevance tier derived from maxScore. */
   relevanceTier?: RelevanceTier;
@@ -248,7 +246,6 @@ export const useGetSearchQuery = (
           filename: string;
           mimetype: string;
           chunks: ChunkResult[];
-          totalScore: number;
           source_url?: string;
           owner?: string;
           owner_name?: string;
@@ -283,7 +280,6 @@ export const useGetSearchQuery = (
         const existing = fileMap.get(fileIdentity);
         if (existing) {
           existing.chunks.push(chunkWithHighlights);
-          existing.totalScore += chunk.score ?? 0;
           if (!existing.embedding_model && chunk.embedding_model) {
             existing.embedding_model = chunk.embedding_model;
           }
@@ -307,7 +303,6 @@ export const useGetSearchQuery = (
                 : fileIdentity,
             mimetype: chunk.mimetype,
             chunks: [chunkWithHighlights],
-            totalScore: chunk.score ?? 0,
             source_url: chunk.source_url,
             owner: chunk.owner,
             owner_name: chunk.owner_name,
@@ -336,15 +331,28 @@ export const useGetSearchQuery = (
         ? data.warnings
         : [];
 
-      // Min-max normalise: best chunk → 1.0, worst → 0.0. Single result → 1.0 (avoids / 0).
-      const allChunks = Array.from(fileMap.values()).flatMap((f) => f.chunks);
-      const rawScores = allChunks.map((c) => c.score ?? 0);
-      const globalMin = Math.min(...rawScores);
-      const globalMax = Math.max(...rawScores);
-      const scoreSpread = globalMax - globalMin;
+      // The backend guarantees [0,1] scores on every non-wildcard path and
+      // reports which path produced them via `normalized`: "pipeline" (weighted
+      // OpenSearch blend) or "default" (backend min-max, e.g. filter-level DLS or
+      // keyword-only). Either way the score is used directly; re-normalising here
+      // would double-normalize it. The min-max fallback only runs when the flag is
+      // absent (website-page projection or an older backend).
+      const backendNormalized =
+        data.normalized === "pipeline" || data.normalized === "default";
 
-      const normalise = (raw: number): number =>
-        scoreSpread > 0 ? (raw - globalMin) / scoreSpread : 1;
+      // Fallback min-max (only computed when the backend didn't normalize, e.g. a
+      // website-page projection or an older backend): best chunk → 1.0, worst →
+      // 0.0. Single result → 1.0 (avoids / 0).
+      let normalise = (raw: number): number => raw;
+      if (!backendNormalized) {
+        const rawScores = Array.from(fileMap.values()).flatMap((f) =>
+          f.chunks.map((c) => c.score ?? 0),
+        );
+        const globalMin = Math.min(...rawScores);
+        const scoreSpread = Math.max(...rawScores) - globalMin;
+        normalise = (raw: number): number =>
+          scoreSpread > 0 ? (raw - globalMin) / scoreSpread : 1;
+      }
 
       const toTier = (norm: number): RelevanceTier =>
         norm >= RELEVANCE_HIGH_THRESHOLD
@@ -378,7 +386,6 @@ export const useGetSearchQuery = (
           filename: file.filename,
           mimetype: file.mimetype,
           chunkCount: file.chunk_count ?? file.chunks.length,
-          avgScore: file.totalScore / file.chunks.length,
           maxScore: fileMaxNorm,
           relevanceTier: toTier(fileMaxNorm),
           chunkTiers,

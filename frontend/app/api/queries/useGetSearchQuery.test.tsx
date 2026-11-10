@@ -247,7 +247,7 @@ describe("useGetSearchQuery", () => {
       );
     });
 
-    it("groups chunks by filename and averages their scores", async () => {
+    it("groups chunks by filename and counts them", async () => {
       serveSearch({
         results: [
           chunk({ filename: "a.pdf", score: 2 }),
@@ -263,7 +263,6 @@ describe("useGetSearchQuery", () => {
       expect(files[0]).toMatchObject({
         filename: "a.pdf",
         chunkCount: 2,
-        avgScore: 3,
       });
       expect(files[1]).toMatchObject({ filename: "b.pdf", chunkCount: 1 });
     });
@@ -491,6 +490,45 @@ describe("useGetSearchQuery", () => {
     expect(files.find((f) => f.filename === "b.pdf")?.relevanceTier).toBe(
       "low",
     );
+  });
+
+  it("trusts backend scores as-is when normalized is set (no re-stretch)", async () => {
+    // Backend already returned [0,1] scores. The frontend must NOT min-max them,
+    // which would stretch the best chunk to 1.0 and hide the true relevance.
+    serveSearch({
+      normalized: "pipeline",
+      results: [
+        chunk({ filename: "a.pdf", score: 0.7 }),
+        chunk({ filename: "a.pdf", score: 0.2 }),
+        chunk({ filename: "b.pdf", score: 0.1 }),
+      ],
+    });
+
+    const { result } = await runSearch("term");
+
+    const files = result.current.data?.files ?? [];
+    const aPdf = files.find((f) => f.filename === "a.pdf");
+    const bPdf = files.find((f) => f.filename === "b.pdf");
+    // Used directly: 0.7 stays 0.7 (would be 1.0 under the old min-max).
+    expect(aPdf?.maxScore).toBeCloseTo(0.7);
+    expect(bPdf?.maxScore).toBeCloseTo(0.1);
+    expect(aPdf?.chunks?.map((c) => c.normalizedScore)).toEqual([0.7, 0.2]);
+  });
+
+  it("falls back to min-max when normalized flag is absent", async () => {
+    // Wildcard / website-page / older-backend responses omit the flag; the
+    // frontend still min-maxes so raw scores render as [0,1].
+    serveSearch({
+      results: [
+        chunk({ filename: "a.pdf", score: 7.0 }),
+        chunk({ filename: "b.pdf", score: 2.0 }),
+      ],
+    });
+
+    const { result } = await runSearch("term");
+    const files = result.current.data?.files ?? [];
+    expect(files.find((f) => f.filename === "a.pdf")?.maxScore).toBe(1.0);
+    expect(files.find((f) => f.filename === "b.pdf")?.maxScore).toBe(0.0);
   });
 
   it("exposes tier threshold constants", () => {

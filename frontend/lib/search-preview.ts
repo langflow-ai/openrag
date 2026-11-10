@@ -19,11 +19,40 @@ export interface SearchPreview {
   kind: "keyword" | "semantic";
 }
 
+const CJK_REGEX =
+  /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/u;
+
 const MARK_LENGTH = "<mark></mark>".length;
 const MARK_SPLIT = /(<mark>.*?<\/mark>)/;
 
 export function stripMarks(fragment: string): string {
   return fragment.replace(/<\/?mark>/g, "");
+}
+
+const WORD_CHARS = "[\\p{L}\\p{N}_]";
+const MARK_THEN_WORD_TAIL = new RegExp(
+  `<mark>([^<]*)</mark>(${WORD_CHARS}+)`,
+  "gu",
+);
+const WORD_HEAD_THEN_MARK = new RegExp(
+  `(${WORD_CHARS}+)<mark>([^<]*)</mark>`,
+  "gu",
+);
+
+/**
+ * Grow each `<mark>` to the whole word it sits in, so a partial query such as
+ * "retr" underlines "retrieval". CJK text has no word boundaries, so it is left alone.
+ */
+export function expandMarksToWords(fragment: string): string {
+  const unlessCjk = (extra: string, whole: string, grown: string) =>
+    CJK_REGEX.test(extra) ? whole : grown;
+  return fragment
+    .replace(MARK_THEN_WORD_TAIL, (whole, marked, tail) =>
+      unlessCjk(tail, whole, `<mark>${marked}${tail}</mark>`),
+    )
+    .replace(WORD_HEAD_THEN_MARK, (whole, head, marked) =>
+      unlessCjk(head, whole, `<mark>${head}${marked}</mark>`),
+    );
 }
 
 function isMarkPart(part: string): boolean {
@@ -59,27 +88,43 @@ function truncatePlain(text: string, limit: number): string {
   return `${cut || text.slice(0, limit)}…`;
 }
 
-/** Shrink an over-long fragment around its first `<mark>`, ending with `…`. */
+/**
+ * Text kept ahead of the first match. The table cell is far narrower than
+ * `PREVIEW_MAX_CHARS`, so the CSS ellipsis would otherwise land on the match.
+ */
+const PREVIEW_LEAD_CHARS = 24;
+
+/** Last `limit` characters of `text`, starting on a word boundary, with a leading `…` when cut. */
+function trimLead(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  const tail = text.slice(text.length - limit);
+  const startsOnWord = /\s/.test(text[text.length - limit - 1] ?? "");
+  return `…${startsOnWord ? tail : tail.replace(/^\S*\s+/, "")}`;
+}
+
+/**
+ * Shrink a fragment around its first `<mark>`: a short lead-in so the match
+ * sits at the left edge of the cell, and a tail ending with `…` when long.
+ */
 function clipFragment(fragment: string): string {
   const flat = fragment.replace(/\s+/g, " ").trim();
-  if (stripMarks(flat).length <= PREVIEW_MAX_CHARS) return flat;
 
   const first = /<mark>.*?<\/mark>/.exec(flat);
   if (!first) return truncatePlain(flat, PREVIEW_MAX_CHARS);
 
-  const before = flat.slice(0, first.index);
   const match = first[0];
   const after = flat.slice(first.index + match.length);
+  const clippedBefore = trimLead(
+    flat.slice(0, first.index),
+    PREVIEW_LEAD_CHARS,
+  );
 
-  const budget = Math.max(PREVIEW_MAX_CHARS - (match.length - MARK_LENGTH), 0);
-  const keepBefore = Math.floor(budget / 3);
-  const keepAfter = budget - Math.min(keepBefore, before.length);
-
-  const clippedBefore =
-    before.length > keepBefore
-      ? `…${before.slice(before.length - keepBefore).replace(/^\S*\s+/, "")}`
-      : before;
-
+  const keepAfter = Math.max(
+    PREVIEW_MAX_CHARS -
+      stripMarks(clippedBefore).length -
+      (match.length - MARK_LENGTH),
+    0,
+  );
   const kept = takePlain(after, keepAfter);
   const wasCut = stripMarks(kept).length < stripMarks(after).length;
   const clippedAfter = wasCut
@@ -90,9 +135,6 @@ function clipFragment(fragment: string): string {
 }
 
 /** The sentence sharing the most words with the query (first one on ties). */
-const CJK_REGEX =
-  /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/u;
-
 export function bestSentence(text: string, query: string): string | null {
   const cleaned = text.trim();
   if (!cleaned) return null;
@@ -133,10 +175,10 @@ export function bestSentence(text: string, query: string): string | null {
 }
 
 function previewFromChunk(chunk: ChunkResult): SearchPreview | null {
-  const fragment = chunk.highlights?.find((item) => item.trim().length > 0);
+  const fragment = chunk.highlights?.find((item) => item.includes("<mark>"));
   if (!fragment) return null;
 
-  let line = clipFragment(fragment);
+  let line = clipFragment(expandMarksToWords(fragment));
   const plain = stripMarks(fragment);
   const start = chunk.text ? chunk.text.indexOf(plain) : -1;
   if (start > 0 && !line.startsWith("…")) line = `…${line}`;
@@ -170,9 +212,10 @@ export function buildFilePreview(
 }
 
 /**
- * Previews for the `count` most relevant files, keyed by file identity.
+ * Keyword previews for the `count` most relevant files, keyed by file identity.
  * Relevance is the best chunk score, so a file with one excellent chunk
- * outranks one with many mediocre chunks.
+ * outranks one with many mediocre chunks. A top file without a literal match
+ * gets no preview; the slot is not passed down to the next file.
  */
 export function computeTopPreviews(
   files: File[],
@@ -188,7 +231,10 @@ export function computeTopPreviews(
     .slice(0, count);
   for (const file of ranked) {
     const preview = buildFilePreview(file, query);
-    if (preview) previews.set(getKnowledgeFileIdentity(file), preview);
+    // A semantic guess carries no underlined match, so it is not worth a row.
+    if (preview?.kind === "keyword") {
+      previews.set(getKnowledgeFileIdentity(file), preview);
+    }
   }
   return previews;
 }

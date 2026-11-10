@@ -29,7 +29,6 @@ import {
 import {
   BOLD_MATCH_CLASS,
   HighlightedText,
-  PREVIEW_TEXT_CLASS,
 } from "@/components/highlighted-text";
 import { KnowledgeDataTable } from "@/components/knowledge-data-table";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
@@ -247,10 +246,6 @@ export function getOwnerLabel(file?: File): string {
   return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
 }
 
-export function formatAvgScoreLabel(value: unknown): string {
-  return typeof value === "number" ? value.toFixed(2) : "-";
-}
-
 export function formatChunkCountLabel(chunkCount?: number): string {
   return chunkCount?.toString() ?? "-";
 }
@@ -304,9 +299,6 @@ export function buildWebsitePagesUrl(
   }
   return `/knowledge?${params.toString()}`;
 }
-
-const AVG_SCORE_TOOLTIP =
-  "Average relevance score across the matched chunks of this file. Higher means a stronger match — sort by this column to rank results by relevance.";
 
 export function RelevanceCellContent({ data }: { data?: File }) {
   const tier = data?.relevanceTier;
@@ -409,22 +401,6 @@ export function RelevanceCellContent({ data }: { data?: File }) {
             )}
           </div>
         </div>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-export function AvgScoreCellContent({ value }: { value: unknown }) {
-  const label = formatAvgScoreLabel(value);
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded cursor-default">
-          {label}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-56 text-center">
-        {AVG_SCORE_TOOLTIP}
       </TooltipContent>
     </Tooltip>
   );
@@ -990,8 +966,7 @@ function SearchPage() {
             <button
               type="button"
               className={cn(
-                "flex gap-2 text-left flex-1 overflow-hidden transition-colors",
-                preview ? "items-start" : "items-center",
+                "flex items-center gap-2 text-left flex-1 overflow-hidden transition-colors",
                 isActive
                   ? isCloudBrand
                     ? "cursor-pointer hover:text-primary"
@@ -1019,6 +994,9 @@ function SearchPage() {
                     <span
                       className={cn(
                         "font-medium truncate min-w-0",
+                        // AG Grid sets a row-tall line-height on cells; tighten it
+                        // so the preview sits right under the filename.
+                        preview && "leading-tight",
                         showOpenragSourceAnimation
                           ? "text-primary animate-pulse"
                           : "text-foreground",
@@ -1033,21 +1011,14 @@ function SearchPage() {
                 </Tooltip>
                 {preview && (
                   <span
-                    className={cn(
-                      "block truncate text-xs font-normal",
-                      PREVIEW_TEXT_CLASS,
-                    )}
+                    className="mt-0.5 block truncate text-[10px] font-normal leading-tight text-muted-foreground"
                     title={stripMarks(preview.text)}
                   >
-                    {preview.kind === "keyword" ? (
-                      <HighlightedText
-                        highlights={[preview.text]}
-                        fallbackText=""
-                        markClassName={BOLD_MATCH_CLASS}
-                      />
-                    ) : (
-                      preview.text
-                    )}
+                    <HighlightedText
+                      highlights={[preview.text]}
+                      fallbackText=""
+                      markClassName={BOLD_MATCH_CLASS}
+                    />
                   </span>
                 )}
               </span>
@@ -1072,19 +1043,6 @@ function SearchPage() {
       topPreviews,
     ],
   );
-
-  // Rows that carry a preview line need extra height. The cloud grid already
-  // uses a 64px row, which fits two lines.
-  const getRowHeight = useCallback(
-    (params: { data?: File }) =>
-      topPreviews.has(getKnowledgeFileIdentity(params.data)) ? 56 : undefined,
-    [topPreviews],
-  );
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: topPreviews changes which rows are tall, so heights must be recomputed.
-  useEffect(() => {
-    getGridApi()?.resetRowHeights();
-  }, [topPreviews, getGridApi]);
 
   const colSize: ColDef<File> = {
     field: "size",
@@ -1151,7 +1109,7 @@ function SearchPage() {
       formatChunkCountLabel(params.data?.chunkCount),
   };
 
-  const colAvgScore: ColDef<File> = {
+  const colRelevance: ColDef<File> = {
     field: "maxScore",
     headerName: "Relevance",
     hide: isWildcardQuery,
@@ -1233,7 +1191,7 @@ function SearchPage() {
 
   // ── Layout-aware column sets ─────────────────────────────────────────────
   const columnDefs: ColDef<File>[] = isNarrow
-    ? [colSource, colChunks, colAvgScore, colStatus, colActions]
+    ? [colSource, colChunks, colRelevance, colStatus, colActions]
     : [
         colSource,
         colSize,
@@ -1241,7 +1199,7 @@ function SearchPage() {
         colOwner,
         colIndexedTime,
         colChunks,
-        colAvgScore,
+        colRelevance,
         colStatus,
         colActions,
       ];
@@ -1336,7 +1294,7 @@ function SearchPage() {
   return (
     <>
       <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between gap-3 mb-6">
           <h2
             className={cn(
               "text-lg font-semibold",
@@ -1345,12 +1303,17 @@ function SearchPage() {
           >
             Project Knowledge
           </h2>
-          {!isCloudBrand && isNarrow && (
-            <KnowledgeSearchInput
-              placeholder="Search..."
-              className="max-w-[180px]"
-            />
-          )}
+          <div className="flex items-center gap-3">
+            {!isCloudBrand && isNarrow && (
+              <KnowledgeSearchInput
+                placeholder="Search..."
+                className="max-w-[180px]"
+              />
+            )}
+            {/* Primary action shares the title row (non-cloud) so it never wraps
+                onto its own line above the search toolbar. */}
+            {!isCloudBrand && <KnowledgeDropdown />}
+          </div>
         </div>
         {isCloudBrand ? (
           <div className="relative overflow-hidden h-12 shrink-0">

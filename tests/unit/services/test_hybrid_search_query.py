@@ -190,11 +190,10 @@ class TestQueryBodyStructure:
 
         hybrid = bodies[-1]["query"]["hybrid"]
         queries = hybrid["queries"]
-        assert len(queries) >= 2, "expected at least semantic + one keyword clause"
+        assert len(queries) == 2, "pipeline has one weight per sub-query: semantic + keyword"
         assert "dis_max" in queries[0], "first sub-query should be the semantic dis_max"
-        # Remaining clauses must be keyword types
-        keyword_types = {list(q.keys())[0] for q in queries[1:]}
-        assert keyword_types <= {"multi_match", "match_phrase_prefix"}
+        keyword_types = {list(q.keys())[0] for q in queries[1]["bool"]["should"]}
+        assert keyword_types == {"multi_match", "match_phrase_prefix"}
 
     @pytest.mark.asyncio
     async def test_keyword_only_fallback_when_no_embeddings(self, monkeypatch):
