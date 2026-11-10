@@ -119,9 +119,11 @@ async def auth_me(
     """Get current user information"""
     result = await auth_service.get_user_info(request, session)
     result["version"] = OPENRAG_VERSION
+    from utils.date_range_flag import is_date_range_v2_enabled
     from utils.run_mode_utils import get_run_mode
 
     result["run_mode"] = get_run_mode()
+    result["date_range_v2"] = is_date_range_v2_enabled()
     return JSONResponse(result)
 
 

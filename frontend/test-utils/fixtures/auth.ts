@@ -29,6 +29,7 @@ export interface AuthMeResponse {
   ibm_auth_mode?: boolean;
   version?: string;
   run_mode?: RunMode;
+  date_range_v2?: boolean;
 }
 
 /** GET /api/users/me — permissions, roles, and the RBAC/cloud flags. */

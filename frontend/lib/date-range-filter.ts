@@ -27,3 +27,16 @@ export function isDateRangeFilterEnabled(
   }
   return true;
 }
+
+/**
+ * Gate for the date range v2 experience. True only when the base date-range
+ * filter gate passes AND the backend explicitly reported `date_range_v2: true`.
+ * Missing, null and undefined flags (older backends) are all false.
+ */
+export function isDateRangeV2Enabled(
+  runMode: string | null | undefined,
+  v2Flag: boolean | null | undefined,
+  options?: { isCloudBrand?: boolean },
+): boolean {
+  return isDateRangeFilterEnabled(runMode, options) && v2Flag === true;
+}

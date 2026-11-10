@@ -25,7 +25,10 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
-import { isDateRangeFilterEnabled } from "@/lib/date-range-filter";
+import {
+  isDateRangeFilterEnabled,
+  isDateRangeV2Enabled,
+} from "@/lib/date-range-filter";
 import {
   type DateRangeValue,
   foreignTimeZone,
@@ -177,6 +180,13 @@ export function useDateRangeFilterEnabled(): boolean {
   const { runMode } = useAuth();
   const isCloudBrand = useIsCloudBrand();
   return isDateRangeFilterEnabled(runMode, { isCloudBrand });
+}
+
+/** Date range v2 gate. Nothing consumes this yet. */
+export function useDateRangeV2Enabled(): boolean {
+  const { runMode, dateRangeV2 } = useAuth();
+  const isCloudBrand = useIsCloudBrand();
+  return isDateRangeV2Enabled(runMode, dateRangeV2, { isCloudBrand });
 }
 
 function useToday(open: boolean) {
