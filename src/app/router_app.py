@@ -257,6 +257,7 @@ class _RouterServer(uvicorn.Server):
         pass
 
     async def startup(self, sockets=None) -> None:
+        """Log bind failures or readiness after the router server starts."""
         # uvicorn aborts a failed bind (e.g. port in use) by raising SystemExit
         # from startup(); surface it with router context so the failure is
         # attributable, then let the daemon thread unwind.

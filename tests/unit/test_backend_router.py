@@ -80,6 +80,7 @@ def test_router_url_derives_backend_host_on_router_port(monkeypatch):
     ],
 )
 def test_router_accepts_https_and_http_loopback_upstreams(value, expected):
+    """Accept HTTPS destinations and the supported HTTP loopback exceptions."""
     assert router_app._validate_upstream_base_url(value) == expected
 
 
@@ -87,6 +88,8 @@ def test_router_accepts_https_and_http_loopback_upstreams(value, expected):
     "value",
     [
         "http://backend.example",
+        "http://[::2]:8000",
+        "http://localhost.evil.example",
         "ftp://backend.example",
         "https:///missing-host",
         "https://user:password@backend.example",
@@ -98,6 +101,7 @@ def test_router_accepts_https_and_http_loopback_upstreams(value, expected):
     ],
 )
 def test_router_rejects_unsafe_or_malformed_upstream_at_initialization(value, monkeypatch):
+    """Reject invalid targets before router initialization can create requests."""
     calls = []
     monkeypatch.setattr(router_app, "OPENRAG_BACKEND_ROUTER_UPSTREAM_URL", value)
 
@@ -171,6 +175,7 @@ class _FakeLlmClient:
 
 
 def test_proxy_forwards_only_allowlisted_headers(monkeypatch):
+    """Forward only approved headers to the validated ingest upstream."""
     captured: dict = {}
     monkeypatch.setattr(router_app.httpx, "AsyncClient", lambda *a, **k: _FakeClient(captured))
 
@@ -214,6 +219,7 @@ def test_proxy_returns_502_when_upstream_unreachable(monkeypatch):
 
 
 def test_llm_proxy_forwards_only_allowlisted_headers_and_maps_private_path(monkeypatch):
+    """Map the private LLM path onto the validated upstream base URL."""
     captured: dict = {}
     monkeypatch.setattr(router_app.httpx, "AsyncClient", lambda *a, **k: _FakeLlmClient(captured))
 
