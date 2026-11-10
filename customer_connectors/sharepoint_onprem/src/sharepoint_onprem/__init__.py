@@ -120,6 +120,9 @@ class SharePointOnPremConnector(BaseConnector):
     SECRET_CONFIG_KEYS = ("username", "password")
     CREDENTIAL_PAIR = ("username", "password")
     BROWSE_CAPABILITY = "hierarchical"
+    # A removed site or a permission-trimmed library also drops files from the
+    # listing; only a 404 at the file endpoint proves a deletion.
+    REQUIRES_CONFIRMED_DELETION = True
     CONFIG_FIELDS = (
         {"name": "root_url", "label": "Server URL (HTTPS)", "type": "text", "required": True},
         {"name": "username", "label": "Username", "type": "secret", "required": True},
