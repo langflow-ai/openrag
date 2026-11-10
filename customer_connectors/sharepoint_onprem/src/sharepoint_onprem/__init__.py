@@ -206,7 +206,9 @@ class SharePointOnPremConnector(BaseConnector):
             isinstance(self.config.get(k), str) and self.config[k] for k in ("username", "password")
         ):
             raise ValueError("Username and password are required")
-        ca_bundle = os.environ.get("OPENRAG_SHAREPOINT_CA_BUNDLE")
+        # A blank value (compose/.env often export unset variables as "") means
+        # unset: verify against the default trust store.
+        ca_bundle = os.environ.get("OPENRAG_SHAREPOINT_CA_BUNDLE", "").strip() or None
         if ca_bundle is not None:
             if not os.path.isabs(ca_bundle):
                 raise ValueError("SharePoint CA bundle path must be absolute")
