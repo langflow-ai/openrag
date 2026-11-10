@@ -44,6 +44,20 @@ logger = get_logger(__name__)
 OPENSEARCH_TERMS_AGG_LIMIT = 10_000
 
 
+def _connector_error_log_fields(connector_type: str, exc: BaseException) -> dict[str, str]:
+    """Log fields describing a connector failure.
+
+    Built-in and enhancement connectors keep the error message: it is the
+    operator's only diagnostic for an OAuth, listing or bucket failure. A
+    customer plugin's message may carry source detail (internal URLs, account
+    names), so only its exception type is logged. HTTP responses never carry
+    either.
+    """
+    if is_plugin_connector_type(connector_type):
+        return {"error_type": type(exc).__name__}
+    return {"error_type": type(exc).__name__, "error": str(exc)}
+
+
 async def _connector_access_denied(
     request: Request,
     session: AsyncSession,
@@ -469,6 +483,7 @@ async def get_synced_file_state_map(
         logger.error(
             "Failed to build connector file state map",
             connector_type=connector_type,
+            **_connector_error_log_fields(connector_type, e),
         )
         return {}
 
@@ -2296,8 +2311,12 @@ async def connector_sync(
             status_code=201,
         )
 
-    except Exception:
-        logger.error("Connector sync failed", connector_type=connector_type)
+    except Exception as e:
+        logger.error(
+            "Connector sync failed",
+            connector_type=connector_type,
+            **_connector_error_log_fields(connector_type, e),
+        )
         await TelemetryClient.send_event(
             Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_FAILED
         )
@@ -2357,10 +2376,12 @@ async def connector_status(
                     "is_authenticated": False,
                     "base_url": None,
                 }
-        except Exception:
+        except Exception as e:
             logger.warning(
                 "Could not verify connector authentication",
                 connection_id=connection.connection_id,
+                connector_type=connector_type,
+                **_connector_error_log_fields(connector_type, e),
             )
             connection_details[connection.connection_id] = {
                 "client_id": None,
@@ -3334,10 +3355,11 @@ async def browse_connection_files(
             }
         )
 
-    except Exception:
+    except Exception as e:
         logger.error(
             "Failed to browse connection files",
             connector_type=connector_type,
             connection_id=connection_id,
+            **_connector_error_log_fields(connector_type, e),
         )
         return JSONResponse({"error": "Failed to browse files"}, status_code=500)
