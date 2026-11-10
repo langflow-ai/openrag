@@ -599,3 +599,90 @@ async def test_plaintext_plugin_secret_is_quarantined(installed_wheel, monkeypat
 
     await manager.save_connections()
     assert json.loads(connection_file.read_text())["connections"] == [record]
+
+
+def test_picker_file_metadata_keeps_only_a_bounded_string_etag():
+    metadata = plugin_connectors._picker_file_metadata
+    base = {"id": "f", "name": "F.pdf", "size": 3, "modified_time": "2024-01-01T00:00:00Z"}
+
+    assert metadata({**base, "etag": '"v1"'}) == {
+        "size": 3,
+        "modified_time": "2024-01-01T00:00:00Z",
+        "etag": '"v1"',
+    }
+    for malformed in (None, 7, ["v1"], "", "   ", "x" * (plugin_connectors._MAX_ETAG_LENGTH + 1)):
+        assert metadata({**base, "etag": malformed}) == {
+            "size": 3,
+            "modified_time": "2024-01-01T00:00:00Z",
+        }
+    assert metadata({"id": "f"}) == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("capability", ["flat", "hierarchical"])
+async def test_plugin_picker_compares_reported_etags_before_timestamps(
+    capability, installed_wheel, monkeypatch, tmp_path
+):
+    """A plugin's etag must reach "Update available" (review 1j): equal tags
+    mean unchanged even with a newer timestamp, and different tags mean
+    changed even with an older one."""
+    from api import connectors as connectors_api
+
+    monkeypatch.setenv("OPENRAG_CONNECTOR_PLUGINS", "installed_demo")
+    cls = registry.get_plugin_connector_class("installed_demo")
+    monkeypatch.setattr(cls, "BROWSE_CAPABILITY", capability)
+    files = [
+        # Older than the indexed copy, but its content tag moved.
+        {
+            "id": "edited",
+            "name": "Edited.pdf",
+            "modified_time": "2024-01-01T00:00:00Z",
+            "etag": '"v2"',
+        },
+        # Newer timestamp, identical content tag.
+        {
+            "id": "touched",
+            "name": "Touched.pdf",
+            "modified_time": "2025-01-01T00:00:00Z",
+            "etag": '"v1"',
+        },
+    ]
+
+    async def list_files(self, page_token=None, max_files=None):
+        return {"files": files, "next_page_token": None}
+
+    async def list_children(self, parent_id=None, cursor=None, page_size=100):
+        return {
+            "nodes": [{**file, "parent_id": None, "kind": "file"} for file in files],
+            "next_cursor": None,
+        }
+
+    monkeypatch.setattr(cls, "list_files", list_files)
+    monkeypatch.setattr(cls, "list_children", list_children)
+
+    indexed = connectors_api.SyncedFileState(modified_time_ms=1717200000000.0, content_etag="v1")
+
+    async def state_map(*args, file_ids, **kwargs):
+        return dict.fromkeys(file_ids, indexed)
+
+    monkeypatch.setattr(connectors_api, "get_synced_file_state_map", state_map)
+    manager = ConnectionManager(str(tmp_path / "connections.json"))
+    manager.connections["owned"] = ConnectionConfig(
+        connection_id="owned",
+        connector_type="installed_demo",
+        name="Demo",
+        config={"endpoint": "https://example.com", "username": "alice", "password": "valid"},
+        user_id="alice",
+    )
+    user = User(user_id="alice", name="Alice", email="alice@example.com")
+    app = _plugin_app(manager, SimpleNamespace(), user)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/connectors/installed_demo/owned/picker/children")
+
+    assert response.status_code == 200
+    nodes = {node["id"]: node for node in response.json()["nodes"]}
+    assert nodes["edited"]["etag"] == '"v2"'
+    assert nodes["edited"]["is_ingested"] and nodes["edited"]["is_stale"] is True
+    assert nodes["touched"]["is_ingested"] and nodes["touched"]["is_stale"] is False

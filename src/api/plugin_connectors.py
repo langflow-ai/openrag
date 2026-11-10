@@ -24,6 +24,26 @@ from session_manager import User
 from utils.encryption import encrypt_secret, get_master_secret
 from utils.run_mode_utils import is_run_mode_saas
 
+# Real entity tags (S3, SharePoint "{GUID},N") are well under 100 characters.
+_MAX_ETAG_LENGTH = 256
+
+
+def _picker_file_metadata(entry: dict[str, Any]) -> dict[str, Any]:
+    """Optional file metadata a plugin may report on a picker node.
+
+    ``etag`` feeds the picker's "Update available" comparison against the
+    ``content_etag`` stored at ingest. A malformed one is dropped rather than
+    failing the page: the comparison then falls back to ``modified_time``, as
+    for a plugin that reports no tag.
+    """
+    metadata: dict[str, Any] = {
+        key: entry[key] for key in ("size", "modified_time") if key in entry
+    }
+    etag = entry.get("etag")
+    if isinstance(etag, str) and etag.strip() and len(etag) <= _MAX_ETAG_LENGTH:
+        metadata["etag"] = etag
+    return metadata
+
 
 class PluginConfigBody(BaseModel):
     # Validate explicitly to avoid Pydantic's 422 response echoing credential input.
@@ -289,7 +309,7 @@ async def plugin_picker_children(
                     "parent_id": None,
                     "kind": "file",
                     "name": file.get("name"),
-                    **{key: file[key] for key in ("size", "modified_time") if key in file},
+                    **_picker_file_metadata(file),
                 }
                 for file in listing["files"]
             ],
@@ -320,7 +340,7 @@ async def plugin_picker_children(
                 "parent_id": node.get("parent_id"),
                 "kind": node["kind"],
                 "name": node["name"],
-                **{key: node[key] for key in ("size", "modified_time") if key in node},
+                **_picker_file_metadata(node),
             }
         )
     from api.connectors import enrich_plugin_picker_nodes
