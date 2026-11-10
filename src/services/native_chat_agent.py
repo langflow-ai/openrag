@@ -296,7 +296,9 @@ class NativeChatAgent:
             if not history:
                 raise ValueError("Conversation was not found")
         else:
-            await native_chat_history_service.start_conversation(conversation_id, user_id, filter_id)
+            await native_chat_history_service.start_conversation(
+                conversation_id, user_id, filter_id
+            )
             if not await session_ownership_service.claim_session(user_id, conversation_id):
                 raise RuntimeError("Unable to establish native chat session ownership")
             history = []
@@ -389,16 +391,15 @@ class NativeChatAgent:
         if isinstance(event, PartDeltaEvent):
             if isinstance(event.delta, TextPartDelta):
                 return [
-                    NativeChatAgent._text_chunk(
-                        conversation_id, model, event.delta.content_delta
-                    )
+                    NativeChatAgent._text_chunk(conversation_id, model, event.delta.content_delta)
                 ]
             if isinstance(event.delta, ToolCallPartDelta):
                 delta = event.delta.args_delta
                 if delta:
                     return [
                         {
-                            "item_id": event.delta.tool_call_id or call_item_ids.get(event.index, ""),
+                            "item_id": event.delta.tool_call_id
+                            or call_item_ids.get(event.index, ""),
                             "output_index": event.index,
                             "sequence_number": None,
                             "type": "response.function_call_arguments.delta",
@@ -501,7 +502,12 @@ class NativeChatAgent:
         ]
 
     async def _save_turn(
-        self, conversation_id: str, user_id: str, response: str, chunks: list[dict[str, Any]], result: Any
+        self,
+        conversation_id: str,
+        user_id: str,
+        response: str,
+        chunks: list[dict[str, Any]],
+        result: Any,
     ) -> None:
         await native_chat_history_service.append(
             conversation_id,

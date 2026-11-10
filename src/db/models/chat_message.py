@@ -10,7 +10,9 @@ from sqlmodel import Field, SQLModel
 class ChatMessage(SQLModel, table=True):
     __tablename__ = "chat_messages"
     __table_args__ = (
-        UniqueConstraint("conversation_id", "sequence", name="uq_chat_messages_conversation_sequence"),
+        UniqueConstraint(
+            "conversation_id", "sequence", name="uq_chat_messages_conversation_sequence"
+        ),
         Index("ix_chat_messages_conversation_sequence", "conversation_id", "sequence"),
     )
 
@@ -21,7 +23,9 @@ class ChatMessage(SQLModel, table=True):
     content: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     tool_call_id: str | None = Field(default=None, max_length=128)
     tool_name: str | None = Field(default=None, max_length=128)
-    tool_arguments: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    tool_arguments: dict[str, Any] | None = Field(
+        default=None, sa_column=Column(JSON, nullable=True)
+    )
     tool_result: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     event_data: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     error: bool = Field(default=False)

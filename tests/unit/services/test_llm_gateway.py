@@ -285,9 +285,7 @@ async def test_chat_completions_rejects_completed_empty_response(monkeypatch):
 
     async def fake_acompletion(**_kwargs):
         return {
-            "choices": [
-                {"finish_reason": "stop", "message": {"content": "", "tool_calls": []}}
-            ]
+            "choices": [{"finish_reason": "stop", "message": {"content": "", "tool_calls": []}}]
         }
 
     monkeypatch.setattr("litellm.acompletion", fake_acompletion)

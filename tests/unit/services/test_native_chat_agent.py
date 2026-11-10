@@ -27,7 +27,9 @@ async def test_native_agent_claims_new_conversation_with_session_ownership_servi
     start = AsyncMock()
     claim = AsyncMock(return_value=True)
     append = AsyncMock()
-    monkeypatch.setattr("services.native_chat_agent.native_chat_history_service.start_conversation", start)
+    monkeypatch.setattr(
+        "services.native_chat_agent.native_chat_history_service.start_conversation", start
+    )
     monkeypatch.setattr("services.native_chat_agent.native_chat_history_service.append", append)
     monkeypatch.setattr("services.native_chat_agent.session_ownership_service.claim_session", claim)
     monkeypatch.setattr(
@@ -130,7 +132,9 @@ def test_native_gateway_keeps_an_explicit_proxy_url(monkeypatch):
 @pytest.mark.asyncio
 async def test_native_stream_returns_a_browser_readable_error_when_setup_fails(monkeypatch):
     agent = NativeChatAgent()
-    monkeypatch.setattr(agent, "_start", AsyncMock(side_effect=RuntimeError("database unavailable")))
+    monkeypatch.setattr(
+        agent, "_start", AsyncMock(side_effect=RuntimeError("database unavailable"))
+    )
 
     chunks = [
         json.loads(chunk)
@@ -189,7 +193,9 @@ async def test_native_stream_does_not_fail_after_a_successful_response_when_hist
         "_agent",
         lambda _user_id: (Agent(FunctionModel(stream_function=model_stream)), "test-model"),
     )
-    monkeypatch.setattr(agent, "_save_turn", AsyncMock(side_effect=RuntimeError("database unavailable")))
+    monkeypatch.setattr(
+        agent, "_save_turn", AsyncMock(side_effect=RuntimeError("database unavailable"))
+    )
 
     events = [
         json.loads(chunk)

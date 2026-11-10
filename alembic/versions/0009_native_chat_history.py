@@ -58,7 +58,9 @@ def upgrade() -> None:
         sa.Column("interrupted", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.ForeignKeyConstraint(["conversation_id"], ["chat_conversations.id"]),
-        sa.UniqueConstraint("conversation_id", "sequence", name="uq_chat_messages_conversation_sequence"),
+        sa.UniqueConstraint(
+            "conversation_id", "sequence", name="uq_chat_messages_conversation_sequence"
+        ),
     )
     op.create_index("ix_chat_messages_conversation_id", "chat_messages", ["conversation_id"])
     op.create_index(
