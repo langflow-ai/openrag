@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import re
@@ -30,6 +31,10 @@ def _plugin_secret_keys(cls: type[BaseConnector] | None) -> set[str]:
     return set(cls.SECRET_CONFIG_KEYS) | {
         field["name"] for field in plugin_config_fields(cls) if field["type"] == "secret"
     }
+
+
+class _UnloadableConnection(Exception):
+    """A stored connection that must not be loaded; its raw record is preserved."""
 
 
 @dataclass
@@ -110,6 +115,9 @@ class ConnectionManager:
         self.connections_file.parent.mkdir(parents=True, exist_ok=True)
         self.connections: dict[str, ConnectionConfig] = {}
         self.active_connectors: dict[str, BaseConnector] = {}
+        # Stored records that failed to load, kept in their at-rest form so a
+        # save never drops them (e.g. a plugin secret under a rotated key).
+        self._unloadable_records: list[dict[str, Any]] = []
 
     async def load_connections(self):
         """Load connections from persistent storage"""
@@ -125,51 +133,79 @@ class ConnectionManager:
             async with aiofiles.open(self.connections_file) as f:
                 data = json.loads(await f.read())
 
+            # Rebuilt on every load so a record fixed since (e.g. key restored)
+            # loads normally instead of staying quarantined.
+            self._unloadable_records = []
             for conn_data in data.get("connections", []):
-                plugin_cls = get_plugin_connector_class(conn_data.get("connector_type"))
-                plugin_keys = _plugin_secret_keys(plugin_cls)
-                # A disabled plugin has no available schema. Keep its ciphertext
-                # opaque so an unrelated save cannot write decrypted unknown keys.
-                unknown_connector = (
-                    plugin_cls is None
-                    and get_connector_class(conn_data.get("connector_type")) is None
-                )
-                # Decrypt sensitive fields
-                if "config" in conn_data and isinstance(conn_data["config"], dict):
-                    for k, v in conn_data["config"].items():
-                        if (
-                            not unknown_connector
-                            and isinstance(v, dict)
-                            and v.get("algorithm") == "AES-256-GCM"
-                        ):
-                            try:
-                                tenant = conn_data.get("user_id") or "openrag"
-                                conn_data["config"][k] = decrypt_secret(
-                                    v, expected_tenant_id=tenant
+                # Snapshot the at-rest form before decryption mutates it, so a
+                # record that cannot be loaded is written back byte-for-byte.
+                raw = copy.deepcopy(conn_data)
+                plugin_cls = None
+                try:
+                    if not isinstance(conn_data, dict):
+                        raise _UnloadableConnection("Connection record is not an object")
+                    plugin_cls = get_plugin_connector_class(conn_data.get("connector_type"))
+                    plugin_keys = _plugin_secret_keys(plugin_cls)
+                    # A disabled plugin has no available schema. Its keys that a
+                    # save would not re-encrypt stay opaque, so an unrelated save
+                    # cannot write them back decrypted. Known secret keys (e.g.
+                    # ibm_credentials' basic_credentials) round-trip safely.
+                    unknown_connector = (
+                        plugin_cls is None
+                        and get_connector_class(conn_data.get("connector_type")) is None
+                    )
+                    # Decrypt sensitive fields
+                    if "config" in conn_data and isinstance(conn_data["config"], dict):
+                        for k, v in conn_data["config"].items():
+                            keep_opaque = unknown_connector and k not in secret_keys
+                            if (
+                                not keep_opaque
+                                and isinstance(v, dict)
+                                and v.get("algorithm") == "AES-256-GCM"
+                            ):
+                                try:
+                                    tenant = conn_data.get("user_id") or "openrag"
+                                    conn_data["config"][k] = decrypt_secret(
+                                        v, expected_tenant_id=tenant
+                                    )
+                                except ValueError as e:
+                                    if plugin_cls and k in plugin_keys:
+                                        raise _UnloadableConnection(
+                                            "Cannot decrypt plugin connection secret"
+                                        ) from e
+                                    logger.error(f"Failed to decrypt connection secret {k}: {e}")
+                                    decryption_failed = True
+                            elif plugin_cls is not None and k in plugin_keys and v:
+                                raise _UnloadableConnection(
+                                    "Plugin connection has an unencrypted secret"
                                 )
-                            except ValueError as e:
-                                if plugin_cls and k in plugin_keys:
-                                    raise RuntimeError(
-                                        f"Cannot decrypt plugin connection {conn_data.get('connection_id')}"
-                                    ) from e
-                                logger.error(f"Failed to decrypt connection secret {k}: {e}")
-                                decryption_failed = True
-                        elif plugin_cls is not None and k in plugin_keys and v:
-                            raise RuntimeError(
-                                f"Plugin connection {conn_data.get('connection_id')} has an unencrypted secret; "
-                                "refusing to load it"
-                            )
-                        elif k in secret_keys and isinstance(v, str) and v:
-                            if get_master_secret() is not None:
-                                needs_encryption_upgrade = True
+                            elif k in secret_keys and isinstance(v, str) and v:
+                                if get_master_secret() is not None:
+                                    needs_encryption_upgrade = True
 
-                # Convert datetime strings back to datetime objects
-                if conn_data.get("created_at"):
-                    conn_data["created_at"] = datetime.fromisoformat(conn_data["created_at"])
-                if conn_data.get("last_sync"):
-                    conn_data["last_sync"] = datetime.fromisoformat(conn_data["last_sync"])
+                    # Convert datetime strings back to datetime objects
+                    if conn_data.get("created_at"):
+                        conn_data["created_at"] = datetime.fromisoformat(conn_data["created_at"])
+                    if conn_data.get("last_sync"):
+                        conn_data["last_sync"] = datetime.fromisoformat(conn_data["last_sync"])
 
-                config = ConnectionConfig(**conn_data)
+                    config = ConnectionConfig(**conn_data)
+                except Exception as e:
+                    # Quarantine this record only: a partial load followed by any
+                    # save would otherwise drop every record after it.
+                    details = raw if isinstance(raw, dict) else {}
+                    logger.error(
+                        "Skipping stored connection that cannot be loaded; "
+                        "it is preserved unchanged in the connections file",
+                        connection_id=details.get("connection_id"),
+                        connector_type=details.get("connector_type"),
+                        error_type=type(e).__name__,
+                        # Plugin failures may involve credential material.
+                        **({} if plugin_cls is not None else {"error": str(e)}),
+                    )
+                    self._unloadable_records.append(raw)
+                    decryption_failed = True  # never rewrite the file during this load
+                    continue
                 self.connections[config.connection_id] = config
 
             if needs_encryption_upgrade:
@@ -230,6 +266,13 @@ class ConnectionManager:
             if conn_data.get("last_sync"):
                 conn_data["last_sync"] = conn_data["last_sync"].isoformat()
             data["connections"].append(conn_data)
+
+        # Records that could not be loaded are written back verbatim (already in
+        # their at-rest form), unless a loaded connection now owns that id.
+        for raw in self._unloadable_records:
+            raw_id = raw.get("connection_id") if isinstance(raw, dict) else None
+            if raw_id is None or raw_id not in self.connections:
+                data["connections"].append(raw)
 
         # A fresh 0600 file avoids exposing credentials through a permissive
         # legacy connections.json mode; replace only after all encryption succeeds.

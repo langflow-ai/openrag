@@ -449,3 +449,81 @@ async def test_flat_plugin_pages_files_and_rejects_folders(installed_wheel, monk
         assert (
             await client.get(url, params={"cursor": "unknown", "page_size": 1})
         ).status_code == 400
+
+
+def _plugin_record(password_value):
+    return {
+        "connection_id": "plugin-1",
+        "connector_type": "installed_demo",
+        "name": "Plugin",
+        "config": {
+            "endpoint": "https://intranet.example",
+            "username": "domain\\alice",
+            "password": password_value,
+        },
+        "user_id": "alice",
+    }
+
+
+@pytest.mark.asyncio
+async def test_undecryptable_plugin_record_does_not_drop_other_connections(
+    installed_wheel, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("OPENRAG_ENCRYPTION_KEY", "isolated-test-master-secret")
+    monkeypatch.setattr(encryption, "_cached_master_secret", None)
+    monkeypatch.setenv("OPENRAG_CONNECTOR_PLUGINS", "installed_demo")
+    connection_file = tmp_path / "connections.json"
+    writer = ConnectionManager(str(connection_file))
+    writer.connections["plugin-1"] = ConnectionConfig(**_plugin_record("valid"))
+    writer.connections["drive-1"] = ConnectionConfig(
+        connection_id="drive-1",
+        connector_type="google_drive",
+        name="Drive",
+        config={"client_secret": "drive-secret"},
+        user_id="bob",
+    )
+    await writer.save_connections()
+    original_plugin = next(
+        c
+        for c in json.loads(connection_file.read_text())["connections"]
+        if c["connection_id"] == "plugin-1"
+    )
+
+    # Rotated key: the plugin record can no longer be decrypted.
+    monkeypatch.setenv("OPENRAG_ENCRYPTION_KEY", "a-different-master-secret")
+    monkeypatch.setattr(encryption, "_cached_master_secret", None)
+    rotated = ConnectionManager(str(connection_file))
+    await rotated.load_connections()
+    assert "plugin-1" not in rotated.connections
+    assert "drive-1" in rotated.connections
+
+    rotated.connections["drive-1"].name = "Unrelated update"
+    await rotated.save_connections()
+    saved = {c["connection_id"]: c for c in json.loads(connection_file.read_text())["connections"]}
+    assert saved["plugin-1"] == original_plugin
+    assert saved["drive-1"]["name"] == "Unrelated update"
+
+    # Restoring the key brings the quarantined record back.
+    monkeypatch.setenv("OPENRAG_ENCRYPTION_KEY", "isolated-test-master-secret")
+    monkeypatch.setattr(encryption, "_cached_master_secret", None)
+    restored = ConnectionManager(str(connection_file))
+    await restored.load_connections()
+    assert restored.connections["plugin-1"].config["password"] == "valid"
+    assert restored._unloadable_records == []
+
+
+@pytest.mark.asyncio
+async def test_plaintext_plugin_secret_is_quarantined(installed_wheel, monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENRAG_ENCRYPTION_KEY", "isolated-test-master-secret")
+    monkeypatch.setattr(encryption, "_cached_master_secret", None)
+    monkeypatch.setenv("OPENRAG_CONNECTOR_PLUGINS", "installed_demo")
+    connection_file = tmp_path / "connections.json"
+    record = _plugin_record("plaintext-password")
+    connection_file.write_text(json.dumps({"connections": [record]}))
+
+    manager = ConnectionManager(str(connection_file))
+    await manager.load_connections()
+    assert "plugin-1" not in manager.connections
+
+    await manager.save_connections()
+    assert json.loads(connection_file.read_text())["connections"] == [record]
