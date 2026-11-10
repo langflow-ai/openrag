@@ -3,6 +3,14 @@ import pytest
 from api.documents import delete_documents_by_filename_core
 
 
+class _Indices:
+    def __init__(self):
+        self.refresh_calls = []
+
+    async def refresh(self, *, index):
+        self.refresh_calls.append(index)
+
+
 class FakeOpenSearchClient:
     def __init__(self, owned_hits=None, visible_hits=None):
         self.owned_hits = owned_hits or []
@@ -10,6 +18,7 @@ class FakeOpenSearchClient:
         self.search_calls = []
         self.delete_calls = []
         self.bulk_calls = []
+        self.indices = _Indices()
 
     async def search(self, *, index, body, scroll=None):
         self.search_calls.append({"index": index, "body": body, "scroll": scroll})
@@ -86,9 +95,10 @@ async def test_delete_documents_by_filename_deletes_owned_ids_with_backend_clien
     }
     assert opensearch_client.delete_calls == []
     assert backend_opensearch_client.delete_calls == [
-        {"index": "documents", "id": "chunk-1", "refresh": True},
-        {"index": "documents", "id": "chunk-2", "refresh": True},
+        {"index": "documents", "id": "chunk-1", "refresh": False},
+        {"index": "documents", "id": "chunk-2", "refresh": False},
     ]
+    assert backend_opensearch_client.indices.refresh_calls == ["documents"]
 
 
 @pytest.mark.asyncio
@@ -151,9 +161,10 @@ async def test_delete_documents_by_filename_deletes_ownerless_with_anonymous_per
         }
     }
     assert backend_opensearch_client.delete_calls == [
-        {"index": "documents", "id": "shared-chunk-1", "refresh": True},
-        {"index": "documents", "id": "shared-chunk-2", "refresh": True},
+        {"index": "documents", "id": "shared-chunk-1", "refresh": False},
+        {"index": "documents", "id": "shared-chunk-2", "refresh": False},
     ]
+    assert backend_opensearch_client.indices.refresh_calls == ["documents"]
 
 
 @pytest.mark.asyncio

@@ -4,12 +4,24 @@ from services import search_cache
 from utils.opensearch_delete import BulkDeleteError, bulk_delete_document_ids
 
 
+class _Indices:
+    def __init__(self, error=None):
+        self.error = error
+        self.refresh_calls = []
+
+    async def refresh(self, *, index):
+        self.refresh_calls.append(index)
+        if self.error:
+            raise self.error
+
+
 class _BulkClient:
     """Fake client; ``outcomes`` maps document id -> (result, status[, error])."""
 
-    def __init__(self, outcomes=None):
+    def __init__(self, outcomes=None, refresh_error=None):
         self.outcomes = outcomes or {}
         self.calls = []
+        self.indices = _Indices(refresh_error)
 
     async def bulk(self, *, body, refresh=False):
         self.calls.append({"body": body, "refresh": refresh})
@@ -29,7 +41,7 @@ def _prime_caches():
 
 
 @pytest.mark.asyncio
-async def test_batches_ids_and_refreshes_only_on_last_batch():
+async def test_batches_ids_and_refreshes_the_index_once_after_all_batches():
     client = _BulkClient()
 
     deleted = await bulk_delete_document_ids(
@@ -38,19 +50,9 @@ async def test_batches_ids_and_refreshes_only_on_last_batch():
 
     assert deleted == 5
     assert [len(c["body"]) for c in client.calls] == [2, 2, 1]
-    assert [c["refresh"] for c in client.calls] == [False, False, True]
+    assert [c["refresh"] for c in client.calls] == [False, False, False]
     assert client.calls[0]["body"][0] == {"delete": {"_index": "documents", "_id": "c0"}}
-
-
-@pytest.mark.asyncio
-async def test_exact_multiple_of_batch_size_refreshes_on_last_batch():
-    client = _BulkClient()
-
-    await bulk_delete_document_ids(
-        client, index="documents", document_ids=["a", "b", "c", "d"], batch_size=2
-    )
-
-    assert [c["refresh"] for c in client.calls] == [False, True]
+    assert client.indices.refresh_calls == ["documents"]
 
 
 @pytest.mark.asyncio
@@ -62,6 +64,28 @@ async def test_refresh_false_never_refreshes():
     )
 
     assert [c["refresh"] for c in client.calls] == [False, False]
+    assert client.indices.refresh_calls == []
+
+
+@pytest.mark.asyncio
+async def test_nothing_deleted_does_not_refresh():
+    client = _BulkClient({"a": ("not_found", 404)})
+
+    await bulk_delete_document_ids(client, index="documents", document_ids=["a"])
+
+    assert client.indices.refresh_calls == []
+
+
+@pytest.mark.asyncio
+async def test_refresh_failure_is_swallowed_and_caches_are_still_dropped():
+    _prime_caches()
+    client = _BulkClient(refresh_error=ConnectionError("refresh down"))
+
+    deleted = await bulk_delete_document_ids(client, index="documents", document_ids=["a", "b"])
+
+    assert deleted == 2
+    assert client.indices.refresh_calls == ["documents"]
+    assert search_cache.SUGGEST_CACHE.get("g") is None
 
 
 @pytest.mark.asyncio
@@ -92,6 +116,7 @@ async def test_item_failure_raises_after_all_batches_and_still_drops_caches():
         )
 
     assert len(client.calls) == 3
+    assert client.indices.refresh_calls == ["documents"]
     assert search_cache.SUGGEST_CACHE.get("g") is None
 
 
@@ -138,4 +163,20 @@ async def test_request_failure_reports_only_confirmed_deletions_and_stops():
     assert exc_info.value.deleted_count == 2
     assert isinstance(exc_info.value.__cause__, ConnectionError)
     assert len(client.calls) == 2
+    # Batch 1's deletions are made visible before the failure propagates.
+    assert client.indices.refresh_calls == ["documents"]
+    assert search_cache.SUGGEST_CACHE.get("g") is None
+
+
+@pytest.mark.asyncio
+async def test_refresh_failure_does_not_replace_the_original_bulk_error():
+    _prime_caches()
+    client = _FailingSecondBatchClient(refresh_error=ConnectionError("refresh down"))
+
+    with pytest.raises(BulkDeleteError, match="opensearch down") as exc_info:
+        await bulk_delete_document_ids(
+            client, index="documents", document_ids=["a", "b", "c"], batch_size=2
+        )
+
+    assert exc_info.value.deleted_count == 2
     assert search_cache.SUGGEST_CACHE.get("g") is None

@@ -105,9 +105,15 @@ async def bulk_delete_document_ids(
 
     Same ID-keyed delete semantics as :func:`delete_document_ids` (so it stays
     DLS-safe), but one request per ``batch_size`` IDs instead of one per ID, and
-    a single index refresh on the final batch instead of one per delete. Intended
-    for user-facing deletes of many chunks, where per-ID round trips and
-    per-delete refreshes dominate latency.
+    a single index refresh at the end instead of one per delete. Intended for
+    user-facing deletes of many chunks, where per-ID round trips and per-delete
+    refreshes dominate latency.
+
+    When ``refresh`` is true the index is refreshed once after any confirmed
+    deletions, including before a failure is propagated. A per-request
+    ``refresh=true`` would only cover the shards that request touched, so it is
+    not used. A failed refresh is logged and never masks the delete result or
+    the original error; corpus caches are invalidated regardless.
 
     Missing documents (404) are ignored. Any other per-item failure is raised as
     a :class:`BulkDeleteError` after all batches have been attempted. A failed
@@ -121,11 +127,10 @@ async def bulk_delete_document_ids(
     try:
         for start in range(0, len(ids), batch_size):
             batch = ids[start : start + batch_size]
-            is_last = start + batch_size >= len(ids)
             try:
                 response = await opensearch_client.bulk(
                     body=[{"delete": {"_index": index, "_id": doc_id}} for doc_id in batch],
-                    refresh=refresh and is_last,
+                    refresh=False,
                 )
             except Exception as e:
                 raise BulkDeleteError(str(e), deleted_count) from e
@@ -137,7 +142,13 @@ async def bulk_delete_document_ids(
                     first_error = str(action.get("error") or action.get("status"))
     finally:
         if deleted_count:
-            invalidate_corpus_caches()
+            try:
+                if refresh:
+                    await opensearch_client.indices.refresh(index=index)
+            except Exception as e:
+                logger.warning("Failed to refresh index after bulk delete", error=str(e))
+            finally:
+                invalidate_corpus_caches()
 
     if first_error is not None:
         raise BulkDeleteError(f"Bulk delete failed for some chunks: {first_error}", deleted_count)
