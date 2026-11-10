@@ -93,6 +93,16 @@ const createNextConfig = (phase: string): NextConfig => {
         "@config": configDir,
       },
     },
+    // ppc64 (CPD) builds and vitest run webpack, which ignores the turbopack
+    // block above, so register the same alias here too.
+    webpack: (config) => {
+      config.resolve = config.resolve ?? {};
+      config.resolve.alias = {
+        ...(config.resolve.alias ?? {}),
+        "@config": configDir,
+      };
+      return config;
+    },
     async rewrites() {
       return [{ source: "/mcp/:path*", destination: "/api/mcp/:path*" }];
     },
