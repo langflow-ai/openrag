@@ -7,6 +7,7 @@ import subprocess
 import sys
 import zipfile
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -15,7 +16,7 @@ from fastapi import FastAPI
 from api import plugin_connectors
 from connectors import registry
 from connectors.connection_manager import ConnectionConfig, ConnectionManager
-from dependencies import get_connector_service, get_session_manager
+from dependencies import get_connector_service, get_db_session, get_session_manager
 from session_manager import User
 from utils import encryption
 
@@ -194,15 +195,14 @@ def test_incompatible_entry_point_version_fails_at_startup(installed_wheel, monk
         registry.get_route_connector_classes()
 
 
-@pytest.mark.asyncio
-async def test_plugin_form_auth_persistence_and_owner_scoped_picker(
-    installed_wheel, monkeypatch, tmp_path
-):
-    monkeypatch.setenv("OPENRAG_CONNECTOR_PLUGINS", "installed_demo")
-    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
-    monkeypatch.setenv("OPENRAG_ENCRYPTION_KEY", "isolated-test-master-secret")
-    monkeypatch.setattr(encryption, "_cached_master_secret", None)
-    manager = ConnectionManager(str(tmp_path / "connections.json"))
+async def _no_db_session():
+    # Connector-access policy is not enforced in unit tests unless a test
+    # patches it, so the routes never query the session.
+    yield None
+
+
+def _plugin_app(manager, session_manager, user):
+    """The four generic plugin routes, wired to test doubles."""
     app = FastAPI()
     app.add_api_route(
         "/connectors/{connector_type}/plugin-defaults",
@@ -225,6 +225,25 @@ async def test_plugin_form_auth_persistence_and_owner_scoped_picker(
     app.dependency_overrides[get_connector_service] = lambda: SimpleNamespace(
         connection_manager=manager
     )
+    app.dependency_overrides[get_session_manager] = lambda: session_manager
+    app.dependency_overrides[get_db_session] = _no_db_session
+    for route in app.routes:
+        if hasattr(route, "dependant"):
+            for dependency in route.dependant.dependencies:
+                if dependency.name == "user":
+                    app.dependency_overrides[dependency.call] = lambda: user
+    return app
+
+
+@pytest.mark.asyncio
+async def test_plugin_form_auth_persistence_and_owner_scoped_picker(
+    installed_wheel, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("OPENRAG_CONNECTOR_PLUGINS", "installed_demo")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    monkeypatch.setenv("OPENRAG_ENCRYPTION_KEY", "isolated-test-master-secret")
+    monkeypatch.setattr(encryption, "_cached_master_secret", None)
+    manager = ConnectionManager(str(tmp_path / "connections.json"))
 
     index_state = {"available": True}
 
@@ -241,15 +260,12 @@ async def test_plugin_form_auth_persistence_and_owner_scoped_picker(
                 }
             }
 
-    app.dependency_overrides[get_session_manager] = lambda: SimpleNamespace(
-        get_user_opensearch_client=lambda user_id, token: IndexedFiles()
-    )
     user = User(user_id="alice", name="Alice", email="alice@example.com")
-    for route in app.routes:
-        if hasattr(route, "dependant"):
-            for dependency in route.dependant.dependencies:
-                if dependency.name == "user":
-                    app.dependency_overrides[dependency.call] = lambda: user
+    app = _plugin_app(
+        manager,
+        SimpleNamespace(get_user_opensearch_client=lambda user_id, token: IndexedFiles()),
+        user,
+    )
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
@@ -405,21 +421,12 @@ async def test_flat_plugin_pages_files_and_rejects_folders(installed_wheel, monk
                 }
             }
 
-    app = FastAPI()
-    app.add_api_route(
-        "/connectors/{connector_type}/{connection_id}/picker/children",
-        plugin_connectors.plugin_picker_children,
-        methods=["GET"],
-    )
-    app.dependency_overrides[get_connector_service] = lambda: SimpleNamespace(
-        connection_manager=manager
-    )
-    app.dependency_overrides[get_session_manager] = lambda: SimpleNamespace(
-        get_user_opensearch_client=lambda user_id, token: IndexedFiles()
-    )
     user = User(user_id="alice", name="Alice", email="alice@example.com")
-    user_dep = next(dep for dep in app.routes[-1].dependant.dependencies if dep.name == "user")
-    app.dependency_overrides[user_dep.call] = lambda: user
+    app = _plugin_app(
+        manager,
+        SimpleNamespace(get_user_opensearch_client=lambda user_id, token: IndexedFiles()),
+        user,
+    )
     url = "/connectors/installed_demo/flat-owned/picker/children"
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
@@ -449,6 +456,71 @@ async def test_flat_plugin_pages_files_and_rejects_folders(installed_wheel, monk
         assert (
             await client.get(url, params={"cursor": "unknown", "page_size": 1})
         ).status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_blocked_plugin_routes_return_403_before_touching_credentials_or_source(
+    installed_wheel, monkeypatch, tmp_path
+):
+    """Workspace connector-access policy (review 1d): when an admin blocks the
+    plugin, none of its routes may store credentials, probe the source, or
+    browse it — the UI hiding the card is not the enforcement point."""
+    from api import connectors as connectors_api
+
+    monkeypatch.setenv("OPENRAG_CONNECTOR_PLUGINS", "installed_demo")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    monkeypatch.setenv("OPENRAG_ENCRYPTION_KEY", "isolated-test-master-secret")
+    monkeypatch.setattr(encryption, "_cached_master_secret", None)
+    # CONNECTOR_TYPES is frozen at import, before this test enables the plugin.
+    monkeypatch.setattr(
+        connectors_api, "CONNECTOR_TYPES", (*connectors_api.CONNECTOR_TYPES, "installed_demo")
+    )
+    monkeypatch.setattr(connectors_api, "is_connector_access_policy_enforced", lambda: True)
+    allowed = AsyncMock(return_value=False)
+    monkeypatch.setattr(connectors_api, "is_connector_allowed_for_request", allowed)
+
+    cls = registry.get_plugin_connector_class("installed_demo")
+    authenticate = AsyncMock(return_value=True)
+    list_children = AsyncMock(return_value={"nodes": [], "next_cursor": None})
+    monkeypatch.setattr(cls, "authenticate", authenticate)
+    monkeypatch.setattr(cls, "list_children", list_children)
+
+    manager = ConnectionManager(str(tmp_path / "connections.json"))
+    seeded_config = {"endpoint": "https://intranet.example", "username": "a", "password": "p"}
+    manager.connections["owned"] = ConnectionConfig(
+        connection_id="owned",
+        connector_type="installed_demo",
+        name="Demo",
+        config=dict(seeded_config),
+        user_id="alice",
+    )
+    user = User(user_id="alice", name="Alice", email="alice@example.com")
+    app = _plugin_app(manager, SimpleNamespace(), user)
+    config = {"endpoint": "https://intranet.example", "username": "alice", "password": "valid"}
+    base = "/connectors/installed_demo"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        responses = [
+            await client.get(base + "/plugin-defaults"),
+            await client.post(base + "/plugin-test", json={"config": config}),
+            await client.post(base + "/plugin-configure", json={"config": config}),
+            await client.post(
+                base + "/plugin-configure", json={"connection_id": "owned", "config": config}
+            ),
+            await client.get(base + "/owned/picker/children"),
+        ]
+        assert [response.status_code for response in responses] == [403] * len(responses)
+        assert all("valid" not in response.text for response in responses)
+        authenticate.assert_not_awaited()
+        list_children.assert_not_awaited()
+        assert list(manager.connections) == ["owned"]
+        assert manager.connections["owned"].config == seeded_config
+        assert not manager.connections_file.exists()
+
+        # The gate opens once the workspace allows the connector again.
+        allowed.return_value = True
+        assert (await client.get(base + "/plugin-defaults")).status_code == 200
 
 
 def _plugin_record(password_value):
