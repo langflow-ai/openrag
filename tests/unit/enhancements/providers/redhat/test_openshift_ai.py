@@ -1280,6 +1280,35 @@ async def test_model_validation_rejects_http_before_litellm_probe(monkeypatch, f
     litellm_probe.assert_not_awaited()
 
 
+@pytest.mark.parametrize(
+    ("model_field", "model", "kind"),
+    [("llm_model", CHAT_MODEL, "chat"), ("embedding_model", EMBED_MODEL, "embedding")],
+)
+@pytest.mark.asyncio
+async def test_model_validation_rejects_missing_endpoint_before_litellm_fallback(
+    monkeypatch, model_field, model, kind
+) -> None:
+    from api import provider_validation
+
+    monkeypatch.setenv("HOSTED_VLLM_API_BASE", "http://unexpected.example/v1")
+    monkeypatch.setenv("HOSTED_VLLM_API_KEY", "environment-token")
+    litellm_probe = AsyncMock(side_effect=AssertionError("LiteLLM fallback must not run"))
+    monkeypatch.setattr(provider_validation, "_test_litellm_provider", litellm_probe)
+
+    with pytest.raises(
+        ValueError, match=f"OpenShift AI {kind} endpoint is required for model validation"
+    ):
+        await provider_validation.validate_provider_setup(
+            provider=PROVIDER,
+            credentials={"api_key": TOKEN},
+            stored_credentials={"api_key": TOKEN},
+            verify_model=True,
+            **{model_field: model},
+        )
+
+    litellm_probe.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_a_wrong_embedding_url_is_found_before_the_first_ingest(monkeypatch) -> None:
     monkeypatch.setattr(

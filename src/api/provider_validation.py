@@ -913,15 +913,26 @@ async def validate_provider_setup(
                 _require_https_provider_endpoint(azure_api_base, "Azure")
 
         enhancement = get_provider_enhancement(provider_lower)
-        if provider_lower == "rhoai" and enhancement is not None:
-            # Validate both stored endpoints before the model probe can send
-            # the ServiceAccount token through LiteLLM.
+        if (
+            provider_lower == "rhoai"
+            and enhancement is not None
+            and bool(embedding_model or llm_model)
+            and (test_completion or verify_model)
+        ):
+            # Validate both stored endpoints and require the selected one
+            # before LiteLLM can fall back to HOSTED_VLLM_API_BASE/API_KEY.
             from enhancements.providers.registry import credentials_for
 
-            credentials_for(
+            selected_kind = "embedding" if embedding_model else "chat"
+            selected_credentials = credentials_for(
                 enhancement,
                 stored_credentials if stored_credentials is not None else supplied,
+                kind=selected_kind,
             )
+            if not selected_credentials.get("api_base"):
+                raise ValueError(
+                    f"OpenShift AI {selected_kind} endpoint is required for model validation"
+                )
 
         # A provider enhancement has no bespoke model probe of its own: a real
         # call through LiteLLM *is* its model probe, and it is what makes
