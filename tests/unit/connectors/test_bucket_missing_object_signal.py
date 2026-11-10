@@ -71,7 +71,7 @@ def _cos(failure: BaseException, auth_mode: str) -> IBMCOSConnector:
         handle.Object.return_value.get.side_effect = failure  # resource API
     else:
         handle.get_object.side_effect = failure  # client API
-    connector._handle = handle
+    connector._handle = handle  # type: ignore[assignment]
     return connector
 
 
@@ -121,7 +121,7 @@ async def test_invalid_file_id_is_not_a_deletion():
 def test_s3_error_code_ignores_malformed_responses():
     for response in (None, "x", {}, {"Error": "x"}, {"Error": {"Code": 404}}):
         error = Exception()
-        error.response = response  # type: ignore[attr-defined]
+        error.response = response
         assert s3_error_code(error) is None
         assert not is_s3_object_missing(error)
 
@@ -133,7 +133,7 @@ def _azure(failure: BaseException) -> AzureBlobConnector:
     connector = AzureBlobConnector({"container_names": ["b1"]})
     client = MagicMock()
     client.get_blob_client.return_value.download_blob.side_effect = failure
-    connector._client = client
+    connector._client = client  # type: ignore[assignment]
     return connector
 
 
