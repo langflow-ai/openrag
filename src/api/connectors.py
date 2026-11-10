@@ -110,6 +110,18 @@ def _connector_uses_timestamp_change_detection(connector_type: str) -> bool:
     return cls is not None and cls.CHANGE_DETECTION == "timestamp"
 
 
+def _connector_requires_confirmed_deletion(connector_type: str) -> bool:
+    """True when orphan reconciliation must have the source confirm each
+    deletion (``BaseConnector.REQUIRES_CONFIRMED_DELETION``) instead of
+    treating absence from the listing as proof. An unregistered type cannot
+    produce a connector, so its listing already aborts before this matters.
+    """
+    from connectors.registry import get_connector_class
+
+    cls = get_connector_class(connector_type)
+    return cls is not None and cls.REQUIRES_CONFIRMED_DELETION
+
+
 def _is_unmapped_keyword_agg_error(err: Exception) -> bool:
     """True when a terms aggregation failed because the target field is an
     analyzed `text` field without fielddata enabled — the error OpenSearch
@@ -794,12 +806,12 @@ async def compute_orphans_for_connector_type(
         return None
 
     orphan_ids = [fid for fid in existing_file_ids if fid not in remote_files]
-    if orphan_ids and connector_type == "sharepoint_onprem":
-        # A configured site can be removed, or a previously visible library
-        # trimmed by SharePoint permissions. Absence from today's inventory
-        # proves neither file deletion nor permission to delete indexed chunks.
-        # Confirm a 404 at the file endpoint for every active owner connection;
-        # if any connection cannot prove it, keep the indexed copy.
+    if orphan_ids and _connector_requires_confirmed_deletion(connector_type):
+        # For this connector, absence from today's inventory proves neither
+        # file deletion nor permission to delete indexed chunks (a site can be
+        # removed, a library trimmed by source permissions). Every active owner
+        # connection must confirm the file is gone; if any cannot, keep the
+        # indexed copy.
         try:
             connections = await connector_service.connection_manager.list_connections(
                 user_id=user_id, connector_type=connector_type
@@ -810,12 +822,7 @@ async def compute_orphans_for_connector_type(
             connectors = [
                 await connector_service.get_connector(conn.connection_id) for conn in active
             ]
-            if any(
-                not connector
-                or not connector.is_authenticated
-                or not callable(getattr(connector, "is_definitively_missing", None))
-                for connector in connectors
-            ):
+            if any(not connector or not connector.is_authenticated for connector in connectors):
                 return []
         except Exception:
             return []
@@ -1221,10 +1228,11 @@ async def _classify_connector_duplicates(
     for file_info in expanded_files_info:
         cleaned_name = clean_connector_filename(file_info["name"], file_info["mimeType"])
         response_file = _connector_file_response(file_info, cleaned_name=cleaned_name)
+        # Compare the name ingestion will index under, which a connector may
+        # derive from the picker name (BaseConnector.filename_for_index).
         indexed_name = (
             connector.filename_for_index(file_info["id"], cleaned_name)
-            if getattr(connector, "CONNECTOR_TYPE", None) == "sharepoint_onprem"
-            and file_info.get("id")
+            if file_info.get("id")
             else cleaned_name
         )
         aliases = get_filename_aliases(indexed_name)

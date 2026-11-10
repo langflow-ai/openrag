@@ -121,6 +121,12 @@ class BaseConnector(ABC):
     #                      metadata; without them detection falls back to
     #                      timestamps alone (see bucket_changed_file_ids).
     CHANGE_DETECTION: str = "replace_always"
+    # Set True when absence from list_files() does not prove a file was deleted
+    # (e.g. a removed site, or a library trimmed by source permissions). Orphan
+    # reconciliation then deletes only the files every active connection of
+    # this type confirms via is_definitively_missing(); the base implementation
+    # never confirms, so setting the flag without overriding it deletes nothing.
+    REQUIRES_CONFIRMED_DELETION: bool = False
     # Connector-specific keys in the config dict that must be encrypted at rest.
     SECRET_CONFIG_KEYS: tuple = ()
 
@@ -310,6 +316,22 @@ class BaseConnector(ABC):
         connector does not support in-place renewal — the caller then falls
         back to cleanup_subscription + setup_subscription."""
         return None
+
+    def filename_for_index(self, file_id: str, filename: str) -> str:
+        """Return the filename this connector indexes ``file_id`` under.
+
+        Override when the indexed name is derived from the picker name (e.g.
+        keyed by source id): the duplicate check compares this name, so it must
+        match what ingestion writes. Default: the picker name unchanged."""
+        return filename
+
+    async def is_definitively_missing(self, file_id: str) -> bool:
+        """True only when the source positively proves ``file_id`` is gone.
+
+        Consulted by orphan reconciliation when REQUIRES_CONFIRMED_DELETION is
+        set. Errors, lost access and ambiguous responses must return False.
+        Default: never proven."""
+        return False
 
     @property
     def is_authenticated(self) -> bool:

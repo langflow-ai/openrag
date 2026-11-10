@@ -458,6 +458,11 @@ def test_same_basename_in_distinct_folders_keeps_picker_names_and_indexes_distin
     )
 
 
+def test_declares_confirmed_deletion_so_host_consults_is_definitively_missing():
+    # Without the flag the host treats absence from the listing as deletion.
+    assert SharePointOnPremConnector.REQUIRES_CONFIRMED_DELETION is True
+
+
 def test_definitive_file_missing_only_with_visible_site_and_library(connector):
     adapter, server = connector
     _, nested = navigate(adapter)

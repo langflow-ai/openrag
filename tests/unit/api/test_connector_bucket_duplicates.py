@@ -100,19 +100,20 @@ def _bucket_sync_service(remote_files, task_id="task-x"):
 
 
 @pytest.mark.asyncio
-async def test_sharepoint_onprem_duplicate_check_uses_index_name_not_picker_basename(monkeypatch):
+async def test_duplicate_check_uses_connector_index_name_not_picker_basename(monkeypatch):
+    """Any connector that derives its indexed name (filename_for_index) is
+    compared by that name; no connector type is special-cased."""
     from api import connectors as connectors_api
 
     monkeypatch.setattr(connectors_api, "get_index_name", lambda: "idx")
     session_manager, client = _session_manager_finding("report--sp-first.pdf")
     connector = SimpleNamespace(
-        CONNECTOR_TYPE="sharepoint_onprem",
         filename_for_index=lambda file_id, name: f"report--sp-{file_id}.pdf",
         cfg=None,
     )
     result = await connectors_api._classify_connector_duplicates(
         connector=connector,
-        connector_type="sharepoint_onprem",
+        connector_type="derived_name_plugin",
         selected_files_raw=[
             {"id": "first", "name": "report.pdf", "mimeType": "application/pdf"},
             {"id": "second", "name": "report.pdf", "mimeType": "application/pdf"},
