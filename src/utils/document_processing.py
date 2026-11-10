@@ -291,37 +291,65 @@ def resplit_chunks_character_windows(
     return out
 
 
+def _prefix_token_count(encoding, text: str, start: int, length: int) -> int:
+    return len(encoding.encode(text[start : start + length]))
+
+
 def _split_text_to_max_tokens(text: str, encoding, max_tokens: int) -> list[str]:
     """Cut ``text`` into pieces that each encode to at most ``max_tokens``.
 
-    Slices the original string. Decoding a token window and encoding it again
-    can come back longer than the window (a 500-token Watsonx cut re-encodes
-    to 501), and the decoded window can replace a character with U+FFFD.
-    A piece is then one embedding input, and the pieces join back to ``text``.
+    Slices the original string, so the pieces join back to ``text``. A probe
+    covers only the next doubled window, not the whole remaining suffix: a
+    500-token Watsonx cut can re-encode to 501, but finding that boundary
+    must not encode the rest of the document on every guess. A single code
+    point that is already over the cap is kept as its own piece so the cursor
+    still advances.
     """
-    if len(encoding.encode(text)) <= max_tokens:
+    if _prefix_token_count(encoding, text, 0, len(text)) <= max_tokens:
         return [text]
 
     pieces: list[str] = []
-    remaining = text
-    while remaining:
-        if len(encoding.encode(remaining)) <= max_tokens:
-            pieces.append(remaining)
+    start = 0
+    length = len(text)
+    while start < length:
+        fit = 0
+        window = 1
+        over = False
+        while start + window <= length:
+            if _prefix_token_count(encoding, text, start, window) <= max_tokens:
+                fit = window
+                if start + window == length:
+                    break
+                grown = min(length - start, window * 2)
+                if grown == window:
+                    break
+                window = grown
+            else:
+                over = True
+                break
+        if fit == 0:
+            pieces.append(text[start : start + 1])
+            start += 1
+            continue
+        if not over:
+            pieces.append(text[start:])
             break
-        low = 1
-        high = len(remaining)
-        # A single code point can itself be over the cap. Keep one so the
-        # cursor always advances.
-        best = 1
+        low = fit
+        high = window
+        best = fit
         while low <= high:
             mid = (low + high) // 2
-            if len(encoding.encode(remaining[:mid])) <= max_tokens:
+            if _prefix_token_count(encoding, text, start, mid) <= max_tokens:
                 best = mid
                 low = mid + 1
             else:
                 high = mid - 1
-        pieces.append(remaining[:best])
-        remaining = remaining[best:]
+        # `fit` was measured under the cap. A non-monotone boundary cannot
+        # push the piece back over it.
+        if _prefix_token_count(encoding, text, start, best) > max_tokens:
+            best = fit
+        pieces.append(text[start : start + best])
+        start += best
     return pieces
 
 
