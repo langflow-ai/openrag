@@ -9,6 +9,7 @@ class FakeOpenSearchClient:
         self.visible_hits = visible_hits or []
         self.search_calls = []
         self.delete_calls = []
+        self.bulk_calls = []
 
     async def search(self, *, index, body, scroll=None):
         self.search_calls.append({"index": index, "body": body, "scroll": scroll})
@@ -22,6 +23,24 @@ class FakeOpenSearchClient:
     async def delete(self, *, index, id, refresh=True):
         self.delete_calls.append({"index": index, "id": id, "refresh": refresh})
         return {"result": "deleted"}
+
+    async def bulk(self, *, body, refresh=False):
+        self.bulk_calls.append({"body": body, "refresh": refresh})
+        for action in body:
+            self.delete_calls.append(
+                {
+                    "index": action["delete"]["_index"],
+                    "id": action["delete"]["_id"],
+                    "refresh": refresh,
+                }
+            )
+        return {
+            "errors": False,
+            "items": [
+                {"delete": {"_id": a["delete"]["_id"], "result": "deleted", "status": 200}}
+                for a in body
+            ],
+        }
 
 
 class FakeSessionManager:

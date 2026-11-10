@@ -78,3 +78,48 @@ async def delete_document_ids(
             invalidate_corpus_caches()
 
     return deleted_count
+
+
+async def bulk_delete_document_ids(
+    opensearch_client,
+    *,
+    index: str,
+    document_ids: Iterable[str],
+    refresh: bool = True,
+    batch_size: int = 500,
+) -> int:
+    """Delete concrete OpenSearch document IDs using batched ``_bulk`` requests.
+
+    Same ID-keyed delete semantics as :func:`delete_document_ids` (so it stays
+    DLS-safe), but one request per ``batch_size`` IDs instead of one per ID, and
+    a single index refresh on the final batch instead of one per delete. Intended
+    for user-facing deletes of many chunks, where per-ID round trips and
+    per-delete refreshes dominate latency.
+
+    Missing documents (404) are ignored. Any other per-item failure is raised as
+    a ``RuntimeError`` after all batches have been attempted.
+    """
+    ids = list(document_ids)
+    deleted_count = 0
+    first_error: str | None = None
+    try:
+        for start in range(0, len(ids), batch_size):
+            batch = ids[start : start + batch_size]
+            is_last = start + batch_size >= len(ids)
+            response = await opensearch_client.bulk(
+                body=[{"delete": {"_index": index, "_id": doc_id}} for doc_id in batch],
+                refresh=refresh and is_last,
+            )
+            for item in response.get("items", []):
+                action = item.get("delete", {})
+                if action.get("result") == "deleted":
+                    deleted_count += 1
+                elif action.get("status") != 404 and first_error is None:
+                    first_error = str(action.get("error") or action.get("status"))
+    finally:
+        if deleted_count:
+            invalidate_corpus_caches()
+
+    if first_error is not None:
+        raise RuntimeError(f"Bulk delete failed for some chunks: {first_error}")
+    return deleted_count
