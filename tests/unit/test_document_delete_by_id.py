@@ -259,3 +259,38 @@ async def test_delete_documents_by_filename_returns_404_when_missing(monkeypatch
     assert payload["success"] is False
     assert payload["deleted_chunks"] == 0
     assert opensearch_client.delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_documents_by_filename_reports_confirmed_chunks_on_partial_failure(
+    monkeypatch,
+):
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
+    opensearch_client = FakeOpenSearchClient(
+        owned_hits=[{"_id": "chunk-1", "_source": {"owner": "user-1"}}]
+    )
+    backend_opensearch_client = FakeOpenSearchClient()
+
+    async def _partial_bulk(*, body, refresh=False):
+        return {
+            "errors": True,
+            "items": [
+                {"delete": {"_id": "chunk-1", "result": "deleted", "status": 200}},
+                {"delete": {"_id": "chunk-2", "status": 500, "error": {"type": "boom"}}},
+            ],
+        }
+
+    backend_opensearch_client.bulk = _partial_bulk
+    monkeypatch.setattr("config.settings.clients.opensearch", backend_opensearch_client)
+
+    payload, status_code = await delete_documents_by_filename_core(
+        filename="report.pdf",
+        session_manager=FakeSessionManager(opensearch_client),
+        user_id="user-1",
+        jwt_token="jwt-token",
+    )
+
+    assert status_code == 500
+    assert payload["success"] is False
+    assert payload["deleted_chunks"] == 1
+    assert "boom" not in payload["error"]

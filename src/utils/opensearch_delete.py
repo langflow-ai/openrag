@@ -80,6 +80,19 @@ async def delete_document_ids(
     return deleted_count
 
 
+class BulkDeleteError(RuntimeError):
+    """A bulk delete failed part-way; ``deleted_count`` holds confirmed deletions.
+
+    Only deletions acknowledged by a successful ``_bulk`` response are counted.
+    If a request itself failed, any deletions it may have applied are unknown
+    and are not included.
+    """
+
+    def __init__(self, message: str, deleted_count: int = 0):
+        super().__init__(message)
+        self.deleted_count = deleted_count
+
+
 async def bulk_delete_document_ids(
     opensearch_client,
     *,
@@ -97,7 +110,10 @@ async def bulk_delete_document_ids(
     per-delete refreshes dominate latency.
 
     Missing documents (404) are ignored. Any other per-item failure is raised as
-    a ``RuntimeError`` after all batches have been attempted.
+    a :class:`BulkDeleteError` after all batches have been attempted. A failed
+    request stops further batches and is also raised as a ``BulkDeleteError``
+    (chained to the original exception). Either way, ``deleted_count`` on the
+    error carries the deletions confirmed so far.
     """
     ids = list(document_ids)
     deleted_count = 0
@@ -106,10 +122,13 @@ async def bulk_delete_document_ids(
         for start in range(0, len(ids), batch_size):
             batch = ids[start : start + batch_size]
             is_last = start + batch_size >= len(ids)
-            response = await opensearch_client.bulk(
-                body=[{"delete": {"_index": index, "_id": doc_id}} for doc_id in batch],
-                refresh=refresh and is_last,
-            )
+            try:
+                response = await opensearch_client.bulk(
+                    body=[{"delete": {"_index": index, "_id": doc_id}} for doc_id in batch],
+                    refresh=refresh and is_last,
+                )
+            except Exception as e:
+                raise BulkDeleteError(str(e), deleted_count) from e
             for item in response.get("items", []):
                 action = item.get("delete", {})
                 if action.get("result") == "deleted":
@@ -121,5 +140,5 @@ async def bulk_delete_document_ids(
             invalidate_corpus_caches()
 
     if first_error is not None:
-        raise RuntimeError(f"Bulk delete failed for some chunks: {first_error}")
+        raise BulkDeleteError(f"Bulk delete failed for some chunks: {first_error}", deleted_count)
     return deleted_count

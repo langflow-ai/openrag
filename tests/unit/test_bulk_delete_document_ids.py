@@ -1,7 +1,7 @@
 import pytest
 
 from services import search_cache
-from utils.opensearch_delete import bulk_delete_document_ids
+from utils.opensearch_delete import BulkDeleteError, bulk_delete_document_ids
 
 
 class _BulkClient:
@@ -103,3 +103,39 @@ async def test_nothing_deleted_keeps_caches():
     await bulk_delete_document_ids(client, index="documents", document_ids=["a"])
 
     assert search_cache.SUGGEST_CACHE.get("g") is not None
+
+
+@pytest.mark.asyncio
+async def test_item_failure_reports_confirmed_deletions():
+    client = _BulkClient({"b": ("error", 500, {"type": "boom"})})
+
+    with pytest.raises(BulkDeleteError) as exc_info:
+        await bulk_delete_document_ids(
+            client, index="documents", document_ids=["a", "b", "c"], batch_size=2
+        )
+
+    assert exc_info.value.deleted_count == 2
+
+
+class _FailingSecondBatchClient(_BulkClient):
+    async def bulk(self, *, body, refresh=False):
+        if self.calls:
+            self.calls.append({"body": body, "refresh": refresh})
+            raise ConnectionError("opensearch down")
+        return await super().bulk(body=body, refresh=refresh)
+
+
+@pytest.mark.asyncio
+async def test_request_failure_reports_only_confirmed_deletions_and_stops():
+    _prime_caches()
+    client = _FailingSecondBatchClient()
+
+    with pytest.raises(BulkDeleteError, match="opensearch down") as exc_info:
+        await bulk_delete_document_ids(
+            client, index="documents", document_ids=["a", "b", "c", "d", "e"], batch_size=2
+        )
+
+    assert exc_info.value.deleted_count == 2
+    assert isinstance(exc_info.value.__cause__, ConnectionError)
+    assert len(client.calls) == 2
+    assert search_cache.SUGGEST_CACHE.get("g") is None

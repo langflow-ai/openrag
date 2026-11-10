@@ -188,7 +188,8 @@ async def delete_documents_by_filename_core(
         return (
             {
                 "success": False,
-                "deleted_chunks": 0,
+                # Chunks already confirmed deleted before a partial bulk failure.
+                "deleted_chunks": getattr(e, "deleted_count", 0),
                 "filename": normalized_filename,
                 "message": None,
                 "error": (
