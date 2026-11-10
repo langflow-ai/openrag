@@ -761,6 +761,12 @@ def _explain(exc: Exception, url: str) -> str:
     text = str(exc)
     if status == 401:
         return "the API key was rejected; create a new one under Settings → API Keys"
+    if status == 403 and "AuthenticationException" in text:
+        # The key was accepted; the backend's own login to OpenSearch failed.
+        return (
+            f"the stack accepted the API key, but its backend could not authenticate to "
+            f"OpenSearch ({text}); restarting the backend usually fixes this"
+        )
     if status == 403:
         return f"the API key lacks a permission this needs ({text})"
     if "CERTIFICATE_VERIFY_FAILED" in text:

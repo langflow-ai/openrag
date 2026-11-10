@@ -136,7 +136,9 @@ def auto_thresholds(questions: Sequence[Question]) -> list[float]:
     if low >= 0 and high <= 1:
         return [round(i * 0.05, 2) for i in range(21)]
     step = (high - low) / 20
-    return [float(f"{low + i * step:.4g}") for i in range(21)]
+    # Rounded for a readable table, except the first: rounding the lowest score
+    # up would cut the chunk that has it, and that row should cut nothing.
+    return [low] + [float(f"{low + i * step:.4g}") for i in range(1, 21)]
 
 
 @dataclass(frozen=True)
@@ -393,6 +395,14 @@ def analyze(
             f"The run used a score threshold of {floor:g} before normalizing, so the "
             "normalized scores cover only the chunks above it."
         )
+    all_scores = [score for question in questions for _, score in question.chunks]
+    if all_scores and (min(all_scores) < 0 or max(all_scores) > 1):
+        notes.append(
+            f"Scores run from {min(all_scores):.4g} to {max(all_scores):.4g}, outside [0, 1], "
+            "so the tier cutoffs and hide threshold below do not mean anything for them. "
+            "Use --normalize minmax to preview the tiers, or run against a stack that "
+            "normalizes scores."
+        )
     rows = sweep(questions, wanted, k)
     advice = recommend(rows, max_recall_loss)
     # The threshold whose lost questions the report lists: the one asked for,
@@ -405,15 +415,14 @@ def analyze(
         candidate_row = next((row for row in rows if row.threshold == chosen), None)
         if candidate_row is None:
             candidate_row = sweep(questions, [chosen], k)[1]
-    scores = [score for question in questions for _, score in question.chunks]
     return {
         "run_id": run.get("run_id"),
         "label": run.get("label"),
         "method": method,
         "k": k,
         "max_recall_loss": max_recall_loss,
-        "chunk_count": len(scores),
-        "score_range": (min(scores), max(scores)) if scores else None,
+        "chunk_count": len(all_scores),
+        "score_range": (min(all_scores), max(all_scores)) if all_scores else None,
         "notes": notes,
         "rows": rows,
         "recommendation": advice,

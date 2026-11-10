@@ -1607,6 +1607,8 @@ def test_auto_thresholds_follow_the_score_range() -> None:
     assert scores.auto_thresholds(unit)[:3] == [0.0, 0.05, 0.1]
     assert len(scores.auto_thresholds(unit)) == 21
     assert scores.auto_thresholds(raw)[0] == 2.0
+    uneven = [scores.Question("q", "", frozenset(), ("a.md",), ((1, 1.2417), (1, 9.2317)), None)]
+    assert scores.auto_thresholds(uneven)[0] == 1.2417  # not rounded up past the lowest score
     assert scores.auto_thresholds(raw)[-1] == 12.0
 
 
@@ -1683,3 +1685,19 @@ def test_scores_command_explains_an_old_results_file(tmp_path: Path) -> None:
 
     assert completed.returncode == 1
     assert "rerun the eval" in completed.stderr
+
+
+def test_raw_scores_outside_the_unit_range_say_the_tiers_do_not_apply() -> None:
+    raw = make_results(
+        [
+            scored_query(
+                "q", [chunk("a.md", "the answer", 4.0), chunk("b.md", "", 1.5)], ["a.md"], "answer"
+            )
+        ]
+    )
+
+    notes = scores.analyze(raw)["notes"]
+    normalized = scores.analyze(raw, method="minmax")["notes"]
+
+    assert any("outside [0, 1]" in note for note in notes)
+    assert not any("outside [0, 1]" in note for note in normalized)
