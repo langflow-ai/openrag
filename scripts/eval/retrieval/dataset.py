@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 REQUIRED_FIELDS = frozenset({"query", "expected_files"})
@@ -193,3 +196,53 @@ def hash_corpus(corpus_dir: Path, corpus_names: list[str]) -> str:
         digest.update(hash_file(corpus_dir / name).encode("ascii"))
         digest.update(b"\n")
     return digest.hexdigest()
+
+
+# Every run uploads its documents as ``eval-<8 hex digits>-<corpus filename>``.
+RUN_ID_PATTERN = re.compile(r"^(eval-[0-9a-f]{8})-(.+)$")
+
+
+@dataclass(frozen=True)
+class Leftover:
+    """A document an earlier run uploaded and did not delete."""
+
+    filename: str
+    run_id: str
+    indexed_time: datetime | None  # None when the stack's timestamp could not be read
+
+
+def _parse_time(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def find_leftovers(
+    files: Iterable[tuple[str, str | None]], corpus_names: Collection[str]
+) -> list[Leftover]:
+    """Pick the eval uploads out of ``(filename, indexed_time)`` pairs from the stack.
+
+    A file counts only when its name is a run prefix followed by a corpus
+    filename, so a user document that merely starts with ``eval-`` is never
+    matched.
+    """
+    leftovers = []
+    for filename, indexed_time in files:
+        match = RUN_ID_PATTERN.match(filename)
+        if match and match.group(2) in corpus_names:
+            leftovers.append(Leftover(filename, match.group(1), _parse_time(indexed_time)))
+    return sorted(leftovers, key=lambda item: (item.run_id, item.filename))
+
+
+def old_enough(leftover: Leftover, now: datetime, min_age: timedelta) -> bool:
+    """Whether a leftover is old enough to delete safely.
+
+    A recent upload may belong to a run that is still going, possibly someone
+    else's on a shared stack, and a file without a readable timestamp cannot be
+    shown to be old, so both are kept.
+    """
+    return leftover.indexed_time is not None and now - leftover.indexed_time >= min_age
