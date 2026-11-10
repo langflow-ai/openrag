@@ -13,7 +13,10 @@ backend still does. Its sole job is network-surface isolation.
 
 from __future__ import annotations
 
+import ipaddress
+import re
 import threading
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 import uvicorn
@@ -34,9 +37,9 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Where the proxy forwards callbacks: loopback to the co-located backend (NOT the
-# advertised service name, which may not resolve from where the router runs).
-_UPSTREAM_URL = f"{OPENRAG_BACKEND_ROUTER_UPSTREAM_URL}{INGEST_CALLBACK_PATH}"
+# Validate the configured upstream before creating routes that forward credentials.
+_UPSTREAM_ENV_VAR = "OPENRAG_BACKEND_ROUTER_UPSTREAM_URL"
+_HOST_LABEL_RE = re.compile(r"^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$")
 
 # Deliberately exact private paths: Langflow gets an unversioned internal
 # interface, while the router maps each one to the backend's public /v1 API.
@@ -62,9 +65,63 @@ _LLM_UPSTREAM_TIMEOUT = httpx.Timeout(
 )
 
 
+def _validate_upstream_base_url(value: str) -> str:
+    """Validate and normalize the base URL that receives forwarded credentials.
+
+    HTTPS is required for remote upstreams. Plain HTTP is only permitted for
+    the explicit loopback hosts used by local development.
+    """
+    message = f"Invalid {_UPSTREAM_ENV_VAR}: expected an HTTPS host or HTTP loopback URL"
+    if not value or value != value.strip() or "?" in value or "#" in value:
+        raise ValueError(message)
+    try:
+        parts = urlsplit(value)
+        hostname = parts.hostname
+        port = parts.port
+    except ValueError as error:
+        raise ValueError(message) from error
+
+    if (
+        parts.scheme.lower() not in {"http", "https"}
+        or not hostname
+        or parts.username is not None
+        or parts.password is not None
+        or parts.path not in {"", "/"}
+        or (port is not None and not 1 <= port <= 65535)
+    ):
+        raise ValueError(message)
+
+    try:
+        hostname_ascii = hostname.encode("idna").decode("ascii")
+    except UnicodeError as error:
+        raise ValueError(message) from error
+    try:
+        ipaddress.ip_address(hostname_ascii)
+        valid_hostname = True
+    except ValueError:
+        labels = hostname_ascii.rstrip(".").split(".")
+        valid_hostname = (
+            bool(hostname_ascii)
+            and len(hostname_ascii) <= 253
+            and all(_HOST_LABEL_RE.fullmatch(label) for label in labels)
+        )
+
+    if not valid_hostname:
+        raise ValueError(message)
+    if parts.scheme.lower() == "http":
+        loopback_host = hostname_ascii.lower() == "localhost" or hostname_ascii in {
+            "127.0.0.1",
+            "::1",
+        }
+        if not loopback_host:
+            raise ValueError(message)
+
+    return urlunsplit((parts.scheme.lower(), parts.netloc, "", "", ""))
+
+
 async def _proxy_ingest_chunks(request: Request) -> Response:
     """Forward the ingest callback to the real backend and relay its response."""
-    upstream_url = _UPSTREAM_URL
+    upstream_url = f"{request.app.state.router_upstream_base_url}{INGEST_CALLBACK_PATH}"
     body = await request.body()
     headers = {
         key: value for key, value in request.headers.items() if key.lower() in _FORWARDED_HEADERS
@@ -106,7 +163,7 @@ async def _proxy_llm_request(request: Request) -> Response:
     if upstream_path is None:  # Defensive guard if a route is changed.
         return Response(status_code=404)
 
-    upstream_url = f"{OPENRAG_BACKEND_ROUTER_UPSTREAM_URL}{upstream_path}"
+    upstream_url = f"{request.app.state.router_upstream_base_url}{upstream_path}"
     body = await request.body()
     headers = {
         key: value for key, value in request.headers.items() if key.lower() in _FORWARDED_HEADERS
@@ -165,12 +222,14 @@ def create_router_app() -> FastAPI:
     No other paths are registered, so MCP and every non-allowlisted path return
     404 on this port.
     """
+    upstream_base_url = _validate_upstream_base_url(OPENRAG_BACKEND_ROUTER_UPSTREAM_URL)
     app = FastAPI(
         title="OpenRAG Ingest Router",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
     )
+    app.state.router_upstream_base_url = upstream_base_url
     # Reuse the backend's structured access logging so every forwarded callback
     # emits an "[API] Request" line (method/path/status/duration) to the same
     # stdout as the backend. Without this, uvicorn.access is globally silenced.
@@ -222,7 +281,9 @@ class _RouterServer(uvicorn.Server):
                 "[Router] Ingest router ready",
                 host=OPENRAG_BACKEND_ROUTER_HOST,
                 port=OPENRAG_BACKEND_ROUTER_PORT,
-                upstream=_UPSTREAM_URL,
+                upstream=(
+                    f"{self.config.app.state.router_upstream_base_url}{INGEST_CALLBACK_PATH}"
+                ),
             )
 
 

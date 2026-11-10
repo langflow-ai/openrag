@@ -69,6 +69,50 @@ def test_router_url_derives_backend_host_on_router_port(monkeypatch):
     assert settings._derive_router_url() == "http://openrag-be:8100"
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("https://backend.example", "https://backend.example"),
+        ("https://127.0.0.1:8443", "https://127.0.0.1:8443"),
+        ("http://localhost:8000/", "http://localhost:8000"),
+        ("http://127.0.0.1:8000", "http://127.0.0.1:8000"),
+        ("http://[::1]:8000", "http://[::1]:8000"),
+    ],
+)
+def test_router_accepts_https_and_http_loopback_upstreams(value, expected):
+    assert router_app._validate_upstream_base_url(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "http://backend.example",
+        "ftp://backend.example",
+        "https:///missing-host",
+        "https://user:password@backend.example",
+        "https://backend.example/api",
+        "https://backend.example?token=secret",
+        "https://backend.example#fragment",
+        "https://backend.example:99999",
+        "https://bad_host.example",
+    ],
+)
+def test_router_rejects_unsafe_or_malformed_upstream_at_initialization(value, monkeypatch):
+    calls = []
+    monkeypatch.setattr(router_app, "OPENRAG_BACKEND_ROUTER_UPSTREAM_URL", value)
+
+    def unexpected_client(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("The router must reject the upstream before creating a client")
+
+    monkeypatch.setattr(router_app.httpx, "AsyncClient", unexpected_client)
+
+    with pytest.raises(ValueError, match="OPENRAG_BACKEND_ROUTER_UPSTREAM_URL"):
+        router_app.create_router_app()
+
+    assert calls == []
+
+
 # --- proxy behaviour --------------------------------------------------------
 
 
@@ -146,7 +190,9 @@ def test_proxy_forwards_only_allowlisted_headers(monkeypatch):
     assert resp.json() == {"status": "ok"}
     # Forwarded to the co-located backend over LOOPBACK (not the service name),
     # with the original body.
-    assert captured["url"] == router_app._UPSTREAM_URL
+    assert captured["url"] == (
+        f"{router_app.OPENRAG_BACKEND_ROUTER_UPSTREAM_URL}{settings.INGEST_CALLBACK_PATH}"
+    )
     assert captured["url"].startswith("http://127.0.0.1:8000")
     assert captured["url"].endswith(settings.INGEST_CALLBACK_PATH)
     assert captured["content"] == b'{"ingest_run_id":"run-1","chunks":[]}'
@@ -185,7 +231,7 @@ def test_llm_proxy_forwards_only_allowlisted_headers_and_maps_private_path(monke
 
     assert resp.status_code == 200
     assert resp.json() == {"object": "list", "data": []}
-    assert captured["url"] == f"{router_app.OPENRAG_BACKEND_ROUTER_UPSTREAM_URL}/v1/embeddings"
+    assert captured["url"] == (f"{router_app.OPENRAG_BACKEND_ROUTER_UPSTREAM_URL}/v1/embeddings")
     assert captured["params"] == {"trace": "1"}
     assert captured["stream"] is True
     forwarded = {key.lower() for key in captured["headers"]}
