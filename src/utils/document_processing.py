@@ -291,14 +291,76 @@ def resplit_chunks_character_windows(
     return out
 
 
+def _prefix_token_count(encoding, text: str, start: int, length: int) -> int:
+    return len(encoding.encode(text[start : start + length]))
+
+
+def _split_text_to_max_tokens(text: str, encoding, max_tokens: int) -> list[str]:
+    """Cut ``text`` into pieces that each encode to at most ``max_tokens``.
+
+    Slices the original string, so the pieces join back to ``text``. A probe
+    covers only the next doubled window, not the whole remaining suffix: a
+    500-token Watsonx cut can re-encode to 501, but finding that boundary
+    must not encode the rest of the document on every guess. A single code
+    point that is already over the cap is kept as its own piece so the cursor
+    still advances.
+    """
+    if _prefix_token_count(encoding, text, 0, len(text)) <= max_tokens:
+        return [text]
+
+    pieces: list[str] = []
+    start = 0
+    length = len(text)
+    while start < length:
+        fit = 0
+        window = 1
+        over = False
+        while start + window <= length:
+            if _prefix_token_count(encoding, text, start, window) <= max_tokens:
+                fit = window
+                if start + window == length:
+                    break
+                grown = min(length - start, window * 2)
+                if grown == window:
+                    break
+                window = grown
+            else:
+                over = True
+                break
+        if fit == 0:
+            pieces.append(text[start : start + 1])
+            start += 1
+            continue
+        if not over:
+            pieces.append(text[start:])
+            break
+        low = fit
+        high = window
+        best = fit
+        while low <= high:
+            mid = (low + high) // 2
+            if _prefix_token_count(encoding, text, start, mid) <= max_tokens:
+                best = mid
+                low = mid + 1
+            else:
+                high = mid - 1
+        # `fit` was measured under the cap. A non-monotone boundary cannot
+        # push the piece back over it.
+        if _prefix_token_count(encoding, text, start, best) > max_tokens:
+            best = fit
+        pieces.append(text[start : start + best])
+        start += best
+    return pieces
+
+
 def split_chunks_by_max_tokens(
     chunks: list[dict], max_tokens: int, model: str | None = None
 ) -> list[dict]:
     """Split any chunks whose token count exceeds max_tokens.
 
-    Ensures that when chunk texts are sent to the embedding model, they don't get
-    further split by token limits in the batching helper, allowing the final
-    embeddings and chunks to align 1-to-1.
+    Each resulting chunk encodes to at most ``max_tokens`` (unless a single
+    code point is already over the cap), so the embedding batcher can keep one
+    vector per chunk.
     """
     import tiktoken
 
@@ -317,17 +379,9 @@ def split_chunks_by_max_tokens(
             new_chunks.append(chunk)
             continue
 
-        tokens = encoding.encode(text)
-        if len(tokens) <= max_tokens:
-            new_chunks.append(chunk)
-            continue
-
-        # Split tokens into segments of at most max_tokens size
-        for i in range(0, len(tokens), max_tokens):
-            chunk_tokens = tokens[i : i + max_tokens]
-            chunk_text = encoding.decode(chunk_tokens)
+        for piece in _split_text_to_max_tokens(text, encoding, max_tokens):
             new_chunk = dict(chunk)
-            new_chunk["text"] = chunk_text
+            new_chunk["text"] = piece
             new_chunks.append(new_chunk)
 
     return new_chunks

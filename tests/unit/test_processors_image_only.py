@@ -43,7 +43,7 @@ async def test_image_only_placeholder_succeeds_but_empty_document_fails(
     )
     monkeypatch.setattr(
         "services.document_service.chunk_texts_for_embeddings",
-        lambda texts, max_tokens: [texts] if texts else [],
+        lambda texts, max_tokens, model=None: [texts] if texts else [],
     )
 
     user_client = SimpleNamespace()
