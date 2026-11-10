@@ -41,6 +41,8 @@ Paths are relative to this directory.
 | `make` target | Same as |
 |---|---|
 | `make eval-validate` | `uv run run_eval.py run --validate-only` |
+| `make eval-check` | `uv run run_eval.py check` |
+| `make eval-cleanup` | `uv run run_eval.py cleanup` (add `CONFIRM=1` for `--yes`) |
 | `make eval-run` | `uv run run_eval.py run` |
 | `make eval-run BASELINE=results/baseline.json` | `uv run run_eval.py run --baseline results/baseline.json` |
 | `make eval-baseline` | `uv run run_eval.py run`, then copy the results to `results/baseline.json` |
@@ -62,7 +64,7 @@ The rest of this file explains each step.
 |---|---|
 | `corpus/` | 21 Markdown documents: the handbook of a fictional product, "Relaywise" |
 | `queries.jsonl` | 83 hand-labeled questions, one JSON object per line |
-| `run_eval.py` | The command-line tool, with `run` and `compare` commands |
+| `run_eval.py` | The command-line tool, with `run`, `check`, `cleanup`, `compare` and `promote` commands |
 | `dataset.py` | Loads and validates the corpus and questions |
 | `metrics.py` | Turns ranked chunks into ranked files and scores them |
 | `report.py` | Writes results, the summary and the baseline diff |
@@ -116,7 +118,8 @@ A run does the following:
 
 Documents that were already in the stack are never searched, changed or
 deleted. If a run is interrupted before cleanup, delete the leftover
-`eval-<run id>-*` files from the knowledge page.
+`eval-<run id>-*` files with `run_eval.py cleanup` (see
+[Clean up after an interrupted run](#clean-up-after-an-interrupted-run)).
 
 Useful options:
 
@@ -132,6 +135,71 @@ Useful options:
 | `--validate-only` | off | Check the dataset and exit; needs no stack |
 
 Run `uv run run_eval.py run --help` for the full list, including timeouts.
+
+## Run against a hosted environment
+
+The harness runs from your machine against any stack it can reach, so a QA or
+staging environment needs no GitHub Actions. Point it at the environment and
+check it first:
+
+```bash
+cd scripts/eval/retrieval
+export OPENRAG_URL=https://openrag-qa.example.com
+export OPENRAG_API_KEY=orag_key_for_that_environment
+
+uv run run_eval.py check
+```
+
+`check` uploads nothing. It confirms that the stack answers and accepts the
+key, that it can read the embedding and chunk settings, and whether earlier
+runs left documents behind:
+
+```text
+Checking https://openrag-qa.example.com
+  ok    dataset: 21 documents, 83 questions
+  ok    search: the stack answered and accepted the API key
+  ok    settings: watsonx ibm/granite-embedding-278m-multilingual, chunk size 1000, overlap 200
+  ok    documents: no earlier run left documents behind
+Not checked: uploading and deleting documents (knowledge:upload, knowledge:delete:own) need a real run.
+Ready for a run.
+```
+
+It exits with status 1 when a run would fail or its results could not be
+compared, and says what to fix. A run needs the settings: without them its
+results cannot be compared with a baseline or become one.
+
+Keep a separate baseline for each environment, because scores from different
+embedding models or settings are not comparable. Write each environment's
+results to its own directory:
+
+```bash
+# Once, to record where the environment stands:
+make eval-baseline OUTPUT_DIR=results/qa
+
+# After each deploy to that environment:
+make eval-run OUTPUT_DIR=results/qa BASELINE=results/qa/baseline.json
+```
+
+The tracked `baseline.json` belongs to the GitHub workflow's stack. Do not
+compare a hosted environment with it.
+
+If the environment uses a certificate from a private CA, set `SSL_CERT_FILE` to
+the CA bundle before running.
+
+### Clean up after an interrupted run
+
+A run deletes its documents when it ends, even when it fails. If it is killed
+first, they stay in the stack. On a stack other people use, list them with:
+
+```bash
+uv run run_eval.py cleanup          # or: make eval-cleanup
+uv run run_eval.py cleanup --yes    # or: make eval-cleanup CONFIRM=1
+```
+
+`cleanup` only matches files named like an eval upload (`eval-<run id>-` plus a
+corpus filename), and only those the API key can see. It keeps any document
+indexed in the last 60 minutes, because it may belong to a run still in
+progress, possibly someone else's. Use `--min-age` to change that window.
 
 ## Compare before and after a change
 
