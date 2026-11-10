@@ -173,6 +173,64 @@ export function KnowledgeDropdown() {
 
   // Check AWS availability and cloud connectors on mount
   useEffect(() => {
+    const loadPluginConnectorItems = async (
+      connectors: Record<string, unknown>,
+    ) => {
+      const plugins = Object.entries(connectors).filter(([type, metadata]) => {
+        if (
+          getConnectorDescriptor(type) ||
+          !metadata ||
+          typeof metadata !== "object"
+        )
+          return false;
+        return (
+          "available" in metadata &&
+          metadata.available === true &&
+          "browse_capability" in metadata &&
+          (metadata.browse_capability === "hierarchical" ||
+            metadata.browse_capability === "flat")
+        );
+      });
+      const configuredPlugins = await Promise.all(
+        plugins.map(async ([type, metadata]) => {
+          try {
+            const statusRes = await apiClient.get(
+              `/connectors/${encodeURIComponent(type)}/status`,
+            );
+            if (statusRes.status < 200 || statusRes.status >= 300) return null;
+            return (statusRes.data?.connections ?? []).some(
+              (connection: {
+                is_active: boolean;
+                is_authenticated: boolean;
+                connection_id: string;
+              }) =>
+                connection.is_active &&
+                connection.is_authenticated &&
+                connection.connection_id,
+            )
+              ? {
+                  type,
+                  name:
+                    metadata &&
+                    typeof metadata === "object" &&
+                    "name" in metadata &&
+                    typeof metadata.name === "string"
+                      ? metadata.name
+                      : type,
+                }
+              : null;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      setPluginConnectorItems(
+        configuredPlugins.filter(
+          (item): item is { type: string; name: string } => item !== null,
+        ),
+      );
+    };
+
     const checkAvailability = async () => {
       try {
         const bucketDescriptors = getConnectorDescriptors().filter(
@@ -233,62 +291,10 @@ export function KnowledgeDropdown() {
             );
           }
           setBucketConnectorAvailable(bucketAvailable);
-          const plugins = Object.entries(
-            connectorsResult.connectors ?? {},
-          ).filter(([type, metadata]) => {
-            if (
-              getConnectorDescriptor(type) ||
-              !metadata ||
-              typeof metadata !== "object"
-            )
-              return false;
-            return (
-              "available" in metadata &&
-              metadata.available === true &&
-              "browse_capability" in metadata &&
-              (metadata.browse_capability === "hierarchical" ||
-                metadata.browse_capability === "flat")
-            );
-          });
-          const configuredPlugins = await Promise.all(
-            plugins.map(async ([type, metadata]) => {
-              try {
-                const statusRes = await fetch(
-                  `/api/connectors/${encodeURIComponent(type)}/status`,
-                );
-                if (!statusRes.ok) return null;
-                const status = await statusRes.json();
-                return (status.connections ?? []).some(
-                  (connection: {
-                    is_active: boolean;
-                    is_authenticated: boolean;
-                    connection_id: string;
-                  }) =>
-                    connection.is_active &&
-                    connection.is_authenticated &&
-                    connection.connection_id,
-                )
-                  ? {
-                      type,
-                      name:
-                        metadata &&
-                        typeof metadata === "object" &&
-                        "name" in metadata &&
-                        typeof metadata.name === "string"
-                          ? metadata.name
-                          : type,
-                    }
-                  : null;
-              } catch {
-                return null;
-              }
-            }),
-          );
-          setPluginConnectorItems(
-            configuredPlugins.filter(
-              (item): item is { type: string; name: string } => item !== null,
-            ),
-          );
+          // Plug-in status checks can be slow (a degraded on-prem server is
+          // probed on every call), so they must not hold back the built-in
+          // connector entries below; their menu items appear when ready.
+          void loadPluginConnectorItems(connectorsResult.connectors ?? {});
 
           const cloudConnectorTypes = [
             "google_drive",
