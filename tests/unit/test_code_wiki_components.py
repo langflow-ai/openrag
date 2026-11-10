@@ -1350,6 +1350,38 @@ class TestPageToDocs:
         assert first == again
         assert first != other
 
+    def test_symbol_pages_do_not_share_the_file_pages_document_id(self, builder):
+        kwargs = {"repo_url": "https://github.com/o/r", "repo_ref": "main", "chunk_size": 3000}
+        file_page = _page()
+        foo = _page(content_kind="wiki_symbol_page", symbol="Foo", line_start=1, line_end=5)
+        bar = _page(content_kind="wiki_symbol_page", symbol="Bar", line_start=7, line_end=9)
+        ids = [builder.page_to_docs(p, **kwargs)[0]["document_id"] for p in (file_page, foo, bar)]
+        assert len(set(ids)) == 3
+
+    def test_overloaded_symbols_get_distinct_document_ids(self, builder):
+        kwargs = {"repo_url": "https://github.com/o/r", "repo_ref": "main", "chunk_size": 3000}
+        first = _page(content_kind="wiki_symbol_page", symbol="run", line_start=3)
+        second = _page(content_kind="wiki_symbol_page", symbol="run", line_start=20)
+        a = builder.page_to_docs(first, **kwargs)[0]["document_id"]
+        b = builder.page_to_docs(second, **kwargs)[0]["document_id"]
+        assert a != b
+
+    def test_file_page_document_id_is_unchanged(self, builder):
+        """Only symbol pages gained a new identity; existing file-page ids must not move."""
+        import hashlib
+
+        doc = builder.page_to_docs(
+            _page(), repo_url="https://github.com/o/r", repo_ref="main", chunk_size=3000
+        )[0]
+        expected = hashlib.sha1(b"https://github.com/o/r@main:src/pkg/foo.py").hexdigest()
+        assert doc["document_id"] == expected
+
+    def test_source_url_uses_head_when_the_ref_is_unknown(self, builder):
+        doc = builder.page_to_docs(
+            _page(), repo_url="https://github.com/o/r", repo_ref="", chunk_size=3000
+        )[0]
+        assert doc["source_url"] == "https://github.com/o/r/blob/HEAD/src/pkg/foo.py"
+
     def test_long_pages_are_split_and_every_chunk_carries_the_header(self, builder):
         body = "\n".join(f"line {i}" for i in range(400))
         docs = builder.page_to_docs(_page(body=body), repo_url="", repo_ref="", chunk_size=500)
@@ -1551,6 +1583,32 @@ class TestSharedHelpers:
         assert component._index() == "documents"
         monkeypatch.setenv("OPENSEARCH_URL", "https://os.internal:9200")
         monkeypatch.setenv("OPENSEARCH_INDEX_NAME", "wiki")
+        assert component._resolve_url() == "https://os.internal:9200"
+        assert component._index() == "wiki"
+
+    @pytest.mark.parametrize("value", ["ADMIN", "ADMIN123!", "DOCUMENTS", "MY_SECRET"])
+    def test_all_uppercase_values_are_kept_as_real_values(
+        self, request, fixture, cls, value, monkeypatch
+    ):
+        component = _make(
+            getattr(request.getfixturevalue(fixture), cls),
+            username=value,
+            password=value,
+            index_name=value,
+        )
+        monkeypatch.setenv("OPENSEARCH_USERNAME", "from-env")
+        monkeypatch.setenv("OPENSEARCH_PASSWORD", "from-env")
+        monkeypatch.setenv("OPENSEARCH_INDEX_NAME", "from-env")
+        assert component._build_auth_kwargs() == {"http_auth": (value, value)}
+        assert component._index() == value
+
+    def test_the_env_var_name_defaults_still_resolve_from_the_environment(
+        self, request, fixture, cls, monkeypatch
+    ):
+        component = _make(getattr(request.getfixturevalue(fixture), cls))
+        monkeypatch.setenv("OPENSEARCH_URL", "https://os.internal:9200")
+        monkeypatch.setenv("OPENSEARCH_INDEX_NAME", "wiki")
+        assert component.opensearch_url == "OPENSEARCH_URL"
         assert component._resolve_url() == "https://os.internal:9200"
         assert component._index() == "wiki"
 
@@ -1786,6 +1844,34 @@ class TestCodeWikiReader:
         assert "No wiki page found" in item.data["text"]
         assert item.data["filename"] == "missing.py"
 
+    def test_repo_overview_reference_keeps_its_double_colon(self, reader, monkeypatch):
+        overview = _chunk("repo::r", 0, "OVERVIEW\n", kind="wiki_overview")
+        comp = _make(reader.CodeWikiReader, reference="repo::r")
+        client = _PagesClient([overview])
+        monkeypatch.setattr(comp, "_client", lambda: client)
+        (item,) = comp.read_page()
+        assert item.data["filename"] == "repo::r"
+        assert item.data["text"] == "OVERVIEW\n"
+        assert item.data["content_kind"] == "wiki_overview"
+        first_query = json.dumps(client.bodies[0]["query"])
+        assert '"repo::r"' in first_query
+        assert '"symbol"' not in first_query  # not split into repo_path "repo" + symbol "r"
+
+    def test_file_page_query_excludes_symbol_pages(self, reader, monkeypatch):
+        comp = _make(reader.CodeWikiReader)
+        client = _PagesClient(self.FILE_CHUNKS)
+        monkeypatch.setattr(comp, "_client", lambda: client)
+        comp._fetch_chunks("src/a.py", "")
+        query = client.bodies[0]["query"]["bool"]
+        assert "wiki_symbol_page" in json.dumps(query["must_not"])
+
+    def test_symbol_page_query_does_not_exclude_symbol_pages(self, reader, monkeypatch):
+        comp = _make(reader.CodeWikiReader)
+        client = _PagesClient(self.SYMBOL_CHUNKS)
+        monkeypatch.setattr(comp, "_client", lambda: client)
+        comp._fetch_chunks("src/a.py", "A.m")
+        assert client.bodies[0]["query"]["bool"]["must_not"] == []
+
 
 # --------------------------------------------------------------------------------------
 # CodeWikiDeps
@@ -1885,3 +1971,32 @@ class TestCodeWikiDeps:
         (item,) = self._walk(deps, monkeypatch, repo_path=" ")
         assert "No repo_path" in item["text"]
         assert "filename" in item
+
+    def test_failing_root_fetch_is_reported_not_raised(self, deps, monkeypatch):
+        comp = _make(deps.CodeWikiDeps, repo_path="a.py")
+
+        def boom():
+            raise RuntimeError("cluster down")
+
+        monkeypatch.setattr(comp, "_client", boom)
+        (item,) = [i.data for i in comp.walk()]
+        assert "OpenSearch query failed" in item["text"]
+        assert item["error"] == item["text"]
+        assert item["filename"] == "a.py"
+
+    def test_failing_neighbour_fetch_does_not_drop_the_traversal(self, deps, monkeypatch):
+        class FlakyClient(_GraphClient):
+            def search(self, index, body):
+                wanted = body["query"]["bool"]["must"][0]["bool"]["should"][0]["term"]["repo_path"]
+                if wanted == "b.py":
+                    raise RuntimeError("shard unavailable")
+                return super().search(index, body)
+
+        comp = _make(deps.CodeWikiDeps, repo_path="a.py", hops=2)
+        monkeypatch.setattr(comp, "_client", lambda: FlakyClient(GRAPH))
+        items = [i.data for i in comp.walk()]
+        by_path = {i["repo_path"]: i for i in items}
+        assert by_path["a.py"]["relation"] == "origin"
+        assert by_path["c.py"]["found"] is True
+        assert by_path["b.py"]["found"] is False
+        assert "d.py" not in by_path  # b.py's own edges are unreadable, so the walk stops there

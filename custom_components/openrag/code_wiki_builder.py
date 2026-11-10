@@ -199,16 +199,19 @@ def page_to_docs(
     # "owner does not exist" clause and is visible to every user.
     # On the callback path the backend overrides filename/document_id/source_url
     # with the uploaded file's values; on direct writes these are kept as-is.
+    # Symbol pages share their file page's repo_path, so the symbol (and its line, for overloads)
+    # joins the page identity. Every other page keeps its original id.
+    identity = f"{repo_url}@{repo_ref}:{page['repo_path']}"
+    if page.get("symbol"):
+        identity += f"::{page['symbol']}:{page.get('line_start', '')}"
     base = {
         "filename": page["repo_path"],
         "mimetype": "text/markdown",
         "export_format": "Markdown",
-        "document_id": hashlib.sha1(
-            f"{repo_url}@{repo_ref}:{page['repo_path']}".encode()
-        ).hexdigest(),
+        "document_id": hashlib.sha1(identity.encode()).hexdigest(),
         "connector_type": "code_wiki",
         "source_url": (
-            f"{repo_url.rstrip('/')}/blob/{repo_ref or 'main'}/{page['repo_path']}"
+            f"{repo_url.rstrip('/')}/blob/{repo_ref or 'HEAD'}/{page['repo_path']}"
             if repo_url and "::" not in page["repo_path"]
             else (repo_url or "")
         ),

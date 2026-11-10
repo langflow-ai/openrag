@@ -31,7 +31,7 @@ from lfx.schema.data import Data
 
 def _env_fallback(value: str, *env_names: str, default: str = "") -> str:
     v = (value or "").strip()
-    if v and not (v.replace("_", "").isupper() and " " not in v):
+    if v and v not in env_names:
         return v
     for name in env_names:
         got = os.environ.get(name)
@@ -212,7 +212,8 @@ class CodeWikiReader(Component):
         # "repo_path :: Symbol" form → pin both.
         symbol = ""
         repo_path = raw
-        for sep in ("::", " :: ", "#"):
+        # The repo overview page is stored as "repo::<name>"; its "::" is part of the path.
+        for sep in () if raw.startswith("repo::") else ("::", " :: ", "#"):
             if sep in raw:
                 left, right = raw.split(sep, 1)
                 repo_path, symbol = left.strip(), right.strip()
@@ -267,7 +268,14 @@ class CodeWikiReader(Component):
         # symbol pages share a repo_path with the file page; pin the symbol (or its absence).
         if symbol:
             must.append(self._term_any("symbol", symbol))
-        body = {"size": 500, "query": {"bool": {"must": must}}, "_source": self._EXCLUDE}
+        # Drop the symbol pages in the query: they share the file page's repo_path and could
+        # otherwise fill the 500-hit window before the file page's own chunks are returned.
+        must_not = [] if symbol else [self._term_any("content_kind", "wiki_symbol_page")]
+        body = {
+            "size": 500,
+            "query": {"bool": {"must": must, "must_not": must_not}},
+            "_source": self._EXCLUDE,
+        }
         hits = self._client().search(index=self._index(), body=body).get("hits", {}).get("hits", [])
         sources = [self._flatten(h.get("_source", {})) for h in hits]
         if not symbol:  # keep only the non-symbol page's chunks (file/module/overview)

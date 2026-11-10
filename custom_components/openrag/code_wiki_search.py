@@ -34,7 +34,7 @@ from lfx.schema.data import Data
 
 def _env_fallback(value: str, *env_names: str, default: str = "") -> str:
     v = (value or "").strip()
-    if v and not (v.replace("_", "").isupper() and " " not in v):
+    if v and v not in env_names:
         return v
     for name in env_names:
         got = os.environ.get(name)

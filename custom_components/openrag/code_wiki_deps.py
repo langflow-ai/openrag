@@ -33,7 +33,7 @@ from lfx.schema.data import Data
 
 def _env_fallback(value: str, *env_names: str, default: str = "") -> str:
     v = (value or "").strip()
-    if v and not (v.replace("_", "").isupper() and " " not in v):
+    if v and v not in env_names:
         return v
     for name in env_names:
         got = os.environ.get(name)
@@ -259,7 +259,10 @@ class CodeWikiDeps(Component):
         return sources[0]
 
     def _node_summary(self, client, repo_path: str) -> dict:
-        page = self._fetch_file_page(client, repo_path)
+        try:
+            page = self._fetch_file_page(client, repo_path)
+        except Exception:  # noqa: BLE001 - one unreachable neighbour must not drop the traversal
+            page = None
         if not page:
             return {"repo_path": repo_path, "found": False}
         syms = self._parse("wiki_symbols", page)
@@ -301,9 +304,12 @@ class CodeWikiDeps(Component):
         direction = (getattr(self, "direction", "both") or "both").strip().lower()
         hops = max(1, min(3, int(getattr(self, "hops", 1) or 1)))
         max_nodes = max(1, int(getattr(self, "max_nodes", 40) or 40))
-        client = self._client()
-
-        root = self._fetch_file_page(client, origin)
+        try:
+            client = self._client()
+            root = self._fetch_file_page(client, origin)
+        except Exception as e:  # noqa: BLE001
+            msg = f"OpenSearch query failed: {e}"
+            return [Data(data={"filename": origin, "text": msg, "error": msg, "repo_path": origin})]
         if root is None:
             msg = f"No wiki page found for '{origin}'. Try search_wiki."
             return [Data(data={"filename": origin, "text": msg, "error": msg, "repo_path": origin})]
@@ -320,7 +326,10 @@ class CodeWikiDeps(Component):
         for hop in range(1, hops + 1):
             next_frontier: list[str] = []
             for node in frontier:
-                page = root if node == origin else self._fetch_file_page(client, node)
+                try:
+                    page = root if node == origin else self._fetch_file_page(client, node)
+                except Exception:  # noqa: BLE001 - skip this node, keep the rest of the walk
+                    page = None
                 if not page:
                     continue
                 deps = self._parse("wiki_depends_on", page) if want_dep else []
