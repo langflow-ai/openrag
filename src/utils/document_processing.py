@@ -291,65 +291,78 @@ def resplit_chunks_character_windows(
     return out
 
 
-def _prefix_token_count(encoding, text: str, start: int, length: int) -> int:
-    return len(encoding.encode(text[start : start + length]))
+def _token_index_after(
+    offsets: list[int], token_index: int, char_index: int, token_count: int
+) -> int:
+    """First token that starts at or after ``char_index``."""
+    token_index += 1
+    while token_index < token_count and offsets[token_index] < char_index:
+        token_index += 1
+    return token_index
+
+
+def _split_text_by_code_points(text: str, encoding, max_tokens: int) -> list[str]:
+    """Pack code points when token offsets do not round-trip to ``text``."""
+    pieces: list[str] = []
+    start = 0
+    length = len(text)
+    while start < length:
+        end = start + 1
+        while end < length and len(encoding.encode(text[start : end + 1])) <= max_tokens:
+            end += 1
+        pieces.append(text[start:end])
+        start = end
+    return pieces
 
 
 def _split_text_to_max_tokens(text: str, encoding, max_tokens: int) -> list[str]:
     """Cut ``text`` into pieces that each encode to at most ``max_tokens``.
 
-    Slices the original string, so the pieces join back to ``text``. A probe
-    covers only the next doubled window, not the whole remaining suffix: a
-    500-token Watsonx cut can re-encode to 501, but finding that boundary
-    must not encode the rest of the document on every guess. A single code
-    point that is already over the cap is kept as its own piece so the cursor
-    still advances.
+    Encodes the chunk once and cuts on token start positions from
+    ``decode_with_offsets``. Each slice is re-encoded, and a slice that comes
+    back over the cap (a 500-token Watsonx window can re-encode to 501) moves
+    back one token. A single code point that is already over the cap is kept
+    so the cursor still advances. The pieces join back to ``text``.
     """
-    if _prefix_token_count(encoding, text, 0, len(text)) <= max_tokens:
+    if max_tokens < 1:
+        return list(text)
+
+    tokens = encoding.encode(text)
+    if len(tokens) <= max_tokens:
         return [text]
 
+    decoded, offsets = encoding.decode_with_offsets(tokens)
+    if decoded != text:
+        return _split_text_by_code_points(text, encoding, max_tokens)
+
     pieces: list[str] = []
-    start = 0
-    length = len(text)
-    while start < length:
-        fit = 0
-        window = 1
-        over = False
-        while start + window <= length:
-            if _prefix_token_count(encoding, text, start, window) <= max_tokens:
-                fit = window
-                if start + window == length:
-                    break
-                grown = min(length - start, window * 2)
-                if grown == window:
-                    break
-                window = grown
-            else:
-                over = True
-                break
-        if fit == 0:
-            pieces.append(text[start : start + 1])
-            start += 1
-            continue
-        if not over:
-            pieces.append(text[start:])
+    token_index = 0
+    token_count = len(tokens)
+    text_length = len(text)
+    while token_index < token_count:
+        char_start = offsets[token_index]
+        if char_start >= text_length:
             break
-        low = fit
-        high = window
-        best = fit
-        while low <= high:
-            mid = (low + high) // 2
-            if _prefix_token_count(encoding, text, start, mid) <= max_tokens:
-                best = mid
-                low = mid + 1
-            else:
-                high = mid - 1
-        # `fit` was measured under the cap. A non-monotone boundary cannot
-        # push the piece back over it.
-        if _prefix_token_count(encoding, text, start, best) > max_tokens:
-            best = fit
-        pieces.append(text[start : start + best])
-        start += best
+        cut = min(token_count, token_index + max_tokens)
+        while cut < token_count and offsets[cut] <= char_start:
+            cut += 1
+        while True:
+            char_end = text_length if cut >= token_count else offsets[cut]
+            if char_end <= char_start:
+                pieces.append(text[char_start : char_start + 1])
+                token_index = _token_index_after(offsets, token_index, char_start + 1, token_count)
+                break
+            piece = text[char_start:char_end]
+            over_cap = len(encoding.encode(piece)) > max_tokens
+            if not over_cap or len(piece) == 1:
+                pieces.append(piece)
+                token_index = token_count if cut >= token_count else cut
+                break
+            if cut <= token_index + 1:
+                pieces.append(text[char_start : char_start + 1])
+                token_index = _token_index_after(offsets, token_index, char_start + 1, token_count)
+                break
+            cut -= 1
     return pieces
 
 

@@ -157,7 +157,7 @@ def test_split_chunks_by_max_tokens_watsonx_window_stays_under_cap():
     )
     pieces = [chunk["text"] for chunk in out]
     assert "".join(pieces) == _WATSONX_CAP_OVERFLOW
-    assert all(len(encoding.encode(piece)) <= 500 for piece in pieces)
+    assert [len(encoding.encode(piece)) for piece in pieces] == [500, 1]
     assert all(chunk["page"] == 3 for chunk in out)
 
     batches = chunk_texts_for_embeddings(pieces, max_tokens=500, model="text-embedding-3-small")
@@ -173,6 +173,37 @@ def test_chunk_texts_keeps_one_input_when_text_exceeds_cap():
         model="text-embedding-3-small",
     )
     assert batches == [[_WATSONX_CAP_OVERFLOW]]
+
+
+def test_split_keeps_single_code_point_over_cap():
+    from src.utils.document_processing import split_chunks_by_max_tokens
+
+    out = split_chunks_by_max_tokens(
+        [{"text": "😀a"}],
+        max_tokens=1,
+        model="text-embedding-3-small",
+    )
+    assert [chunk["text"] for chunk in out] == ["😀", "a"]
+
+
+def test_split_text_to_max_tokens_fuzz():
+    import random
+
+    import tiktoken
+
+    from src.utils.document_processing import _split_text_to_max_tokens
+
+    encoding = tiktoken.get_encoding("cl100k_base")
+    alphabet = "abc \n地理的には。、😀𠀋👨‍👩‍👧‍👦"
+    rng = random.Random(0)
+    for _ in range(3000):
+        text = "".join(rng.choice(alphabet) for _ in range(rng.randint(1, 200)))
+        cap = rng.choice([1, 2, 7, 10, 50, 500])
+        pieces = _split_text_to_max_tokens(text, encoding, cap)
+        assert "".join(pieces) == text
+        assert all(pieces)
+        for piece in pieces:
+            assert len(encoding.encode(piece)) <= cap or len(piece) == 1
 
 
 def test_split_chunks_by_max_tokens_emoji_token_override():
