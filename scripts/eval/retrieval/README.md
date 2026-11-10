@@ -64,10 +64,11 @@ The rest of this file explains each step.
 |---|---|
 | `corpus/` | 21 Markdown documents: the handbook of a fictional product, "Relaywise" |
 | `queries.jsonl` | 83 hand-labeled questions, one JSON object per line |
-| `run_eval.py` | The command-line tool, with `run`, `check`, `cleanup`, `compare` and `promote` commands |
+| `run_eval.py` | The command-line tool, with `run`, `check`, `cleanup`, `compare`, `scores` and `promote` commands |
 | `dataset.py` | Loads and validates the corpus and questions |
 | `metrics.py` | Turns ranked chunks into ranked files and scores them |
 | `report.py` | Writes results, the summary and the baseline diff |
+| `scores.py` | Tests relevance-score thresholds and tiers offline from one run |
 | `FRAMEWORK_COMPARISON.md` | How this harness compares with RAGAS, DeepEval, LangSmith and others |
 | `results/` | Output of each run (not committed) |
 
@@ -258,6 +259,72 @@ them, so create the baseline on the same stack you test against. The GitHub
 Actions workflow keeps a tracked baseline for its own stack; see
 [Run it from GitHub Actions](#run-it-from-github-actions).
 
+## Tune relevance thresholds
+
+Search drops chunks scoring below its score threshold, and the UI groups results
+into High, Medium and Low relevance tiers by score. Each run records the score
+of every chunk search returned, so one run can test any threshold offline. The
+harness already knows which chunks matter:
+
+- a chunk from an expected file is relevant;
+- a relevant chunk that contains the question's `expected_text` is an answer
+  chunk;
+- a chunk from any other file is noise.
+
+```bash
+# Once, with no extra threshold, and a label saying what this run tests.
+make eval-run OUTPUT_DIR=results/before EVAL_ARGS='--label "weights 0.7/0.3"'
+uv run run_eval.py scores results/before/results.json
+```
+
+The report is printed and written to `scores.md` next to the results file. It
+has three parts:
+
+- **Sweep.** For each threshold, the scores left after dropping every chunk
+  below it: recall@5, MRR and passage hit@5, how many questions lost recall,
+  how many lost every answer chunk, and the share of noise and relevant chunks
+  removed. Losses are counted against no cut.
+- **Recommendation.** The highest threshold that keeps recall@5
+  (`--max-recall-loss` allows some loss), and the highest that loses at most
+  one answer chunk. A threshold counts only if every lower one also stays
+  within the limit.
+- **Tiers.** How many answer, relevant and noise chunks land in each tier, and
+  how many expected files land in Low or other files in High. A file's tier is
+  that of its best chunk. It also counts the answer chunks that `--hide` (the
+  score below which results are hidden, default 0.1) would hide. Set the tier
+  cutoffs with `--tiers 0.65,0.35`.
+
+It ends with the questions the recommended threshold would cost, or those of
+`--candidate`.
+
+Use `--normalize none` (the default) when the stack already returns scores in
+[0, 1]. `--normalize minmax` rescales each question's scores to [0, 1] first.
+That previews min-max normalization on a stack that returns raw scores, but
+only approximately: a hybrid search pipeline normalizes the vector and keyword
+scores separately before combining them.
+
+Thresholds are swept from one run, so changing only a threshold or a tier
+cutoff needs no rerun. Changing the weights, the pipeline or the normalization
+changes the scores themselves; run again and compare the two:
+
+```bash
+# Change the scoring, restart the stack, then:
+make eval-run OUTPUT_DIR=results/after EVAL_ARGS='--label "weights 0.6/0.4"'
+make eval-scores RESULTS=results/after/results.json BASELINE=results/before/results.json
+```
+
+The comparison puts both runs side by side: the recommended thresholds, the
+noise removed and answers lost there, and the tier counts. Runs with different
+labels still compare with `compare`; the label difference is a note, not a
+warning, so it never fails the recall gate.
+
+Search never returns chunks below the run's `--score-threshold`, so the sweep
+starts there and says so. A backend that falls back to a default threshold when
+it is sent 0 does the same without the run knowing. To see every chunk on such a
+backend, pass a tiny positive threshold such as `--score-threshold 0.000001`.
+Results files written before chunk scores were recorded cannot be used; rerun
+the eval.
+
 ## Run it from GitHub Actions
 
 The **Retrieval Eval** workflow ([`eval-retrieval.yml`](../../../.github/workflows/eval-retrieval.yml))
@@ -388,7 +455,11 @@ the score of their first chunk, the rank of each expected file
 (`expected_ranks`, `null` when a file was not returned), whether the expected
 text was found, the rank of the answer chunk (`passage_rank`, only for questions
 with an `expected_text`, `null` when no chunk held it), and the metrics for that
-question.
+question. `chunk_scores` lists every returned chunk of this run's files as
+`[file rank, score]` in the order search returned them, where the file rank
+points into `ranked_files`. `answer_chunks` gives the 1-based positions in that
+list of the chunks holding the `expected_text`. `run.label` is the `--label` of
+the run, or `null`.
 
 ## Add or change a question
 

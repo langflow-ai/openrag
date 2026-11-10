@@ -11,6 +11,7 @@ Standard library only, so it can be unit-tested without the SDK or a stack.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -64,6 +65,21 @@ def load_results(path: Path) -> dict[str, Any]:
     return data
 
 
+# A JSON array of numbers that json.dumps(indent=...) spread over several lines.
+# JSON strings cannot hold a raw newline, so this never matches inside a string.
+_NUMBER_ARRAY = re.compile(r"\[\n\s*(-?[0-9.eE+-]+(?:,\n\s*-?[0-9.eE+-]+)*)\n\s*\]")
+
+
+def dumps(results: Mapping[str, Any]) -> str:
+    """Indented JSON with each array of numbers on one line.
+
+    Chunk scores are thousands of short ``[file rank, score]`` pairs, which
+    plain indentation would spread over several lines each.
+    """
+    text = json.dumps(results, indent=2)
+    return _NUMBER_ARRAY.sub(lambda m: "[" + re.sub(r",\n\s*", ", ", m.group(1)) + "]", text) + "\n"
+
+
 def write_results(
     results: Mapping[str, Any],
     summary: str,
@@ -75,7 +91,7 @@ def write_results(
     output_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for stem, suffix, content in (
-        ("results", ".json", json.dumps(results, indent=2) + "\n"),
+        ("results", ".json", dumps(results)),
         ("summary", ".md", summary),
     ):
         for path in (output_dir / f"{stem}{suffix}", output_dir / f"{stem}_{stamp}{suffix}"):
@@ -238,6 +254,11 @@ def diff_results(
     # Notes are informational. Unlike warnings, they do not make the file scores
     # incomparable, so the recall gate and baseline promotion ignore them.
     notes: list[str] = []
+    base_label, cur_label = baseline["run"].get("label"), current["run"].get("label")
+    if base_label != cur_label:
+        notes.append(
+            f"The runs are labeled differently (baseline {base_label!r}, current {cur_label!r})."
+        )
     if "passage_mrr" in cur_overall and "passage_mrr" not in base_overall:
         notes.append(
             "The baseline has no passage scores, so only file scores are compared. "
@@ -489,6 +510,16 @@ def _settings_line(results: Mapping[str, Any]) -> str:
     )
 
 
+def _scores_line(results: Mapping[str, Any]) -> list[str]:
+    values = [pair[1] for q in results["queries"] for pair in q.get("chunk_scores") or ()]
+    if not values:
+        return []
+    return [
+        f"- **Chunk scores:** {len(values)} recorded, from {min(values):.4f} to "
+        f"{max(values):.4f}; `run_eval.py scores` tests thresholds on them"
+    ]
+
+
 def render_summary(results: Mapping[str, Any], diff: Mapping[str, Any] | None = None) -> str:
     """Markdown summary of one run, followed by the baseline comparison if given."""
     run = results["run"]
@@ -508,6 +539,8 @@ def render_summary(results: Mapping[str, Any], diff: Mapping[str, Any] | None = 
         f"{run['query_count']} questions (`{_short(run['queries_hash'])}`)",
         f"- **Search:** fetch limit {run['fetch_limit']}, score threshold {run['score_threshold']}",
         f"- **Settings:** {_settings_line(results)}",
+        *([f"- **Label:** {_cell(run['label'])}"] if run.get("label") else []),
+        *_scores_line(results),
         "",
         "## Overall",
         "",

@@ -168,6 +168,36 @@ def passage_rank(
     return None
 
 
+def chunk_scores(
+    chunks: Iterable[Chunk],
+    run_prefix: str,
+    corpus_names: Collection[str],
+    ranked: Sequence[RankedFile],
+    expected_files: Collection[str],
+    expected_text: str | None,
+) -> tuple[list[list[float]], list[int]]:
+    """Every chunk of this run's files as ``[file rank, score]``, and where the answers are.
+
+    The second list holds the 1-based positions, among those chunks, of each
+    chunk of an expected file that contains ``expected_text``; it is empty when
+    the question has none. Together with ``ranked`` this is enough to re-score
+    the question at any score threshold without another search.
+    """
+    rank_of = {item.filename: item.rank for item in ranked}
+    needle = _normalize(expected_text) if expected_text else None
+    expected = set(expected_files)
+    scores: list[list[float]] = []
+    answers: list[int] = []
+    for chunk in chunks:
+        name = canonical_name(chunk.filename, run_prefix, corpus_names)
+        if name is None:
+            continue
+        scores.append([rank_of[name], round(chunk.score, 6)])
+        if needle is not None and name in expected and needle in _normalize(chunk.text):
+            answers.append(len(scores))
+    return scores, answers
+
+
 def score_passage(rank: int | None, k_values: Sequence[int] = DEFAULT_K_VALUES) -> dict[str, float]:
     """Score one question on the rank of its answer chunk.
 

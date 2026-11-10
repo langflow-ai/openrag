@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from scripts.eval.retrieval import answers, dataset, metrics, report
+from scripts.eval.retrieval import answers, dataset, metrics, report, scores
 
 PREFIX = "eval-abc12345-"
 CORPUS = frozenset({"a.md", "b.md", "c.md", "d.md"})
@@ -1409,3 +1409,277 @@ def test_run_rejects_a_chat_timeout_that_is_not_positive(value: str) -> None:
 
     assert completed.returncode == 2
     assert "--chat-timeout must be positive" in completed.stderr
+
+
+# --- relevance-score thresholds -------------------------------------------
+
+
+def scored_query(
+    query_id: str,
+    chunks: list[metrics.Chunk],
+    expected_files: list[str],
+    expected_text: str | None = None,
+) -> dict[str, Any]:
+    """A question record built the way run_eval.py builds one."""
+    ranked_files = metrics.rank_files(chunks, PREFIX, CORPUS, expected_text)
+    query_metrics = metrics.score_query(ranked_files, expected_files, [5])
+    record: dict[str, Any] = {}
+    if expected_text is not None:
+        rank = metrics.passage_rank(chunks, PREFIX, CORPUS, expected_files, expected_text)
+        record["passage_rank"] = rank
+        query_metrics.update(metrics.score_passage(rank, [5]))
+    chunk_scores, answer_chunks = metrics.chunk_scores(
+        chunks, PREFIX, CORPUS, ranked_files, expected_files, expected_text
+    )
+    return {
+        "id": query_id,
+        "query": f"question {query_id}",
+        "tags": ["semantic"],
+        "expected_files": expected_files,
+        "expected_text": expected_text,
+        "ranked_files": [
+            {
+                "filename": f.filename,
+                "rank": f.rank,
+                "score": f.score,
+                "snippet_found": f.snippet_found,
+            }
+            for f in ranked_files
+        ],
+        "expected_ranks": metrics.expected_ranks(ranked_files, expected_files),
+        **record,
+        "chunk_scores": chunk_scores,
+        "answer_chunks": answer_chunks,
+        "metrics": query_metrics,
+    }
+
+
+def tuning_results(**run_overrides: Any) -> dict[str, Any]:
+    """Two questions whose answers score 0.8 and 0.5, among noise at 0.4 and below."""
+    first = scored_query(
+        "q1",
+        [chunk("a.md", "the answer", 0.8), chunk("b.md", "", 0.3), chunk("c.md", "", 0.2)],
+        ["a.md"],
+        "answer",
+    )
+    second = scored_query(
+        "q2",
+        [chunk("a.md", "the answer", 0.5), chunk("a.md", "intro", 0.45), chunk("b.md", "", 0.4)],
+        ["a.md"],
+        "answer",
+    )
+    return make_results([first, second], **run_overrides)
+
+
+def test_chunk_scores_skip_stray_documents_and_mark_answer_chunks() -> None:
+    chunks = [
+        chunk("b.md", "", 0.9),
+        chunk("a.md", "", 0.8, prefix="eval-other999-"),  # another run's copy
+        chunk("a.md", "intro", 0.7),
+        chunk("a.md", "The   ANSWER here", 0.6),
+        chunk("b.md", "answer", 0.5),  # holds the text, but not an expected file
+    ]
+    ranked_files = metrics.rank_files(chunks, PREFIX, CORPUS, "answer")
+
+    pairs, answers = metrics.chunk_scores(chunks, PREFIX, CORPUS, ranked_files, ["a.md"], "answer")
+
+    assert pairs == [[1, 0.9], [2, 0.7], [2, 0.6], [1, 0.5]]
+    assert answers == [3]
+    assert answers[0] == metrics.passage_rank(chunks, PREFIX, CORPUS, ["a.md"], "answer")
+    assert metrics.chunk_scores(chunks, PREFIX, CORPUS, ranked_files, ["a.md"], None)[1] == []
+
+
+def test_a_sweep_without_a_cut_matches_the_run_scores() -> None:
+    results = tuning_results()
+    questions = scores.load_questions(results)
+
+    rows = scores.sweep(questions, [0.0, 0.2], 5)
+
+    overall = results["metrics"]["overall"]
+    for row in rows:
+        assert row.recall == pytest.approx(overall["recall@5"])
+        assert row.mrr == pytest.approx(overall["mrr"])
+        assert row.passage_hit == pytest.approx(overall["passage_hit@5"])
+        assert row.recall_loss == 0
+        assert row.questions_lost == row.answers_lost == ()
+    assert rows[0].threshold is None
+    assert rows[2].noise_removed == pytest.approx(0.0)
+
+
+def test_a_threshold_above_every_score_removes_everything() -> None:
+    row = scores.sweep(scores.load_questions(tuning_results()), [0.95], 5)[1]
+
+    assert row.recall == 0
+    assert row.answers_lost == ("q1", "q2")
+    assert row.noise_removed == row.relevant_removed == 1
+    assert row.chunks_kept == 0
+
+
+def test_a_cut_between_the_relevant_chunks_and_the_noise_removes_only_noise() -> None:
+    # Every noise chunk scores 0.4 or less, and every relevant chunk 0.45 or more.
+    rows = scores.sweep(scores.load_questions(tuning_results()), [0.42], 5)
+
+    assert rows[1].chunks_kept == 1.5
+    assert rows[1].noise_removed == pytest.approx(1.0)
+    assert rows[1].relevant_removed == 0
+    assert rows[1].recall_loss == 0
+
+
+def test_recommend_picks_the_highest_threshold_within_each_limit() -> None:
+    rows = scores.sweep(
+        scores.load_questions(tuning_results()), scores.parse_thresholds("0:0.9:0.1") or [], 5
+    )
+
+    advice = scores.recommend(rows)
+
+    assert advice.keeps_recall is not None and advice.keeps_recall.threshold == 0.5
+    assert advice.one_answer is not None and advice.one_answer.threshold == 0.8
+    assert advice.one_answer.answers_lost == ("q2",)
+    loose = scores.recommend(rows, max_recall_loss=0.5)
+    assert loose.keeps_recall is not None and loose.keeps_recall.threshold == 0.8
+
+
+def test_recommend_stops_at_the_first_threshold_over_the_limit() -> None:
+    def row(threshold: float, loss: float) -> scores.SweepRow:
+        return scores.SweepRow(threshold, 1 - loss, 1.0, None, loss, (), (), 0.0, 0.0, 1.0)
+
+    rows = [row(0.1, 0.0), row(0.2, 0.1), row(0.3, 0.0)]
+
+    assert scores.recommend(rows).keeps_recall == rows[0]
+
+
+def test_minmax_rescales_each_question_and_handles_equal_scores() -> None:
+    question = scores.Question(
+        "q", "", frozenset({"a.md"}), ("a.md",), ((1, 2.0), (1, 4.0), (1, 3.0)), None
+    )
+    flat = scores.Question("f", "", frozenset({"a.md"}), ("a.md",), ((1, 7.0), (1, 7.0)), None)
+
+    rescaled, flattened = scores.normalize([question, flat], "minmax")
+
+    assert [s for _, s in rescaled.chunks] == [0.0, 1.0, 0.5]
+    assert [s for _, s in flattened.chunks] == [1.0, 1.0]
+    assert scores.normalize([question], "none") == [question]
+    with pytest.raises(ValueError, match="unknown normalization"):
+        scores.normalize([question], "zscore")
+
+
+def test_tiers_split_chunks_and_files_by_score() -> None:
+    result = scores.tiers(scores.load_questions(tuning_results()), high=0.65, med=0.35, hide=0.42)
+
+    assert result["chunks"] == {
+        "High": {"answer": 1, "relevant": 0, "noise": 0},
+        "Medium": {"answer": 1, "relevant": 1, "noise": 1},
+        "Low": {"answer": 0, "relevant": 0, "noise": 2},
+    }
+    # q1: a.md High, b.md and c.md Low. q2: a.md and b.md Medium.
+    assert result["files"] == {
+        "High": {"expected": 1, "other": 0},
+        "Medium": {"expected": 1, "other": 1},
+        "Low": {"expected": 0, "other": 2},
+    }
+    assert result["high_precision"] == 1.0
+    assert result["expected_files_low"] == result["other_files_high"] == 0
+    assert (result["hidden_answers"], result["answer_chunks"]) == (0, 2)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("auto", None),
+        ("0:0.2:0.1", [0.0, 0.1, 0.2]),
+        ("0.3, 0.1,0.1", [0.1, 0.3]),
+    ],
+)
+def test_parse_thresholds(text: str, expected: list[float] | None) -> None:
+    assert scores.parse_thresholds(text) == expected
+
+
+@pytest.mark.parametrize("text", ["", "0:1", "1:0:0.1", "0:1:0", "x"])
+def test_parse_thresholds_rejects_bad_input(text: str) -> None:
+    with pytest.raises(ValueError):
+        scores.parse_thresholds(text)
+
+
+def test_auto_thresholds_follow_the_score_range() -> None:
+    unit = scores.load_questions(tuning_results())
+    raw = [scores.Question("q", "", frozenset(), ("a.md",), ((1, 2.0), (1, 12.0)), None)]
+
+    assert scores.auto_thresholds(unit)[:3] == [0.0, 0.05, 0.1]
+    assert len(scores.auto_thresholds(unit)) == 21
+    assert scores.auto_thresholds(raw)[0] == 2.0
+    assert scores.auto_thresholds(raw)[-1] == 12.0
+
+
+def test_analysis_starts_the_sweep_at_the_run_threshold() -> None:
+    analysis = scores.analyze(tuning_results(score_threshold=0.3), thresholds=[0.1, 0.3, 0.5])
+
+    assert [row.threshold for row in analysis["rows"]] == [None, 0.3, 0.5]
+    assert "starts there" in analysis["notes"][0]
+    assert "0.1" in analysis["notes"][0]
+
+
+def test_analysis_lists_the_questions_a_candidate_costs() -> None:
+    analysis = scores.analyze(tuning_results(), thresholds=[0.5, 0.6], candidate=0.6)
+
+    assert [item["id"] for item in analysis["lost"]] == ["q2"]
+    assert analysis["lost"][0]["best_answer"] == 0.5
+    text = scores.render_report(analysis)
+    assert "keeps recall" in text
+    assert "Questions a threshold of 0.6 would cost (1)" in text
+    assert "| q2 |" in text
+
+
+def test_old_results_without_chunk_scores_are_refused() -> None:
+    old = make_results([make_query("q", 1.0, 1.0, 1.0, 1)])
+
+    with pytest.raises(scores.ScoresError, match="rerun"):
+        scores.load_questions(old)
+
+
+def test_a_label_difference_is_a_note_and_the_gate_still_passes() -> None:
+    before = tuning_results(label="weights 0.7/0.3")
+    after = tuning_results(label="weights 0.6/0.4")
+
+    diff = report.diff_results(before, after)
+
+    assert diff["warnings"] == []
+    assert any("labeled differently" in note for note in diff["notes"])
+    assert report.recall_gate_failure(diff, 0.0) is None
+    summary = report.render_summary(after)
+    assert "**Label:** weights 0.6/0.4" in summary
+    assert "**Chunk scores:** 6 recorded, from 0.2000 to 0.8000" in summary
+
+
+def test_dumps_keeps_number_arrays_on_one_line_and_round_trips() -> None:
+    results = tuning_results()
+
+    text = report.dumps(results)
+
+    assert json.loads(text) == json.loads(json.dumps(results))
+    assert '"answer_chunks": [1]' in text
+    assert "[1, 0.8]" in text
+
+
+def test_scores_command_writes_a_report_and_compares_runs(tmp_path: Path) -> None:
+    before, after = tmp_path / "before.json", tmp_path / "after" / "results.json"
+    after.parent.mkdir()
+    before.write_text(report.dumps(tuning_results(label="before")), encoding="utf-8")
+    after.write_text(report.dumps(tuning_results(label="after")), encoding="utf-8")
+
+    completed = _run_cli("scores", str(after), "--baseline", str(before), "--thresholds", "0:1:0.1")
+
+    assert completed.returncode == 0, completed.stderr
+    written = (tmp_path / "after" / "scores.md").read_text(encoding="utf-8")
+    assert written.startswith("# Relevance thresholds compared")
+    assert "| Label | before | after |" in written
+    assert "## Sweep" in written
+
+
+def test_scores_command_explains_an_old_results_file(tmp_path: Path) -> None:
+    old = tmp_path / "old.json"
+    old.write_text(json.dumps(make_results([make_query("q", 1.0, 1.0, 1.0, 1)])), encoding="utf-8")
+
+    completed = _run_cli("scores", str(old))
+
+    assert completed.returncode == 1
+    assert "rerun the eval" in completed.stderr

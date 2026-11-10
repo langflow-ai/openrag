@@ -5,13 +5,14 @@
     uv run run_eval.py check
     uv run run_eval.py cleanup [--yes]
     uv run run_eval.py compare <baseline.json> <current.json>
+    uv run run_eval.py scores <results.json> [--baseline <other.json>]
 
 ``run`` ingests the checked-in corpus under run-unique filenames, sends every
 question through ``/v1/search``, scores the ranking by file, writes results and
 a summary, and deletes the documents it uploaded. ``check`` confirms a stack is
 ready for a run without uploading anything, and ``cleanup`` removes documents
-that interrupted runs left behind. ``compare`` diffs two results files offline.
-See README.md.
+that interrupted runs left behind. ``compare`` diffs two results files offline,
+and ``scores`` works out relevance-score thresholds from one. See README.md.
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ import answers
 import dataset
 import metrics
 import report
+import scores
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_URL = "http://localhost:3000"
@@ -54,6 +56,23 @@ def _parse_k_values(value: str) -> list[int]:
     if not k_values or k_values[0] < 1:
         raise argparse.ArgumentTypeError("k values must be positive integers")
     return k_values
+
+
+def _parse_thresholds(value: str) -> list[float] | None:
+    try:
+        return scores.parse_thresholds(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _parse_tiers(value: str) -> tuple[float, float]:
+    try:
+        high, med = (float(part) for part in value.split(","))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected HIGH,MEDIUM, got {value!r}") from exc
+    if not 0 <= med <= high:
+        raise argparse.ArgumentTypeError("the Medium cutoff must be between 0 and the High cutoff")
+    return high, med
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -107,6 +126,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="chunks requested per question before deduplicating to files (default: 50)",
     )
     run.add_argument("--score-threshold", type=float, default=0.0)
+    run.add_argument(
+        "--label",
+        help=(
+            'what this run tests, such as "weights 0.7/0.3", stored with the results and '
+            "shown in summaries and comparisons"
+        ),
+    )
     run.add_argument("--concurrency", type=int, default=4, help="parallel uploads (default: 4)")
     run.add_argument(
         "--ingest-timeout", type=float, default=300.0, help="seconds per ingestion task"
@@ -173,6 +199,61 @@ def build_parser() -> argparse.ArgumentParser:
             "only delete documents indexed at least this many minutes ago, so a run "
             "still in progress is left alone (default: 60)"
         ),
+    )
+
+    score = commands.add_parser(
+        "scores",
+        help="work out relevance-score thresholds and check the tiers from a results file",
+    )
+    score.add_argument("results", type=Path, help="results file of a run")
+    score.add_argument(
+        "--baseline", type=Path, help="results file of another run to compare side by side"
+    )
+    score.add_argument(
+        "--normalize",
+        choices=scores.NORMALIZE_METHODS,
+        default="none",
+        help=(
+            "none (default) when the stack already returns scores in [0, 1]; minmax to "
+            "rescale each question's scores to [0, 1] first"
+        ),
+    )
+    score.add_argument(
+        "--k", type=int, help="cutoff for recall and passage hits (default: the run's)"
+    )
+    score.add_argument(
+        "--thresholds",
+        type=_parse_thresholds,
+        default=None,
+        help="auto (default), start:stop:step, or a comma-separated list",
+    )
+    score.add_argument(
+        "--tiers",
+        type=_parse_tiers,
+        default=scores.DEFAULT_TIERS,
+        help="High and Medium cutoffs, comma-separated (default: 0.65,0.35)",
+    )
+    score.add_argument(
+        "--hide",
+        type=float,
+        default=scores.DEFAULT_HIDE,
+        help="score below which results are hidden (default: 0.1)",
+    )
+    score.add_argument(
+        "--max-recall-loss",
+        type=float,
+        default=0.0,
+        help="average recall a recommended threshold may cost (default: 0)",
+    )
+    score.add_argument(
+        "--candidate",
+        type=float,
+        help="threshold whose lost questions to list (default: the highest that keeps recall)",
+    )
+    score.add_argument(
+        "--output",
+        type=Path,
+        help="where to write the report (default: scores.md next to the results file)",
     )
 
     compare = commands.add_parser("compare", help="diff two results files offline")
@@ -340,7 +421,7 @@ async def _run_queries(
         )
         chunks = [metrics.Chunk(r.filename, r.text, r.score) for r in response.results]
         ranked = metrics.rank_files(chunks, run_prefix, corpus_names, query.expected_text)
-        scores = metrics.score_query(ranked, query.expected_files, args.k_values)
+        query_scores = metrics.score_query(ranked, query.expected_files, args.k_values)
         snippet_found = None
         passage: dict[str, Any] = {}
         if query.expected_text is not None:
@@ -351,7 +432,10 @@ async def _run_queries(
                 chunks, run_prefix, corpus_names, query.expected_files, query.expected_text
             )
             passage = {"passage_rank": rank}
-            scores.update(metrics.score_passage(rank, args.k_values))
+            query_scores.update(metrics.score_passage(rank, args.k_values))
+        chunk_scores, answer_chunks = metrics.chunk_scores(
+            chunks, run_prefix, corpus_names, ranked, query.expected_files, query.expected_text
+        )
         records.append(
             {
                 "id": query.id,
@@ -374,7 +458,11 @@ async def _run_queries(
                 "expected_ranks": metrics.expected_ranks(ranked, query.expected_files),
                 "snippet_found": snippet_found,
                 **passage,
-                "metrics": scores,
+                # [file rank, score] for every chunk, in the order search returned
+                # them, so `run_eval.py scores` can test any threshold offline.
+                "chunk_scores": chunk_scores,
+                "answer_chunks": answer_chunks,
+                "metrics": query_scores,
             }
         )
     return records
@@ -638,6 +726,7 @@ async def run(args: argparse.Namespace) -> int:
             "primary_k": metrics.primary_k(args.k_values),
             "fetch_limit": args.fetch_limit,
             "score_threshold": args.score_threshold,
+            "label": args.label,
         },
         "settings": settings,
         "settings_note": settings_note,
@@ -859,6 +948,32 @@ async def cleanup(args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def score_report(args: argparse.Namespace) -> int:
+    """Write the threshold and tier report for a results file, compared with another if given."""
+    options: dict[str, Any] = {
+        "method": args.normalize,
+        "k": args.k,
+        "thresholds": args.thresholds,
+        "tier_cutoffs": args.tiers,
+        "hide": args.hide,
+        "max_recall_loss": args.max_recall_loss,
+        "candidate": args.candidate,
+    }
+    try:
+        current = scores.analyze(report.load_results(args.results), **options)
+        text = scores.render_report(current)
+        if args.baseline is not None:
+            baseline = scores.analyze(report.load_results(args.baseline), **options)
+            text = scores.render_comparison(baseline, current) + "\n" + text
+    except scores.ScoresError as exc:
+        raise EvalError(str(exc)) from exc
+    output = args.output or args.results.with_name("scores.md")
+    output.write_text(text, encoding="utf-8")
+    print(text)
+    print(f"Wrote: {output}")
+    return 0
+
+
 def compare(args: argparse.Namespace) -> int:
     diff = report.diff_results(
         report.load_results(args.baseline),
@@ -879,7 +994,7 @@ def promote(args: argparse.Namespace) -> int:
         print(f"Baseline not updated: {reason}")
         return NOT_PROMOTED
     args.baseline.parent.mkdir(parents=True, exist_ok=True)
-    args.baseline.write_text(json.dumps(current, indent=2) + "\n", encoding="utf-8")
+    args.baseline.write_text(report.dumps(current), encoding="utf-8")
     print(f"Baseline updated ({reason}): {args.baseline}")
     return 0
 
@@ -910,6 +1025,12 @@ def main(argv: list[str] | None = None) -> int:
             return compare(args)
         if args.command == "promote":
             return promote(args)
+        if args.command == "scores":
+            if args.max_recall_loss < 0:
+                parser.error("--max-recall-loss must not be negative")
+            if args.k is not None and args.k < 1:
+                parser.error("--k must be a positive integer")
+            return score_report(args)
         if args.command == "check":
             return asyncio.run(check(args))
         if args.command == "cleanup":
