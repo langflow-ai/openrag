@@ -65,11 +65,20 @@ def _parse_thresholds(value: str) -> list[float] | None:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
+def _finite_float(value: str) -> float:
+    try:
+        return scores.finite(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def _parse_tiers(value: str) -> tuple[float, float]:
     try:
-        high, med = (float(part) for part in value.split(","))
+        high, med = (scores.finite(part) for part in value.split(","))
     except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"expected HIGH,MEDIUM, got {value!r}") from exc
+        raise argparse.ArgumentTypeError(
+            f"expected HIGH,MEDIUM as two finite numbers, got {value!r}"
+        ) from exc
     if not 0 <= med <= high:
         raise argparse.ArgumentTypeError("the Medium cutoff must be between 0 and the High cutoff")
     return high, med
@@ -235,19 +244,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     score.add_argument(
         "--hide",
-        type=float,
+        type=_finite_float,
         default=scores.DEFAULT_HIDE,
         help="score below which results are hidden (default: 0.1)",
     )
     score.add_argument(
         "--max-recall-loss",
-        type=float,
+        type=_finite_float,
         default=0.0,
         help="average recall a recommended threshold may cost (default: 0)",
     )
     score.add_argument(
         "--candidate",
-        type=float,
+        type=_finite_float,
         help="threshold whose lost questions to list (default: the highest that keeps recall)",
     )
     score.add_argument(
@@ -956,9 +965,13 @@ async def cleanup(args: argparse.Namespace) -> int:
 
 def score_report(args: argparse.Namespace) -> int:
     """Write the threshold and tier report for a results file, compared with another if given."""
+    current_results = report.load_results(args.results)
+    baseline_results = report.load_results(args.baseline) if args.baseline else None
+    # One cutoff for both runs. Left to each file, a baseline whose primary k
+    # differs would be scored at another cutoff and the comparison would mislead.
     options: dict[str, Any] = {
         "method": args.normalize,
-        "k": args.k,
+        "k": args.k or int(current_results["run"]["primary_k"]),
         "thresholds": args.thresholds,
         "tier_cutoffs": args.tiers,
         "hide": args.hide,
@@ -966,10 +979,10 @@ def score_report(args: argparse.Namespace) -> int:
         "candidate": args.candidate,
     }
     try:
-        current = scores.analyze(report.load_results(args.results), **options)
+        current = scores.analyze(current_results, **options)
         text = scores.render_report(current)
-        if args.baseline is not None:
-            baseline = scores.analyze(report.load_results(args.baseline), **options)
+        if baseline_results is not None:
+            baseline = scores.analyze(baseline_results, **options)
             text = scores.render_comparison(baseline, current) + "\n" + text
     except scores.ScoresError as exc:
         raise EvalError(str(exc)) from exc

@@ -67,7 +67,11 @@ def load_results(path: Path) -> dict[str, Any]:
 
 # A JSON array of numbers that json.dumps(indent=...) spread over several lines.
 # JSON strings cannot hold a raw newline, so this never matches inside a string.
-_NUMBER_ARRAY = re.compile(r"\[\n\s*(-?[0-9.eE+-]+(?:,\n\s*-?[0-9.eE+-]+)*)\n\s*\]")
+# Each part can match only one way: indentation is spaces only, which is all
+# json.dumps emits after a newline, and a number is one run of number
+# characters. That keeps a failed match linear instead of backtracking.
+_NUMBER_ARRAY = re.compile(r"\[\n *([-0-9.eE+]+(?:,\n *[-0-9.eE+]+)*)\n *\]")
+_ITEM_BREAK = re.compile(r",\n *")
 
 
 def dumps(results: Mapping[str, Any]) -> str:
@@ -77,7 +81,7 @@ def dumps(results: Mapping[str, Any]) -> str:
     plain indentation would spread over several lines each.
     """
     text = json.dumps(results, indent=2)
-    return _NUMBER_ARRAY.sub(lambda m: "[" + re.sub(r",\n\s*", ", ", m.group(1)) + "]", text) + "\n"
+    return _NUMBER_ARRAY.sub(lambda m: "[" + _ITEM_BREAK.sub(", ", m.group(1)) + "]", text) + "\n"
 
 
 def write_results(

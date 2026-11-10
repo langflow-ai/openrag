@@ -1594,7 +1594,25 @@ def test_parse_thresholds(text: str, expected: list[float] | None) -> None:
     assert scores.parse_thresholds(text) == expected
 
 
-@pytest.mark.parametrize("text", ["", "0:1", "1:0:0.1", "0:1:0", "x"])
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("0:1:0.6", [0.0, 0.6]),  # a step that does not divide the range stops below 1
+        ("0:1:0.25", [0.0, 0.25, 0.5, 0.75, 1.0]),
+        ("0:0.3:0.1", [0.0, 0.1, 0.2, 0.3]),  # 0.3 / 0.1 is 2.9999... in floats
+        ("0.2:0.2:0.1", [0.2]),
+    ],
+)
+def test_threshold_ranges_never_go_past_stop(text: str, expected: list[float]) -> None:
+    values = scores.parse_thresholds(text)
+
+    assert values == expected
+    assert values is not None and max(values) <= float(text.split(":")[1])
+
+
+@pytest.mark.parametrize(
+    "text", ["", "0:1", "1:0:0.1", "0:1:0", "x", "nan", "0.1,inf", "0:inf:0.1", "0:1:nan"]
+)
 def test_parse_thresholds_rejects_bad_input(text: str) -> None:
     with pytest.raises(ValueError):
         scores.parse_thresholds(text)
@@ -1701,3 +1719,116 @@ def test_raw_scores_outside_the_unit_range_say_the_tiers_do_not_apply() -> None:
 
     assert any("outside [0, 1]" in note for note in notes)
     assert not any("outside [0, 1]" in note for note in normalized)
+
+
+def _two_k_results(primary_k: int) -> dict[str, Any]:
+    # The expected file comes back fourth: recall@3 is 0 and recall@5 is 1.
+    chunks = [chunk("b.md", "", 0.9), chunk("c.md", "", 0.8), chunk("d.md", "", 0.7)]
+    query = scored_query("q", [*chunks, chunk("a.md", "the answer", 0.6)], ["a.md"], "answer")
+    return make_results([query], primary_k=primary_k, label=f"k={primary_k}")
+
+
+def test_scores_compares_both_runs_at_the_current_runs_cutoff(tmp_path: Path) -> None:
+    before, after = tmp_path / "before.json", tmp_path / "after.json"
+    before.write_text(report.dumps(_two_k_results(3)), encoding="utf-8")
+    after.write_text(report.dumps(_two_k_results(5)), encoding="utf-8")
+
+    completed = _run_cli("scores", str(after), "--baseline", str(before))
+
+    assert completed.returncode == 0, completed.stderr
+    # At the baseline's own k=3 its recall would be 0.000.
+    assert "| recall@5, no cut | 1.000 | 1.000 |" in completed.stdout
+
+
+@pytest.mark.parametrize(
+    "option",
+    [
+        ["--hide", "nan"],
+        ["--hide", "inf"],
+        ["--max-recall-loss", "nan"],
+        ["--candidate=-inf"],
+        ["--tiers", "inf,0.35"],
+        ["--tiers", "0.65,nan"],
+        ["--thresholds", "0,nan"],
+    ],
+)
+def test_scores_rejects_numbers_that_are_not_finite(option: list[str], tmp_path: Path) -> None:
+    completed = _run_cli("scores", str(tmp_path / "unused.json"), *option)
+
+    assert completed.returncode == 2
+    assert "finite" in completed.stderr
+
+
+@pytest.mark.parametrize(
+    ("value", "expected_line"),
+    [
+        ([1, 2, 3], "[1, 2, 3]"),
+        ([-1, -0.5, 2], "[-1, -0.5, 2]"),
+        ([1e-05, -2.5e30, 0.0], "[1e-05, -2.5e+30, 0.0]"),
+        ([[1, 0.25], [2, -1e-07]], "[1, 0.25]"),
+    ],
+)
+def test_dumps_puts_number_arrays_on_one_line(value: list[Any], expected_line: str) -> None:
+    text = report.dumps({"values": value})
+
+    assert expected_line in text
+    assert json.loads(text) == {"values": value}
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        [1, "two", 3],  # mixed numbers and strings
+        ["a", "b"],
+        [{"x": 1}, {"x": 2}],
+        [True, False],
+        [1, None],
+    ],
+)
+def test_dumps_leaves_other_arrays_spread_out(value: list[Any]) -> None:
+    text = report.dumps({"values": value})
+
+    assert text == json.dumps({"values": value}, indent=2) + "\n"
+
+
+def test_dumps_never_changes_strings_that_look_like_number_arrays() -> None:
+    data = {"note": "[\n1,\n2\n]", "path": "a [1, 2] b", "empty": []}
+
+    text = report.dumps(data)
+
+    assert json.loads(text) == data
+    assert '"empty": []' in text
+
+
+def test_dumps_round_trips_nested_structures() -> None:
+    import random
+
+    rng = random.Random(2478)
+
+    def build(depth: int) -> Any:
+        kind = rng.choice(["num", "str", "list", "dict", "pair"] if depth < 4 else ["num", "str"])
+        if kind == "num":
+            return rng.choice([rng.randint(-5, 5), rng.uniform(-1e6, 1e6), 1e-9, -0.0])
+        if kind == "str":
+            return rng.choice(["x", "[\n1,\n2]", "-,", "e+"])
+        if kind == "pair":
+            return [rng.randint(1, 20), round(rng.uniform(0, 10), 6)]
+        if kind == "list":
+            return [build(depth + 1) for _ in range(rng.randint(0, 5))]
+        return {f"k{i}": build(depth + 1) for i in range(rng.randint(0, 4))}
+
+    for _ in range(300):
+        data = {"root": build(0)}
+        assert json.loads(report.dumps(data)) == data
+
+
+def test_dumps_number_array_pattern_fails_fast_on_hostile_input() -> None:
+    import time
+
+    # An array that starts like numbers and never closes, the shape CodeQL flagged.
+    hostile = "[\n" + "-,\n" * 50_000 + "x"
+
+    started = time.perf_counter()
+    report._NUMBER_ARRAY.sub("", hostile)
+
+    assert time.perf_counter() - started < 1.0

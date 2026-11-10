@@ -20,6 +20,7 @@ Standard library only, so it can be unit-tested without the SDK or a stack.
 from __future__ import annotations
 
 import importlib
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
@@ -107,8 +108,20 @@ def normalize(questions: Sequence[Question], method: str) -> list[Question]:
     return rescaled
 
 
+def finite(text: str) -> float:
+    """``text`` as a float, refusing nan and infinity, which would make every comparison wrong."""
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError(f"{text.strip()!r} is not a finite number")
+    return value
+
+
 def parse_thresholds(text: str) -> list[float] | None:
-    """``auto`` (None), ``start:stop:step``, or a comma-separated list of thresholds."""
+    """``auto`` (None), ``start:stop:step``, or a comma-separated list of thresholds.
+
+    A range never goes past ``stop``: with a step that does not divide the
+    range evenly, it ends at the last step below ``stop``.
+    """
     text = text.strip()
     if text == "auto":
         return None
@@ -116,12 +129,14 @@ def parse_thresholds(text: str) -> list[float] | None:
         parts = text.split(":")
         if len(parts) != 3:
             raise ValueError(f"expected start:stop:step, got {text!r}")
-        start, stop, step = (float(part) for part in parts)
+        start, stop, step = (finite(part) for part in parts)
         if step <= 0 or stop < start:
             raise ValueError("the step must be positive and stop must not be below start")
-        count = int(round((stop - start) / step + EPSILON)) + 1
+        # Each value is start + i * step rather than a running sum, so float
+        # error does not build up; EPSILON keeps an exact stop such as 0.3 in.
+        count = math.floor((stop - start) / step + EPSILON) + 1
         return [round(start + i * step, 6) for i in range(count)]
-    values = sorted({round(float(part), 6) for part in text.split(",") if part.strip()})
+    values = sorted({round(finite(part), 6) for part in text.split(",") if part.strip()})
     if not values:
         raise ValueError("no thresholds given")
     return values

@@ -176,12 +176,17 @@ def chunk_scores(
     expected_files: Collection[str],
     expected_text: str | None,
 ) -> tuple[list[list[float]], list[int]]:
-    """Every chunk of this run's files as ``[file rank, score]``, and where the answers are.
+    """Return ``(pairs, answer_positions)`` for every chunk of this run's files.
 
-    The second list holds the 1-based positions, among those chunks, of each
-    chunk of an expected file that contains ``expected_text``; it is empty when
-    the question has none. Together with ``ranked`` this is enough to re-score
-    the question at any score threshold without another search.
+    - ``pairs`` has one ``[file rank, score]`` per chunk, in the order search
+      returned them. The file rank points into ``ranked``; stray documents are
+      left out.
+    - ``answer_positions`` holds the 1-based positions in ``pairs`` of each
+      chunk of an expected file that contains ``expected_text``. It is empty
+      when the question has no ``expected_text``.
+
+    Together with ``ranked`` this is enough to re-score the question at any
+    score threshold without another search.
     """
     rank_of = {item.filename: item.rank for item in ranked}
     needle = _normalize(expected_text) if expected_text else None
