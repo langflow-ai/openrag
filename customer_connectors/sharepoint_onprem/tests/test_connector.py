@@ -390,6 +390,16 @@ def test_explicit_operator_ca_bundle_is_used_without_environment_proxies(
         run(SharePointOnPremConnector(adapter.config).authenticate())
 
 
+@pytest.mark.parametrize("unset", ["", "   "])
+def test_blank_ca_bundle_means_unset_and_uses_default_trust(connector, monkeypatch, unset):
+    # Compose and .env files commonly export an unset variable as empty.
+    adapter, server = connector
+    monkeypatch.setenv("OPENRAG_SHAREPOINT_CA_BUNDLE", unset)
+    fresh = SharePointOnPremConnector(adapter.config)
+    assert run(fresh.authenticate()) is True
+    assert fresh._ca_bundle is None  # requests are verified with verify=True
+
+
 def test_legacy_rest_refuses_ambiguous_resource_path_names(connector):
     adapter, server = connector
     _, nested = navigate(adapter)
