@@ -4,10 +4,12 @@ import asyncio
 import base64
 import io
 import json
+from contextlib import ExitStack
 from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 
 import pytest
 import requests
+import sharepoint_onprem
 from requests_ntlm import HttpNtlmAuth
 from sharepoint_onprem import SharePointOnPremConnector
 
@@ -43,9 +45,15 @@ class SharePointServer:
         self.duplicate_folder = False
         self.ca_bundle = None
         self.library_visible = True
+        self.sessions = []
+
+    def lists_calls(self):
+        return sum("/_api/web/lists" in url for url in self.calls)
 
     def get(self, session, url, *, params, **options):
         assert isinstance(session.auth, HttpNtlmAuth)
+        if session not in self.sessions:
+            self.sessions.append(session)
         assert options == {
             "headers": {"Accept": "application/json;odata=verbose"},
             "timeout": (5, 20),
@@ -421,6 +429,12 @@ def test_missing_library_inventory_cannot_signal_file_deletion(connector):
     _, nested = navigate(adapter)
     file_id = run(adapter.list_children(nested["id"], None, 1))["nodes"][0]["id"]
     server.status["lists"] = 404
+    # Cold scope: a new instance has no cached library listing.
+    with pytest.raises(ConnectionError, match="scope unavailable"):
+        run(SharePointOnPremConnector(adapter.config).get_file_content(file_id))
+    # Warm scope: the cached listing may be stale, so a file 404 is re-checked
+    # against a fresh listing, whose failure must not read as a deletion.
+    server.status["GetFileByServerRelativeUrl('" + NESTED + "/doc-0.txt')"] = 404
     with pytest.raises(ConnectionError, match="scope unavailable"):
         run(adapter.get_file_content(file_id))
 
@@ -479,3 +493,118 @@ def test_definitive_file_missing_only_with_visible_site_and_library(connector):
     server.library_visible = True
     reduced_scope = SharePointOnPremConnector({**adapter.config, "site_paths": "sites/beta"})
     assert run(reduced_scope.is_definitively_missing(file_id)) is False
+
+
+# Review 1g: reuse sessions and library listings without trusting them for
+# anything that could delete indexed content.
+
+
+class _Clock:
+    def __init__(self, monkeypatch):
+        self.now = 1000.0
+        monkeypatch.setattr(sharepoint_onprem.time, "monotonic", lambda: self.now)
+
+
+def _first_file_id(adapter):
+    _, nested = navigate(adapter)
+    return run(adapter.list_children(nested["id"], None, 1))["nodes"][0]["id"]
+
+
+def test_library_listing_is_reused_for_downloads_until_it_expires(connector, monkeypatch):
+    adapter, server = connector
+    clock = _Clock(monkeypatch)
+    file_id = _first_file_id(adapter)
+    before = server.lists_calls()
+    for _ in range(3):
+        run(adapter.get_file_content(file_id))
+    assert server.lists_calls() == before
+    clock.now += sharepoint_onprem._LIBRARY_CACHE_SECONDS + 1
+    run(adapter.get_file_content(file_id))
+    assert server.lists_calls() == before + 1
+
+
+def test_not_found_under_a_cached_scope_is_rechecked_before_signalling_deletion(connector):
+    adapter, server = connector
+    file_id = _first_file_id(adapter)
+    server.status["GetFileByServerRelativeUrl('" + NESTED + "/doc-0.txt')"] = 404
+    before = server.lists_calls()
+    with pytest.raises(FileNotFoundError):
+        run(adapter.get_file_content(file_id))
+    assert server.lists_calls() == before + 1  # exactly one fresh scope check
+    server.library_visible = False
+    with pytest.raises(ValueError, match="configured SharePoint libraries"):
+        run(adapter.get_file_content(file_id))
+
+
+def test_library_missing_from_cached_listing_is_refetched_not_rejected(connector):
+    adapter, server = connector
+    file_id = _first_file_id(adapter)
+    server.library_visible = False
+    with pytest.raises(ValueError, match="configured SharePoint libraries"):
+        run(SharePointOnPremConnector(adapter.config).get_file_content(file_id))
+    fresh = SharePointOnPremConnector(adapter.config)
+    with pytest.raises(ValueError):
+        run(fresh.get_file_content(file_id))  # caches the listing without the library
+    server.library_visible = True
+    assert run(fresh.get_file_content(file_id)).content == b"document 0"
+
+
+def test_deletion_check_never_uses_the_cached_scope(connector):
+    adapter, server = connector
+    file_id = _first_file_id(adapter)
+    before = server.lists_calls()
+    assert run(adapter.is_definitively_missing(file_id)) is False
+    assert server.lists_calls() == before + 1
+
+
+def test_one_ntlm_session_serves_sequential_calls_and_a_failed_one_is_discarded(connector):
+    adapter, server = connector
+    file_id = _first_file_id(adapter)
+    run(adapter.get_file_content(file_id))
+    run(adapter.get_file_content(file_id))
+    assert len(server.sessions) == 1
+    server.status["GetFileByServerRelativeUrl('" + NESTED + "/doc-0.txt')/$value"] = "timeout"
+    with pytest.raises(TimeoutError):
+        run(adapter.get_file_content(file_id))
+    server.status.clear()
+    run(adapter.get_file_content(file_id))
+    assert len(server.sessions) == 2
+
+
+def test_session_pool_lends_distinct_sessions_caps_idle_and_expires(connector, monkeypatch):
+    adapter, server = connector
+    clock = _Clock(monkeypatch)
+    adapter._settings()
+    with ExitStack() as stack:
+        borrowed = [
+            stack.enter_context(adapter._borrow_session())
+            for _ in range(sharepoint_onprem._MAX_IDLE_SESSIONS + 2)
+        ]
+        assert len({id(session) for session in borrowed}) == len(borrowed)
+    assert len(adapter._idle_sessions) == sharepoint_onprem._MAX_IDLE_SESSIONS
+    with adapter._borrow_session() as reused:
+        assert any(reused is session for session in borrowed)
+    clock.now += sharepoint_onprem._SESSION_IDLE_SECONDS + 1
+    with adapter._borrow_session() as replacement:
+        assert all(replacement is not session for session in borrowed)
+    assert len(adapter._idle_sessions) == 1
+
+
+def test_successful_authentication_is_cached_but_a_failure_is_not(connector, monkeypatch):
+    adapter, server = connector
+    clock = _Clock(monkeypatch)
+    assert run(adapter.authenticate()) is True
+    probed = len(server.calls)
+    assert run(adapter.authenticate()) is True
+    assert len(server.calls) == probed  # status checks no longer fan out to the farm
+    clock.now += sharepoint_onprem._AUTH_CACHE_SECONDS + 1
+    assert run(adapter.authenticate()) is True
+    assert len(server.calls) > probed
+
+    failing = SharePointOnPremConnector(adapter.config)
+    server.blocked_site = "/sites/beta"
+    assert run(failing.authenticate()) is False
+    server.blocked_site = None
+    attempts = len(server.calls)
+    assert run(failing.authenticate()) is True
+    assert len(server.calls) > attempts

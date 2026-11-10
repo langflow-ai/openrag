@@ -3,15 +3,21 @@
 Requires OPENRAG_SHAREPOINT_ALLOWED_ORIGINS to contain the server's HTTPS origin
 (plain HTTP only with OPENRAG_SHAREPOINT_ALLOW_INSECURE_HTTP=true, for test farms).
 IDs encode server-relative paths, but are not authorization tokens: every use is
-checked against configured sites and the server's current document libraries.
+checked against configured sites and the server's document libraries. Reads may
+use a library listing confirmed within the last _LIBRARY_CACHE_SECONDS; any
+not-found or denied answer, and every deletion check, is re-checked against a
+fresh listing, so a cached scope can never turn into a deletion signal.
 """
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import json
 import mimetypes
 import os
+import threading
+import time
 from collections import deque
 from datetime import UTC, datetime
 from urllib.parse import parse_qsl, quote, unquote, urlsplit
@@ -26,6 +32,11 @@ _MAX_FILE_BYTES = 50 * 1024 * 1024
 _MAX_TOKEN_BYTES = 256 * 1024
 _PAGE_SIZE = 200
 _TIMEOUT = (5, 20)  # connection, read (seconds)
+# Reuse, not trust: see _borrow_session, _scoped_libraries and authenticate.
+_LIBRARY_CACHE_SECONDS = 60
+_AUTH_CACHE_SECONDS = 300
+_SESSION_IDLE_SECONDS = 60
+_MAX_IDLE_SESSIONS = 4
 
 
 def _token(value):
@@ -146,6 +157,12 @@ class SharePointOnPremConnector(BaseConnector):
         self._server = None
         self._approved_origin = None
         self._ca_bundle = None
+        # Connectors are cached per connection and called from asyncio.to_thread
+        # workers, so shared state below is guarded by this lock.
+        self._lock = threading.Lock()
+        self._idle_sessions: list[tuple[requests.Session, float]] = []
+        self._library_cache: dict[str, tuple[float, dict[str, str]]] = {}
+        self._authenticated_until = 0.0
 
     @staticmethod
     def filename_for_index(file_id: str, filename: str) -> str:
@@ -210,6 +227,36 @@ class SharePointOnPremConnector(BaseConnector):
             f"{domain}\\{username}" if domain else username, self.config["password"]
         )
         return session
+
+    @contextlib.contextmanager
+    def _borrow_session(self):
+        """Lend one thread an NTLM-authenticated session from a small pool.
+
+        Reusing a session keeps its keep-alive connections, so the TCP/TLS setup
+        and the three-leg NTLM handshake are paid once rather than per call. A
+        session serves one thread at a time; concurrent callers get their own.
+        A session that saw any failure is closed rather than reused.
+        """
+        now = time.monotonic()
+        session = None
+        with self._lock:
+            while self._idle_sessions:
+                candidate, last_used = self._idle_sessions.pop()
+                if now - last_used <= _SESSION_IDLE_SECONDS:
+                    session = candidate
+                    break
+                candidate.close()  # The server has likely dropped it; never retry on it.
+        if session is None:
+            session = self._session()
+        try:
+            yield session
+        except BaseException:
+            session.close()
+            raise
+        with self._lock:
+            self._idle_sessions.append((session, time.monotonic()))
+            while len(self._idle_sessions) > _MAX_IDLE_SESSIONS:
+                self._idle_sessions.pop(0)[0].close()
 
     def _request(self, session, url, *, params=None, limit=_MAX_METADATA_BYTES):
         # The only request gateway: validate each URL (including constructed REST paths).
@@ -353,7 +400,28 @@ class SharePointOnPremConnector(BaseConnector):
             if len(roots) > 10000:
                 raise ValueError("SharePoint library inventory exceeds limit")
 
-    def _decode_id(self, value, *, session=None):
+    def _scoped_libraries(self, session, site, *, fresh=False):
+        """Visible document libraries of a site, reusing a recent listing.
+
+        Only a successful listing is cached. Callers that act on a negative
+        answer (not found, denied) or authorize deletion pass fresh=True.
+        """
+        if not fresh:
+            with self._lock:
+                cached = self._library_cache.get(site)
+            if cached is not None and time.monotonic() < cached[0]:
+                return cached[1]
+        try:
+            roots = self._libraries(session, site)
+        except Exception:
+            with self._lock:
+                self._library_cache.pop(site, None)
+            raise
+        with self._lock:
+            self._library_cache[site] = (time.monotonic() + _LIBRARY_CACHE_SECONDS, roots)
+        return roots
+
+    def _decode_id(self, value, *, session=None, fresh=False):
         self._settings()
         data = _untoken(value)
         if not isinstance(data, list) or len(data) not in (2, 3, 4):
@@ -369,7 +437,10 @@ class SharePointOnPremConnector(BaseConnector):
         if session is None:
             raise ValueError("Identifier outside configured SharePoint libraries")
         try:
-            libraries = self._libraries(session, site)
+            libraries = self._scoped_libraries(session, site, fresh=fresh)
+            if library not in libraries and not fresh:
+                # A library created since the cached listing must not be hidden.
+                libraries = self._scoped_libraries(session, site, fresh=True)
         except FileNotFoundError:
             # A missing site/listing is not proof that this indexed file
             # disappeared. Only a 404 from the file endpoint authorizes cleanup.
@@ -404,7 +475,7 @@ class SharePointOnPremConnector(BaseConnector):
             or not 1 <= page_size <= _PAGE_SIZE
         ):
             raise ValueError("SharePoint page_size must be between 1 and 200")
-        with self._session() as session:
+        with self._borrow_session() as session:
             if parent_id is None:
                 state = self._cursor(cursor, parent_id)
                 if state["phase"] not in ("folders", "sites"):
@@ -534,18 +605,29 @@ class SharePointOnPremConnector(BaseConnector):
         return await asyncio.to_thread(self._list_children, parent_id, cursor, page_size)
 
     async def authenticate(self):
+        """Probe every nominated site; a success is trusted for _AUTH_CACHE_SECONDS.
+
+        The host re-authenticates its cached instance on every status request,
+        which would otherwise fan out to the whole farm. Test/Save build a new
+        instance, so they always run the full probe; a failure is never cached.
+        """
+        if time.monotonic() < self._authenticated_until:
+            return True
+
         def probe():
             self._settings()
-            with self._session() as session:
+            with self._borrow_session() as session:
                 for site in self._sites:
                     self._json(session, self._url(site, "")[:-1], params={"$select": "Id"})
-                    self._libraries(session, site)
+                    self._scoped_libraries(session, site, fresh=True)
 
         try:
             await asyncio.to_thread(probe)
         except PermissionError:
+            self._authenticated_until = 0.0
             self._authenticated = False
             return False
+        self._authenticated_until = time.monotonic() + _AUTH_CACHE_SECONDS
         self._authenticated = True
         return True
 
@@ -592,9 +674,10 @@ class SharePointOnPremConnector(BaseConnector):
 
     def _is_definitively_missing(self, file_id):
         self._settings()
-        with self._session() as session:
+        with self._borrow_session() as session:
             try:
-                kind, site, _, path = self._decode_id(file_id, session=session)
+                # Authorizes chunk deletion: never trust a cached library scope.
+                kind, site, _, path = self._decode_id(file_id, session=session, fresh=True)
                 if kind != "f":
                     return False
                 self._json(
@@ -618,26 +701,33 @@ class SharePointOnPremConnector(BaseConnector):
         owner = self.config.get("user_id")
         if not isinstance(owner, str) or not owner:
             raise ValueError("OpenRAG connection owner is required for owner-only documents")
-        with self._session() as session:
+        with self._borrow_session() as session:
             identity = self._decode_id(file_id, session=session)
             if identity[0] != "f":
                 raise ValueError("Only SharePoint file identifiers can be downloaded")
             _, site, library, path = identity
             endpoint = self._file_endpoint(path)
-            metadata = self._json(
-                session,
-                self._url(site, endpoint),
-                params={
-                    "$select": "Name,ServerRelativeUrl,Length,TimeLastModified,TimeCreated,ETag"
-                },
-            )
-            if not isinstance(metadata, dict) or metadata.get("ServerRelativeUrl") != path:
-                raise ValueError("SharePoint file metadata left configured scope")
-            if int(metadata.get("Length", -1)) > _MAX_FILE_BYTES:
-                raise ValueError("SharePoint file exceeds size limit")
-            content = self._request(
-                session, self._url(site, endpoint + "/$value"), limit=_MAX_FILE_BYTES
-            )
+            try:
+                metadata = self._json(
+                    session,
+                    self._url(site, endpoint),
+                    params={
+                        "$select": "Name,ServerRelativeUrl,Length,TimeLastModified,TimeCreated,ETag"
+                    },
+                )
+                if not isinstance(metadata, dict) or metadata.get("ServerRelativeUrl") != path:
+                    raise ValueError("SharePoint file metadata left configured scope")
+                if int(metadata.get("Length", -1)) > _MAX_FILE_BYTES:
+                    raise ValueError("SharePoint file exceeds size limit")
+                content = self._request(
+                    session, self._url(site, endpoint + "/$value"), limit=_MAX_FILE_BYTES
+                )
+            except (FileNotFoundError, PermissionError):
+                # FileNotFoundError deletes indexed chunks. The scope above may
+                # come from a cached listing, so confirm it is still current: a
+                # vanished library or listing raises a non-deletion error instead.
+                self._decode_id(file_id, session=session, fresh=True)
+                raise
         filename = metadata.get("Name") or path.rsplit("/", 1)[-1]
         modified = _date(metadata.get("TimeLastModified"))
         return ConnectorDocument(
