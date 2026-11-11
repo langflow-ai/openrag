@@ -155,7 +155,7 @@
         "className": "",
         "data": {
           "sourceHandle": {
-            "dataType": "SplitText",
+            "dataType": "OpenRAGSplitText",
             "id": "SplitText-QIKhg",
             "name": "dataframe",
             "output_types": [
