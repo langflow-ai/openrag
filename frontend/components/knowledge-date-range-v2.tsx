@@ -85,17 +85,27 @@ export function KnowledgeDateRangeV2() {
     ...(draft?.from ? [startOfDay(draft.from)] : []),
   ]);
   const clampedStart = windowStart < earliest ? earliest : windowStart;
-  // An unedited saved range is counted in the zone it was saved in, over a
-  // window that includes its exact bounds; edits switch to the viewer's zone.
+  // Quick presets are viewer-local days, so they are always counted in the
+  // viewer's zone. Only the custom calendar showing an unedited saved range is
+  // counted in the zone that range was saved in, over a window reaching its
+  // exact bounds. The extension never goes past the histogram cap.
   const savedTimeZone = foreignTimeZone(effectiveDateRange);
-  const countInSavedZone = !edited && savedTimeZone !== null;
+  const countInSavedZone =
+    view === "custom" && !edited && savedTimeZone !== null;
   const startISO = toLocalDayStartISOString(clampedStart);
   const endISO = toLocalDayEndISOString(today);
+  const earliestISO = toLocalDayStartISOString(earliest);
+  const extendedStart = earlierInstant(
+    startISO,
+    effectiveDateRange.createdAfter,
+  );
+  const requestStart =
+    countInSavedZone && new Date(extendedStart) >= new Date(earliestISO)
+      ? extendedStart
+      : startISO;
   const { data: histogram, isPlaceholderData } = useUploadHistogram(
     {
-      start: countInSavedZone
-        ? earlierInstant(startISO, effectiveDateRange.createdAfter)
-        : startISO,
+      start: requestStart,
       end: countInSavedZone
         ? laterInstant(endISO, effectiveDateRange.createdBefore)
         : endISO,
@@ -118,7 +128,7 @@ export function KnowledgeDateRangeV2() {
   // Days before the requested window, or while a changed window is still
   // loading, have no data yet; they must not read as "no uploads".
   const histogramReady = Boolean(histogram) && !isPlaceholderData;
-  const coveredFrom = startOfDay(clampedStart);
+  const coveredFrom = startOfDay(min([clampedStart, new Date(requestStart)]));
 
   const DayContent = useMemo(
     () =>

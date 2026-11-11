@@ -405,14 +405,20 @@ describe("KnowledgeDateRangeV2 saved time zone", () => {
 
     await click(screen.getByRole("button", { name: /Jun/ }));
     await waitFor(() => expect(histogramRequests.length).toBeGreaterThan(0));
-    const first = histogramRequests[0].searchParams;
+    // Quick presets are viewer-local days, so they count in the viewer's zone.
+    expect(histogramRequests[0].searchParams.get("tz")).toBe("Europe/London");
+
+    // The custom calendar shows the unedited saved range in its saved zone.
+    histogramRequests = [];
+    await click(await screen.findByText("Custom range"));
+    await waitFor(() => expect(histogramRequests.length).toBeGreaterThan(0));
+    const first = histogramRequests.at(-1)?.searchParams as URLSearchParams;
     expect(first.get("tz")).toBe(LA);
     expect(new Date(first.get("start") ?? "").getTime()).toBeLessThanOrEqual(
       new Date("2024-06-10T07:00:00.000Z").getTime(),
     );
 
     // Applying without edits must leave the saved bounds alone.
-    await click(await screen.findByText("Custom range"));
     await click(await screen.findByRole("button", { name: "Apply filter" }));
     expect(screen.getByLabelText("Effective range start")).toHaveTextContent(
       "2024-06-10T07:00:00.000Z",
@@ -422,16 +428,9 @@ describe("KnowledgeDateRangeV2 saved time zone", () => {
     await click(screen.getByRole("button", { name: /Jun/ }));
     histogramRequests = [];
     await click(await screen.findByText("Custom range"));
-    await click(
-      screen
-        .getAllByRole("gridcell")
-        .find(
-          (c) =>
-            c.tagName === "BUTTON" &&
-            !c.className.includes("day-outside") &&
-            c.textContent === "5",
-        ) as HTMLElement,
-    );
+    // The 15th appears once in the June grid (outside days only span 1-6 and 25-31).
+    const june = within(screen.getByRole("grid"));
+    await click(june.getByRole("gridcell", { name: "15" }));
     await waitFor(() => expect(histogramRequests.length).toBeGreaterThan(0));
     expect(histogramRequests.at(-1)?.searchParams.get("tz")).toBe(
       "Europe/London",
