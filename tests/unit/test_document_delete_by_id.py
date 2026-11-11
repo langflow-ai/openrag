@@ -3,12 +3,22 @@ import pytest
 from api.documents import delete_documents_by_filename_core
 
 
+class _Indices:
+    def __init__(self):
+        self.refresh_calls = []
+
+    async def refresh(self, *, index):
+        self.refresh_calls.append(index)
+
+
 class FakeOpenSearchClient:
     def __init__(self, owned_hits=None, visible_hits=None):
         self.owned_hits = owned_hits or []
         self.visible_hits = visible_hits or []
         self.search_calls = []
         self.delete_calls = []
+        self.bulk_calls = []
+        self.indices = _Indices()
 
     async def search(self, *, index, body, scroll=None):
         self.search_calls.append({"index": index, "body": body, "scroll": scroll})
@@ -22,6 +32,24 @@ class FakeOpenSearchClient:
     async def delete(self, *, index, id, refresh=True):
         self.delete_calls.append({"index": index, "id": id, "refresh": refresh})
         return {"result": "deleted"}
+
+    async def bulk(self, *, body, refresh=False):
+        self.bulk_calls.append({"body": body, "refresh": refresh})
+        for action in body:
+            self.delete_calls.append(
+                {
+                    "index": action["delete"]["_index"],
+                    "id": action["delete"]["_id"],
+                    "refresh": refresh,
+                }
+            )
+        return {
+            "errors": False,
+            "items": [
+                {"delete": {"_id": a["delete"]["_id"], "result": "deleted", "status": 200}}
+                for a in body
+            ],
+        }
 
 
 class FakeSessionManager:
@@ -67,9 +95,10 @@ async def test_delete_documents_by_filename_deletes_owned_ids_with_backend_clien
     }
     assert opensearch_client.delete_calls == []
     assert backend_opensearch_client.delete_calls == [
-        {"index": "documents", "id": "chunk-1", "refresh": True},
-        {"index": "documents", "id": "chunk-2", "refresh": True},
+        {"index": "documents", "id": "chunk-1", "refresh": False},
+        {"index": "documents", "id": "chunk-2", "refresh": False},
     ]
+    assert backend_opensearch_client.indices.refresh_calls == ["documents"]
 
 
 @pytest.mark.asyncio
@@ -132,9 +161,10 @@ async def test_delete_documents_by_filename_deletes_ownerless_with_anonymous_per
         }
     }
     assert backend_opensearch_client.delete_calls == [
-        {"index": "documents", "id": "shared-chunk-1", "refresh": True},
-        {"index": "documents", "id": "shared-chunk-2", "refresh": True},
+        {"index": "documents", "id": "shared-chunk-1", "refresh": False},
+        {"index": "documents", "id": "shared-chunk-2", "refresh": False},
     ]
+    assert backend_opensearch_client.indices.refresh_calls == ["documents"]
 
 
 @pytest.mark.asyncio
@@ -240,3 +270,38 @@ async def test_delete_documents_by_filename_returns_404_when_missing(monkeypatch
     assert payload["success"] is False
     assert payload["deleted_chunks"] == 0
     assert opensearch_client.delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_documents_by_filename_reports_confirmed_chunks_on_partial_failure(
+    monkeypatch,
+):
+    monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
+    opensearch_client = FakeOpenSearchClient(
+        owned_hits=[{"_id": "chunk-1", "_source": {"owner": "user-1"}}]
+    )
+    backend_opensearch_client = FakeOpenSearchClient()
+
+    async def _partial_bulk(*, body, refresh=False):
+        return {
+            "errors": True,
+            "items": [
+                {"delete": {"_id": "chunk-1", "result": "deleted", "status": 200}},
+                {"delete": {"_id": "chunk-2", "status": 500, "error": {"type": "boom"}}},
+            ],
+        }
+
+    backend_opensearch_client.bulk = _partial_bulk
+    monkeypatch.setattr("config.settings.clients.opensearch", backend_opensearch_client)
+
+    payload, status_code = await delete_documents_by_filename_core(
+        filename="report.pdf",
+        session_manager=FakeSessionManager(opensearch_client),
+        user_id="user-1",
+        jwt_token="jwt-token",
+    )
+
+    assert status_code == 500
+    assert payload["success"] is False
+    assert payload["deleted_chunks"] == 1
+    assert "boom" not in payload["error"]
