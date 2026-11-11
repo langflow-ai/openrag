@@ -93,11 +93,10 @@
       },
       {
         "animated": false,
-        "className": "",
         "data": {
           "sourceHandle": {
             "dataType": "ext:openrag:DoclingRemoteComponent@extra",
-            "id": "ext:openrag:DoclingRemoteComponent@extra-m1Ktq",
+            "id": "ext:openrag:DoclingRemoteComponent@extra-hz9l2",
             "name": "dataframe",
             "output_types": [
               "Table"
@@ -115,44 +114,15 @@
             "type": "other"
           }
         },
-        "id": "xy-edge__ext:openrag:DoclingRemoteComponent@extra-m1Ktq{œdataTypeœ:œext:openrag:DoclingRemoteComponent@extraœ,œidœ:œext:openrag:DoclingRemoteComponent@extra-m1Ktqœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}-ExportDoclingDocument-zZdRg{œfieldNameœ:œdata_inputsœ,œidœ:œExportDoclingDocument-zZdRgœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}",
+        "id": "xy-edge__ext:openrag:DoclingRemoteComponent@extra-hz9l2{œdataTypeœ:œext:openrag:DoclingRemoteComponent@extraœ,œidœ:œext:openrag:DoclingRemoteComponent@extra-hz9l2œ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}-ExportDoclingDocument-zZdRg{œfieldNameœ:œdata_inputsœ,œidœ:œExportDoclingDocument-zZdRgœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}",
         "selected": false,
-        "source": "ext:openrag:DoclingRemoteComponent@extra-m1Ktq",
-        "sourceHandle": "{œdataTypeœ:œext:openrag:DoclingRemoteComponent@extraœ,œidœ:œext:openrag:DoclingRemoteComponent@extra-m1Ktqœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}",
+        "source": "ext:openrag:DoclingRemoteComponent@extra-hz9l2",
+        "sourceHandle": "{œdataTypeœ:œext:openrag:DoclingRemoteComponent@extraœ,œidœ:œext:openrag:DoclingRemoteComponent@extra-hz9l2œ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}",
         "target": "ExportDoclingDocument-zZdRg",
         "targetHandle": "{œfieldNameœ:œdata_inputsœ,œidœ:œExportDoclingDocument-zZdRgœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}"
       },
       {
         "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
-            "dataType": "OpenAICompatibleEmbedding",
-            "id": "OpenAICompatibleEmbedding-MloZd",
-            "name": "embeddings",
-            "output_types": [
-              "Embeddings"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "embedding",
-            "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-JuWsr",
-            "inputTypes": [
-              "Embeddings"
-            ],
-            "type": "other"
-          }
-        },
-        "id": "xy-edge__OpenAICompatibleEmbedding-MloZd{œdataTypeœ:œOpenAICompatibleEmbeddingœ,œidœ:œOpenAICompatibleEmbedding-MloZdœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}-ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-JuWsr{œfieldNameœ:œembeddingœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-JuWsrœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}",
-        "selected": false,
-        "source": "OpenAICompatibleEmbedding-MloZd",
-        "sourceHandle": "{œdataTypeœ:œOpenAICompatibleEmbeddingœ,œidœ:œOpenAICompatibleEmbedding-MloZdœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}",
-        "target": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-JuWsr",
-        "targetHandle": "{œfieldNameœ:œembeddingœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-JuWsrœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
         "data": {
           "sourceHandle": {
             "dataType": "OpenRAGSplitText",
@@ -164,7 +134,7 @@
           },
           "targetHandle": {
             "fieldName": "ingest_data",
-            "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-JuWsr",
+            "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-WE3dc",
             "inputTypes": [
               "Data",
               "DataFrame",
@@ -173,12 +143,39 @@
             "type": "other"
           }
         },
-        "id": "xy-edge__SplitText-QIKhg{œdataTypeœ:œSplitTextœ,œidœ:œSplitText-QIKhgœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}-ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-JuWsr{œfieldNameœ:œingest_dataœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-JuWsrœ,œinputTypesœ:[œDataœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}",
+        "id": "xy-edge__SplitText-QIKhg{œdataTypeœ:œOpenRAGSplitTextœ,œidœ:œSplitText-QIKhgœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}-ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-WE3dc{œfieldNameœ:œingest_dataœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-WE3dcœ,œinputTypesœ:[œDataœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}",
         "selected": false,
         "source": "SplitText-QIKhg",
-        "sourceHandle": "{œdataTypeœ:œSplitTextœ,œidœ:œSplitText-QIKhgœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}",
-        "target": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-JuWsr",
-        "targetHandle": "{œfieldNameœ:œingest_dataœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-JuWsrœ,œinputTypesœ:[œDataœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}"
+        "sourceHandle": "{œdataTypeœ:œOpenRAGSplitTextœ,œidœ:œSplitText-QIKhgœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}",
+        "target": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-WE3dc",
+        "targetHandle": "{œfieldNameœ:œingest_dataœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-WE3dcœ,œinputTypesœ:[œDataœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}"
+      },
+      {
+        "animated": false,
+        "data": {
+          "sourceHandle": {
+            "dataType": "OpenAICompatibleEmbedding",
+            "id": "OpenAICompatibleEmbedding-MloZd",
+            "name": "embeddings",
+            "output_types": [
+              "Embeddings"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "embedding",
+            "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-WE3dc",
+            "inputTypes": [
+              "Embeddings"
+            ],
+            "type": "other"
+          }
+        },
+        "id": "xy-edge__OpenAICompatibleEmbedding-MloZd{œdataTypeœ:œOpenAICompatibleEmbeddingœ,œidœ:œOpenAICompatibleEmbedding-MloZdœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}-ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-WE3dc{œfieldNameœ:œembeddingœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-WE3dcœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "source": "OpenAICompatibleEmbedding-MloZd",
+        "sourceHandle": "{œdataTypeœ:œOpenAICompatibleEmbeddingœ,œidœ:œOpenAICompatibleEmbedding-MloZdœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}",
+        "target": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-WE3dc",
+        "targetHandle": "{œfieldNameœ:œembeddingœ,œidœ:œext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-WE3dcœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}"
       }
     ],
     "nodes": [
@@ -447,6 +444,10 @@
         },
         "dragging": false,
         "id": "ExportDoclingDocument-zZdRg",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
         "position": {
           "x": 648.3765412475954,
           "y": 1839.7464467523132
@@ -1836,6 +1837,10 @@
         },
         "dragging": false,
         "id": "Operations-IC6CD",
+        "measured": {
+          "height": 80,
+          "width": 192
+        },
         "position": {
           "x": 922.8558031751697,
           "y": 1830.0439761689086
@@ -3198,6 +3203,10 @@
         },
         "dragging": false,
         "id": "Operations-VUCJC",
+        "measured": {
+          "height": 80,
+          "width": 192
+        },
         "position": {
           "x": 1209.814890352602,
           "y": 1833.3550221261078
@@ -3469,6 +3478,10 @@
         },
         "dragging": false,
         "id": "SplitText-QIKhg",
+        "measured": {
+          "height": 80,
+          "width": 192
+        },
         "position": {
           "x": 1483.6566983203961,
           "y": 1839.4043723057894
@@ -3671,6 +3684,10 @@
         },
         "dragging": false,
         "id": "OpenAICompatibleEmbedding-MloZd",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
         "position": {
           "x": 1481.2824937463324,
           "y": 1946.082713977874
@@ -3680,7 +3697,7 @@
       },
       {
         "data": {
-          "id": "ext:openrag:DoclingRemoteComponent@extra-m1Ktq",
+          "id": "ext:openrag:DoclingRemoteComponent@extra-hz9l2",
           "node": {
             "base_classes": [
               "Table"
@@ -3725,11 +3742,11 @@
                   },
                   {
                     "name": "docling_core",
-                    "version": "2.105.0"
+                    "version": "2.106.0"
                   },
                   {
                     "name": "lfx",
-                    "version": "1.12.8rc0"
+                    "version": "1.12.10"
                   },
                   {
                     "name": "pydantic",
@@ -3805,15 +3822,7 @@
                 "trigger_icon": "Table",
                 "trigger_text": "Open table",
                 "type": "table",
-                "value": [
-                  {
-                    "__load_from_db_fields": {
-                      "value": true
-                    },
-                    "key": "Authorization",
-                    "value": "JWT"
-                  }
-                ]
+                "value": []
               },
               "api_url": {
                 "_input_type": "StrInput",
@@ -4171,17 +4180,21 @@
           "type": "ext:openrag:DoclingRemoteComponent@extra"
         },
         "dragging": false,
-        "id": "ext:openrag:DoclingRemoteComponent@extra-m1Ktq",
+        "id": "ext:openrag:DoclingRemoteComponent@extra-hz9l2",
+        "measured": {
+          "height": 52,
+          "width": 192
+        },
         "position": {
-          "x": 354.9815526925169,
-          "y": 1839.5418348281498
+          "x": 348.32664896246706,
+          "y": 1836.6643512214057
         },
         "selected": false,
         "type": "genericNode"
       },
       {
         "data": {
-          "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-JuWsr",
+          "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-WE3dc",
           "node": {
             "base_classes": [
               "JSON",
@@ -4232,7 +4245,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2026-10-27T18:05:06.343Z",
+            "last_updated": "2026-11-11T12:32:28.202Z",
             "legacy": false,
             "legacy_module": "opensearch_multimodal",
             "metadata": {
@@ -4245,7 +4258,7 @@
                   },
                   {
                     "name": "lfx",
-                    "version": "1.12.8rc0"
+                    "version": "1.12.10"
                   },
                   {
                     "name": "opensearchpy",
@@ -4328,7 +4341,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "fd86d622-0126-4644-a822-64e318d117cf"
+                "value": "ca5ec13b-2e69-49dd-9402-fe60dbfd9de2"
               },
               "_type": "Component",
               "auth_mode": {
@@ -5100,19 +5113,23 @@
           "type": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra"
         },
         "dragging": false,
-        "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-JuWsr",
+        "id": "ext:openrag:OpenSearchVectorStoreComponentMultimodalMultiEmbedding@extra-WE3dc",
+        "measured": {
+          "height": 188,
+          "width": 192
+        },
         "position": {
-          "x": 1776.2957837115684,
-          "y": 1830.5200193803464
+          "x": 1770.9503205833598,
+          "y": 1827.8086696153007
         },
         "selected": true,
         "type": "genericNode"
       }
     ],
     "viewport": {
-      "x": -261.3561215887037,
-      "y": -757.0712073292516,
-      "zoom": 0.5641658520832963
+      "x": -309.6552308013381,
+      "y": -929.3558775536319,
+      "zoom": 0.6635105223481148
     }
   },
   "description": "Load your data for chat context with Retrieval Augmented Generation.",
@@ -5126,6 +5143,7 @@
     "openai",
     "astradb",
     "rag",
-    "q-a"
+    "q-a",
+    "openrag:file-mtime:1794400109648987680"
   ]
 }
