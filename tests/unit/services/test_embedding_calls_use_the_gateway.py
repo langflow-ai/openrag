@@ -233,7 +233,7 @@ async def test_ingestion_embeds_through_the_gateway_for_every_provider(
     )
     monkeypatch.setattr(
         "services.document_service.chunk_texts_for_embeddings",
-        lambda texts, max_tokens: [texts] if texts else [],
+        lambda texts, max_tokens, model=None: [texts] if texts else [],
     )
 
     await _processor(model).process_document_standard(

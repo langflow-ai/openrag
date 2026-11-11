@@ -22,9 +22,12 @@ def get_token_count(text: str, model: str = None) -> int:
 def chunk_texts_for_embeddings(
     texts: list[str], max_tokens: int = None, model: str = None
 ) -> list[list[str]]:
-    """
-    Split texts into batches that won't exceed token limits.
-    If max_tokens is None, returns texts as single batch (no splitting).
+    """Pack texts into batches that stay within ``max_tokens``.
+
+    Each input stays one embedding input. A text already over the limit is
+    placed in its own batch; splitting it here would make the embedding list
+    longer than the chunk list. If ``max_tokens`` is None, texts are returned
+    as a single batch.
     """
     model = model or get_embedding_model()
 
@@ -44,40 +47,19 @@ def chunk_texts_for_embeddings(
     for text in texts:
         text_tokens = get_token_count(text, model)
 
-        # If single text exceeds limit, split it further
-        if text_tokens > max_tokens:
-            # If we have current batch, save it first
+        over_limit = text_tokens > max_tokens
+        if over_limit or (current_batch and current_tokens + text_tokens > max_tokens):
             if current_batch:
                 batches.append(current_batch)
                 current_batch = []
                 current_tokens = 0
+            if over_limit:
+                batches.append([text])
+                continue
 
-            # Split the large text into smaller chunks
-            try:
-                encoding = tiktoken.encoding_for_model(model)
-            except KeyError:
-                encoding = tiktoken.get_encoding("cl100k_base")
+        current_batch.append(text)
+        current_tokens += text_tokens
 
-            tokens = encoding.encode(text)
-
-            for i in range(0, len(tokens), max_tokens):
-                chunk_tokens = tokens[i : i + max_tokens]
-                chunk_text = encoding.decode(chunk_tokens)
-                batches.append([chunk_text])
-
-        # If adding this text would exceed limit, start new batch
-        elif current_tokens + text_tokens > max_tokens:
-            if current_batch:  # Don't add empty batches
-                batches.append(current_batch)
-            current_batch = [text]
-            current_tokens = text_tokens
-
-        # Add to current batch
-        else:
-            current_batch.append(text)
-            current_tokens += text_tokens
-
-    # Add final batch if not empty
     if current_batch:
         batches.append(current_batch)
 

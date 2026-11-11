@@ -740,7 +740,9 @@ class TaskProcessor:
                 token_cap.set(non_empty=non_empty, chunks_out=len(slim_doc["chunks"]))
             texts = [c["text"] for c in slim_doc["chunks"]]
 
-            text_batches = chunk_texts_for_embeddings(texts, max_tokens=max_tokens)
+            text_batches = chunk_texts_for_embeddings(
+                texts, max_tokens=max_tokens, model=litellm_embedding_model
+            )
             embeddings = []
             # Every provider goes through the gateway, not just the aliased ones.
             # The gateway resolves credentials per call from config; the direct
