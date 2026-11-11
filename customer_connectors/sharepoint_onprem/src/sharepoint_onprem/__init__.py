@@ -7,6 +7,9 @@ checked against configured sites and the server's document libraries. Reads may
 use a library listing confirmed within the last _LIBRARY_CACHE_SECONDS; any
 not-found or denied answer, and every deletion check, is re-checked against a
 fresh listing, so a cached scope can never turn into a deletion signal.
+IDs also carry the approved origin: the same path on another server is a
+different file, and an ID from another origin is a scope error, never a
+deletion signal.
 """
 
 import asyncio
@@ -426,9 +429,15 @@ class SharePointOnPremConnector(BaseConnector):
     def _decode_id(self, value, *, session=None, fresh=False):
         self._settings()
         data = _untoken(value)
-        if not isinstance(data, list) or len(data) not in (2, 3, 4):
+        # [kind, origin, site, *scope]: "s" has no scope, "l" adds the library,
+        # "d"/"f" add the library and the item path.
+        if not isinstance(data, list) or len(data) not in (3, 4, 5):
             raise ValueError("Invalid SharePoint identifier")
-        kind, site, *rest = data
+        kind, origin, site, *rest = data
+        if origin != self._approved_origin:
+            # Checked first, before any request: an ID minted for another server
+            # (or before IDs carried an origin) must not resolve against this one.
+            raise ValueError("Identifier outside the configured SharePoint server")
         if not isinstance(site, str) or site not in self._sites:
             raise ValueError("Identifier outside configured SharePoint sites")
         if kind == "s" and rest == []:
@@ -494,7 +503,7 @@ class SharePointOnPremConnector(BaseConnector):
                 return {
                     "nodes": [
                         {
-                            "id": _token(["s", site]),
+                            "id": _token(["s", self._approved_origin, site]),
                             "parent_id": None,
                             "kind": "folder",
                             "name": site.rsplit("/", 1)[-1] or "Root site",
@@ -508,7 +517,7 @@ class SharePointOnPremConnector(BaseConnector):
                     else None,
                 }
             identity = self._decode_id(parent_id, session=session)
-            kind, site = identity[:2]
+            kind, site = identity[0], identity[2]
             state = self._cursor(cursor, parent_id)
             if kind == "f":
                 raise ValueError("Files have no children")
@@ -534,7 +543,7 @@ class SharePointOnPremConnector(BaseConnector):
                         if _inside(path, site):
                             nodes.append(
                                 {
-                                    "id": _token(["l", site, path]),
+                                    "id": _token(["l", self._approved_origin, site, path]),
                                     "parent_id": parent_id,
                                     "kind": "folder",
                                     "name": entry.get("Title") or path.rsplit("/", 1)[-1],
@@ -548,8 +557,8 @@ class SharePointOnPremConnector(BaseConnector):
                     else None
                 )
                 return {"nodes": nodes, "next_cursor": next_cursor}
-            library = identity[2]
-            parent_path = library if kind == "l" else identity[3]
+            library = identity[3]
+            parent_path = library if kind == "l" else identity[4]
             if state["phase"] not in ("folders", "files"):
                 raise ValueError("Invalid SharePoint picker cursor")
             nodes = []
@@ -579,7 +588,15 @@ class SharePointOnPremConnector(BaseConnector):
                     if phase == "folders" and path == library + "/Forms":
                         continue  # Library view pages and templates, not documents.
                     item = {
-                        "id": _token(["d" if phase == "folders" else "f", site, library, path]),
+                        "id": _token(
+                            [
+                                "d" if phase == "folders" else "f",
+                                self._approved_origin,
+                                site,
+                                library,
+                                path,
+                            ]
+                        ),
                         "parent_id": parent_id,
                         "kind": "folder" if phase == "folders" else "file",
                         "name": entry.get("Name") or path.rsplit("/", 1)[-1],
@@ -679,9 +696,10 @@ class SharePointOnPremConnector(BaseConnector):
         with self._borrow_session() as session:
             try:
                 # Authorizes chunk deletion: never trust a cached library scope.
-                kind, site, _, path = self._decode_id(file_id, session=session, fresh=True)
-                if kind != "f":
+                identity = self._decode_id(file_id, session=session, fresh=True)
+                if identity[0] != "f":
                     return False
+                _, _, site, _, path = identity
                 self._json(
                     session,
                     self._url(site, self._file_endpoint(path)),
@@ -707,7 +725,7 @@ class SharePointOnPremConnector(BaseConnector):
             identity = self._decode_id(file_id, session=session)
             if identity[0] != "f":
                 raise ValueError("Only SharePoint file identifiers can be downloaded")
-            _, site, library, path = identity
+            _, _, site, library, path = identity
             endpoint = self._file_endpoint(path)
             try:
                 metadata = self._json(

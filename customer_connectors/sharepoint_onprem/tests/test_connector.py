@@ -25,7 +25,7 @@ def run(awaitable):
 
 def altered_file_id(file_id, *, library, path):
     decoded = json.loads(base64.urlsafe_b64decode(file_id + "=" * (-len(file_id) % 4)))
-    decoded[2:] = [library, path]
+    decoded[3:] = [library, path]  # [kind, origin, site, library, path]
     return (
         base64.urlsafe_b64encode(json.dumps(decoded, separators=(",", ":")).encode())
         .decode()
@@ -618,3 +618,60 @@ def test_successful_authentication_is_cached_but_a_failure_is_not(connector, mon
     attempts = len(server.calls)
     assert run(failing.authenticate()) is True
     assert len(server.calls) > attempts
+
+
+# Review pullrequestreview-5834310406-3: identical paths on two approved servers
+# must never share an ID, or one server's 404 could delete the other's chunks.
+
+FOREIGN_ORIGIN = "https://other.example.test"
+SECOND_ORIGIN = "https://second.example.test"
+
+
+def _with_origin(identifier, origin):
+    decoded = sharepoint_onprem._untoken(identifier)
+    decoded[1] = origin
+    return sharepoint_onprem._token(decoded)
+
+
+def test_ids_are_bound_to_the_approved_origin(connector):
+    adapter, server = connector
+    library, nested = navigate(adapter)
+    file_id = run(adapter.list_children(nested["id"], None, 1))["nodes"][0]["id"]
+    for identifier in (library["id"], nested["id"], file_id):
+        assert sharepoint_onprem._untoken(identifier)[1] == ORIGIN
+    before = len(server.calls)
+    foreign_file = _with_origin(file_id, FOREIGN_ORIGIN)
+    with pytest.raises(ValueError, match="configured SharePoint server"):
+        run(adapter.get_file_content(foreign_file))
+    assert run(adapter.is_definitively_missing(foreign_file)) is False
+    with pytest.raises(ValueError, match="configured SharePoint server"):
+        run(adapter.list_children(_with_origin(nested["id"], FOREIGN_ORIGIN)))
+    # Layouts minted before the origin was added: rejected, never a deletion.
+    legacy_file = sharepoint_onprem._token(["f", SITE, LIBRARY, NESTED + "/doc-0.txt"])
+    with pytest.raises(ValueError, match="configured SharePoint server"):
+        run(adapter.get_file_content(legacy_file))
+    assert run(adapter.is_definitively_missing(legacy_file)) is False
+    with pytest.raises(ValueError, match="Invalid SharePoint identifier"):
+        run(adapter.list_children(sharepoint_onprem._token(["s", SITE])))
+    assert len(server.calls) == before  # rejected before any request
+
+
+def test_root_url_switch_cannot_reuse_another_servers_ids(connector, monkeypatch):
+    adapter, server = connector
+    file_id = _first_file_id(adapter)
+    monkeypatch.setenv("OPENRAG_SHAREPOINT_ALLOWED_ORIGINS", f"{ORIGIN},{SECOND_ORIGIN}")
+    switched = SharePointOnPremConnector({**adapter.config, "root_url": SECOND_ORIGIN})
+    before = len(server.calls)
+    # The fake server asserts ORIGIN on every request, so a leak fails loudly.
+    with pytest.raises(ValueError, match="configured SharePoint server"):
+        run(switched.get_file_content(file_id))
+    assert run(switched.is_definitively_missing(file_id)) is False
+    assert len(server.calls) == before
+    first_sites = run(adapter.list_children())["nodes"]
+    second_sites = run(switched.list_children())["nodes"]
+    for first, second in zip(first_sites, second_sites, strict=True):
+        assert first["name"] == second["name"]
+        assert first["id"] != second["id"]
+        assert switched.filename_for_index(first["id"], "doc.txt") != switched.filename_for_index(
+            second["id"], "doc.txt"
+        )
