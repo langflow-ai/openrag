@@ -67,9 +67,10 @@ COPY --from=builder --chown=1001:0 /opt/app-root/src/.next/standalone ./
 COPY --from=builder --chown=1001:0 /opt/app-root/src/.next/static ./.next/static
 COPY --from=builder --chown=1001:0 /opt/app-root/src/public ./public
 COPY --chown=1001:0 frontend/entrypoint.sh ./entrypoint.sh
+COPY --chown=1001:0 frontend/https-server.js ./https-server.js
 
 EXPOSE 3000 9090
 USER 1001
 
 ENTRYPOINT ["./entrypoint.sh"]
-CMD ["node", "server.js"]
+CMD ["node", "https-server.js"]

@@ -110,6 +110,34 @@ def _component(module, client, embedding):
     return component
 
 
+def test_build_client_uses_custom_ca_and_enables_certificate_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_opensearch_module(monkeypatch)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setenv("OPENSEARCH_CA_CERTS", "/app/certs/opensearch-ca/ca.crt")
+    monkeypatch.setenv("OPENSEARCH_SSL_ASSERT_HOSTNAME", "true")
+    monkeypatch.setattr(module, "OpenSearch", lambda **kwargs: captured.update(kwargs))
+
+    component = module.OpenSearchVectorStoreComponentMultimodalMultiEmbedding()
+    component.opensearch_url = "https://opensearch:9200"
+    component.use_ssl = True
+    component.verify_certs = False
+    component.auth_mode = "jwt"
+    component.jwt_token = "token"
+    component.jwt_header = "Authorization"
+    component.bearer_prefix = True
+    component.request_timeout = "60"
+    component.max_retries = "3"
+
+    component.build_client()
+
+    assert captured["verify_certs"] is True
+    assert captured["ca_certs"] == "/app/certs/opensearch-ca/ca.crt"
+    assert captured["ssl_assert_hostname"] is True
+
+
 def test_detection_separates_provider_qualified_and_legacy_spaces(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

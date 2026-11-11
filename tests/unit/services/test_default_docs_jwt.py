@@ -15,6 +15,7 @@ from services.default_docs_service import (  # noqa: E402
     _ingest_default_documents_url_langflow,
     ingest_default_documents_when_ready,
 )
+from services.langflow_file_service import LangflowFileService  # noqa: E402
 
 
 class FakeSessionManager:
@@ -55,6 +56,9 @@ async def test_default_file_docs_use_effective_jwt_helper():
     assert task_id == "upload-task"
     assert session_manager.calls == [("anonymous", None)]
     assert task_service.upload_kwargs["jwt_token"] == "Bearer default-doc-token"
+    assert set(task_service.upload_kwargs["tweaks"]) == {
+        LangflowFileService.INGEST_OPENSEARCH_COMPONENT_ID
+    }
 
 
 @pytest.mark.asyncio
@@ -73,6 +77,9 @@ async def test_default_url_docs_use_effective_jwt_helper():
     assert task_id == "url-task"
     assert session_manager.calls == [("anonymous", None)]
     assert task_service.url_kwargs["jwt_token"] == "Bearer default-doc-token"
+    assert set(task_service.url_kwargs["tweaks"]) == {
+        LangflowFileService.URL_INGEST_OPENSEARCH_COMPONENT_ID
+    }
 
 
 @pytest.mark.asyncio
