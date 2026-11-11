@@ -89,6 +89,7 @@ def test_router_accepts_https_and_http_loopback_upstreams(value, expected):
     [
         "http://backend.example",
         "http://[::2]:8000",
+        "http://[::1]evil.example",
         "http://localhost.evil.example",
         "ftp://backend.example",
         "https:///missing-host",
@@ -177,6 +178,9 @@ class _FakeLlmClient:
 def test_proxy_forwards_only_allowlisted_headers(monkeypatch):
     """Forward only approved headers to the validated ingest upstream."""
     captured: dict = {}
+    monkeypatch.setattr(
+        router_app, "OPENRAG_BACKEND_ROUTER_UPSTREAM_URL", "https://backend.example/"
+    )
     monkeypatch.setattr(router_app.httpx, "AsyncClient", lambda *a, **k: _FakeClient(captured))
 
     client = TestClient(router_app.create_router_app())
@@ -193,12 +197,7 @@ def test_proxy_forwards_only_allowlisted_headers(monkeypatch):
 
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok"}
-    # Forwarded to the co-located backend over LOOPBACK (not the service name),
-    # with the original body.
-    assert captured["url"] == (
-        f"{router_app.OPENRAG_BACKEND_ROUTER_UPSTREAM_URL}{settings.INGEST_CALLBACK_PATH}"
-    )
-    assert captured["url"].startswith("http://127.0.0.1:8000")
+    assert captured["url"] == (f"https://backend.example{settings.INGEST_CALLBACK_PATH}")
     assert captured["url"].endswith(settings.INGEST_CALLBACK_PATH)
     assert captured["content"] == b'{"ingest_run_id":"run-1","chunks":[]}'
     fwd = {k.lower() for k in captured["headers"]}
@@ -221,6 +220,9 @@ def test_proxy_returns_502_when_upstream_unreachable(monkeypatch):
 def test_llm_proxy_forwards_only_allowlisted_headers_and_maps_private_path(monkeypatch):
     """Map the private LLM path onto the validated upstream base URL."""
     captured: dict = {}
+    monkeypatch.setattr(
+        router_app, "OPENRAG_BACKEND_ROUTER_UPSTREAM_URL", "https://backend.example/"
+    )
     monkeypatch.setattr(router_app.httpx, "AsyncClient", lambda *a, **k: _FakeLlmClient(captured))
 
     client = TestClient(router_app.create_router_app())
@@ -237,7 +239,7 @@ def test_llm_proxy_forwards_only_allowlisted_headers_and_maps_private_path(monke
 
     assert resp.status_code == 200
     assert resp.json() == {"object": "list", "data": []}
-    assert captured["url"] == (f"{router_app.OPENRAG_BACKEND_ROUTER_UPSTREAM_URL}/v1/embeddings")
+    assert captured["url"] == "https://backend.example/v1/embeddings"
     assert captured["params"] == {"trace": "1"}
     assert captured["stream"] is True
     forwarded = {key.lower() for key in captured["headers"]}

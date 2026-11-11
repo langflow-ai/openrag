@@ -91,6 +91,26 @@ def _validate_upstream_base_url(value: str) -> str:
     ):
         raise ValueError(message)
 
+    # urlsplit may accept junk after a bracketed IPv6 literal as part of the
+    # authority on some Python versions (for example ``[::1]evil.example``).
+    # Check the authority grammar explicitly before trusting ``hostname``.
+    authority = parts.netloc.rsplit("@", 1)[-1]
+    if authority.startswith("["):
+        closing_bracket = authority.find("]")
+        if closing_bracket == -1 or "]" in authority[closing_bracket + 1 :]:
+            raise ValueError(message)
+        try:
+            ipaddress.IPv6Address(authority[1:closing_bracket])
+        except ValueError as error:
+            raise ValueError(message) from error
+        suffix = authority[closing_bracket + 1 :]
+        if suffix and (
+            not suffix.startswith(":") or not suffix[1:].isascii() or not suffix[1:].isdigit()
+        ):
+            raise ValueError(message)
+    elif "[" in authority or "]" in authority or authority.count(":") > 1:
+        raise ValueError(message)
+
     try:
         hostname_ascii = hostname.encode("idna").decode("ascii")
     except UnicodeError as error:
