@@ -180,3 +180,17 @@ async def test_refresh_failure_does_not_replace_the_original_bulk_error():
 
     assert exc_info.value.deleted_count == 2
     assert search_cache.SUGGEST_CACHE.get("g") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("batch_size", [0, -1])
+async def test_non_positive_batch_size_is_rejected_before_any_request(batch_size):
+    client = _BulkClient()
+
+    with pytest.raises(ValueError, match="batch_size must be > 0"):
+        await bulk_delete_document_ids(
+            client, index="documents", document_ids=["a"], batch_size=batch_size
+        )
+
+    assert client.calls == []
+    assert client.indices.refresh_calls == []

@@ -120,7 +120,11 @@ async def bulk_delete_document_ids(
     request stops further batches and is also raised as a ``BulkDeleteError``
     (chained to the original exception). Either way, ``deleted_count`` on the
     error carries the deletions confirmed so far.
+
+    Raises ``ValueError`` if ``batch_size`` is not positive.
     """
+    if batch_size <= 0:
+        raise ValueError("batch_size must be > 0")
     ids = list(document_ids)
     deleted_count = 0
     first_error: str | None = None
