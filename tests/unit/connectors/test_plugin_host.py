@@ -1,5 +1,6 @@
 """Operator-enabled wheel discovery and the generic customer-connector HTTP contract."""
 
+import asyncio
 import importlib
 import json
 import shutil
@@ -378,6 +379,76 @@ async def test_plugin_form_auth_persistence_and_owner_scoped_picker(
         monkeypatch.setenv("OPENRAG_RUN_MODE", "saas")
         assert (await client.get(base + "/plugin-defaults")).status_code == 404
         assert "installed_demo" not in manager.get_available_connector_types("alice")
+
+
+@pytest.mark.asyncio
+async def test_overlapping_first_time_saves_create_a_single_connection(
+    installed_wheel, monkeypatch, tmp_path
+):
+    """Two first-time saves that both authenticate before either persists must
+    not create two active connections (409 in Settings, config loss on restart)."""
+    monkeypatch.setenv("OPENRAG_CONNECTOR_PLUGINS", "installed_demo")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    monkeypatch.setenv("OPENRAG_ENCRYPTION_KEY", "isolated-test-master-secret")
+    monkeypatch.setattr(encryption, "_cached_master_secret", None)
+    cls = registry.get_plugin_connector_class("installed_demo")
+    both_authenticating = asyncio.Event()
+    calls = {"count": 0}
+
+    async def slow_authenticate(self):
+        # Barrier: neither request may persist until both have passed the
+        # initial existing-connection check and are authenticating.
+        calls["count"] += 1
+        if calls["count"] == 2:
+            both_authenticating.set()
+        await asyncio.wait_for(both_authenticating.wait(), timeout=5)
+        return True
+
+    monkeypatch.setattr(cls, "authenticate", slow_authenticate)
+    connection_file = tmp_path / "connections.json"
+    manager = ConnectionManager(str(connection_file))
+    user = User(user_id="alice", name="Alice", email="alice@example.com")
+    app = _plugin_app(manager, SimpleNamespace(), user)
+    endpoints = ("https://first.example", "https://second.example")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        base = "/connectors/installed_demo"
+        responses = await asyncio.gather(
+            *(
+                client.post(
+                    base + "/plugin-configure",
+                    json={
+                        "config": {
+                            "endpoint": endpoint,
+                            "username": "domain\\alice",
+                            "password": "valid",
+                        }
+                    },
+                )
+                for endpoint in endpoints
+            )
+        )
+        assert [response.status_code for response in responses] == [200, 200]
+        connection_ids = {response.json()["connection_id"] for response in responses}
+        assert len(connection_ids) == 1
+        active = [
+            connection
+            for connection in manager.connections.values()
+            if connection.connector_type == "installed_demo" and connection.is_active
+        ]
+        assert len(active) == 1
+        assert active[0].connection_id in connection_ids
+        assert active[0].config["endpoint"] in endpoints
+        defaults = await client.get(base + "/plugin-defaults")
+        assert defaults.status_code == 200
+        assert defaults.json()["connection_id"] in connection_ids
+
+    reloaded = ConnectionManager(str(connection_file))
+    await reloaded.load_connections()
+    assert (
+        len(await reloaded.list_connections(user_id="alice", connector_type="installed_demo")) == 1
+    )
 
 
 @pytest.mark.asyncio

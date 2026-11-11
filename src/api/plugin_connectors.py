@@ -4,7 +4,9 @@ Only validated form descriptors and non-secret configuration cross back to the b
 A plugin cannot register its own routes through this interface.
 """
 
+import asyncio
 import uuid
+import weakref
 from typing import Any
 
 from fastapi import Depends, HTTPException, Query, Request
@@ -22,10 +24,32 @@ from dependencies import (
 )
 from session_manager import User
 from utils.encryption import encrypt_secret, get_master_secret
+from utils.logging_config import get_logger
 from utils.run_mode_utils import is_run_mode_saas
+
+logger = get_logger(__name__)
 
 # Real entity tags (S3, SharePoint "{GUID},N") are well under 100 characters.
 _MAX_ETAG_LENGTH = 256
+
+# Serializes plugin connection writes per (user, connector type) so overlapping
+# first-time saves cannot both create an active connection. Process-local:
+# correct only under the enforced single-worker constraint (app/lifespan.py);
+# move to a shared lock (Redis / DB) when that constraint is lifted. Weak values
+# keep a lock alive only while a request holds or awaits it, so the map cannot
+# grow without bound and a lock is never reused on another event loop.
+_creation_locks: "weakref.WeakValueDictionary[tuple[str, str], asyncio.Lock]" = (
+    weakref.WeakValueDictionary()
+)
+
+
+def _creation_lock(user_id: str, connector_type: str) -> asyncio.Lock:
+    key = (user_id, connector_type)
+    lock = _creation_locks.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _creation_locks[key] = lock
+    return lock
 
 
 def _picker_file_metadata(entry: dict[str, Any]) -> dict[str, Any]:
@@ -229,33 +253,78 @@ async def plugin_configure(
     if not authenticated:
         raise HTTPException(400, "Connector authentication failed")
 
-    if existing:
-        previous_config, previous_name = existing.config, existing.name
-        try:
-            await manager.update_connection(
-                existing.connection_id, config=config, name=body.name or existing.name
+    # Authentication above stays outside the lock so a slow source probe never
+    # blocks other saves; only the recheck and the write are serialized.
+    async with _creation_lock(user.user_id, connector_type):
+        if existing is None:
+            # A concurrent first-time save may have created the connection while
+            # this request was authenticating: update it rather than add a second.
+            existing = await _existing_connection(manager, connector_type, user.user_id, None)
+            if existing is not None:
+                logger.warning(
+                    "Concurrent first-time plugin save detected; updating the existing connection.",
+                    connector_type=connector_type,
+                    connection_id=existing.connection_id,
+                )
+        if existing:
+            connection_id = existing.connection_id
+            logger.info(
+                "Updating plugin connection...",
+                connector_type=connector_type,
+                connection_id=connection_id,
             )
-        except Exception:
-            existing.config, existing.name = previous_config, previous_name
-            raise
-        manager.active_connectors.pop(existing.connection_id, None)
-        connection_id = existing.connection_id
-    else:
-        connection_id = str(uuid.uuid4())
-        connection = ConnectionConfig(
-            connection_id=connection_id,
-            connector_type=connector_type,
-            name=body.name or cls.CONNECTOR_NAME or connector_type,
-            config=config,
-            user_id=user.user_id,
-        )
-        manager.connections[connection_id] = connection
-        try:
-            await manager.save_connections()
-        except Exception:
-            if manager.connections.get(connection_id) is connection:
-                manager.connections.pop(connection_id)
-            raise
+            previous_config, previous_name = existing.config, existing.name
+            try:
+                await manager.update_connection(
+                    connection_id, config=config, name=body.name or existing.name
+                )
+            except Exception as error:
+                existing.config, existing.name = previous_config, previous_name
+                logger.error(
+                    "Failed to update plugin connection.",
+                    connector_type=connector_type,
+                    connection_id=connection_id,
+                    error=type(error).__name__,
+                )
+                raise
+            manager.active_connectors.pop(connection_id, None)
+            logger.info(
+                "Successfully updated plugin connection.",
+                connector_type=connector_type,
+                connection_id=connection_id,
+            )
+        else:
+            connection_id = str(uuid.uuid4())
+            logger.info(
+                "Creating plugin connection...",
+                connector_type=connector_type,
+                user_id=user.user_id,
+            )
+            connection = ConnectionConfig(
+                connection_id=connection_id,
+                connector_type=connector_type,
+                name=body.name or cls.CONNECTOR_NAME or connector_type,
+                config=config,
+                user_id=user.user_id,
+            )
+            manager.connections[connection_id] = connection
+            try:
+                await manager.save_connections()
+            except Exception as error:
+                if manager.connections.get(connection_id) is connection:
+                    manager.connections.pop(connection_id)
+                logger.error(
+                    "Failed to persist plugin connection.",
+                    connector_type=connector_type,
+                    connection_id=connection_id,
+                    error=type(error).__name__,
+                )
+                raise
+            logger.info(
+                "Successfully created plugin connection.",
+                connector_type=connector_type,
+                connection_id=connection_id,
+            )
     return {"connection_id": connection_id, "status": "connected"}
 
 
