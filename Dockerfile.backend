@@ -51,9 +51,10 @@ WORKDIR /app
 # with INSTANA_ENABLED alone, and --extra tracing does the same for Langfuse
 # tracing (OPENRAG_TRACING_ENABLED). The extras exist so source installs that will never
 # enable them don't pay for the tracers; images ship with the capability present.
+# --extra oci does the same for the OCI SDK (instance / workload principal auth).
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv,uid=0,gid=0 \
-    uv sync --extra apm --extra tracing
+    uv sync --extra apm --extra tracing --extra oci
 
 # Application (invalidates after deps only when src/flows change)
 COPY src/ ./src/
