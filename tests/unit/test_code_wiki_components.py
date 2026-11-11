@@ -1198,6 +1198,138 @@ class TestJavaSymbols:
         ]
 
 
+def _jf(path, text):
+    return {"repo_path": path, "language": "java", "text": text, "is_doc": False}
+
+
+class TestSamePackageEdges:
+    FILES = [
+        _jf(
+            "svc/src/main/java/org/x/Base.java",
+            "package org.x;\npublic class Base {}\n",
+        ),
+        _jf(
+            "svc/src/main/java/org/x/Child.java",
+            "package org.x;\n// Other is only in a comment\npublic class Child extends Base {}\n",
+        ),
+        _jf(
+            "svc/src/main/java/org/x/Other.java",
+            "package org.x;\npublic class Other {}\n",
+        ),
+        _jf(
+            "svc/src/main/java/org/y/Far.java",
+            "package org.y;\npublic class Far { Base b; }\n",
+        ),
+        _jf(
+            "other/src/main/java/org/x/Base.java",
+            "package org.x;\npublic class Base {}\n",
+        ),
+    ]
+
+    def test_resolves_unqualified_type_in_same_package(self, rl):
+        edges = rl.resolve_edges(rl.build_manifest(self.FILES))
+        assert edges["svc/src/main/java/org/x/Child.java"]["depends_on"] == [
+            "svc/src/main/java/org/x/Base.java"
+        ]
+        assert edges["svc/src/main/java/org/x/Base.java"]["called_by"] == [
+            "svc/src/main/java/org/x/Child.java"
+        ]
+
+    def test_ignores_names_that_only_appear_in_comments(self, rl):
+        edges = rl.resolve_edges(rl.build_manifest(self.FILES))
+        assert (
+            "svc/src/main/java/org/x/Other.java"
+            not in edges["svc/src/main/java/org/x/Child.java"]["depends_on"]
+        )
+
+    def test_other_packages_and_other_modules_are_not_linked(self, rl):
+        edges = rl.resolve_edges(rl.build_manifest(self.FILES))
+        assert edges["svc/src/main/java/org/y/Far.java"]["depends_on"] == []
+        assert (
+            "other/src/main/java/org/x/Base.java"
+            not in edges["svc/src/main/java/org/x/Child.java"]["depends_on"]
+        )
+
+    def test_does_not_duplicate_an_edge_that_has_an_import(self, rl):
+        files = [
+            _jf("m/src/A.java", "package p;\nimport p.B;\nclass A { B b; }\n"),
+            _jf("m/src/B.java", "package p;\nclass B {}\n"),
+        ]
+        edges = rl.resolve_edges(rl.build_manifest(files))
+        assert edges["m/src/A.java"]["depends_on"] == ["m/src/B.java"]
+
+    def test_files_without_a_package_line_are_skipped(self, rl):
+        files = [_jf("m/src/A.java", "class A { B b; }\n"), _jf("m/src/B.java", "class B {}\n")]
+        assert rl.same_package_edges(files) == {}
+
+
+class TestFeignEdges:
+    YML = "spring:\n  application:\n    name: account-service\n"
+    CONTROLLER = (
+        'package a;\n@RestController\n@RequestMapping("/accounts")\npublic class AccountController {\n'
+        "    @GetMapping\n    Object list() { return null; }\n"
+        '    @PutMapping("/{id}")\n    Object put() { return null; }\n}\n'
+    )
+    CLIENT = (
+        'package u;\n@FeignClient(name = "account-service", configuration = C.class)\n'
+        "public interface AccountService {\n"
+        '    @GetMapping("/accounts")\n    Object list();\n}\n'
+    )
+
+    def _files(self, client=None, yml=None):
+        return [
+            {
+                "repo_path": "Account-Service/src/main/resources/application.yml",
+                "language": "yaml",
+                "text": yml or self.YML,
+                "is_doc": False,
+            },
+            _jf("Account-Service/src/main/java/a/AccountController.java", self.CONTROLLER),
+            _jf("User-Service/src/main/java/u/AccountService.java", client or self.CLIENT),
+        ]
+
+    def test_client_links_to_the_controller_serving_its_route(self, rl):
+        edges = rl.resolve_edges(rl.build_manifest(self._files()))
+        client = "User-Service/src/main/java/u/AccountService.java"
+        controller = "Account-Service/src/main/java/a/AccountController.java"
+        assert edges[client]["depends_on"] == [controller]
+        assert edges[controller]["called_by"] == [client]
+
+    def test_path_variables_match_whatever_their_name(self, rl):
+        client = self.CLIENT.replace(
+            '@GetMapping("/accounts")', '@PutMapping("/accounts/{accountId}")'
+        )
+        edges = rl.resolve_edges(rl.build_manifest(self._files(client=client)))
+        assert edges["User-Service/src/main/java/u/AccountService.java"]["depends_on"] == [
+            "Account-Service/src/main/java/a/AccountController.java"
+        ]
+
+    def test_no_edge_when_no_route_is_shared(self, rl):
+        client = self.CLIENT.replace('@GetMapping("/accounts")', '@GetMapping("/elsewhere")')
+        edges = rl.resolve_edges(rl.build_manifest(self._files(client=client)))
+        assert edges["User-Service/src/main/java/u/AccountService.java"]["depends_on"] == []
+
+    def test_no_edge_when_the_method_differs(self, rl):
+        client = self.CLIENT.replace("@GetMapping", "@DeleteMapping")
+        edges = rl.resolve_edges(rl.build_manifest(self._files(client=client)))
+        assert edges["User-Service/src/main/java/u/AccountService.java"]["depends_on"] == []
+
+    def test_no_edge_when_the_service_name_is_unknown(self, rl):
+        client = self.CLIENT.replace("account-service", "nobody")
+        edges = rl.resolve_edges(rl.build_manifest(self._files(client=client)))
+        assert edges["User-Service/src/main/java/u/AccountService.java"]["depends_on"] == []
+
+    def test_service_name_match_ignores_case(self, rl):
+        yml = "spring:\n  application:\n    name: ACCOUNT-SERVICE\n"
+        edges = rl.resolve_edges(rl.build_manifest(self._files(yml=yml)))
+        assert edges["User-Service/src/main/java/u/AccountService.java"]["depends_on"] == [
+            "Account-Service/src/main/java/a/AccountController.java"
+        ]
+
+    def test_repo_without_feign_clients_is_unchanged(self, rl):
+        assert rl.feign_edges([_jf("m/src/A.java", "package p;\nclass A {}\n")]) == {}
+
+
 class TestPythonAndJavaScript:
     def test_python_symbols_have_exact_spans(self, rl):
         source = "import os\nfrom .sib import x\nfrom pkg.mod import y\n\nclass A:\n    def m(self):\n        pass\n\nasync def top():\n    return 1\n"

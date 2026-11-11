@@ -587,6 +587,95 @@ def resolve_imports(
     return resolved
 
 
+_JVM_NOISE_RE = re.compile(r"/\*.*?\*/|//[^\n]*|^[ \t]*(?:package|import)[ \t][^\n]*", re.S | re.M)
+_FEIGN_RE = re.compile(r"@FeignClient\(\s*(?:name|value)\s*=\s*\"([\w-]+)\"")
+_ROUTE_RE = re.compile(
+    r"@(Get|Post|Put|Patch|Delete)Mapping(?:\(\s*(?:value\s*=\s*)?\"([^\"]*)\"[^)]*\)|\(\s*\)|)"
+)
+_BASE_ROUTE_RE = re.compile(r"@RequestMapping\(\s*(?:value\s*=\s*)?\"([^\"]*)\"")
+_APP_NAME_RE = re.compile(r"application:\s*\n\s+name:\s*([\w-]+)")
+
+
+def _service_root(repo_path: str) -> str:
+    """The module a JVM file belongs to: everything before its `/src/` directory."""
+    i = repo_path.find("/src/")
+    return repo_path[:i] if i >= 0 else ""
+
+
+def same_package_edges(files: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """Edges to classes in the same package, which Java/Kotlin/Scala use without an import
+    (fields, parameters, `extends`, `implements`, `new X()`). Only classes in the same module."""
+    by_pkg: dict[str, dict[str, list[str]]] = {}
+    pkg_of: dict[str, str] = {}
+    for f in files:
+        rp = f["repo_path"]
+        if not rp.endswith(_JVM_EXTS):
+            continue
+        m = _JVM_PACKAGE_RE.search(f.get("text") or "")
+        if not m:
+            continue
+        pkg_of[rp] = m.group(1)
+        stem = posixpath.splitext(posixpath.basename(rp))[0]
+        by_pkg.setdefault(m.group(1), {}).setdefault(stem, []).append(rp)
+    edges: dict[str, list[str]] = {}
+    for f in files:
+        rp = f["repo_path"]
+        if rp not in pkg_of:
+            continue
+        words = set(re.findall(r"[A-Za-z_]\w*", _JVM_NOISE_RE.sub("", f["text"])))
+        for stem, paths in by_pkg[pkg_of[rp]].items():
+            if stem not in words:
+                continue
+            for hit in paths:
+                if hit != rp and _service_root(hit) == _service_root(rp):
+                    edges.setdefault(rp, []).append(hit)
+    return edges
+
+
+def _jvm_routes(text: str) -> set[tuple[str, str]]:
+    """(VERB, path) pairs from a Feign interface or a controller, `{var}` normalised to `{}`."""
+    head, _, body = _JVM_NOISE_RE.sub("", text).partition("{")
+    mb = _BASE_ROUTE_RE.search(head)
+    base = mb.group(1) if mb else ""
+    out: set[tuple[str, str]] = set()
+    for m in _ROUTE_RE.finditer(body):
+        full = "/" + "/".join(x for x in f"{base}/{m.group(2) or ''}".split("/") if x)
+        out.add((m.group(1).upper(), re.sub(r"\{[^}]*\}", "{}", full)))
+    return out
+
+
+def feign_edges(files: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """Edges from a `@FeignClient(name="x")` interface to the controller in service `x` that
+    serves one of its routes. The service is the module whose application.yml has
+    `spring.application.name: x`. These calls go over HTTP, so they have no import."""
+    roots: dict[str, str] = {}
+    for f in files:
+        rp = f["repo_path"]
+        if posixpath.basename(rp) in ("application.yml", "application.yaml"):
+            m = _APP_NAME_RE.search(f["text"])
+            if m:
+                roots.setdefault(m.group(1).lower(), _service_root(rp))
+    clients: list[tuple[str, str, set[tuple[str, str]]]] = []
+    controllers: dict[str, list[tuple[str, set[tuple[str, str]]]]] = {}
+    for f in files:
+        rp, text = f["repo_path"], f["text"]
+        if not rp.endswith((".java", ".kt")):
+            continue
+        m = _FEIGN_RE.search(text)
+        if m:
+            clients.append((rp, m.group(1).lower(), _jvm_routes(text)))
+        elif "@RestController" in text or "@Controller" in text:
+            controllers.setdefault(_service_root(rp), []).append((rp, _jvm_routes(text)))
+    edges: dict[str, list[str]] = {}
+    for rp, name, routes in clients:
+        if name not in roots:
+            continue
+        for crp, croutes in controllers.get(roots[name], []):
+            if routes & croutes:
+                edges.setdefault(rp, []).append(crp)
+    return edges
+
+
 def build_manifest(files: list[dict[str, Any]]) -> dict[str, Any]:
     path_set = {f["repo_path"] for f in files}
     jvm_index = build_jvm_index(files)
@@ -603,6 +692,10 @@ def build_manifest(files: list[dict[str, Any]]) -> dict[str, Any]:
             continue
         symbols[rp] = extract_symbols(text, lang)
         imports[rp] = resolve_imports(extract_imports(text, lang), rp, lang, path_set, jvm_index)
+    for found in (same_package_edges(files), feign_edges(files)):
+        for rp, hits in found.items():
+            if rp in imports:
+                imports[rp] = list(dict.fromkeys([*imports[rp], *hits]))
     return {
         "tree": sorted(path_set),
         "symbols": symbols,
