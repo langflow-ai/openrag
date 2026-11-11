@@ -81,6 +81,31 @@ class TestOpenAILanguageClassification:
         assert is_openai_language_model("ft:gpt-4.1-mini:acme:my-tune:abc123")
 
 
+class TestRelaxedClassificationForCustomGateways:
+    """A custom base_url means the inventory isn't OpenAI's own catalog, so
+    naming-scheme-based classification is relaxed instead of dropping every
+    non-matching model ID (openrag issue #2060 - custom gateway onboarding)."""
+
+    def test_relaxed_embedding_matches_on_embed_substring(self):
+        assert is_openai_embedding_model("cohere.embed-english-v3", relaxed=True)
+        assert is_openai_embedding_model("stub-embed-model", relaxed=True)
+        assert not is_openai_embedding_model("stub-embed-model", relaxed=False)
+
+    def test_relaxed_language_model_accepts_non_openai_names(self):
+        assert is_openai_language_model("stub-chat-model", relaxed=True)
+        assert is_openai_language_model("claude-3-opus", relaxed=True)
+        assert not is_openai_language_model("stub-chat-model", relaxed=False)
+
+    def test_relaxed_still_excludes_embeddings_and_junk(self):
+        assert not is_openai_language_model("stub-embed-model", relaxed=True)
+        assert not is_openai_language_model("whisper-1", relaxed=True)
+        assert not is_openai_language_model("dall-e-3", relaxed=True)
+
+    def test_strict_openai_names_unaffected_by_relaxed(self):
+        assert is_openai_language_model("gpt-4o", relaxed=True)
+        assert is_openai_embedding_model("text-embedding-3-small", relaxed=True)
+
+
 class TestResolvePreferredModel:
     def test_uses_preferred_when_present(self):
         live = [
