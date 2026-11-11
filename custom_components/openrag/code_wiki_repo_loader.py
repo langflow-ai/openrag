@@ -1308,14 +1308,16 @@ class RepoLoader(Component):
 
     @staticmethod
     def _git_env(host: str, scheme: str, token: str) -> dict[str, str]:
-        """Environment for ``git clone``: no prompts, restricted transports, symlinks checked out
-        as plain files, and (https only) the access token as an HTTP header."""
+        """Environment for ``git clone``: no prompts, restricted transports, no HTTP redirects,
+        symlinks checked out as plain files, and (https only) the access token as an HTTP header."""
         env = dict(os.environ)
         env["GIT_TERMINAL_PROMPT"] = "0"
         # Block ext:: / file:: transports: the URL can come from an uploaded file. Plain http is
         # allowed only with the same opt-in as internal hosts.
         env["GIT_ALLOW_PROTOCOL"] = "https:http:ssh" if _private_hosts_allowed() else "https:ssh"
-        config = [("core.symlinks", "false")]
+        # followRedirects=false: the host was checked above, but a redirect could send the clone
+        # (and the token header) to an internal host that was never checked.
+        config = [("core.symlinks", "false"), ("http.followRedirects", "false")]
         if token and scheme == "https":
             # Passed through the environment, not argv or the clone URL, so it isn't visible in the
             # process list and isn't written to the clone's .git/config. Never sent over http.

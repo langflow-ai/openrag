@@ -692,11 +692,8 @@ class _GitStub:
 
 
 @pytest.fixture
-def git(monkeypatch, rl):
-    stub = _GitStub()
-    monkeypatch.setattr(subprocess, "run", stub)
-    monkeypatch.setattr(rl.shutil, "which", lambda _name: "/usr/bin/git")
-    # Repo hosts in these tests resolve to a public address; no real DNS lookups.
+def public_dns(monkeypatch, rl):
+    """Every repo host resolves to a public address; no real DNS lookups."""
     monkeypatch.setattr(
         rl.socket,
         "getaddrinfo",
@@ -704,6 +701,13 @@ def git(monkeypatch, rl):
             (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port or 443))
         ],
     )
+
+
+@pytest.fixture
+def git(monkeypatch, rl, public_dns):
+    stub = _GitStub()
+    monkeypatch.setattr(subprocess, "run", stub)
+    monkeypatch.setattr(rl.shutil, "which", lambda _name: "/usr/bin/git")
     return stub
 
 
@@ -836,7 +840,11 @@ class TestGitClone:
         _make(rl.RepoLoader, repo_url="https://git.internal.example/o/r")._obtain_repo()
         assert git.cmd[-2] == "https://git.internal.example/o/r"
 
-    def test_failure_message_does_not_leak_the_token(self, rl, monkeypatch):
+    def test_git_does_not_follow_http_redirects(self, rl, git):
+        _make(rl.RepoLoader, repo_url="https://github.com/o/r")._obtain_repo()
+        assert _git_config(git.env)["http.followRedirects"] == "false"
+
+    def test_failure_message_does_not_leak_the_token(self, rl, public_dns, monkeypatch):
         def failing(cmd, **_kwargs):
             raise subprocess.CalledProcessError(
                 128,
@@ -852,7 +860,7 @@ class TestGitClone:
             loader._obtain_repo()
         assert "ghp_LEAK" not in str(exc.value)
 
-    def test_private_repo_hint_when_no_token(self, rl, monkeypatch):
+    def test_private_repo_hint_when_no_token(self, rl, public_dns, monkeypatch):
         def failing(cmd, **_kwargs):
             raise subprocess.CalledProcessError(128, cmd, stderr="fatal: Authentication failed")
 
