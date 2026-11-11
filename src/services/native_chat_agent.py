@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import copy
 import ipaddress
 import json
 import operator
@@ -16,7 +17,7 @@ import os
 import socket
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import asdict
 from html.parser import HTMLParser
 from typing import Any
@@ -56,12 +57,13 @@ from services.langflow_llm_token_service import HOP_PURPOSE_CHAT, LangflowLlmTok
 from services.native_chat_history_service import native_chat_history_service
 from services.search_service import search_tool
 from services.session_ownership_service import session_ownership_service
+from utils.langflow_utils import fence_untrusted_text, strip_untrusted_fence_recursive
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 MAX_ITERATIONS = 15
-_BINARY_OPERATORS = {
+_BINARY_OPERATORS: dict[type[ast.operator], Callable[[int | float, int | float], int | float]] = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
     ast.Mult: operator.mul,
@@ -70,7 +72,10 @@ _BINARY_OPERATORS = {
     ast.Mod: operator.mod,
     ast.Pow: operator.pow,
 }
-_UNARY_OPERATORS = {ast.UAdd: operator.pos, ast.USub: operator.neg}
+_UNARY_OPERATORS: dict[type[ast.unaryop], Callable[[int | float], int | float]] = {
+    ast.UAdd: operator.pos,
+    ast.USub: operator.neg,
+}
 
 
 class _TextExtractor(HTMLParser):
@@ -89,10 +94,14 @@ def _calculate(expression: str) -> dict[str, Any]:
     def visit(node: ast.AST) -> int | float:
         if isinstance(node, ast.Constant) and isinstance(node.value, int | float):
             return node.value
-        if isinstance(node, ast.BinOp) and type(node.op) in _BINARY_OPERATORS:
-            return _BINARY_OPERATORS[type(node.op)](visit(node.left), visit(node.right))
-        if isinstance(node, ast.UnaryOp) and type(node.op) in _UNARY_OPERATORS:
-            return _UNARY_OPERATORS[type(node.op)](visit(node.operand))
+        if isinstance(node, ast.BinOp):
+            binary_operation = _BINARY_OPERATORS.get(type(node.op))
+            if binary_operation is not None:
+                return binary_operation(visit(node.left), visit(node.right))
+        if isinstance(node, ast.UnaryOp):
+            unary_operation = _UNARY_OPERATORS.get(type(node.op))
+            if unary_operation is not None:
+                return unary_operation(visit(node.operand))
         raise ValueError("Only numeric arithmetic expressions are supported")
 
     try:
@@ -236,6 +245,7 @@ class NativeChatAgent:
                     for payload in self._stream_events(
                         get_event.result(), conversation_id, model, call_inputs, call_item_ids
                     ):
+                        strip_untrusted_fence_recursive(payload)
                         chunks.append(payload)
                         yield self._event(payload)
                 else:
@@ -274,14 +284,14 @@ class NativeChatAgent:
                     )
                 except Exception:
                     logger.exception("[CHAT] Failed to persist native chat error")
-            payload: dict[str, Any] = {
+            error_payload: dict[str, Any] = {
                 "status": "failed",
                 "finish_reason": "error",
                 "error": {"message": message},
             }
             if conversation_id:
-                payload.update({"id": conversation_id, "response_id": conversation_id})
-            yield self._event(payload)
+                error_payload.update({"id": conversation_id, "response_id": conversation_id})
+            yield self._event(error_payload)
 
     async def _start(
         self,
@@ -319,7 +329,8 @@ class NativeChatAgent:
 
     def _agent(self, user_id: str) -> tuple[Agent, str]:
         config = get_openrag_config()
-        model_name = getattr(config.agent, "llm_model", None)
+        agent_config = getattr(config, "agent", None)
+        model_name = getattr(agent_config, "llm_model", None)
         if not model_name:
             raise RuntimeError("No language model is configured for native chat")
         token = LangflowLlmTokenService().create_token(user_id=user_id, purpose=HOP_PURPOSE_CHAT)
@@ -332,11 +343,11 @@ class NativeChatAgent:
 
         async def search_documents(search_query: str) -> dict[str, Any]:
             """Search indexed OpenRAG documents for relevant content."""
-            return await search_tool(search_query)
+            return self._fence_search_response(await search_tool(search_query))
 
         async def raw_search(search_query: str) -> dict[str, Any]:
             """Search indexed OpenRAG documents and return the raw matching chunks."""
-            return await search_tool(search_query)
+            return self._fence_search_response(await search_tool(search_query))
 
         def calculator(expression: str) -> dict[str, Any]:
             """Evaluate a numeric arithmetic expression."""
@@ -352,11 +363,26 @@ class NativeChatAgent:
         return (
             Agent(
                 model,
-                system_prompt=DEFAULT_SYSTEM_PROMPT,
+                system_prompt=getattr(agent_config, "system_prompt", None) or DEFAULT_SYSTEM_PROMPT,
                 tools=[search_documents, raw_search, calculator, opensearch_url_ingestion_flow],
             ),
             model_name,
         )
+
+    @staticmethod
+    def _fence_search_response(response: dict[str, Any]) -> dict[str, Any]:
+        """Fence retrieved document text before it enters the model context.
+
+        Search results are later returned to the client as citations, so the
+        original result must not be mutated. The stream adapter removes the
+        fence markers from its display-only payload after Pydantic AI receives
+        this protected copy.
+        """
+        fenced = copy.deepcopy(response)
+        for result in fenced.get("results", []):
+            if isinstance(result, dict) and isinstance(result.get("text"), str):
+                result["text"] = fence_untrusted_text(result["text"])
+        return fenced
 
     @staticmethod
     def _stream_events(
@@ -551,7 +577,9 @@ class NativeChatAgent:
                     continue
                 content = getattr(part, "content", None)
                 if isinstance(content, dict):
-                    sources.extend(content.get("results") or [])
+                    results = copy.deepcopy(content.get("results") or [])
+                    strip_untrusted_fence_recursive(results)
+                    sources.extend(results)
         return sources
 
     @staticmethod

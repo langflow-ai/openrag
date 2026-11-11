@@ -161,7 +161,8 @@ def is_chat_with_langflow_disabled() -> bool:
         return False
     if env_flag_enabled("DISABLE_CHAT_WITH_LANGFLOW"):
         return True
-    return bool(get_openrag_config().agent.disable_chat_with_langflow)
+    agent = getattr(get_openrag_config(), "agent", None)
+    return bool(getattr(agent, "disable_chat_with_langflow", False))
 
 
 def is_ingest_with_langflow_disabled() -> bool:

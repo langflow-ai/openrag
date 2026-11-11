@@ -20,7 +20,7 @@ def install_agentd_response_event_compat(agentd_patch_module: Any) -> None:
         kwargs.setdefault("name", "function_call")
         return original(*args, **kwargs)
 
-    response_function_call_arguments_done_event_compat._openrag_name_compat = True
+    setattr(response_function_call_arguments_done_event_compat, "_openrag_name_compat", True)
     agentd_patch_module.ResponseFunctionCallArgumentsDoneEvent = (
         response_function_call_arguments_done_event_compat
     )

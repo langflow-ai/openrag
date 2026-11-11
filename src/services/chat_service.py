@@ -71,7 +71,7 @@ class ChatService:
             previous_response_id=previous_response_id,
             filter_id=filter_id,
         )
-        response_data = {"response": response_text, "response_id": response_id}
+        response_data: dict[str, Any] = {"response": response_text, "response_id": response_id}
         if sources:
             response_data["sources"] = sources
         return response_data
@@ -859,7 +859,9 @@ class ChatService:
                                 "last_activity": metadata.get("last_activity")
                                 or conversation.get("last_activity"),
                                 "filter_id": metadata.get("filter_id"),
-                                "total_messages": len(messages),
+                                "total_messages": max(
+                                    len(messages), metadata.get("total_messages", 0)
+                                ),
                                 "source": source,
                                 "langflow_session_id": session_id,
                                 "langflow_flow_id": conversation.get("flow_id"),
@@ -886,7 +888,9 @@ class ChatService:
                 existing = next(c for c in all_conversations if c["response_id"] == response_id)
                 if len(messages) > len(existing.get("messages") or []):
                     existing["messages"] = messages
-                    existing["total_messages"] = len(messages)
+                    existing["total_messages"] = max(
+                        len(messages), metadata.get("total_messages", 0)
+                    )
                     existing["source"] = "openrag_memory_preferred"
                 continue
 
@@ -916,7 +920,7 @@ class ChatService:
                     if hasattr(last_activity, "isoformat")
                     else last_activity,
                     "filter_id": metadata.get("filter_id") or conversation_state.get("filter_id"),
-                    "total_messages": len(messages) or metadata.get("total_messages", 0),
+                    "total_messages": max(len(messages), metadata.get("total_messages", 0)),
                     "source": "local_error_fallback",
                 }
             )
