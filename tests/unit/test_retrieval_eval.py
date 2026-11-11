@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from scripts.eval.retrieval import dataset, metrics, report
+from scripts.eval.retrieval import answers, dataset, metrics, report
 
 PREFIX = "eval-abc12345-"
 CORPUS = frozenset({"a.md", "b.md", "c.md", "d.md"})
@@ -944,3 +944,468 @@ def test_check_and_cleanup_reject_unusable_arguments_before_contacting_a_stack(
 
     assert completed.returncode != 0
     assert message in completed.stderr
+
+
+# --- answer quality --------------------------------------------------------
+
+
+def test_answer_cited_rank_ignores_strays() -> None:
+    sources = [
+        {"filename": "a.md"},
+        {"filename": PREFIX + "unknown.md"},
+        {"filename": PREFIX + "b.md"},
+        {"filename": PREFIX + "a.md"},
+    ]
+    assert answers.cited_rank(sources, PREFIX, CORPUS, ["a.md"]) == 2
+    assert answers.cited_rank(sources, PREFIX, CORPUS, ["d.md"]) is None
+
+
+def test_answer_phrase_and_missing_scores() -> None:
+    assert answers.contains_phrase("An OVERLAP\n  window works", "overlap window")
+    assert not answers.contains_phrase("No overlap", "overlap window")
+    assert answers.score_answer("answer", None) == {"answer_cited": 0.0}
+    rows = [
+        answers.score_answer("yes", 1, "yes", answers.Judgement(1, "partial", "detail missing")),
+        answers.score_answer("no", None, "yes"),
+    ]
+    means = metrics.aggregate(rows, [["semantic"], ["semantic"]])
+    assert means["overall"] == {
+        "answer_cited": 0.5,
+        "answer_has_phrase": 0.5,
+        "answer_correct": 0.5,
+        "answer_grounded": 0.5,
+    }
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"correctness": 2, "grounded": "yes", "reason": "supported"}',
+        'Here is my verdict:\n```json\n{"correctness": 2, "grounded": "yes", "reason": "supported"}\n```',
+        # Near-misses small models produce.
+        '{"correctness": 2.0, "grounded": "Yes ", "reason": " supported "}',
+        '{"correctness": "2", "grounded": "YES", "reason": "supported"}',
+        # A schema echo or other invalid object before the real verdict.
+        'Format: {"correctness": "0|1|2", "grounded": "yes|partial|no"} '
+        'Verdict: {"correctness": 2, "grounded": "yes", "reason": "supported"}',
+        '{"note": {"nested": true}} {"correctness": 2, "grounded": "yes", "reason": "supported"}',
+    ],
+)
+def test_parse_judgement_valid(text: str) -> None:
+    assert answers.parse_judgement(text) == answers.Judgement(2, "yes", "supported")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "junk",
+        "[]",
+        "{oops}",
+        "{}",
+        '{"correctness": true, "grounded": "yes", "reason": "x"}',
+        '{"correctness": "true", "grounded": "yes", "reason": "x"}',
+        '{"correctness": 1.5, "grounded": "yes", "reason": "x"}',
+        '{"correctness": "two", "grounded": "yes", "reason": "x"}',
+        '{"correctness": 3, "grounded": "yes", "reason": "x"}',
+        '{"correctness": -0.0e5, "grounded": "maybe", "reason": "x"}',
+        '{"correctness": 1, "grounded": [], "reason": "x"}',
+        '{"correctness": 1, "grounded": "maybe", "reason": "x"}',
+        '{"correctness": 1, "grounded": "no", "reason": " "}',
+        '{"correctness": 1, "grounded": "no", "reason": 4}',
+    ],
+)
+def test_parse_judgement_invalid(text: str) -> None:
+    assert answers.parse_judgement(text) is None
+
+
+def answer_query(score: int = 0) -> dict[str, Any]:
+    q = make_query("answer", 1, 1, 1, 1)
+    q["expected_answer"] = "reference"
+    q["answer"] = {
+        "text": "wrong answer",
+        "judgement": {"correctness": score, "grounded": "no", "reason": "unsupported"},
+        "judge_error": None,
+    }
+    q["metrics"].update(
+        answers.score_answer(
+            "wrong answer", 1, "reference", answers.Judgement(score, "no", "unsupported")
+        )
+    )
+    return q
+
+
+def test_answer_summary() -> None:
+    q = answer_query()
+    bad = answer_query()
+    bad["id"] = "bad-judge"
+    bad["answer"].update(judgement=None, judge_error="judge reply could not be parsed")
+    bad["metrics"] = answers.score_answer("wrong", None)
+    bad["metrics"]["recall@5"] = 1
+    rendered = report.render_summary(make_results([q, bad]))
+    assert "## Answer quality" in rendered
+    assert "Answer quality by tag" in rendered
+    assert "1 failed to parse" in rendered
+    assert "Answers judged wrong (1)" in rendered
+    assert "reference" in rendered and "unsupported" in rendered
+
+
+def test_answer_diff_notes_do_not_fail_recall_gate() -> None:
+    old = make_results([make_query("answer", 1, 1, 1, 1)])
+    current = make_results([answer_query(2)])
+    current["answer_settings"] = {"judge_model": "judge-a", "llm_model": "agent-a"}
+    diff = report.diff_results(old, current)
+    assert diff["notes"] and not diff["warnings"]
+    assert report.recall_gate_failure(diff, 0) is None
+    for setting in ("judge_model", "llm_model", "system_prompt_sha256", "answer_limit"):
+        previous = make_results([answer_query(0)])
+        previous["answer_settings"] = {**current["answer_settings"], setting: "different"}
+        diff = report.diff_results(previous, current)
+        assert diff["notes"] and not diff["warnings"]
+        assert diff["answer_changes"][0]["delta"] == 2
+        assert report.recall_gate_failure(diff, 0) is None
+        assert "Answer correctness changes" in report.render_diff(diff)
+
+
+@pytest.mark.parametrize("value", [None, "", "  ", 4, []])
+def test_expected_answer_validation(tmp_path: Path, value: Any) -> None:
+    path = tmp_path / "queries.jsonl"
+    path.write_text(
+        json.dumps({"query": "q", "expected_files": ["a.md"], "expected_answer": value})
+    )
+    with pytest.raises(dataset.DatasetError, match="expected_answer"):
+        dataset.load_queries(path, ["a.md"])
+
+
+def test_answer_labels_preserve_retrieval_hash(tmp_path: Path) -> None:
+    path = tmp_path / "queries.jsonl"
+    row = {"query": "q", "expected_files": ["a.md"]}
+    path.write_text(json.dumps(row) + "\n")
+    original = dataset.hash_file(path)
+    row["expected_answer"] = "reference"
+    path.write_text(json.dumps(row) + "\n")
+    assert dataset.retrieval_queries_hash(path) == original
+    baseline = make_results([make_query("answer", 1, 1, 1, 1)], queries_hash=original)
+    current = make_results(
+        [answer_query()],
+        queries_hash=dataset.hash_file(path),
+        retrieval_queries_hash=dataset.retrieval_queries_hash(path),
+    )
+    diff = report.diff_results(baseline, current)
+    assert not diff["warnings"] and diff["notes"]
+    assert report.recall_gate_failure(diff, 0) is None
+    row["query"] = "different retrieval question"
+    path.write_text(json.dumps(row) + "\n")
+    current["run"]["retrieval_queries_hash"] = dataset.retrieval_queries_hash(path)
+    assert report.diff_results(baseline, current)["warnings"]
+
+
+def load_answer_runner(monkeypatch: pytest.MonkeyPatch) -> Any:
+    import importlib.util
+    from types import SimpleNamespace
+
+    for name, module in (
+        ("answers", answers),
+        ("dataset", dataset),
+        ("metrics", metrics),
+        ("report", report),
+    ):
+        monkeypatch.setitem(sys.modules, name, module)
+    monkeypatch.setitem(sys.modules, "openrag_sdk", SimpleNamespace(SearchFilters=lambda **kw: kw))
+    spec = importlib.util.spec_from_file_location(
+        "answer_runner", Path(__file__).parents[2] / "scripts/eval/retrieval/run_eval.py"
+    )
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    return runner
+
+
+def test_answer_runner_with_stub_judge(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    runner = load_answer_runner(monkeypatch)
+    calls = []
+
+    async def create(message: str, **kwargs: Any) -> Any:
+        calls.append(kwargs)
+        return SimpleNamespace(
+            chat_id="own-chat",
+            response="reference",
+            sources=[SimpleNamespace(filename=PREFIX + "a.md", text="source evidence")],
+        )
+
+    async def request(method: str, path: str, **kwargs: Any) -> Any:
+        assert method == "POST" and path == "/api/v1/chat/completions"
+        assert kwargs["json"]["model"] == "judge-model"
+        messages = kwargs["json"]["messages"]
+        assert "source evidence" in messages[1]["content"]
+        return SimpleNamespace(json=lambda: {"choices": [{"message": {"content": "junk"}}]})
+
+    async def delete(chat_id: str) -> bool:
+        assert chat_id == "own-chat"
+        return True
+
+    client = SimpleNamespace(chat=SimpleNamespace(create=create, delete=delete), _request=request)
+    args = SimpleNamespace(
+        answer_limit=7, score_threshold=0.1, no_judge=False, judge_model="judge-model"
+    )
+    records: list[dict[str, Any]] = [{"metrics": {}}]
+    chat_ids: list[str] = []
+    query = dataset.Query("q", "question", ("a.md",), "reference", expected_answer="reference")
+    asyncio.run(
+        runner._run_answers(
+            client, [query], {PREFIX + "a.md": "a.md"}, PREFIX, args, records, chat_ids
+        )
+    )
+    assert calls[0] == {
+        "filters": {"data_sources": [PREFIX + "a.md"]},
+        "limit": 7,
+        "score_threshold": 0.1,
+    }
+    assert records[0]["answer"]["judge_error"]
+    assert records[0]["metrics"] == {"answer_cited": 1, "answer_has_phrase": 1}
+    assert chat_ids == ["own-chat"]
+    assert asyncio.run(runner._cleanup_chats(client, chat_ids)) == []
+    args.no_judge = True
+    asyncio.run(
+        runner._run_answers(
+            client, [query], {PREFIX + "a.md": "a.md"}, PREFIX, args, records, chat_ids
+        )
+    )
+    assert records[0]["answer"]["judge_error"] is None
+
+
+def test_answer_run_cleans_up_when_the_answer_pass_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    runner = load_answer_runner(monkeypatch)
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "a.md").write_text("source")
+    queries = tmp_path / "queries.jsonl"
+    queries.write_text(
+        "\n".join(
+            json.dumps(
+                {
+                    "id": str(i),
+                    "query": "q",
+                    "expected_files": ["a.md"],
+                    "expected_answer": "reference",
+                }
+            )
+            for i in range(2)
+        )
+    )
+    args = runner.build_parser().parse_args(
+        [
+            "run",
+            "--answers",
+            "--no-judge",
+            "--api-key",
+            "stub",
+            "--corpus",
+            str(corpus),
+            "--queries",
+            str(queries),
+        ]
+    )
+    deleted = []
+    documents_cleaned = []
+    calls = 0
+
+    async def create(*a: Any, **kw: Any) -> Any:
+        return SimpleNamespace(chat_id="created-chat", response="reference", sources=[])
+
+    def score_answer(*a: Any, **kw: Any) -> dict[str, float]:
+        # Chat failures are recorded and skipped, so fail inside the pass
+        # another way, after a conversation has been created.
+        nonlocal calls
+        calls += 1
+        raise runner.EvalError("scoring broke")
+
+    async def delete(chat_id: str) -> bool:
+        deleted.append(chat_id)
+        return True
+
+    async def noop(*a: Any, **kw: Any) -> None:
+        pass
+
+    async def snapshot(*a: Any) -> Any:
+        return {}, None
+
+    async def answer_settings(*a: Any) -> Any:
+        return {}
+
+    async def records(*a: Any) -> Any:
+        return [{"metrics": {}}, {"metrics": {}}]
+
+    async def cleanup(client: Any, manifest: Any) -> list[str]:
+        documents_cleaned.extend(manifest)
+        return []
+
+    class Client:
+        async def __aenter__(self) -> Any:
+            return SimpleNamespace(chat=SimpleNamespace(create=create, delete=delete))
+
+        async def __aexit__(self, *a: Any) -> None:
+            pass
+
+    monkeypatch.setattr(
+        sys.modules["openrag_sdk"], "OpenRAGClient", lambda **kw: Client(), raising=False
+    )
+    for name, fn in (
+        ("_ingest_corpus", noop),
+        ("_wait_until_searchable", noop),
+        ("_settings_snapshot", snapshot),
+        ("_answer_settings", answer_settings),
+        ("_run_queries", records),
+        ("_cleanup", cleanup),
+    ):
+        monkeypatch.setattr(runner, name, fn)
+    monkeypatch.setattr(answers, "score_answer", score_answer)
+    with pytest.raises(runner.EvalError, match="scoring broke"):
+        asyncio.run(runner.run(args))
+    assert calls == 1
+    assert deleted == ["created-chat"]
+    assert len(documents_cleaned) == 1 and documents_cleaned[0].endswith("-a.md")
+
+
+def test_judge_success_and_cleanup_warnings(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    runner = load_answer_runner(monkeypatch)
+
+    async def request(method: str, path: str, **kw: Any) -> Any:
+        assert "model" not in kw["json"]  # Omitted means the stack's default.
+        return SimpleNamespace(
+            json=lambda: {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"correctness": 2, "grounded": "yes", "reason": "matches sources"}'
+                        }
+                    }
+                ]
+            }
+        )
+
+    async def delete(chat_id: str) -> bool:
+        if chat_id == "failed":
+            raise RuntimeError("delete failed")
+        return False
+
+    client = SimpleNamespace(_request=request, chat=SimpleNamespace(delete=delete))
+    judgement = asyncio.run(
+        runner._judge(client, answers.judge_messages("q", "ref", "a", []), None)
+    )
+    assert judgement.correctness == 2
+    warnings = asyncio.run(runner._cleanup_chats(client, ["failed", "missing"]))
+    assert len(warnings) == 2
+
+
+def test_answer_settings_never_records_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+    import hashlib
+    from types import SimpleNamespace
+
+    runner = load_answer_runner(monkeypatch)
+
+    async def get() -> Any:
+        return SimpleNamespace(
+            agent=SimpleNamespace(
+                llm_provider="watsonx", llm_model="granite", system_prompt="private prompt"
+            )
+        )
+
+    args = SimpleNamespace(judge_model=None, no_judge=False, answer_limit=10)
+    snapshot = asyncio.run(
+        runner._answer_settings(SimpleNamespace(settings=SimpleNamespace(get=get)), args)
+    )
+    assert snapshot["system_prompt_sha256"] == hashlib.sha256(b"private prompt").hexdigest()
+    assert snapshot["judge_model"] == "granite"
+    assert "private prompt" not in json.dumps(snapshot)
+
+
+def _answer_run(
+    runner: Any, outcomes: list[Exception | None]
+) -> tuple[list[dict[str, Any]], list[str], int]:
+    """Run the answer pass over one question per outcome: None answers, an exception fails."""
+    import asyncio
+    from types import SimpleNamespace
+
+    attempts = 0
+
+    async def create(*a: Any, **kw: Any) -> Any:
+        nonlocal attempts
+        outcome = outcomes[attempts]
+        attempts += 1
+        if outcome is not None:
+            raise outcome
+        return SimpleNamespace(
+            chat_id=f"chat-{attempts}",
+            response="reference",
+            sources=[SimpleNamespace(filename=PREFIX + "a.md", text="source")],
+        )
+
+    client = SimpleNamespace(chat=SimpleNamespace(create=create))
+    args = SimpleNamespace(answer_limit=10, score_threshold=0.0, no_judge=True, judge_model=None)
+    queries = [
+        dataset.Query(str(i), "question", ("a.md",), expected_answer="reference")
+        for i in range(len(outcomes))
+    ]
+    records: list[dict[str, Any]] = [{"metrics": {}} for _ in outcomes]
+    chat_ids: list[str] = []
+    asyncio.run(
+        runner._run_answers(
+            client, queries, {PREFIX + "a.md": "a.md"}, PREFIX, args, records, chat_ids
+        )
+    )
+    return records, chat_ids, attempts
+
+
+def test_a_failed_chat_is_recorded_and_the_pass_continues(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = load_answer_runner(monkeypatch)
+
+    records, chat_ids, attempts = _answer_run(runner, [None, TimeoutError("read timed out"), None])
+
+    assert attempts == 3
+    assert chat_ids == ["chat-1", "chat-3"]
+    failed = records[1]
+    assert failed["answer"]["chat_error"] == "TimeoutError: read timed out"
+    assert failed["metrics"] == {}  # no answer scores, so it is left out of the averages
+    assert records[0]["answer"]["chat_error"] is None
+    assert records[2]["metrics"]["answer_cited"] == 1.0
+    overall = metrics.aggregate([r["metrics"] for r in records], [[], [], []])["overall"]
+    assert overall == {"answer_cited": 1.0}
+
+    results = make_results([answer_query(2), answer_query(2)])
+    results["queries"][1]["id"] = "timed-out"
+    results["queries"][1]["answer"] = failed["answer"]
+    summary = report.render_summary(results)
+    assert "1 answers; 1 chat errors" in summary
+    assert "| timed-out | TimeoutError: read timed out |" in summary
+
+
+def test_the_answer_pass_stops_after_repeated_chat_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = load_answer_runner(monkeypatch)
+    down = RuntimeError("chat endpoint down")
+
+    records, chat_ids, attempts = _answer_run(runner, [None, down, down, down, None, None])
+
+    assert attempts == 4  # the last two questions are never sent
+    assert chat_ids == ["chat-1"]
+    assert all("skipped after 3 chat failures" in r["answer"]["chat_error"] for r in records[4:])
+
+
+@pytest.mark.parametrize("value", ["0", "-5"])
+def test_run_rejects_a_chat_timeout_that_is_not_positive(value: str) -> None:
+    completed = _run_cli("run", "--validate-only", "--chat-timeout", value)
+
+    assert completed.returncode == 2
+    assert "--chat-timeout must be positive" in completed.stderr
