@@ -34,8 +34,21 @@ class ChatHistoryRepo:
         conversation_id: str,
         user_id: str,
         filter_id: str | None,
+        title: str | None = None,
+        total_messages: int = 0,
+        created_at: datetime | None = None,
+        last_activity: datetime | None = None,
     ) -> ChatConversation:
-        row = ChatConversation(id=conversation_id, user_id=user_id, filter_id=filter_id)
+        now = datetime.now(UTC)
+        row = ChatConversation(
+            id=conversation_id,
+            user_id=user_id,
+            title=title,
+            filter_id=filter_id,
+            total_messages=total_messages,
+            created_at=created_at or now,
+            last_activity=last_activity or now,
+        )
         self.session.add(row)
         await self.session.flush()
         return row

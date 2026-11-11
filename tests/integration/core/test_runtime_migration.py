@@ -271,6 +271,7 @@ async def _assert_migrated_db_state() -> None:
         JSON_TO_DB_V1,
     )
     from db.models import (
+        ChatConversation,
         Conversation,
         MigrationStatus,
         SessionOwnership,
@@ -302,11 +303,15 @@ async def _assert_migrated_db_state() -> None:
         assert legacy_session is not None
         assert legacy_session.user_id == "anonymous"
 
-        conversation = await session.get(Conversation, "legacy-session")
+        conversation = await session.get(ChatConversation, "legacy-session")
         assert conversation is not None
         assert conversation.user_id == "anonymous"
         assert conversation.title == "Migrated chat"
         assert conversation.total_messages == 3
+
+        langflow_conversation = await session.get(Conversation, "other-session")
+        assert langflow_conversation is not None
+        assert langflow_conversation.user_id == "legacy-owner"
 
         subjects = {
             row.oauth_subject

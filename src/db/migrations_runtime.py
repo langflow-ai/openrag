@@ -211,9 +211,9 @@ async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, in
 
     Returns a small stats dict for the migration_status notes column.
     """
-    from db.repositories import ConversationRepo, SessionOwnershipRepo
+    from db.repositories import ChatHistoryRepo, ConversationRepo, SessionOwnershipRepo
 
-    stats = {"sessions_inserted": 0, "conversations_inserted": 0}
+    stats = {"sessions_inserted": 0, "conversations_inserted": 0, "native_conversations": 0}
 
     # --- session_ownership.json ---------------------------------------
     so_payload = await _read_json(get_data_file("session_ownership.json"))
@@ -241,16 +241,33 @@ async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, in
     conv_payload = await _read_json(get_data_file("conversations.json"))
     if isinstance(conv_payload, dict):
         crepo = ConversationRepo(session)
+        native_repo = ChatHistoryRepo(session)
         for uid, user_convs in conv_payload.items():
             if not isinstance(user_convs, dict):
                 continue
             for resp_id, meta in user_convs.items():
                 if not isinstance(meta, dict):
                     continue
-                if await crepo.get(str(resp_id)) is not None:
-                    continue
                 created = _parse_legacy_dt(meta.get("created_at"))
                 last = _parse_legacy_dt(meta.get("last_activity"))
+                # Before native history had its own tables, the legacy `/chat`
+                # endpoint shared conversations.json with Langflow. Preserve
+                # those records in the source that now serves `/chat/history`.
+                if meta.get("endpoint") == "chat":
+                    if await native_repo.get_conversation(str(resp_id)) is None:
+                        await native_repo.create_conversation(
+                            conversation_id=str(resp_id),
+                            user_id=str(uid),
+                            title=meta.get("title"),
+                            filter_id=meta.get("filter_id"),
+                            total_messages=int(meta.get("total_messages") or 0),
+                            created_at=created,
+                            last_activity=last,
+                        )
+                        stats["native_conversations"] += 1
+                    continue
+                if await crepo.get(str(resp_id)) is not None:
+                    continue
                 await crepo.upsert(
                     response_id=str(resp_id),
                     user_id=str(uid),
@@ -298,7 +315,9 @@ async def run(session: AsyncSession) -> None:
             )
             raise RuntimeMigrationError(f"{CHAT_HISTORY_JSON_TO_DB_V1} failed") from exc
         notes = (
-            f"sessions={stats['sessions_inserted']},conversations={stats['conversations_inserted']}"
+            f"sessions={stats['sessions_inserted']},"
+            f"conversations={stats['conversations_inserted']},"
+            f"native_conversations={stats['native_conversations']}"
         )
         await _mark_done(session, CHAT_HISTORY_JSON_TO_DB_V1, notes=notes)
         logger.info("chat_history_json_to_db_v1 completed", **stats)
