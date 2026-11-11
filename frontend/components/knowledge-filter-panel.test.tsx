@@ -2,11 +2,13 @@ import { act, fireEvent } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAuth } from "@/contexts/auth-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { toLocalDayStartISOString } from "@/lib/time-utils";
 import { authPresets, withAuth } from "@/test-utils/fixtures/auth";
 import { server } from "@/test-utils/msw/server";
 import { renderWithProviders, screen, waitFor } from "@/test-utils/render";
+import { KnowledgeDateRangeFilter } from "./knowledge-date-range-filter";
 import { KnowledgeFilterPanel } from "./knowledge-filter-panel";
 
 vi.mock("@/lib/analytics", () => ({ trackButton: vi.fn() }));
@@ -309,5 +311,103 @@ describe("KnowledgeFilterPanel date ingested", () => {
     // A To before the draft's start would invert the range; the field keeps it
     // disabled, so the To pick above is the first selectable day on or after From.
     expect(data.date_range_context.to).toBe("2026-10-10");
+  });
+});
+
+describe("KnowledgeFilterPanel keeps unsaved editor dates", () => {
+  let v2 = false;
+
+  function Scenario() {
+    const { setSelectedFilter, setDateRange } = useKnowledgeFilter();
+    const { refreshFeatureFlags } = useAuth();
+    // biome-ignore lint/correctness/useExhaustiveDependencies: select once on mount
+    useEffect(() => {
+      setSelectedFilter(saved(false));
+    }, []);
+    const picked = { from: new Date(2026, 8, 1), to: new Date(2026, 8, 3) };
+    return (
+      <>
+        <button type="button" onClick={() => setDateRange(picked)}>
+          toolbar-both
+        </button>
+        <button type="button" onClick={() => void refreshFeatureFlags()}>
+          refresh-flags
+        </button>
+        <KnowledgeDateRangeFilter />
+        <KnowledgeFilterPanel />
+      </>
+    );
+  }
+
+  async function renderScenario(initialV2: boolean) {
+    v2 = initialV2;
+    putBody = undefined;
+    server.use(
+      http.post("/api/search", () => HttpResponse.json({ aggregations: {} })),
+      http.get("/api/files/upload-histogram", () =>
+        HttpResponse.json({ total: 0, days: {} }),
+      ),
+      http.put("/api/knowledge-filter/f1", async ({ request }) => {
+        putBody = (await request.json()) as { queryData?: string };
+        return HttpResponse.json({ success: true, filter: saved(false) });
+      }),
+    );
+    renderWithProviders(<Scenario />, {
+      providers: ["auth", "knowledgeFilter"],
+      auth,
+      handlers: [
+        http.get("/api/auth/me", () =>
+          HttpResponse.json({
+            ...auth.me,
+            run_mode: "oss",
+            date_range_v2: v2,
+          }),
+        ),
+      ],
+    });
+    await screen.findByText("Date ingested");
+    // The editor draft: Last 90 days, applied but not saved.
+    await click(
+      screen.getByRole("button", { name: /filter by date ingested/i }),
+    );
+    await click(screen.getByRole("button", { name: "Last 90 days" }));
+    await click(screen.getByRole("button", { name: "Apply" }));
+  }
+
+  const draftSurvives = async () => {
+    const data = await save();
+    // today is faked as 2026-10-23: 90 days back is 2026-07-26.
+    expect(data.date_range_context.from).toBe("2026-07-26");
+    expect(data.date_range_context.to).toBe("2026-10-23");
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 23, 12));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("survives a classic toolbar range change", async () => {
+    await renderScenario(false);
+    await click(screen.getByRole("button", { name: "toolbar-both" }));
+    await draftSurvives();
+  });
+
+  it("survives a V2 toolbar range change", async () => {
+    await renderScenario(true);
+    await click(screen.getByRole("button", { name: "toolbar-both" }));
+    await draftSurvives();
+  });
+
+  it("survives V2 being enabled at runtime", async () => {
+    await renderScenario(false);
+    v2 = true;
+    await click(screen.getByRole("button", { name: "refresh-flags" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /filter by date range/i }),
+      ).toBeInTheDocument(),
+    );
+    await draftSurvives();
   });
 });

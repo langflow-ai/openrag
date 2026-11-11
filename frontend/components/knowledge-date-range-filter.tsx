@@ -15,6 +15,7 @@ import { CalendarIcon, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { DateRange, DayContentProps } from "react-day-picker";
 import { useUploadHistogram } from "@/app/api/queries/useUploadHistogram";
+import { KnowledgeDateRangeV2 } from "@/components/knowledge-date-range-v2";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -42,18 +43,18 @@ import {
 } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
 
-type Range = { from: Date; to: Date };
+export type Range = { from: Date; to: Date };
 
-const EMPTY_DAYS: Record<string, number> = {};
+export const EMPTY_DAYS: Record<string, number> = {};
 const MAX_CUSTOM_DAYS = 3650;
 
-interface Preset {
+export interface Preset {
   id: string;
   label: string;
   range: (today: Date) => Range | null;
 }
 
-const PRESETS: Preset[] = [
+export const PRESETS: Preset[] = [
   { id: "any", label: "Any time", range: () => null },
   { id: "today", label: "Today", range: (t) => ({ from: t, to: t }) },
   {
@@ -86,7 +87,7 @@ const PRESETS: Preset[] = [
   },
 ];
 
-function formatDateLabel(date: Date): string {
+export function formatDateLabel(date: Date): string {
   return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -94,7 +95,7 @@ function formatDateLabel(date: Date): string {
   });
 }
 
-function formatShortLabel(date: Date, today: Date): string {
+export function formatShortLabel(date: Date, today: Date): string {
   return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -103,7 +104,7 @@ function formatShortLabel(date: Date, today: Date): string {
 }
 
 /** "A – B", a single day, or "From A" / "Until B" for a one-sided saved range. */
-function describeRange(
+export function describeRange(
   range: DateRangeValue | null,
   format: (date: Date) => string,
 ): string | null {
@@ -125,12 +126,15 @@ function laterInstant(iso: string, other?: string): string {
   return other && new Date(other) > new Date(iso) ? other : iso;
 }
 
-function filterValues(values?: string[]) {
+export function filterValues(values?: string[]) {
   const filtered = values?.filter((value) => value !== "*");
   return filtered && filtered.length > 0 ? filtered : undefined;
 }
 
-function countInRange(days: Record<string, number>, { from, to }: Range) {
+export function countInRange(
+  days: Record<string, number>,
+  { from, to }: Range,
+) {
   let total = 0;
   for (let d = startOfDay(from); !isAfter(d, to); d = addDays(d, 1)) {
     total += days[toLocalDayKey(d)] ?? 0;
@@ -138,7 +142,7 @@ function countInRange(days: Record<string, number>, { from, to }: Range) {
   return total;
 }
 
-function DensityMark({
+export function DensityMark({
   count,
   inverted,
 }: {
@@ -165,7 +169,9 @@ export function KnowledgeDateRangeFilter() {
   const { dateRange, setDateRange, parsedFilterData, effectiveDateRange } =
     useKnowledgeFilter();
   const enabled = useDateRangeFilterEnabled();
+  const v2 = useDateRangeV2Enabled();
   if (!enabled) return null;
+  if (v2) return <KnowledgeDateRangeV2 />;
   return (
     <DateRangePicker
       value={dateRange}
@@ -189,7 +195,7 @@ export function useDateRangeV2Enabled(): boolean {
   return isDateRangeV2Enabled(runMode, dateRangeV2, { isCloudBrand });
 }
 
-function useToday(open: boolean) {
+export function useToday(open: boolean) {
   // Refreshed while open so a page left running past midnight never keeps
   // yesterday as "today".
   const [today, setToday] = useState(() => startOfDay(new Date()));
@@ -278,7 +284,7 @@ function QuickRanges({
   );
 }
 
-function CalendarPanel({
+export function CalendarPanel({
   draft,
   month,
   today,

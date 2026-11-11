@@ -1,0 +1,313 @@
+"use client";
+
+import {
+  endOfQuarter,
+  isSameDay,
+  min,
+  startOfDay,
+  startOfMonth,
+  startOfQuarter,
+  subDays,
+  subMonths,
+  subQuarters,
+} from "date-fns";
+import { CalendarIcon, Maximize2, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import type { DateRange, DayContentProps } from "react-day-picker";
+import { useUploadHistogram } from "@/app/api/queries/useUploadHistogram";
+import {
+  CalendarPanel,
+  countInRange,
+  DensityMark,
+  describeRange,
+  EMPTY_DAYS,
+  filterValues,
+  formatDateLabel,
+  PRESETS,
+  type Preset,
+  type Range,
+  useToday,
+} from "@/components/knowledge-date-range-filter";
+import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import type { SavedDateRange } from "@/lib/saved-date-range";
+import {
+  toLocalDayEndISOString,
+  toLocalDayKey,
+  toLocalDayStartISOString,
+} from "@/lib/time-utils";
+import { cn } from "@/lib/utils";
+
+/**
+ * The upload-count request never reaches further back than this. It bounds the
+ * request only: the calendar stays navigable and any date can still be picked.
+ */
+export const MAX_HISTOGRAM_DAYS = 730;
+
+/** Classic presets plus quarters (V2 only; the classic list is unchanged). */
+// Built lazily: this module and knowledge-date-range-filter import each other.
+let v2Presets: Preset[] | undefined;
+function getV2Presets(): Preset[] {
+  v2Presets ??= [
+    ...PRESETS,
+    {
+      id: "this-quarter",
+      label: "This quarter",
+      range: (t) => ({ from: startOfQuarter(t), to: t }),
+    },
+    {
+      id: "last-quarter",
+      label: "Last quarter",
+      range: (t) => {
+        const prev = subQuarters(t, 1);
+        return { from: startOfQuarter(prev), to: endOfQuarter(prev) };
+      },
+    },
+  ];
+  return v2Presets;
+}
+
+const hasBounds = (r: SavedDateRange) =>
+  Boolean(r.createdAfter || r.createdBefore);
+
+/**
+ * Upload count for `range`, or null when the histogram window starts after the
+ * range does (missing buckets would read as zero). Open-ended "any time" is
+ * answered from the all-time total instead and never reaches this.
+ */
+export function countWithinCoverage(
+  days: Record<string, number>,
+  range: Range,
+  coveredFrom: Date,
+): number | null {
+  if (startOfDay(range.from) < startOfDay(coveredFrom)) return null;
+  return countInRange(days, range);
+}
+
+/** Compact date-range popover (V2). Rendered only behind the V2 flag. */
+export function KnowledgeDateRangeV2() {
+  const { dateRange, effectiveDateRange, parsedFilterData, setDateRange } =
+    useKnowledgeFilter();
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<"quick" | "custom">("quick");
+  const [today, setToday] = useToday(open);
+  const [draft, setDraft] = useState<DateRange | undefined>();
+  const [month, setMonth] = useState<Date>(today);
+
+  // Toolbar dates drive the Knowledge table and seed new filters, exactly like
+  // the classic picker. A table/filters scope selector is deliberately absent
+  // until filter previews and counts can respond to a filter-side range.
+  const shown = dateRange;
+  const label = describeRange(shown ?? null, formatDateLabel);
+  const hasRange = hasBounds(effectiveDateRange);
+
+  const earliest = startOfDay(subDays(today, MAX_HISTOGRAM_DAYS));
+  // Cover everything the popover displays: each preset (quarters included), the
+  // visible month, and the custom draft. The cap keeps the request bounded.
+  const presetStarts = getV2Presets()
+    .map((preset) => preset.range(today)?.from)
+    .filter((d): d is Date => Boolean(d));
+  const windowStart = min([
+    startOfMonth(month),
+    startOfMonth(subMonths(today, 1)),
+    subDays(today, 29),
+    ...presetStarts,
+    ...(draft?.from ? [startOfDay(draft.from)] : []),
+  ]);
+  const clampedStart = windowStart < earliest ? earliest : windowStart;
+  const { data: histogram, isPlaceholderData } = useUploadHistogram(
+    {
+      start: toLocalDayStartISOString(clampedStart),
+      end: toLocalDayEndISOString(today),
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      connectorType: filterValues(parsedFilterData?.filters?.connector_types),
+      mimetype: filterValues(parsedFilterData?.filters?.document_types),
+      owner: filterValues(parsedFilterData?.filters?.owners),
+      dataSources: filterValues(parsedFilterData?.filters?.data_sources),
+    },
+    { enabled: open },
+  );
+  const days = histogram?.days ?? EMPTY_DAYS;
+  // undefined = still loading; null = the window does not cover the range.
+  const countFor = (range: Range | null): number | null | undefined => {
+    if (!histogram || isPlaceholderData) return undefined;
+    if (!range) return histogram.total;
+    return countWithinCoverage(days, range, clampedStart);
+  };
+
+  const DayContent = useMemo(
+    () =>
+      function DayContent({ date, activeModifiers }: DayContentProps) {
+        const isEnd =
+          Boolean(activeModifiers.range_start) ||
+          Boolean(activeModifiers.range_end);
+        return (
+          <span className="flex flex-col items-center gap-1">
+            <span data-day-number>{date.getDate()}</span>
+            <DensityMark
+              count={days[toLocalDayKey(date)] ?? 0}
+              inverted={isEnd}
+            />
+          </span>
+        );
+      },
+    [days],
+  );
+
+  const handleOpenChange = (next: boolean) => {
+    if (next) {
+      const fresh = startOfDay(new Date());
+      setToday(fresh);
+      setView("quick");
+      setDraft(undefined);
+      setMonth(fresh);
+    }
+    setOpen(next);
+  };
+
+  const apply = (range: DateRange | null) => {
+    setDateRange(
+      range?.from ? { from: range.from, to: range.to ?? range.from } : null,
+    );
+    setOpen(false);
+  };
+
+  const activePresetId = getV2Presets().find((preset) => {
+    const r = preset.range(today);
+    if (!r || !shown?.from) return !r && !shown?.from && !shown?.to;
+    return (
+      isSameDay(r.from, shown.from) && isSameDay(r.to, shown.to ?? shown.from)
+    );
+  })?.id;
+
+  return (
+    <div className="flex flex-shrink-0 items-center gap-1">
+      <Popover open={open} onOpenChange={handleOpenChange}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            className={cn("flex-shrink-0 rounded-lg", hasRange && "bg-accent")}
+            aria-label={label ?? "Filter by date range"}
+          >
+            <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
+            <span className="max-w-[16rem] truncate">
+              {label ?? "Date range"}
+            </span>
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="end"
+          collisionPadding={16}
+          className={cn(
+            "overflow-hidden p-0",
+            view === "custom" ? "w-[min(26rem,calc(100vw-2rem))]" : "w-72",
+          )}
+        >
+          {view === "quick" ? (
+            <>
+              <p className="px-3 pt-3 pb-1 text-xs text-muted-foreground">
+                Quick ranges
+              </p>
+              {getV2Presets().map((preset: Preset) => {
+                const range = preset.range(today);
+                const count = countFor(range);
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    aria-pressed={preset.id === activePresetId}
+                    onClick={() =>
+                      apply(range ? { from: range.from, to: range.to } : null)
+                    }
+                    className={cn(
+                      "flex w-full items-center justify-between px-4 py-2.5 text-sm transition-colors hover:bg-accent",
+                      preset.id === activePresetId &&
+                        "bg-accent font-medium text-foreground",
+                    )}
+                  >
+                    <span>{preset.label}</span>
+                    <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                      {count === null ? (
+                        <span title="Count unavailable for this range">–</span>
+                      ) : (
+                        (count ?? "")
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+              <div className="flex items-center justify-between border-t px-4 py-2.5">
+                <button
+                  type="button"
+                  onClick={() => setView("custom")}
+                  className="flex items-center gap-2 text-sm text-primary"
+                >
+                  <CalendarIcon className="h-4 w-4" />
+                  Custom range
+                </button>
+                <button
+                  type="button"
+                  aria-label="Expand custom range"
+                  onClick={() => setView("custom")}
+                  className="text-primary"
+                >
+                  <Maximize2 className="h-4 w-4" />
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <CalendarPanel
+                draft={draft}
+                month={month}
+                today={today}
+                DayContent={DayContent}
+                onSelect={setDraft}
+                onMonthChange={setMonth}
+              />
+              <div className="flex border-t">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  ignoreTitleCase
+                  className="h-auto flex-1 rounded-none py-3"
+                  onClick={() => setView("quick")}
+                >
+                  Back
+                </Button>
+                <Button
+                  type="button"
+                  ignoreTitleCase
+                  className="h-auto flex-1 rounded-none py-3"
+                  disabled={!draft?.from}
+                  onClick={() => apply(draft ?? null)}
+                >
+                  Apply filter
+                </Button>
+              </div>
+            </>
+          )}
+        </PopoverContent>
+      </Popover>
+      {hasRange && (
+        <button
+          type="button"
+          aria-label="Clear date range"
+          className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          onClick={() => {
+            setDateRange(null);
+            setDraft(undefined);
+          }}
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </div>
+  );
+}
