@@ -32,6 +32,8 @@ from lfx.schema.data import Data
 
 
 def _env_fallback(value: str, *env_names: str, default: str = "") -> str:
+    """Return ``value`` unless it is empty or just an env-var name; otherwise the first set env var,
+    else ``default``."""
     v = (value or "").strip()
     if v and v not in env_names:
         return v
@@ -43,6 +45,8 @@ def _env_fallback(value: str, *env_names: str, default: str = "") -> str:
 
 
 class CodeWikiDeps(Component):
+    """Langflow tool that walks the import graph of an indexed repo from a file."""
+
     display_name = "Code Wiki Dependencies"
     description = (
         "Walk the resolved import graph from a repo_path: return depends_on / called_by "
@@ -126,6 +130,8 @@ class CodeWikiDeps(Component):
     ]
 
     def _resolve_url(self) -> str:
+        """OpenSearch URL from the field, ``OPENSEARCH_URL``, or
+        ``OPENSEARCH_HOST``/``OPENSEARCH_PORT``."""
         url = _env_fallback(self.opensearch_url, "OPENSEARCH_URL")
         if url:
             return url
@@ -134,9 +140,12 @@ class CodeWikiDeps(Component):
         return f"https://{host}:{port}"
 
     def _index(self) -> str:
+        """Index name from the field, ``OPENSEARCH_INDEX_NAME``, or ``documents``."""
         return _env_fallback(self.index_name, "OPENSEARCH_INDEX_NAME", default="documents")
 
     def _build_auth_kwargs(self) -> dict:
+        """Keyword arguments for the OpenSearch client: a JWT header, or basic auth from the fields
+        / env."""
         mode = (getattr(self, "auth_mode", "") or "basic").strip().lower()
         if mode == "jwt":
             token = (getattr(self, "jwt_token", "") or "").strip()
@@ -155,6 +164,7 @@ class CodeWikiDeps(Component):
         }
 
     def _client(self):
+        """OpenSearch client for this component's connection settings."""
         from opensearchpy import OpenSearch
 
         url = self._resolve_url()
@@ -190,6 +200,8 @@ class CodeWikiDeps(Component):
 
     @staticmethod
     def _flatten(source: dict) -> dict:
+        """Copy of a hit's ``_source`` with ``metadata.*`` fields (and frontmatter fallbacks) lifted
+        to the top level."""
         flat = dict(source)
         meta = source.get("metadata")
         if isinstance(meta, dict):
@@ -218,6 +230,7 @@ class CodeWikiDeps(Component):
 
     @staticmethod
     def _parse(field: str, meta: dict):
+        """Decode a JSON-encoded list field; ``[]`` if it is missing or malformed."""
         try:
             return json.loads(meta.get(field) or "[]")
         except (json.JSONDecodeError, TypeError):
@@ -259,6 +272,8 @@ class CodeWikiDeps(Component):
         return sources[0]
 
     def _node_summary(self, client, repo_path: str) -> dict:
+        """Summary of one graph node (language, module, summary, symbols), or ``found: False``;
+        never raises."""
         try:
             page = self._fetch_file_page(client, repo_path)
         except Exception:  # noqa: BLE001 - one unreachable neighbour must not drop the traversal
@@ -286,6 +301,7 @@ class CodeWikiDeps(Component):
 
     @staticmethod
     def _fmt_paths(paths: list[str]) -> str:
+        """Comma-separated paths, or ``(none)``."""
         return ", ".join(paths) if paths else "(none)"
 
     def walk(self) -> list[Data]:
@@ -411,6 +427,7 @@ class CodeWikiDeps(Component):
         return items
 
     async def to_toolkit(self):
+        """Expose this component's tool-mode inputs as agent tools."""
         from lfx.base.tools.component_tool import ComponentToolkit
 
         return ComponentToolkit(component=self).get_tools()

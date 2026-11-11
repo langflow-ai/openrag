@@ -170,14 +170,17 @@ BRACE_LANGS = {
 
 
 def guess_language(repo_path: str) -> str:
+    """Language name for a path's extension, or ``''``."""
     return LANG_BY_EXT.get(posixpath.splitext(repo_path)[1].lower(), "")
 
 
 def is_ignored_dir(name: str) -> bool:
+    """True for directory names that are never indexed (VCS, build output, dependencies)."""
     return name in IGNORE_DIR_NAMES or any(name.endswith(s) for s in IGNORE_DIR_SUFFIXES)
 
 
 def is_ignored_file(repo_path: str) -> bool:
+    """True for binary or asset files and extensions with no known language."""
     low = repo_path.lower()
     if any(low.endswith(ext) for ext in BINARY_OR_ASSET_EXTS):
         return True
@@ -185,6 +188,7 @@ def is_ignored_file(repo_path: str) -> bool:
 
 
 def module_of(repo_path: str) -> str:
+    """Directory of a repo path; the module a file belongs to."""
     return posixpath.dirname(repo_path)
 
 
@@ -206,6 +210,7 @@ def _read_text(path: Path) -> str | None:
 
 
 def _under_subtrees(repo_path: str, subtrees: list[str]) -> bool:
+    """True if the path is inside one of ``subtrees`` (or no subtrees are set)."""
     if not subtrees:
         return True
     for st in subtrees:
@@ -216,6 +221,7 @@ def _under_subtrees(repo_path: str, subtrees: list[str]) -> bool:
 
 
 def _inside(path: Path, root_real: Path) -> bool:
+    """True if ``path`` is under ``root_real``."""
     try:
         path.relative_to(root_real)
     except ValueError:
@@ -276,10 +282,12 @@ _PY_DECL_RE = re.compile(
 
 
 def _indent_width(s: str) -> int:
+    """Width of a line's leading whitespace, with tabs as 4 columns."""
     return len(s[: len(s) - len(s.lstrip(" \t"))].expandtabs(4))
 
 
 def extract_python_symbols(text: str) -> list[dict[str, Any]]:
+    """Top-level classes and functions of Python source with their line spans."""
     lines = text.split("\n")
     n = len(lines)
     decls: list[dict[str, Any]] = []
@@ -352,6 +360,7 @@ _BRACE_DECL_RES = [
 
 
 def _brace_span(lines: list[str], start: int) -> int:
+    """Index of the line where the brace block starting at ``start`` closes."""
     depth = 0
     seen = False
     for j in range(start, len(lines)):
@@ -369,6 +378,7 @@ def _brace_span(lines: list[str], start: int) -> int:
 
 
 def extract_brace_symbols(text: str) -> list[dict[str, Any]]:
+    """Top-level declarations of brace-delimited languages with their line spans."""
     lines = text.split("\n")
     symbols: list[dict[str, Any]] = []
     for i, ln in enumerate(lines):
@@ -447,6 +457,7 @@ def extract_java_symbols(text: str) -> list[dict[str, Any]]:
 
 
 def extract_symbols(text: str, language: str) -> list[dict[str, Any]]:
+    """Symbols of ``text`` using the extractor for ``language``."""
     if language == "python":
         return extract_python_symbols(text)
     if language == "java":
@@ -466,6 +477,7 @@ _JAVA_IMPORT_RE = re.compile(r"^[ \t]*import[ \t]+(?:static[ \t]+)?([A-Za-z_][\w
 
 
 def extract_imports(text: str, language: str) -> list[str]:
+    """Raw import / require / include specifiers found in ``text``."""
     if language == "python":
         out = list(_PY_IMPORT_RE.findall(text))
         for dots, mod in _PY_FROM_RE.findall(text):
@@ -479,6 +491,7 @@ def extract_imports(text: str, language: str) -> list[str]:
 
 
 def _py_module_candidates(mod: str, current: str, path_set: set[str]) -> str | None:
+    """Repo file that a Python module name or relative import refers to, if any."""
     if mod.startswith("."):
         base = posixpath.dirname(current)
         ups = len(mod) - len(mod.lstrip("."))
@@ -501,6 +514,7 @@ def _py_module_candidates(mod: str, current: str, path_set: set[str]) -> str | N
 
 
 def _rel_js_candidates(spec: str, current: str, path_set: set[str]) -> str | None:
+    """Repo file that a relative JS/TS import refers to, if any."""
     if not spec.startswith("."):
         return None
     base = posixpath.dirname(current)
@@ -536,7 +550,10 @@ def build_jvm_index(files: list[dict[str, Any]]) -> dict[str, list[str]]:
 def _jvm_candidates(
     imp: str, current: str, path_set: set[str], jvm_index: dict[str, list[str]]
 ) -> list[str]:
+    """Repo files that a Java/Kotlin/Scala import refers to, preferring the nearest module."""
+
     def pick(paths: list[str]) -> str:
+        """The path sharing the longest prefix with the importing file."""
         # Same class name in several modules → prefer the one sharing the longest path prefix.
         return max(paths, key=lambda p: len(posixpath.commonprefix([p, current])))
 
@@ -570,6 +587,7 @@ def resolve_imports(
     path_set: set[str],
     jvm_index: dict[str, list[str]] | None = None,
 ) -> list[str]:
+    """Map raw import specifiers of one file to repo files."""
     resolved: list[str] = []
     for imp in imports:
         hits: list[str] = []
@@ -677,6 +695,8 @@ def feign_edges(files: list[dict[str, Any]]) -> dict[str, list[str]]:
 
 
 def build_manifest(files: list[dict[str, Any]]) -> dict[str, Any]:
+    """Symbols, resolved imports, modules and README map for the loaded files, plus Java same-
+    package and Feign edges."""
     path_set = {f["repo_path"] for f in files}
     jvm_index = build_jvm_index(files)
     symbols: dict[str, list[dict[str, Any]]] = {}
@@ -706,6 +726,7 @@ def build_manifest(files: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def resolve_edges(manifest: dict[str, Any]) -> dict[str, dict[str, list[str]]]:
+    """Invert the import map into ``depends_on`` / ``called_by`` lists per file."""
     imports = manifest["imports"]
     depends_on = {rp: sorted(set(deps)) for rp, deps in imports.items()}
     called_by: dict[str, set[str]] = {}
@@ -798,6 +819,8 @@ def host_kind(host: str) -> str:
 
 
 def token_allowed(host: str) -> bool:
+    """True if the access token may be sent to ``host`` (default hosts plus
+    ``CODEWIKI_TOKEN_HOSTS``)."""
     extra = {
         h.strip().lower()
         for h in os.environ.get("CODEWIKI_TOKEN_HOSTS", "").split(",")
@@ -834,6 +857,7 @@ def _wanted_member(rel: str, size: int, prefix: str) -> bool:
 
 
 def _write_capped(src, target: str, used: int, max_bytes: int) -> int:
+    """Copy ``src`` to ``target``, raising once the archive's running total passes ``max_bytes``."""
     os.makedirs(os.path.dirname(target), exist_ok=True)
     with open(target, "wb") as out:
         while chunk := src.read(65536):
@@ -956,6 +980,8 @@ def _assert_public_https(url: str) -> None:
 # Component
 # ---------------------------------------------------------------------------
 def _env_fallback(value: str, *env_names: str, default: str = "") -> str:
+    """Return ``value`` unless it is empty or an unresolved global-variable name; otherwise the
+    first set env var, else ``default``."""
     v = (value or "").strip()
     # An unresolved global var may literally read its own upper-case name (e.g. "REPO_URL").
     if v and not (v.replace("_", "").isalpha() and v.isupper() and " " not in v):
@@ -968,6 +994,9 @@ def _env_fallback(value: str, *env_names: str, default: str = "") -> str:
 
 
 class RepoLoader(Component):
+    """Langflow component that loads a repo (git, archive or local path) and builds its manifest and
+    edges."""
+
     display_name = "Repo Loader"
     description = (
         "Clone a git repo (or read a local path), walk it with ignore rules, and build a "
@@ -1083,6 +1112,7 @@ class RepoLoader(Component):
     outputs = [Output(display_name="Repo", name="repo_out", method="load_repo")]
 
     def _notify(self, msg: str) -> None:
+        """Set the component status and log ``msg``; logging errors are ignored."""
         self.status = msg
         try:
             self.log(msg)
@@ -1102,6 +1132,7 @@ class RepoLoader(Component):
         parts: list = []
 
         def add(x) -> None:
+            """Append a string, or the strings of a list, to the collected parts."""
             if x is None:
                 return
             if isinstance(x, str):
@@ -1258,6 +1289,7 @@ class RepoLoader(Component):
         return url, ref, subtree
 
     def _no_source_message(self) -> str:
+        """Error text explaining that no repo source was provided and how to supply one."""
         docling_err = getattr(self, "_docling_error", "")
         if docling_err:
             head = (
@@ -1300,6 +1332,7 @@ class RepoLoader(Component):
 
     @staticmethod
     def _scrub(text: str, *secrets: str) -> str:
+        """Replace each secret, raw and base64-encoded, with ``***``."""
         for sec in secrets:
             if sec:
                 text = text.replace(sec, "***")
@@ -1341,11 +1374,13 @@ class RepoLoader(Component):
         return tmp
 
     def _cleanup_temp_dirs(self) -> None:
+        """Delete every temp directory this loader created."""
         for tmp in getattr(self, "_temp_dirs", None) or []:
             shutil.rmtree(tmp, ignore_errors=True)
         self._temp_dirs = []
 
     def _unpack_to_temp(self, archive_path: str) -> str:
+        """Unpack an archive into a new temp directory and return the source root."""
         tmp = self._new_temp_dir()
         try:
             return unpack_archive(archive_path, os.path.join(tmp, "src"))
@@ -1468,6 +1503,8 @@ class RepoLoader(Component):
     def _download_and_unpack(
         self, archive_url: str, headers: dict[str, str], *, guard: bool, label: str
     ) -> str:
+        """Download an archive into a temp directory and unpack it; the temp directory is removed on
+        failure."""
         tmp = self._new_temp_dir()
         path = os.path.join(tmp, "download")
         try:

@@ -33,6 +33,8 @@ from lfx.schema.data import Data
 
 
 def _env_fallback(value: str, *env_names: str, default: str = "") -> str:
+    """Return ``value`` unless it is empty or just an env-var name; otherwise the first set env var,
+    else ``default``."""
     v = (value or "").strip()
     if v and v not in env_names:
         return v
@@ -44,6 +46,8 @@ def _env_fallback(value: str, *env_names: str, default: str = "") -> str:
 
 
 class CodeWikiSearch(Component):
+    """Langflow tool that finds wiki pages and symbols by hybrid keyword and vector search."""
+
     display_name = "Code Wiki Search"
     description = (
         "Hybrid search over the code wiki that KEEPS provenance (repo_path, symbols, line spans)."
@@ -117,6 +121,8 @@ class CodeWikiSearch(Component):
 
     # -- connection (mirrors the multimodal OpenSearch + COA reader) ------
     def _resolve_url(self) -> str:
+        """OpenSearch URL from the field, ``OPENSEARCH_URL``, or
+        ``OPENSEARCH_HOST``/``OPENSEARCH_PORT``."""
         url = _env_fallback(self.opensearch_url, "OPENSEARCH_URL")
         if url:
             return url
@@ -125,9 +131,12 @@ class CodeWikiSearch(Component):
         return f"https://{host}:{port}"
 
     def _index(self) -> str:
+        """Index name from the field, ``OPENSEARCH_INDEX_NAME``, or ``documents``."""
         return _env_fallback(self.index_name, "OPENSEARCH_INDEX_NAME", default="documents")
 
     def _build_auth_kwargs(self) -> dict:
+        """Keyword arguments for the OpenSearch client: a JWT header, or basic auth from the fields
+        / env."""
         mode = (getattr(self, "auth_mode", "") or "basic").strip().lower()
         if mode == "jwt":
             token = (getattr(self, "jwt_token", "") or "").strip()
@@ -144,6 +153,7 @@ class CodeWikiSearch(Component):
         }
 
     def _client(self):
+        """OpenSearch client for this component's connection settings."""
         from opensearchpy import OpenSearch
 
         url = self._resolve_url()
@@ -232,6 +242,8 @@ class CodeWikiSearch(Component):
         return flat
 
     def search(self) -> Data:
+        """Embed the query, run hybrid search and return ranked pages with repo paths and line
+        spans."""
         q = (self.query or "").strip()
         if not q:
             return Data(data={"error": "Empty query.", "results": []})
@@ -321,6 +333,7 @@ class CodeWikiSearch(Component):
         return results
 
     async def to_toolkit(self):
+        """Expose this component's tool-mode inputs as agent tools."""
         from lfx.base.tools.component_tool import ComponentToolkit
 
         return ComponentToolkit(component=self).get_tools()

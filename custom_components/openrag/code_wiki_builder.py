@@ -57,6 +57,7 @@ not present. If unsure, say less.
 
 
 def _extract_json(text: str) -> dict[str, Any]:
+    """Parse a JSON object from model output, tolerating code fences and surrounding text."""
     text = (text or "").strip()
     if text.startswith("```"):
         text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
@@ -82,10 +83,12 @@ def _extract_json(text: str) -> dict[str, Any]:
 # Rendering + chunking
 # ---------------------------------------------------------------------------
 def module_of(repo_path: str) -> str:
+    """Directory of a repo path; the module a file belongs to."""
     return posixpath.dirname(repo_path)
 
 
 def chunk_fragments(md: str, size: int) -> list[str]:
+    """Split markdown into fragments of at most ``size`` characters, breaking on line boundaries."""
     if size <= 0 or len(md) <= size:
         return [md]
     frags: list[str] = []
@@ -108,6 +111,7 @@ def chunk_fragments(md: str, size: int) -> list[str]:
 
 
 def _yaml_scalar(v: Any) -> str:
+    """Render a value as a YAML scalar, JSON-quoting it when plain form would be ambiguous."""
     if isinstance(v, bool):
         return "true" if v else "false"
     s = str(v)
@@ -117,6 +121,7 @@ def _yaml_scalar(v: Any) -> str:
 
 
 def render_frontmatter(meta: dict[str, Any]) -> str:
+    """Render ``meta`` as a YAML frontmatter block."""
     lines = ["---"]
     for k, v in meta.items():
         if isinstance(v, list):
@@ -134,6 +139,7 @@ def render_frontmatter(meta: dict[str, Any]) -> str:
 
 
 def render_page_text(page: dict[str, Any]) -> str:
+    """Full markdown text of a page: header line, frontmatter and body."""
     title = page.get("title") or page["repo_path"]
     header = f"# [{page['repo_path']}] {title}"
     meta: dict[str, Any] = {"content_kind": page["content_kind"], "repo_path": page["repo_path"]}
@@ -159,6 +165,8 @@ def render_page_text(page: dict[str, Any]) -> str:
 def page_to_docs(
     page: dict[str, Any], *, repo_url: str, repo_ref: str, chunk_size: int
 ) -> list[dict[str, Any]]:
+    """Turn one wiki page into OpenSearch documents, one per text fragment, with provenance under
+    ``metadata``."""
     full = render_page_text(page)
     header = f"# [{page['repo_path']}] {page.get('title') or page['repo_path']}"
     frags = chunk_fragments(full, chunk_size)
@@ -232,6 +240,7 @@ def page_to_docs(
 
 
 def _cite(rp: str, s: dict[str, Any]) -> str:
+    """Format a ``path:start-end`` citation for a symbol."""
     ls, le = s.get("line_start"), s.get("line_end")
     return f"`{rp}:{ls}-{le}`" if ls and le and le != ls else f"`{rp}:{ls}`"
 
@@ -239,6 +248,7 @@ def _cite(rp: str, s: dict[str, Any]) -> str:
 def deterministic_file_body(
     f: dict[str, Any], symbols: list[dict[str, Any]], edges: dict[str, list[str]]
 ) -> str:
+    """Page body for a file built from parsed facts only (no LLM)."""
     rp = f["repo_path"]
     lines = [
         f"## File `{rp}`",
@@ -262,6 +272,7 @@ def deterministic_file_body(
 
 
 def deterministic_symbol_body(rp: str, sym: dict[str, Any], source_lines: list[str]) -> str:
+    """Page body for a symbol: its location and the first lines of its source."""
     ls, le = sym["line_start"], sym["line_end"]
     excerpt = "\n".join(source_lines[ls - 1 : min(le, ls + 40)])
     return (
@@ -271,6 +282,7 @@ def deterministic_symbol_body(rp: str, sym: dict[str, Any], source_lines: list[s
 
 
 def deterministic_module_body(module: str, files: list[str], readme: str | None) -> str:
+    """Page body for a module: its file list and README pointer."""
     lines = [
         f"## Module `{module or '(repo root)'}`",
         "",
@@ -287,6 +299,7 @@ def deterministic_module_body(module: str, files: list[str], readme: str | None)
 
 
 def deterministic_overview_body(manifest: dict[str, Any], repo_url: str) -> str:
+    """Page body for the repository overview: totals and the module list."""
     mods = sorted(m for m in manifest["modules"] if m)
     total_syms = sum(len(v) for v in manifest["symbols"].values())
     return "\n".join(
@@ -306,14 +319,17 @@ def deterministic_overview_body(manifest: dict[str, Any], repo_url: str) -> str:
 
 
 def deterministic_doc_body(f: dict[str, Any]) -> str:
+    """Page body for a documentation file: its text, clipped."""
     return f"## Doc `{f['repo_path']}`\n\n{_clip(f['text'], 8000)}\n"
 
 
 def _clip(text: str, n: int) -> str:
+    """Truncate ``text`` to ``n`` characters, marking the cut."""
     return text if len(text) <= n else text[:n] + "\n…(truncated)…"
 
 
 def _repo_name(repo_url: str) -> str:
+    """Short repository name taken from the last segment of the URL."""
     if not repo_url:
         return "repository"
     tail = repo_url.rstrip("/").rsplit("/", 1)[-1] if "/" in repo_url else repo_url
@@ -329,9 +345,12 @@ def build_pages(
     symbol_page_min_lines: int = 50,
     repo_url: str = "",
 ) -> list[dict[str, Any]]:
+    """Build overview, module, file, symbol and doc pages for a repo, using ``summarize`` when
+    given."""
     pages: list[dict[str, Any]] = []
 
     def _summ(ctx: dict[str, Any], det_body: str) -> tuple[str, str]:
+        """Return ``(summary, body)`` from the summarizer, falling back to the deterministic body."""
         if summarize is None:
             return "", det_body
         try:
@@ -472,6 +491,8 @@ def build_pages(
 # Component
 # ---------------------------------------------------------------------------
 class CodeWikiBuilder(Component):
+    """Langflow component that turns a RepoLoader payload into wiki documents for OpenSearch."""
+
     display_name = "Code Wiki Builder"
     description = (
         "Turn the RepoLoader payload into wiki pages (overview/module/file/symbol/doc) with "
@@ -524,6 +545,7 @@ class CodeWikiBuilder(Component):
     outputs = [Output(display_name="Docs", name="docs_out", method="build_docs")]
 
     def _notify(self, msg: str) -> None:
+        """Set the component status and log ``msg``; logging errors are ignored."""
         self.status = msg
         try:
             self.log(msg)
@@ -531,6 +553,7 @@ class CodeWikiBuilder(Component):
             pass
 
     def _repo_payload(self) -> dict[str, Any]:
+        """The ``repo`` payload from RepoLoader; raises if it has no files."""
         item = self.repo_data
         if isinstance(item, list):
             item = item[0] if item else None
@@ -544,12 +567,16 @@ class CodeWikiBuilder(Component):
         return repo
 
     def _make_summarizer(self) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
+        """Build the LLM summarizer callable, or ``None`` when LLM summaries are off or no model is
+        connected."""
         if not getattr(self, "use_llm", True) or getattr(self, "model", None) is None:
             return None
         max_tokens = int(getattr(self, "max_tokens", 1200) or 1200)
         state = {"calls": 0, "fails": 0}
 
         def summarize(ctx: dict[str, Any]) -> dict[str, Any]:
+            """Ask the model for a JSON ``summary`` and ``body`` for one page; ``{}`` on any
+            failure."""
             user = (
                 "Write the wiki page for the following. Facts (JSON):\n\n"
                 f"{json.dumps(ctx, ensure_ascii=False)[:14000]}"
@@ -578,6 +605,7 @@ class CodeWikiBuilder(Component):
         return summarize
 
     def build_docs(self) -> list[Data]:
+        """Build all wiki pages and return them as chunked OpenSearch documents."""
         repo = self._repo_payload()
         files = repo["files"]
         manifest = repo["manifest"]
