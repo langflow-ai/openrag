@@ -278,15 +278,23 @@ def test_legacy_native_chat_rows_move_out_of_langflow_history():
         migration.op = Operations(MigrationContext.configure(connection))
         migration.upgrade()
 
-        assert connection.execute(
-            sa.text("SELECT title FROM chat_conversations WHERE id = 'legacy-chat'")
-        ).scalar_one() == "Native chat"
+        assert (
+            connection.execute(
+                sa.text("SELECT title FROM chat_conversations WHERE id = 'legacy-chat'")
+            ).scalar_one()
+            == "Native chat"
+        )
         assert connection.execute(
             sa.text("SELECT response_id FROM langflow_conversations ORDER BY response_id")
         ).scalars().all() == ["langflow-chat"]
 
         migration.downgrade()
-        assert connection.execute(
-            sa.text("SELECT endpoint FROM langflow_conversations WHERE response_id = 'legacy-chat'")
-        ).scalar_one() == "chat"
+        assert (
+            connection.execute(
+                sa.text(
+                    "SELECT endpoint FROM langflow_conversations WHERE response_id = 'legacy-chat'"
+                )
+            ).scalar_one()
+            == "chat"
+        )
     engine.dispose()
