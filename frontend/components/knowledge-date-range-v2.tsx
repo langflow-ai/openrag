@@ -216,7 +216,14 @@ export function KnowledgeDateRangeV2() {
               </p>
               {V2_PRESETS.map((preset: Preset) => {
                 const range = preset.range(today);
-                const count = countFor(range);
+                // Picking the preset that matches an unchanged foreign-zone range
+                // keeps its saved UTC bounds, which viewer-local days cannot
+                // count; show it as unavailable instead of a wrong number.
+                const keepsSavedBounds =
+                  preset.id === activePresetId &&
+                  !edited &&
+                  savedTimeZone !== null;
+                const count = keepsSavedBounds ? null : countFor(range);
                 return (
                   <button
                     key={preset.id}
@@ -274,6 +281,13 @@ export function KnowledgeDateRangeV2() {
                 }}
                 onMonthChange={setMonth}
               />
+              {savedTimeZone && (
+                <p className="border-t px-4 py-2 text-xs text-muted-foreground">
+                  Saved in {savedTimeZone}. Days you pick here use your time
+                  zone ({viewerTimeZone()}), so editing can shift an unchanged
+                  boundary.
+                </p>
+              )}
               <div className="flex border-t">
                 <Button
                   type="button"

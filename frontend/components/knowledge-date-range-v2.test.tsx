@@ -403,7 +403,7 @@ describe("KnowledgeDateRangeV2 saved time zone", () => {
       ),
     );
 
-    await click(screen.getByRole("button", { name: /Jun/ }));
+    await click(await screen.findByRole("button", { name: /Jun/ }));
     await waitFor(() => expect(histogramRequests.length).toBeGreaterThan(0));
     // Quick presets are viewer-local days, so they count in the viewer's zone.
     expect(histogramRequests[0].searchParams.get("tz")).toBe("Europe/London");
@@ -425,7 +425,7 @@ describe("KnowledgeDateRangeV2 saved time zone", () => {
     );
 
     // Editing switches counting to the viewer's zone.
-    await click(screen.getByRole("button", { name: /Jun/ }));
+    await click(await screen.findByRole("button", { name: /Jun/ }));
     histogramRequests = [];
     await click(await screen.findByText("Custom range"));
     // The 15th appears once in the June grid (outside days only span 1-6 and 25-31).
