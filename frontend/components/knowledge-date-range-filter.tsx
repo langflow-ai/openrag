@@ -32,9 +32,11 @@ import {
   countInRange,
   describeToolbarRange,
   EMPTY_DAYS,
+  earlierInstant,
   filterValues,
   formatDateLabel,
   formatShortLabel,
+  laterInstant,
   PRESETS,
   type Preset,
   type Range,
@@ -53,14 +55,6 @@ import {
 import { cn } from "@/lib/utils";
 
 const MAX_CUSTOM_DAYS = 3650;
-
-function earlierInstant(iso: string, other?: string): string {
-  return other && new Date(other) < new Date(iso) ? other : iso;
-}
-
-function laterInstant(iso: string, other?: string): string {
-  return other && new Date(other) > new Date(iso) ? other : iso;
-}
 
 export function DensityMark({
   count,

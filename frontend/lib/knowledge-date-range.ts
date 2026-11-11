@@ -141,3 +141,11 @@ export function countWithinCoverage(
   if (startOfDay(range.from) < startOfDay(coveredFrom)) return null;
   return countInRange(days, range);
 }
+
+export function earlierInstant(iso: string, other?: string): string {
+  return other && new Date(other) < new Date(iso) ? other : iso;
+}
+
+export function laterInstant(iso: string, other?: string): string {
+  return other && new Date(other) > new Date(iso) ? other : iso;
+}

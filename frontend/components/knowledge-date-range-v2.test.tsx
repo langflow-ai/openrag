@@ -1,5 +1,6 @@
 import { act, fireEvent } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
+import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import {
@@ -330,5 +331,110 @@ describe("KnowledgeDateRangeV2 histogram coverage", () => {
     expect(
       countWithinCoverage({ "2024-02-15": 4 }, range, new Date(2024, 0, 1)),
     ).toBe(4);
+  });
+});
+
+describe("KnowledgeDateRangeV2 saved time zone", () => {
+  const LA = "America/Los_Angeles";
+  const originalTZ = process.env.TZ;
+
+  beforeEach(() => {
+    process.env.TZ = "Europe/London";
+    histogramRequests = [];
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2024, 5, 20, 12));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    if (originalTZ === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTZ;
+  });
+
+  const saved = {
+    id: "f1",
+    name: "f1",
+    description: "",
+    owner: "u",
+    created_at: "",
+    updated_at: "",
+    query_data: JSON.stringify({
+      query: "",
+      filters: {
+        data_sources: ["*"],
+        document_types: ["*"],
+        owners: ["*"],
+        connector_types: ["*"],
+        created_after: "2024-06-10T07:00:00.000Z",
+        created_before: "2024-06-14T06:59:59.999999Z",
+      },
+      date_range_context: {
+        from: "2024-06-10",
+        to: "2024-06-13",
+        timezone: LA,
+      },
+    }),
+  };
+
+  function SavedProbe() {
+    const ctx = useKnowledgeFilter();
+    // biome-ignore lint/correctness/useExhaustiveDependencies: select once
+    useEffect(() => ctx.setSelectedFilter(saved), []);
+    return (
+      <>
+        <KnowledgeDateRangeFilter />
+        <output aria-label="Effective range start">
+          {ctx.effectiveDateRange.createdAfter ?? "none"}
+        </output>
+      </>
+    );
+  }
+
+  it("counts an unchanged saved range in its saved zone, then the viewer's once edited", async () => {
+    renderWithProviders(<SavedProbe />, {
+      providers: ["auth", "knowledgeFilter"],
+      auth: withAuth(authPresets.admin, {
+        me: { run_mode: "oss", date_range_v2: true },
+      }),
+      handlers: [histogramHandler],
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText("Effective range start")).toHaveTextContent(
+        "2024-06-10T07:00:00.000Z",
+      ),
+    );
+
+    await click(screen.getByRole("button", { name: /Jun/ }));
+    await waitFor(() => expect(histogramRequests.length).toBeGreaterThan(0));
+    const first = histogramRequests[0].searchParams;
+    expect(first.get("tz")).toBe(LA);
+    expect(new Date(first.get("start") ?? "").getTime()).toBeLessThanOrEqual(
+      new Date("2024-06-10T07:00:00.000Z").getTime(),
+    );
+
+    // Applying without edits must leave the saved bounds alone.
+    await click(await screen.findByText("Custom range"));
+    await click(await screen.findByRole("button", { name: "Apply filter" }));
+    expect(screen.getByLabelText("Effective range start")).toHaveTextContent(
+      "2024-06-10T07:00:00.000Z",
+    );
+
+    // Editing switches counting to the viewer's zone.
+    await click(screen.getByRole("button", { name: /Jun/ }));
+    histogramRequests = [];
+    await click(await screen.findByText("Custom range"));
+    await click(
+      screen
+        .getAllByRole("gridcell")
+        .find(
+          (c) =>
+            c.tagName === "BUTTON" &&
+            !c.className.includes("day-outside") &&
+            c.textContent === "5",
+        ) as HTMLElement,
+    );
+    await waitFor(() => expect(histogramRequests.length).toBeGreaterThan(0));
+    expect(histogramRequests.at(-1)?.searchParams.get("tz")).toBe(
+      "Europe/London",
+    );
   });
 });

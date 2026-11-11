@@ -28,14 +28,20 @@ import {
   countWithinCoverage,
   describeToolbarRange,
   EMPTY_DAYS,
+  earlierInstant,
   filterValues,
   formatDateLabel,
+  laterInstant,
   MAX_HISTOGRAM_DAYS,
   type Preset,
   type Range,
   V2_PRESETS,
 } from "@/lib/knowledge-date-range";
-import type { SavedDateRange } from "@/lib/saved-date-range";
+import {
+  foreignTimeZone,
+  type SavedDateRange,
+  viewerTimeZone,
+} from "@/lib/saved-date-range";
 import {
   toLocalDayEndISOString,
   toLocalDayKey,
@@ -79,11 +85,21 @@ export function KnowledgeDateRangeV2() {
     ...(draft?.from ? [startOfDay(draft.from)] : []),
   ]);
   const clampedStart = windowStart < earliest ? earliest : windowStart;
+  // An unedited saved range is counted in the zone it was saved in, over a
+  // window that includes its exact bounds; edits switch to the viewer's zone.
+  const savedTimeZone = foreignTimeZone(effectiveDateRange);
+  const countInSavedZone = !edited && savedTimeZone !== null;
+  const startISO = toLocalDayStartISOString(clampedStart);
+  const endISO = toLocalDayEndISOString(today);
   const { data: histogram, isPlaceholderData } = useUploadHistogram(
     {
-      start: toLocalDayStartISOString(clampedStart),
-      end: toLocalDayEndISOString(today),
-      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      start: countInSavedZone
+        ? earlierInstant(startISO, effectiveDateRange.createdAfter)
+        : startISO,
+      end: countInSavedZone
+        ? laterInstant(endISO, effectiveDateRange.createdBefore)
+        : endISO,
+      tz: countInSavedZone && savedTimeZone ? savedTimeZone : viewerTimeZone(),
       connectorType: filterValues(parsedFilterData?.filters?.connector_types),
       mimetype: filterValues(parsedFilterData?.filters?.document_types),
       owner: filterValues(parsedFilterData?.filters?.owners),
