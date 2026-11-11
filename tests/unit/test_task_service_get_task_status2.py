@@ -14,6 +14,7 @@ from unittest.mock import Mock
 import pytest
 
 from models.tasks import DoclingPhaseStatus, FileTask, IngestionPhase, TaskStatus, UploadTask
+from services.docling_service import PASSWORD_PROTECTED_PDF_DETAIL
 from services.task_service import TaskService, _opensearch_failure_metadata
 
 # ---------------------------------------------------------------------------
@@ -202,6 +203,31 @@ class TestInferFailureMetadata:
         assert "pdfium" not in msg.lower()
         assert "docling-parse" not in msg.lower()
         assert "cbfc231c" not in msg
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            # Langflow path (upload_and_ingest_file)
+            f"Docling conversion did not complete (failed): {PASSWORD_PROTECTED_PDF_DETAIL}",
+            # Non-Langflow path (DoclingService.convert_file / convert_bytes)
+            f"Docling processing failed: {PASSWORD_PROTECTED_PDF_DETAIL}",
+        ],
+    )
+    def test_backend_detected_password_protected_pdf_maps_to_clean_message(
+        self, task_service, error
+    ):
+        """docling >= 2.141 no longer names the reason; the backend's remap must still match."""
+        ft = _make_file_task(
+            phase=IngestionPhase.DOCLING,
+            docling_status=DoclingPhaseStatus.FAILED,
+            error=error,
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta is not None
+        assert meta["actionable_by"] == "USER_ACTIONABLE"
+        assert meta["component"] == "docling"
+        assert meta["failure_phase"] == "parsing"
+        assert meta["user_facing_message"].startswith("This PDF is password-protected.")
 
     def test_langflow_empty_content_not_retryable(self, task_service):
         ft = _make_file_task(

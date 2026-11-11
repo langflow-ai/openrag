@@ -17,17 +17,31 @@ from types import SimpleNamespace
 import pytest
 from opensearchpy.exceptions import RequestError
 
-from auth_context import set_auth_context, set_score_threshold, set_search_filters, set_search_limit
+from auth_context import (
+    set_auth_context,
+    set_score_threshold,
+    set_search_filters,
+    set_search_limit,
+    set_search_result_mode,
+)
 from services.search_service import SearchService
 
 
 class _OpenSearch:
     """Minimal OpenSearch stub that records every non-agg search body."""
 
-    def __init__(self, reject_num_candidates: bool = False):
+    def __init__(self, reject_num_candidates: bool = False, vector_field: dict | None = None):
         """Initialize request recording and optional rejection of the first search."""
         self.bodies: list[dict] = []
         self._reject_num_candidates = reject_num_candidates
+        if vector_field is not None:
+            properties = {"chunk_embedding_openai_text_embedding_3_small": vector_field}
+            self.indices = SimpleNamespace(get_mapping=self._get_mapping)
+            self._mapping = {"documents": {"mappings": {"properties": properties}}}
+
+    async def _get_mapping(self, *, index):
+        """Return the configured vector-field mapping."""
+        return self._mapping
 
     async def search(self, *, index, body, params):
         """Return empty results, recording searches and optionally simulating a retry error."""
@@ -86,13 +100,14 @@ def _set_context(score_threshold: float) -> None:
     set_search_filters({})
     set_search_limit(100)
     set_score_threshold(score_threshold)
+    set_search_result_mode("chunks")
 
 
 def _knn_params(query: dict) -> list[dict]:
     """Extract kNN parameters from a hybrid query with or without a score wrapper."""
     hybrid = query.get("function_score", {}).get("query", query)
     knn_queries = hybrid["bool"]["should"][0]["dis_max"]["queries"]
-    return [params for knn in knn_queries for params in knn["knn"].values()]
+    return [params for knn in knn_queries if "knn" in knn for params in knn["knn"].values()]
 
 
 @pytest.mark.asyncio
@@ -138,7 +153,9 @@ async def test_wildcard_query_ignores_the_threshold(monkeypatch):
 
     body = os_client.bodies[-1]
     assert "min_score" not in body
-    assert body["query"] == {"match_all": {}}
+    assert body["query"]["bool"]["filter"] == [
+        {"bool": {"must_not": [{"terms": {"record_kind": ["web_page_manifest", "web_source"]}}]}}
+    ]
 
 
 @pytest.mark.asyncio
@@ -155,3 +172,127 @@ async def test_num_candidates_retry_keeps_the_threshold(monkeypatch):
     assert all("num_candidates" not in params for params in _knn_params(retry["query"]))
     assert retry["query"]["function_score"]["min_score"] == 1.0
     assert "min_score" not in retry
+
+
+@pytest.mark.asyncio
+async def test_filters_are_pushed_into_each_knn_clause(monkeypatch):
+    """Filters must constrain kNN neighbor selection, not only post-filter the top-k."""
+    os_client = _OpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+    set_search_filters({"created_after": "2024-01-01T00:00:00Z"})
+
+    await service.search_tool("MCP")
+
+    params = _knn_params(os_client.bodies[-1]["query"])
+    assert params
+    date_clause = {"range": {"indexed_time": {"gte": "2024-01-01T00:00:00.000000Z"}}}
+    for knn in params:
+        # The date range sits beside the chunk-mode exclusion of website manifests.
+        assert date_clause in knn["filter"]["bool"]["filter"]
+
+
+@pytest.mark.asyncio
+async def test_knowledge_source_search_keeps_website_page_chunks_for_parent_aggregation(
+    monkeypatch,
+):
+    """The API folds page hits into their source after SearchService ranks them."""
+    os_client = _OpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+    set_search_result_mode("knowledge_sources")
+
+    await service.search_tool("baseball")
+
+    filters = os_client.bodies[-1]["query"]["bool"].get("filter", [])
+    assert not any(
+        clause.get("bool", {}).get("must_not") == [{"exists": {"field": "web_page_id"}}]
+        for clause in filters
+    )
+
+
+@pytest.mark.asyncio
+async def test_chunk_search_excludes_website_manifests_but_not_page_chunks(monkeypatch):
+    """RAG/chunk searches must not retrieve metadata-only website records."""
+    os_client = _OpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+
+    await service.search_tool("baseball")
+
+    filters = os_client.bodies[-1]["query"]["bool"]["filter"]
+    assert {"terms": {"record_kind": ["web_page_manifest", "web_source"]}} in [
+        clause["bool"]["must_not"][0]
+        for clause in filters
+        if clause.get("bool", {}).get("must_not")
+    ]
+
+
+_DATE = {"created_after": "2024-01-01T00:00:00Z"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("engine", ["jvector", "lucene", "faiss"])
+async def test_engines_with_native_filtering_get_the_inner_knn_filter(monkeypatch, engine):
+    os_client = _OpenSearch(
+        vector_field={"type": "knn_vector", "method": {"engine": engine, "space_type": "l2"}}
+    )
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+    set_search_filters(_DATE)
+
+    await service.search_tool("MCP")
+
+    params = _knn_params(os_client.bodies[-1]["query"])
+    assert params and all("filter" in knn for knn in params)
+
+
+@pytest.mark.asyncio
+async def test_nmslib_scores_the_filtered_documents_exactly(monkeypatch):
+    os_client = _OpenSearch(
+        vector_field={
+            "type": "knn_vector",
+            "method": {"engine": "nmslib", "space_type": "cosinesimil"},
+        }
+    )
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+    set_search_filters(_DATE)
+
+    await service.search_tool("MCP")
+
+    query = os_client.bodies[-1]["query"]
+    assert _knn_params(query) == []  # no native kNN clause for nmslib
+    hybrid = query.get("function_score", {}).get("query", query)
+    (clause,) = hybrid["bool"]["should"][0]["dis_max"]["queries"]
+    script = clause["script_score"]["script"]
+    assert script["lang"] == "knn"
+    assert script["params"]["space_type"] == "cosinesimil"
+    date_clause = {"range": {"indexed_time": {"gte": "2024-01-01T00:00:00.000000Z"}}}
+    assert date_clause in clause["script_score"]["query"]["bool"]["filter"]
+    assert date_clause in hybrid["bool"]["filter"]  # the outer filter is kept
+
+
+@pytest.mark.asyncio
+async def test_nmslib_chunk_search_without_dates_still_avoids_the_inner_filter(monkeypatch):
+    """The chunk-mode record-kind exclusion alone is a filter, so nmslib must not get it inline."""
+    os_client = _OpenSearch(vector_field={"type": "knn_vector", "method": {"engine": "nmslib"}})
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+
+    await service.search_tool("MCP")
+
+    assert _knn_params(os_client.bodies[-1]["query"]) == []
+
+
+@pytest.mark.asyncio
+async def test_unreadable_mapping_keeps_the_native_knn_filter(monkeypatch):
+    os_client = _OpenSearch()  # no `indices`: the mapping cannot be read
+    service = _make_service(os_client, monkeypatch)
+    _set_context(0)
+    set_search_filters(_DATE)
+
+    await service.search_tool("MCP")
+
+    params = _knn_params(os_client.bodies[-1]["query"])
+    assert params and all("filter" in knn for knn in params)

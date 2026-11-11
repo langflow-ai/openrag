@@ -5,7 +5,9 @@ import { server } from "@/test-utils/msw/server";
 import { createQueryWrapper, renderHook, waitFor } from "@/test-utils/render";
 import {
   type ChunkResult,
+  resolveScoreThreshold,
   type SearchPayload,
+  type SearchResultDisplayOptions,
   useGetSearchQuery,
 } from "./useGetSearchQuery";
 
@@ -61,10 +63,18 @@ function serveSearch(body: Record<string, unknown>, status = 200) {
   return seen;
 }
 
-async function runSearch(query: string, data?: ParsedQueryData | null) {
-  const rendered = renderHook(() => useGetSearchQuery(query, data), {
-    wrapper: createQueryWrapper(),
-  });
+async function runSearch(
+  query: string,
+  data?: ParsedQueryData | null,
+  displayOptions?: SearchResultDisplayOptions,
+  dateRange?: { createdAfter?: string; createdBefore?: string },
+) {
+  const rendered = renderHook(
+    () => useGetSearchQuery(query, data, undefined, displayOptions, dateRange),
+    {
+      wrapper: createQueryWrapper(),
+    },
+  );
   await waitFor(() =>
     expect(
       rendered.result.current.isSuccess || rendered.result.current.isError,
@@ -171,6 +181,30 @@ describe("useGetSearchQuery", () => {
       });
     });
 
+    it("preserves a URL source scope and website-page result mode", async () => {
+      const seen = serveSearch({ results: [] });
+
+      await runSearch(
+        "",
+        queryData({
+          filters: {
+            data_sources: [],
+            document_types: [],
+            owners: [],
+            connector_types: [],
+            web_source_ids: ["source-123"],
+          },
+        }),
+        { groupBy: "document_id", resultMode: "website_pages" },
+      );
+
+      expect(seen.payload).toMatchObject({
+        query: "*",
+        resultMode: "website_pages",
+        filters: { web_source_ids: ["source-123"] },
+      });
+    });
+
     it("treats a '*' dimension as unfiltered", async () => {
       const seen = serveSearch({ results: [] });
 
@@ -191,6 +225,26 @@ describe("useGetSearchQuery", () => {
   });
 
   describe("grouping chunks into files", () => {
+    it("keeps URL pages with duplicate titles separate by document id", async () => {
+      serveSearch({
+        results: [
+          chunk({ filename: "Guide", document_id: "page-a" }),
+          chunk({ filename: "Guide", document_id: "page-b" }),
+        ],
+      });
+
+      const { result } = await runSearch("", queryData(), {
+        groupBy: "document_id",
+      });
+
+      expect(result.current.data?.files).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ filename: "Guide", document_id: "page-a" }),
+          expect.objectContaining({ filename: "Guide", document_id: "page-b" }),
+        ]),
+      );
+    });
+
     it("groups chunks by filename and averages their scores", async () => {
       serveSearch({
         results: [
@@ -210,6 +264,33 @@ describe("useGetSearchQuery", () => {
         avgScore: 3,
       });
       expect(files[1]).toMatchObject({ filename: "b.pdf", chunkCount: 1 });
+    });
+
+    it("uses the backend chunk count for a website page", async () => {
+      serveSearch({
+        results: [
+          chunk({
+            filename: "Guide",
+            document_id: "page-a",
+            chunk_count: 12,
+          }),
+          chunk({
+            filename: "Guide",
+            document_id: "page-a",
+            chunk_count: 12,
+          }),
+        ],
+      });
+
+      const { result } = await runSearch("", queryData(), {
+        groupBy: "document_id",
+        resultMode: "website_pages",
+      });
+
+      expect(result.current.data?.files[0]).toMatchObject({
+        document_id: "page-a",
+        chunkCount: 12,
+      });
     });
 
     it("falls back to source_url, then to Untitled source (#1609)", async () => {
@@ -388,5 +469,62 @@ describe("useGetSearchQuery", () => {
       // retry: false is set explicitly so errors show immediately.
       expect(calls).toBe(1);
     });
+  });
+
+  describe("date bounds", () => {
+    const AFTER = "2026-10-07T07:00:00.000Z";
+    const BEFORE = "2026-10-11T06:59:59.999999Z";
+    const saved = () =>
+      queryData({
+        filters: {
+          data_sources: [],
+          document_types: ["application/pdf"],
+          owners: [],
+          connector_types: [],
+          created_after: AFTER,
+          created_before: BEFORE,
+        },
+      });
+
+    it("sends the effective bounds beside the PDF filter", async () => {
+      const seen = serveSearch({ results: [] });
+      await runSearch("term", saved(), undefined, {
+        createdAfter: AFTER,
+        createdBefore: BEFORE,
+      });
+      expect(seen.payload?.filters).toEqual({
+        document_types: ["application/pdf"],
+      });
+      expect(seen.payload?.created_after).toBe(AFTER);
+      expect(seen.payload?.created_before).toBe(BEFORE);
+    });
+
+    it("does not fall back to saved dates when the range was cleared", async () => {
+      const seen = serveSearch({ results: [] });
+      await runSearch("term", saved(), undefined, {});
+      expect(seen.payload?.created_after).toBeUndefined();
+      expect(seen.payload?.created_before).toBeUndefined();
+      expect(JSON.stringify(seen.payload)).not.toContain("created_");
+    });
+  });
+});
+
+describe("resolveScoreThreshold", () => {
+  it("lowers the threshold to 1.0 for a short single token", () => {
+    expect(resolveScoreThreshold("docl", 1.25)).toBe(1.0);
+    expect(resolveScoreThreshold("  ab ", 3)).toBe(1.0);
+  });
+
+  it("never raises a threshold that is already below 1.0", () => {
+    expect(resolveScoreThreshold("docl", 0.5)).toBe(0.5);
+  });
+
+  it.each([
+    ["docling", "longer than four characters"],
+    ["a b", "more than one token"],
+    ["*", "the wildcard"],
+    ["", "empty"],
+  ])("keeps the base threshold for %j (%s)", (query) => {
+    expect(resolveScoreThreshold(query, 1.25)).toBe(1.25);
   });
 });

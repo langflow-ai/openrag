@@ -15,13 +15,14 @@ from typing import Any
 from fastapi import HTTPException
 
 _FILTER_DIMENSIONS = ("data_sources", "document_types", "owners", "connector_types")
+_DATE_BOUNDS = ("created_after", "created_before")
 
 
-def _strip_wildcards(filters: dict[str, Any] | None) -> dict[str, list[str]]:
-    """Keep only filter dimensions that contain concrete values."""
+def _strip_wildcards(filters: dict[str, Any] | None) -> dict[str, Any]:
+    """Keep concrete filter dimensions and any saved date bounds."""
     if not filters:
         return {}
-    cleaned: dict[str, list[str]] = {}
+    cleaned: dict[str, Any] = {}
     for key in _FILTER_DIMENSIONS:
         values = filters.get(key)
         if not values or not isinstance(values, list):
@@ -29,6 +30,10 @@ def _strip_wildcards(filters: dict[str, Any] | None) -> dict[str, list[str]]:
         if "*" in values:
             continue
         cleaned[key] = values
+    for key in _DATE_BOUNDS:
+        value = filters.get(key)
+        if isinstance(value, str) and value:
+            cleaned[key] = value
     return cleaned
 
 

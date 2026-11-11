@@ -1570,6 +1570,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         )
         logger.debug(f"Is IBM/watsonx embedding: {is_ibm}")
 
+        failed: set[int] = set()
+
         if is_ibm:
             # Hand the full batch to the SDK and let it batch/throttle/retry.
             # Retry attempts and base backoff are tunable via the SDK's own
@@ -1661,9 +1663,29 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 }
                 for future in as_completed(futures):
                     idx = futures[future]
-                    vectors[idx] = future.result()
+                    try:
+                        vectors[idx] = future.result()
+                    except Exception as e:  # noqa: BLE001
+                        logger.error(
+                            f"Embedding failed for chunk {idx}, skipping: {e}",
+                            error=str(e),
+                        )
+                        failed.add(idx)
+
+            if failed:
+                # Abort before any write. Direct writes carry no ingest_run_id,
+                # so backend cleanup could not remove survivors, and a partial
+                # document would stay searchable and be mistaken for a duplicate.
+                msg = (
+                    f"Embedding failed for {len(failed)} of {len(texts)} chunks with model "
+                    f"'{embedding_model}' (chunk indices: {sorted(failed)}); "
+                    "aborting ingestion so no partial document is indexed."
+                )
+                self.log(msg)
+                raise RuntimeError(msg)
 
         if not vectors:
+            # Empty input batch — nothing to ingest, return normally.
             self.log(f"No vectors generated from documents for model {embedding_model}.")
             return
 
@@ -1750,13 +1772,24 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         logger.info(f"Will store embeddings in field: {dynamic_field_name}")
         logger.info(f"Will tag documents with embedding_model: {embedding_model}")
 
-        # Use the bulk ingestion with model tracking
+        # Build stable document IDs from the chunk positions.
+        import uuid as _uuid
+
+        chunk_ids: list[str] = []
+        for i, m in enumerate(metadatas or [{}] * len(texts)):
+            doc_id = str(m.get("document_id") or "").strip()
+            if doc_id and doc_id.lower() != "none":
+                chunk_ids.append(f"{doc_id}_{i}")
+            else:
+                chunk_ids.append(str(_uuid.uuid4()))
+
         return_ids = self._bulk_ingest_embeddings(
             client=client,
             index_name=self.index_name,
             embeddings=vectors,
             texts=texts,
             metadatas=metadatas,
+            ids=chunk_ids if chunk_ids else None,
             vector_field=dynamic_field_name,  # Use dynamic field name
             text_field="text",
             embedding_model=embedding_model,  # Track the model
@@ -1777,6 +1810,21 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         # term_obj like {"filename": "__IMPOSSIBLE_VALUE__"}
         return any(v == "__IMPOSSIBLE_VALUE__" for v in term_obj.values())
 
+    @staticmethod
+    def _is_valid_range_clause(clause: Any) -> bool:
+        """Return True for a single-field range clause with at least one bound."""
+        if not isinstance(clause, dict) or not isinstance(clause.get("range"), dict):
+            return False
+        range_obj = clause["range"]
+        if len(range_obj) != 1:
+            return False
+        bounds = next(iter(range_obj.values()))
+        if not isinstance(bounds, dict):
+            return False
+        return any(
+            key in bounds and bounds[key] not in (None, "") for key in ("gte", "gt", "lte", "lt")
+        )
+
     def _coerce_filter_clauses(self, filter_obj: dict | None) -> list[dict]:
         """Convert filter expressions into OpenSearch-compatible filter clauses.
 
@@ -1794,7 +1842,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             filter_obj: Filter configuration dictionary or None
 
         Returns:
-            List of OpenSearch filter clauses (term/terms objects)
+            List of OpenSearch filter clauses (term/terms/range objects)
             Placeholder values with "__IMPOSSIBLE_VALUE__" are ignored
         """
         if not filter_obj:
@@ -1825,6 +1873,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     field, vals = next(iter(f["terms"].items()))
                     if isinstance(vals, list) and len(vals) > 0:
                         explicit_clauses.append(f)
+                elif self._is_valid_range_clause(f):
+                    explicit_clauses.append(f)
             return explicit_clauses
 
         # Case B: convert context-style maps into clauses
@@ -2020,6 +2070,45 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
 
         nested_props = field_def.get("properties")
         return bool(isinstance(nested_props, dict) and nested_props.get("type") == "knn_vector")
+
+    _INNER_KNN_FILTER_ENGINES = frozenset({"lucene", "faiss", "jvector"})
+
+    def _supports_inner_knn_filter(
+        self, properties: dict[str, Any] | None, field_name: str
+    ) -> bool:
+        """True when the field's k-NN engine supports a filter inside the k-NN clause."""
+        field_def = (properties or {}).get(field_name)
+        if not isinstance(field_def, dict):
+            return False
+        method = field_def.get("method")
+        engine = method.get("engine") if isinstance(method, dict) else None
+        return isinstance(engine, str) and engine.lower() in self._INNER_KNN_FILTER_ENGINES
+
+    def _exact_filtered_knn_query(
+        self,
+        properties: dict[str, Any] | None,
+        field_name: str,
+        vector: list[float],
+        filter_clauses: list[dict],
+    ) -> dict[str, Any]:
+        """Exact k-NN scoring over only the documents matching *filter_clauses*."""
+        field_def = (properties or {}).get(field_name)
+        method = field_def.get("method") if isinstance(field_def, dict) else None
+        space_type = (method or {}).get("space_type") if isinstance(method, dict) else None
+        return {
+            "script_score": {
+                "query": {"bool": {"filter": [{"exists": {"field": field_name}}, *filter_clauses]}},
+                "script": {
+                    "source": "knn_score",
+                    "lang": "knn",
+                    "params": {
+                        "field": field_name,
+                        "query_value": vector,
+                        "space_type": space_type or "l2",
+                    },
+                },
+            }
+        }
 
     def _get_field_dimension(
         self, properties: dict[str, Any] | None, field_name: str
@@ -2368,8 +2457,25 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                     }
                 }
             }
+            # A filter must apply before neighbours are chosen, or a narrow range
+            # sees only whatever survives the global top-k. Engines with native
+            # filtering take it inside the kNN clause; nmslib cannot, so a
+            # filtered search scores the filtered documents exactly instead.
+            if filter_clauses:
+                if index_properties is None or self._supports_inner_knn_filter(
+                    index_properties, selected_field
+                ):
+                    # Without readable mapping metadata the engine and metric are
+                    # unknown, so keep the native clause rather than guess a metric.
+                    base_query["knn"][selected_field]["filter"] = {
+                        "bool": {"filter": filter_clauses}
+                    }
+                else:
+                    base_query = self._exact_filtered_knn_query(
+                        index_properties, selected_field, embedding_vector, filter_clauses
+                    )
 
-            if use_num_candidates:
+            if use_num_candidates and "knn" in base_query:
                 query_with_candidates = copy.deepcopy(base_query)
                 query_with_candidates["knn"][selected_field]["num_candidates"] = num_candidates
             else:

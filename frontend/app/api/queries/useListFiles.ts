@@ -17,6 +17,8 @@ export interface ListFilesParams {
   dataSources?: string[];
   search?: string;
   afterKey?: Record<string, unknown> | null; //composite pagination cursor, could be undefined in the beginning
+  createdAfter?: string;
+  createdBefore?: string;
 }
 
 export interface ListFilesResponse {
@@ -50,6 +52,10 @@ export const useListFiles = (
     if (params.search) searchParams.set("search", params.search);
     if (params.afterKey)
       searchParams.set("after_key", JSON.stringify(params.afterKey));
+    if (params.createdAfter)
+      searchParams.set("created_after", params.createdAfter);
+    if (params.createdBefore)
+      searchParams.set("created_before", params.createdBefore);
 
     const url = `/files?${searchParams.toString()}`; //internal (cookie auth)
 
@@ -79,7 +85,15 @@ export const useListFiles = (
         embedding_dimensions: f.embedding_dimensions as number | undefined,
         allowed_users: (f.allowed_users as string[]) || [],
         allowed_groups: (f.allowed_groups as string[]) || [],
-        status: "active" as const,
+        indexed_time: (f.indexed_time as string) || undefined,
+        status: (f.status as File["status"]) || "active",
+        error: f.error as string | undefined,
+        document_id: f.document_id as string | undefined,
+        web_source_id: f.web_source_id as string | undefined,
+        web_page_id: f.web_page_id as string | undefined,
+        web_page_depth:
+          typeof f.web_page_depth === "number" ? f.web_page_depth : 0,
+        web_child_count: f.web_child_count as number | undefined,
       }),
     );
 

@@ -843,9 +843,11 @@ def forget_models() -> None:
 # LiteLLM compatibility
 # --------------------------------------------------------------------------
 
-#: Modules that bound `_get_api_params` at import time. Patching
-#: `common_utils._get_api_params` alone would miss all of them.
+#: Watsonx call modules bind either the private (pre-1.106) or public
+#: (1.106+) parameter helper at import time. Patching common_utils alone would
+#: miss those bound references.
 _API_PARAM_CALL_SITES = (
+    "litellm.llms.watsonx.common_utils",
     "litellm.llms.watsonx.chat.handler",
     "litellm.llms.watsonx.embed.transformation",
     "litellm.llms.watsonx.completion.transformation",
@@ -891,7 +893,15 @@ def install_litellm_compatibility() -> None:
         )
         return
 
-    original_get_api_params = common_utils._get_api_params
+    original_get_api_params = getattr(common_utils, "get_api_params", None) or getattr(
+        common_utils, "_get_api_params", None
+    )
+    if original_get_api_params is None:
+        logger.warning(
+            "Could not find LiteLLM's watsonx parameter helper; scope-less "
+            "on-prem calls will remain unsupported"
+        )
+        return
     watsonx_error = common_utils.WatsonXAIError
 
     def _get_api_params_allowing_no_scope(params: dict, model: str | None = None):
@@ -919,14 +929,15 @@ def install_litellm_compatibility() -> None:
     patched = []
     for module_name in _API_PARAM_CALL_SITES:
         try:
-            module = cast(Any, __import__(module_name, fromlist=["_get_api_params"]))
+            module = cast(Any, __import__(module_name, fromlist=["get_api_params"]))
         except Exception:
             continue
-        current = getattr(module, "_get_api_params", None)
-        if current is None or getattr(current, _PATCH_MARKER, False):
-            continue
-        module._get_api_params = _get_api_params_allowing_no_scope
-        patched.append(module_name)
+        for helper_name in ("_get_api_params", "get_api_params"):
+            current = getattr(module, helper_name, None)
+            if current is None or getattr(current, _PATCH_MARKER, False):
+                continue
+            setattr(module, helper_name, _get_api_params_allowing_no_scope)
+            patched.append(f"{module_name}.{helper_name}")
 
     mixin = cast(Any, common_utils.IBMWatsonXMixin)
     if not getattr(mixin._prepare_payload, _PATCH_MARKER, False):

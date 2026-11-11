@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import io
 import json
 import time
@@ -302,6 +303,7 @@ class LangflowFileService:
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             connector_file_id=connector_file_id,
+            indexed_time=datetime.datetime.now(datetime.UTC).isoformat(),
         )
         token = self.ingest_token_service.create_token(context)
         logger.info(
@@ -1178,9 +1180,18 @@ class LangflowFileService:
                         "elapsed_seconds": round(poll_result.elapsed_seconds, 2),
                     },
                 )
+                from services.docling_service import password_protected_pdf_error
+
+                detail = poll_result.detail
+                if (
+                    poll_result.outcome == PollOutcome.FAILED
+                    and detail
+                    and isinstance(content, bytes)
+                ):
+                    detail = password_protected_pdf_error(detail, content) or detail
                 raise Exception(
                     f"Docling conversion did not complete ({poll_result.outcome.value}): "
-                    f"{poll_result.detail or 'no detail provided'}"
+                    f"{detail or 'no detail provided'}"
                 )
 
             if file_task is not None:

@@ -1,6 +1,38 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { HighlightedText } from "./highlighted-text";
+import {
+  BOLD_MATCH_CLASS,
+  HighlightedText,
+  PREVIEW_TEXT_CLASS,
+} from "./highlighted-text";
+
+describe("preview highlight styles", () => {
+  it("bold match style is theme-token based with no hardcoded colours or yellow background", () => {
+    expect(BOLD_MATCH_CLASS).toContain("bg-transparent");
+    expect(BOLD_MATCH_CLASS).toContain("text-foreground");
+    expect(BOLD_MATCH_CLASS).toContain("font-semibold");
+    expect(BOLD_MATCH_CLASS).toContain("underline");
+    expect(BOLD_MATCH_CLASS).not.toMatch(
+      /yellow|#[0-9a-f]{3,6}|\bwhite\b|\bblack\b/i,
+    );
+    expect(PREVIEW_TEXT_CLASS).not.toMatch(
+      /yellow|#[0-9a-f]{3,6}|\bwhite\b|\bblack\b/i,
+    );
+  });
+
+  it("applies the bold style to matches via markClassName", () => {
+    const { container } = render(
+      <HighlightedText
+        highlights={["a <mark>match</mark> b"]}
+        fallbackText=""
+        markClassName={BOLD_MATCH_CLASS}
+      />,
+    );
+    const mark = container.querySelector("mark");
+    expect(mark?.className).toBe(BOLD_MATCH_CLASS);
+    expect(mark?.className).not.toContain("bg-yellow");
+  });
+});
 
 describe("HighlightedText", () => {
   it("renders fallback text when highlights array is empty", () => {

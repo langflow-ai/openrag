@@ -9,6 +9,7 @@ an API key instead of the session cookie.
 
 from fastapi import Depends, Query
 
+from api.files import CREATED_AFTER_DESCRIPTION, CREATED_BEFORE_DESCRIPTION
 from api.files import list_files as _internal_list_files
 from api.files import search_files as _internal_search_files
 from dependencies import get_file_service_v2, require_api_key_permission
@@ -30,6 +31,8 @@ async def list_files(
     search: str | None = Query(None, description="Search filename"),
     after_key: str | None = Query(None, description="Composite pagination cursor (JSON-encoded)"),
     data_sources: list[str] | None = Query(None, description="Filename whitelist (repeatable)"),
+    created_after: str | None = Query(None, description=CREATED_AFTER_DESCRIPTION),
+    created_before: str | None = Query(None, description=CREATED_BEFORE_DESCRIPTION),
     file_service=Depends(get_file_service_v2),
     user: User = Depends(require_api_key_permission("knowledge:read:own")),
 ):
@@ -45,6 +48,8 @@ async def list_files(
         search=search,
         after_key=after_key,
         data_sources=data_sources,
+        created_after=created_after,
+        created_before=created_before,
         file_service=file_service,
         user=user,
     )
@@ -61,6 +66,8 @@ async def search_files(
     owner: list[str] | None = Query(None, description="Filter by owner (repeatable)"),
     after_key: str | None = Query(None, description="Composite pagination cursor (JSON-encoded)"),
     data_sources: list[str] | None = Query(None, description="Filename whitelist (repeatable)"),
+    created_after: str | None = Query(None, description=CREATED_AFTER_DESCRIPTION),
+    created_before: str | None = Query(None, description=CREATED_BEFORE_DESCRIPTION),
     file_service=Depends(get_file_service_v2),
     user: User = Depends(require_api_key_permission("knowledge:read:own")),
 ):
@@ -74,6 +81,8 @@ async def search_files(
         owner=owner,
         after_key=after_key,
         data_sources=data_sources,
+        created_after=created_after,
+        created_before=created_before,
         file_service=file_service,
         user=user,
     )
