@@ -342,16 +342,6 @@ describe("KnowledgeFilterPanel keeps unsaved editor dates", () => {
   async function renderScenario(initialV2: boolean) {
     v2 = initialV2;
     putBody = undefined;
-    server.use(
-      http.post("/api/search", () => HttpResponse.json({ aggregations: {} })),
-      http.get("/api/files/upload-histogram", () =>
-        HttpResponse.json({ total: 0, days: {} }),
-      ),
-      http.put("/api/knowledge-filter/f1", async ({ request }) => {
-        putBody = (await request.json()) as { queryData?: string };
-        return HttpResponse.json({ success: true, filter: saved(false) });
-      }),
-    );
     renderWithProviders(<Scenario />, {
       providers: ["auth", "knowledgeFilter"],
       auth,
@@ -363,6 +353,14 @@ describe("KnowledgeFilterPanel keeps unsaved editor dates", () => {
             date_range_v2: v2,
           }),
         ),
+        http.post("/api/search", () => HttpResponse.json({ aggregations: {} })),
+        http.get("/api/files/upload-histogram", () =>
+          HttpResponse.json({ total: 0, days: {} }),
+        ),
+        http.put("/api/knowledge-filter/f1", async ({ request }) => {
+          putBody = (await request.json()) as { queryData?: string };
+          return HttpResponse.json({ success: true, filter: saved(false) });
+        }),
       ],
     });
     await screen.findByText("Date ingested");

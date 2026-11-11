@@ -2,6 +2,10 @@ import { act, fireEvent } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import {
+  countWithinCoverage,
+  MAX_HISTOGRAM_DAYS,
+} from "@/lib/knowledge-date-range";
 import { authPresets, withAuth } from "@/test-utils/fixtures/auth";
 import {
   renderWithProviders,
@@ -10,10 +14,6 @@ import {
   within,
 } from "@/test-utils/render";
 import { KnowledgeDateRangeFilter } from "./knowledge-date-range-filter";
-import {
-  countWithinCoverage,
-  MAX_HISTOGRAM_DAYS,
-} from "./knowledge-date-range-v2";
 
 let histogramRequests: URL[] = [];
 
@@ -38,7 +38,7 @@ async function click(el: HTMLElement) {
 function Probe() {
   const { effectiveDateRange } = useKnowledgeFilter();
   return (
-    <output data-testid="range">
+    <output aria-label="Effective range start">
       {effectiveDateRange.createdAfter ?? "none"}
     </output>
   );
@@ -96,7 +96,9 @@ describe("KnowledgeDateRangeV2", () => {
     );
     await click(await screen.findByRole("button", { name: /^Today/ }));
     await waitFor(() => {
-      expect(screen.getByTestId("range")).not.toHaveTextContent("none");
+      expect(
+        screen.getByLabelText("Effective range start"),
+      ).not.toHaveTextContent("none");
     });
   });
 
@@ -124,7 +126,7 @@ describe("KnowledgeDateRangeV2", () => {
     await click(screen.getByRole("button", { name: /^Last quarter/ }));
     // 2024-06-20 is in Q2, so last quarter starts on 2024-01-01.
     await waitFor(() =>
-      expect(screen.getByTestId("range")).toHaveTextContent(
+      expect(screen.getByLabelText("Effective range start")).toHaveTextContent(
         new Date(2024, 0, 1).toISOString().slice(0, 10),
       ),
     );
@@ -233,22 +235,32 @@ describe("KnowledgeDateRangeV2 clearing", () => {
   it("clears a toolbar range", async () => {
     renderControlled();
     await click(await screen.findByRole("button", { name: "toolbar-range" }));
-    expect(screen.getByTestId("range")).not.toHaveTextContent("none");
+    expect(
+      screen.getByLabelText("Effective range start"),
+    ).not.toHaveTextContent("none");
     await click(
       await screen.findByRole("button", { name: "Clear date range" }),
     );
-    expect(screen.getByTestId("range")).toHaveTextContent("none");
+    expect(screen.getByLabelText("Effective range start")).toHaveTextContent(
+      "none",
+    );
   });
 
   it("clears to an explicit 'Any time', not back to the saved bounds", async () => {
     renderControlled();
     await click(await screen.findByRole("button", { name: "select-saved" }));
-    expect(screen.getByTestId("range")).toHaveTextContent(AFTER);
+    expect(screen.getByLabelText("Effective range start")).toHaveTextContent(
+      AFTER,
+    );
     await click(
       await screen.findByRole("button", { name: "Clear date range" }),
     );
-    expect(screen.getByTestId("range")).toHaveTextContent("none");
-    expect(screen.getByTestId("range")).not.toHaveTextContent(AFTER);
+    expect(screen.getByLabelText("Effective range start")).toHaveTextContent(
+      "none",
+    );
+    expect(
+      screen.getByLabelText("Effective range start"),
+    ).not.toHaveTextContent(AFTER);
   });
 });
 

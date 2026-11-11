@@ -94,8 +94,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [runMode, setRunMode] = useState<RunMode | null>(null);
   const [dateRangeV2, setDateRangeV2] = useState(false);
 
+  // Shared by checkAuth and refreshFeatureFlags: only the newest /auth/me
+  // request may write the flags, so a slow older response cannot overwrite them.
+  const flagRequestSeqRef = useRef(0);
+
   const checkAuth = useCallback(async () => {
     setIsLoading(true);
+    const flagSeq = ++flagRequestSeqRef.current;
     try {
       const response = await apiClient.get("/auth/me");
 
@@ -108,7 +113,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const data = response.data;
       if (data.version) setVersion(data.version);
       if (data.run_mode) setRunMode(data.run_mode);
-      setDateRangeV2(data.date_range_v2 === true);
+      if (flagSeq === flagRequestSeqRef.current) {
+        setDateRangeV2(data.date_range_v2 === true);
+      }
 
       // Check auth mode flags
       if (data.ibm_auth_mode) {
@@ -223,13 +230,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const lastFlagRefreshRef = useRef(0);
   const refreshFeatureFlags = useCallback(async () => {
     lastFlagRefreshRef.current = Date.now();
+    const flagSeq = ++flagRequestSeqRef.current;
     try {
       const response = await apiClient.get("/auth/me");
       // Keep the last known values on any failure.
       if (response.status < 200 || response.status >= 300) return;
       const data = response.data;
       if (data?.run_mode) setRunMode(data.run_mode);
-      setDateRangeV2(data?.date_range_v2 === true);
+      if (flagSeq === flagRequestSeqRef.current) {
+        setDateRangeV2(data?.date_range_v2 === true);
+      }
     } catch {
       // Swallow: keep the last known flags.
     }
