@@ -54,10 +54,10 @@ vi.mock("@/contexts/brand-context", async (importOriginal) => ({
 vi.mock("@/contexts/chat-context", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/contexts/chat-context")>()),
   useChat: () => ({
-    endpoint: "chat",
+    endpoint: chatState.endpoint,
     setEndpoint: vi.fn(),
     currentConversationId: null,
-    conversationData: null,
+    conversationData: chatState.conversationData,
     setCurrentConversationId: vi.fn(),
     addConversationDoc: vi.fn(),
     forkFromResponse: vi.fn(),
@@ -66,12 +66,12 @@ vi.mock("@/contexts/chat-context", async (importOriginal) => ({
     refreshTrigger: 0,
     refreshTriggerSilent: 0,
     previousResponseIds: { chat: null, langflow: null },
-    setPreviousResponseIds: vi.fn(),
+    setPreviousResponseIds: chatState.setPreviousResponseIds,
     placeholderConversation: null,
     conversationFilter: null,
     setConversationFilter: vi.fn(),
     loading: false,
-    setLoading: vi.fn(),
+    setLoading: chatState.setLoading,
     setChatError: vi.fn(),
   }),
 }));
@@ -97,7 +97,7 @@ vi.mock("@/hooks/useChatStreaming", () => ({
     streamingMessage: null,
     isLoading: false,
     sendMessage: vi.fn(),
-    abortStream: vi.fn(),
+    abortStream: chatState.abortStream,
     isChatStreaming: false,
   }),
 }));
@@ -128,22 +128,35 @@ vi.mock("@/app/chat/_components/assistant-message", () => ({
   ),
 }));
 
-const { imeStateHolder, submitSpy, chatCallbacks, uploadFileForContextMock } =
-  vi.hoisted(() => ({
-    imeStateHolder: {
-      current: { composing: false, compositionEndedAt: 0, now: 0 },
-    },
-    submitSpy: vi.fn((event: { preventDefault: () => void }) => {
-      event.preventDefault();
-    }),
-    chatCallbacks: {
-      onSubmit: undefined as
-        | ((event: { preventDefault: () => void }) => void | Promise<void>)
-        | undefined,
-      onFileSelected: undefined as ((file: File) => void) | undefined,
-    },
-    uploadFileForContextMock: vi.fn(),
-  }));
+const {
+  imeStateHolder,
+  submitSpy,
+  chatCallbacks,
+  uploadFileForContextMock,
+  chatState,
+} = vi.hoisted(() => ({
+  imeStateHolder: {
+    current: { composing: false, compositionEndedAt: 0, now: 0 },
+  },
+  submitSpy: vi.fn((event: { preventDefault: () => void }) => {
+    event.preventDefault();
+  }),
+  chatCallbacks: {
+    onSubmit: undefined as
+      | ((event: { preventDefault: () => void }) => void | Promise<void>)
+      | undefined,
+    onFileSelected: undefined as ((file: File) => void) | undefined,
+  },
+  uploadFileForContextMock: vi.fn(),
+  chatState: {
+    endpoint: "chat",
+    conversationData: null as unknown,
+    abortStream: vi.fn(),
+    setLoading: vi.fn(),
+    setMessages: vi.fn(),
+    setPreviousResponseIds: vi.fn(),
+  },
+}));
 
 vi.mock("@/lib/upload-utils", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/upload-utils")>();
@@ -217,6 +230,12 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
     };
     submitSpy.mockClear();
     uploadFileForContextMock.mockReset();
+    chatState.endpoint = "chat";
+    chatState.conversationData = null;
+    chatState.abortStream.mockReset();
+    chatState.setLoading.mockReset();
+    chatState.setMessages.mockReset();
+    chatState.setPreviousResponseIds.mockReset();
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -275,6 +294,44 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
       const text = screen.getByTestId("assistant-message").textContent;
       expect(text).not.toBe(PLACEHOLDER_GREETING.content);
       expect(text).toMatch(/Olfa/);
+    });
+  });
+
+  it("clears the transcript and aborts the active stream when the chat source changes", () => {
+    const { rerender } = renderWithProviders(<ProtectedChatPage />, {
+      providers: ["auth"],
+      auth: authPresets.noAuthMode,
+    });
+
+    chatState.endpoint = "langflow";
+    rerender(<ProtectedChatPage />);
+
+    expect(chatState.abortStream).toHaveBeenCalledOnce();
+    expect(chatState.setLoading).toHaveBeenCalledWith(false);
+  });
+
+  it("renders a native tool-only assistant message with empty text", async () => {
+    chatState.conversationData = {
+      response_id: "native-conversation",
+      endpoint: "chat",
+      messages: [
+        {
+          role: "assistant",
+          content: null,
+          chunks: [
+            { item: { type: "tool_call", tool_name: "search_documents" } },
+          ],
+        },
+      ],
+    };
+
+    renderWithProviders(<ProtectedChatPage />, {
+      providers: ["auth"],
+      auth: authPresets.noAuthMode,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("assistant-message")).toHaveTextContent("");
     });
   });
 
