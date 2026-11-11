@@ -774,3 +774,63 @@ describe("TaskProvider — source-deleted overlays", () => {
     );
   });
 });
+
+describe("TaskProvider — failed documents refresh", () => {
+  function serveRunningThenCompleted(finalStatus: Task["status"]) {
+    let callCount = 0;
+    const runningTask: Task = makeTask({
+      status: "running",
+      files: { "file.pdf": { status: "running", error: "" } },
+    });
+    const finalTask: Task = {
+      ...runningTask,
+      status: finalStatus,
+      successful_files: 0,
+      failed_files: 1,
+      files: { "file.pdf": { status: "failed", error: "corrupt file" } },
+    };
+    server.use(
+      http.get("/api/tasks/enhanced", () => {
+        callCount++;
+        return HttpResponse.json({
+          tasks: [callCount === 1 ? runningTask : finalTask],
+        });
+      }),
+    );
+    return () => callCount;
+  }
+
+  it("invalidates the failed-ingestions query when a task completes", async () => {
+    const qc = createTestQueryClient();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    const calls = serveRunningThenCompleted("completed");
+
+    renderHook(() => useTask(), { wrapper: wrapper(qc) });
+
+    await waitFor(() => expect(calls()).toBeGreaterThanOrEqual(2), {
+      timeout: 5000,
+    });
+    await waitFor(
+      () =>
+        expect(invalidate).toHaveBeenCalledWith({
+          queryKey: ["failed-ingestions"],
+        }),
+      { timeout: 5000 },
+    );
+  });
+
+  it("does not invalidate it while the task is still running", async () => {
+    const qc = createTestQueryClient();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    const calls = serveRunningThenCompleted("running");
+
+    renderHook(() => useTask(), { wrapper: wrapper(qc) });
+
+    await waitFor(() => expect(calls()).toBeGreaterThanOrEqual(2), {
+      timeout: 5000,
+    });
+    expect(invalidate).not.toHaveBeenCalledWith({
+      queryKey: ["failed-ingestions"],
+    });
+  });
+});

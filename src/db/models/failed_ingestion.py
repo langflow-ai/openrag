@@ -29,7 +29,7 @@ class FailedIngestion(SQLModel, table=True):
     user_id: str = Field(max_length=64, index=True)
     connector_type: str = Field(max_length=64, index=True)
     # Connector file id, e.g. "<bucket>::<key>" for bucket connectors.
-    file_id: str = Field(max_length=1024)
+    file_id: str = Field(max_length=1100)
     filename: str | None = Field(default=None, max_length=512)
     # Source version the failure was recorded against. Either may be null when
     # the failure happened before the file was downloaded.

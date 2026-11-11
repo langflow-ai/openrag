@@ -94,6 +94,49 @@ async def test_first_failure_creates_row_with_one_attempt(session_factory):
     assert row.filename == "broken.docx"
 
 
+# Longest S3 composite id: 63-char bucket + "::" + 1024-byte key.
+MAX_S3_FILE_ID = "b" * 63 + "::" + "k" * 1024
+
+
+def test_file_id_column_fits_the_longest_bucket_object_id():
+    # SQLite ignores VARCHAR length, so assert the declared width: Postgres
+    # would reject a longer value and record_failure swallows that error.
+    from db.models.failed_ingestion import FailedIngestion
+
+    assert FailedIngestion.__table__.c.file_id.type.length >= len(MAX_S3_FILE_ID)
+
+
+def test_migration_file_id_width_matches_the_model():
+    import re
+
+    from db.models.failed_ingestion import FailedIngestion
+
+    migration = (ROOT / "alembic" / "versions" / "0009_failed_ingestion.py").read_text()
+    match = re.search(r'sa\.Column\("file_id", sa\.String\((\d+)\)', migration)
+    assert match, "file_id column not found in migration 0009"
+    assert int(match.group(1)) == FailedIngestion.__table__.c.file_id.type.length
+    assert int(match.group(1)) >= len(MAX_S3_FILE_ID)
+
+
+@pytest.mark.asyncio
+async def test_longest_bucket_object_id_round_trips(session_factory):
+    async with session_factory() as s:
+        repo = FailedIngestionRepo(s)
+        await repo.record_failure(
+            USER,
+            CONNECTOR,
+            MAX_S3_FILE_ID,
+            "boom",
+            filename="k",
+            content_etag="e1",
+            modified_time=None,
+        )
+        await s.commit()
+        rows = await repo.list_for_user(USER)
+
+    assert [r.file_id for r in rows] == [MAX_S3_FILE_ID]
+
+
 @pytest.mark.asyncio
 async def test_repeat_failure_on_same_version_increments_attempts(session_factory):
     async with session_factory() as s:

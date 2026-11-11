@@ -1287,16 +1287,19 @@ class ConnectorFileProcessor(TaskProcessor):
                 )
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
-        """Process a connector file, then update the failed-ingestion registry.
+        await self._process_connector_file(upload_task, item, file_task)
 
-        A FAILED outcome is recorded (and counts toward the retry budget); a
-        COMPLETED one clears any earlier entry. Covers every failure path in
-        ``_process_connector_file``, including the ones that raise.
+    async def on_file_finished(
+        self, upload_task: UploadTask, item: str, file_task: FileTask
+    ) -> None:
+        """Update the failed-ingestion registry once the file's final status is set.
+
+        TaskService calls this after it has settled the status, so failures it
+        assigns itself (e.g. the ingestion timeout, which cancels process_item
+        while the file is still RUNNING) are recorded too. A FAILED outcome
+        counts toward the retry budget; a COMPLETED one clears any earlier entry.
         """
-        try:
-            await self._process_connector_file(upload_task, item, file_task)
-        finally:
-            await self._update_failure_registry(item, file_task)
+        await self._update_failure_registry(item, file_task)
 
     async def _update_failure_registry(self, file_id: str, file_task: FileTask) -> None:
         if not self.user_id or not self.connector_type or self.preview_mode:

@@ -20,7 +20,7 @@ def upgrade() -> None:
         sa.Column("id", sa.String(32), primary_key=True),
         sa.Column("user_id", sa.String(64), nullable=False),
         sa.Column("connector_type", sa.String(64), nullable=False),
-        sa.Column("file_id", sa.String(1024), nullable=False),
+        sa.Column("file_id", sa.String(1100), nullable=False),
         sa.Column("filename", sa.String(512), nullable=True),
         sa.Column("content_etag", sa.String(256), nullable=True),
         sa.Column("modified_time", sa.String(64), nullable=True),

@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { useCancelFileMutation } from "@/app/api/mutations/useCancelFileMutation";
 import { useCancelTaskMutation } from "@/app/api/mutations/useCancelTaskMutation";
+import { FAILED_INGESTIONS_QUERY_KEY } from "@/app/api/queries/useFailedIngestionsQuery";
 import type { SearchResult } from "@/app/api/queries/useGetSearchQuery";
 import {
   TASKS_QUERY_KEY,
@@ -676,6 +677,14 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           previousTask,
           currentTask,
         );
+
+        if (taskJustReachedTerminal) {
+          // Failures are recorded server-side as files fail, so refresh the
+          // Failed documents count whenever a task ends, toast or no toast.
+          queryClient.invalidateQueries({
+            queryKey: FAILED_INGESTIONS_QUERY_KEY,
+          });
+        }
 
         if (didTaskReachCompleted(previousTask, currentTask)) {
           const completedHasFailures = hasFailedFileEntries(currentTask);
