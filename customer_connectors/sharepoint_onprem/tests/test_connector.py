@@ -19,6 +19,11 @@ LIBRARY = SITE + "/Docs"
 NESTED = LIBRARY + "/team/nested"
 
 
+def wide_folder(n):
+    # Long names give IDs a realistic size (~200 B), as deep farm paths do.
+    return f"{LIBRARY}/w-{'x' * 60}-{n:05d}"
+
+
 def run(awaitable):
     return asyncio.run(awaitable)
 
@@ -49,6 +54,9 @@ class SharePointServer:
         # Requested site path -> ServerRelativeUrl the web probe reports
         # (default: the path itself; None omits the field).
         self.web_urls = {}
+        # Empty sibling folders under the library; every 500th holds one file.
+        self.wide_folders = 0
+        self.root_file = False
 
     def lists_calls(self):
         return sum("/_api/web/lists" in url for url in self.calls)
@@ -114,6 +122,19 @@ class SharePointServer:
                 ]
                 if self.duplicate_folder:
                     items.append({"Name": "other", "ServerRelativeUrl": LIBRARY + "/other"})
+                items += [
+                    {"Name": wide_folder(n).rsplit("/", 1)[-1], "ServerRelativeUrl": wide_folder(n)}
+                    for n in range(self.wide_folders)
+                ]
+            elif folder == LIBRARY and collection == "Files" and self.root_file:
+                items = [{"Name": "root.txt", "ServerRelativeUrl": LIBRARY + "/root.txt"}]
+            elif folder.startswith(LIBRARY + "/w-") and self.wide_folders:
+                n = int(folder.rsplit("-", 1)[-1])
+                items = (
+                    [{"Name": f"wide-{n}.txt", "ServerRelativeUrl": f"{folder}/wide-{n}.txt"}]
+                    if collection == "Files" and n % 500 == 0
+                    else []
+                )
             elif folder == LIBRARY + "/team" and collection == "Folders":
                 items = [{"Name": "nested", "ServerRelativeUrl": NESTED}]
             elif folder == NESTED and collection == "Files":
@@ -259,6 +280,7 @@ def test_navigation_inventory_and_owner_scoped_download(connector):
         token = result["next_page_token"]
         if token is None:
             break
+    assert len(inventory) == len({entry["id"] for entry in inventory})
     assert set(entry["name"] for entry in inventory) == set(names)
     selected = next(entry for entry in inventory if entry["name"] == "doc-536.txt")
     document = run(adapter.get_file_content(selected["id"]))
@@ -483,6 +505,99 @@ def test_site_response_without_server_relative_url_fails_closed(connector):
     with pytest.raises(ValueError, match="missing ServerRelativeUrl"):
         run(adapter.authenticate())
     assert adapter.is_authenticated is False
+
+
+# Review r4540370415: the inventory token must not grow with library breadth.
+# A breadth-first queue of folder IDs overflowed _MAX_TOKEN_BYTES at ~1-2k
+# folders and failed every whole-library sync.
+
+
+def full_inventory(adapter, max_files, tokens=None):
+    inventory, token = [], None
+    for _ in range(10_000):  # Host loops have no guard; a stuck cursor must fail here.
+        result = run(adapter.list_files(page_token=token, max_files=max_files))
+        inventory.extend(result["files"])
+        token = result["next_page_token"]
+        if tokens is not None and token is not None:
+            tokens.append(token)
+        if token is None:
+            return inventory
+    raise AssertionError("inventory did not terminate")
+
+
+NESTED_DOCS = {f"doc-{n}.txt" for n in range(537)}
+
+
+def test_inventory_token_stays_bounded_for_wide_libraries(connector):
+    adapter, server = connector
+    server.wide_folders = 2500
+    server.root_file = True
+    tokens = []
+    inventory = full_inventory(adapter, None, tokens)
+    assert tokens and max(len(token) for token in tokens) < 8 * 1024
+    assert len(inventory) == len({entry["id"] for entry in inventory})
+    expected = NESTED_DOCS | {"root.txt"} | {f"wide-{n}.txt" for n in range(0, 2500, 500)}
+    assert {entry["name"] for entry in inventory} == expected
+
+
+def test_inventory_resumes_mid_page_without_gaps_or_duplicates(connector):
+    adapter, server = connector
+    inventory = full_inventory(adapter, 7)
+    assert len(inventory) == len({entry["id"] for entry in inventory}) == 537
+    assert {entry["name"] for entry in inventory} == NESTED_DOCS
+
+
+def test_inventory_request_budget_still_makes_progress(connector, monkeypatch):
+    adapter, server = connector
+    monkeypatch.setattr(sharepoint_onprem, "_MAX_INVENTORY_REQUESTS", 1)
+    inventory = full_inventory(adapter, 1000)
+    assert {entry["name"] for entry in inventory} == NESTED_DOCS
+
+
+def test_inventory_depth_limit_fails_closed(connector, monkeypatch, caplog):
+    adapter, server = connector
+    # root + site + library fill three frames; the library's first folder exceeds it.
+    monkeypatch.setattr(sharepoint_onprem, "_MAX_INVENTORY_DEPTH", 3)
+    with caplog.at_level("ERROR", logger="sharepoint_onprem"):
+        with pytest.raises(ValueError, match="depth"):
+            run(adapter.list_files())
+    assert any("nesting exceeds 3 levels" in record.getMessage() for record in caplog.records)
+
+
+_ROOT = [None, None, 0]
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"queue": [None], "cursor": None},  # the former breadth-first shape
+        {"stack": []},
+        {"stack": [["forged", None, 0]]},  # root frame must have no parent
+        {"stack": [_ROOT, [None, None, 0]]},  # only the root frame may lack a parent
+        {"stack": [[None, None, True]]},
+        {"stack": [[None, None, -1]]},
+        {"stack": [[None, None, 201]]},
+        {"stack": [[None, "", 0]]},
+        {"stack": [[None, None]]},
+        {"stack": [_ROOT], "extra": 1},
+        {"stack": [_ROOT] + [["x", None, 0]] * 64},  # deeper than _MAX_INVENTORY_DEPTH
+        ["stack"],
+    ],
+)
+def test_inventory_rejects_malformed_or_legacy_cursors(connector, state):
+    adapter, server = connector
+    with pytest.raises(ValueError, match="inventory cursor"):
+        run(adapter.list_files(page_token=sharepoint_onprem._token(state)))
+    assert server.calls == []  # rejected before any request
+
+
+def test_inventory_cursor_cannot_name_an_out_of_scope_parent(connector):
+    adapter, server = connector
+    forged = sharepoint_onprem._token({"stack": [_ROOT, ["not-an-id", None, 0]]})
+    with pytest.raises(ValueError, match="Invalid SharePoint identifier"):
+        run(adapter.list_files(page_token=forged))
+    with pytest.raises(ValueError, match="inventory cursor"):
+        run(adapter.list_files(page_token="not-a-token"))
 
 
 def test_missing_library_inventory_cannot_signal_file_deletion(connector):
