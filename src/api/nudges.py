@@ -51,8 +51,9 @@ async def nudges_from_kb_endpoint(
         raise
     except LlmGatewayError as exc:
         return _gateway_error(exc)
-    except Exception as e:
-        return JSONResponse({"error": f"Failed to get nudges: {str(e)}"}, status_code=500)
+    except Exception:
+        logger.exception("Unexpected error while getting nudges from KB")
+        return JSONResponse({"error": "Failed to get nudges."}, status_code=500)
 
 
 async def nudges_from_chat_id_endpoint(
@@ -85,5 +86,6 @@ async def nudges_from_chat_id_endpoint(
         raise
     except LlmGatewayError as exc:
         return _gateway_error(exc)
-    except Exception as e:
-        return JSONResponse({"error": f"Failed to get nudges: {str(e)}"}, status_code=500)
+    except Exception:
+        logger.exception("Unexpected error while getting nudges from chat_id")
+        return JSONResponse({"error": "Failed to get nudges."}, status_code=500)
