@@ -1,4 +1,4 @@
-"""settings.is_*_with_langflow_disabled resolve env first, then config."""
+"""Settings helpers for Langflow bypass environment variables."""
 
 from unittest.mock import patch
 
@@ -31,8 +31,8 @@ def test_env_flag_enabled_unset(monkeypatch):
     assert env_flag_enabled("SOME_FLAG") is False
 
 
-def test_env_var_wins_over_config_saying_off(monkeypatch):
-    """Env is checked first, so a stale cached config cannot disarm the switch."""
+def test_env_var_enables_chat_bypass(monkeypatch):
+    """The native chat choice is controlled by its deployment variable."""
     monkeypatch.setenv("DISABLE_CHAT_WITH_LANGFLOW", "true")
     monkeypatch.setenv("DISABLE_INGEST_WITH_LANGFLOW", "true")
     with patch("config.settings.get_openrag_config", return_value=_Cfg(chat=False, ingest=False)):
@@ -40,13 +40,13 @@ def test_env_var_wins_over_config_saying_off(monkeypatch):
         assert is_ingest_with_langflow_disabled() is True
 
 
-def test_falls_back_to_config_when_env_unset(monkeypatch):
-    """With env unset the settings-UI value decides, both ways."""
+def test_chat_bypass_does_not_fall_back_to_persisted_config(monkeypatch):
+    """A legacy persisted value cannot change the environment-only choice."""
     monkeypatch.delenv("DISABLE_CHAT_WITH_LANGFLOW", raising=False)
     monkeypatch.delenv("DISABLE_INGEST_WITH_LANGFLOW", raising=False)
 
     with patch("config.settings.get_openrag_config", return_value=_Cfg(chat=True, ingest=True)):
-        assert is_chat_with_langflow_disabled() is True
+        assert is_chat_with_langflow_disabled() is False
         assert is_ingest_with_langflow_disabled() is True
 
     with patch("config.settings.get_openrag_config", return_value=_Cfg(chat=False, ingest=False)):

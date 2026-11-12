@@ -252,6 +252,7 @@ For Langflow flow IDs and Langflow timeout settings, see [Langflow settings](#la
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DISABLE_INGEST_WITH_LANGFLOW` | `false` | Disable Langflow ingestion pipeline if you don't want to use the default [Docling Serve instance](/ingestion-configure#select-a-docling-implementation). |
+| `DISABLE_CHAT_WITH_LANGFLOW` | `false` | Run `/chat` with OpenRAG's built-in Python agent instead of the Langflow chat flow. Requires `OPENRAG_STORAGE_MODE=db` because native chat history is stored in the database. Set this deployment environment variable and restart the backend; it is not configurable in the UI. |
 | `DOCLING_SERVE_URL` | `http://HOST_IP:5001` | URL for the [Docling Serve instance](/ingestion-configure#select-a-docling-implementation). By default, OpenRAG starts a local `docling serve` process and auto-detects the host. To use your own local or remote Docling Serve instance, set this variable to the full path to the target instance. The service must run on port 5001. |
 | `OPENRAG_DOCUMENTS_PATH` | `~/.openrag/documents` | The [local documents path](/ingestion-configure#set-the-local-documents-path) for ingestion. |
 | `HOST_DOCKER_INTERNAL` | `host.docker.internal` | Host address for accessing services running on the host machine from within Docker containers. This is used to connect to the local Docling Serve instance started by OpenRAG. If your system uses a different hostname for this purpose, set this variable accordingly. |

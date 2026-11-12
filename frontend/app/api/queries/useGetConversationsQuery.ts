@@ -79,12 +79,11 @@ export const useGetConversationsQuery = (
       const history = response.data;
       const rawConversations = history.conversations || [];
 
-      // The response is scoped to the requested source. Keep that source on
-      // every row rather than trusting stale or malformed backend metadata.
+      // Cast conversations to proper type and ensure endpoint is correct
       const conversations: ChatConversation[] = rawConversations.map(
         (conv: RawConversation) => ({
           ...conv,
-          endpoint,
+          endpoint: conv.endpoint as EndpointType,
         }),
       );
 
@@ -114,6 +113,7 @@ export const useGetConversationsQuery = (
   return useQuery(
     {
       queryKey: ["conversations", endpoint, refreshTrigger],
+      placeholderData: (prev) => prev,
       queryFn: getConversations,
       staleTime: 5000, // Consider data fresh for 5 seconds to prevent excessive refetching
       gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes

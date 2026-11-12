@@ -10,11 +10,13 @@ from config.settings import (
     SESSION_SECRET,
     clients,
     config_manager,
+    env_flag_enabled,
     get_embedding_model,
     get_index_name,
     is_dev_azure_blob_enabled,
     is_no_auth_mode,
 )
+from config.storage_mode import get_storage_mode
 from connectors.service import ConnectorService
 from services.api_key_service import APIKeyService
 from services.auth_service import AuthService
@@ -45,6 +47,21 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 logger = get_logger(__name__)
 
 
+def _validate_native_chat_storage_mode() -> None:
+    """Reject native chat before startup when its required DB storage is absent."""
+    if not env_flag_enabled("DISABLE_CHAT_WITH_LANGFLOW"):
+        return
+    storage_mode = get_storage_mode()
+    if storage_mode == "db":
+        return
+    message = (
+        "DISABLE_CHAT_WITH_LANGFLOW=true requires OPENRAG_STORAGE_MODE=db; "
+        "native chat history is stored only in the database."
+    )
+    logger.error("[CHAT] Invalid native chat startup configuration", storage_mode=storage_mode)
+    raise RuntimeError(message)
+
+
 def _should_load_persisted_connections() -> bool:
     """Whether to load persisted connector connections at startup.
 
@@ -60,6 +77,7 @@ def _should_load_persisted_connections() -> bool:
 
 async def initialize_services():
     """Initialize all services and their dependencies"""
+    _validate_native_chat_storage_mode()
     await TelemetryClient.send_event(Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_START)
     from config.settings import IBM_AUTH_ENABLED
 

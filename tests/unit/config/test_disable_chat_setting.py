@@ -1,86 +1,45 @@
-"""Unit tests for the disable_chat_with_langflow configuration setting.
+"""Unit tests for the environment-only native chat deployment setting."""
 
-Mirrors test_disable_ingest_setting.py — the chat-side flag exists so a
-deployment running without Langflow gets a chat UI that posts to the
-langflowless /chat endpoint instead of /langflow.
-"""
-
-import tempfile
-from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-from config.config_manager import ConfigManager
+from config.settings import is_chat_with_langflow_disabled
 
 
 def test_disable_chat_default(monkeypatch):
-    """Defaults to False so Langflow stays the out-of-box chat path."""
+    """Langflow remains the default when the deployment variable is unset."""
     monkeypatch.delenv("DISABLE_CHAT_WITH_LANGFLOW", raising=False)
-    with tempfile.TemporaryDirectory() as tmp:
-        cfg_file = Path(tmp) / "config.yaml"
-        cm = ConfigManager(config_file=str(cfg_file))
-        config = cm.load_config()
-        assert config.agent.disable_chat_with_langflow is False
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    assert is_chat_with_langflow_disabled() is False
 
 
-def test_disable_chat_env_override(monkeypatch):
-    """DISABLE_CHAT_WITH_LANGFLOW sets the value, accepting the usual truthy forms."""
-    for value, expected in (("true", True), ("1", True), ("yes", True), ("false", False)):
-        monkeypatch.setenv("DISABLE_CHAT_WITH_LANGFLOW", value)
-        with tempfile.TemporaryDirectory() as tmp:
-            cfg_file = Path(tmp) / "config.yaml"
-            cm = ConfigManager(config_file=str(cfg_file))
-            config = cm.load_config()
-            assert config.agent.disable_chat_with_langflow is expected, value
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    (("true", True), ("1", True), ("yes", True), ("false", False)),
+)
+def test_disable_chat_env_override(monkeypatch, value, expected):
+    """Truthy values enable the built-in agent without changing config data."""
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    monkeypatch.setenv("DISABLE_CHAT_WITH_LANGFLOW", value)
+    assert is_chat_with_langflow_disabled() is expected
 
 
-def test_disable_chat_env_requires_database_storage(monkeypatch):
-    """Native history has no JSON/hybrid fallback, so reject an unsafe env switch."""
+def test_disable_chat_env_is_unavailable_without_database_storage(monkeypatch):
+    """Native history has no JSON or hybrid fallback."""
     monkeypatch.setenv("DISABLE_CHAT_WITH_LANGFLOW", "true")
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
-    with tempfile.TemporaryDirectory() as tmp:
-        cfg_file = Path(tmp) / "config.yaml"
-        cm = ConfigManager(config_file=str(cfg_file))
-        with pytest.raises(ValueError, match="OPENRAG_STORAGE_MODE=db"):
-            cm.load_config()
+    assert is_chat_with_langflow_disabled() is False
 
 
-def test_disable_chat_preserves_on_save(monkeypatch):
-    """Once edited, the persisted value wins over the env var on later loads."""
+def test_disable_chat_ignores_legacy_persisted_value(monkeypatch):
+    """A previous UI value cannot override the deployment environment."""
     monkeypatch.setenv("DISABLE_CHAT_WITH_LANGFLOW", "false")
-    with tempfile.TemporaryDirectory() as tmp:
-        cfg_file = Path(tmp) / "config.yaml"
-        cm = ConfigManager(config_file=str(cfg_file))
-        config = cm.load_config()
-        assert config.agent.disable_chat_with_langflow is False
-
-        config.agent.disable_chat_with_langflow = True
-        config.edited = True
-        cm.save_config_file(config)
-
-        cm2 = ConfigManager(config_file=str(cfg_file))
-        config2 = cm2.load_config()
-        assert config2.agent.disable_chat_with_langflow is True
-
-        monkeypatch.setenv("DISABLE_CHAT_WITH_LANGFLOW", "false")
-        config3 = cm2.load_config()
-        assert config3.agent.disable_chat_with_langflow is True
-
-
-def test_disable_chat_round_trips_through_settings_models():
-    """The flag survives the request model and reaches the response model."""
-    from api.settings.models import AgentConfig, SettingsUpdateBody
-
-    body = SettingsUpdateBody(disable_chat_with_langflow=True)
-    assert body.disable_chat_with_langflow is True
-
-    # Omitted stays None so update_settings leaves the stored value alone.
-    assert SettingsUpdateBody().disable_chat_with_langflow is None
-
-    response_section = AgentConfig(
-        llm_model="Phi-4-mini-instruct",
-        llm_provider="azure_ai_foundry",
-        disable_chat_with_langflow=True,
-        system_prompt="",
-    )
-    assert response_section.disable_chat_with_langflow is True
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    config = type(
+        "Config",
+        (),
+        {"agent": type("Agent", (), {"disable_chat_with_langflow": True})()},
+    )()
+    with patch("config.settings.get_openrag_config", return_value=config):
+        assert is_chat_with_langflow_disabled() is False

@@ -1,14 +1,7 @@
 "use client";
 
 import { Loader2, Upload, Zap } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { ProtectedRoute } from "@/components/protected-route";
@@ -55,86 +48,6 @@ import type {
 } from "./_types/types";
 import { makeInitialMessage, PLACEHOLDER_GREETING } from "./_types/types";
 
-type StateValue<T> = T | ((previous: T) => T);
-
-type ChatViewState = {
-  messages: Message[];
-  input: string;
-  expandedFunctionCalls: Set<string>;
-  isFilterHighlighted: boolean;
-  isForkingInProgress: boolean;
-  waitingTooLong: boolean;
-};
-
-type ChatViewAction =
-  | { type: "messages"; value: StateValue<Message[]> }
-  | { type: "input"; value: string }
-  | { type: "expandedFunctionCalls"; value: StateValue<Set<string>> }
-  | { type: "filterHighlighted"; value: boolean }
-  | { type: "forking"; value: boolean }
-  | { type: "waitingTooLong"; value: boolean }
-  | { type: "resetForEndpoint" }
-  | { type: "resetForNewConversation"; message: Message };
-
-const initialChatViewState: ChatViewState = {
-  messages: [PLACEHOLDER_GREETING],
-  input: "",
-  expandedFunctionCalls: new Set(),
-  isFilterHighlighted: false,
-  isForkingInProgress: false,
-  waitingTooLong: false,
-};
-
-function chatViewReducer(
-  state: ChatViewState,
-  action: ChatViewAction,
-): ChatViewState {
-  switch (action.type) {
-    case "messages":
-      return {
-        ...state,
-        messages:
-          typeof action.value === "function"
-            ? action.value(state.messages)
-            : action.value,
-      };
-    case "input":
-      return { ...state, input: action.value };
-    case "expandedFunctionCalls":
-      return {
-        ...state,
-        expandedFunctionCalls:
-          typeof action.value === "function"
-            ? action.value(state.expandedFunctionCalls)
-            : action.value,
-      };
-    case "filterHighlighted":
-      return { ...state, isFilterHighlighted: action.value };
-    case "forking":
-      return { ...state, isForkingInProgress: action.value };
-    case "waitingTooLong":
-      return { ...state, waitingTooLong: action.value };
-    case "resetForEndpoint":
-      return {
-        ...state,
-        messages: [],
-        input: "",
-        expandedFunctionCalls: new Set(),
-        isFilterHighlighted: false,
-        isForkingInProgress: false,
-        waitingTooLong: false,
-      };
-    case "resetForNewConversation":
-      return {
-        ...state,
-        messages: [action.message],
-        input: "",
-        expandedFunctionCalls: new Set(),
-        isFilterHighlighted: false,
-      };
-  }
-}
-
 function ChatPage() {
   const isDebugMode = process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
   const {
@@ -160,39 +73,7 @@ function ChatPage() {
   } = useChat();
   const { user, isNoAuthMode, isLoading: isAuthLoading } = useAuth();
   const displayName = isNoAuthMode ? null : resolveDisplayName(user);
-  const [chatView, dispatchChatView] = useReducer(
-    chatViewReducer,
-    initialChatViewState,
-  );
-  const {
-    messages,
-    input,
-    expandedFunctionCalls,
-    isFilterHighlighted,
-    isForkingInProgress,
-    waitingTooLong,
-  } = chatView;
-  const setMessages = useCallback((value: StateValue<Message[]>) => {
-    dispatchChatView({ type: "messages", value });
-  }, []);
-  const setInput = useCallback((value: string) => {
-    dispatchChatView({ type: "input", value });
-  }, []);
-  const setExpandedFunctionCalls = useCallback(
-    (value: StateValue<Set<string>>) => {
-      dispatchChatView({ type: "expandedFunctionCalls", value });
-    },
-    [],
-  );
-  const setIsFilterHighlighted = useCallback((value: boolean) => {
-    dispatchChatView({ type: "filterHighlighted", value });
-  }, []);
-  const setIsForkingInProgress = useCallback((value: boolean) => {
-    dispatchChatView({ type: "forking", value });
-  }, []);
-  const setWaitingTooLong = useCallback((value: boolean) => {
-    dispatchChatView({ type: "waitingTooLong", value });
-  }, []);
+  const [messages, setMessages] = useState<Message[]>([PLACEHOLDER_GREETING]);
 
   // PLACEHOLDER_GREETING is deterministic so SSR and hydration agree.
   // After mount (and once auth has settled), replace it with the real
@@ -211,12 +92,19 @@ function ChatPage() {
       }
       return prev;
     });
-  }, [displayName, isAuthLoading, conversationData, setMessages]);
+  }, [displayName, isAuthLoading, conversationData]);
+  const [input, setInput] = useState("");
   const [asyncMode, setAsyncMode] = useState(true);
+  const [expandedFunctionCalls, setExpandedFunctionCalls] = useState<
+    Set<string>
+  >(new Set());
   // previousResponseIds now comes from useChat context
   const [isUploading, setIsUploading] = useState(false);
+  const [isFilterHighlighted, setIsFilterHighlighted] = useState(false);
   const [isUserInteracting, setIsUserInteracting] = useState(false);
+  const [isForkingInProgress, setIsForkingInProgress] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [waitingTooLong, setWaitingTooLong] = useState(false);
 
   const chatInputRef = useRef<ChatInputHandle>(null);
 
@@ -253,10 +141,6 @@ function ChatPage() {
   const { scrollToBottom } = useStickToBottomContext();
 
   const lastLoadedConversationRef = useRef<string | null>(null);
-  const lastEndpointRef = useRef<EndpointType>(endpoint);
-  const endpointRef = useRef(endpoint);
-  endpointRef.current = endpoint;
-  const endpointGenerationRef = useRef(0);
   // Set when a live stream fails so history sync cannot replace one error card
   // with Langflow's duplicated copies of the same failure.
   const liveErrorConversationRef = useRef<string | null>(null);
@@ -385,23 +269,6 @@ function ChatPage() {
     },
   });
 
-  // The saved setting can switch sources while this page is mounted. Do not
-  // leave a transcript from the other source visible while the matching
-  // history query reloads.
-  useEffect(() => {
-    if (lastEndpointRef.current === endpoint) return;
-
-    lastEndpointRef.current = endpoint;
-    endpointGenerationRef.current += 1;
-    abortStream();
-    dispatchChatView({ type: "resetForEndpoint" });
-    setIsUploading(false);
-    setUploadedFile(null);
-    setLoading(false);
-    lastLoadedConversationRef.current = null;
-    liveErrorConversationRef.current = null;
-  }, [abortStream, endpoint, setLoading]);
-
   // Show warning if waiting too long (20 seconds)
   const hasStreamingMessage = !!streamingMessage;
   useEffect(() => {
@@ -418,7 +285,7 @@ function ChatPage() {
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [isChatStreaming, hasStreamingMessage, setWaitingTooLong]);
+  }, [isChatStreaming, hasStreamingMessage]);
 
   const handleEndpointChange = (newEndpoint: EndpointType) => {
     setEndpoint(newEndpoint);
@@ -430,22 +297,15 @@ function ChatPage() {
   const handleFileUpload = async (file: File) => {
     if (isUploading) return;
 
-    const requestEndpoint = endpoint;
-    const requestGeneration = endpointGenerationRef.current;
-    const isCurrentRequest = () =>
-      endpointGenerationRef.current === requestGeneration &&
-      endpointRef.current === requestEndpoint;
     setIsUploading(true);
     setLoading(true);
 
     try {
       const result = await uploadFileForContext(
         file,
-        requestEndpoint,
-        previousResponseIds[requestEndpoint],
+        endpoint,
+        previousResponseIds[endpoint],
       );
-
-      if (!isCurrentRequest()) return { type: "cancelled" as const };
 
       if (result.type === "task") {
         addTask(result.taskId, { source: "file" });
@@ -469,7 +329,7 @@ function ChatPage() {
 
       setPreviousResponseIds((prev) => ({
         ...prev,
-        [requestEndpoint]: result.responseId,
+        [endpoint]: result.responseId,
       }));
       if (!currentConversationId) {
         setCurrentConversationId(result.responseId);
@@ -479,7 +339,6 @@ function ChatPage() {
       }
       return result.responseId;
     } catch (error) {
-      if (!isCurrentRequest()) return { type: "cancelled" as const };
       console.error("Upload failed:", error);
       setChatError(true);
       const errorMessage: Message = {
@@ -491,10 +350,8 @@ function ChatPage() {
       setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
       return { type: "failed" as const };
     } finally {
-      if (isCurrentRequest()) {
-        setIsUploading(false);
-        setLoading(false);
-      }
+      setIsUploading(false);
+      setLoading(false);
     }
   };
 
@@ -519,10 +376,10 @@ function ChatPage() {
       // Abort any in-flight streaming so it doesn't bleed into new chat
       abortStream();
       // Reset chat UI even if context state was already 'new'
-      dispatchChatView({
-        type: "resetForNewConversation",
-        message: makeInitialMessage(displayName),
-      });
+      setMessages([makeInitialMessage(displayName)]);
+      setInput("");
+      setExpandedFunctionCalls(new Set());
+      setIsFilterHighlighted(false);
       setLoading(false);
       lastLoadedConversationRef.current = null;
       liveErrorConversationRef.current = null;
@@ -594,7 +451,7 @@ function ChatPage() {
       const convertedMessages: Message[] = conversationData.messages.map(
         (msg: {
           role: string;
-          content: string | null;
+          content: string;
           timestamp?: string;
           response_id?: string;
           error?: boolean;
@@ -621,19 +478,15 @@ function ChatPage() {
           }>;
           response_data?: unknown;
         }) => {
-          // Older native-chat records may contain tool-only assistant rows
-          // whose content is NULL. Rendering must treat those as empty text;
-          // the structured chunk data below carries the tool activity.
-          const content = typeof msg.content === "string" ? msg.content : "";
           const isProviderError =
             Boolean(msg.error) ||
             (msg.role === "assistant" &&
-              looksLikeProviderErrorContent(content));
+              looksLikeProviderErrorContent(msg.content || ""));
           const message: Message = {
             role: msg.role as "user" | "assistant",
             content: isProviderError
-              ? formatProviderErrorMessage(content)
-              : content,
+              ? formatProviderErrorMessage(msg.content)
+              : msg.content,
             timestamp: new Date(msg.timestamp || new Date()),
             error: isProviderError,
           };
@@ -797,7 +650,6 @@ function ChatPage() {
     isChatStreaming,
     messages.length,
     endpoint,
-    setMessages,
   ]);
 
   // Handle new conversation creation - only reset messages when placeholderConversation is set
@@ -813,12 +665,7 @@ function ChatPage() {
       }, 100);
     }
     return () => clearTimeout(focusTimeoutId);
-  }, [
-    placeholderConversation,
-    currentConversationId,
-    displayName,
-    setMessages,
-  ]);
+  }, [placeholderConversation, currentConversationId]);
 
   const { isOnboardingComplete } = useOnboardingState();
 
@@ -884,12 +731,6 @@ function ChatPage() {
   ) => {
     if (!inputMessage.trim() || loading) return;
 
-    const requestEndpoint = endpoint;
-    const requestGeneration = endpointGenerationRef.current;
-    const isCurrentRequest = () =>
-      endpointGenerationRef.current === requestGeneration &&
-      endpointRef.current === requestEndpoint;
-
     const userMessage: Message = {
       role: "user",
       content: inputMessage.trim(),
@@ -915,8 +756,7 @@ function ChatPage() {
     } else {
       // Original non-streaming logic
       try {
-        const apiEndpoint =
-          requestEndpoint === "chat" ? "/api/chat" : "/api/langflow";
+        const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow";
 
         const requestBody: RequestBody = {
           prompt: userMessage.content,
@@ -933,7 +773,7 @@ function ChatPage() {
         };
 
         // Add previous_response_id if we have one for this endpoint
-        const currentResponseId = previousResponseIds[requestEndpoint];
+        const currentResponseId = previousResponseIds[endpoint];
         if (currentResponseId) {
           requestBody.previous_response_id = currentResponseId;
         }
@@ -949,8 +789,6 @@ function ChatPage() {
         );
 
         const result = response.data;
-
-        if (!isCurrentRequest()) return;
 
         if (response.status >= 200 && response.status < 300) {
           const assistantMessage: Message = {
@@ -969,7 +807,7 @@ function ChatPage() {
           if (result.response_id) {
             setPreviousResponseIds((prev) => ({
               ...prev,
-              [requestEndpoint]: result.response_id,
+              [endpoint]: result.response_id,
             }));
 
             // If this is a new conversation (no currentConversationId), set it now
@@ -1000,7 +838,6 @@ function ChatPage() {
           setMessages((prev) => [...prev, errorMessage]);
         }
       } catch (error) {
-        if (!isCurrentRequest()) return;
         console.error("Chat error:", error);
         // Set chat error flag to trigger test_completion=true on health checks
         setChatError(true);
@@ -1015,7 +852,7 @@ function ChatPage() {
       }
     }
 
-    if (isCurrentRequest()) setLoading(false);
+    setLoading(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1267,7 +1104,7 @@ function ChatPage() {
             <>
               {messages.map((message, index) =>
                 message.role === "user"
-                  ? (messages[index]?.content?.match(FILES_REGEX)?.[0] ??
+                  ? (messages[index]?.content.match(FILES_REGEX)?.[0] ??
                       null) === null && (
                       <div
                         key={`${currentConversationId ?? "new"}-${
@@ -1283,7 +1120,7 @@ function ChatPage() {
                           }
                           content={
                             index >= 2 &&
-                            (messages[index - 2]?.content?.match(
+                            (messages[index - 2]?.content.match(
                               FILES_REGEX,
                             )?.[0] ??
                               undefined) &&
@@ -1293,7 +1130,7 @@ function ChatPage() {
                           }
                           files={
                             index >= 2
-                              ? (messages[index - 2]?.content?.match(
+                              ? (messages[index - 2]?.content.match(
                                   FILES_REGEX,
                                 )?.[0] ?? undefined)
                               : undefined
@@ -1303,7 +1140,7 @@ function ChatPage() {
                     )
                   : message.role === "assistant" &&
                     (index < 1 ||
-                      (messages[index - 1]?.content?.match(FILES_REGEX)?.[0] ??
+                      (messages[index - 1]?.content.match(FILES_REGEX)?.[0] ??
                         null) === null) && (
                       <div
                         key={`${currentConversationId ?? "new"}-${

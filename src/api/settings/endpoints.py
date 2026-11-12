@@ -372,7 +372,6 @@ async def get_settings(
             agent=AgentConfig(
                 llm_model=agent_config.llm_model,
                 llm_provider=agent_config.llm_provider,
-                disable_chat_with_langflow=agent_config.disable_chat_with_langflow,
                 native_chat_available=get_storage_mode() == "db",
                 system_prompt=agent_config.system_prompt,
                 default_system_prompt=DEFAULT_SYSTEM_PROMPT,
@@ -799,16 +798,6 @@ async def update_settings(
             logger.info(
                 f"Disable Langflow ingestion changed to {body.disable_ingest_with_langflow}"
             )
-
-        if body.disable_chat_with_langflow is not None:
-            if get_storage_mode() != "db":
-                raise HTTPException(
-                    status_code=400,
-                    detail="Native chat requires OPENRAG_STORAGE_MODE=db",
-                )
-            working_config.agent.disable_chat_with_langflow = body.disable_chat_with_langflow
-            config_updated = True
-            logger.info(f"Disable Langflow chat changed to {body.disable_chat_with_langflow}")
 
         if body.chunk_size is not None:
             effective_overlap = (

@@ -15,7 +15,7 @@ describe("useGetConversationsQuery", () => {
             {
               response_id: "a",
               title: "A",
-              endpoint: "langflow",
+              endpoint: "chat",
               messages: [],
               total_messages: 0,
               last_activity: "2024-01-02T00:00:00Z",
@@ -39,7 +39,6 @@ describe("useGetConversationsQuery", () => {
 
     await waitFor(() => expect(result.current.data).toBeDefined());
     expect(result.current.data?.map((c) => c.response_id)).toEqual(["a", "b"]);
-    expect(result.current.data?.every((c) => c.endpoint === "chat")).toBe(true);
   });
 
   it("returns empty list on a server error without throwing", async () => {

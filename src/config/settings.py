@@ -149,8 +149,9 @@ def env_flag_enabled(name: str) -> bool:
 def is_chat_with_langflow_disabled() -> bool:
     """Whether chat must bypass Langflow for the in-process OpenRAG agent.
 
-    The environment variable is an operator kill switch, so it takes priority
-    over persisted settings even after the configuration has been edited.
+    This deployment setting is deliberately environment-only. Native chat
+    history uses a separate database table, so users must not be able to
+    switch a running workspace between the two histories from the UI.
     """
     from config.storage_mode import get_storage_mode
 
@@ -159,10 +160,7 @@ def is_chat_with_langflow_disabled() -> bool:
     # without the database as its sole source of truth.
     if get_storage_mode() != "db":
         return False
-    if env_flag_enabled("DISABLE_CHAT_WITH_LANGFLOW"):
-        return True
-    agent = getattr(get_openrag_config(), "agent", None)
-    return bool(getattr(agent, "disable_chat_with_langflow", False))
+    return env_flag_enabled("DISABLE_CHAT_WITH_LANGFLOW")
 
 
 def is_ingest_with_langflow_disabled() -> bool:

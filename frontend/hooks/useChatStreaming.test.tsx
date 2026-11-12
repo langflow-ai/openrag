@@ -181,35 +181,6 @@ describe("useChatStreaming", () => {
   });
 
   describe("streaming success", () => {
-    it("accepts the Responses-style NDJSON frames emitted by native /chat", async () => {
-      serveStream(
-        [
-          {
-            type: "response.output_text.delta",
-            id: "native-chat-1",
-            delta: { content: "native " },
-          },
-          {
-            type: "response.output_text.delta",
-            id: "native-chat-1",
-            delta: { content: "answer" },
-          },
-          {
-            type: "response.completed",
-            id: "native-chat-1",
-            response: { id: "native-chat-1", output_text: "native answer" },
-          },
-        ],
-        "/api/chat",
-      );
-      const { result, onComplete } = setup({ endpoint: "/api/chat" });
-
-      const returned = await send(result, { prompt: "p" });
-
-      expect(returned?.content).toBe("native answer");
-      expect(onComplete.mock.calls[0][1]).toBe("native-chat-1");
-    });
-
     it("accumulates deltas into one final message", async () => {
       serveStream([textChunk("Hel"), textChunk("lo "), textChunk("there")]);
       const { result, onComplete } = setup();

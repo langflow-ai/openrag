@@ -1,12 +1,7 @@
-"""The Langflow bypass env vars must survive an `edited` config.
+"""Langflow bypass environment values survive an edited configuration.
 
-config_manager skips *all* env overrides once config.yaml is marked edited
-(i.e. once anyone has saved settings in the UI). That is fine for ordinary
-settings, but it silently disarms DISABLE_INGEST_WITH_LANGFLOW /
-DISABLE_CHAT_WITH_LANGFLOW, which operators set precisely to keep a
-deployment off Langflow. These flags are therefore applied on-only, before
-the edited check: `true` forces the bypass, `false`/unset defers to the
-saved config so the UI toggle still turns it back off.
+The ingestion flag still modifies its persisted setting. Native chat remains
+environment-only, so its variable is validated but never written to config.
 """
 
 import tempfile
@@ -39,15 +34,11 @@ def test_env_forces_bypass_on_edited_config(monkeypatch, value):
         config = _load(tmp, EDITED_CONFIG_OFF)
         assert config.edited is True
         assert config.knowledge.disable_ingest_with_langflow is True, value
-        assert config.agent.disable_chat_with_langflow is True, value
+        assert config.agent.disable_chat_with_langflow is False, value
 
 
-def test_env_false_does_not_force_bypass_off(monkeypatch):
-    """`false` must not override a UI toggle that turned the bypass on.
-
-    .env.example ships both vars as `false`, so a forcing-off override would
-    make the settings toggle impossible to keep enabled.
-    """
+def test_chat_env_false_leaves_legacy_config_unchanged(monkeypatch):
+    """Legacy config remains readable, but no longer controls chat routing."""
     monkeypatch.setenv("DISABLE_INGEST_WITH_LANGFLOW", "false")
     monkeypatch.setenv("DISABLE_CHAT_WITH_LANGFLOW", "false")
     with tempfile.TemporaryDirectory() as tmp:

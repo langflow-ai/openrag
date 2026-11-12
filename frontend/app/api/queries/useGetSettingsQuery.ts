@@ -9,8 +9,6 @@ import { apiClient } from "@/lib/api-client";
 export interface AgentSettings {
   llm_model?: string;
   llm_provider?: string;
-  disable_chat_with_langflow?: boolean;
-  native_chat_available?: boolean;
   system_prompt?: string;
   default_system_prompt?: string;
 }

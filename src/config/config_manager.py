@@ -689,8 +689,8 @@ class AgentConfig:
 
     llm_model: str = ""
     llm_provider: str = "openai"  # Which provider to use for LLM
-    # When enabled, chat uses OpenRAG's in-process agent instead of the
-    # Langflow flow. The environment kill switch can force this on.
+    # Legacy persisted value retained only to read existing config files.
+    # The native-chat selection is now environment-only.
     disable_chat_with_langflow: bool = False
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
 
@@ -909,11 +909,14 @@ class ConfigManager:
             from config.storage_mode import get_storage_mode
 
             if get_storage_mode() != "db":
+                logger.error(
+                    "[CHAT] Invalid native chat startup configuration",
+                    storage_mode=get_storage_mode(),
+                )
                 raise ValueError(
                     "DISABLE_CHAT_WITH_LANGFLOW requires OPENRAG_STORAGE_MODE=db because "
                     "native chat history is stored only in the database."
                 )
-            config_data["agent"]["disable_chat_with_langflow"] = True
 
     @staticmethod
     def _seed_custom_provider(

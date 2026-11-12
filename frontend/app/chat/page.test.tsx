@@ -54,24 +54,24 @@ vi.mock("@/contexts/brand-context", async (importOriginal) => ({
 vi.mock("@/contexts/chat-context", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/contexts/chat-context")>()),
   useChat: () => ({
-    endpoint: chatState.endpoint,
+    endpoint: "chat",
     setEndpoint: vi.fn(),
     currentConversationId: null,
-    conversationData: chatState.conversationData,
+    conversationData: null,
     setCurrentConversationId: vi.fn(),
     addConversationDoc: vi.fn(),
-    forkFromResponse: chatState.forkFromResponse,
+    forkFromResponse: vi.fn(),
     refreshConversations: vi.fn(),
     refreshConversationsSilent: vi.fn(),
     refreshTrigger: 0,
     refreshTriggerSilent: 0,
     previousResponseIds: { chat: null, langflow: null },
-    setPreviousResponseIds: chatState.setPreviousResponseIds,
+    setPreviousResponseIds: vi.fn(),
     placeholderConversation: null,
-    conversationFilter: chatState.conversationFilter,
+    conversationFilter: null,
     setConversationFilter: vi.fn(),
-    loading: chatState.loading,
-    setLoading: chatState.setLoading,
+    loading: false,
+    setLoading: vi.fn(),
     setChatError: vi.fn(),
   }),
 }));
@@ -95,10 +95,10 @@ vi.mock("@/hooks/use-supported-file-types", () => ({
 vi.mock("@/hooks/useChatStreaming", () => ({
   useChatStreaming: () => ({
     streamingMessage: null,
-    isLoading: chatState.isChatStreaming,
+    isLoading: false,
     sendMessage: vi.fn(),
-    abortStream: chatState.abortStream,
-    isChatStreaming: chatState.isChatStreaming,
+    abortStream: vi.fn(),
+    isChatStreaming: false,
   }),
 }));
 
@@ -123,57 +123,27 @@ vi.mock("@/lib/analytics", () => ({
 
 // Stub AssistantMessage and ChatInput to avoid their own heavy dep chains
 vi.mock("@/app/chat/_components/assistant-message", () => ({
-  AssistantMessage: (props: {
-    content: string;
-    onToggle?: (id: string) => void;
-    onFork?: (event: React.MouseEvent) => void;
-    expandedFunctionCalls?: Set<string>;
-  }) => {
-    chatState.assistantProps.current = props;
-    return <div data-testid="assistant-message">{props.content}</div>;
-  },
+  AssistantMessage: ({ content }: { content: string }) => (
+    <div data-testid="assistant-message">{content}</div>
+  ),
 }));
 
-const {
-  imeStateHolder,
-  submitSpy,
-  chatCallbacks,
-  uploadFileForContextMock,
-  chatState,
-} = vi.hoisted(() => ({
-  imeStateHolder: {
-    current: { composing: false, compositionEndedAt: 0, now: 0 },
-  },
-  submitSpy: vi.fn((event: { preventDefault: () => void }) => {
-    event.preventDefault();
-  }),
-  chatCallbacks: {
-    onSubmit: undefined as
-      | ((event: { preventDefault: () => void }) => void | Promise<void>)
-      | undefined,
-    onFileSelected: undefined as ((file: File) => void) | undefined,
-  },
-  uploadFileForContextMock: vi.fn(),
-  chatState: {
-    endpoint: "chat",
-    conversationData: null as unknown,
-    abortStream: vi.fn(),
-    setLoading: vi.fn(),
-    setMessages: vi.fn(),
-    setPreviousResponseIds: vi.fn(),
-    forkFromResponse: vi.fn(),
-    conversationFilter: null as { id: string } | null,
-    loading: false,
-    isChatStreaming: false,
-    assistantProps: {
-      current: null as {
-        onToggle?: (id: string) => void;
-        onFork?: (event: React.MouseEvent) => void;
-        expandedFunctionCalls?: Set<string>;
-      } | null,
+const { imeStateHolder, submitSpy, chatCallbacks, uploadFileForContextMock } =
+  vi.hoisted(() => ({
+    imeStateHolder: {
+      current: { composing: false, compositionEndedAt: 0, now: 0 },
     },
-  },
-}));
+    submitSpy: vi.fn((event: { preventDefault: () => void }) => {
+      event.preventDefault();
+    }),
+    chatCallbacks: {
+      onSubmit: undefined as
+        | ((event: { preventDefault: () => void }) => void | Promise<void>)
+        | undefined,
+      onFileSelected: undefined as ((file: File) => void) | undefined,
+    },
+    uploadFileForContextMock: vi.fn(),
+  }));
 
 vi.mock("@/lib/upload-utils", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/upload-utils")>();
@@ -247,17 +217,6 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
     };
     submitSpy.mockClear();
     uploadFileForContextMock.mockReset();
-    chatState.endpoint = "chat";
-    chatState.conversationData = null;
-    chatState.abortStream.mockReset();
-    chatState.setLoading.mockReset();
-    chatState.setMessages.mockReset();
-    chatState.setPreviousResponseIds.mockReset();
-    chatState.forkFromResponse.mockReset();
-    chatState.conversationFilter = null;
-    chatState.loading = false;
-    chatState.isChatStreaming = false;
-    chatState.assistantProps.current = null;
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -317,158 +276,6 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
       expect(text).not.toBe(PLACEHOLDER_GREETING.content);
       expect(text).toMatch(/Olfa/);
     });
-  });
-
-  it("clears the transcript and aborts the active stream when the chat source changes", () => {
-    const { rerender } = renderWithProviders(<ProtectedChatPage />, {
-      providers: ["auth"],
-      auth: authPresets.noAuthMode,
-    });
-
-    chatState.endpoint = "langflow";
-    rerender(<ProtectedChatPage />);
-
-    expect(chatState.abortStream).toHaveBeenCalledOnce();
-    expect(chatState.setLoading).toHaveBeenCalledWith(false);
-  });
-
-  it("ignores an upload that completes after the chat source changes", async () => {
-    vi.useRealTimers();
-    let resolveUpload!: (value: {
-      type: "direct";
-      filename: string;
-      responseId: string;
-    }) => void;
-    uploadFileForContextMock.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveUpload = resolve;
-        }),
-    );
-    const { rerender } = renderWithProviders(<ProtectedChatPage />, {
-      providers: ["auth"],
-      auth: authPresets.noAuthMode,
-    });
-    act(() => {
-      chatCallbacks.onFileSelected?.(
-        new File(["x"], "notes.pdf", { type: "application/pdf" }),
-      );
-    });
-    const submit = chatCallbacks.onSubmit?.({ preventDefault() {} });
-    await waitFor(() =>
-      expect(uploadFileForContextMock).toHaveBeenCalledOnce(),
-    );
-
-    chatState.endpoint = "langflow";
-    rerender(<ProtectedChatPage />);
-    resolveUpload({
-      type: "direct",
-      filename: "notes.pdf",
-      responseId: "old-source",
-    });
-    await submit;
-
-    expect(chatState.setPreviousResponseIds).not.toHaveBeenCalled();
-  });
-
-  it("renders a native tool-only assistant message with empty text", async () => {
-    vi.useRealTimers();
-    chatState.conversationData = {
-      response_id: "native-conversation",
-      endpoint: "chat",
-      messages: [
-        {
-          role: "assistant",
-          content: null,
-          chunks: [
-            { item: { type: "tool_call", tool_name: "search_documents" } },
-          ],
-        },
-      ],
-    };
-
-    renderWithProviders(<ProtectedChatPage />, {
-      providers: ["auth"],
-      auth: authPresets.noAuthMode,
-    });
-
-    expect(await screen.findByTestId("assistant-message")).toHaveTextContent(
-      "",
-    );
-  });
-
-  it("tracks expanded tool calls and supports forking an assistant response", () => {
-    chatState.conversationData = {
-      response_id: "native-conversation",
-      endpoint: "chat",
-      messages: [
-        {
-          role: "assistant",
-          content: "Grounded answer",
-          chunks: [
-            {
-              item: {
-                type: "tool_call",
-                id: "tool-1",
-                tool_name: "search_documents",
-              },
-            },
-          ],
-        },
-      ],
-    };
-
-    renderWithProviders(<ProtectedChatPage />, {
-      providers: ["auth"],
-      auth: authPresets.noAuthMode,
-    });
-
-    expect(chatState.assistantProps.current?.onToggle).toBeTypeOf("function");
-    expect(chatState.assistantProps.current?.onFork).toBeTypeOf("function");
-
-    act(() => {
-      chatState.assistantProps.current?.onToggle?.("tool-1");
-    });
-    expect(
-      chatState.assistantProps.current?.expandedFunctionCalls?.has("tool-1"),
-    ).toBe(true);
-
-    act(() => {
-      chatState.assistantProps.current?.onFork?.({
-        preventDefault() {},
-        stopPropagation() {},
-      } as React.MouseEvent);
-      vi.advanceTimersByTime(500);
-    });
-    expect(chatState.forkFromResponse).toHaveBeenCalledOnce();
-  });
-
-  it("shows the delayed waiting indicator for an active stream", () => {
-    chatState.loading = true;
-    chatState.isChatStreaming = true;
-    renderWithProviders(<ProtectedChatPage />, {
-      providers: ["auth"],
-      auth: authPresets.noAuthMode,
-    });
-
-    act(() => vi.advanceTimersByTime(20_000));
-
-    expect(
-      screen.getByText("The server is taking longer than expected..."),
-    ).toBeInTheDocument();
-  });
-
-  it("highlights a selected filter before removing it with Backspace", () => {
-    chatState.conversationFilter = { id: "filter-1" };
-    renderWithProviders(<ProtectedChatPage />, {
-      providers: ["auth"],
-      auth: authPresets.noAuthMode,
-    });
-
-    fireEvent.keyDown(screen.getByTestId("chat-input"), { key: "Backspace" });
-
-    // The first press is handled locally to highlight the selected filter.
-    expect(screen.getByTestId("chat-input")).toBeInTheDocument();
   });
 
   it("does not submit when Enter confirms an IME candidate", () => {

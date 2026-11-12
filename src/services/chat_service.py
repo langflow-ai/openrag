@@ -110,7 +110,9 @@ class ChatService:
         conversation_user_id = storage_user_id or user_id
 
         if is_chat_with_langflow_disabled():
-            logger.info("[CHAT] DISABLE_CHAT_WITH_LANGFLOW enabled; using OpenRAG chat")
+            logger.info(
+                "[CHAT] DISABLE_CHAT_WITH_LANGFLOW enabled; routing /langflow to native /chat"
+            )
             return await self.chat(
                 prompt,
                 user_id,

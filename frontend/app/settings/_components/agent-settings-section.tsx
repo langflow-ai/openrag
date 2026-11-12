@@ -21,7 +21,6 @@ import { ModelSelector } from "@/components/models/model-selector";
 import { RequirePermission } from "@/components/require-permission";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
@@ -190,10 +189,6 @@ export function AgentSettingsSection() {
       { system_prompt: systemPrompt },
       { onSuccess: () => setUserEdited(false) },
     );
-  };
-
-  const handleDisableChatWithLangflowChange = (checked: boolean) => {
-    updateSettingsMutation.mutate({ disable_chat_with_langflow: checked });
   };
 
   const handleEditInLangflow = (closeDialog: () => void) => {
@@ -366,28 +361,6 @@ export function AgentSettingsSection() {
             />
           )}
         </div>
-        {settings.agent?.native_chat_available && (
-          <div className="flex items-center justify-between gap-4 border-b border-border py-3">
-            <div className="flex-1">
-              <Label
-                htmlFor="disable-chat-with-langflow"
-                className="cursor-pointer text-base font-medium"
-              >
-                Disable Langflow chat
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Run chat in OpenRAG against the language model above instead of
-                sending it to the Langflow flow.
-              </p>
-            </div>
-            <Switch
-              id="disable-chat-with-langflow"
-              checked={settings.agent?.disable_chat_with_langflow ?? false}
-              onCheckedChange={handleDisableChatWithLangflowChange}
-              disabled={updateSettingsMutation.isPending}
-            />
-          </div>
-        )}
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-4">
             <Label htmlFor="system-prompt" className="font-medium text-mmd!">
