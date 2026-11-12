@@ -52,6 +52,7 @@ describe("ChatProvider — startNewConversation", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     localStorage.clear();
     vi.restoreAllMocks();
   });
@@ -110,6 +111,87 @@ describe("ChatProvider — startNewConversation", () => {
     });
     expect(result.current.conversationFilter).toBeNull();
     expect(result.current.refreshTrigger).toBe(initialRefreshTrigger + 1);
+  });
+
+  it("updates exposed chat state and refreshes both history query modes", async () => {
+    vi.useFakeTimers();
+    const { result } = renderChatHook();
+
+    act(() => {
+      result.current.setEndpoint("chat");
+      result.current.setCurrentConversationId("conversation-1");
+      result.current.setPreviousResponseIds((previous) => ({
+        ...previous,
+        chat: "response-1",
+      }));
+      result.current.setPlaceholderConversation({
+        response_id: "placeholder-1",
+        title: "New chat",
+        endpoint: "chat",
+        messages: [],
+      });
+      result.current.setConversationLoaded(true);
+      result.current.setChatError(true);
+      result.current.setLoading(true);
+      result.current.addConversationDoc("notes.pdf");
+      result.current.refreshConversations(true);
+      void result.current.refreshConversationsSilent();
+      result.current.refreshConversations();
+    });
+    act(() => vi.advanceTimersByTime(250));
+
+    expect(result.current.endpoint).toBe("chat");
+    expect(result.current.currentConversationId).toBe("conversation-1");
+    expect(result.current.previousResponseIds.chat).toBe("response-1");
+    expect(result.current.placeholderConversation?.response_id).toBe(
+      "placeholder-1",
+    );
+    expect(result.current.conversationLoaded).toBe(true);
+    expect(result.current.hasChatError).toBe(true);
+    expect(result.current.loading).toBe(true);
+    expect(result.current.conversationDocs).toHaveLength(1);
+    expect(result.current.refreshTrigger).toBe(2);
+    expect(result.current.refreshTriggerSilent).toBe(1);
+
+    act(() => {
+      result.current.clearConversationDocs();
+      result.current.forkFromResponse("response-2");
+    });
+
+    expect(result.current.conversationDocs).toEqual([]);
+    expect(result.current.currentConversationId).toBeNull();
+    expect(result.current.placeholderConversation).toBeNull();
+    expect(result.current.previousResponseIds.chat).toBe("response-2");
+  });
+
+  it("loads a saved filter with its conversation", async () => {
+    const { getFilterById } = await import(
+      "@/app/api/queries/useGetFilterByIdQuery"
+    );
+    const filter = {
+      id: "filter-42",
+      name: "Saved filter",
+      description: "",
+      query_data: "{}",
+      owner: "user-1",
+      created_at: "",
+      updated_at: "",
+    };
+    vi.mocked(getFilterById).mockResolvedValue(filter);
+    localStorage.setItem("conversation_filter_chat-1", filter.id);
+    const { result } = renderChatHook();
+
+    await act(async () => {
+      await result.current.loadConversation({
+        response_id: "chat-1",
+        title: "Saved conversation",
+        endpoint: "chat",
+        messages: [],
+      });
+    });
+
+    expect(result.current.conversationFilter).toEqual(filter);
+    expect(result.current.conversationData?.filter).toEqual(filter);
   });
 
   // lines 240-242, 245, 249-253 — showPlaceholder=true (default): clears state

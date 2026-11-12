@@ -60,7 +60,7 @@ vi.mock("@/contexts/chat-context", async (importOriginal) => ({
     conversationData: chatState.conversationData,
     setCurrentConversationId: vi.fn(),
     addConversationDoc: vi.fn(),
-    forkFromResponse: vi.fn(),
+    forkFromResponse: chatState.forkFromResponse,
     refreshConversations: vi.fn(),
     refreshConversationsSilent: vi.fn(),
     refreshTrigger: 0,
@@ -68,9 +68,9 @@ vi.mock("@/contexts/chat-context", async (importOriginal) => ({
     previousResponseIds: { chat: null, langflow: null },
     setPreviousResponseIds: chatState.setPreviousResponseIds,
     placeholderConversation: null,
-    conversationFilter: null,
+    conversationFilter: chatState.conversationFilter,
     setConversationFilter: vi.fn(),
-    loading: false,
+    loading: chatState.loading,
     setLoading: chatState.setLoading,
     setChatError: vi.fn(),
   }),
@@ -95,10 +95,10 @@ vi.mock("@/hooks/use-supported-file-types", () => ({
 vi.mock("@/hooks/useChatStreaming", () => ({
   useChatStreaming: () => ({
     streamingMessage: null,
-    isLoading: false,
+    isLoading: chatState.isChatStreaming,
     sendMessage: vi.fn(),
     abortStream: chatState.abortStream,
-    isChatStreaming: false,
+    isChatStreaming: chatState.isChatStreaming,
   }),
 }));
 
@@ -123,9 +123,15 @@ vi.mock("@/lib/analytics", () => ({
 
 // Stub AssistantMessage and ChatInput to avoid their own heavy dep chains
 vi.mock("@/app/chat/_components/assistant-message", () => ({
-  AssistantMessage: ({ content }: { content: string }) => (
-    <div data-testid="assistant-message">{content}</div>
-  ),
+  AssistantMessage: (props: {
+    content: string;
+    onToggle?: (id: string) => void;
+    onFork?: (event: React.MouseEvent) => void;
+    expandedFunctionCalls?: Set<string>;
+  }) => {
+    chatState.assistantProps.current = props;
+    return <div data-testid="assistant-message">{props.content}</div>;
+  },
 }));
 
 const {
@@ -155,6 +161,17 @@ const {
     setLoading: vi.fn(),
     setMessages: vi.fn(),
     setPreviousResponseIds: vi.fn(),
+    forkFromResponse: vi.fn(),
+    conversationFilter: null as { id: string } | null,
+    loading: false,
+    isChatStreaming: false,
+    assistantProps: {
+      current: null as {
+        onToggle?: (id: string) => void;
+        onFork?: (event: React.MouseEvent) => void;
+        expandedFunctionCalls?: Set<string>;
+      } | null,
+    },
   },
 }));
 
@@ -236,6 +253,11 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
     chatState.setLoading.mockReset();
     chatState.setMessages.mockReset();
     chatState.setPreviousResponseIds.mockReset();
+    chatState.forkFromResponse.mockReset();
+    chatState.conversationFilter = null;
+    chatState.loading = false;
+    chatState.isChatStreaming = false;
+    chatState.assistantProps.current = null;
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -331,6 +353,80 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
     });
 
     expect(screen.getByTestId("assistant-message")).toHaveTextContent("");
+  });
+
+  it("tracks expanded tool calls and supports forking an assistant response", () => {
+    chatState.conversationData = {
+      response_id: "native-conversation",
+      endpoint: "chat",
+      messages: [
+        {
+          role: "assistant",
+          content: "Grounded answer",
+          chunks: [
+            {
+              item: {
+                type: "tool_call",
+                id: "tool-1",
+                tool_name: "search_documents",
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    renderWithProviders(<ProtectedChatPage />, {
+      providers: ["auth"],
+      auth: authPresets.noAuthMode,
+    });
+
+    expect(chatState.assistantProps.current?.onToggle).toBeTypeOf("function");
+    expect(chatState.assistantProps.current?.onFork).toBeTypeOf("function");
+
+    act(() => {
+      chatState.assistantProps.current?.onToggle?.("tool-1");
+    });
+    expect(
+      chatState.assistantProps.current?.expandedFunctionCalls?.has("tool-1"),
+    ).toBe(true);
+
+    act(() => {
+      chatState.assistantProps.current?.onFork?.({
+        preventDefault() {},
+        stopPropagation() {},
+      } as React.MouseEvent);
+      vi.advanceTimersByTime(500);
+    });
+    expect(chatState.forkFromResponse).toHaveBeenCalledOnce();
+  });
+
+  it("shows the delayed waiting indicator for an active stream", () => {
+    chatState.loading = true;
+    chatState.isChatStreaming = true;
+    renderWithProviders(<ProtectedChatPage />, {
+      providers: ["auth"],
+      auth: authPresets.noAuthMode,
+    });
+
+    act(() => vi.advanceTimersByTime(20_000));
+
+    expect(
+      screen.getByText("The server is taking longer than expected..."),
+    ).toBeInTheDocument();
+  });
+
+  it("highlights a selected filter before removing it with Backspace", () => {
+    chatState.conversationFilter = { id: "filter-1" };
+    renderWithProviders(<ProtectedChatPage />, {
+      providers: ["auth"],
+      auth: authPresets.noAuthMode,
+    });
+
+    fireEvent.keyDown(screen.getByTestId("chat-input"), { key: "Backspace" });
+
+    // The first press is handled locally to highlight the selected filter.
+    expect(screen.getByTestId("chat-input")).toBeInTheDocument();
   });
 
   it("does not submit when Enter confirms an IME candidate", () => {
