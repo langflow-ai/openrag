@@ -2,7 +2,12 @@ from fastapi import Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from dependencies import get_chat_service, get_current_user, get_session_manager
+from dependencies import (
+    get_chat_service,
+    get_current_user,
+    get_search_service,
+    get_session_manager,
+)
 from services.llm_gateway import LlmGatewayError
 from session_manager import User
 from utils.logging_config import get_logger
@@ -30,6 +35,7 @@ async def nudges_from_kb_endpoint(
     body: NudgesBody,
     chat_service=Depends(get_chat_service),
     session_manager=Depends(get_session_manager),
+    search_service=Depends(get_search_service),
     user: User = Depends(get_current_user),
 ):
     """Get nudges for a user"""
@@ -44,7 +50,7 @@ async def nudges_from_kb_endpoint(
             limit=body.limit,
             score_threshold=body.score_threshold,
             storage_user_id=storage_user_id,
-            session_manager=session_manager,
+            search_service=search_service,
         )
         return JSONResponse(result)
     except HTTPException:
@@ -61,6 +67,7 @@ async def nudges_from_chat_id_endpoint(
     body: NudgesBody,
     chat_service=Depends(get_chat_service),
     session_manager=Depends(get_session_manager),
+    search_service=Depends(get_search_service),
     user: User = Depends(get_current_user),
 ):
     """Get nudges for a user based on a previous conversation"""
@@ -79,7 +86,7 @@ async def nudges_from_chat_id_endpoint(
             limit=body.limit,
             score_threshold=body.score_threshold,
             storage_user_id=storage_user_id,
-            session_manager=session_manager,
+            search_service=search_service,
         )
         return JSONResponse(result)
     except HTTPException:

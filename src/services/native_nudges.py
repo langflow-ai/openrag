@@ -2,7 +2,8 @@
 
 Replaces the Langflow nudges flow (`flows/openrag_nudges.json`) with one
 structured-output LLM call through the in-process LLM gateway. The prompt is
-ported from the flow's Prompt Template. The response keeps the flow's shape,
+ported from the flow's Prompt Template, and documents come from the same hybrid
+search the flow runs. The response keeps the flow's shape,
 `{"response": "<nudge>\\n<nudge>\\n<nudge>"}`, so the frontend is unchanged.
 """
 
@@ -10,23 +11,28 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable
 from typing import Any
 
-from config.settings import get_index_name, get_openrag_config
-from services.llm_gateway import chat_completions, qualified_model_id
+from pydantic import BaseModel, ConfigDict, ValidationError
+
+from config.settings import get_openrag_config
+from services.llm_gateway import chat_completions, model_capabilities, qualified_model_id
 from utils.langflow_utils import fence_untrusted_text
 from utils.logging_config import get_logger
-from utils.opensearch_queries import build_filter_clauses
 
 logger = get_logger(__name__)
 
 MAX_NUDGES = 3
 DEFAULT_DOCUMENT_LIMIT = 10
 MAX_DOCUMENT_CHARS = 2000
+# The flow's search query: the two-character string `""`, not an empty one.
+# The OpenSearch component skips the search only for a blank query, so this
+# runs a real hybrid search, and the ranking comes from it.
+FLOW_SEARCH_QUERY = '""'
 
 # Ported verbatim from the Prompt Template in flows/openrag_nudges.json, except
-# rule 4, which asks for the JSON shape the structured call returns.
+# rules 4 and 5, which ask for the JSON shape the structured call returns.
 NUDGES_PROMPT = """You are generating prompt nudges to help a user explore a corpus.
 
 Task:
@@ -60,59 +66,71 @@ Documents (ignore if chat history is not empty):
 {docs}
 """
 
-_RESPONSE_FORMAT = {
+
+class NudgeSuggestions(BaseModel):
+    """The model's reply: the nudge strings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nudges: list[str]
+
+
+_SCHEMA = NudgeSuggestions.model_json_schema()
+_TOOL_NAME = "suggest_nudges"
+_JSON_SCHEMA_FORMAT = {
     "type": "json_schema",
-    "json_schema": {
-        "name": "nudges",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "nudges": {"type": "array", "items": {"type": "string"}},
-            },
-            "required": ["nudges"],
-            "additionalProperties": False,
-        },
+    "json_schema": {"name": "nudges", "strict": True, "schema": _SCHEMA},
+}
+_NUDGES_TOOL = {
+    "type": "function",
+    "function": {
+        "name": _TOOL_NAME,
+        "description": "Return the prompt nudges.",
+        "parameters": _SCHEMA,
     },
 }
-
-_SAMPLE_DATA_EXCLUSION = {"bool": {"must_not": [{"term": {"is_sample_data": "true"}}]}}
-_LIST_MARKER = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s*")
 _CODE_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$")
 
 Completion = Callable[..., Awaitable[Any]]
+Capabilities = Callable[..., frozenset[str]]
 
 
-def parse_nudges(text: str | None) -> list[str]:
-    """Nudge strings from the model's reply: JSON first, then one per line."""
-    raw = _CODE_FENCE.sub("", (text or "").strip())
-    if not raw:
-        return []
+def _output_mode(model_id: str, cfg: Any, capabilities: Capabilities) -> str:
+    """`json_schema`, or `tool` for a model that can call tools but not take a schema.
 
-    candidates: list[Any]
+    The gateway drops parameters a provider does not support, so sending a
+    schema the model cannot honour fails silently. An unknown model gets the
+    schema; its reply is validated either way.
+    """
+    flags = capabilities(model_id, config=cfg)
+    if "structured_output" not in flags and "function_calling" in flags:
+        return "tool"
+    return "json_schema"
+
+
+def _reply_json(payload: Any, mode: str) -> str:
+    """The JSON text to validate: the tool call's arguments, or the message content."""
+    choices = (payload or {}).get("choices") or [{}]
+    message = choices[0].get("message") or {}
+    if mode == "tool":
+        for call in message.get("tool_calls") or []:
+            function = call.get("function") or {}
+            if function.get("name") == _TOOL_NAME:
+                arguments = function.get("arguments")
+                return arguments if isinstance(arguments, str) else json.dumps(arguments)
+        return ""
+    return _CODE_FENCE.sub("", (message.get("content") or "").strip())
+
+
+def parse_suggestions(text: str) -> list[str]:
+    """Validated nudges, cleaned and deduplicated. Empty when the reply is malformed."""
     try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        candidates = raw.splitlines()
-    else:
-        if isinstance(parsed, Mapping):
-            value = parsed.get("nudges")
-            if isinstance(value, list):
-                candidates = value
-            elif isinstance(value, str):
-                candidates = value.splitlines()
-            else:
-                candidates = []
-        elif isinstance(parsed, list):
-            candidates = parsed
-        else:
-            candidates = []
-
+        suggestions = NudgeSuggestions.model_validate_json(text)
+    except ValidationError:
+        return []
     nudges: list[str] = []
-    for item in candidates:
-        if not isinstance(item, str):
-            continue
-        nudge = _LIST_MARKER.sub("", item).strip().strip("\"'").strip()
+    for item in suggestions.nudges:
+        nudge = item.strip().strip("\"'").strip()
         if nudge and nudge not in nudges:
             nudges.append(nudge)
         if len(nudges) == MAX_NUDGES:
@@ -120,40 +138,45 @@ def parse_nudges(text: str | None) -> list[str]:
     return nudges
 
 
+def _without_empty_lists(filters: dict | None) -> dict:
+    """Drop empty-list filters: the flow ignores them, but search treats them as match-nothing."""
+    return {key: value for key, value in (filters or {}).items() if value != []}
+
+
 async def sample_documents(
-    opensearch_client: Any,
-    index_name: str | None = None,
+    search_service: Any,
     *,
+    user_id: str | None,
+    jwt_token: str | None,
     filters: dict | None,
     limit: int | None,
     score_threshold: float | None = None,
 ) -> list[str]:
-    """Chunk texts from the user's corpus, narrowed by the selected knowledge filter.
+    """Chunk texts for a new chat, from the same hybrid search the flow runs.
 
-    Uses the caller's own OpenSearch client, so document-level security applies.
-    Sample data is left out unless the user selected a filter, as in the flow.
-    A failure yields no documents: nudges are best effort.
+    Runs as the caller, so document-level security applies. Sample data is left
+    out unless the user selected a filter, as in the flow. A failure yields no
+    documents: nudges are best effort.
     """
-    filter_clauses = build_filter_clauses(filters)
-    if not filter_clauses:
-        filter_clauses.append(_SAMPLE_DATA_EXCLUSION)
+    search_filters = _without_empty_lists(filters)
     size = min(limit, DEFAULT_DOCUMENT_LIMIT) if limit and limit > 0 else DEFAULT_DOCUMENT_LIMIT
-    body: dict[str, Any] = {
-        "size": size,
-        "_source": ["text"],
-        "query": {"bool": {"must": [{"match_all": {}}], "filter": filter_clauses}},
-    }
-    if score_threshold:
-        body["min_score"] = score_threshold
     try:
-        response = await opensearch_client.search(index=index_name or get_index_name(), body=body)
+        response = await search_service.search(
+            FLOW_SEARCH_QUERY,
+            user_id=user_id,
+            jwt_token=jwt_token,
+            filters=search_filters,
+            limit=size,
+            score_threshold=score_threshold or 0,
+            source="nudges",
+            exclude_sample_data=not search_filters,
+        )
     except Exception as exc:
-        logger.warning("Nudges document sample failed", error=str(exc))
+        logger.warning("Nudges document search failed", error=str(exc))
         return []
-    hits = (response or {}).get("hits", {}).get("hits", [])
     texts = []
-    for hit in hits:
-        text = (hit.get("_source") or {}).get("text")
+    for chunk in (response or {}).get("results") or []:
+        text = chunk.get("text") if isinstance(chunk, dict) else None
         if isinstance(text, str) and text.strip():
             texts.append(text[:MAX_DOCUMENT_CHARS])
     return texts
@@ -165,6 +188,7 @@ async def generate_nudges(
     documents: list[str],
     config: Any = None,
     complete: Completion | None = None,
+    capabilities: Capabilities | None = None,
 ) -> dict[str, str]:
     """One LLM call for up to three nudges, in the flow's `{"response": ...}` shape."""
     cfg = config or get_openrag_config()
@@ -173,17 +197,25 @@ async def generate_nudges(
         logger.warning("Nudges skipped: no language model is configured")
         return {"response": ""}
 
+    model_id = qualified_model_id(getattr(cfg.agent, "llm_provider", None), model)
+    mode = _output_mode(model_id, cfg, capabilities or model_capabilities)
     docs = "\n\n".join(fence_untrusted_text(text) for text in documents)
-    body = {
-        "model": qualified_model_id(getattr(cfg.agent, "llm_provider", None), model),
+    body: dict[str, Any] = {
+        "model": model_id,
         "messages": [
             {"role": "user", "content": NUDGES_PROMPT.format(prompt=history_prompt, docs=docs)}
         ],
         "temperature": 0.1,
+        "seed": 1,
         "stream": False,
-        "response_format": _RESPONSE_FORMAT,
     }
+    if mode == "tool":
+        body["tools"] = [_NUDGES_TOOL]
+        body["tool_choice"] = {"type": "function", "function": {"name": _TOOL_NAME}}
+    else:
+        body["response_format"] = _JSON_SCHEMA_FORMAT
     payload = await (complete or chat_completions)(body, config=cfg)
-    choices = (payload or {}).get("choices") or [{}]
-    content = (choices[0].get("message") or {}).get("content") or ""
-    return {"response": "\n".join(parse_nudges(content))}
+    nudges = parse_suggestions(_reply_json(payload, mode))
+    if not nudges:
+        logger.warning("Nudges reply did not match the schema", output_mode=mode)
+    return {"response": "\n".join(nudges)}

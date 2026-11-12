@@ -248,7 +248,7 @@ class ChatService:
         limit: int = None,
         score_threshold: float = None,
         storage_user_id: str = None,
-        session_manager=None,
+        search_service=None,
     ):
         """Suggested prompts, from the Langflow nudges flow or natively without Langflow."""
         if not DISABLE_NUDGES_WITH_LANGFLOW:
@@ -269,7 +269,7 @@ class ChatService:
             limit=limit,
             score_threshold=score_threshold,
             storage_user_id=storage_user_id,
-            session_manager=session_manager,
+            search_service=search_service,
         )
 
     async def native_nudges_chat(
@@ -281,20 +281,27 @@ class ChatService:
         limit: int = None,
         score_threshold: float = None,
         storage_user_id: str = None,
-        session_manager=None,
+        search_service=None,
     ):
-        """Nudges from one LLM gateway call, with no Langflow involved."""
+        """Nudges from one LLM gateway call instead of the Langflow nudges flow.
+
+        Chat history still falls back to Langflow's stored sessions when the
+        conversation is not in memory, since Langflow is the only durable
+        history store until OpenRAG's own message table lands.
+        """
         from services import native_nudges
 
         conversation_user_id = storage_user_id or user_id
         history_prompt = await self._nudges_history_prompt(
-            conversation_user_id, previous_response_id, use_langflow_history=False
+            conversation_user_id, previous_response_id
         )
         documents: list[str] = []
         # The prompt ignores documents once there is chat history, so skip the search.
-        if not history_prompt and session_manager is not None:
+        if not history_prompt and search_service is not None:
             documents = await native_nudges.sample_documents(
-                session_manager.get_user_opensearch_client(user_id, jwt_token),
+                search_service,
+                user_id=user_id,
+                jwt_token=jwt_token,
                 filters=filters,
                 limit=limit,
                 score_threshold=score_threshold,
@@ -313,8 +320,6 @@ class ChatService:
         self,
         conversation_user_id: str,
         previous_response_id: str | None,
-        *,
-        use_langflow_history: bool = True,
     ) -> str:
         """The last chat turns, with their retrieved chunks, as the nudges prompt's history."""
         if not previous_response_id:
@@ -335,7 +340,7 @@ class ChatService:
         user_ast_messages = [m for m in messages if m.get("role") in ["user", "assistant"]]
 
         # If no history in memory, try fetching from Langflow persistent history
-        if not user_ast_messages and use_langflow_history:
+        if not user_ast_messages:
             from services.langflow_history_service import langflow_history_service
 
             try:

@@ -17,12 +17,13 @@ def _user():
 @pytest.mark.asyncio
 async def test_nudges_from_kb_endpoint_returns_response_string():
     chat_service = SimpleNamespace(nudges_chat=AsyncMock(return_value={"response": "A?\nB?\nC?"}))
-    session_manager = object()
+    search_service = object()
 
     result = await nudges.nudges_from_kb_endpoint(
         nudges.NudgesBody(filters={"data_sources": ["a.pdf"]}, limit=5),
         chat_service=chat_service,
-        session_manager=session_manager,
+        session_manager=object(),
+        search_service=search_service,
         user=_user(),
     )
 
@@ -32,7 +33,7 @@ async def test_nudges_from_kb_endpoint_returns_response_string():
     assert kwargs["filters"] == {"data_sources": ["a.pdf"]}
     assert kwargs["limit"] == 5
     assert kwargs["storage_user_id"] == "db-u1"
-    assert kwargs["session_manager"] is session_manager
+    assert kwargs["search_service"] is search_service
 
 
 @pytest.mark.asyncio
@@ -45,6 +46,7 @@ async def test_nudges_from_chat_id_endpoint_checks_ownership_and_passes_chat_id(
             nudges.NudgesBody(),
             chat_service=chat_service,
             session_manager=object(),
+            search_service=None,
             user=_user(),
         )
 
@@ -59,7 +61,11 @@ async def test_nudges_endpoints_return_gateway_error_message_and_status():
     chat_service = SimpleNamespace(nudges_chat=AsyncMock(side_effect=error))
 
     kb = await nudges.nudges_from_kb_endpoint(
-        nudges.NudgesBody(), chat_service=chat_service, session_manager=object(), user=_user()
+        nudges.NudgesBody(),
+        chat_service=chat_service,
+        session_manager=object(),
+        search_service=None,
+        user=_user(),
     )
     with patch("api.chat._assert_owns", AsyncMock()):
         chat = await nudges.nudges_from_chat_id_endpoint(
@@ -67,6 +73,7 @@ async def test_nudges_endpoints_return_gateway_error_message_and_status():
             nudges.NudgesBody(),
             chat_service=chat_service,
             session_manager=object(),
+            search_service=None,
             user=_user(),
         )
 
@@ -79,6 +86,10 @@ async def test_nudges_endpoints_return_gateway_error_message_and_status():
 async def test_nudges_endpoint_unexpected_error_is_500():
     chat_service = SimpleNamespace(nudges_chat=AsyncMock(side_effect=RuntimeError("boom")))
     result = await nudges.nudges_from_kb_endpoint(
-        nudges.NudgesBody(), chat_service=chat_service, session_manager=object(), user=_user()
+        nudges.NudgesBody(),
+        chat_service=chat_service,
+        session_manager=object(),
+        search_service=None,
+        user=_user(),
     )
     assert result.status_code == 500
