@@ -55,8 +55,9 @@ def _validate_native_chat_storage_mode() -> None:
     if storage_mode == "db":
         return
     message = (
-        "DISABLE_CHAT_WITH_LANGFLOW=true requires OPENRAG_STORAGE_MODE=db; "
-        "native chat history is stored only in the database."
+        "DISABLE_CHAT_WITH_LANGFLOW=true requires OPENRAG_STORAGE_MODE=db and "
+        "OPENRAG_DISABLE_DB_WORKSPACE_CONFIG=false; native chat history is stored only "
+        "in the database."
     )
     logger.error("[CHAT] Invalid native chat startup configuration", storage_mode=storage_mode)
     raise RuntimeError(message)

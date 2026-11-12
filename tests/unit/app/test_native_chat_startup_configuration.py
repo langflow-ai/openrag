@@ -9,6 +9,7 @@ def test_native_chat_startup_allows_database_storage(monkeypatch):
     """Native chat starts normally when its durable history store is enabled."""
     monkeypatch.setattr(container, "DISABLE_CHAT_WITH_LANGFLOW", True)
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    monkeypatch.delenv("OPENRAG_DISABLE_DB_WORKSPACE_CONFIG", raising=False)
 
     container._validate_native_chat_storage_mode()
 

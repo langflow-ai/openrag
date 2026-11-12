@@ -113,11 +113,20 @@ class ChatService:
             logger.info(
                 "[CHAT] DISABLE_CHAT_WITH_LANGFLOW enabled; routing /langflow to native /chat"
             )
+            native_previous_response_id = previous_response_id
+            if (
+                native_previous_response_id is None
+                and conversation_id
+                and await self.native_chat_history_service.owns_conversation(
+                    conversation_id, conversation_user_id
+                )
+            ):
+                native_previous_response_id = conversation_id
             return await self.chat(
                 prompt,
                 user_id,
                 jwt_token,
-                previous_response_id=previous_response_id,
+                previous_response_id=native_previous_response_id,
                 stream=stream,
                 filter_id=filter_id,
                 storage_user_id=storage_user_id,
@@ -849,7 +858,9 @@ class ChatService:
 
     async def delete_session(self, user_id: str, session_id: str):
         """Delete a session from both local storage and Langflow"""
-        if DISABLE_CHAT_WITH_LANGFLOW:
+        if DISABLE_CHAT_WITH_LANGFLOW and await self.native_chat_history_service.owns_conversation(
+            session_id, user_id
+        ):
             deleted = await self.native_chat_history_service.delete(session_id, user_id)
             if deleted:
                 await self.session_ownership_service.release_session(user_id, session_id)
@@ -951,11 +962,11 @@ class ChatService:
 
     async def delete_all_user_sessions(self, user_id: str):
         """Delete all sessions for a user from both local storage and Langflow"""
-        if DISABLE_CHAT_WITH_LANGFLOW:
-            deleted_count = await self.native_chat_history_service.delete_all(user_id)
-            return {"success": True, "deleted_count": deleted_count, "total_count": deleted_count}
         from agent import get_user_conversations
 
+        native_deleted_count = 0
+        if DISABLE_CHAT_WITH_LANGFLOW:
+            native_deleted_count = await self.native_chat_history_service.delete_all(user_id)
         conversations = await get_user_conversations(user_id)
         session_ids = list(conversations.keys())
 
@@ -964,8 +975,17 @@ class ChatService:
             result = await self.delete_session(user_id, session_id)
             results.append(result)
 
+        langflow_deleted_count = len([r for r in results if r.get("success")])
+        if not DISABLE_CHAT_WITH_LANGFLOW:
+            return {
+                "success": True,
+                "deleted_count": langflow_deleted_count,
+                "total_count": len(session_ids),
+            }
         return {
             "success": True,
-            "deleted_count": len([r for r in results if r.get("success")]),
-            "total_count": len(session_ids),
+            "deleted_count": native_deleted_count + langflow_deleted_count,
+            "total_count": native_deleted_count + len(session_ids),
+            "native_deleted_count": native_deleted_count,
+            "langflow_deleted_count": langflow_deleted_count,
         }
