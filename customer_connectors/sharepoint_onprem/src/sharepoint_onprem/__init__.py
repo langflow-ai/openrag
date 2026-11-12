@@ -10,6 +10,9 @@ fresh listing, so a cached scope can never turn into a deletion signal.
 IDs also carry the approved origin: the same path on another server is a
 different file, and an ID from another origin is a scope error, never a
 deletion signal.
+Nominated site paths must equal the server's ServerRelativeUrl exactly, casing
+included: scope checks are exact, so authenticate rejects a mismatch rather
+than letting it hide every library.
 """
 
 import asyncio
@@ -17,6 +20,7 @@ import base64
 import contextlib
 import hashlib
 import json
+import logging
 import mimetypes
 import os
 import threading
@@ -30,6 +34,10 @@ from requests_ntlm import HttpNtlmAuth
 
 from connectors.base import BaseConnector, ConnectorDocument, DocumentACL
 
+# Stdlib logging is bridged into the host's structlog pipeline. The host drops
+# sub-ERROR records from installed packages, so operator-actionable
+# configuration errors are logged at ERROR.
+logger = logging.getLogger(__name__)
 _MAX_METADATA_BYTES = 4 * 1024 * 1024
 _MAX_FILE_BYTES = 50 * 1024 * 1024
 _MAX_TOKEN_BYTES = 256 * 1024
@@ -623,6 +631,46 @@ class SharePointOnPremConnector(BaseConnector):
     ) -> dict:
         return await asyncio.to_thread(self._list_children, parent_id, cursor, page_size)
 
+    def _verify_site_path(self, session, index, site):
+        """Require the nominated path to be exactly the server's site URL.
+
+        SharePoint resolves URLs case-insensitively, but every scope check here
+        is an exact comparison against server-reported paths, so a casing
+        mismatch would silently filter out every library. casefold() only picks
+        the operator hint; it never authorizes anything.
+        """
+        web = self._json(
+            session, self._url(site, "")[:-1], params={"$select": "Id,ServerRelativeUrl"}
+        )
+        expected = site or "/"  # The root site is "" internally; SharePoint reports "/".
+        actual = web.get("ServerRelativeUrl")
+        if not isinstance(actual, str):
+            logger.error(
+                "Failed to verify nominated SharePoint site path %d. "
+                "Error: response has no ServerRelativeUrl.",
+                index,
+            )
+            raise ValueError("SharePoint site response is missing ServerRelativeUrl")
+        if actual == expected:
+            return
+        if actual.casefold() == expected.casefold():
+            logger.error(
+                "Failed to verify nominated SharePoint site path %d. Error: casing differs "
+                "from the server (configured %r, server %r); update site_paths to match.",
+                index,
+                expected,
+                actual,
+            )
+            raise ValueError(f"SharePoint site path casing differs from the server; use {actual!r}")
+        logger.error(
+            "Failed to verify nominated SharePoint site path %d. Error: not a site URL "
+            "(configured %r resolves to site %r).",
+            index,
+            expected,
+            actual,
+        )
+        raise ValueError("Nominated SharePoint path is not a site URL")
+
     async def authenticate(self):
         """Probe every nominated site; a success is trusted for _AUTH_CACHE_SECONDS.
 
@@ -636,8 +684,10 @@ class SharePointOnPremConnector(BaseConnector):
         def probe():
             self._settings()
             with self._borrow_session() as session:
-                for site in self._sites:
-                    self._json(session, self._url(site, "")[:-1], params={"$select": "Id"})
+                for index, site in enumerate(self._sites):
+                    logger.debug("Verifying nominated SharePoint site path %d...", index)
+                    self._verify_site_path(session, index, site)
+                    logger.debug("Verified nominated SharePoint site path %d.", index)
                     self._scoped_libraries(session, site, fresh=True)
 
         try:
