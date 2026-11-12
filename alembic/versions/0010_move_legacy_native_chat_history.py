@@ -53,7 +53,6 @@ def downgrade() -> None:
     # to ``chat_conversations.id``. Delete dependent rows before their parent
     # rows so a downgrade works for native chats which have already been used.
     op.execute(
-        "DELETE FROM chat_messages "
-        "WHERE conversation_id IN (SELECT id FROM chat_conversations)"
+        "DELETE FROM chat_messages WHERE conversation_id IN (SELECT id FROM chat_conversations)"
     )
     op.execute("DELETE FROM chat_conversations")

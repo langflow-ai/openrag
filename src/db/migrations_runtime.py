@@ -271,7 +271,9 @@ async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, in
                                     continue
                                 role = message.get("role")
                                 content = message.get("content")
-                                if role not in {"user", "assistant"} or not isinstance(content, str):
+                                if role not in {"user", "assistant"} or not isinstance(
+                                    content, str
+                                ):
                                     continue
                                 event_data = {}
                                 if isinstance(message.get("chunks"), list):

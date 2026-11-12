@@ -118,7 +118,10 @@ def _calculate(expression: str) -> dict[str, Any]:
             if isinstance(left, int) and isinstance(right, int) and right >= 0:
                 # This bound is calculated from operand sizes, before ``pow``
                 # can allocate an arbitrarily large integer.
-                if left not in {-1, 0, 1} and left.bit_length() * right > MAX_CALCULATOR_INTEGER_BITS:
+                if (
+                    left not in {-1, 0, 1}
+                    and left.bit_length() * right > MAX_CALCULATOR_INTEGER_BITS
+                ):
                     raise ValueError("Exponentiation result is too large")
             return
         if isinstance(left, int) and isinstance(right, int):

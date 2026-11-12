@@ -57,9 +57,12 @@ async def test_native_agent_continues_an_owned_metadata_only_conversation(monkey
     history = AsyncMock(return_value=[])
     owns_conversation = AsyncMock(return_value=True)
     append = AsyncMock()
-    monkeypatch.setattr("services.native_chat_agent.native_chat_history_service.pydantic_history", history)
     monkeypatch.setattr(
-        "services.native_chat_agent.native_chat_history_service.owns_conversation", owns_conversation
+        "services.native_chat_agent.native_chat_history_service.pydantic_history", history
+    )
+    monkeypatch.setattr(
+        "services.native_chat_agent.native_chat_history_service.owns_conversation",
+        owns_conversation,
     )
     monkeypatch.setattr("services.native_chat_agent.native_chat_history_service.append", append)
     monkeypatch.setattr(
@@ -77,7 +80,8 @@ async def test_native_agent_continues_an_owned_metadata_only_conversation(monkey
 @pytest.mark.asyncio
 async def test_native_agent_rejects_a_missing_conversation(monkeypatch):
     monkeypatch.setattr(
-        "services.native_chat_agent.native_chat_history_service.pydantic_history", AsyncMock(return_value=[])
+        "services.native_chat_agent.native_chat_history_service.pydantic_history",
+        AsyncMock(return_value=[]),
     )
     monkeypatch.setattr(
         "services.native_chat_agent.native_chat_history_service.owns_conversation",
