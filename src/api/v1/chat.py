@@ -136,11 +136,7 @@ async def chat_create_endpoint(
     if body.chat_id:
         from api.chat import _assert_owns
 
-        await _assert_owns(
-            body.chat_id,
-            storage_user_id,
-            chat_service.session_ownership_service,
-        )
+        await _assert_owns(body.chat_id, storage_user_id)
 
     resolved_filters = body.filters
     resolved_limit = body.limit
@@ -314,7 +310,7 @@ async def chat_delete_endpoint(
         from api.chat import _assert_owns
 
         storage_user_id = _openrag_user_id(user)
-        await _assert_owns(chat_id, storage_user_id, chat_service.session_ownership_service)
+        await _assert_owns(chat_id, storage_user_id)
         result = await chat_service.delete_session(storage_user_id, chat_id)
         if result.get("not_found"):
             return JSONResponse({"error": "Conversation not found"}, status_code=404)

@@ -22,11 +22,7 @@ def _openrag_user_id(user: User) -> str:
     return getattr(user, "db_user_id", None) or user.user_id
 
 
-async def _assert_owns(
-    session_id: str | None,
-    user_id: str,
-    session_ownership_service=None,
-) -> None:
+async def _assert_owns(session_id: str | None, user_id: str) -> None:
     """Raise 403 if `session_id` is set but not owned by `user_id`.
 
     No-op when `session_id` is None (new conversation, nothing to check).
@@ -35,9 +31,7 @@ async def _assert_owns(
     """
     if not session_id:
         return
-    if session_ownership_service is None:
-        # Compatibility for direct callers outside the application container.
-        from services.session_ownership_service import session_ownership_service
+    from services.session_ownership_service import session_ownership_service
 
     owner = await session_ownership_service.get_session_owner(session_id)
     if owner is None:
@@ -74,11 +68,7 @@ async def chat_endpoint(
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
 
     storage_user_id = _openrag_user_id(user)
-    await _assert_owns(
-        body.previous_response_id,
-        storage_user_id,
-        chat_service.session_ownership_service,
-    )
+    await _assert_owns(body.previous_response_id, storage_user_id)
 
     jwt_token = user.jwt_token
 
@@ -134,16 +124,8 @@ async def langflow_endpoint(
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
 
     storage_user_id = _openrag_user_id(user)
-    await _assert_owns(
-        body.previous_response_id,
-        storage_user_id,
-        chat_service.session_ownership_service,
-    )
-    await _assert_owns(
-        body.conversation_id,
-        storage_user_id,
-        chat_service.session_ownership_service,
-    )
+    await _assert_owns(body.previous_response_id, storage_user_id)
+    await _assert_owns(body.conversation_id, storage_user_id)
 
     jwt_token = user.jwt_token
 
@@ -234,7 +216,7 @@ async def delete_session_endpoint(
 ):
     """Delete a chat session"""
     storage_user_id = _openrag_user_id(user)
-    await _assert_owns(session_id, storage_user_id, chat_service.session_ownership_service)
+    await _assert_owns(session_id, storage_user_id)
     try:
         result = await chat_service.delete_session(storage_user_id, session_id)
 

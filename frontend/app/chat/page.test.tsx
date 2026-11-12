@@ -371,7 +371,8 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
     expect(chatState.setPreviousResponseIds).not.toHaveBeenCalled();
   });
 
-  it("renders a native tool-only assistant message with empty text", () => {
+  it("renders a native tool-only assistant message with empty text", async () => {
+    vi.useRealTimers();
     chatState.conversationData = {
       response_id: "native-conversation",
       endpoint: "chat",
@@ -391,7 +392,9 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
       auth: authPresets.noAuthMode,
     });
 
-    expect(screen.getByTestId("assistant-message")).toHaveTextContent("");
+    expect(await screen.findByTestId("assistant-message")).toHaveTextContent(
+      "",
+    );
   });
 
   it("tracks expanded tool calls and supports forking an assistant response", () => {
