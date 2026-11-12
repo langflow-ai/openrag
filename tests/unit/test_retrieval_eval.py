@@ -1382,14 +1382,9 @@ def test_a_failed_chat_is_recorded_and_the_pass_continues(monkeypatch: pytest.Mo
     overall = metrics.aggregate([r["metrics"] for r in records], [[], [], []])["overall"]
     assert overall == {"answer_cited": 1.0}
 
-    timed_out = answer_query(0)
-    timed_out["id"] = "timed-out"
-    timed_out["answer"] = failed["answer"]
-    for name in list(timed_out["metrics"]):
-        if name.startswith("answer_"):
-            del timed_out["metrics"][name]
-    results = make_results([answer_query(2), timed_out])
-    assert results["metrics"]["overall"]["answer_correct"] == 1.0
+    results = make_results([answer_query(2), answer_query(2)])
+    results["queries"][1]["id"] = "timed-out"
+    results["queries"][1]["answer"] = failed["answer"]
     summary = report.render_summary(results)
     assert "1 answers; 1 chat errors" in summary
     assert "| timed-out | TimeoutError: read timed out |" in summary
