@@ -46,6 +46,9 @@ class SharePointServer:
         self.ca_bundle = None
         self.library_visible = True
         self.sessions = []
+        # Requested site path -> ServerRelativeUrl the web probe reports
+        # (default: the path itself; None omits the field).
+        self.web_urls = {}
 
     def lists_calls(self):
         return sum("/_api/web/lists" in url for url in self.calls)
@@ -75,7 +78,12 @@ class SharePointServer:
         if self.status.get(endpoint):
             return self.response(self.status[endpoint], {})
         if endpoint == "":
-            return self.response(200, {"d": {"Id": "site"}})
+            site_path = parts.path.split("/_api/", 1)[0]
+            web = {"Id": "site"}
+            reported = self.web_urls.get(site_path, site_path or "/")
+            if reported is not None:
+                web["ServerRelativeUrl"] = reported
+            return self.response(200, {"d": web})
         if endpoint == "lists":
             items = (
                 [
@@ -351,7 +359,7 @@ def test_plain_http_root_site_requires_explicit_insecure_opt_in(monkeypatch):
             }
             payload = {"d": {"results": [library]}}
         else:
-            payload = {"d": {"Id": "root"}}
+            payload = {"d": {"Id": "root", "ServerRelativeUrl": "/"}}
         return SharePointServer.response(200, payload)
 
     monkeypatch.setattr(requests.Session, "get", get)
@@ -432,6 +440,49 @@ def test_authentication_checks_every_nominated_site(connector):
     assert run(adapter.authenticate()) is False
     assert adapter.is_authenticated is False
     assert any("/sites/beta/_api/web" in url for url in server.calls)
+
+
+# Review r4540370401: SharePoint resolves URLs case-insensitively but scope
+# checks are exact, so a casing mismatch would hide every library behind a
+# successful Test. Authentication must reject it and log the server's path.
+
+
+def test_site_path_casing_mismatch_fails_authentication_with_hint(connector, caplog):
+    adapter, server = connector
+    server.web_urls[SITE] = "/sites/Alpha"
+    with caplog.at_level("ERROR", logger="sharepoint_onprem"):
+        with pytest.raises(ValueError, match=r"casing.*'/sites/Alpha'"):
+            run(adapter.authenticate())
+    assert adapter.is_authenticated is False
+    assert server.lists_calls() == 0  # rejected before any library listing
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("'/sites/alpha'" in m and "'/sites/Alpha'" in m for m in messages)
+    assert all(record.levelname == "ERROR" for record in caplog.records)
+    assert not any("dont-log-me" in m for m in messages)
+
+    # A failure is never cached: once the server agrees, the next probe passes.
+    del server.web_urls[SITE]
+    assert run(adapter.authenticate()) is True
+    assert server.lists_calls() > 0
+
+
+def test_nominated_non_site_path_is_rejected(connector, caplog):
+    adapter, server = connector
+    # A library or folder path resolves to its containing web.
+    server.web_urls[SITE] = "/sites"
+    with caplog.at_level("ERROR", logger="sharepoint_onprem"):
+        with pytest.raises(ValueError, match="not a site URL"):
+            run(adapter.authenticate())
+    assert any("not a site URL" in record.getMessage() for record in caplog.records)
+    assert server.lists_calls() == 0
+
+
+def test_site_response_without_server_relative_url_fails_closed(connector):
+    adapter, server = connector
+    server.web_urls["/sites/beta"] = None
+    with pytest.raises(ValueError, match="missing ServerRelativeUrl"):
+        run(adapter.authenticate())
+    assert adapter.is_authenticated is False
 
 
 def test_missing_library_inventory_cannot_signal_file_deletion(connector):
