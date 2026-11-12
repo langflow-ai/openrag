@@ -115,7 +115,7 @@ endef
        instana-agent-up instana-agent-down \
        shell-backend shell-frontend install \
        test test-unit test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
-       eval-validate eval-check eval-cleanup eval-run eval-baseline eval-compare \
+       eval-validate eval-check eval-cleanup eval-run eval-answers eval-baseline eval-compare \
        ci-build-images ci-save-images \
        backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
@@ -367,6 +367,7 @@ help_test: ## Show testing commands
 	@echo "  $(PURPLE)make eval-cleanup$(NC)    - List documents interrupted runs left behind (CONFIRM=1 to delete them)"
 	@echo "  $(PURPLE)make eval-run$(NC)        - Score search quality (requires running OpenRAG and OPENRAG_API_KEY)"
 	@echo "                         (BASELINE=results/baseline.json to compare with an earlier run)"
+	@echo "  $(PURPLE)make eval-answers$(NC)    - Score chat answers and retrieval (opt-in LLM calls)"
 	@echo "  $(PURPLE)make eval-baseline$(NC)   - Run the eval and save it as results/baseline.json"
 	@echo "  $(PURPLE)make eval-compare$(NC)    - Compare two results files offline"
 	@echo "                         (BASELINE=... CURRENT=..., default baseline vs latest run)"
@@ -1374,6 +1375,9 @@ eval-check: ## Check that the stack at OPENRAG_URL is ready for a retrieval eval
 
 eval-cleanup: ## List documents interrupted retrieval eval runs left behind; CONFIRM=1 to delete them
 	cd $(EVAL_DIR) && uv run run_eval.py cleanup $(if $(filter 1 true yes,$(CONFIRM)),--yes) $(EVAL_ARGS)
+
+eval-answers: ## Score chat answers as well as retrieval (LLM calls); supports OUTPUT_DIR, BASELINE and EVAL_ARGS
+	cd $(EVAL_DIR) && uv run run_eval.py run --answers --output-dir $(OUTPUT_DIR) $(if $(BASELINE),--baseline $(BASELINE)) $(EVAL_ARGS)
 
 eval-run: ## Run the retrieval eval (requires running OpenRAG and OPENRAG_API_KEY); BASELINE=file to compare
 	cd $(EVAL_DIR) && uv run run_eval.py run --output-dir $(OUTPUT_DIR) $(if $(BASELINE),--baseline $(BASELINE)) $(EVAL_ARGS)
