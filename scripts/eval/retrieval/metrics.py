@@ -189,7 +189,7 @@ def chunk_scores(
     score threshold without another search.
     """
     rank_of = {item.filename: item.rank for item in ranked}
-    needle = _normalize(expected_text) if expected_text else None
+    needle = normalize(expected_text) if expected_text else None
     expected = set(expected_files)
     scores: list[list[float]] = []
     answers: list[int] = []
@@ -198,9 +198,42 @@ def chunk_scores(
         if name is None:
             continue
         scores.append([rank_of[name], round(chunk.score, 6)])
-        if needle is not None and name in expected and needle in _normalize(chunk.text):
+        if needle is not None and name in expected and needle in normalize(chunk.text):
             answers.append(len(scores))
     return scores, answers
+
+
+def summarize_cut(
+    chunks: Sequence[Chunk],
+    run_prefix: str,
+    corpus_names: Collection[str],
+    expected_files: Collection[str],
+    expected_text: str | None,
+    k_values: Sequence[int],
+) -> dict[str, object]:
+    """Score what one search returned when the stack applied a score threshold itself.
+
+    Holds the file and passage metrics, whether an answer chunk survived (None
+    without ``expected_text``), and how many relevant and noise chunks were
+    kept, counting only this run's files.
+    """
+    ranked = rank_files(chunks, run_prefix, corpus_names, expected_text)
+    scores = score_query(ranked, expected_files, k_values)
+    answer_kept: bool | None = None
+    if expected_text is not None:
+        rank = passage_rank(chunks, run_prefix, corpus_names, expected_files, expected_text)
+        scores.update(score_passage(rank, k_values))
+        answer_kept = rank is not None
+    names = [canonical_name(chunk.filename, run_prefix, corpus_names) for chunk in chunks]
+    kept = [name for name in names if name is not None]
+    relevant = sum(1 for name in kept if name in expected_files)
+    return {
+        "metrics": scores,
+        "answer_kept": answer_kept,
+        "chunks": len(kept),
+        "relevant": relevant,
+        "noise": len(kept) - relevant,
+    }
 
 
 def score_passage(rank: int | None, k_values: Sequence[int] = DEFAULT_K_VALUES) -> dict[str, float]:

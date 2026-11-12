@@ -278,16 +278,19 @@ uv run run_eval.py scores results/before/results.json
 ```
 
 The report is printed and written to `scores.md` next to the results file. It
-has three parts:
+has these parts:
 
-- **Sweep.** For each threshold, the scores left after dropping every chunk
-  below it: recall@5, MRR and passage hit@5, how many questions lost recall,
-  how many lost every answer chunk, and the share of noise and relevant chunks
-  removed. Losses are counted against no cut.
-- **Recommendation.** The highest threshold that keeps recall@5
+- **Simulated sweep.** For each threshold, the scores left after dropping every
+  chunk whose returned score is below it: recall@5, MRR and passage hit@5, how
+  many questions lost recall, how many lost every answer chunk, and the share
+  of noise and relevant chunks removed. Losses are counted against no cut.
+- **Simulated thresholds.** The highest threshold that keeps recall@5
   (`--max-recall-loss` allows some loss), and the highest that loses at most
   one answer chunk. A threshold counts only if every lower one also stays
   within the limit.
+- **Live cuts**, when the run measured them (see below). The same scores with
+  the stack applying each threshold itself, next to the simulation, and the
+  live thresholds that keep recall.
 - **Tiers.** How many answer, relevant and noise chunks land in each tier, and
   how many expected files land in Low or other files in High. A file's tier is
   that of its best chunk. It also counts the answer chunks that `--hide` (the
@@ -317,6 +320,30 @@ The comparison puts both runs side by side: the recommended thresholds, the
 noise removed and answers lost there, and the tier counts. Runs with different
 labels still compare with `compare`; the label difference is a note, not a
 warning, so it never fails the recall gate.
+
+### Simulated and live thresholds
+
+The sweep cuts on the score `/v1/search` returns. The stack may apply
+`score_threshold` to a different score. Since #2520, main applies it to the
+hybrid score before document-level security adds its own score to every hit,
+so the score search returns is higher than the one the stack cuts on. A
+simulated threshold is then not the same cut as `score_threshold` set to that
+value, and it can look safe while live search drops answer chunks.
+
+To measure the real cut, give the run the thresholds to test:
+
+```bash
+make eval-run OUTPUT_DIR=results/live EVAL_ARGS='--live-thresholds 0.5,1,1.5,2'
+uv run run_eval.py scores results/live/results.json
+```
+
+After the normal pass, while its documents are still uploaded, the run asks
+every question again once per threshold, with the stack applying the threshold
+itself. That costs one search per question per threshold and no extra uploads.
+The report then shows a **Live cuts** table and flags every threshold where the
+stack kept something different from the simulation. Pick `score_threshold` from
+the live thresholds. Without live cuts, the report says its thresholds are
+simulated.
 
 Search never returns chunks below the run's `--score-threshold`, so the sweep
 starts there and says so. A backend that falls back to a default threshold when
@@ -459,7 +486,10 @@ question. `chunk_scores` lists every returned chunk of this run's files as
 `[file rank, score]` in the order search returned them, where the file rank
 points into `ranked_files`. `answer_chunks` gives the 1-based positions in that
 list of the chunks holding the `expected_text`. `run.label` is the `--label` of
-the run, or `null`.
+the run, or `null`. With `--live-thresholds`, `run.live_thresholds` lists them
+and each record has `live_cuts`: one entry per threshold with that question's
+metrics, whether an answer chunk survived (`answer_kept`), and how many chunks,
+relevant chunks and noise chunks the stack kept.
 
 ## Add or change a question
 

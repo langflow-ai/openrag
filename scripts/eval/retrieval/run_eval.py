@@ -72,6 +72,16 @@ def _finite_float(value: str) -> float:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
+def _parse_live_thresholds(value: str) -> list[float]:
+    try:
+        thresholds = scores.parse_thresholds(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+    if thresholds is None:
+        raise argparse.ArgumentTypeError("give the thresholds to test, such as 0.5,1,2 or 0:3:0.5")
+    return thresholds
+
+
 def _parse_tiers(value: str) -> tuple[float, float]:
     try:
         high, med = (scores.finite(part) for part in value.split(","))
@@ -135,6 +145,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="chunks requested per question before deduplicating to files (default: 50)",
     )
     run.add_argument("--score-threshold", type=float, default=0.0)
+    run.add_argument(
+        "--live-thresholds",
+        type=_parse_live_thresholds,
+        help=(
+            "rerun every question once per threshold with the stack applying the score "
+            "threshold itself, such as 0.5,1,2 or 0:3:0.5, so `run_eval.py scores` can "
+            "report the real cut next to the offline simulation"
+        ),
+    )
     run.add_argument(
         "--label",
         help=(
@@ -633,6 +652,47 @@ async def _cleanup_chats(client: Any, chat_ids: list[str]) -> list[str]:
     return warnings
 
 
+async def _run_live_cuts(
+    client: Any,
+    queries: list[dataset.Query],
+    records: list[dict[str, Any]],
+    manifest: dict[str, str],
+    run_prefix: str,
+    args: argparse.Namespace,
+) -> None:
+    """Rerun every question at each live threshold and record what search kept.
+
+    The offline sweep cuts on the score search returns. A stack may apply its
+    threshold to a different score: since #2520, main cuts the hybrid score
+    before document-level security adds its own score to every hit. Asking
+    the stack to apply each threshold measures the cut it really makes.
+    """
+    from openrag_sdk import SearchFilters
+
+    corpus_names = frozenset(manifest.values())
+    scope = SearchFilters(data_sources=sorted(manifest))
+    for query, record in zip(queries, records, strict=True):
+        cuts: list[dict[str, Any]] = []
+        for threshold in args.live_thresholds:
+            response = await client.search.query(
+                query.query,
+                filters=scope,
+                limit=args.fetch_limit,
+                score_threshold=threshold,
+            )
+            chunks = [metrics.Chunk(r.filename, r.text, r.score) for r in response.results]
+            summary = metrics.summarize_cut(
+                chunks,
+                run_prefix,
+                corpus_names,
+                query.expected_files,
+                query.expected_text,
+                args.k_values,
+            )
+            cuts.append({"threshold": threshold, **summary})
+        record["live_cuts"] = cuts
+
+
 async def _cleanup(client: Any, manifest: dict[str, str]) -> list[str]:
     """Delete this run's documents by exact filename and confirm they are gone."""
     from openrag_sdk import SearchFilters
@@ -699,6 +759,9 @@ async def run(args: argparse.Namespace) -> int:
             settings, settings_note = await _settings_snapshot(client)
             print("Running questions...")
             records = await _run_queries(client, queries, manifest, run_prefix, args)
+            if args.live_thresholds:
+                print(f"Running questions at {len(args.live_thresholds)} live thresholds...")
+                await _run_live_cuts(client, queries, records, manifest, run_prefix, args)
             if args.answers:
                 answer_settings = await _answer_settings(client, args)
                 async with OpenRAGClient(
@@ -736,6 +799,7 @@ async def run(args: argparse.Namespace) -> int:
             "fetch_limit": args.fetch_limit,
             "score_threshold": args.score_threshold,
             "label": args.label,
+            "live_thresholds": args.live_thresholds,
         },
         "settings": settings,
         "settings_note": settings_note,

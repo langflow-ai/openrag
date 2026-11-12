@@ -1108,6 +1108,7 @@ def load_answer_runner(monkeypatch: pytest.MonkeyPatch) -> Any:
         ("dataset", dataset),
         ("metrics", metrics),
         ("report", report),
+        ("scores", scores),
     ):
         monkeypatch.setitem(sys.modules, name, module)
     monkeypatch.setitem(sys.modules, "openrag_sdk", SimpleNamespace(SearchFilters=lambda **kw: kw))
@@ -1645,7 +1646,7 @@ def test_analysis_lists_the_questions_a_candidate_costs() -> None:
     assert analysis["lost"][0]["best_answer"] == 0.5
     text = scores.render_report(analysis)
     assert "keeps recall" in text
-    assert "Questions a threshold of 0.6 would cost (1)" in text
+    assert "Questions a simulated threshold of 0.6 would cost (1)" in text
     assert "| q2 |" in text
 
 
@@ -1692,7 +1693,7 @@ def test_scores_command_writes_a_report_and_compares_runs(tmp_path: Path) -> Non
     written = (tmp_path / "after" / "scores.md").read_text(encoding="utf-8")
     assert written.startswith("# Relevance thresholds compared")
     assert "| Label | before | after |" in written
-    assert "## Sweep" in written
+    assert "## Simulated sweep" in written
 
 
 def test_scores_command_explains_an_old_results_file(tmp_path: Path) -> None:
@@ -1832,3 +1833,137 @@ def test_dumps_number_array_pattern_fails_fast_on_hostile_input() -> None:
     report._NUMBER_ARRAY.sub("", hostile)
 
     assert time.perf_counter() - started < 1.0
+
+
+def with_live_cuts(
+    results: dict[str, Any], offset: float, thresholds: list[float]
+) -> dict[str, Any]:
+    """Live cuts from a stack that applies its threshold to the returned score minus ``offset``.
+
+    An offset of 0 is a stack that cuts on the score search returns. A positive
+    offset is a stack that, like main since #2520, cuts before document-level
+    security adds its own score, so it drops more than the simulation predicts.
+    """
+    for record in results["queries"]:
+        files = [item["filename"] for item in record["ranked_files"]]
+        record["live_cuts"] = []
+        for threshold in thresholds:
+            chunks = [
+                chunk(
+                    files[int(rank) - 1],
+                    "the answer" if position in record["answer_chunks"] else "",
+                    score,
+                )
+                for position, (rank, score) in enumerate(record["chunk_scores"], start=1)
+                if score - offset >= threshold
+            ]
+            summary = metrics.summarize_cut(
+                chunks, PREFIX, CORPUS, record["expected_files"], record["expected_text"], [5]
+            )
+            record["live_cuts"].append({"threshold": threshold, **summary})
+    results["run"]["live_thresholds"] = thresholds
+    return results
+
+
+def test_live_cuts_that_match_the_simulation_say_so() -> None:
+    analysis = scores.analyze(with_live_cuts(tuning_results(), 0.0, [0.1, 0.42, 0.6]))
+
+    assert [
+        scores.matches(a, b)
+        for a, b in zip(analysis["live"], analysis["simulated_at_live"], strict=True)
+    ] == [
+        True,
+        True,
+        True,
+    ]
+    assert any("matched the simulation at all 3" in note for note in analysis["notes"])
+    assert not any("simulated on the score" in note for note in analysis["notes"])
+    advice = analysis["live_recommendation"]
+    assert advice.keeps_recall.threshold == 0.42
+    assert advice.one_answer.threshold == 0.6
+
+
+def test_live_cuts_expose_a_stack_that_cuts_on_another_score() -> None:
+    # The stack subtracts 0.2 before cutting: at 0.42 it drops q2's answer (0.5).
+    analysis = scores.analyze(with_live_cuts(tuning_results(), 0.2, [0.1, 0.42]))
+
+    live, simulated = analysis["live"][1], analysis["simulated_at_live"][1]
+    assert simulated.answers_lost == ()
+    assert live.answers_lost == ("q2",)
+    assert any("differs from the simulation" in note for note in analysis["notes"])
+    assert analysis["live_recommendation"].keeps_recall.threshold == 0.1
+    text = scores.render_report(analysis)
+    assert "## Live cuts" in text
+    assert "| 0.42 | 0.500 | 1.000 | 1 | 0 |" in text
+    assert "**no**" in text
+    assert "**Live, keeps recall@5:** 0.1" in text
+
+
+def test_without_live_cuts_the_report_says_thresholds_are_simulated() -> None:
+    analysis = scores.analyze(tuning_results())
+    text = scores.render_report(analysis)
+
+    assert analysis["live_recommendation"] is None
+    assert "**Simulated, keeps recall@5:**" in text
+    assert "Live, keeps recall" not in text
+    assert "--live-thresholds" in text
+    comparison = scores.render_comparison(analysis, analysis)
+    assert "| Live: keeps recall | not measured | not measured |" in comparison
+
+
+def test_partial_live_cuts_are_refused() -> None:
+    results = with_live_cuts(tuning_results(), 0.0, [0.1])
+    del results["queries"][1]["live_cuts"]
+
+    with pytest.raises(scores.ScoresError, match="only some questions"):
+        scores.analyze(results)
+
+
+def test_live_thresholds_are_not_a_comparison_warning() -> None:
+    before = tuning_results()
+    after = with_live_cuts(tuning_results(), 0.0, [0.1])
+
+    diff = report.diff_results(before, after)
+
+    assert diff["warnings"] == []
+    assert report.recall_gate_failure(diff, 0.0) is None
+
+
+def test_run_records_live_cuts_with_the_stack_applying_each_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    runner = load_answer_runner(monkeypatch)
+    calls: list[float] = []
+    hits = [("b.md", "", 0.9), ("a.md", "the answer", 0.5)]
+
+    async def query(text: str, **kwargs: Any) -> Any:
+        calls.append(kwargs["score_threshold"])
+        kept = [h for h in hits if h[2] - 0.2 >= kwargs["score_threshold"]]
+        return SimpleNamespace(
+            results=[SimpleNamespace(filename=PREFIX + n, text=t, score=s) for n, t, s in kept]
+        )
+
+    client = SimpleNamespace(search=SimpleNamespace(query=query))
+    args = SimpleNamespace(live_thresholds=[0.1, 0.4], fetch_limit=50, k_values=[1, 5])
+    queries = [dataset.Query("q", "question", ("a.md",), "answer")]
+    records: list[dict[str, Any]] = [{"metrics": {}}]
+    manifest = {PREFIX + "a.md": "a.md", PREFIX + "b.md": "b.md"}
+
+    asyncio.run(runner._run_live_cuts(client, queries, records, manifest, PREFIX, args))
+
+    assert calls == [0.1, 0.4]
+    first, second = records[0]["live_cuts"]
+    assert first["threshold"] == 0.1 and first["answer_kept"] is True and first["chunks"] == 2
+    assert second["threshold"] == 0.4 and second["answer_kept"] is False
+    assert second["metrics"]["recall@5"] == 0.0 and (second["noise"], second["relevant"]) == (1, 0)
+
+
+@pytest.mark.parametrize("value", ["auto", "nan", "0,inf", "1:0:0.1"])
+def test_run_rejects_unusable_live_thresholds(value: str) -> None:
+    completed = _run_cli("run", "--validate-only", "--live-thresholds", value)
+
+    assert completed.returncode == 2
+    assert "--live-thresholds" in completed.stderr
