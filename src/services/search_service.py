@@ -62,6 +62,7 @@ _SEARCH_FILTER_FIELDS = {
 }
 _MAPPING_COMPATIBLE_FILTER_FIELDS = {"web_source_id"}
 _CHUNK_SEARCH_EXCLUDED_RECORD_KINDS = {"web_source", "web_page_manifest"}
+_SAMPLE_DATA_EXCLUSION = {"bool": {"must_not": [{"term": {"is_sample_data": "true"}}]}}
 
 
 # Variable used to store the active instance for the tool wrapper
@@ -576,6 +577,7 @@ class SearchService:
         user_id, jwt_token = get_auth_context()
         # Get search filters, limit, and score threshold from context
         from auth_context import (
+            get_exclude_sample_data,
             get_score_threshold,
             get_search_filters,
             get_search_limit,
@@ -601,6 +603,8 @@ class SearchService:
             filter_clauses = _add_result_mode_filter(
                 _build_search_filter_clauses(filters), result_mode
             )
+            if get_exclude_sample_data():
+                filter_clauses.append(_SAMPLE_DATA_EXCLUSION)
 
             try:
                 # Space discovery is several aggregation round-trips and the
@@ -752,6 +756,8 @@ class SearchService:
             filter_clauses = _add_result_mode_filter(
                 _build_search_filter_clauses(filters), result_mode
             )
+            if get_exclude_sample_data():
+                filter_clauses.append(_SAMPLE_DATA_EXCLUSION)
 
         # Build query body
         if is_wildcard_match_all:
@@ -1119,6 +1125,7 @@ class SearchService:
         result_mode: str = "chunks",
         *,
         source: str = "api",
+        exclude_sample_data: bool = False,
     ) -> dict[str, Any]:
         """Public search method for API endpoints
 
@@ -1126,6 +1133,8 @@ class SearchService:
             embedding_model: Embedding model to use for search (defaults to the
                 currently configured embedding model)
             source: Trace tag distinguishing who is searching (see ``search_tool``)
+            exclude_sample_data: Leave out the bundled sample documents
+                (``is_sample_data``), as the nudges flow does when no filter is set
         """
         # Set auth context if provided (for direct API calls)
         from config.settings import is_no_auth_mode
@@ -1136,6 +1145,7 @@ class SearchService:
             set_auth_context(user_id, jwt_token)
 
         from auth_context import (
+            set_exclude_sample_data,
             set_score_threshold,
             set_search_filters,
             set_search_limit,
@@ -1148,6 +1158,7 @@ class SearchService:
         set_search_limit(limit)
         set_score_threshold(score_threshold)
         set_search_result_mode(result_mode)
+        set_exclude_sample_data(exclude_sample_data)
 
         return await self.search_tool(query, embedding_model=embedding_model, source=source)
 

@@ -723,6 +723,14 @@ DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false"
     "yes",
 )
 
+# Generate nudges (suggested prompts) with one LLM gateway call instead of the
+# Langflow nudges flow. Part of running OpenRAG without Langflow.
+DISABLE_NUDGES_WITH_LANGFLOW = os.getenv("DISABLE_NUDGES_WITH_LANGFLOW", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+
 
 def embedding_overflow_policy() -> str:
     """What the gateway does with an embedding input the model rejects as too long.

@@ -296,3 +296,20 @@ async def test_unreadable_mapping_keeps_the_native_knn_filter(monkeypatch):
 
     params = _knn_params(os_client.bodies[-1]["query"])
     assert params and all("filter" in knn for knn in params)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("query", ['""', "*"])
+async def test_exclude_sample_data_adds_must_not_clause(monkeypatch, query):
+    """Verify exclude_sample_data filters out sample documents and resets per search."""
+    import json
+
+    os_client = _OpenSearch()
+    service = _make_service(os_client, monkeypatch)
+    exclusion = {"bool": {"must_not": [{"term": {"is_sample_data": "true"}}]}}
+
+    await service.search(query, user_id="user-1", jwt_token="jwt", exclude_sample_data=True)
+    assert json.dumps(exclusion) in json.dumps(os_client.bodies[-1])
+
+    await service.search(query, user_id="user-1", jwt_token="jwt")
+    assert json.dumps(exclusion) not in json.dumps(os_client.bodies[-1])

@@ -1,12 +1,16 @@
-from typing import Optional
-
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse
-from utils.logging_config import get_logger
+from pydantic import BaseModel
 
-from dependencies import get_chat_service, get_session_manager, get_current_user
+from dependencies import (
+    get_chat_service,
+    get_current_user,
+    get_search_service,
+    get_session_manager,
+)
+from services.llm_gateway import LlmGatewayError
 from session_manager import User
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -15,16 +19,23 @@ def _openrag_user_id(user: User) -> str:
     return getattr(user, "db_user_id", None) or user.user_id
 
 
+def _gateway_error(exc: LlmGatewayError) -> JSONResponse:
+    """Log internal gateway details and return the caller-safe message and status."""
+    logger.error("Nudges LLM gateway error", status_code=exc.status_code, error=exc.detail)
+    return JSONResponse({"error": exc.message}, status_code=exc.status_code)
+
+
 class NudgesBody(BaseModel):
-    filters: Optional[dict] = None
-    limit: Optional[int] = None
-    score_threshold: Optional[float] = None
+    filters: dict | None = None
+    limit: int | None = None
+    score_threshold: float | None = None
 
 
 async def nudges_from_kb_endpoint(
     body: NudgesBody,
     chat_service=Depends(get_chat_service),
     session_manager=Depends(get_session_manager),
+    search_service=Depends(get_search_service),
     user: User = Depends(get_current_user),
 ):
     """Get nudges for a user"""
@@ -32,21 +43,23 @@ async def nudges_from_kb_endpoint(
     storage_user_id = _openrag_user_id(user)
 
     try:
-        result = await chat_service.langflow_nudges_chat(
+        result = await chat_service.nudges_chat(
             user.user_id,
             jwt_token,
             filters=body.filters,
             limit=body.limit,
             score_threshold=body.score_threshold,
             storage_user_id=storage_user_id,
+            search_service=search_service,
         )
         return JSONResponse(result)
     except HTTPException:
         raise
-    except Exception as e:
-        return JSONResponse(
-            {"error": f"Failed to get nudges: {str(e)}"}, status_code=500
-        )
+    except LlmGatewayError as exc:
+        return _gateway_error(exc)
+    except Exception:
+        logger.exception("Unexpected error while getting nudges from KB")
+        return JSONResponse({"error": "Failed to get nudges."}, status_code=500)
 
 
 async def nudges_from_chat_id_endpoint(
@@ -54,6 +67,7 @@ async def nudges_from_chat_id_endpoint(
     body: NudgesBody,
     chat_service=Depends(get_chat_service),
     session_manager=Depends(get_session_manager),
+    search_service=Depends(get_search_service),
     user: User = Depends(get_current_user),
 ):
     """Get nudges for a user based on a previous conversation"""
@@ -62,8 +76,9 @@ async def nudges_from_chat_id_endpoint(
 
     try:
         from api.chat import _assert_owns
+
         await _assert_owns(chat_id, storage_user_id)
-        result = await chat_service.langflow_nudges_chat(
+        result = await chat_service.nudges_chat(
             user.user_id,
             jwt_token,
             previous_response_id=chat_id,
@@ -71,11 +86,13 @@ async def nudges_from_chat_id_endpoint(
             limit=body.limit,
             score_threshold=body.score_threshold,
             storage_user_id=storage_user_id,
+            search_service=search_service,
         )
         return JSONResponse(result)
     except HTTPException:
         raise
-    except Exception as e:
-        return JSONResponse(
-            {"error": f"Failed to get nudges: {str(e)}"}, status_code=500
-        )
+    except LlmGatewayError as exc:
+        return _gateway_error(exc)
+    except Exception:
+        logger.exception("Unexpected error while getting nudges from chat_id")
+        return JSONResponse({"error": "Failed to get nudges."}, status_code=500)
