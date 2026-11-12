@@ -2,7 +2,8 @@
 
 Provider-fallback selection, embedding-model conflict detection (used to
 warn before removing a provider whose embeddings are still indexed), the
-OpenRAG-docs knowledge-filter creator, and a flows-service factory.
+OpenRAG-docs knowledge-filter creator, a flows-service factory, and the
+watsonx.ai on-prem onboarding chunk-size cap.
 
 Lifted verbatim from the original `src/api/settings.py` (lines 371–480 and
 1388–1455). No behavior change.
@@ -13,7 +14,7 @@ from typing import Any
 
 from fastapi.responses import JSONResponse
 
-from config.settings import clients, is_no_auth_mode
+from config.settings import DEFAULT_CHUNK_OVERLAP, clients, is_no_auth_mode
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -22,6 +23,8 @@ logger = get_logger(__name__)
 # Provider names in priority order. LLM supports anthropic; embeddings do not.
 _LLM_PROVIDER_NAMES = ("openai", "anthropic", "watsonx", "ollama")
 _EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama")
+
+WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE = 500
 
 
 def _has_other_configured_provider(config, excluding: str) -> bool:
@@ -307,3 +310,28 @@ def _get_flows_service():
     from services.flows_service import FlowsService
 
     return FlowsService()
+
+
+def _cap_watsonx_onprem_onboarding_chunk_size(knowledge) -> int | None:
+    """Cap the chunk size for watsonx.ai on-prem embeddings during onboarding.
+
+    Keys off the effective embedding provider on `knowledge`, so the cap also
+    applies when a request changes only the embedding model. Returns the chunk
+    size it was reduced to, or None when nothing changed.
+    """
+    if (
+        (knowledge.embedding_provider or "").strip().lower() != "watsonx_onprem"
+        or knowledge.chunk_size <= WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+    ):
+        return None
+
+    knowledge.chunk_size = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+    if knowledge.chunk_overlap >= WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE:
+        # The overlap must stay below the new chunk size; fall back to the default.
+        knowledge.chunk_overlap = DEFAULT_CHUNK_OVERLAP
+    logger.info(
+        "Reduced chunk size for watsonx.ai on-prem embedding compatibility",
+        chunk_size=knowledge.chunk_size,
+        chunk_overlap=knowledge.chunk_overlap,
+    )
+    return WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
