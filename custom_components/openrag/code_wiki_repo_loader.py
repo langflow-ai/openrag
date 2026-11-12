@@ -37,7 +37,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urljoin, urlsplit
+from urllib.parse import quote, unquote, urljoin, urlsplit
 
 from lfx.custom.custom_component.component import Component
 from lfx.io import HandleInput, IntInput, Output, SecretStrInput, StrInput
@@ -761,7 +761,10 @@ def parse_repo_url(url: str) -> dict[str, str]:
     Returns ``kind`` ('git' or 'archive'), ``scheme``, ``url`` (canonical: no ``/tree/...``, no
     credentials, no query), ``fetch_url`` (archives only: the URL to download), ``host``, ``owner``,
     ``repo``, ``ref`` and ``subdir`` (from ``/tree/<ref>/<subdir>``; a ref containing '/' is not
-    supported). Anything that doesn't parse comes back unchanged in ``url``.
+    supported), and ``token``: an access token embedded in an http(s) URL, as
+    ``https://<TOKEN>@host/...`` or ``https://<user>:<TOKEN>@host/...`` ('' if none). The token is
+    never part of ``url`` or ``fetch_url``. Anything that doesn't parse comes back unchanged in
+    ``url``.
     """
     raw = (url or "").strip()
     out = {
@@ -774,6 +777,7 @@ def parse_repo_url(url: str) -> dict[str, str]:
         "repo": "",
         "ref": "",
         "subdir": "",
+        "token": "",
     }
     m = re.match(r"^(?:ssh://)?git@([\w.\-]+)[:/]([^/\s]+)/(\S+?)(?:\.git)?/?$", raw)
     if m:
@@ -785,10 +789,15 @@ def parse_repo_url(url: str) -> dict[str, str]:
     except ValueError:
         return out
     if sp.scheme not in ("http", "https") or not sp.hostname:
+        out["url"] = redact_url(raw)  # an unusable URL may still carry a token
         return out
     host = sp.hostname.lower()
     netloc = host + (f":{port}" if port else "")
-    out.update(scheme=sp.scheme, host=host)
+    # https://<TOKEN>@host → username is the token; https://<user>:<TOKEN>@host → password is.
+    token = unquote(sp.password or sp.username or "")
+    out.update(scheme=sp.scheme, host=host, token=token)
+    if token:
+        out["url"] = f"{sp.scheme}://{netloc}{sp.path}"
     if sp.path.lower().endswith(ARCHIVE_SUFFIXES):
         fetch = f"{sp.scheme}://{netloc}{sp.path}" + (f"?{sp.query}" if sp.query else "")
         out.update(kind="archive", url=f"{sp.scheme}://{netloc}{sp.path}", fetch_url=fetch)
@@ -800,7 +809,7 @@ def parse_repo_url(url: str) -> dict[str, str]:
     else:
         project, rest = parts[:2], parts[2:]
     if len(project) < 2:
-        return out
+        return out  # url is already credential-free when a token was given
     owner, repo = "/".join(project[:-1]), re.sub(r"\.git$", "", project[-1])
     out.update(owner=owner, repo=repo, url=f"{sp.scheme}://{netloc}/{owner}/{repo}")
     if len(rest) >= 2 and rest[0] in ("tree", "blob"):
@@ -939,6 +948,47 @@ def _display_url(url: str) -> str:
     return f"{sp.scheme}://{sp.hostname or ''}{sp.path}"
 
 
+_URL_USERINFO_RE = re.compile(r"(\b[a-zA-Z][a-zA-Z0-9+.\-]*://)[^/@\s'\"]+@")
+
+
+def redact_url(text: str) -> str:
+    """``text`` with the credentials of every URL in it replaced by ``***``
+    (``https://<TOKEN>@host/...`` → ``https://***@host/...``), for status, logs and errors."""
+    return _URL_USERINFO_RE.sub(r"\1***@", text or "")
+
+
+def join_docling_texts(items: list) -> str:
+    """Join a DoclingDocument's ``texts`` items into pointer text.
+
+    Docling treats ``<TOKEN>@github.com`` inside ``https://<TOKEN>@github.com/o/r.git`` as an email
+    address and splits the line into separate items: ``"url: https://github_"``,
+    ``"pat_…@github.ibm"`` (with a ``mailto:`` hyperlink) and ``".com/o/r.git ref: main"``. Joining
+    them with newlines would cut the URL at ``https://github_``, so a ``mailto:`` item is glued to the
+    items on both sides with no separator. Other items are joined with newlines, as before."""
+    parts: list[str] = []
+    glue_next = False
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        text = (item.get("text") or item.get("orig") or "").strip()
+        if not text:
+            continue
+        is_mail = str(item.get("hyperlink") or "").startswith("mailto:")
+        if parts and (glue_next or is_mail):
+            parts[-1] += text
+        else:
+            parts.append(text)
+        glue_next = is_mail
+    return "\n".join(parts)
+
+
+def unmangle_docling_markdown(text: str) -> str:
+    """Undo Docling's markdown changes to a token URL: the email-looking part becomes
+    ``[pat\\_…@github.ibm](mailto:…)`` with spaces around it, and ``_`` is escaped as ``\\_``."""
+    text = re.sub(r"\s*\[([^\]]*)\]\(mailto:[^)\s]*\)\s*", r"\1", text or "")
+    return re.sub(r"\\([\\`*_{}\[\]()#+\-.!])", r"\1", text)
+
+
 def _private_hosts_allowed() -> bool:
     """True when CODEWIKI_ALLOW_PRIVATE_HOSTS opts in to internal hosts and plain http."""
     return os.environ.get("CODEWIKI_ALLOW_PRIVATE_HOSTS", "").strip().lower() in (
@@ -1021,8 +1071,10 @@ class RepoLoader(Component):
             value="REPO_URL",
             load_from_db=True,
             info="e.g. https://github.com/owner/repo, https://github.com/owner/repo/tree/main/src, "
-            "git@github.com:owner/repo.git, or a direct .zip / .tar.gz URL. Bound to the "
-            "REPO_URL global; can be set per run with a tweak. Ignored if a local path is given.",
+            "git@github.com:owner/repo.git, or a direct .zip / .tar.gz URL. A private repo can "
+            "carry its token in the URL: https://<TOKEN>@github.com/owner/repo (https only, same "
+            "trusted hosts as 'Access token'). Bound to the REPO_URL global; can be set per run "
+            "with a tweak. Ignored if a local path is given.",
         ),
         StrInput(
             name="repo_ref",
@@ -1066,8 +1118,9 @@ class RepoLoader(Component):
             display_name="Access token",
             value="",
             advanced=True,
-            info="Token for private repos (GitHub / GitLab). Falls back to env GITHUB_TOKEN, "
-            "GH_TOKEN or GITLAB_TOKEN. Only sent to github.com, gitlab.com and hosts "
+            info="Token for private repos (GitHub / GitLab). A token in the repo URL "
+            "(https://<TOKEN>@host/...) takes precedence; falls back to env GITHUB_TOKEN, "
+            "GH_TOKEN or GITLAB_TOKEN. Only sent over https to github.com, gitlab.com and hosts "
             "listed in env CODEWIKI_TOKEN_HOSTS (comma-separated).",
         ),
         # Knowledge-UI upload path: the OpenRAG backend sends the uploaded file to Docling Serve,
@@ -1112,7 +1165,9 @@ class RepoLoader(Component):
     outputs = [Output(display_name="Repo", name="repo_out", method="load_repo")]
 
     def _notify(self, msg: str) -> None:
-        """Set the component status and log ``msg``; logging errors are ignored."""
+        """Set the component status and log ``msg``; logging errors are ignored. URL credentials
+        (a token in ``https://<TOKEN>@host/...``) are masked first."""
+        msg = redact_url(msg)
         self.status = msg
         try:
             self.log(msg)
@@ -1224,10 +1279,11 @@ class RepoLoader(Component):
             self._docling_error = f"Docling did not convert {name} ({why})."
             self._notify(self._docling_error)
             return ""
-        text = doc.get("md_content") or doc.get("text_content") or ""
+        text = unmangle_docling_markdown(doc.get("md_content") or doc.get("text_content") or "")
         if not text.strip():
             # The OpenRAG backend requests JSON only, so the text lives in the DoclingDocument's
-            # `texts` items (one per paragraph) instead of md_content.
+            # `texts` items (one per paragraph) instead of md_content. A token URL is split into
+            # several items there (Docling sees "<TOKEN>@host" as an email); rejoin them.
             jc = doc.get("json_content")
             if isinstance(jc, str):
                 try:
@@ -1237,11 +1293,7 @@ class RepoLoader(Component):
                 except ValueError:
                     jc = None
             if isinstance(jc, dict):
-                text = "\n".join(
-                    (t.get("text") or t.get("orig") or "").strip()
-                    for t in jc.get("texts") or []
-                    if isinstance(t, dict)
-                )
+                text = join_docling_texts(jc.get("texts") or [])
         # Docling renders a bare URL as a markdown link "[url](url)"; keep the URL itself.
         text = re.sub(r"\[([^\]]*)\]\((https?://[^)\s]+)\)", r"\2", text)
         self._pointer_chars = len(text)
@@ -1282,7 +1334,7 @@ class RepoLoader(Component):
                 url = m.group(0)
         url = url.strip().rstrip(".,;)")
         self._notify(
-            f"Pointer URL: {url or '(none found)'}"
+            f"Pointer URL: {redact_url(url) or '(none found)'}"
             + (f" ref={ref}" if ref else "")
             + (f" subtree={subtree}" if subtree else "")
         )
@@ -1313,8 +1365,21 @@ class RepoLoader(Component):
             "Langflow playground has no upload, so it always needs repo_url."
         )
 
-    def _resolve_token(self, host: str) -> str:
-        """The access token to send to ``host`` ('' if none, or if the host isn't trusted with it)."""
+    def _resolve_token(self, host: str, url_token: str = "") -> str:
+        """The access token to send to ``host``: a token embedded in the repo URL, else the
+        ``access_token`` input, else ``GITHUB_TOKEN`` / ``GH_TOKEN`` / ``GITLAB_TOKEN``. Every source
+        follows the same rule: only trusted hosts (github.com, gitlab.com, ``CODEWIKI_TOKEN_HOSTS``)
+        get a token. An untrusted host gets '' for the input and env tokens; a token written into
+        the URL for an untrusted host is an error, so it isn't silently dropped."""
+        if url_token:
+            if not token_allowed(host):
+                raise ValueError(
+                    f"The repo URL contains an access token, but tokens are only sent to "
+                    f"github.com, gitlab.com and hosts listed in CODEWIKI_TOKEN_HOSTS; {host!r} is "
+                    "not one of them. Add the host to CODEWIKI_TOKEN_HOSTS, or remove the token "
+                    "from the URL."
+                )
+            return url_token
         if not token_allowed(host):
             return ""
         tok = getattr(self, "access_token", "")
@@ -1416,14 +1481,19 @@ class RepoLoader(Component):
 
         info = parse_repo_url(repo_url)
         url, host, scheme = info["url"], info["host"], info["scheme"]
-        # The token is only ever sent over https.
-        token = self._resolve_token(host) if scheme == "https" else ""
+        # The token is only ever sent over https, whether it came from the URL or the input.
+        if info["token"] and scheme != "https":
+            raise ValueError(
+                f"Refusing to send the access token in the repo URL over {scheme}:// "
+                f"({_display_url(url)}): use an https:// URL."
+            )
+        token = self._resolve_token(host, info["token"]) if scheme == "https" else ""
         if info["kind"] == "archive":
             return self._download_archive_url(info, token), url, ref_in, ""
         if scheme not in ("http", "https", "ssh"):
             raise ValueError(
-                f"Unsupported repo URL {repo_url!r}: use an https:// URL, git@host:owner/repo, or "
-                "a direct .zip / .tar.gz URL, or set 'local_path'."
+                f"Unsupported repo URL {redact_url(repo_url)!r}: use an https:// URL, "
+                "git@host:owner/repo, or a direct .zip / .tar.gz URL, or set 'local_path'."
             )
         if scheme == "http" and not _private_hosts_allowed():
             raise ValueError(
@@ -1460,7 +1530,12 @@ class RepoLoader(Component):
         except subprocess.CalledProcessError as e:
             shutil.rmtree(tmp, ignore_errors=True)
             detail = self._scrub((e.stderr or e.stdout or "").strip()[:400], token)
-            hint = "" if token else " If the repo is private, set 'Access token'."
+            hint = (
+                ""
+                if token
+                else " If the repo is private, set 'Access token' or use "
+                "https://<TOKEN>@host/owner/repo."
+            )
             raise RuntimeError(f"git clone failed: {detail}{hint}") from e
         return tmp, url, ref, subdir
 

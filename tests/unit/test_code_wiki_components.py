@@ -299,6 +299,59 @@ class TestDoclingPointerText:
             "src/pkg",
         )
 
+    # Captured from Docling Serve converting a pointer .txt whose URL carries a token: Docling
+    # reads "<token>@github.ibm" as an email address and splits the line around it.
+    _TOKEN = "github_pat_11AAAAAAA0FAKEtoken_FAKE"
+    _SPLIT_TEXTS = [
+        {"text": "url: https://github_", "hyperlink": None},
+        {
+            "text": "pat_11AAAAAAA0FAKEtoken_FAKE@github.ibm",
+            "hyperlink": "mailto:pat_11AAAAAAA0FAKEtoken_FAKE@github.ibm",
+        },
+        {"text": ".com/vignesh-p-ibm/Dummy-repo.git ref: main", "hyperlink": None},
+    ]
+    _SPLIT_MD = (
+        "url: https://github\\_ [pat\\_11AAAAAAA0FAKEtoken\\_FAKE@github.ibm]"
+        "(mailto:pat_11AAAAAAA0FAKEtoken_FAKE@github.ibm) .com/vignesh-p-ibm/Dummy-repo.git "
+        "ref: main"
+    )
+    _WANT_URL = (
+        "https://github_pat_11AAAAAAA0FAKEtoken_FAKE@github.ibm.com/vignesh-p-ibm/Dummy-repo.git"
+    )
+
+    def test_token_url_split_by_docling_json_is_rejoined(self, rl, monkeypatch):
+        payload = {
+            "status": "success",
+            "document": {"md_content": None, "json_content": {"texts": self._SPLIT_TEXTS}},
+        }
+        _patch_docling(monkeypatch, payload)
+        loader = _docling_loader(rl)
+        assert loader._parse_pointer() == (self._WANT_URL, "main", "")
+        assert self._TOKEN not in str(getattr(loader, "status", ""))
+
+    def test_token_url_mangled_by_docling_markdown_is_repaired(self, rl, monkeypatch):
+        payload = {"status": "success", "document": {"md_content": self._SPLIT_MD}}
+        _patch_docling(monkeypatch, payload)
+        assert _docling_loader(rl)._parse_pointer() == (self._WANT_URL, "main", "")
+
+    def test_rejoined_docling_url_clones_with_the_token(self, rl, git, monkeypatch):
+        monkeypatch.setenv("CODEWIKI_TOKEN_HOSTS", "github.ibm.com")
+        payload = {
+            "status": "success",
+            "document": {"md_content": None, "json_content": {"texts": self._SPLIT_TEXTS}},
+        }
+        _patch_docling(monkeypatch, payload)
+        _docling_loader(rl).load_repo()
+        assert git.cmd[-2] == "https://github.ibm.com/vignesh-p-ibm/Dummy-repo"
+        assert git.cmd[git.cmd.index("--branch") + 1] == "main"
+        assert not any(self._TOKEN in part for part in git.cmd)
+
+    def test_items_without_mailto_are_still_joined_with_newlines(self, rl):
+        items = [{"text": "https://github.com/owner/repo"}, {"text": "subtree: src ref: main"}]
+        assert (
+            rl.join_docling_texts(items) == "https://github.com/owner/repo\nsubtree: src ref: main"
+        )
+
     def test_markdown_link_is_reduced_to_the_url(self, rl, monkeypatch):
         payload = {
             "status": "success",
@@ -429,6 +482,39 @@ class TestParseRepoUrl:
 
     def test_credentials_are_not_kept(self, rl):
         assert "secret" not in rl.parse_repo_url("https://user:secret@github.com/o/r")["url"]
+
+    @pytest.mark.parametrize(
+        ("raw", "url"),
+        [
+            ("https://ghp_T0K@github.com/o/r.git", "https://github.com/o/r"),
+            ("https://x-access-token:ghp_T0K@github.com/o/r", "https://github.com/o/r"),
+            ("https://ghp_T0K@github.ibm.com/org/repo.git", "https://github.ibm.com/org/repo"),
+            ("https://ghp_T0K@gitlab.com/g/sub/proj/-/tree/dev", "https://gitlab.com/g/sub/proj"),
+        ],
+    )
+    def test_token_in_the_url_is_split_off(self, rl, raw, url):
+        info = rl.parse_repo_url(raw)
+        assert info["token"] == "ghp_T0K"
+        assert info["url"] == url
+        assert "ghp_T0K" not in info["url"]
+
+    def test_token_in_an_archive_url_is_split_off(self, rl):
+        info = rl.parse_repo_url("https://ghp_T0K@example.com/dl/repo.zip?sig=1")
+        assert info["token"] == "ghp_T0K"
+        assert "ghp_T0K" not in info["url"] + info["fetch_url"]
+
+    def test_percent_encoded_token_is_decoded(self, rl):
+        assert rl.parse_repo_url("https://ab%2Fcd@github.com/o/r")["token"] == "ab/cd"
+
+    def test_no_token(self, rl):
+        assert rl.parse_repo_url("https://github.com/o/r")["token"] == ""
+        assert rl.parse_repo_url("git@github.com:o/r.git")["token"] == ""
+
+    def test_redact_url_masks_every_url_credential(self, rl):
+        text = "cloning https://ghp_T0K@github.com/o/r and https://u:pw@gitlab.com/g/p"
+        out = rl.redact_url(text)
+        assert "ghp_T0K" not in out and "pw" not in out
+        assert out == "cloning https://***@github.com/o/r and https://***@gitlab.com/g/p"
 
     def test_unparseable_input_is_returned_unchanged(self, rl):
         assert rl.parse_repo_url("not a url")["url"] == "not a url"
@@ -876,6 +962,107 @@ class TestGitClone:
         assert git.cmd == []
 
 
+class TestTokenInTheRepoUrl:
+    """https://<TOKEN>@host/owner/repo works like the Access token input: https only, trusted
+    hosts only, and the token never reaches argv, .git/config, repo_url, status or errors."""
+
+    TOKEN = "github_pat_11AAAA0FAKE_token123"
+
+    def _header_token(self, env):
+        import base64
+
+        header = _git_config(env)["http.extraHeader"].split("Basic ")[1]
+        return base64.b64decode(header).decode()
+
+    def test_url_token_is_sent_as_a_header_and_never_kept(self, rl, git):
+        loader = _make(rl.RepoLoader, repo_url=f"https://{self.TOKEN}@github.com/o/r.git")
+        data = loader.load_repo().data["repo"]
+        assert git.cmd[-2] == "https://github.com/o/r"
+        assert not any(self.TOKEN in part for part in git.cmd)
+        assert self._header_token(git.env) == f"x-access-token:{self.TOKEN}"
+        assert data["repo_url"] == "https://github.com/o/r"
+        assert self.TOKEN not in str(getattr(loader, "status", ""))
+
+    def test_user_and_token_form(self, rl, git):
+        _make(rl.RepoLoader, repo_url=f"https://me:{self.TOKEN}@github.com/o/r")._obtain_repo()
+        assert self._header_token(git.env) == f"x-access-token:{self.TOKEN}"
+
+    def test_url_token_wins_over_the_input_and_env(self, rl, git, monkeypatch):
+        monkeypatch.setenv("GITHUB_TOKEN", "from-env")
+        secret = SimpleNamespace(get_secret_value=lambda: "from-input")
+        _make(
+            rl.RepoLoader,
+            repo_url=f"https://{self.TOKEN}@github.com/o/r",
+            access_token=secret,
+        )._obtain_repo()
+        assert self._header_token(git.env) == f"x-access-token:{self.TOKEN}"
+
+    def test_gitlab_url_token_uses_oauth2(self, rl, git):
+        _make(rl.RepoLoader, repo_url=f"https://{self.TOKEN}@gitlab.com/g/p")._obtain_repo()
+        assert self._header_token(git.env) == f"oauth2:{self.TOKEN}"
+
+    def test_url_token_for_an_untrusted_host_is_an_error_not_a_leak(self, rl, git):
+        with pytest.raises(ValueError, match="CODEWIKI_TOKEN_HOSTS") as exc:
+            _make(
+                rl.RepoLoader, repo_url=f"https://{self.TOKEN}@github.ibm.com/org/repo"
+            )._obtain_repo()
+        assert self.TOKEN not in str(exc.value)
+        assert git.cmd == []
+
+    def test_url_token_for_a_listed_enterprise_host(self, rl, git, monkeypatch):
+        monkeypatch.setenv("CODEWIKI_TOKEN_HOSTS", "github.ibm.com")
+        _make(
+            rl.RepoLoader, repo_url=f"https://{self.TOKEN}@github.ibm.com/org/repo.git"
+        )._obtain_repo()
+        assert git.cmd[-2] == "https://github.ibm.com/org/repo"
+        assert self._header_token(git.env) == f"x-access-token:{self.TOKEN}"
+
+    @pytest.mark.parametrize("opt_in", [False, True])
+    def test_url_token_is_never_sent_over_http(self, rl, git, monkeypatch, opt_in):
+        if opt_in:
+            monkeypatch.setenv("CODEWIKI_ALLOW_PRIVATE_HOSTS", "1")
+        with pytest.raises(ValueError, match="Refusing to send the access token") as exc:
+            _make(rl.RepoLoader, repo_url=f"http://{self.TOKEN}@github.com/o/r")._obtain_repo()
+        assert self.TOKEN not in str(exc.value)
+        assert git.cmd == []
+
+    def test_url_token_never_appears_in_a_clone_error(self, rl, monkeypatch):
+        def failing(cmd, **_kwargs):
+            raise subprocess.CalledProcessError(
+                128, cmd, stderr=f"fatal: auth failed https://{self.TOKEN}@github.com/o/r"
+            )
+
+        monkeypatch.setattr(subprocess, "run", failing)
+        monkeypatch.setattr(rl.shutil, "which", lambda _name: "/usr/bin/git")
+        monkeypatch.setattr(
+            rl.socket,
+            "getaddrinfo",
+            lambda *_a, **_k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))],
+        )
+        loader = _make(rl.RepoLoader, repo_url=f"https://{self.TOKEN}@github.com/o/r")
+        with pytest.raises(RuntimeError, match="git clone failed") as exc:
+            loader.load_repo()
+        assert self.TOKEN not in str(exc.value)
+        assert self.TOKEN not in str(getattr(loader, "status", ""))
+
+    def test_unsupported_url_error_masks_the_token(self, rl, git):
+        with pytest.raises(ValueError, match="Unsupported repo URL") as exc:
+            _make(rl.RepoLoader, repo_url=f"ftp://{self.TOKEN}@example.com/r")._obtain_repo()
+        assert self.TOKEN not in str(exc.value)
+
+    def test_pointer_file_url_with_a_token(self, rl, git):
+        loader = _make(
+            rl.RepoLoader,
+            pointer_data=f"url: https://{self.TOKEN}@github.com/o/r.git\nref: main",
+        )
+        data = loader.load_repo().data["repo"]
+        assert git.cmd[git.cmd.index("--branch") + 1] == "main"
+        assert git.cmd[-2] == "https://github.com/o/r"
+        assert self._header_token(git.env) == f"x-access-token:{self.TOKEN}"
+        assert data["repo_url"] == "https://github.com/o/r"
+        assert self.TOKEN not in str(getattr(loader, "status", ""))
+
+
 class TestTempDirCleanup:
     """Clone / unpack directories are deleted once load_repo has read the files into memory."""
 
@@ -968,6 +1155,14 @@ class TestGitlessTarball:
         assert headers["Authorization"] == "Bearer ghp_T"
         assert guard is True, "tarball downloads use the public-https guard on every hop"
         assert _repo_paths(rl, root) == ["m.py"]
+
+    def test_url_token_is_used_for_the_tarball(self, rl, fetched, monkeypatch):
+        monkeypatch.setenv("GITHUB_TOKEN", "from-env")
+        _make(rl.RepoLoader, repo_url="https://ghp_URLTOK@github.com/owner/repo")._obtain_repo()
+        url, headers, guard = fetched[-1]
+        assert url == "https://api.github.com/repos/owner/repo/tarball"
+        assert headers["Authorization"] == "Bearer ghp_URLTOK"
+        assert "ghp_URLTOK" not in url and guard is True
 
     def test_internal_host_with_a_github_label_is_refused(self, rl, fetched, monkeypatch):
         monkeypatch.setattr(
