@@ -70,6 +70,8 @@ interface AssistantMessageProps {
   showViewDocument?: boolean;
   showFunctionCalls?: boolean;
   unstyledMessageContent?: boolean;
+  onRetry?: () => void;
+  disabled?: boolean;
 }
 
 export function AssistantMessage({
@@ -92,6 +94,8 @@ export function AssistantMessage({
   showViewDocument = true,
   showFunctionCalls = true,
   unstyledMessageContent = false,
+  onRetry,
+  disabled,
 }: AssistantMessageProps) {
   const [activeChunkIndex, setActiveChunkIndex] = useState<number | null>(null);
   const citationCardRefs = useRef<Map<number, HTMLElement> | null>(null);
@@ -309,7 +313,11 @@ export function AssistantMessage({
                     <div className="flex justify-end gap-4">
                       {usage && !isStreaming && <TokenUsage usage={usage} />}
                       {!isInitialGreeting && showFeedback && !isStreaming && (
-                        <MessageActions trackFeedback={trackFeedback} />
+                        <MessageActions
+                          trackFeedback={trackFeedback}
+                          onRetry={onRetry}
+                          disabled={disabled}
+                        />
                       )}
                     </div>
                   </>
