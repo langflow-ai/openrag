@@ -4,11 +4,11 @@ from typing import Any
 from agent import async_langflow
 from auth_context import set_auth_context
 from config.settings import (
+    DISABLE_CHAT_WITH_LANGFLOW,
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_URL,
     NUDGES_FLOW_ID,
     clients,
-    is_chat_with_langflow_disabled,
 )
 from utils.langflow_utils import fence_untrusted_text
 from utils.logging_config import get_logger
@@ -109,7 +109,7 @@ class ChatService:
             raise ValueError("Prompt is required")
         conversation_user_id = storage_user_id or user_id
 
-        if is_chat_with_langflow_disabled():
+        if DISABLE_CHAT_WITH_LANGFLOW:
             logger.info(
                 "[CHAT] DISABLE_CHAT_WITH_LANGFLOW enabled; routing /langflow to native /chat"
             )
@@ -535,7 +535,7 @@ class ChatService:
         )
         conversation_user_id = storage_user_id or user_id
 
-        if endpoint == "langflow" and not is_chat_with_langflow_disabled():
+        if endpoint == "langflow" and not DISABLE_CHAT_WITH_LANGFLOW:
             # Prepare extra headers for JWT authentication and embedding model.
             # NOTE: extra_headers accumulates raw secrets (JWT, provider API keys).
             # Never log this dict or pass it to a logger call
@@ -641,114 +641,6 @@ class ChatService:
 
         return response_text, response_id
 
-    async def _legacy_get_chat_history(self, user_id: str):
-        """Deprecated in-memory history reader retained for migration diagnostics."""
-        from agent import active_conversations, get_user_conversations
-
-        if not user_id:
-            return {"error": "User ID is required", "conversations": []}
-
-        # Get metadata from persistent storage
-        conversations_dict = await get_user_conversations(user_id)
-
-        # Get in-memory conversations (with function calls)
-        in_memory_conversations = active_conversations.get(user_id, {})
-
-        logger.debug(
-            "Getting chat history for user",
-            user_id=user_id,
-            persistent_count=len(conversations_dict),
-            in_memory_count=len(in_memory_conversations),
-        )
-
-        # Convert conversations dict to list format with metadata
-        conversations = []
-
-        # First, process in-memory conversations (they have function calls)
-        for response_id, conversation_state in in_memory_conversations.items():
-            # Filter out system messages
-            messages = []
-            for msg in conversation_state.get("messages", []):
-                if msg.get("role") in ["user", "assistant"]:
-                    message_data = {
-                        "role": msg["role"],
-                        "content": msg["content"],
-                        "timestamp": msg.get("timestamp").isoformat()
-                        if msg.get("timestamp")
-                        else None,
-                    }
-                    if msg.get("response_id"):
-                        message_data["response_id"] = msg["response_id"]
-
-                    # Include function call data if present
-                    if msg.get("chunks"):
-                        message_data["chunks"] = msg["chunks"]
-                    if msg.get("response_data"):
-                        message_data["response_data"] = msg["response_data"]
-
-                    messages.append(message_data)
-
-            if messages:  # Only include conversations with actual messages
-                # Generate title from first user message
-                first_user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
-                title = (
-                    first_user_msg["content"][:50] + "..."
-                    if first_user_msg and len(first_user_msg["content"]) > 50
-                    else first_user_msg["content"]
-                    if first_user_msg
-                    else "New chat"
-                )
-                persisted_metadata = conversation_state.get("_persisted_metadata", {})
-
-                conversations.append(
-                    {
-                        "response_id": response_id,
-                        "title": persisted_metadata.get("title") or title,
-                        "endpoint": "chat",
-                        "messages": messages,
-                        "created_at": conversation_state.get("created_at").isoformat()
-                        if conversation_state.get("created_at")
-                        else None,
-                        "last_activity": conversation_state.get("last_activity").isoformat()
-                        if conversation_state.get("last_activity")
-                        else None,
-                        "previous_response_id": conversation_state.get("previous_response_id"),
-                        "filter_id": conversation_state.get("filter_id"),
-                        "total_messages": (persisted_metadata.get("total_messages") or 0)
-                        + len(messages),
-                        "source": "in_memory",
-                    }
-                )
-
-        # Then, add any persistent metadata that doesn't have in-memory data
-        for response_id, metadata in conversations_dict.items():
-            if response_id not in in_memory_conversations:
-                # This is metadata-only conversation (no function calls)
-                conversations.append(
-                    {
-                        "response_id": response_id,
-                        "title": metadata.get("title", "New Chat"),
-                        "endpoint": "chat",
-                        "messages": [],  # No messages in metadata-only
-                        "created_at": metadata.get("created_at"),
-                        "last_activity": metadata.get("last_activity"),
-                        "previous_response_id": metadata.get("previous_response_id"),
-                        "filter_id": metadata.get("filter_id"),
-                        "total_messages": metadata.get("total_messages", 0),
-                        "source": "metadata_only",
-                    }
-                )
-
-        # Sort by last activity (most recent first)
-        conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
-
-        return {
-            "user_id": user_id,
-            "endpoint": "chat",
-            "conversations": conversations,
-            "total_conversations": len(conversations),
-        }
-
     async def get_chat_history(self, user_id: str):
         """Get durable native-agent history (never Langflow messages)."""
         if not user_id:
@@ -781,7 +673,7 @@ class ChatService:
 
     async def get_langflow_history(self, user_id: str):
         """Get langflow conversation history for a user - now fetches from both OpenRAG memory and Langflow database"""
-        if is_chat_with_langflow_disabled():
+        if DISABLE_CHAT_WITH_LANGFLOW:
             return await self.get_chat_history(user_id)
 
         from agent import active_conversations, get_user_conversations
@@ -957,7 +849,7 @@ class ChatService:
 
     async def delete_session(self, user_id: str, session_id: str):
         """Delete a session from both local storage and Langflow"""
-        if is_chat_with_langflow_disabled():
+        if DISABLE_CHAT_WITH_LANGFLOW:
             deleted = await self.native_chat_history_service.delete(session_id, user_id)
             if deleted:
                 await self.session_ownership_service.release_session(user_id, session_id)
@@ -1059,7 +951,7 @@ class ChatService:
 
     async def delete_all_user_sessions(self, user_id: str):
         """Delete all sessions for a user from both local storage and Langflow"""
-        if is_chat_with_langflow_disabled():
+        if DISABLE_CHAT_WITH_LANGFLOW:
             deleted_count = await self.native_chat_history_service.delete_all(user_id)
             return {"success": True, "deleted_count": deleted_count, "total_count": deleted_count}
         from agent import get_user_conversations

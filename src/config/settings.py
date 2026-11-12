@@ -141,36 +141,11 @@ LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
 LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 
 
-def env_flag_enabled(name: str) -> bool:
-    """True when environment variable ``name`` has a truthy value."""
-    return os.getenv(name, "").strip().lower() in ("true", "1", "yes")
-
-
-def is_chat_with_langflow_disabled() -> bool:
-    """Whether chat must bypass Langflow for the in-process OpenRAG agent.
-
-    This deployment setting is deliberately environment-only. Native chat
-    history uses a separate database table, so users must not be able to
-    switch a running workspace between the two histories from the UI.
-    """
-    from config.storage_mode import get_storage_mode
-
-    # Native messages deliberately have no file/hybrid fallback. Avoid showing
-    # or activating a switch that could make history disappear on a deployment
-    # without the database as its sole source of truth.
-    if get_storage_mode() != "db":
-        return False
-    return env_flag_enabled("DISABLE_CHAT_WITH_LANGFLOW")
-
-
-def is_ingest_with_langflow_disabled() -> bool:
-    """Whether ingestion must bypass Langflow for the OpenRAG processor."""
-    if env_flag_enabled("DISABLE_INGEST_WITH_LANGFLOW"):
-        return True
-    return bool(get_openrag_config().knowledge.disable_ingest_with_langflow)
-
-
-DISABLE_CHAT_WITH_LANGFLOW = env_flag_enabled("DISABLE_CHAT_WITH_LANGFLOW")
+DISABLE_CHAT_WITH_LANGFLOW = os.getenv("DISABLE_CHAT_WITH_LANGFLOW", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 LANGFLOW_INGEST_FLOW_ID = (
     os.getenv("LANGFLOW_INGEST_FLOW_ID") or "5488df7c-b93f-4f87-a446-b67028bc0813"
 )

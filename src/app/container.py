@@ -4,13 +4,13 @@ Returns a dict consumed by routes (via FastAPI Depends) and the lifespan hook.
 """
 
 from config.settings import (
+    DISABLE_CHAT_WITH_LANGFLOW,
     ENABLE_BACKEND_DOCLING_POLLING,
     INGESTION_TIMEOUT,
     JWT_SIGNING_KEY,
     SESSION_SECRET,
     clients,
     config_manager,
-    env_flag_enabled,
     get_embedding_model,
     get_index_name,
     is_dev_azure_blob_enabled,
@@ -49,7 +49,7 @@ logger = get_logger(__name__)
 
 def _validate_native_chat_storage_mode() -> None:
     """Reject native chat before startup when its required DB storage is absent."""
-    if not env_flag_enabled("DISABLE_CHAT_WITH_LANGFLOW"):
+    if not DISABLE_CHAT_WITH_LANGFLOW:
         return
     storage_mode = get_storage_mode()
     if storage_mode == "db":

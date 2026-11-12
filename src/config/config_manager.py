@@ -689,9 +689,6 @@ class AgentConfig:
 
     llm_model: str = ""
     llm_provider: str = "openai"  # Which provider to use for LLM
-    # Legacy persisted value retained only to read existing config files.
-    # The native-chat selection is now environment-only.
-    disable_chat_with_langflow: bool = False
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
 
     def __post_init__(self):
@@ -893,32 +890,6 @@ class ConfigManager:
         return self._config
 
     @staticmethod
-    def _apply_langflow_bypass_env_overrides(config_data: dict[str, Any]) -> None:
-        """Force the Langflow bypass switches on when their env vars are truthy.
-
-        This runs even for an edited config. It is intentionally on-only:
-        unset or false values leave the persisted setting authoritative.
-        """
-
-        def truthy(name: str) -> bool:
-            return os.getenv(name, "").strip().lower() in ("true", "1", "yes")
-
-        if truthy("DISABLE_INGEST_WITH_LANGFLOW"):
-            config_data["knowledge"]["disable_ingest_with_langflow"] = True
-        if truthy("DISABLE_CHAT_WITH_LANGFLOW"):
-            from config.storage_mode import get_storage_mode
-
-            if get_storage_mode() != "db":
-                logger.error(
-                    "[CHAT] Invalid native chat startup configuration",
-                    storage_mode=get_storage_mode(),
-                )
-                raise ValueError(
-                    "DISABLE_CHAT_WITH_LANGFLOW requires OPENRAG_STORAGE_MODE=db because "
-                    "native chat history is stored only in the database."
-                )
-
-    @staticmethod
     def _seed_custom_provider(
         config_data: dict[str, Any],
         provider: str,
@@ -983,10 +954,6 @@ class ConfigManager:
         self, config_data: dict[str, Any], temp_config: Optional["OpenRAGConfig"] = None
     ) -> None:
         """Load environment variable overrides, respecting edited flag."""
-
-        # The Langflow bypasses are operator kill switches and must keep
-        # working after settings have been edited in the UI.
-        self._apply_langflow_bypass_env_overrides(config_data)
 
         # Provenance recovery is an operational compatibility setting, not a
         # user-selected model preference. It must remain overridable after the

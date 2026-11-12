@@ -1,5 +1,5 @@
-"""Langflow conversation persistence — metadata only (full message bodies
-live in Langflow).
+"""Conversation persistence — chat-history metadata only (full message
+bodies live in Langflow).
 
 Mode-aware (``OPENRAG_STORAGE_MODE`` from ``src/config/storage_mode.py``):
 

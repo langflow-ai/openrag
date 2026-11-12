@@ -127,6 +127,54 @@ def test_extract_relevant_safeguard_none_table_data():
     )  # should handle None data and produce empty string or no cells
 
 
+# 501 cl100k tokens. A 500-token slice of this string decodes to text that
+# encodes back to 501, which is the Watsonx cap in the non-Langflow ingest path.
+_WATSONX_CAP_OVERFLOW = (
+    "地理的には、ユーラシア大陸北西の半島部を包括し、ウラル山脈及びコーカサス山脈の分水嶺とウラル川・"
+    "カスピ海・黒海、そして黒海とエーゲ海を繋ぐボスポラス海峡-マルマラ海-ダーダネルス海峡が、アジアと区分される東の境界となる。\n"
+    "面積から見るとヨーロッパ州は世界で2番目に小さな大州であり、1018万kmは地球表面積の2%、陸地に限れば6.8%を占める。"
+    "アジアに跨る領土を持つロシアは、ヨーロッパ50か国の中で面積および人口第1位の国家である。"
+    "対照的に最も小さな国家はバチカン市国である。総人口はアジア・アフリカに次ぐ7億3300万である。これは地球総人口の11%である。\n"
+    "ヨーロッパ、特に古代ギリシアは西洋文明発祥の地である。これは、16世紀以降の植民地主義の始まりとともに世界中に拡散し、"
+    "支配的な役割を果たした。16世紀から20世紀の間、ヨーロッパの国々はアメリカ州、アフリカ、オセアニア、中東、アジアの大部分を支配下に置いた。"
+    "2度の世界大戦はヨーロッパを戦火で覆い、20世紀中頃の西ヨーロ"
+)
+
+
+def test_split_chunks_by_max_tokens_watsonx_window_stays_under_cap():
+    import tiktoken
+
+    from src.services.document_service import chunk_texts_for_embeddings
+    from src.utils.document_processing import split_chunks_by_max_tokens
+
+    encoding = tiktoken.get_encoding("cl100k_base")
+    assert len(encoding.encode(_WATSONX_CAP_OVERFLOW)) == 501
+
+    out = split_chunks_by_max_tokens(
+        [{"page": 3, "type": "text", "text": _WATSONX_CAP_OVERFLOW}],
+        max_tokens=500,
+        model="text-embedding-3-small",
+    )
+    pieces = [chunk["text"] for chunk in out]
+    assert "".join(pieces) == _WATSONX_CAP_OVERFLOW
+    assert all(len(encoding.encode(piece)) <= 500 for piece in pieces)
+    assert all(chunk["page"] == 3 for chunk in out)
+
+    batches = chunk_texts_for_embeddings(pieces, max_tokens=500, model="text-embedding-3-small")
+    assert [text for batch in batches for text in batch] == pieces
+
+
+def test_chunk_texts_keeps_one_input_when_text_exceeds_cap():
+    from src.services.document_service import chunk_texts_for_embeddings
+
+    batches = chunk_texts_for_embeddings(
+        [_WATSONX_CAP_OVERFLOW],
+        max_tokens=500,
+        model="text-embedding-3-small",
+    )
+    assert batches == [[_WATSONX_CAP_OVERFLOW]]
+
+
 def test_split_chunks_by_max_tokens_emoji_token_override():
     from src.utils.document_processing import split_chunks_by_max_tokens
 

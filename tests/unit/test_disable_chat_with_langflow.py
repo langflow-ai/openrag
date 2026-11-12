@@ -14,7 +14,7 @@ from services.chat_service import ChatService  # noqa: E402
 
 @pytest.mark.asyncio
 async def test_langflow_chat_uses_direct_chat_when_disabled(monkeypatch):
-    monkeypatch.setenv("DISABLE_CHAT_WITH_LANGFLOW", "true")
+    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", True)
     monkeypatch.setattr(
         "config.settings.clients.ensure_langflow_client",
         AsyncMock(side_effect=AssertionError("Langflow should not be used")),
@@ -47,7 +47,7 @@ async def test_langflow_chat_uses_direct_chat_when_disabled(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_langflow_history_uses_direct_history_when_disabled(monkeypatch):
-    monkeypatch.setenv("DISABLE_CHAT_WITH_LANGFLOW", "true")
+    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", True)
 
     service = ChatService()
     service.get_chat_history = AsyncMock(

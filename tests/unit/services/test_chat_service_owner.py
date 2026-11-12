@@ -16,11 +16,8 @@ from services.document_index_writer import DocumentIndexContext  # noqa: E402
 
 @pytest.mark.asyncio
 async def test_langflow_chat_passes_owner_metadata(monkeypatch):
-    # This test asserts the Langflow path. Pin the bypass off at the call
-    # site: clearing the env var is not enough, because the switch falls back
-    # to the cached OpenRAG config, which another test may already have
-    # loaded while DISABLE_CHAT_WITH_LANGFLOW was set.
-    monkeypatch.setattr("services.chat_service.is_chat_with_langflow_disabled", lambda: False)
+    # This test asserts the Langflow path, so pin the static deployment switch off.
+    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", False)
 
     # Mock settings / clients dependencies
     fake_langflow_client = MagicMock()
@@ -84,11 +81,8 @@ async def test_langflow_chat_passes_owner_metadata(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_upload_context_chat_passes_owner_metadata(monkeypatch):
-    # This test asserts the Langflow path. Pin the bypass off at the call
-    # site: clearing the env var is not enough, because the switch falls back
-    # to the cached OpenRAG config, which another test may already have
-    # loaded while DISABLE_CHAT_WITH_LANGFLOW was set.
-    monkeypatch.setattr("services.chat_service.is_chat_with_langflow_disabled", lambda: False)
+    # This test asserts the Langflow path, so pin the static deployment switch off.
+    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", False)
 
     # Mock settings / clients dependencies
     fake_langflow_client = MagicMock()
@@ -154,7 +148,7 @@ async def test_upload_context_chat_passes_owner_metadata(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_native_chat_session_delete_releases_its_ownership(monkeypatch):
-    monkeypatch.setattr("services.chat_service.is_chat_with_langflow_disabled", lambda: True)
+    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", True)
     delete = AsyncMock(return_value=True)
     release_session = AsyncMock(return_value=True)
     service = ChatService()

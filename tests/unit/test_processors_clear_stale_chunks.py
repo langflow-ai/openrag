@@ -84,7 +84,7 @@ def _patch_embedding_pipeline(monkeypatch, chunk_count: int, write_client=None):
     monkeypatch.setattr(
         ds_mod,
         "chunk_texts_for_embeddings",
-        lambda texts, max_tokens=8000: [list(texts)],
+        lambda texts, max_tokens=8000, model=None: [list(texts)],
     )
 
     # Embeddings go through the gateway for every provider, so stub it at its

@@ -25,6 +25,12 @@ from services.conversation_persistence_service import ConversationPersistenceSer
 from services.session_ownership_service import SessionOwnershipService
 
 
+@pytest.fixture(autouse=True)
+def _use_langflow_chat(monkeypatch):
+    """Keep legacy-session tests independent of the developer's deployment env."""
+    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", False)
+
+
 async def _collect_error_chunks(stream) -> list[dict]:
     return [json.loads(raw.decode("utf-8")) async for raw in stream]
 
@@ -769,7 +775,7 @@ async def test_restart_invalid_creation_time_keeps_default(
 @pytest.mark.asyncio
 async def test_langflow_history_treats_a_null_metadata_message_count_as_zero(monkeypatch):
     """Legacy metadata may contain a nullable ``total_messages`` value."""
-    monkeypatch.setattr("services.chat_service.is_chat_with_langflow_disabled", lambda: False)
+    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", False)
     monkeypatch.setattr(
         agent_module,
         "active_conversations",

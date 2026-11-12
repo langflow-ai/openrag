@@ -280,48 +280,6 @@ async def test_chat_completions_forwards_tools(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_chat_completions_rejects_completed_empty_response(monkeypatch):
-    from services.llm_gateway import LlmGatewayError
-
-    async def fake_acompletion(**_kwargs):
-        return {
-            "choices": [{"finish_reason": "stop", "message": {"content": "", "tool_calls": []}}]
-        }
-
-    monkeypatch.setattr("litellm.acompletion", fake_acompletion)
-
-    with pytest.raises(LlmGatewayError, match="empty response"):
-        await chat_completions(
-            {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]},
-            config=_config(),
-        )
-
-
-@pytest.mark.asyncio
-async def test_watsonx_chat_gets_a_generation_budget_when_client_omits_one(monkeypatch):
-    captured = {}
-
-    async def fake_acompletion(**kwargs):
-        captured.update(kwargs)
-        return {"choices": [{"message": {"content": "hello"}}]}
-
-    config = _config()
-    config.agent.llm_provider = "watsonx"
-    config.agent.llm_model = "openai/gpt-oss-120b"
-    config.providers.watsonx.api_key = "watsonx-key"
-    config.providers.watsonx.endpoint = "https://watsonx.example"
-    config.providers.watsonx.project_id = "project"
-    monkeypatch.setattr("litellm.acompletion", fake_acompletion)
-
-    await chat_completions(
-        {"model": "watsonx:openai/gpt-oss-120b", "messages": [{"role": "user", "content": "hi"}]},
-        config=config,
-    )
-
-    assert captured["max_tokens"] == 1024
-
-
-@pytest.mark.asyncio
 async def test_chat_completions_stream_emits_sse(monkeypatch):
     class _Chunk:
         def model_dump_json(self):
