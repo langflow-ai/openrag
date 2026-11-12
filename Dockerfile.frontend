@@ -34,9 +34,6 @@ COPY --from=deps /opt/app-root/src/node_modules ./node_modules
 COPY --from=deps /opt/app-root/src/stubs ./stubs
 COPY frontend/package*.json ./
 COPY frontend/ ./
-# Shared scoring config lives outside the Next.js root; the @config alias in
-# next.config.ts resolves to ./config here. Inlined at build time (no runtime copy).
-COPY src/config/search_scoring.json ./config/search_scoring.json
 
 RUN npm run build \
     && npm prune --omit=dev

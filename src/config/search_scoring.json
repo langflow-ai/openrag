@@ -1,5 +1,5 @@
 {
-  "_comment": "Single source of truth for search scoring thresholds. Edit here; both backend (search_constants.py) and frontend (lib/constants.ts) read this file.",
+  "_comment": "Source of truth for backend search scoring thresholds (loaded by search_constants.py). The frontend keeps its own copy at frontend/lib/search-scoring.json; keep the two in sync when editing shared values.",
 
   "hybrid_pipeline_name": "openrag_hybrid_pipeline",
 
