@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from dependencies import get_chat_service, get_current_user, get_session_manager
+from services.llm_gateway import LlmGatewayError
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -11,6 +12,12 @@ logger = get_logger(__name__)
 
 def _openrag_user_id(user: User) -> str:
     return getattr(user, "db_user_id", None) or user.user_id
+
+
+def _gateway_error(exc: LlmGatewayError) -> JSONResponse:
+    """Log internal gateway details and return the caller-safe message and status."""
+    logger.error("Nudges LLM gateway error", status_code=exc.status_code, error=exc.detail)
+    return JSONResponse({"error": exc.message}, status_code=exc.status_code)
 
 
 class NudgesBody(BaseModel):
@@ -42,6 +49,8 @@ async def nudges_from_kb_endpoint(
         return JSONResponse(result)
     except HTTPException:
         raise
+    except LlmGatewayError as exc:
+        return _gateway_error(exc)
     except Exception as e:
         return JSONResponse({"error": f"Failed to get nudges: {str(e)}"}, status_code=500)
 
@@ -74,5 +83,7 @@ async def nudges_from_chat_id_endpoint(
         return JSONResponse(result)
     except HTTPException:
         raise
+    except LlmGatewayError as exc:
+        return _gateway_error(exc)
     except Exception as e:
         return JSONResponse({"error": f"Failed to get nudges: {str(e)}"}, status_code=500)

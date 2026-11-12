@@ -96,7 +96,13 @@ def parse_nudges(text: str | None) -> list[str]:
         candidates = raw.splitlines()
     else:
         if isinstance(parsed, Mapping):
-            candidates = parsed.get("nudges") or []
+            value = parsed.get("nudges")
+            if isinstance(value, list):
+                candidates = value
+            elif isinstance(value, str):
+                candidates = value.splitlines()
+            else:
+                candidates = []
         elif isinstance(parsed, list):
             candidates = parsed
         else:
@@ -131,8 +137,9 @@ async def sample_documents(
     filter_clauses = build_filter_clauses(filters)
     if not filter_clauses:
         filter_clauses.append(_SAMPLE_DATA_EXCLUSION)
+    size = min(limit, DEFAULT_DOCUMENT_LIMIT) if limit and limit > 0 else DEFAULT_DOCUMENT_LIMIT
     body: dict[str, Any] = {
-        "size": limit or DEFAULT_DOCUMENT_LIMIT,
+        "size": size,
         "_source": ["text"],
         "query": {"bool": {"must": [{"match_all": {}}], "filter": filter_clauses}},
     }

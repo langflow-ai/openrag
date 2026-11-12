@@ -67,6 +67,19 @@ def test_parse_nudges_empty(text):
     assert native_nudges.parse_nudges(text) == []
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ('{"nudges": "One?\\nTwo?"}', ["One?", "Two?"]),
+        ('{"nudges": 5}', []),
+        ('{"nudges": {"a": "b"}}', []),
+        ('{"nudges": null}', []),
+    ],
+)
+def test_parse_nudges_handles_non_list_nudges_value(text, expected):
+    assert native_nudges.parse_nudges(text) == expected
+
+
 # ------------------------------------------------------------- sample_documents
 
 
@@ -103,6 +116,14 @@ async def test_sample_documents_returns_empty_on_search_error():
     client = MagicMock()
     client.search = AsyncMock(side_effect=RuntimeError("index missing"))
     assert await native_nudges.sample_documents(client, "documents", filters=None, limit=None) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("limit", "size"), [(50, 10), (0, 10), (-3, 10), (10, 10)])
+async def test_sample_documents_caps_size_at_default_limit(limit, size):
+    client = _FakeOpenSearch([])
+    await native_nudges.sample_documents(client, "documents", filters=None, limit=limit)
+    assert client.calls[0]["body"]["size"] == size
 
 
 # ------------------------------------------------------------- generate_nudges
