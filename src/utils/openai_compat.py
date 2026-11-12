@@ -16,11 +16,12 @@ def install_agentd_response_event_compat(agentd_patch_module: Any) -> None:
     if getattr(original, "_openrag_name_compat", False):
         return
 
-    def response_function_call_arguments_done_event_compat(*args, **kwargs):
+    def response_function_call_arguments_done_event_compat(*args: Any, **kwargs: Any) -> Any:
         kwargs.setdefault("name", "function_call")
         return original(*args, **kwargs)
 
-    response_function_call_arguments_done_event_compat._openrag_name_compat = True
-    agentd_patch_module.ResponseFunctionCallArgumentsDoneEvent = (
-        response_function_call_arguments_done_event_compat
-    )
+    # Functions do not declare arbitrary attributes to mypy; this marker only
+    # guards repeated runtime installation of the compatibility wrapper.
+    compatibility_wrapper: Any = response_function_call_arguments_done_event_compat
+    compatibility_wrapper._openrag_name_compat = True
+    agentd_patch_module.ResponseFunctionCallArgumentsDoneEvent = compatibility_wrapper

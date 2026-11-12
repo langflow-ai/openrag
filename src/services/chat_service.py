@@ -860,7 +860,7 @@ class ChatService:
                                 or conversation.get("last_activity"),
                                 "filter_id": metadata.get("filter_id"),
                                 "total_messages": max(
-                                    len(messages), metadata.get("total_messages", 0)
+                                    len(messages), metadata.get("total_messages") or 0
                                 ),
                                 "source": source,
                                 "langflow_session_id": session_id,
@@ -889,7 +889,7 @@ class ChatService:
                 if len(messages) > len(existing.get("messages") or []):
                     existing["messages"] = messages
                     existing["total_messages"] = max(
-                        len(messages), metadata.get("total_messages", 0)
+                        len(messages), metadata.get("total_messages") or 0
                     )
                     existing["source"] = "openrag_memory_preferred"
                 continue
@@ -920,7 +920,7 @@ class ChatService:
                     if hasattr(last_activity, "isoformat")
                     else last_activity,
                     "filter_id": metadata.get("filter_id") or conversation_state.get("filter_id"),
-                    "total_messages": max(len(messages), metadata.get("total_messages", 0)),
+                    "total_messages": max(len(messages), metadata.get("total_messages") or 0),
                     "source": "local_error_fallback",
                 }
             )

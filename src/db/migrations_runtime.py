@@ -255,15 +255,43 @@ async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, in
                 # those records in the source that now serves `/chat/history`.
                 if meta.get("endpoint") == "chat":
                     if await native_repo.get_conversation(str(resp_id)) is None:
-                        await native_repo.create_conversation(
+                        conversation = await native_repo.create_conversation(
                             conversation_id=str(resp_id),
                             user_id=str(uid),
                             title=meta.get("title"),
                             filter_id=meta.get("filter_id"),
-                            total_messages=int(meta.get("total_messages") or 0),
+                            total_messages=0,
                             created_at=created,
                             last_activity=last,
                         )
+                        legacy_messages = meta.get("messages")
+                        if isinstance(legacy_messages, list):
+                            for message in legacy_messages:
+                                if not isinstance(message, dict):
+                                    continue
+                                role = message.get("role")
+                                content = message.get("content")
+                                if role not in {"user", "assistant"} or not isinstance(content, str):
+                                    continue
+                                event_data = {}
+                                if isinstance(message.get("chunks"), list):
+                                    event_data["chunks"] = message["chunks"]
+                                response_data = message.get("response_data")
+                                if isinstance(response_data, dict) and response_data.get("usage"):
+                                    event_data["usage"] = response_data["usage"]
+                                await native_repo.append_message(
+                                    conversation=conversation,
+                                    role=role,
+                                    content=content,
+                                    event_data=event_data or None,
+                                    error=bool(message.get("error")),
+                                )
+                        conversation.total_messages = max(
+                            conversation.total_messages, int(meta.get("total_messages") or 0)
+                        )
+                        conversation.last_activity = last or conversation.last_activity
+                        session.add(conversation)
+                        await session.flush()
                         stats["native_conversations"] += 1
                     continue
                 if await crepo.get(str(resp_id)) is not None:

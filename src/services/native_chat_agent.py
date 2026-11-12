@@ -12,6 +12,7 @@ import asyncio
 import copy
 import ipaddress
 import json
+import math
 import operator
 import os
 import socket
@@ -63,6 +64,8 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 MAX_ITERATIONS = 15
+MAX_CALCULATOR_INTEGER_BITS = 4_096
+MAX_CALCULATOR_EXPONENT = 4_096
 _BINARY_OPERATORS: dict[type[ast.operator], Callable[[int | float, int | float], int | float]] = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -91,17 +94,56 @@ class _TextExtractor(HTMLParser):
 def _calculate(expression: str) -> dict[str, Any]:
     """The Calculator component's arithmetic-only behaviour."""
 
+    def validate_number(value: int | float) -> int | float:
+        """Keep calculator operands within bounded CPU and memory limits."""
+        if isinstance(value, int) and value.bit_length() > MAX_CALCULATOR_INTEGER_BITS:
+            raise ValueError("Integer operands are too large")
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValueError("Only finite numeric operands are supported")
+        return value
+
+    def validate_result(value: int | float) -> int | float:
+        """Reject results that do not fit the calculator's numeric limits."""
+        return validate_number(value)
+
+    def validate_binary_operation(
+        operation: ast.operator, left: int | float, right: int | float
+    ) -> None:
+        """Reject operations whose result would exceed the configured bounds."""
+        validate_number(left)
+        validate_number(right)
+        if isinstance(operation, ast.Pow):
+            if abs(right) > MAX_CALCULATOR_EXPONENT:
+                raise ValueError("Exponent is too large")
+            if isinstance(left, int) and isinstance(right, int) and right >= 0:
+                # This bound is calculated from operand sizes, before ``pow``
+                # can allocate an arbitrarily large integer.
+                if left not in {-1, 0, 1} and left.bit_length() * right > MAX_CALCULATOR_INTEGER_BITS:
+                    raise ValueError("Exponentiation result is too large")
+            return
+        if isinstance(left, int) and isinstance(right, int):
+            if isinstance(operation, (ast.Add, ast.Sub)):
+                result_bits = max(left.bit_length(), right.bit_length()) + 1
+            elif isinstance(operation, ast.Mult):
+                result_bits = left.bit_length() + right.bit_length()
+            else:
+                return
+            if result_bits > MAX_CALCULATOR_INTEGER_BITS:
+                raise ValueError("Calculation result is too large")
+
     def visit(node: ast.AST) -> int | float:
         if isinstance(node, ast.Constant) and isinstance(node.value, int | float):
-            return node.value
+            return validate_number(node.value)
         if isinstance(node, ast.BinOp):
             binary_operation = _BINARY_OPERATORS.get(type(node.op))
             if binary_operation is not None:
-                return binary_operation(visit(node.left), visit(node.right))
+                left, right = visit(node.left), visit(node.right)
+                validate_binary_operation(node.op, left, right)
+                return validate_result(binary_operation(left, right))
         if isinstance(node, ast.UnaryOp):
             unary_operation = _UNARY_OPERATORS.get(type(node.op))
             if unary_operation is not None:
-                return unary_operation(visit(node.operand))
+                return validate_result(unary_operation(visit(node.operand)))
         raise ValueError("Only numeric arithmetic expressions are supported")
 
     try:
@@ -136,7 +178,7 @@ async def _read_public_url(value: str) -> dict[str, Any]:
     text = " ".join(extractor.parts)[:50_000]
     return {
         "url": str(response.url),
-        "text": f"<<<UNTRUSTED_DOC_CHUNK>>>\n{text}\n<<<END_UNTRUSTED_DOC_CHUNK>>>",
+        "text": fence_untrusted_text(text),
     }
 
 
@@ -245,9 +287,10 @@ class NativeChatAgent:
                     for payload in self._stream_events(
                         get_event.result(), conversation_id, model, call_inputs, call_item_ids
                     ):
-                        strip_untrusted_fence_recursive(payload)
-                        chunks.append(payload)
-                        yield self._event(payload)
+                        display_payload = copy.deepcopy(payload)
+                        strip_untrusted_fence_recursive(display_payload)
+                        chunks.append(display_payload)
+                        yield self._event(display_payload)
                 else:
                     get_event.cancel()
                     await asyncio.gather(get_event, return_exceptions=True)
@@ -303,7 +346,9 @@ class NativeChatAgent:
         conversation_id = previous_response_id or str(uuid.uuid4())
         if previous_response_id:
             history = await native_chat_history_service.pydantic_history(conversation_id, user_id)
-            if not history:
+            if not history and not await native_chat_history_service.owns_conversation(
+                conversation_id, user_id
+            ):
                 raise ValueError("Conversation was not found")
         else:
             await native_chat_history_service.start_conversation(

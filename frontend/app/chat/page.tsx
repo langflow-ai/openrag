@@ -1,7 +1,14 @@
 "use client";
 
 import { Loader2, Upload, Zap } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { ProtectedRoute } from "@/components/protected-route";
@@ -48,6 +55,86 @@ import type {
 } from "./_types/types";
 import { makeInitialMessage, PLACEHOLDER_GREETING } from "./_types/types";
 
+type StateValue<T> = T | ((previous: T) => T);
+
+type ChatViewState = {
+  messages: Message[];
+  input: string;
+  expandedFunctionCalls: Set<string>;
+  isFilterHighlighted: boolean;
+  isForkingInProgress: boolean;
+  waitingTooLong: boolean;
+};
+
+type ChatViewAction =
+  | { type: "messages"; value: StateValue<Message[]> }
+  | { type: "input"; value: string }
+  | { type: "expandedFunctionCalls"; value: StateValue<Set<string>> }
+  | { type: "filterHighlighted"; value: boolean }
+  | { type: "forking"; value: boolean }
+  | { type: "waitingTooLong"; value: boolean }
+  | { type: "resetForEndpoint" }
+  | { type: "resetForNewConversation"; message: Message };
+
+const initialChatViewState: ChatViewState = {
+  messages: [PLACEHOLDER_GREETING],
+  input: "",
+  expandedFunctionCalls: new Set(),
+  isFilterHighlighted: false,
+  isForkingInProgress: false,
+  waitingTooLong: false,
+};
+
+function chatViewReducer(
+  state: ChatViewState,
+  action: ChatViewAction,
+): ChatViewState {
+  switch (action.type) {
+    case "messages":
+      return {
+        ...state,
+        messages:
+          typeof action.value === "function"
+            ? action.value(state.messages)
+            : action.value,
+      };
+    case "input":
+      return { ...state, input: action.value };
+    case "expandedFunctionCalls":
+      return {
+        ...state,
+        expandedFunctionCalls:
+          typeof action.value === "function"
+            ? action.value(state.expandedFunctionCalls)
+            : action.value,
+      };
+    case "filterHighlighted":
+      return { ...state, isFilterHighlighted: action.value };
+    case "forking":
+      return { ...state, isForkingInProgress: action.value };
+    case "waitingTooLong":
+      return { ...state, waitingTooLong: action.value };
+    case "resetForEndpoint":
+      return {
+        ...state,
+        messages: [],
+        input: "",
+        expandedFunctionCalls: new Set(),
+        isFilterHighlighted: false,
+        isForkingInProgress: false,
+        waitingTooLong: false,
+      };
+    case "resetForNewConversation":
+      return {
+        ...state,
+        messages: [action.message],
+        input: "",
+        expandedFunctionCalls: new Set(),
+        isFilterHighlighted: false,
+      };
+  }
+}
+
 function ChatPage() {
   const isDebugMode = process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
   const {
@@ -73,7 +160,39 @@ function ChatPage() {
   } = useChat();
   const { user, isNoAuthMode, isLoading: isAuthLoading } = useAuth();
   const displayName = isNoAuthMode ? null : resolveDisplayName(user);
-  const [messages, setMessages] = useState<Message[]>([PLACEHOLDER_GREETING]);
+  const [chatView, dispatchChatView] = useReducer(
+    chatViewReducer,
+    initialChatViewState,
+  );
+  const {
+    messages,
+    input,
+    expandedFunctionCalls,
+    isFilterHighlighted,
+    isForkingInProgress,
+    waitingTooLong,
+  } = chatView;
+  const setMessages = useCallback((value: StateValue<Message[]>) => {
+    dispatchChatView({ type: "messages", value });
+  }, []);
+  const setInput = useCallback((value: string) => {
+    dispatchChatView({ type: "input", value });
+  }, []);
+  const setExpandedFunctionCalls = useCallback(
+    (value: StateValue<Set<string>>) => {
+      dispatchChatView({ type: "expandedFunctionCalls", value });
+    },
+    [],
+  );
+  const setIsFilterHighlighted = useCallback((value: boolean) => {
+    dispatchChatView({ type: "filterHighlighted", value });
+  }, []);
+  const setIsForkingInProgress = useCallback((value: boolean) => {
+    dispatchChatView({ type: "forking", value });
+  }, []);
+  const setWaitingTooLong = useCallback((value: boolean) => {
+    dispatchChatView({ type: "waitingTooLong", value });
+  }, []);
 
   // PLACEHOLDER_GREETING is deterministic so SSR and hydration agree.
   // After mount (and once auth has settled), replace it with the real
@@ -92,19 +211,12 @@ function ChatPage() {
       }
       return prev;
     });
-  }, [displayName, isAuthLoading, conversationData]);
-  const [input, setInput] = useState("");
+  }, [displayName, isAuthLoading, conversationData, setMessages]);
   const [asyncMode, setAsyncMode] = useState(true);
-  const [expandedFunctionCalls, setExpandedFunctionCalls] = useState<
-    Set<string>
-  >(new Set());
   // previousResponseIds now comes from useChat context
   const [isUploading, setIsUploading] = useState(false);
-  const [isFilterHighlighted, setIsFilterHighlighted] = useState(false);
   const [isUserInteracting, setIsUserInteracting] = useState(false);
-  const [isForkingInProgress, setIsForkingInProgress] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [waitingTooLong, setWaitingTooLong] = useState(false);
 
   const chatInputRef = useRef<ChatInputHandle>(null);
 
@@ -278,12 +390,7 @@ function ChatPage() {
 
     lastEndpointRef.current = endpoint;
     abortStream();
-    setMessages([]);
-    setInput("");
-    setExpandedFunctionCalls(new Set());
-    setIsFilterHighlighted(false);
-    setIsForkingInProgress(false);
-    setWaitingTooLong(false);
+    dispatchChatView({ type: "resetForEndpoint" });
     setLoading(false);
     lastLoadedConversationRef.current = null;
     liveErrorConversationRef.current = null;
@@ -305,7 +412,7 @@ function ChatPage() {
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [isChatStreaming, hasStreamingMessage]);
+  }, [isChatStreaming, hasStreamingMessage, setWaitingTooLong]);
 
   const handleEndpointChange = (newEndpoint: EndpointType) => {
     setEndpoint(newEndpoint);
@@ -396,10 +503,10 @@ function ChatPage() {
       // Abort any in-flight streaming so it doesn't bleed into new chat
       abortStream();
       // Reset chat UI even if context state was already 'new'
-      setMessages([makeInitialMessage(displayName)]);
-      setInput("");
-      setExpandedFunctionCalls(new Set());
-      setIsFilterHighlighted(false);
+      dispatchChatView({
+        type: "resetForNewConversation",
+        message: makeInitialMessage(displayName),
+      });
       setLoading(false);
       lastLoadedConversationRef.current = null;
       liveErrorConversationRef.current = null;
@@ -674,6 +781,7 @@ function ChatPage() {
     isChatStreaming,
     messages.length,
     endpoint,
+    setMessages,
   ]);
 
   // Handle new conversation creation - only reset messages when placeholderConversation is set
@@ -689,7 +797,12 @@ function ChatPage() {
       }, 100);
     }
     return () => clearTimeout(focusTimeoutId);
-  }, [placeholderConversation, currentConversationId, displayName]);
+  }, [
+    placeholderConversation,
+    currentConversationId,
+    displayName,
+    setMessages,
+  ]);
 
   const { isOnboardingComplete } = useOnboardingState();
 

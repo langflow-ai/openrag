@@ -67,6 +67,7 @@ describe("ChatProvider — startNewConversation", () => {
 
   it("switches sources and clears conversation state when the kill switch changes", async () => {
     const { result, rerender } = renderChatHook();
+    const initialRefreshTrigger = result.current.refreshTrigger;
 
     await act(async () => {
       await result.current.loadConversation({
@@ -108,6 +109,7 @@ describe("ChatProvider — startNewConversation", () => {
       langflow: null,
     });
     expect(result.current.conversationFilter).toBeNull();
+    expect(result.current.refreshTrigger).toBe(initialRefreshTrigger + 1);
   });
 
   // lines 240-242, 245, 249-253 — showPlaceholder=true (default): clears state

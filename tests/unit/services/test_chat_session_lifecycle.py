@@ -7,6 +7,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import anyio
 import httpx
@@ -763,3 +764,27 @@ async def test_restart_invalid_creation_time_keeps_default(
     assert started <= datetime.fromisoformat(restored["created_at"]) <= datetime.now()
     assert restored["title"] == "Saved title"
     assert restored["total_messages"] == 6
+
+
+@pytest.mark.asyncio
+async def test_langflow_history_treats_a_null_metadata_message_count_as_zero(monkeypatch):
+    """Legacy metadata may contain a nullable ``total_messages`` value."""
+    monkeypatch.setattr("services.chat_service.is_chat_with_langflow_disabled", lambda: False)
+    monkeypatch.setattr(
+        agent_module,
+        "active_conversations",
+        {"alice": {"session": {"messages": [{"role": "user", "content": "Question"}]}}},
+    )
+
+    async def metadata(_user_id):
+        return {"session": {"title": "Question", "total_messages": None}}
+
+    monkeypatch.setattr(agent_module, "get_user_conversations", metadata)
+    monkeypatch.setattr(
+        "services.langflow_history_service.langflow_history_service.get_user_conversation_history",
+        AsyncMock(return_value={"conversations": []}),
+    )
+
+    history = await ChatService().get_langflow_history("alice")
+
+    assert history["conversations"][0]["total_messages"] == 1

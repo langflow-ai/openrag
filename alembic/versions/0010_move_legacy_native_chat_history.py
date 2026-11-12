@@ -13,6 +13,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """Move legacy native-chat metadata out of Langflow's table."""
     # Revision 0009 split the old shared conversations table. Existing rows
     # labelled `chat` belonged to the pre-split native endpoint, not Langflow.
     # Copy first to keep this safe when a partial/manual migration already
@@ -34,6 +35,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Restore legacy native-chat metadata after removing dependent messages."""
     op.execute(
         """
         INSERT INTO langflow_conversations
@@ -46,5 +48,12 @@ def downgrade() -> None:
             WHERE legacy.response_id = native.id
         )
         """
+    )
+    # Revision 0009 keeps ``chat_messages.conversation_id`` as a foreign key
+    # to ``chat_conversations.id``. Delete dependent rows before their parent
+    # rows so a downgrade works for native chats which have already been used.
+    op.execute(
+        "DELETE FROM chat_messages "
+        "WHERE conversation_id IN (SELECT id FROM chat_conversations)"
     )
     op.execute("DELETE FROM chat_conversations")

@@ -7,8 +7,8 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
-  useState,
 } from "react";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useOnboardingState } from "@/hooks/use-onboarding-state";
@@ -98,11 +98,161 @@ interface ChatProviderProps {
   children: ReactNode;
 }
 
+type PreviousResponseIds = {
+  chat: string | null;
+  langflow: string | null;
+};
+
+type ChatProviderState = {
+  endpoint: EndpointType;
+  currentConversationId: string | null;
+  previousResponseIds: PreviousResponseIds;
+  refreshTrigger: number;
+  refreshTriggerSilent: number;
+  conversationData: ConversationData | null;
+  conversationDocs: ConversationDocument[];
+  placeholderConversation: ConversationData | null;
+  conversationLoaded: boolean;
+  conversationFilter: KnowledgeFilter | null;
+  hasChatError: boolean;
+  loading: boolean;
+};
+
+type ChatProviderAction =
+  | { type: "patch"; patch: Partial<ChatProviderState> }
+  | {
+      type: "previousResponseIds";
+      value:
+        | PreviousResponseIds
+        | ((previous: PreviousResponseIds) => PreviousResponseIds);
+    }
+  | { type: "refresh"; silent: boolean }
+  | { type: "switchSource"; endpoint: EndpointType }
+  | { type: "loadConversation"; conversation: ConversationData }
+  | { type: "startNewConversation" }
+  | { type: "setConversationFilter"; filter: KnowledgeFilter | null }
+  | { type: "addConversationDoc"; filename: string }
+  | { type: "showPlaceholder"; conversation: ConversationData }
+  | { type: "forkConversation"; endpoint: EndpointType; responseId: string };
+
+const initialChatProviderState: ChatProviderState = {
+  endpoint: "langflow",
+  currentConversationId: null,
+  previousResponseIds: { chat: null, langflow: null },
+  refreshTrigger: 0,
+  refreshTriggerSilent: 0,
+  conversationData: null,
+  conversationDocs: [],
+  placeholderConversation: null,
+  conversationLoaded: false,
+  conversationFilter: null,
+  hasChatError: false,
+  loading: false,
+};
+
+function chatProviderReducer(
+  state: ChatProviderState,
+  action: ChatProviderAction,
+): ChatProviderState {
+  switch (action.type) {
+    case "patch":
+      return { ...state, ...action.patch };
+    case "previousResponseIds":
+      return {
+        ...state,
+        previousResponseIds:
+          typeof action.value === "function"
+            ? action.value(state.previousResponseIds)
+            : action.value,
+      };
+    case "refresh":
+      return action.silent
+        ? { ...state, refreshTriggerSilent: state.refreshTriggerSilent + 1 }
+        : { ...state, refreshTrigger: state.refreshTrigger + 1 };
+    case "switchSource":
+      return {
+        ...initialChatProviderState,
+        endpoint: action.endpoint,
+        refreshTrigger: state.refreshTrigger + 1,
+        refreshTriggerSilent: state.refreshTriggerSilent,
+      };
+    case "loadConversation":
+      return {
+        ...state,
+        endpoint: action.conversation.endpoint,
+        currentConversationId: action.conversation.response_id,
+        conversationData: action.conversation,
+        conversationDocs: [],
+        placeholderConversation: null,
+        conversationLoaded: true,
+      };
+    case "startNewConversation":
+      return {
+        ...state,
+        currentConversationId: null,
+        previousResponseIds: { chat: null, langflow: null },
+        conversationData: null,
+        conversationDocs: [],
+        conversationLoaded: false,
+      };
+    case "setConversationFilter":
+      return {
+        ...state,
+        conversationFilter: action.filter,
+        conversationData: state.conversationData
+          ? { ...state.conversationData, filter: action.filter }
+          : null,
+      };
+    case "addConversationDoc":
+      return {
+        ...state,
+        conversationDocs: [
+          ...state.conversationDocs,
+          { filename: action.filename, uploadTime: new Date() },
+        ],
+      };
+    case "showPlaceholder":
+      return {
+        ...state,
+        placeholderConversation: action.conversation,
+        refreshTrigger: state.refreshTrigger + 1,
+      };
+    case "forkConversation":
+      return {
+        ...state,
+        currentConversationId: null,
+        conversationData: null,
+        placeholderConversation: null,
+        previousResponseIds: {
+          ...state.previousResponseIds,
+          [action.endpoint]: action.responseId,
+        },
+      };
+  }
+}
+
 export function ChatProvider({ children }: ChatProviderProps) {
   // Langflow stays the default until settings load. The persisted kill switch
   // owns the source selection; the debug endpoint selector can only override
   // the initial, still-loading settings value.
-  const [endpoint, setEndpointState] = useState<EndpointType>("langflow");
+  const [state, dispatch] = useReducer(
+    chatProviderReducer,
+    initialChatProviderState,
+  );
+  const {
+    endpoint,
+    currentConversationId,
+    previousResponseIds,
+    refreshTrigger,
+    refreshTriggerSilent,
+    conversationData,
+    conversationDocs,
+    placeholderConversation,
+    conversationLoaded,
+    conversationFilter,
+    hasChatError,
+    loading,
+  } = state;
   const endpointChosen = useRef(false);
   const configuredEndpoint = useRef<EndpointType | null>(null);
   const { data: settings } = useGetSettingsQuery();
@@ -110,36 +260,43 @@ export function ChatProvider({ children }: ChatProviderProps) {
 
   const setEndpoint = useCallback((next: EndpointType) => {
     endpointChosen.current = true;
-    setEndpointState(next);
+    dispatch({ type: "patch", patch: { endpoint: next } });
   }, []);
 
-  const [currentConversationId, setCurrentConversationId] = useState<
-    string | null
-  >(null);
-  const [previousResponseIds, setPreviousResponseIds] = useState<{
-    chat: string | null;
-    langflow: string | null;
-  }>({ chat: null, langflow: null });
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [refreshTriggerSilent, setRefreshTriggerSilent] = useState(0);
-  const [conversationData, setConversationData] =
-    useState<ConversationData | null>(null);
-  const [conversationDocs, setConversationDocs] = useState<
-    ConversationDocument[]
-  >([]);
-  const [placeholderConversation, setPlaceholderConversation] =
-    useState<ConversationData | null>(null);
+  const setCurrentConversationId = useCallback((id: string | null) => {
+    dispatch({ type: "patch", patch: { currentConversationId: id } });
+  }, []);
+  const setPreviousResponseIds = useCallback(
+    (
+      value:
+        | PreviousResponseIds
+        | ((previous: PreviousResponseIds) => PreviousResponseIds),
+    ) => dispatch({ type: "previousResponseIds", value }),
+    [],
+  );
+  const setPlaceholderConversation = useCallback(
+    (conversation: ConversationData | null) =>
+      dispatch({
+        type: "patch",
+        patch: { placeholderConversation: conversation },
+      }),
+    [],
+  );
   // Refs so startNewConversation can read current values without re-creating
   // the callback every time conversationData or placeholderConversation changes.
   const conversationDataRef = useRef<ConversationData | null>(null);
   conversationDataRef.current = conversationData;
   const placeholderConversationRef = useRef<ConversationData | null>(null);
   placeholderConversationRef.current = placeholderConversation;
-  const [conversationLoaded, setConversationLoaded] = useState(false);
-  const [conversationFilter, setConversationFilterState] =
-    useState<KnowledgeFilter | null>(null);
-  const [hasChatError, setChatError] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const setConversationLoaded = useCallback((loaded: boolean) => {
+    dispatch({ type: "patch", patch: { conversationLoaded: loaded } });
+  }, []);
+  const setChatError = useCallback((hasError: boolean) => {
+    dispatch({ type: "patch", patch: { hasChatError: hasError } });
+  }, []);
+  const setLoading = useCallback((isLoading: boolean) => {
+    dispatch({ type: "patch", patch: { loading: isLoading } });
+  }, []);
 
   const { isOnboardingComplete } = useOnboardingState();
 
@@ -157,7 +314,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
     return () => {
       window.removeEventListener("ingestionFailed", handleIngestionFailed);
     };
-  }, []);
+  }, [setChatError]);
 
   // Debounce refresh requests to prevent excessive reloads
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -165,7 +322,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const refreshConversations = useCallback((force = false) => {
     if (force) {
       // Immediate refresh for important updates like new conversations
-      setRefreshTrigger((prev) => prev + 1);
+      dispatch({ type: "refresh", silent: false });
       return;
     }
 
@@ -176,7 +333,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
 
     // Set a new timeout to debounce multiple rapid refresh calls
     refreshTimeoutRef.current = setTimeout(() => {
-      setRefreshTrigger((prev) => prev + 1);
+      dispatch({ type: "refresh", silent: false });
     }, 250); // 250ms debounce
   }, []);
 
@@ -192,7 +349,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
   // Silent refresh - updates data without loading states
   const refreshConversationsSilent = useCallback(async () => {
     // Trigger silent refresh that updates conversation data without showing loading states
-    setRefreshTriggerSilent((prev) => prev + 1);
+    dispatch({ type: "refresh", silent: true });
   }, []);
 
   useEffect(() => {
@@ -213,28 +370,15 @@ export function ChatProvider({ children }: ChatProviderProps) {
 
     if (endpoint === nextEndpoint) return;
 
-    setEndpointState(nextEndpoint);
-    setCurrentConversationId(null);
-    setPreviousResponseIds({ chat: null, langflow: null });
-    setConversationData(null);
-    setConversationDocs([]);
-    setPlaceholderConversation(null);
-    setConversationLoaded(false);
-    setConversationFilterState(null);
-    setChatError(false);
-    setLoading(false);
-
-    // A new key forces the selected source to be fetched even if its previous
-    // history is still fresh in React Query's cache.
-    refreshConversations(true);
-  }, [disableChatWithLangflow, endpoint, refreshConversations]);
+    // A single transition clears source-specific state and forces the matching
+    // history query to refetch, avoiding transient mixed-source transcripts.
+    dispatch({ type: "switchSource", endpoint: nextEndpoint });
+  }, [disableChatWithLangflow, endpoint]);
 
   const loadConversation = useCallback(
     async (conversation: ConversationData) => {
-      setCurrentConversationId(conversation.response_id);
-      setEndpoint(conversation.endpoint);
-      // Store the full conversation data for the chat page to use
-      setConversationData(conversation);
+      endpointChosen.current = true;
+      dispatch({ type: "loadConversation", conversation });
 
       // Load the filter if one exists for this conversation
       // Always update the filter to match the conversation being loaded
@@ -256,12 +400,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
             const filter = await getFilterById(savedFilterId);
 
             if (filter) {
-              setConversationFilterState(filter);
-              // Update conversation data with the loaded filter
-              setConversationData((prev) => {
-                if (!prev) return prev;
-                return { ...prev, filter };
-              });
+              dispatch({ type: "setConversationFilter", filter });
             }
           } catch (error) {
             console.error("[CONVERSATION] Failed to load filter:", error);
@@ -269,20 +408,14 @@ export function ChatProvider({ children }: ChatProviderProps) {
             localStorage.removeItem(
               `conversation_filter_${conversation.response_id}`,
             );
-            setConversationFilterState(null);
+            dispatch({ type: "patch", patch: { conversationFilter: null } });
           }
         } else {
-          setConversationFilterState(null);
+          dispatch({ type: "patch", patch: { conversationFilter: null } });
         }
       }
-
-      // Clear placeholder when loading a real conversation
-      setPlaceholderConversation(null);
-      setConversationLoaded(true);
-      // Clear conversation docs to prevent duplicates when switching conversations
-      setConversationDocs([]);
     },
-    [conversationData?.response_id, setEndpoint],
+    [conversationData?.response_id],
   );
 
   const startNewConversation = useCallback(
@@ -293,12 +426,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
         conversationDataRef.current !== null ||
         placeholderConversationRef.current !== null;
 
-      // Clear current conversation data and reset state
-      setCurrentConversationId(null);
-      setPreviousResponseIds({ chat: null, langflow: null });
-      setConversationData(null);
-      setConversationDocs([]);
-      setConversationLoaded(false);
+      // Clear current conversation data and reset state atomically.
+      dispatch({ type: "startNewConversation" });
 
       // Load default filter if available (and clear it after first use)
       if (typeof window !== "undefined") {
@@ -317,22 +446,25 @@ export function ChatProvider({ children }: ChatProviderProps) {
             const filter = await getFilterById(defaultFilterId);
 
             if (filter) {
-              setConversationFilterState(filter);
+              dispatch({
+                type: "patch",
+                patch: { conversationFilter: filter },
+              });
             } else {
               // Default filter was deleted
-              setConversationFilterState(null);
+              dispatch({ type: "patch", patch: { conversationFilter: null } });
             }
           } catch (error) {
             console.error(
               "[CONVERSATION] Failed to load default filter:",
               error,
             );
-            setConversationFilterState(null);
+            dispatch({ type: "patch", patch: { conversationFilter: null } });
           }
         } else {
           // No default filter in localStorage
           if (hasExistingConversation) {
-            setConversationFilterState(null);
+            dispatch({ type: "patch", patch: { conversationFilter: null } });
           } else {
             // Don't clear the filter - it may have been set by storeDefaultFilterForNewConversations
           }
@@ -356,40 +488,31 @@ export function ChatProvider({ children }: ChatProviderProps) {
       };
 
       if (showPlaceholder) {
-        setPlaceholderConversation(newPlaceholderConversation);
-        // Force refresh so the sidebar shows the new placeholder immediately
-        refreshConversations(true);
+        // Show the placeholder and refresh its sidebar source together.
+        dispatch({
+          type: "showPlaceholder",
+          conversation: newPlaceholderConversation,
+        });
       }
       // When showPlaceholder=false (auto-load) we do NOT refresh — the caller
       // already has fresh conversation data and calling refreshConversations here
       // would mutate the query key, re-trigger this effect, and cause an infinite loop.
     },
-    [endpoint, refreshConversations],
+    [endpoint],
   );
 
   const addConversationDoc = useCallback((filename: string) => {
-    setConversationDocs((prev) => [
-      ...prev,
-      { filename, uploadTime: new Date() },
-    ]);
+    dispatch({ type: "addConversationDoc", filename });
   }, []);
 
   const clearConversationDocs = useCallback(() => {
-    setConversationDocs([]);
+    dispatch({ type: "patch", patch: { conversationDocs: [] } });
   }, []);
 
   const forkFromResponse = useCallback(
     (responseId: string) => {
-      // Start a new conversation with the messages up to the fork point
-      setCurrentConversationId(null); // Clear current conversation to indicate new conversation
-      setConversationData(null); // Clear conversation data to prevent reloading
-      // Set the response ID that we're forking from as the previous response ID
-      setPreviousResponseIds((prev) => ({
-        ...prev,
-        [endpoint]: responseId,
-      }));
-      // Clear placeholder when forking
-      setPlaceholderConversation(null);
+      // Start a new conversation with the messages up to the fork point.
+      dispatch({ type: "forkConversation", endpoint, responseId });
       // The messages are already set by the chat page component before calling this
     },
     [endpoint],
@@ -397,15 +520,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
 
   const setConversationFilter = useCallback(
     (filter: KnowledgeFilter | null, responseId?: string | null) => {
-      setConversationFilterState(filter);
-      // Update the conversation data to include the filter
-      setConversationData((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          filter,
-        };
-      });
+      dispatch({ type: "setConversationFilter", filter });
 
       // Determine which conversation ID to use for saving
       // - undefined: use currentConversationId (default behavior)
@@ -463,7 +578,9 @@ export function ChatProvider({ children }: ChatProviderProps) {
       endpoint,
       setEndpoint,
       currentConversationId,
+      setCurrentConversationId,
       previousResponseIds,
+      setPreviousResponseIds,
       refreshConversations,
       refreshConversationsSilent,
       refreshTrigger,
@@ -476,13 +593,17 @@ export function ChatProvider({ children }: ChatProviderProps) {
       addConversationDoc,
       clearConversationDocs,
       placeholderConversation,
+      setPlaceholderConversation,
       conversationLoaded,
+      setConversationLoaded,
       conversationFilter,
       setConversationFilter,
       hasChatError,
+      setChatError,
       isOnboardingComplete,
       setOnboardingComplete,
       loading,
+      setLoading,
     ],
   );
 

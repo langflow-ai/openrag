@@ -76,6 +76,12 @@ class NativeChatHistoryService:
                 continue
         return messages
 
+    async def owns_conversation(self, conversation_id: str, user_id: str) -> bool:
+        """Return whether a durable native conversation belongs to ``user_id``."""
+        async with self._factory() as session:
+            conversation = await ChatHistoryRepo(session).get_conversation(conversation_id)
+            return conversation is not None and conversation.user_id == user_id
+
     async def history(self, user_id: str) -> dict[str, Any]:
         async with self._factory() as session:
             repo = ChatHistoryRepo(session)

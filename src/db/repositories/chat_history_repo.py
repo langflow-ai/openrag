@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import delete, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
@@ -111,11 +112,15 @@ class ChatHistoryRepo:
         return True
 
     async def delete_all_for_user(self, user_id: str) -> int:
-        conversations = await self.list_conversations(user_id, limit=10_000)
-        for conversation in conversations:
-            await self.session.execute(
-                delete(ChatMessage).where(col(ChatMessage.conversation_id) == conversation.id)
-            )
-            await self.session.delete(conversation)
+        """Delete every native conversation and message owned by ``user_id``."""
+        conversation_ids = select(ChatConversation.id).where(  # type: ignore[call-overload]
+            col(ChatConversation.user_id) == user_id
+        )
+        await self.session.execute(
+            delete(ChatMessage).where(col(ChatMessage.conversation_id).in_(conversation_ids))
+        )
+        result: CursorResult = await self.session.execute(  # type: ignore[assignment]
+            delete(ChatConversation).where(col(ChatConversation.user_id) == user_id)
+        )
         await self.session.flush()
-        return len(conversations)
+        return result.rowcount or 0

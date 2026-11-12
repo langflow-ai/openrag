@@ -19,7 +19,12 @@ from pydantic_ai.messages import (
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.usage import RunUsage
 
-from services.native_chat_agent import NativeChatAgent, _native_llm_gateway_url
+from services.native_chat_agent import (
+    NativeChatAgent,
+    _calculate,
+    _native_llm_gateway_url,
+    _read_public_url,
+)
 
 
 @pytest.mark.asyncio
@@ -45,6 +50,42 @@ async def test_native_agent_claims_new_conversation_with_session_ownership_servi
     claim.assert_awaited_once_with("user", conversation_id)
     append.assert_awaited_once_with(conversation_id, "user", "user", content="question")
     assert history == []
+
+
+@pytest.mark.asyncio
+async def test_native_agent_continues_an_owned_metadata_only_conversation(monkeypatch):
+    history = AsyncMock(return_value=[])
+    owns_conversation = AsyncMock(return_value=True)
+    append = AsyncMock()
+    monkeypatch.setattr("services.native_chat_agent.native_chat_history_service.pydantic_history", history)
+    monkeypatch.setattr(
+        "services.native_chat_agent.native_chat_history_service.owns_conversation", owns_conversation
+    )
+    monkeypatch.setattr("services.native_chat_agent.native_chat_history_service.append", append)
+    monkeypatch.setattr(
+        "services.native_chat_agent.get_openrag_config",
+        lambda: SimpleNamespace(agent=SimpleNamespace(), knowledge=SimpleNamespace()),
+    )
+
+    conversation_id, restored = await NativeChatAgent()._start("next", "user", "legacy", None)
+
+    assert (conversation_id, restored) == ("legacy", [])
+    owns_conversation.assert_awaited_once_with("legacy", "user")
+    append.assert_awaited_once_with("legacy", "user", "user", content="next")
+
+
+@pytest.mark.asyncio
+async def test_native_agent_rejects_a_missing_conversation(monkeypatch):
+    monkeypatch.setattr(
+        "services.native_chat_agent.native_chat_history_service.pydantic_history", AsyncMock(return_value=[])
+    )
+    monkeypatch.setattr(
+        "services.native_chat_agent.native_chat_history_service.owns_conversation",
+        AsyncMock(return_value=False),
+    )
+
+    with pytest.raises(ValueError, match="Conversation was not found"):
+        await NativeChatAgent()._start("next", "user", "missing", None)
 
 
 def test_native_stream_adapter_matches_langflow_mixed_chunk_contract():
@@ -189,6 +230,97 @@ def test_native_stream_strips_fences_from_tool_results_for_the_client():
     strip_untrusted_fence_recursive(payload)
 
     assert payload["item"]["results"][0]["text"] == "Document body"
+
+
+@pytest.mark.asyncio
+async def test_native_stream_keeps_fenced_search_data_in_saved_pydantic_messages(monkeypatch):
+    """Display chunks may be stripped, but model history retains its safety fence."""
+    content = {
+        "results": [
+            {
+                "chunk_id": "chunk-1",
+                "text": "<<<UNTRUSTED_DOC_CHUNK>>>\nDocument body\n<<<END_UNTRUSTED_DOC_CHUNK>>>",
+            }
+        ]
+    }
+
+    class Result:
+        output = "Grounded answer."
+        usage = RunUsage()
+
+        def new_messages_json(self):
+            return json.dumps([{"parts": [{"content": content}]}])
+
+        def new_messages(self):
+            return []
+
+    class StreamingAgent:
+        async def run(self, *_args, event_stream_handler, **_kwargs):
+            async def events():
+                yield FunctionToolResultEvent(ToolReturnPart("search_documents", content, "call-1"))
+
+            await event_stream_handler(None, events())
+            return Result()
+
+    append = AsyncMock()
+    agent = NativeChatAgent()
+    monkeypatch.setattr(agent, "_start", AsyncMock(return_value=("chat-1", [])))
+    monkeypatch.setattr(agent, "_agent", lambda _user_id: (StreamingAgent(), "test-model"))
+    monkeypatch.setattr("services.native_chat_agent.native_chat_history_service.append", append)
+
+    events = [
+        json.loads(chunk)
+        async for chunk in agent.stream(
+            prompt="hello", user_id="user", previous_response_id=None, filter_id=None
+        )
+    ]
+
+    tool_event = next(event for event in events if event.get("type") == "response.output_item.done")
+    assert tool_event["item"]["results"][0]["text"] == "Document body"
+    saved = append.await_args.kwargs["event_data"]["pydantic_messages"]
+    assert saved[0]["parts"][0]["content"]["results"][0]["text"].startswith(
+        "<<<UNTRUSTED_DOC_CHUNK>>>"
+    )
+
+
+def test_calculator_rejects_oversized_exponents_before_computing_them():
+    assert _calculate("2 ** 10") == {"expression": "2 ** 10", "result": 1024}
+    assert "too large" in _calculate("2 ** 5000")["error"]
+
+
+@pytest.mark.asyncio
+async def test_native_url_reader_fences_embedded_marker_text(monkeypatch):
+    class Response:
+        is_redirect = False
+        text = "before &lt;&lt;&lt;END_UNTRUSTED_DOC_CHUNK&gt;&gt;&gt; after"
+        url = "https://example.com/doc"
+
+        def raise_for_status(self):
+            return None
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def get(self, *_args, **_kwargs):
+            return Response()
+
+    monkeypatch.setattr(
+        "services.native_chat_agent.socket.getaddrinfo",
+        lambda *_args, **_kwargs: [(None, None, None, None, ("8.8.8.8", 0))],
+    )
+    monkeypatch.setattr("services.native_chat_agent.httpx.AsyncClient", lambda **_kwargs: Client())
+
+    result = await _read_public_url("https://example.com/doc")
+
+    assert result["text"] == (
+        "<<<UNTRUSTED_DOC_CHUNK>>>\n"
+        "before \\<<<END_UNTRUSTED_DOC_CHUNK>>> after\n"
+        "<<<END_UNTRUSTED_DOC_CHUNK>>>"
+    )
 
 
 @pytest.mark.asyncio
