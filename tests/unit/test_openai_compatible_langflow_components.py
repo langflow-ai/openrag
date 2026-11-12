@@ -104,28 +104,9 @@ def test_docker_compose_seeds_openrag_llm_token_placeholder():
     assert 'OPENRAG_LLM_TOKEN="None"' in helm
 
 
-def test_component_index_sha256_matches_langflow_integrity_check():
-    """Langflow recomputes this digest and silently drops a mismatching index.
-
-    It hashes ``orjson.dumps(index_without_sha, option=OPT_SORT_KEYS)``, which
-    emits UTF-8 rather than the ASCII escapes ``json.dumps`` produces by
-    default. A digest built the other way makes Langflow log
-    "SHA256 mismatch" and fall back to a scan with no OpenRAG bundle, which
-    blocks every flow that uses one of our components.
-    """
-    raw = json.loads(Path("flows/component_index.json").read_text(encoding="utf-8"))
-    stored = raw.pop("sha256")
-    payload = json.dumps(raw, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
-        "utf-8"
-    )
-    assert stored == hashlib.sha256(payload).hexdigest()
-
-
 def test_flows_reference_opensearch_by_canonical_extension_id():
     """A bare class-name reference gets hijacked by Langflow's migration table."""
     for path in sorted(Path("flows").glob("*.json")):
-        if path.name == "component_index.json":
-            continue
         flow = json.loads(path.read_text(encoding="utf-8"))
         for node in flow.get("data", {}).get("nodes", []):
             node_type = node.get("data", {}).get("type")
@@ -232,8 +213,6 @@ def test_flows_embed_the_current_proxy_component_sources():
         expected_hash = hashlib.sha256(source.encode("utf-8")).hexdigest()[:12]
 
         for path in sorted(Path("flows").glob("*.json")):
-            if path.name == "component_index.json":
-                continue
             flow = json.loads(path.read_text(encoding="utf-8"))
             for node in flow.get("data", {}).get("nodes", []):
                 if node.get("data", {}).get("type") != node_type:
