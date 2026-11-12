@@ -310,7 +310,7 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
     expect(chatState.setLoading).toHaveBeenCalledWith(false);
   });
 
-  it("renders a native tool-only assistant message with empty text", async () => {
+  it("renders a native tool-only assistant message with empty text", () => {
     chatState.conversationData = {
       response_id: "native-conversation",
       endpoint: "chat",
@@ -330,9 +330,7 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
       auth: authPresets.noAuthMode,
     });
 
-    await waitFor(() => {
-      expect(screen.getByTestId("assistant-message")).toHaveTextContent("");
-    });
+    expect(screen.getByTestId("assistant-message")).toHaveTextContent("");
   });
 
   it("does not submit when Enter confirms an IME candidate", () => {
