@@ -21,11 +21,11 @@ The package entry point is `openrag.connectors.v1:sharepoint_onprem`, exports `S
 `make backend` starts the stock backend: it does not install or enable customer wheels, so `make frontend` alone cannot add this card to Settings → Connectors. After stopping the existing host backend, use the dedicated target from the repository root:
 
 ```bash
-make backend-sharepoint-onprem  # in one terminal; syncs the venv, installs this package, enables it
+make backend-sharepoint-onprem  # in one terminal; layers this package onto the project env and enables it
 make frontend                  # in another terminal
 ```
 
-The card should appear at `http://localhost:3000/settings/connectors` even before configuring a connection. The **Test connection** and **Save** actions require a reachable, approved SharePoint farm, a valid NTLM account, `OPENRAG_SHAREPOINT_ALLOWED_ORIGINS` and a stable `OPENRAG_ENCRYPTION_KEY` in your private `.env`; set `OPENRAG_SHAREPOINT_CA_BUNDLE` for a private CA. Do not invent a permissive origin or disable TLS just to exercise the form. `make backend` neither installs the customer package nor enables its allowlist: restart with `make backend-sharepoint-onprem` to use this opt-in. The dedicated target installs the package *after* syncing the venv and uses `uv run --no-sync` to keep it available to the backend process. Production deployments use the pinned derived-image procedure in the parent guide, not an editable development install.
+The card should appear at `http://localhost:3000/settings/connectors` even before configuring a connection. The **Test connection** and **Save** actions require a reachable, approved SharePoint farm, a valid NTLM account, `OPENRAG_SHAREPOINT_ALLOWED_ORIGINS` and a stable `OPENRAG_ENCRYPTION_KEY` in your private `.env`; set `OPENRAG_SHAREPOINT_CA_BUNDLE` for a private CA. Do not invent a permissive origin or disable TLS just to exercise the form. `make backend` neither installs the customer package nor enables its allowlist: restart with `make backend-sharepoint-onprem` to use this opt-in. The dedicated target layers the package onto the project environment with `uv run --with-editable` (the same command `make test-customer-connectors` and CI use), so it honours `UV_PROJECT_ENVIRONMENT` and leaves the project venv unchanged. Production deployments use the pinned derived-image procedure in the parent guide, not an editable development install.
 
 Run this package's tests from the repository root with `make test-customer-connectors`; CI runs the same command on every pull request that touches the backend or `customer_connectors/`. The tests clear every `OPENRAG_SHAREPOINT_*` variable first, so your `.env` settings do not change their outcome.
 
