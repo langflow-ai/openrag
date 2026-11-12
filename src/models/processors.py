@@ -1112,6 +1112,7 @@ class ConnectorFileProcessor(TaskProcessor):
         shared: bool | None = False,
         *,
         allow_anonymous_delete: bool,
+        file_versions: dict[str, tuple[str | None, str | None]] | None = None,
     ):
         super().__init__(
             document_service=document_service,
@@ -1134,6 +1135,10 @@ class ConnectorFileProcessor(TaskProcessor):
         # to the replace path so an overwrite cannot delete a shared document
         # the user is not allowed to delete.
         self.allow_anonymous_delete = allow_anonymous_delete
+        # {file_id: (etag, modified_time)} as reported by the source listing.
+        # Lets the failed-ingestion registry remember which version of a file
+        # failed, so a file changed at the source is retried.
+        self.file_versions = file_versions or {}
 
     async def _indexed_shared_state(
         self,
@@ -1284,6 +1289,40 @@ class ConnectorFileProcessor(TaskProcessor):
                 )
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
+        await self._process_connector_file(upload_task, item, file_task)
+
+    async def on_file_finished(
+        self, upload_task: UploadTask, item: str, file_task: FileTask
+    ) -> None:
+        """Update the failed-ingestion registry once the file's final status is set.
+
+        TaskService calls this after it has settled the status, so failures it
+        assigns itself (e.g. the ingestion timeout, which cancels process_item
+        while the file is still RUNNING) are recorded too. A FAILED outcome
+        counts toward the retry budget; a COMPLETED one clears any earlier entry.
+        """
+        await self._update_failure_registry(item, file_task)
+
+    async def _update_failure_registry(self, file_id: str, file_task: FileTask) -> None:
+        if not self.user_id or not self.connector_type or self.preview_mode:
+            return
+        from services import failed_ingestion_service
+
+        if file_task.status == TaskStatus.FAILED:
+            await failed_ingestion_service.record_failure(
+                self.user_id,
+                self.connector_type,
+                file_id,
+                file_task.error,
+                filename=file_task.filename if file_task.filename != file_id else None,
+                version=self.file_versions.get(file_id),
+            )
+        elif file_task.status == TaskStatus.COMPLETED:
+            await failed_ingestion_service.clear_failure(self.user_id, self.connector_type, file_id)
+
+    async def _process_connector_file(
+        self, upload_task: UploadTask, item: str, file_task: FileTask
+    ) -> None:
         """Process a connector file using unified methods"""
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()

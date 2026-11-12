@@ -362,6 +362,32 @@ class TaskService:
                 f"File processing timed out after {timeout} seconds."
             ) from None
 
+    async def _notify_file_finished(
+        self, processor: Any, upload_task: Any, item: Any, file_task: Any
+    ) -> None:
+        """Give a processor the file's final status via its optional on_file_finished hook.
+
+        Called after this service has settled the status, including the FAILED
+        it assigns on timeout. User cancellations are not the file's fault, so
+        they are not reported.
+        """
+        hook = getattr(processor, "on_file_finished", None)
+        if hook is None:
+            return
+        if file_task.status == TaskStatus.FAILED and _is_task_cancellation_error(
+            file_task.error or ""
+        ):
+            return
+        try:
+            await hook(upload_task, item, file_task)
+        except Exception:
+            logger.warning(
+                "Processor on_file_finished hook failed",
+                task_id=getattr(upload_task, "task_id", None),
+                file_path=file_task.file_path,
+                exc_info=True,
+            )
+
     async def create_upload_task(
         self,
         user_id: str,
@@ -938,6 +964,9 @@ class TaskService:
                         if refused and file_task.status == TaskStatus.FAILED:
                             await self._fail_files_stranded_by(refused)
                         file_task.updated_at = time.time()
+                        # Runs before processed_files is bumped, so a task never
+                        # reads as finished ahead of its failure records.
+                        await self._notify_file_finished(processor, upload_task, item, file_task)
                         # Only increment processed_files if the file reached a terminal state
                         # This prevents counter inconsistency on cancellation.
                         # SKIPPED is terminal too — e.g. source-deleted files in

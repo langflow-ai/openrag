@@ -1,4 +1,4 @@
-import { Download, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, Download, RefreshCw, X } from "lucide-react";
 import { type ReactNode, useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useRefreshOpenragDocs } from "@/app/api/mutations/useRefreshOpenragDocs";
@@ -7,6 +7,8 @@ import {
   useSyncAllConnectors,
   useSyncAllConnectorsPreview,
 } from "@/app/api/mutations/useSyncConnector";
+import { useFailedIngestionsQuery } from "@/app/api/queries/useFailedIngestionsQuery";
+import { FailedDocumentsDialog } from "@/components/failed-documents-dialog";
 import { KnowledgeDateRangeFilter } from "@/components/knowledge-date-range-filter";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
@@ -84,6 +86,9 @@ export const KnowledgeSearchBar = ({
   const syncAllPreviewMutation = useSyncAllConnectorsPreview();
   const refreshOpenragDocsMutation = useRefreshOpenragDocs();
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [failedDocsOpen, setFailedDocsOpen] = useState(false);
+  const { data: failedIngestions } = useFailedIngestionsQuery();
+  const failedDocsCount = failedIngestions?.failures.length ?? 0;
   const [syncPreview, setSyncPreview] = useState<SyncAllPreviewResponse | null>(
     null,
   );
@@ -127,6 +132,15 @@ export const KnowledgeSearchBar = ({
     }
   }, [syncAllConnectorsMutation]);
 
+  const openFailedDocs = useCallback(() => {
+    trackButton({
+      CTA: "Failed Documents",
+      elementId: "failed-documents-button",
+      namespace: "knowledge",
+    });
+    setFailedDocsOpen(true);
+  }, []);
+
   const defaultRightActions = isCloudBrand ? (
     <>
       <Button
@@ -143,6 +157,18 @@ export const KnowledgeSearchBar = ({
       >
         <RefreshCw className="m-4 h-4 w-4 text-[var(--icon-primary)]" />
       </Button>
+      {failedDocsCount > 0 && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-auto flex-shrink-0 rounded-none hover:bg-accent hover:text-foreground"
+          aria-label={`Failed documents (${failedDocsCount})`}
+          onClick={openFailedDocs}
+        >
+          <AlertTriangle className="m-4 h-4 w-4 text-[var(--icon-primary)]" />
+        </Button>
+      )}
       <RequirePermission perm="config:write">
         <Button
           type="button"
@@ -206,6 +232,17 @@ export const KnowledgeSearchBar = ({
           </>
         )}
       </Button>
+      {failedDocsCount > 0 && (
+        <Button
+          type="button"
+          variant="outline"
+          className="flex-shrink-0 rounded-lg"
+          onClick={openFailedDocs}
+        >
+          <AlertTriangle className="mr-2 h-4 w-4" />
+          Failed documents ({failedDocsCount})
+        </Button>
+      )}
       <RequirePermission perm="config:write">
         <Button
           type="button"
@@ -303,6 +340,12 @@ export const KnowledgeSearchBar = ({
           )
         }
       />
+      {!controlled && (
+        <FailedDocumentsDialog
+          open={failedDocsOpen}
+          onOpenChange={setFailedDocsOpen}
+        />
+      )}
       {!controlled && (
         <SyncConfirmDialog
           open={syncDialogOpen}

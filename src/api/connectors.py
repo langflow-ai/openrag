@@ -19,6 +19,7 @@ from dependencies import (
     has_effective_permission,
     require_permission,
 )
+from services import failed_ingestion_service
 from services.connector_access_service import (
     CONNECTOR_TYPES,
     filter_connectors_for_user,
@@ -1928,6 +1929,15 @@ async def connector_sync(
                 infos_by_id = {
                     f["id"]: _connector_file_response(f) for f in all_files if f.get("id")
                 }
+                # The listing's source version rides along so a failed ingestion
+                # is recorded against it (see failed_ingestion_service).
+                for f in all_files:
+                    info = infos_by_id.get(f.get("id"))
+                    if info is not None:
+                        if f.get("etag"):
+                            info["etag"] = f["etag"]
+                        if f.get("modified_time"):
+                            info["modified_time"] = f["modified_time"]
                 if not infos_by_id:
                     # Nothing addressable: every listed blob came back without an
                     # id, so there is no sync to start.
@@ -1991,11 +2001,19 @@ async def connector_sync(
                         claimed_names.add(indexed_name)
                         colliding_ids.add(fid)
 
+                # Files whose ingestion has failed repeatedly on their current
+                # source version are left out; a changed file is retried.
+                blocked = await failed_ingestion_service.blocked_file_ids(
+                    user.user_id, connector_type, all_files
+                )
+
                 new_ids: list[str] = []
                 replace_ids: list[str] = []
                 for f in all_files:
                     fid = f.get("id")
                     if not fid:
+                        continue
+                    if fid in blocked:
                         continue
                     if fid in colliding_ids:
                         replace_ids.append(fid)
@@ -2021,13 +2039,21 @@ async def connector_sync(
                     replaced=len(replace_ids),
                     overwritten_duplicates=len(colliding_ids),
                     skipped=len(all_files) - len(new_ids) - len(replace_ids),
+                    skipped_failed=len(blocked),
                 )
 
                 if not new_ids and not replace_ids:
+                    message = "All files in the selected buckets are already up to date."
+                    if blocked:
+                        message = (
+                            f"No new files to ingest. {len(blocked)} file(s) that previously "
+                            "failed were skipped; review them under failed documents."
+                        )
                     return JSONResponse(
                         {
                             "status": "no_files",
-                            "message": "All files in the selected buckets are already up to date.",
+                            "message": message,
+                            "skipped_failed": len(blocked),
                         },
                         status_code=200,
                     )
@@ -2890,6 +2916,76 @@ async def connector_sync_preview(
     except Exception as e:
         logger.error("Sync preview failed", connector_type=connector_type, error=str(e))
         return JSONResponse({"error": f"Sync preview failed: {str(e)}"}, status_code=500)
+
+
+def _failed_ingestion_response(row, attempts_allowed: int) -> dict[str, Any]:
+    return {
+        "connector_type": row.connector_type,
+        "file_id": row.file_id,
+        "filename": row.filename,
+        "last_error": row.last_error,
+        "attempt_count": row.attempt_count,
+        # True once the retry budget is spent: the file is skipped by bucket
+        # ingestion until it changes at the source or is cleared here.
+        "skipped": row.attempt_count >= attempts_allowed,
+        "first_failed_at": row.first_failed_at.isoformat(),
+        "last_failed_at": row.last_failed_at.isoformat(),
+    }
+
+
+async def list_failed_ingestions(
+    connector_type: str | None = None,
+    user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """List this user's files that failed to ingest, with their last error."""
+    from db.repositories import FailedIngestionRepo
+    from db.repositories.failed_ingestion_repo import max_attempts
+
+    try:
+        rows = await FailedIngestionRepo(session).list_for_user(user.user_id, connector_type)
+    except Exception as e:
+        logger.error("Listing failed ingestions failed", error=str(e))
+        return JSONResponse({"error": "Could not list failed documents"}, status_code=500)
+
+    attempts_allowed = max_attempts()
+    return JSONResponse(
+        {
+            "max_attempts": attempts_allowed,
+            "failures": [_failed_ingestion_response(r, attempts_allowed) for r in rows],
+        }
+    )
+
+
+class ClearFailedIngestionsBody(BaseModel):
+    # One file, or omit to clear every failure (optionally for one connector).
+    file_id: str | None = None
+    connector_type: str | None = None
+
+
+async def clear_failed_ingestions(
+    body: ClearFailedIngestionsBody,
+    user: User = Depends(require_permission("connectors:use")),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Forget failed documents so the next sync tries them again ("Retry")."""
+    from db.repositories import FailedIngestionRepo
+
+    if body.file_id and not body.connector_type:
+        return JSONResponse({"error": "connector_type is required with file_id"}, status_code=400)
+
+    try:
+        repo = FailedIngestionRepo(session)
+        if body.file_id:
+            cleared = int(await repo.clear(user.user_id, body.connector_type, body.file_id))
+        else:
+            cleared = await repo.clear_all(user.user_id, body.connector_type)
+        await session.commit()
+    except Exception as e:
+        logger.error("Clearing failed ingestions failed", error=str(e))
+        return JSONResponse({"error": "Could not clear failed documents"}, status_code=500)
+
+    return JSONResponse({"cleared": cleared})
 
 
 async def connectors_sync_all_preview(

@@ -46,6 +46,9 @@ function serveDropdownDefaults() {
     http.get("/api/upload_options", () => HttpResponse.json({})),
     http.get("/api/connectors", () => HttpResponse.json({ connectors: {} })),
     http.get("/api/connectors/:type/defaults", () => HttpResponse.json({})),
+    http.get("/api/connectors/failed-ingestions", () =>
+      HttpResponse.json({ max_attempts: 3, failures: [] }),
+    ),
   );
 }
 
@@ -252,5 +255,75 @@ describe("KnowledgeSearchBar suggestions", () => {
 
     expect(input).toHaveValue("");
     expect(requests).toHaveLength(0);
+  });
+});
+
+describe("KnowledgeSearchBar failed documents", () => {
+  const failure = {
+    connector_type: "aws_s3",
+    file_id: "bucket::docs/broken.docx",
+    filename: "broken.docx",
+    last_error: "corrupt file",
+    attempt_count: 3,
+    skipped: true,
+    first_failed_at: "2026-01-01T00:00:00+00:00",
+    last_failed_at: "2026-01-02T00:00:00+00:00",
+  };
+
+  function serveFailures(failures: unknown[]) {
+    serveDropdownDefaults();
+    server.use(
+      http.get("/api/connectors/failed-ingestions", () =>
+        HttpResponse.json({ max_attempts: 3, failures }),
+      ),
+    );
+  }
+
+  it("shows the count and opens the dialog in the OSS layout", async () => {
+    serveFailures([failure]);
+    renderWithProviders(<KnowledgeSearchBar />, {
+      providers: ["knowledgeFilter", "task", "brand"],
+      brand: "oss",
+    });
+
+    const button = await screen.findByRole("button", {
+      name: /failed documents \(1\)/i,
+    });
+    await userEvent.click(button);
+
+    expect(
+      await screen.findByRole("heading", { name: /^failed documents$/i }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("corrupt file")).toBeInTheDocument();
+  });
+
+  it("shows the button in the cloud layout too", async () => {
+    serveFailures([failure]);
+    renderWithProviders(<KnowledgeSearchBar />, {
+      providers: ["knowledgeFilter", "task", "brand"],
+      brand: "ibm",
+    });
+
+    const button = await screen.findByRole("button", {
+      name: /failed documents/i,
+    });
+    await userEvent.click(button);
+
+    expect(
+      await screen.findByRole("heading", { name: /^failed documents$/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("hides the button when nothing has failed", async () => {
+    serveFailures([]);
+    renderWithProviders(<KnowledgeSearchBar />, {
+      providers: ["knowledgeFilter", "task", "brand"],
+      brand: "oss",
+    });
+
+    await screen.findByRole("combobox");
+    expect(
+      screen.queryByRole("button", { name: /failed documents/i }),
+    ).toBeNull();
   });
 });
