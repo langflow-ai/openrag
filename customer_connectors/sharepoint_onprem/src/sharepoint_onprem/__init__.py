@@ -25,7 +25,6 @@ import mimetypes
 import os
 import threading
 import time
-from collections import deque
 from datetime import UTC, datetime
 from urllib.parse import parse_qsl, quote, unquote, urlsplit
 
@@ -42,6 +41,10 @@ _MAX_METADATA_BYTES = 4 * 1024 * 1024
 _MAX_FILE_BYTES = 50 * 1024 * 1024
 _MAX_TOKEN_BYTES = 256 * 1024
 _PAGE_SIZE = 200
+# Inventory stack frames (root + site + library + folders). SharePoint's 400-char
+# URL limit keeps real trees far shallower; past this a sync fails closed.
+_MAX_INVENTORY_DEPTH = 64
+_MAX_INVENTORY_REQUESTS = 1000  # list_children pages per list_files call
 _TIMEOUT = (5, 20)  # connection, read (seconds)
 # Reuse, not trust: see _borrow_session, _scoped_libraries and authenticate.
 _LIBRARY_CACHE_SECONDS = 60
@@ -700,45 +703,121 @@ class SharePointOnPremConnector(BaseConnector):
         self._authenticated = True
         return True
 
+    @staticmethod
+    def _inventory_stack(page_token):
+        """Decode an inventory token into frames, failing closed on any other shape.
+
+        A frame is one listing position inside an open folder level:
+        [parent_id, page_cursor, consumed]. Frame 0 is the root (parent None).
+        """
+        if page_token is None:
+            return [{"parent": None, "cursor": None, "consumed": 0, "page": None}]
+        try:
+            state = _untoken(page_token)
+            stack = state["stack"] if isinstance(state, dict) and set(state) == {"stack"} else None
+            if not isinstance(stack, list) or not 1 <= len(stack) <= _MAX_INVENTORY_DEPTH:
+                raise ValueError
+            frames = []
+            for index, frame in enumerate(stack):
+                if not isinstance(frame, list) or len(frame) != 3:
+                    raise ValueError
+                parent, cursor, consumed = frame
+                if (parent is None) != (index == 0) or not isinstance(parent, str | None):
+                    raise ValueError
+                if not isinstance(cursor, str | None) or cursor == "":
+                    raise ValueError
+                if (
+                    not isinstance(consumed, int)
+                    or isinstance(consumed, bool)
+                    or not 0 <= consumed <= _PAGE_SIZE
+                ):
+                    raise ValueError
+                frames.append(
+                    {"parent": parent, "cursor": cursor, "consumed": consumed, "page": None}
+                )
+            return frames
+        except ValueError:
+            logger.error("Failed to resume SharePoint inventory. Error: invalid inventory cursor.")
+            raise ValueError("Invalid SharePoint inventory cursor") from None
+
     async def list_files(self, page_token=None, max_files=None, **kwargs):
-        """Breadth-first inventory; token only contains directories, never unverified files."""
+        """Depth-first inventory over list_children, resumable in O(depth) state.
+
+        The token holds one listing position per open folder level, never a
+        frontier of pending folders, so it stays small however wide a library
+        is. Every node still comes from list_children, so IDs and continuations
+        pass the same scope checks as the picker. Pages are always requested at
+        _PAGE_SIZE so a (parent, cursor) pair re-lists the same page on resume.
+        If a folder changes between calls, an offset resume can repeat or skip
+        one entry: repeats are de-duplicated downstream, a skip waits for the
+        next sync, and a missing listing never signals deletion.
+        """
         limit = 200 if max_files is None else max_files
         if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1000:
             raise ValueError("max_files must be between 1 and 1000")
-        if page_token is None:
-            queue = deque([None])
-            cursor = None
-        else:
-            state = _untoken(page_token)
-            if (
-                not isinstance(state, dict)
-                or set(state) != {"queue", "cursor"}
-                or not isinstance(state["queue"], list)
-                or not state["queue"]
-            ):
-                raise ValueError("Invalid SharePoint inventory cursor")
-            queue, cursor = deque(state["queue"]), state["cursor"]
+        stack = self._inventory_stack(page_token)
+        logger.debug("Listing SharePoint inventory page (resume depth %d)...", len(stack))
         files = []
-        pages = 0
-        while len(files) < limit and queue and pages < 1000:
-            result = await self.list_children(queue[0], cursor, min(_PAGE_SIZE, limit - len(files)))
-            pages += 1
-            for node in result["nodes"]:
-                if node["kind"] == "file":
-                    files.append(
-                        {
-                            "id": node["id"],
-                            "name": node["name"],
-                            "size": node.get("size"),
-                            "modified_time": node.get("modified_time"),
-                        }
-                    )
+        requests_made = 0
+        # Each iteration consumes a node, advances a page or pops a frame, and a
+        # call always makes at least one request, so host loops that follow
+        # next_page_token until it is None always terminate.
+        while stack and len(files) < limit:
+            frame = stack[-1]
+            if frame["page"] is None:
+                if requests_made >= _MAX_INVENTORY_REQUESTS:
+                    break
+                frame["page"] = await self.list_children(
+                    frame["parent"], frame["cursor"], _PAGE_SIZE
+                )
+                requests_made += 1
+            nodes = frame["page"]["nodes"]
+            if frame["consumed"] >= len(nodes):  # Exhausted, or the listing shrank.
+                next_cursor = frame["page"]["next_cursor"]
+                if next_cursor:
+                    frame.update(cursor=next_cursor, consumed=0, page=None)
                 else:
-                    queue.append(node["id"])
-            cursor = result["next_cursor"]
-            if cursor is None:
-                queue.popleft()
-        next_page_token = _token({"queue": list(queue), "cursor": cursor}) if queue else None
+                    stack.pop()
+                continue
+            node = nodes[frame["consumed"]]
+            frame["consumed"] += 1
+            if node["kind"] == "file":
+                files.append(
+                    {
+                        "id": node["id"],
+                        "name": node["name"],
+                        "size": node.get("size"),
+                        "modified_time": node.get("modified_time"),
+                    }
+                )
+                continue
+            if len(stack) >= _MAX_INVENTORY_DEPTH:
+                logger.error(
+                    "Failed to list SharePoint inventory. Error: folder nesting exceeds %d levels.",
+                    _MAX_INVENTORY_DEPTH,
+                )
+                raise ValueError("SharePoint folder depth exceeds inventory limit")
+            stack.append({"parent": node["id"], "cursor": None, "consumed": 0, "page": None})
+        next_page_token = None
+        if stack:
+            try:
+                next_page_token = _token(
+                    {"stack": [[f["parent"], f["cursor"], f["consumed"]] for f in stack]}
+                )
+            except ValueError as error:
+                logger.error(
+                    "Failed to encode SharePoint inventory cursor at depth %d. Error: %s.",
+                    len(stack),
+                    error,
+                )
+                raise
+        logger.debug(
+            "Listed SharePoint inventory page: %d files, %d requests, depth %d, token %d bytes.",
+            len(files),
+            requests_made,
+            len(stack),
+            len(next_page_token or ""),
+        )
         return {"files": files, "next_page_token": next_page_token}
 
     def _is_definitively_missing(self, file_id):
