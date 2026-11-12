@@ -123,8 +123,7 @@ def _calculate(expression: str) -> dict[str, Any]:
                 # the computed result is still checked below for exactness.
                 if (
                     left not in {-1, 0, 1}
-                    and (abs(left).bit_length() - 1) * right + 1
-                    > MAX_CALCULATOR_INTEGER_BITS
+                    and (abs(left).bit_length() - 1) * right + 1 > MAX_CALCULATOR_INTEGER_BITS
                 ):
                     raise ValueError("Exponentiation result is too large")
             return
@@ -366,9 +365,7 @@ class NativeChatAgent:
             ):
                 raise ValueError("Conversation was not found")
         else:
-            await self._history_service.start_conversation(
-                conversation_id, user_id, filter_id
-            )
+            await self._history_service.start_conversation(conversation_id, user_id, filter_id)
             if not await self._ownership_service.claim_session(user_id, conversation_id):
                 raise RuntimeError("Unable to establish native chat session ownership")
             history = []

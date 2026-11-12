@@ -30,9 +30,7 @@ class ChatService:
         from services.native_chat_history_service import NativeChatHistoryService
         from services.session_ownership_service import SessionOwnershipService
 
-        self.native_chat_history_service = (
-            native_chat_history_service or NativeChatHistoryService()
-        )
+        self.native_chat_history_service = native_chat_history_service or NativeChatHistoryService()
         self.session_ownership_service = session_ownership_service or SessionOwnershipService()
         self.native_chat_agent = native_chat_agent or NativeChatAgent(
             self.native_chat_history_service,
