@@ -120,9 +120,38 @@ def _inside(path, parent):
     return isinstance(path, str) and path.startswith(parent.rstrip("/") + "/")
 
 
+def _root_folder_path(entry):
+    """A list entry's RootFolder/ServerRelativeUrl; an absent RootFolder is skipped."""
+    root = entry.get("RootFolder", {})
+    if not isinstance(root, dict):
+        raise ValueError("Invalid SharePoint REST response")
+    return root.get("ServerRelativeUrl")
+
+
+def _text(entry, key):
+    """A display/metadata field, only when the server sent a non-empty string."""
+    value = entry.get(key)
+    return value if isinstance(value, str) and value else None
+
+
+def _size(value):
+    """A file Length. odata=verbose serialises Edm.Int64 as a decimal string."""
+    if isinstance(value, bool) or not isinstance(value, int | str):
+        raise ValueError("Invalid SharePoint REST response")
+    try:
+        size = int(value)
+    except ValueError:
+        raise ValueError("Invalid SharePoint REST response") from None
+    if size < 0:
+        raise ValueError("Invalid SharePoint REST response")
+    return size
+
+
 def _date(value):
     if not value:
         return datetime(1970, 1, 1, tzinfo=UTC)
+    if not isinstance(value, str):
+        raise ValueError("Invalid SharePoint modification time")
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except (TypeError, ValueError) as exc:
@@ -350,6 +379,11 @@ class SharePointOnPremConnector(BaseConnector):
         response = self._json(session, base_url, params=args)
         if not isinstance(response, dict) or not isinstance(response.get("results"), list):
             raise ValueError("Invalid SharePoint REST page")
+        # Every caller reads entries with .get(): validate the shape once here so a
+        # malformed server answer is always this module's ValueError.
+        if not all(isinstance(entry, dict) for entry in response["results"]):
+            logger.error("Failed to parse SharePoint REST page. Error: non-object entry.")
+            raise ValueError("Invalid SharePoint REST page")
         if len(response["results"]) > int(params["$top"]):
             raise ValueError("SharePoint REST page exceeds requested size")
         next_url = (
@@ -406,11 +440,11 @@ class SharePointOnPremConnector(BaseConnector):
             for item in items:
                 if item.get("Hidden"):
                     continue
-                path = item.get("RootFolder", {}).get("ServerRelativeUrl")
+                path = _root_folder_path(item)
                 if isinstance(path, str):
                     _safe_relative(path)
                     if _inside(path, site):
-                        roots[path] = item.get("Title") or path.rsplit("/", 1)[-1]
+                        roots[path] = _text(item, "Title") or path.rsplit("/", 1)[-1]
             if not continuation:
                 return roots
             if len(roots) > 10000:
@@ -548,7 +582,7 @@ class SharePointOnPremConnector(BaseConnector):
                 for entry in entries:
                     if entry.get("Hidden"):
                         continue
-                    path = entry.get("RootFolder", {}).get("ServerRelativeUrl")
+                    path = _root_folder_path(entry)
                     if isinstance(path, str):
                         _safe_relative(path)
                         if _inside(path, site):
@@ -557,7 +591,7 @@ class SharePointOnPremConnector(BaseConnector):
                                     "id": _token(["l", self._approved_origin, site, path]),
                                     "parent_id": parent_id,
                                     "kind": "folder",
-                                    "name": entry.get("Title") or path.rsplit("/", 1)[-1],
+                                    "name": _text(entry, "Title") or path.rsplit("/", 1)[-1],
                                 }
                             )
                 next_cursor = (
@@ -610,12 +644,13 @@ class SharePointOnPremConnector(BaseConnector):
                         ),
                         "parent_id": parent_id,
                         "kind": "folder" if phase == "folders" else "file",
-                        "name": entry.get("Name") or path.rsplit("/", 1)[-1],
+                        "name": _text(entry, "Name") or path.rsplit("/", 1)[-1],
                     }
-                    if entry.get("TimeLastModified"):
-                        item["modified_time"] = entry["TimeLastModified"]
+                    modified = _text(entry, "TimeLastModified")
+                    if modified:
+                        item["modified_time"] = modified
                     if phase == "files" and entry.get("Length") is not None:
-                        item["size"] = int(entry["Length"])
+                        item["size"] = _size(entry["Length"])
                     nodes.append(item)
                 if continuation:
                     break
@@ -866,7 +901,8 @@ class SharePointOnPremConnector(BaseConnector):
                 )
                 if not isinstance(metadata, dict) or metadata.get("ServerRelativeUrl") != path:
                     raise ValueError("SharePoint file metadata left configured scope")
-                if int(metadata.get("Length", -1)) > _MAX_FILE_BYTES:
+                length = metadata.get("Length")
+                if length is not None and _size(length) > _MAX_FILE_BYTES:
                     raise ValueError("SharePoint file exceeds size limit")
                 content = self._request(
                     session, self._url(site, endpoint + "/$value"), limit=_MAX_FILE_BYTES
@@ -877,7 +913,7 @@ class SharePointOnPremConnector(BaseConnector):
                 # vanished library or listing raises a non-deletion error instead.
                 self._decode_id(file_id, session=session, fresh=True)
                 raise
-        filename = metadata.get("Name") or path.rsplit("/", 1)[-1]
+        filename = _text(metadata, "Name") or path.rsplit("/", 1)[-1]
         modified = _date(metadata.get("TimeLastModified"))
         return ConnectorDocument(
             id=file_id,
@@ -894,7 +930,7 @@ class SharePointOnPremConnector(BaseConnector):
                 "size": len(content),
                 "site_path": site,
                 "library_path": library,
-                "content_etag": metadata.get("ETag"),
+                "content_etag": _text(metadata, "ETag"),
             },
         )
 
