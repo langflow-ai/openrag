@@ -3,6 +3,7 @@
 import ast
 import asyncio
 import json
+import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -902,6 +903,37 @@ async def validate_provider_setup(
             f"Starting validation for provider: {provider_lower} (test_completion={test_completion})"
         )
 
+        # Foundry model probes use LiteLLM directly, so guard the configured
+        # endpoint here as well as in the Azure lightweight-health path.
+        if provider_lower == "azure":
+            # LiteLLM falls back to AZURE_API_BASE when api_base is omitted.
+            # Validate the same effective endpoint before credentials reach it.
+            azure_api_base = supplied.get("api_base") or os.getenv("AZURE_API_BASE")
+            if azure_api_base:
+                _require_https_provider_endpoint(azure_api_base, "Azure")
+
+        enhancement = get_provider_enhancement(provider_lower)
+        if (
+            provider_lower == "rhoai"
+            and enhancement is not None
+            and bool(embedding_model or llm_model)
+            and (test_completion or verify_model)
+        ):
+            # Validate both stored endpoints and require the selected one
+            # before LiteLLM can fall back to HOSTED_VLLM_API_BASE/API_KEY.
+            from enhancements.providers.registry import credentials_for
+
+            selected_kind = "embedding" if embedding_model else "chat"
+            selected_credentials = credentials_for(
+                enhancement,
+                stored_credentials if stored_credentials is not None else supplied,
+                kind=selected_kind,
+            )
+            if not selected_credentials.get("api_base"):
+                raise ValueError(
+                    f"OpenShift AI {selected_kind} endpoint is required for model validation"
+                )
+
         # A provider enhancement has no bespoke model probe of its own: a real
         # call through LiteLLM *is* its model probe, and it is what makes
         # switching to a model the cluster does not serve fail instead of saving
@@ -911,7 +943,6 @@ async def validate_provider_setup(
         # provider does: polling inference every 30s holds a GPU slot (RHOAI) or
         # bills (watsonx.ai on-prem), and its pooled connections race the
         # model server's keep-alive and fail with "Server disconnected".
-        enhancement = get_provider_enhancement(provider_lower)
         azure_ai_foundry_endpoint = provider_lower == "azure" and is_azure_ai_foundry_endpoint(
             supplied.get("api_base")
         )
@@ -1252,6 +1283,13 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
         raise
 
 
+def _require_https_provider_endpoint(endpoint: str, provider: str) -> None:
+    """Reject credential-bearing provider endpoints that do not use HTTPS."""
+    parsed = urlparse(endpoint)
+    if parsed.scheme.lower() != "https" or not parsed.netloc:
+        raise ValueError(f"The {provider} endpoint must use HTTPS")
+
+
 async def _test_azure_lightweight_health(credentials: dict[str, str]) -> None:
     """Validate Azure OpenAI credentials without selecting or billing a deployment.
 
@@ -1267,6 +1305,7 @@ async def _test_azure_lightweight_health(credentials: dict[str, str]) -> None:
         raise ValueError("Azure credentials are required")
     if not api_base:
         raise ValueError("API Base is required")
+    _require_https_provider_endpoint(api_base, "Azure")
 
     if not access_token and credentials.get("client_secret"):
         tenant_id = credentials.get("tenant_id")
@@ -1435,6 +1474,7 @@ async def _test_watsonx_lightweight_health(api_key: str, endpoint: str, project_
     Does not consume credits by avoiding model inference requests.
     """
     try:
+        _require_https_provider_endpoint(endpoint, "watsonx")
         # Get bearer token from IBM IAM - this validates the API key without consuming credits
         async with httpx.AsyncClient() as client:
             token_response = await client.post(
@@ -1473,6 +1513,7 @@ async def _test_watsonx_completion_with_tools(
 ) -> None:
     """Test IBM Watson completion with tool calling."""
     try:
+        _require_https_provider_endpoint(endpoint, "watsonx")
         # Get bearer token from IBM IAM
         async with httpx.AsyncClient() as client:
             token_response = await client.post(
@@ -1567,6 +1608,7 @@ async def _test_watsonx_embedding(
 ) -> None:
     """Test IBM Watson embedding generation."""
     try:
+        _require_https_provider_endpoint(endpoint, "watsonx")
         # Get bearer token from IBM IAM
         async with httpx.AsyncClient() as client:
             token_response = await client.post(
