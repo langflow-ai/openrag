@@ -948,7 +948,7 @@ def _display_url(url: str) -> str:
     return f"{sp.scheme}://{sp.hostname or ''}{sp.path}"
 
 
-_URL_USERINFO_RE = re.compile(r"(\b[a-zA-Z][a-zA-Z0-9+.\-]*://)[^/@\s'\"]+@")
+_URL_USERINFO_RE = re.compile(r"(\b[a-zA-Z][a-zA-Z0-9+.\-]*://)[^/?#@\s'\"]+@")
 
 
 def redact_url(text: str) -> str:
@@ -1377,7 +1377,8 @@ class RepoLoader(Component):
                     f"The repo URL contains an access token, but tokens are only sent to "
                     f"github.com, gitlab.com and hosts listed in CODEWIKI_TOKEN_HOSTS; {host!r} is "
                     "not one of them. Add the host to CODEWIKI_TOKEN_HOSTS, or remove the token "
-                    "from the URL."
+                    "from the URL. Text before '@' in a URL without a ':' (https://<text>@host/...) "
+                    "is read as an access token, so remove it if it is a username."
                 )
             return url_token
         if not token_allowed(host):

@@ -516,6 +516,15 @@ class TestParseRepoUrl:
         assert "ghp_T0K" not in out and "pw" not in out
         assert out == "cloning https://***@github.com/o/r and https://***@gitlab.com/g/p"
 
+    def test_redact_url_does_not_span_past_path_query_or_fragment(self, rl):
+        for text in (
+            "https://github.com/o/r?email=a@b.com",
+            "https://github.com/o/r#frag@x",
+            "https://github.com?x=y@z",
+            "https://github.com#x@y",
+        ):
+            assert rl.redact_url(text) == text
+
     def test_unparseable_input_is_returned_unchanged(self, rl):
         assert rl.parse_repo_url("not a url")["url"] == "not a url"
 
@@ -1007,6 +1016,7 @@ class TestTokenInTheRepoUrl:
                 rl.RepoLoader, repo_url=f"https://{self.TOKEN}@github.ibm.com/org/repo"
             )._obtain_repo()
         assert self.TOKEN not in str(exc.value)
+        assert "read as an access token" in str(exc.value)
         assert git.cmd == []
 
     def test_url_token_for_a_listed_enterprise_host(self, rl, git, monkeypatch):
