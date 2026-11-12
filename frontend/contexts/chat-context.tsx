@@ -245,11 +245,17 @@ export function ChatProvider({ children }: ChatProviderProps) {
         conversationDataRef.current !== null ||
         placeholderConversationRef.current !== null;
 
-      // Clear current conversation data and reset state
+      // Clear current conversation data and reset state. Keep the previous
+      // object/array when it is already reset so repeat calls don't hand
+      // context consumers new references and re-render them (#2416).
       setCurrentConversationId(null);
-      setPreviousResponseIds({ chat: null, langflow: null });
+      setPreviousResponseIds((prev) =>
+        prev.chat === null && prev.langflow === null
+          ? prev
+          : { chat: null, langflow: null },
+      );
       setConversationData(null);
-      setConversationDocs([]);
+      setConversationDocs((prev) => (prev.length === 0 ? prev : []));
       setConversationLoaded(false);
 
       // Load default filter if available (and clear it after first use)
