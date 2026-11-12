@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import { type ChangeEvent, type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { useRecentSearches } from "@/hooks/use-recent-searches";
 import { trackButton } from "@/lib/analytics";
 import { buildChunksUrl } from "@/lib/chunks-url";
 import { limitSearchInput } from "@/lib/limit-search-input";
@@ -65,6 +66,7 @@ export function KnowledgeSearchInput({
   }
 
   const inputValue = controlled ? (value ?? "") : draft;
+  const { recent, remember } = useRecentSearches();
 
   const commitSearch = (raw: string) => {
     const next = raw.trim();
@@ -72,6 +74,7 @@ export function KnowledgeSearchInput({
     if (controlled) {
       onSearch(next);
     } else {
+      remember(next);
       setQueryOverride(next);
     }
   };
@@ -83,6 +86,7 @@ export function KnowledgeSearchInput({
     filters: parsedFilterData?.filters,
     scoreThreshold: parsedFilterData?.scoreThreshold,
     enabled: !controlled,
+    recentSearches: recent,
     onPickSuggestion: (text) => {
       setDraft(text);
       commitSearch(text);

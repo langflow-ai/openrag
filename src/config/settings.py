@@ -370,6 +370,11 @@ def is_dev_ibm_cos_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def has_no_auth_connectors() -> bool:
+    """Whether any bucket connector can run in no-auth mode via a dev bypass flag."""
+    return is_dev_azure_blob_enabled() or is_dev_aws_s3_enabled() or is_dev_ibm_cos_enabled()
+
+
 def is_azure_blob_enabled() -> bool:
     """Feature kill switch for the Azure Blob connector (default: enabled).
 

@@ -4,6 +4,7 @@ import {
   bestSentence,
   buildFilePreview,
   computeTopPreviews,
+  expandMarksToWords,
   PREVIEW_MAX_CHARS,
   splitOnQuery,
   stripMarks,
@@ -49,6 +50,19 @@ describe("buildFilePreview", () => {
     );
   });
 
+  it("underlines the whole word when the query only matched its start", () => {
+    const preview = buildFilePreview(
+      file("a.pdf", [
+        chunk({
+          text: "Dense retrieval improves recall.",
+          highlights: ["Dense <mark>retr</mark>ieval improves recall."],
+        }),
+      ]),
+      "retr",
+    );
+    expect(preview?.text).toBe("Dense <mark>retrieval</mark> improves recall.");
+  });
+
   it("adds no ellipsis when the fragment is the whole chunk", () => {
     const preview = buildFilePreview(
       file("a.pdf", [
@@ -75,6 +89,30 @@ describe("buildFilePreview", () => {
     );
     expect(preview?.text.match(/<mark>/g)).toHaveLength(1);
     expect(preview?.text.match(/<\/mark>/g)).toHaveLength(1);
+  });
+
+  it("keeps only a short lead-in so the match sits at the left edge", () => {
+    const lead = "alpha beta gamma delta epsilon zeta eta theta iota kappa ";
+    const fragment = `${lead}<mark>needle</mark> tail words`;
+    const preview = buildFilePreview(
+      file("a.pdf", [chunk({ text: fragment, highlights: [fragment] })]),
+      "needle",
+    );
+    const before = (preview?.text ?? "").split("<mark>")[0];
+    expect(before.startsWith("…")).toBe(true);
+    expect(before.length).toBeLessThanOrEqual(26);
+    expect(before).toMatch(/…\S/);
+    expect(preview?.text).toContain("<mark>needle</mark> tail words");
+  });
+
+  it("keeps a whole word when the lead-in cut lands on a word boundary", () => {
+    const word = "b".repeat(23);
+    const fragment = `xxxx ${word} <mark>needle</mark>`;
+    const preview = buildFilePreview(
+      file("a.pdf", [chunk({ text: fragment, highlights: [fragment] })]),
+      "needle",
+    );
+    expect(preview?.text).toBe(`…${word} <mark>needle</mark>`);
   });
 
   it("prefers the highest-scoring chunk that has a literal match", () => {
@@ -108,6 +146,34 @@ describe("buildFilePreview", () => {
     expect(
       buildFilePreview(file("a.pdf", [chunk({ text: "  " })]), "x"),
     ).toBeNull();
+  });
+});
+
+describe("expandMarksToWords", () => {
+  it("grows a partial match to the whole word on either side", () => {
+    expect(expandMarksToWords("about <mark>Retr</mark>ieval systems")).toBe(
+      "about <mark>Retrieval</mark> systems",
+    );
+    expect(expandMarksToWords("the pre<mark>fix</mark> match")).toBe(
+      "the <mark>prefix</mark> match",
+    );
+    expect(expandMarksToWords("un<mark>der</mark>line")).toBe(
+      "<mark>underline</mark>",
+    );
+  });
+
+  it("leaves whole-word, non-word-adjacent and CJK marks alone", () => {
+    const whole = "a <mark>docling</mark>, parser";
+    expect(expandMarksToWords(whole)).toBe(whole);
+    expect(expandMarksToWords("検索<mark>エンジン</mark>の")).toBe(
+      "検索<mark>エンジン</mark>の",
+    );
+  });
+
+  it("handles accented words", () => {
+    expect(expandMarksToWords("la <mark>reche</mark>rché")).toBe(
+      "la <mark>recherché</mark>",
+    );
   });
 });
 
@@ -180,6 +246,38 @@ describe("computeTopPreviews", () => {
     const names = files.map((f) => f.filename);
     computeTopPreviews(files, "q");
     expect(files.map((f) => f.filename)).toEqual(names);
+  });
+
+  it("skips top files that only match semantically, without backfilling", () => {
+    const mixed = [
+      file("semantic.pdf", [
+        chunk({ score: 9, text: "Passages ranked by similarity score here." }),
+      ]),
+      file("keyword.pdf", [
+        chunk({ score: 5, highlights: ["<mark>q</mark> hit"] }),
+      ]),
+      file("also.pdf", [
+        chunk({ score: 4, highlights: ["<mark>q</mark> also"] }),
+      ]),
+      file("fourth.pdf", [
+        chunk({ score: 3, highlights: ["<mark>q</mark> fourth"] }),
+      ]),
+    ];
+    const previews = computeTopPreviews(mixed, "q");
+    expect(previews.size).toBe(2);
+    expect([...previews.values()].every((p) => p.kind === "keyword")).toBe(
+      true,
+    );
+    expect([...previews.values()].some((p) => p.text.includes("fourth"))).toBe(
+      false,
+    );
+  });
+
+  it("ignores highlight fragments that contain no mark", () => {
+    const unmarked = [
+      file("a.pdf", [chunk({ highlights: ["plain text only"] })]),
+    ];
+    expect(computeTopPreviews(unmarked, "q").size).toBe(0);
   });
 
   it("returns nothing for empty and wildcard queries", () => {

@@ -46,9 +46,76 @@ def _sample_mappings():
     }
 
 
+async def _run_setup_and_get_acl_mapping_put(monkeypatch, *, no_auth, no_auth_connectors):
+    monkeypatch.setattr("config.settings.is_no_auth_mode", lambda: no_auth)
+    monkeypatch.setattr("config.settings.has_no_auth_connectors", lambda: no_auth_connectors)
+
+    mock_client = MagicMock()
+    requests = []
+    existing_mappings = {
+        "openrag_user_role": {"backend_roles": ["openrag_user", "custom_role"]},
+    }
+
+    async def perform_request(method, path, **kwargs):
+        requests.append((method, path, kwargs.get("body")))
+        if method == "GET" and path == "/_plugins/_security/api/rolesmapping":
+            return existing_mappings
+        if method == "GET" and path == "/_plugins/_security/api/rolesmapping/all_access":
+            return {"all_access": {"users": ["admin"], "backend_roles": ["admin"]}}
+        return {"status": "OK", "message": "Success"}
+
+    mock_client.transport.perform_request = AsyncMock(side_effect=perform_request)
+    mock_client.cluster.health = AsyncMock(return_value={"status": "green"})
+
+    with (
+        patch("os.path.exists", return_value=True),
+        patch("builtins.open", MagicMock()),
+        patch("yaml.safe_load", side_effect=[_sample_roles(), _sample_mappings()]),
+    ):
+        await setup_opensearch_security(mock_client)
+
+    return next(
+        body
+        for method, path, body in requests
+        if method == "PUT" and path.endswith("/rolesmapping/openrag_user_acl_role")
+    )
+
+
 @pytest.mark.asyncio
-async def test_setup_opensearch_security_applies_acl_role_before_narrowing_legacy_role():
+async def test_no_auth_mode_does_not_map_default_users_to_acl_role(monkeypatch):
+    """The ACL role's terms lookup breaks hybrid under DLS; no-auth has no connector ACLs."""
+    acl_mapping = await _run_setup_and_get_acl_mapping_put(
+        monkeypatch, no_auth=True, no_auth_connectors=False
+    )
+
+    assert "openrag_user" not in acl_mapping["backend_roles"]
+    assert "custom_role" in acl_mapping["backend_roles"]
+
+
+@pytest.mark.asyncio
+async def test_no_auth_mode_with_dev_bucket_connector_keeps_acl_role(monkeypatch):
+    acl_mapping = await _run_setup_and_get_acl_mapping_put(
+        monkeypatch, no_auth=True, no_auth_connectors=True
+    )
+
+    assert "openrag_user" in acl_mapping["backend_roles"]
+
+
+@pytest.mark.asyncio
+async def test_auth_mode_maps_default_users_to_acl_role(monkeypatch):
+    acl_mapping = await _run_setup_and_get_acl_mapping_put(
+        monkeypatch, no_auth=False, no_auth_connectors=False
+    )
+
+    assert "openrag_user" in acl_mapping["backend_roles"]
+
+
+@pytest.mark.asyncio
+async def test_setup_opensearch_security_applies_acl_role_before_narrowing_legacy_role(
+    monkeypatch,
+):
     """ACL role and mapping are verified before the legacy role is narrowed."""
+    monkeypatch.setattr("config.settings.is_no_auth_mode", lambda: False)
     mock_client = MagicMock()
     requests = []
     existing_mappings = {

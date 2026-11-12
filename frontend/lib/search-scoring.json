@@ -1,0 +1,14 @@
+{
+  "_comment": "Frontend copy of the search scoring thresholds. Keep these values in sync with the backend source of truth at src/config/search_scoring.json.",
+
+  "hybrid_pipeline_name": "openrag_hybrid_pipeline",
+
+  "score_threshold": 0.1,
+
+  "semantic_weight": 0.7,
+  "keyword_weight": 0.3,
+
+  "relevance_high_threshold": 0.65,
+  "relevance_med_threshold": 0.35,
+  "relevance_hide_threshold": 0.1
+}
