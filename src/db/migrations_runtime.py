@@ -20,6 +20,13 @@ import os
 from collections.abc import Iterable
 from datetime import UTC, datetime
 
+from pydantic_ai.messages import (
+    ModelMessagesTypeAdapter,
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    UserPromptPart,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -271,9 +278,10 @@ async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, in
                                     continue
                                 role = message.get("role")
                                 content = message.get("content")
-                                if role not in {"user", "assistant"} or not isinstance(
-                                    content, str
-                                ):
+                                if not isinstance(role, str) or role not in {
+                                    "user",
+                                    "assistant",
+                                } or not isinstance(content, str):
                                     continue
                                 event_data = {}
                                 if isinstance(message.get("chunks"), list):
@@ -281,6 +289,14 @@ async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, in
                                 response_data = message.get("response_data")
                                 if isinstance(response_data, dict) and response_data.get("usage"):
                                     event_data["usage"] = response_data["usage"]
+                                history_message = (
+                                    ModelRequest(parts=[UserPromptPart(content=content)])
+                                    if role == "user"
+                                    else ModelResponse(parts=[TextPart(content=content)])
+                                )
+                                event_data["pydantic_messages"] = json.loads(
+                                    ModelMessagesTypeAdapter.dump_json([history_message])
+                                )
                                 await native_repo.append_message(
                                     conversation=conversation,
                                     role=role,

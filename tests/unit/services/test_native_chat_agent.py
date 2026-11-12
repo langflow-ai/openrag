@@ -32,11 +32,10 @@ async def test_native_agent_claims_new_conversation_with_session_ownership_servi
     start = AsyncMock()
     claim = AsyncMock(return_value=True)
     append = AsyncMock()
-    monkeypatch.setattr(
-        "services.native_chat_agent.native_chat_history_service.start_conversation", start
-    )
-    monkeypatch.setattr("services.native_chat_agent.native_chat_history_service.append", append)
-    monkeypatch.setattr("services.native_chat_agent.session_ownership_service.claim_session", claim)
+    agent = NativeChatAgent()
+    monkeypatch.setattr(agent._history_service, "start_conversation", start)
+    monkeypatch.setattr(agent._history_service, "append", append)
+    monkeypatch.setattr(agent._ownership_service, "claim_session", claim)
     monkeypatch.setattr(
         "services.native_chat_agent.get_openrag_config",
         lambda: SimpleNamespace(
@@ -44,7 +43,7 @@ async def test_native_agent_claims_new_conversation_with_session_ownership_servi
         ),
     )
 
-    conversation_id, history = await NativeChatAgent()._start("question", "user", None, "filter")
+    conversation_id, history = await agent._start("question", "user", None, "filter")
 
     start.assert_awaited_once_with(conversation_id, "user", "filter")
     claim.assert_awaited_once_with("user", conversation_id)
@@ -57,20 +56,16 @@ async def test_native_agent_continues_an_owned_metadata_only_conversation(monkey
     history = AsyncMock(return_value=[])
     owns_conversation = AsyncMock(return_value=True)
     append = AsyncMock()
-    monkeypatch.setattr(
-        "services.native_chat_agent.native_chat_history_service.pydantic_history", history
-    )
-    monkeypatch.setattr(
-        "services.native_chat_agent.native_chat_history_service.owns_conversation",
-        owns_conversation,
-    )
-    monkeypatch.setattr("services.native_chat_agent.native_chat_history_service.append", append)
+    agent = NativeChatAgent()
+    monkeypatch.setattr(agent._history_service, "pydantic_history", history)
+    monkeypatch.setattr(agent._history_service, "owns_conversation", owns_conversation)
+    monkeypatch.setattr(agent._history_service, "append", append)
     monkeypatch.setattr(
         "services.native_chat_agent.get_openrag_config",
         lambda: SimpleNamespace(agent=SimpleNamespace(), knowledge=SimpleNamespace()),
     )
 
-    conversation_id, restored = await NativeChatAgent()._start("next", "user", "legacy", None)
+    conversation_id, restored = await agent._start("next", "user", "legacy", None)
 
     assert (conversation_id, restored) == ("legacy", [])
     owns_conversation.assert_awaited_once_with("legacy", "user")
@@ -79,17 +74,12 @@ async def test_native_agent_continues_an_owned_metadata_only_conversation(monkey
 
 @pytest.mark.asyncio
 async def test_native_agent_rejects_a_missing_conversation(monkeypatch):
-    monkeypatch.setattr(
-        "services.native_chat_agent.native_chat_history_service.pydantic_history",
-        AsyncMock(return_value=[]),
-    )
-    monkeypatch.setattr(
-        "services.native_chat_agent.native_chat_history_service.owns_conversation",
-        AsyncMock(return_value=False),
-    )
+    agent = NativeChatAgent()
+    monkeypatch.setattr(agent._history_service, "pydantic_history", AsyncMock(return_value=[]))
+    monkeypatch.setattr(agent._history_service, "owns_conversation", AsyncMock(return_value=False))
 
     with pytest.raises(ValueError, match="Conversation was not found"):
-        await NativeChatAgent()._start("next", "user", "missing", None)
+        await agent._start("next", "user", "missing", None)
 
 
 def test_native_stream_adapter_matches_langflow_mixed_chunk_contract():
@@ -270,7 +260,7 @@ async def test_native_stream_keeps_fenced_search_data_in_saved_pydantic_messages
     agent = NativeChatAgent()
     monkeypatch.setattr(agent, "_start", AsyncMock(return_value=("chat-1", [])))
     monkeypatch.setattr(agent, "_agent", lambda _user_id: (StreamingAgent(), "test-model"))
-    monkeypatch.setattr("services.native_chat_agent.native_chat_history_service.append", append)
+    monkeypatch.setattr(agent._history_service, "append", append)
 
     events = [
         json.loads(chunk)
@@ -289,6 +279,7 @@ async def test_native_stream_keeps_fenced_search_data_in_saved_pydantic_messages
 
 def test_calculator_rejects_oversized_exponents_before_computing_them():
     assert _calculate("2 ** 10") == {"expression": "2 ** 10", "result": 1024}
+    assert _calculate("2 ** 2049")["result"].bit_length() == 2050
     assert "too large" in _calculate("2 ** 5000")["error"]
 
 

@@ -113,6 +113,132 @@ describe("ChatProvider — startNewConversation", () => {
     expect(result.current.refreshTrigger).toBe(initialRefreshTrigger + 1);
   });
 
+  it("clears a loaded transcript only when setEndpoint changes its source", async () => {
+    const { result } = renderChatHook();
+    await act(async () => {
+      await result.current.loadConversation({
+        response_id: "langflow-conversation",
+        title: "Langflow conversation",
+        endpoint: "langflow",
+        messages: [],
+      });
+    });
+
+    act(() => result.current.setEndpoint("langflow"));
+    expect(result.current.currentConversationId).toBe("langflow-conversation");
+
+    act(() => result.current.setEndpoint("chat"));
+    expect(result.current.currentConversationId).toBeNull();
+    expect(result.current.conversationData).toBeNull();
+  });
+
+  it("does not apply a filter lookup after another conversation is selected", async () => {
+    const { getFilterById } = await import(
+      "@/app/api/queries/useGetFilterByIdQuery"
+    );
+    let resolveFilter: (value: {
+      id: string;
+      name: string;
+      description: string;
+      query_data: string;
+      owner: string;
+      created_at: string;
+      updated_at: string;
+    }) => void;
+    vi.mocked(getFilterById).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFilter = resolve;
+        }),
+    );
+    localStorage.setItem("conversation_filter_first", "saved-filter");
+    const { result } = renderChatHook();
+
+    let firstLoad: Promise<void>;
+    act(() => {
+      firstLoad = result.current.loadConversation({
+        response_id: "first",
+        title: "First",
+        endpoint: "chat",
+        messages: [],
+      });
+    });
+    await waitFor(() =>
+      expect(getFilterById).toHaveBeenCalledWith("saved-filter"),
+    );
+
+    await act(async () => {
+      await result.current.loadConversation({
+        response_id: "second",
+        title: "Second",
+        endpoint: "chat",
+        messages: [],
+      });
+    });
+    await act(async () => {
+      resolveFilter({
+        id: "saved-filter",
+        name: "Saved",
+        description: "",
+        query_data: "{}",
+        owner: "user",
+        created_at: "",
+        updated_at: "",
+      });
+      await firstLoad;
+    });
+
+    expect(result.current.conversationData?.response_id).toBe("second");
+    expect(result.current.conversationFilter).toBeNull();
+  });
+
+  it("does not apply a default filter after the source changes", async () => {
+    const { getFilterById } = await import(
+      "@/app/api/queries/useGetFilterByIdQuery"
+    );
+    let resolveFilter!: (value: {
+      id: string;
+      name: string;
+      description: string;
+      query_data: string;
+      owner: string;
+      created_at: string;
+      updated_at: string;
+    }) => void;
+    vi.mocked(getFilterById).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFilter = resolve;
+        }),
+    );
+    localStorage.setItem("default_conversation_filter_id", "default-filter");
+    const { result } = renderChatHook();
+
+    let start: void;
+    act(() => {
+      start = result.current.startNewConversation({ showPlaceholder: false });
+    });
+    await waitFor(() =>
+      expect(getFilterById).toHaveBeenCalledWith("default-filter"),
+    );
+    act(() => result.current.setEndpoint("chat"));
+    await act(async () => {
+      resolveFilter({
+        id: "default-filter",
+        name: "Default",
+        description: "",
+        query_data: "{}",
+        owner: "user",
+        created_at: "",
+        updated_at: "",
+      });
+      await start;
+    });
+
+    expect(result.current.endpoint).toBe("chat");
+    expect(result.current.conversationFilter).toBeNull();
+  });
+
   it("updates exposed chat state and refreshes both history query modes", async () => {
     vi.useFakeTimers();
     const { result } = renderChatHook();
@@ -150,7 +276,7 @@ describe("ChatProvider — startNewConversation", () => {
     expect(result.current.hasChatError).toBe(true);
     expect(result.current.loading).toBe(true);
     expect(result.current.conversationDocs).toHaveLength(1);
-    expect(result.current.refreshTrigger).toBe(2);
+    expect(result.current.refreshTrigger).toBe(3);
     expect(result.current.refreshTriggerSilent).toBe(1);
 
     act(() => {
@@ -192,6 +318,29 @@ describe("ChatProvider — startNewConversation", () => {
 
     expect(result.current.conversationFilter).toEqual(filter);
     expect(result.current.conversationData?.filter).toEqual(filter);
+  });
+
+  it("clears a saved filter association when loading it fails", async () => {
+    const { getFilterById } = await import(
+      "@/app/api/queries/useGetFilterByIdQuery"
+    );
+    vi.mocked(getFilterById).mockRejectedValue(new Error("network error"));
+    localStorage.setItem("conversation_filter_chat-1", "missing-filter");
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { result } = renderChatHook();
+
+    await act(async () => {
+      await result.current.loadConversation({
+        response_id: "chat-1",
+        title: "Saved conversation",
+        endpoint: "chat",
+        messages: [],
+      });
+    });
+
+    expect(result.current.conversationFilter).toBeNull();
+    expect(localStorage.getItem("conversation_filter_chat-1")).toBeNull();
+    errorSpy.mockRestore();
   });
 
   // lines 240-242, 245, 249-253 — showPlaceholder=true (default): clears state

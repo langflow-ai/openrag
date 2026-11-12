@@ -21,6 +21,7 @@ if str(SRC) not in sys.path:
 import db.migrations_runtime as migrations_runtime  # noqa: E402
 import db.models  # noqa: E402,F401
 from db.repositories import ChatHistoryRepo, ConversationRepo, SessionOwnershipRepo  # noqa: E402
+from services.native_chat_history_service import NativeChatHistoryService  # noqa: E402
 
 
 @pytest_asyncio.fixture
@@ -148,6 +149,7 @@ async def test_native_metadata_migration_recovers_messages_and_keeps_empty_histo
     conversations["alice"]["r-1"]["messages"] = [
         {"role": "user", "content": "Earlier question"},
         {"role": "assistant", "content": "Earlier answer"},
+        {"role": ["user"], "content": "Skip malformed role"},
     ]
     conversations["alice"]["metadata-only"] = {
         "title": "No message snapshot",
@@ -168,6 +170,13 @@ async def test_native_metadata_migration_recovers_messages_and_keeps_empty_histo
     assert [(row.role, row.content) for row in recovered] == [
         ("user", "Earlier question"),
         ("assistant", "Earlier answer"),
+    ]
+    history = await NativeChatHistoryService(session_factory=session_factory).pydantic_history(
+        "r-1", "alice"
+    )
+    assert [part.content for message in history for part in message.parts] == [
+        "Earlier question",
+        "Earlier answer",
     ]
     assert metadata_only is not None
     assert metadata_only.total_messages == 2
@@ -365,5 +374,5 @@ def test_legacy_native_chat_rows_move_out_of_langflow_history():
             ).scalar_one()
             == "chat"
         )
-        assert connection.execute(sa.text("SELECT COUNT(*) FROM chat_messages")).scalar_one() == 0
+        assert connection.execute(sa.text("SELECT COUNT(*) FROM chat_messages")).scalar_one() == 1
     engine.dispose()

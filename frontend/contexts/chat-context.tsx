@@ -127,6 +127,7 @@ type ChatProviderAction =
         | ((previous: PreviousResponseIds) => PreviousResponseIds);
     }
   | { type: "refresh"; silent: boolean }
+  | { type: "setEndpoint"; endpoint: EndpointType }
   | { type: "switchSource"; endpoint: EndpointType }
   | { type: "loadConversation"; conversation: ConversationData }
   | { type: "startNewConversation" }
@@ -169,6 +170,14 @@ function chatProviderReducer(
       return action.silent
         ? { ...state, refreshTriggerSilent: state.refreshTriggerSilent + 1 }
         : { ...state, refreshTrigger: state.refreshTrigger + 1 };
+    case "setEndpoint":
+      if (action.endpoint === state.endpoint) return state;
+      return {
+        ...initialChatProviderState,
+        endpoint: action.endpoint,
+        refreshTrigger: state.refreshTrigger + 1,
+        refreshTriggerSilent: state.refreshTriggerSilent,
+      };
     case "switchSource":
       return {
         ...initialChatProviderState,
@@ -255,13 +264,30 @@ export function ChatProvider({ children }: ChatProviderProps) {
   } = state;
   const endpointChosen = useRef(false);
   const configuredEndpoint = useRef<EndpointType | null>(null);
+  const activeConversationRef = useRef({
+    endpoint,
+    conversationId: currentConversationId,
+  });
+  activeConversationRef.current = {
+    endpoint,
+    conversationId: currentConversationId,
+  };
   const { data: settings } = useGetSettingsQuery();
   const disableChatWithLangflow = settings?.agent?.disable_chat_with_langflow;
 
-  const setEndpoint = useCallback((next: EndpointType) => {
-    endpointChosen.current = true;
-    dispatch({ type: "patch", patch: { endpoint: next } });
-  }, []);
+  const setEndpoint = useCallback(
+    (next: EndpointType) => {
+      endpointChosen.current = true;
+      if (next !== endpoint) {
+        activeConversationRef.current = {
+          endpoint: next,
+          conversationId: null,
+        };
+      }
+      dispatch({ type: "setEndpoint", endpoint: next });
+    },
+    [endpoint],
+  );
 
   const setCurrentConversationId = useCallback((id: string | null) => {
     dispatch({ type: "patch", patch: { currentConversationId: id } });
@@ -372,19 +398,30 @@ export function ChatProvider({ children }: ChatProviderProps) {
 
     // A single transition clears source-specific state and forces the matching
     // history query to refetch, avoiding transient mixed-source transcripts.
+    activeConversationRef.current = {
+      endpoint: nextEndpoint,
+      conversationId: null,
+    };
     dispatch({ type: "switchSource", endpoint: nextEndpoint });
   }, [disableChatWithLangflow, endpoint]);
 
   const loadConversation = useCallback(
     async (conversation: ConversationData) => {
       endpointChosen.current = true;
+      const activeConversation = {
+        endpoint: conversation.endpoint,
+        conversationId: conversation.response_id,
+      };
+      const isDifferentConversation =
+        activeConversation.conversationId !==
+        activeConversationRef.current.conversationId;
+      // Update immediately as well as on render so an async lookup started by
+      // this call cannot win after another conversation is selected.
+      activeConversationRef.current = activeConversation;
       dispatch({ type: "loadConversation", conversation });
 
       // Load the filter if one exists for this conversation
       // Always update the filter to match the conversation being loaded
-      const isDifferentConversation =
-        conversation.response_id !== conversationData?.response_id;
-
       if (isDifferentConversation && typeof window !== "undefined") {
         // Try to load the saved filter from localStorage
         const savedFilterId = localStorage.getItem(
@@ -399,23 +436,36 @@ export function ChatProvider({ children }: ChatProviderProps) {
           try {
             const filter = await getFilterById(savedFilterId);
 
-            if (filter) {
+            if (
+              filter &&
+              activeConversationRef.current.endpoint ===
+                activeConversation.endpoint &&
+              activeConversationRef.current.conversationId ===
+                activeConversation.conversationId
+            ) {
               dispatch({ type: "setConversationFilter", filter });
             }
           } catch (error) {
             console.error("[CONVERSATION] Failed to load filter:", error);
             // Filter was deleted, clean up localStorage
-            localStorage.removeItem(
-              `conversation_filter_${conversation.response_id}`,
-            );
-            dispatch({ type: "patch", patch: { conversationFilter: null } });
+            if (
+              activeConversationRef.current.endpoint ===
+                activeConversation.endpoint &&
+              activeConversationRef.current.conversationId ===
+                activeConversation.conversationId
+            ) {
+              localStorage.removeItem(
+                `conversation_filter_${conversation.response_id}`,
+              );
+              dispatch({ type: "patch", patch: { conversationFilter: null } });
+            }
           }
         } else {
           dispatch({ type: "patch", patch: { conversationFilter: null } });
         }
       }
     },
-    [conversationData?.response_id],
+    [],
   );
 
   const startNewConversation = useCallback(
@@ -428,6 +478,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
 
       // Clear current conversation data and reset state atomically.
       dispatch({ type: "startNewConversation" });
+      const activeConversation = { endpoint, conversationId: null };
+      activeConversationRef.current = activeConversation;
 
       // Load default filter if available (and clear it after first use)
       if (typeof window !== "undefined") {
@@ -445,12 +497,23 @@ export function ChatProvider({ children }: ChatProviderProps) {
             );
             const filter = await getFilterById(defaultFilterId);
 
-            if (filter) {
+            if (
+              filter &&
+              activeConversationRef.current.endpoint ===
+                activeConversation.endpoint &&
+              activeConversationRef.current.conversationId ===
+                activeConversation.conversationId
+            ) {
               dispatch({
                 type: "patch",
                 patch: { conversationFilter: filter },
               });
-            } else {
+            } else if (
+              activeConversationRef.current.endpoint ===
+                activeConversation.endpoint &&
+              activeConversationRef.current.conversationId ===
+                activeConversation.conversationId
+            ) {
               // Default filter was deleted
               dispatch({ type: "patch", patch: { conversationFilter: null } });
             }
@@ -459,7 +522,14 @@ export function ChatProvider({ children }: ChatProviderProps) {
               "[CONVERSATION] Failed to load default filter:",
               error,
             );
-            dispatch({ type: "patch", patch: { conversationFilter: null } });
+            if (
+              activeConversationRef.current.endpoint ===
+                activeConversation.endpoint &&
+              activeConversationRef.current.conversationId ===
+                activeConversation.conversationId
+            ) {
+              dispatch({ type: "patch", patch: { conversationFilter: null } });
+            }
           }
         } else {
           // No default filter in localStorage

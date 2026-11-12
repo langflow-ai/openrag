@@ -254,6 +254,9 @@ function ChatPage() {
 
   const lastLoadedConversationRef = useRef<string | null>(null);
   const lastEndpointRef = useRef<EndpointType>(endpoint);
+  const endpointRef = useRef(endpoint);
+  endpointRef.current = endpoint;
+  const endpointGenerationRef = useRef(0);
   // Set when a live stream fails so history sync cannot replace one error card
   // with Langflow's duplicated copies of the same failure.
   const liveErrorConversationRef = useRef<string | null>(null);
@@ -389,8 +392,11 @@ function ChatPage() {
     if (lastEndpointRef.current === endpoint) return;
 
     lastEndpointRef.current = endpoint;
+    endpointGenerationRef.current += 1;
     abortStream();
     dispatchChatView({ type: "resetForEndpoint" });
+    setIsUploading(false);
+    setUploadedFile(null);
     setLoading(false);
     lastLoadedConversationRef.current = null;
     liveErrorConversationRef.current = null;
@@ -424,15 +430,22 @@ function ChatPage() {
   const handleFileUpload = async (file: File) => {
     if (isUploading) return;
 
+    const requestEndpoint = endpoint;
+    const requestGeneration = endpointGenerationRef.current;
+    const isCurrentRequest = () =>
+      endpointGenerationRef.current === requestGeneration &&
+      endpointRef.current === requestEndpoint;
     setIsUploading(true);
     setLoading(true);
 
     try {
       const result = await uploadFileForContext(
         file,
-        endpoint,
-        previousResponseIds[endpoint],
+        requestEndpoint,
+        previousResponseIds[requestEndpoint],
       );
+
+      if (!isCurrentRequest()) return { type: "cancelled" as const };
 
       if (result.type === "task") {
         addTask(result.taskId, { source: "file" });
@@ -456,7 +469,7 @@ function ChatPage() {
 
       setPreviousResponseIds((prev) => ({
         ...prev,
-        [endpoint]: result.responseId,
+        [requestEndpoint]: result.responseId,
       }));
       if (!currentConversationId) {
         setCurrentConversationId(result.responseId);
@@ -466,6 +479,7 @@ function ChatPage() {
       }
       return result.responseId;
     } catch (error) {
+      if (!isCurrentRequest()) return { type: "cancelled" as const };
       console.error("Upload failed:", error);
       setChatError(true);
       const errorMessage: Message = {
@@ -477,8 +491,10 @@ function ChatPage() {
       setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
       return { type: "failed" as const };
     } finally {
-      setIsUploading(false);
-      setLoading(false);
+      if (isCurrentRequest()) {
+        setIsUploading(false);
+        setLoading(false);
+      }
     }
   };
 
@@ -868,6 +884,12 @@ function ChatPage() {
   ) => {
     if (!inputMessage.trim() || loading) return;
 
+    const requestEndpoint = endpoint;
+    const requestGeneration = endpointGenerationRef.current;
+    const isCurrentRequest = () =>
+      endpointGenerationRef.current === requestGeneration &&
+      endpointRef.current === requestEndpoint;
+
     const userMessage: Message = {
       role: "user",
       content: inputMessage.trim(),
@@ -893,7 +915,8 @@ function ChatPage() {
     } else {
       // Original non-streaming logic
       try {
-        const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow";
+        const apiEndpoint =
+          requestEndpoint === "chat" ? "/api/chat" : "/api/langflow";
 
         const requestBody: RequestBody = {
           prompt: userMessage.content,
@@ -910,7 +933,7 @@ function ChatPage() {
         };
 
         // Add previous_response_id if we have one for this endpoint
-        const currentResponseId = previousResponseIds[endpoint];
+        const currentResponseId = previousResponseIds[requestEndpoint];
         if (currentResponseId) {
           requestBody.previous_response_id = currentResponseId;
         }
@@ -926,6 +949,8 @@ function ChatPage() {
         );
 
         const result = response.data;
+
+        if (!isCurrentRequest()) return;
 
         if (response.status >= 200 && response.status < 300) {
           const assistantMessage: Message = {
@@ -944,7 +969,7 @@ function ChatPage() {
           if (result.response_id) {
             setPreviousResponseIds((prev) => ({
               ...prev,
-              [endpoint]: result.response_id,
+              [requestEndpoint]: result.response_id,
             }));
 
             // If this is a new conversation (no currentConversationId), set it now
@@ -975,6 +1000,7 @@ function ChatPage() {
           setMessages((prev) => [...prev, errorMessage]);
         }
       } catch (error) {
+        if (!isCurrentRequest()) return;
         console.error("Chat error:", error);
         // Set chat error flag to trigger test_completion=true on health checks
         setChatError(true);
@@ -989,7 +1015,7 @@ function ChatPage() {
       }
     }
 
-    setLoading(false);
+    if (isCurrentRequest()) setLoading(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

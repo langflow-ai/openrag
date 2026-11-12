@@ -35,7 +35,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Restore legacy native-chat metadata after removing dependent messages."""
+    """Restore legacy native-chat metadata without discarding native history."""
     op.execute(
         """
         INSERT INTO langflow_conversations
@@ -49,10 +49,6 @@ def downgrade() -> None:
         )
         """
     )
-    # Revision 0009 keeps ``chat_messages.conversation_id`` as a foreign key
-    # to ``chat_conversations.id``. Delete dependent rows before their parent
-    # rows so a downgrade works for native chats which have already been used.
-    op.execute(
-        "DELETE FROM chat_messages WHERE conversation_id IN (SELECT id FROM chat_conversations)"
-    )
-    op.execute("DELETE FROM chat_conversations")
+    # Revision 0009 already owns the native history tables. Keep both the
+    # existing conversations and messages so a metadata-only downgrade cannot
+    # erase history created after this revision was upgraded.

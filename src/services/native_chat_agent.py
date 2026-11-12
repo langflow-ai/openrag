@@ -55,9 +55,9 @@ from config.settings import (
     get_openrag_config,
 )
 from services.langflow_llm_token_service import HOP_PURPOSE_CHAT, LangflowLlmTokenService
-from services.native_chat_history_service import native_chat_history_service
+from services.native_chat_history_service import NativeChatHistoryService
 from services.search_service import search_tool
-from services.session_ownership_service import session_ownership_service
+from services.session_ownership_service import SessionOwnershipService
 from utils.langflow_utils import fence_untrusted_text, strip_untrusted_fence_recursive
 from utils.logging_config import get_logger
 
@@ -118,9 +118,13 @@ def _calculate(expression: str) -> dict[str, Any]:
             if isinstance(left, int) and isinstance(right, int) and right >= 0:
                 # This bound is calculated from operand sizes, before ``pow``
                 # can allocate an arbitrarily large integer.
+                # ``abs(left)`` is at least ``2 ** (bits - 1)``. This lower
+                # bound rejects only powers guaranteed to exceed the limit;
+                # the computed result is still checked below for exactness.
                 if (
                     left not in {-1, 0, 1}
-                    and left.bit_length() * right > MAX_CALCULATOR_INTEGER_BITS
+                    and (abs(left).bit_length() - 1) * right + 1
+                    > MAX_CALCULATOR_INTEGER_BITS
                 ):
                     raise ValueError("Exponentiation result is too large")
             return
@@ -218,6 +222,14 @@ def _native_llm_gateway_url() -> str:
 
 class NativeChatAgent:
     """Run OpenRAG chat without starting Langflow."""
+
+    def __init__(
+        self,
+        history_service: NativeChatHistoryService | None = None,
+        ownership_service: SessionOwnershipService | None = None,
+    ) -> None:
+        self._history_service = history_service or NativeChatHistoryService()
+        self._ownership_service = ownership_service or SessionOwnershipService()
 
     async def run(
         self,
@@ -325,7 +337,7 @@ class NativeChatAgent:
             )
             if conversation_id:
                 try:
-                    await native_chat_history_service.append(
+                    await self._history_service.append(
                         conversation_id, user_id, "assistant", content=message, error=True
                     )
                 except Exception:
@@ -348,19 +360,19 @@ class NativeChatAgent:
     ) -> tuple[str, list[Any]]:
         conversation_id = previous_response_id or str(uuid.uuid4())
         if previous_response_id:
-            history = await native_chat_history_service.pydantic_history(conversation_id, user_id)
-            if not history and not await native_chat_history_service.owns_conversation(
+            history = await self._history_service.pydantic_history(conversation_id, user_id)
+            if not history and not await self._history_service.owns_conversation(
                 conversation_id, user_id
             ):
                 raise ValueError("Conversation was not found")
         else:
-            await native_chat_history_service.start_conversation(
+            await self._history_service.start_conversation(
                 conversation_id, user_id, filter_id
             )
-            if not await session_ownership_service.claim_session(user_id, conversation_id):
+            if not await self._ownership_service.claim_session(user_id, conversation_id):
                 raise RuntimeError("Unable to establish native chat session ownership")
             history = []
-        await native_chat_history_service.append(conversation_id, user_id, "user", content=prompt)
+        await self._history_service.append(conversation_id, user_id, "user", content=prompt)
         config = get_openrag_config()
         logger.info(
             "[CHAT] Native OpenRAG agent started",
@@ -583,7 +595,7 @@ class NativeChatAgent:
         chunks: list[dict[str, Any]],
         result: Any,
     ) -> None:
-        await native_chat_history_service.append(
+        await self._history_service.append(
             conversation_id,
             user_id,
             "assistant",
@@ -652,6 +664,3 @@ class NativeChatAgent:
         if isinstance(exc, LlmGatewayError):
             return exc.message
         return "The chat request could not be completed. Please try again."
-
-
-native_chat_agent = NativeChatAgent()

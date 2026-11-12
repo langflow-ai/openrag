@@ -135,6 +135,3 @@ class NativeChatHistoryService:
             deleted = await ChatHistoryRepo(session).delete_all_for_user(user_id)
             await session.commit()
             return deleted
-
-
-native_chat_history_service = NativeChatHistoryService()

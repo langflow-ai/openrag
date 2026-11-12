@@ -332,6 +332,45 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
     expect(chatState.setLoading).toHaveBeenCalledWith(false);
   });
 
+  it("ignores an upload that completes after the chat source changes", async () => {
+    vi.useRealTimers();
+    let resolveUpload!: (value: {
+      type: "direct";
+      filename: string;
+      responseId: string;
+    }) => void;
+    uploadFileForContextMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveUpload = resolve;
+        }),
+    );
+    const { rerender } = renderWithProviders(<ProtectedChatPage />, {
+      providers: ["auth"],
+      auth: authPresets.noAuthMode,
+    });
+    act(() => {
+      chatCallbacks.onFileSelected?.(
+        new File(["x"], "notes.pdf", { type: "application/pdf" }),
+      );
+    });
+    const submit = chatCallbacks.onSubmit?.({ preventDefault() {} });
+    await waitFor(() =>
+      expect(uploadFileForContextMock).toHaveBeenCalledOnce(),
+    );
+
+    chatState.endpoint = "langflow";
+    rerender(<ProtectedChatPage />);
+    resolveUpload({
+      type: "direct",
+      filename: "notes.pdf",
+      responseId: "old-source",
+    });
+    await submit;
+
+    expect(chatState.setPreviousResponseIds).not.toHaveBeenCalled();
+  });
+
   it("renders a native tool-only assistant message with empty text", () => {
     chatState.conversationData = {
       response_id: "native-conversation",

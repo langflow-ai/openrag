@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import delete, select
 from sqlalchemy.engine import CursorResult
@@ -78,7 +79,10 @@ class ChatHistoryRepo:
     ) -> ChatMessage:
         sequence = conversation.total_messages
         row = ChatMessage(
-            id=f"{conversation.id}:{sequence}",
+            # Conversation ids may use all 64 permitted characters, so do
+            # not derive a message id from one. A UUID hex value is bounded
+            # to 32 characters and remains unique across conversations.
+            id=uuid4().hex,
             conversation_id=conversation.id,
             sequence=sequence,
             role=role,

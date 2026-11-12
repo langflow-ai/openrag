@@ -157,16 +157,11 @@ async def test_native_chat_session_delete_releases_its_ownership(monkeypatch):
     monkeypatch.setattr("services.chat_service.is_chat_with_langflow_disabled", lambda: True)
     delete = AsyncMock(return_value=True)
     release_session = AsyncMock(return_value=True)
-    monkeypatch.setattr(
-        "services.native_chat_history_service.native_chat_history_service.delete",
-        delete,
-    )
-    monkeypatch.setattr(
-        "services.session_ownership_service.session_ownership_service.release_session",
-        release_session,
-    )
+    service = ChatService()
+    monkeypatch.setattr(service.native_chat_history_service, "delete", delete)
+    monkeypatch.setattr(service.session_ownership_service, "release_session", release_session)
 
-    result = await ChatService().delete_session("user-1", "chat-1")
+    result = await service.delete_session("user-1", "chat-1")
 
     assert result["success"] is True
     delete.assert_awaited_once_with("chat-1", "user-1")

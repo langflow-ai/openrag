@@ -18,8 +18,26 @@ logger = get_logger(__name__)
 
 
 class ChatService:
-    def __init__(self, flows_service=None):
+    def __init__(
+        self,
+        flows_service=None,
+        native_chat_agent=None,
+        native_chat_history_service=None,
+        session_ownership_service=None,
+    ):
         self.flows_service = flows_service
+        from services.native_chat_agent import NativeChatAgent
+        from services.native_chat_history_service import NativeChatHistoryService
+        from services.session_ownership_service import SessionOwnershipService
+
+        self.native_chat_history_service = (
+            native_chat_history_service or NativeChatHistoryService()
+        )
+        self.session_ownership_service = session_ownership_service or SessionOwnershipService()
+        self.native_chat_agent = native_chat_agent or NativeChatAgent(
+            self.native_chat_history_service,
+            self.session_ownership_service,
+        )
 
     async def chat(
         self,
@@ -56,16 +74,14 @@ class ChatService:
         if user_id and jwt_token:
             set_auth_context(user_id, jwt_token)
 
-        from services.native_chat_agent import native_chat_agent
-
         if stream:
-            return native_chat_agent.stream(
+            return self.native_chat_agent.stream(
                 prompt=prompt,
                 user_id=conversation_user_id,
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
             )
-        response_text, response_id, sources = await native_chat_agent.run(
+        response_text, response_id, sources = await self.native_chat_agent.run(
             prompt=prompt,
             user_id=conversation_user_id,
             previous_response_id=previous_response_id,
@@ -737,9 +753,7 @@ class ChatService:
         """Get durable native-agent history (never Langflow messages)."""
         if not user_id:
             return {"error": "User ID is required", "conversations": []}
-        from services.native_chat_history_service import native_chat_history_service
-
-        return await native_chat_history_service.history(user_id)
+        return await self.native_chat_history_service.history(user_id)
 
     @staticmethod
     def _messages_from_active_conversation(conversation_state: dict) -> list[dict]:
@@ -944,12 +958,9 @@ class ChatService:
     async def delete_session(self, user_id: str, session_id: str):
         """Delete a session from both local storage and Langflow"""
         if is_chat_with_langflow_disabled():
-            from services.native_chat_history_service import native_chat_history_service
-            from services.session_ownership_service import session_ownership_service
-
-            deleted = await native_chat_history_service.delete(session_id, user_id)
+            deleted = await self.native_chat_history_service.delete(session_id, user_id)
             if deleted:
-                await session_ownership_service.release_session(user_id, session_id)
+                await self.session_ownership_service.release_session(user_id, session_id)
             return {
                 "success": deleted,
                 "not_found": not deleted,
@@ -1049,9 +1060,7 @@ class ChatService:
     async def delete_all_user_sessions(self, user_id: str):
         """Delete all sessions for a user from both local storage and Langflow"""
         if is_chat_with_langflow_disabled():
-            from services.native_chat_history_service import native_chat_history_service
-
-            deleted_count = await native_chat_history_service.delete_all(user_id)
+            deleted_count = await self.native_chat_history_service.delete_all(user_id)
             return {"success": True, "deleted_count": deleted_count, "total_count": deleted_count}
         from agent import get_user_conversations
 
