@@ -57,6 +57,10 @@ class SharePointServer:
         # Empty sibling folders under the library; every 500th holds one file.
         self.wide_folders = 0
         self.root_file = False
+        # (endpoint, items) -> items, to inject malformed collection entries.
+        self.mutate = None
+        # Field overrides merged into file metadata responses.
+        self.file_metadata = {}
 
     def lists_calls(self):
         return sum("/_api/web/lists" in url for url in self.calls)
@@ -194,11 +198,14 @@ class SharePointServer:
                         "TimeCreated": "2024-02-01T00:00:00Z",
                         "TimeLastModified": self.file_modified,
                         "ETag": '"version-1"',
+                        **self.file_metadata,
                     }
                 },
             )
         else:
             return self.response(404, {})
+        if self.mutate:
+            items = self.mutate(endpoint, items)
         offset = int(query.get("$skiptoken", ["0"])[0])
         size = min(int(query.get("$top", ["200"])[0]), 73)  # Server pages independently of the UI.
         page = items[offset : offset + size]
@@ -598,6 +605,127 @@ def test_inventory_cursor_cannot_name_an_out_of_scope_parent(connector):
         run(adapter.list_files(page_token=forged))
     with pytest.raises(ValueError, match="inventory cursor"):
         run(adapter.list_files(page_token="not-a-token"))
+
+
+# Review r4556905909: a malformed server entry must surface as this module's
+# ValueError, never as an AttributeError/TypeError from an unchecked lookup.
+
+FILES = f"GetFolderByServerRelativeUrl('{NESTED}')/Files"
+
+
+def append_to(target, *entries):
+    def mutate(endpoint, items):
+        return [*items, *entries] if endpoint == target else items
+
+    return mutate
+
+
+def test_non_object_collection_entries_fail_as_value_errors(connector, caplog):
+    adapter, server = connector
+    library, nested = navigate(adapter)
+    server.count = 0  # Put the injected file entry on the first page.
+    for target, call in (
+        (f"GetFolderByServerRelativeUrl('{LIBRARY}')/Folders", lambda: library["id"]),
+        (FILES, lambda: nested["id"]),
+    ):
+        server.mutate = append_to(target, "not-an-object")
+        with caplog.at_level("ERROR", logger="sharepoint_onprem"):
+            with pytest.raises(ValueError, match="Invalid SharePoint REST page"):
+                run(adapter.list_children(call()))
+    assert any("non-object entry" in record.getMessage() for record in caplog.records)
+
+    server.mutate = append_to("lists", ["not", "an", "object"])
+    fresh = SharePointOnPremConnector(adapter.config)
+    with pytest.raises(ValueError, match="Invalid SharePoint REST page"):
+        run(fresh.authenticate())
+
+
+def test_library_root_folder_must_be_an_object_when_present(connector):
+    adapter, server = connector
+    server.mutate = append_to("lists", {"Title": "Odd", "Hidden": False, "RootFolder": None})
+    with pytest.raises(ValueError, match="Invalid SharePoint REST response"):
+        run(adapter.authenticate())
+
+    # An absent RootFolder is still skipped, and a non-string Title falls back.
+    server.mutate = append_to(
+        "lists",
+        {"Title": "No root", "Hidden": False},
+        {"Title": 7, "Hidden": False, "RootFolder": {"ServerRelativeUrl": SITE + "/Extra"}},
+    )
+    fresh = SharePointOnPremConnector(adapter.config)
+    assert run(fresh.authenticate()) is True
+    site = run(fresh.list_children())["nodes"][0]
+    assert [node["name"] for node in run(fresh.list_children(site["id"]))["nodes"]] == [
+        "Documents",
+        "Extra",
+    ]
+
+
+def odd_file(**fields):
+    return {"Name": "odd.txt", "ServerRelativeUrl": NESTED + "/odd.txt", **fields}
+
+
+@pytest.mark.parametrize("length", [{}, [9], "abc", "9.5", -1, "-1", True])
+def test_invalid_file_length_is_a_value_error(connector, length):
+    adapter, server = connector
+    _, nested = navigate(adapter)
+    server.count = 0
+    server.mutate = append_to(FILES, odd_file(Length=length))
+    with pytest.raises(ValueError, match="Invalid SharePoint REST response"):
+        run(adapter.list_children(nested["id"]))
+
+
+def test_verbose_string_lengths_and_non_string_fields_are_normalised(connector):
+    adapter, server = connector
+    _, nested = navigate(adapter)
+    server.count = 0
+    server.mutate = append_to(
+        FILES,
+        odd_file(Length="12345", TimeLastModified="2024-03-01T00:00:00Z"),
+        {"Name": 42, "ServerRelativeUrl": NESTED + "/named.txt", "TimeLastModified": 5},
+        {"Name": "null.txt", "ServerRelativeUrl": NESTED + "/null.txt", "Length": None},
+    )
+    nodes = {node["name"]: node for node in run(adapter.list_children(nested["id"]))["nodes"]}
+    assert nodes["odd.txt"]["size"] == 12345  # odata=verbose sends Edm.Int64 as a string
+    assert nodes["odd.txt"]["modified_time"] == "2024-03-01T00:00:00Z"
+    assert "modified_time" not in nodes["named.txt"]  # name fell back to the path basename
+    assert "size" not in nodes["null.txt"]  # a null Length is still skipped
+
+
+def test_malformed_library_listing_never_signals_deletion(connector):
+    adapter, server = connector
+    _, nested = navigate(adapter)
+    file_id = run(adapter.list_children(nested["id"], None, 1))["nodes"][0]["id"]
+    server.status["GetFileByServerRelativeUrl('" + NESTED + "/doc-0.txt')"] = 404
+    server.mutate = append_to("lists", "not-an-object")
+    assert run(adapter.is_definitively_missing(file_id)) is False
+
+
+@pytest.mark.parametrize(
+    ("override", "match"),
+    [
+        ({"Length": {}}, "Invalid SharePoint REST response"),
+        ({"TimeLastModified": 123}, "modification time"),
+        ({"TimeCreated": ["2024"]}, "modification time"),
+    ],
+)
+def test_malformed_file_metadata_is_a_value_error(connector, override, match):
+    adapter, server = connector
+    _, nested = navigate(adapter)
+    file_id = run(adapter.list_children(nested["id"], None, 1))["nodes"][0]["id"]
+    server.file_metadata = override
+    with pytest.raises(ValueError, match=match):
+        run(adapter.get_file_content(file_id))
+
+
+def test_non_string_file_metadata_fields_fall_back(connector):
+    adapter, server = connector
+    _, nested = navigate(adapter)
+    file_id = run(adapter.list_children(nested["id"], None, 1))["nodes"][0]["id"]
+    server.file_metadata = {"Name": None, "ETag": 5}
+    document = run(adapter.get_file_content(file_id))
+    assert document.filename.startswith("doc-0--sp-")
+    assert document.metadata["content_etag"] is None
 
 
 def test_missing_library_inventory_cannot_signal_file_deletion(connector):
