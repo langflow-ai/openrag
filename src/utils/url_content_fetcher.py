@@ -36,6 +36,23 @@ class _VisibleTextHTMLParser(HTMLParser):
         return " ".join(self._chunks)
 
 
+def materialize_url_text_file(
+    text: str, *, source_url: str, title: str, crawl_depth: int, prefix: str = "openrag-url-"
+) -> str:
+    """Write already-fetched URL text in the format used by URL ingestion."""
+    content = f"{title}\n\nSource URL: {source_url}\nCrawl depth: {crawl_depth}\n\n{text}\n"
+    temp_file = tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".txt",
+        prefix=prefix,
+        delete=False,
+        encoding="utf-8",
+    )
+    with temp_file:
+        temp_file.write(content)
+    return temp_file.name
+
+
 async def materialize_url_as_text_file(docs_url: str, crawl_depth: int) -> tuple[str, str]:
     """Fetch URL content and write a temporary text file for OpenRAG ingestion, returning path and title."""
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
@@ -56,17 +73,13 @@ async def materialize_url_as_text_file(docs_url: str, crawl_depth: int) -> tuple
     text_parser.close()
     normalized_text = re.sub(r"\s+", " ", text_parser.get_text()).strip()
 
-    content = (
-        f"{title}\n\nSource URL: {docs_url}\nCrawl depth: {crawl_depth}\n\n{normalized_text}\n"
+    return (
+        materialize_url_text_file(
+            normalized_text,
+            source_url=docs_url,
+            title=title,
+            crawl_depth=crawl_depth,
+            prefix="openrag-url-default-",
+        ),
+        title,
     )
-
-    temp_file = tempfile.NamedTemporaryFile(
-        mode="w",
-        suffix=".txt",
-        prefix="openrag-url-default-",
-        delete=False,
-        encoding="utf-8",
-    )
-    with temp_file:
-        temp_file.write(content)
-    return temp_file.name, title
