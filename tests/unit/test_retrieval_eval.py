@@ -1963,8 +1963,59 @@ def test_run_rejects_unusable_live_thresholds(value: str) -> None:
     assert "--live-thresholds" in completed.stderr
 
 
-def test_a_range_that_rounds_to_duplicates_gives_unique_thresholds() -> None:
-    assert scores.parse_thresholds("0:0.000001:0.0000001") == [0.0, 1e-06]
+def test_a_tiny_step_range_is_exact_and_unique() -> None:
+    values = scores.parse_thresholds("0:0.000001:0.0000001")
+
+    assert values == [i / 10_000_000 for i in range(11)]
+    assert len(set(values or [])) == 11
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("0.5000004", [0.5000004]),
+        ("0.5000004,0.1", [0.1, 0.5000004]),
+        ("0.1234567:0.1234567:0.1", [0.1234567]),  # rounding once gave 0.123457, past stop
+        ("0.1234567:0.3:0.1", [0.1234567, 0.2234567]),
+        ("0:0.3:0.1", [0.0, 0.1, 0.2, 0.3]),  # exactly the typed values, no float drift
+    ],
+)
+def test_thresholds_keep_the_precision_they_were_given(text: str, expected: list[float]) -> None:
+    values = scores.parse_thresholds(text)
+
+    assert values == expected
+    if ":" in text:
+        assert max(values or [0.0]) <= float(text.split(":")[1])
+
+
+def test_a_typed_threshold_cuts_exactly_like_the_candidate() -> None:
+    question = scored_query(
+        "q", [chunk("a.md", "the answer", 0.5000002), chunk("b.md", "", 0.9)], ["a.md"], "answer"
+    )
+    results = make_results([question])
+    thresholds = scores.parse_thresholds("0.5000004")
+
+    swept = scores.analyze(results, thresholds=thresholds)
+    candidate = scores.analyze(results, thresholds=[0.1], candidate=0.5000004)
+
+    assert swept["rows"][1].threshold == 0.5000004
+    assert swept["rows"][1].answers_lost == ("q",)  # 0.5000002 is below the cut
+    assert candidate["candidate"].answers_lost == ("q",)
+    assert "| 0.5000004 |" in scores.render_report(swept)  # shown as typed, not as 0.5
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("0.5000004,1", [0.5000004, 1.0]), ("1:1.2:0.1", [1.0, 1.1, 1.2])],
+)
+def test_live_thresholds_keep_their_precision(
+    value: str, expected: list[float], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = load_answer_runner(monkeypatch)
+
+    args = runner.build_parser().parse_args(["run", "--live-thresholds", value])
+
+    assert args.live_thresholds == expected
 
 
 def test_duplicate_live_thresholds_in_a_results_file_still_analyze() -> None:

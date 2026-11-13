@@ -23,6 +23,7 @@ import importlib
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 # run_eval.py imports this module as a top-level script module, and the tests
@@ -116,11 +117,22 @@ def finite(text: str) -> float:
     return value
 
 
+def _decimal(text: str) -> Decimal:
+    finite(text)  # same errors as the other numeric options
+    try:
+        return Decimal(text.strip())
+    except InvalidOperation as exc:
+        raise ValueError(f"{text.strip()!r} is not a number") from exc
+
+
 def parse_thresholds(text: str) -> list[float] | None:
     """``auto`` (None), ``start:stop:step``, or a comma-separated list of thresholds.
 
-    A range never goes past ``stop``: with a step that does not divide the
-    range evenly, it ends at the last step below ``stop``.
+    Thresholds keep the precision they were given: rounding one would move the
+    cut and could keep a chunk the requested threshold drops. A range is built
+    in decimal arithmetic from the text, so ``0:0.3:0.1`` gives exactly 0.0,
+    0.1, 0.2 and 0.3, and it never goes past ``stop``: with a step that does not
+    divide the range evenly, it ends at the last step below ``stop``.
     """
     text = text.strip()
     if text == "auto":
@@ -129,15 +141,12 @@ def parse_thresholds(text: str) -> list[float] | None:
         parts = text.split(":")
         if len(parts) != 3:
             raise ValueError(f"expected start:stop:step, got {text!r}")
-        start, stop, step = (finite(part) for part in parts)
+        start, stop, step = (_decimal(part) for part in parts)
         if step <= 0 or stop < start:
             raise ValueError("the step must be positive and stop must not be below start")
-        # Each value is start + i * step rather than a running sum, so float
-        # error does not build up; EPSILON keeps an exact stop such as 0.3 in.
-        count = math.floor((stop - start) / step + EPSILON) + 1
-        # Rounding can make neighbors equal when the step is tiny.
-        return sorted({round(start + i * step, 6) for i in range(count)})
-    values = sorted({round(finite(part), 6) for part in text.split(",") if part.strip()})
+        count = int((stop - start) // step) + 1
+        return [float(start + i * step) for i in range(count)]
+    values = sorted({finite(part) for part in text.split(",") if part.strip()})
     if not values:
         raise ValueError("no thresholds given")
     return values
@@ -506,13 +515,13 @@ def analyze(
         below = [value for value in wanted if value < floor]
         wanted = [value for value in wanted if value >= floor]
         notes.append(
-            f"The run used a score threshold of {floor:g}, so chunks below it were never "
+            f"The run used a score threshold of {_value(floor)}, so chunks below it were never "
             "returned and the sweep starts there."
-            + (f" Left out: {', '.join(f'{value:g}' for value in below)}." if below else "")
+            + (f" Left out: {', '.join(f'{_value(value)}' for value in below)}." if below else "")
         )
     if method == "minmax" and floor > 0:
         notes.append(
-            f"The run used a score threshold of {floor:g} before normalizing, so the "
+            f"The run used a score threshold of {_value(floor)} before normalizing, so the "
             "normalized scores cover only the chunks above it."
         )
     all_scores = [score for question in questions for _, score in question.chunks]
@@ -550,7 +559,7 @@ def analyze(
             examples = ", ".join(ids[:3]) + (", …" if len(ids) > 3 else "")
             notes.append(
                 f"At {len(differ)} of {len(live)} live thresholds the stack's cut differs from "
-                f"the simulation for some questions (at {row.threshold:g}: {len(ids)} of "
+                f"the simulation for some questions (at {_value(row.threshold)}: {len(ids)} of "
                 f"{len(raw)}, such as {examples}). The stack applies its threshold to a "
                 "different score than search returns, so use the live thresholds, not the "
                 "simulated ones."
@@ -563,8 +572,8 @@ def analyze(
     # otherwise the highest that keeps recall.
     if candidate is not None and method == "none" and 0 < floor and candidate < floor:
         raise ScoresError(
-            f"--candidate {candidate:g} is below the run's score threshold {floor:g}, so "
-            f"chunks below {floor:g} were never returned and its cost cannot be measured"
+            f"--candidate {_value(candidate)} is below the run's score threshold {_value(floor)}, so "
+            f"chunks below {_value(floor)} were never returned and its cost cannot be measured"
         )
     chosen = candidate
     if chosen is None and advice.keeps_recall is not None:
@@ -633,10 +642,15 @@ def _num(value: float | None, digits: int = 3) -> str:
     return "n/a" if value is None else f"{value:.{digits}f}"
 
 
+def _value(value: float) -> str:
+    """A threshold or cutoff for display, with enough digits to show what was asked for."""
+    return f"{value:.12g}"
+
+
 def _threshold(row: SweepRow | None) -> str:
     if row is None:
         return "none"
-    return "no cut" if row.threshold is None else f"{row.threshold:g}"
+    return "no cut" if row.threshold is None else _value(row.threshold)
 
 
 def _pct(value: float) -> str:
@@ -774,7 +788,7 @@ def _render_tiers(result: Mapping[str, Any]) -> list[str]:
     chunks, files = result["chunks"], result["files"]
     lines = [
         "",
-        f"## Tiers (High ≥ {result['high']:g}, Medium ≥ {result['med']:g})",
+        f"## Tiers (High ≥ {_value(result['high'])}, Medium ≥ {_value(result['med'])})",
         "",
         "| Tier | Answer chunks | Other relevant chunks | Noise chunks | Expected files | Other files |",
         "|---|---|---|---|---|---|",
@@ -789,7 +803,7 @@ def _render_tiers(result: Mapping[str, Any]) -> list[str]:
         f"- High-tier chunks that are relevant: {_num(result['high_precision'])}",
         f"- Expected files whose best chunk is Low: {result['expected_files_low']}",
         f"- Other files whose best chunk is High: {result['other_files_high']}",
-        f"- Hidden below {result['hide']:g}: {result['hidden_answers']} of "
+        f"- Hidden below {_value(result['hide'])}: {result['hidden_answers']} of "
         f"{result['answer_chunks']} answer chunks, {result['hidden_expected_files']} expected files",
         "",
         "A file's tier is the tier of its best chunk. Files are counted once per question.",
