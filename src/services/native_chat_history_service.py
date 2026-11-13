@@ -86,7 +86,9 @@ class NativeChatHistoryService:
         async with self._factory() as session:
             repo = ChatHistoryRepo(session)
             conversations = await repo.list_conversations(user_id)
-            rows_by_conversation: dict[str, list[Any]] = {conversation.id: [] for conversation in conversations}
+            rows_by_conversation: dict[str, list[Any]] = {
+                conversation.id: [] for conversation in conversations
+            }
             for row in await repo.list_messages_for_conversations(list(rows_by_conversation)):
                 rows_by_conversation.setdefault(row.conversation_id, []).append(row)
             payload = []

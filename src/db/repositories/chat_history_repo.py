@@ -106,9 +106,7 @@ class ChatHistoryRepo:
         }
         if role == "user" and content:
             title = content[:50] + ("..." if len(content) > 50 else "")
-            values["title"] = case(
-                (title_column.is_(None), title), else_=title_column
-            )
+            values["title"] = case((title_column.is_(None), title), else_=title_column)
         result = await self.session.execute(
             update(ChatConversation)
             .where(col(ChatConversation.id) == conversation.id)

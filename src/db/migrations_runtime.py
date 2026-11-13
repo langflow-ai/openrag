@@ -238,7 +238,11 @@ async def _migrate_legacy_native_conversation(
                 continue
             role = message.get("role")
             content = message.get("content")
-            if not isinstance(role, str) or role not in {"user", "assistant"} or not isinstance(content, str):
+            if (
+                not isinstance(role, str)
+                or role not in {"user", "assistant"}
+                or not isinstance(content, str)
+            ):
                 continue
             event_data: dict[str, Any] = {}
             if isinstance(message.get("chunks"), list):

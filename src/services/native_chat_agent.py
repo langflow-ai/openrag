@@ -238,7 +238,9 @@ async def _read_public_url(value: str) -> dict[str, Any]:
             timeout=20.0,
             trust_env=False,
         ) as client:
-            async with client.stream("GET", value, headers={"User-Agent": "OpenRAG/1.0"}) as response:
+            async with client.stream(
+                "GET", value, headers={"User-Agent": "OpenRAG/1.0"}
+            ) as response:
                 if response.is_redirect:
                     return {"error": "Redirecting URLs are not supported"}
                 response.raise_for_status()
@@ -521,7 +523,8 @@ class NativeChatAgent:
                     result[field] = fence_untrusted_text(value)
                 elif isinstance(value, list):
                     result[field] = [
-                        fence_untrusted_text(item) if isinstance(item, str) else item for item in value
+                        fence_untrusted_text(item) if isinstance(item, str) else item
+                        for item in value
                     ]
         return fenced
 

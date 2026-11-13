@@ -73,7 +73,9 @@ async def test_chat_endpoint_rejects_native_chat_without_database_storage(monkey
 
 
 @pytest.mark.asyncio
-async def test_langflow_endpoint_reports_native_storage_error_when_switch_is_enabled(monkeypatch, user):
+async def test_langflow_endpoint_reports_native_storage_error_when_switch_is_enabled(
+    monkeypatch, user
+):
     monkeypatch.setattr(chat_api, "DISABLE_CHAT_WITH_LANGFLOW", True)
     monkeypatch.setattr(chat_api, "get_storage_mode", lambda: "files")
     chat_service = SimpleNamespace(langflow_chat=AsyncMock())

@@ -44,6 +44,7 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
 
+
 def _should_load_persisted_connections() -> bool:
     """Whether to load persisted connector connections at startup.
 

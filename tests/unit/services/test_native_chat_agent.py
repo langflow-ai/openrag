@@ -292,6 +292,7 @@ def test_calculator_rejects_excessively_nested_expression_without_recursing():
 @pytest.mark.asyncio
 async def test_native_url_reader_fences_embedded_marker_text(monkeypatch):
     client_options = {}
+
     class Response:
         is_redirect = False
         encoding = "utf-8"
@@ -326,6 +327,7 @@ async def test_native_url_reader_fences_embedded_marker_text(monkeypatch):
         "services.native_chat_agent.socket.getaddrinfo",
         lambda *_args, **_kwargs: [(None, None, None, None, ("8.8.8.8", 0))],
     )
+
     def client_factory(**kwargs):
         client_options.update(kwargs)
         return Client()
