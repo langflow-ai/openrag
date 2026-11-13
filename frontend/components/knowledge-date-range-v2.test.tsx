@@ -76,7 +76,11 @@ describe("KnowledgeDateRangeV2", () => {
     });
     await click(trigger);
     expect(await screen.findByText("Apply filter")).toBeInTheDocument();
-    expect(screen.queryByText("Applies to")).not.toBeInTheDocument();
+    // Classic keeps the two-pane layout: no quarters and no Custom range link.
+    expect(screen.queryByText("Custom range")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^This quarter/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the compact picker with counts when the flag is on", async () => {
@@ -84,7 +88,6 @@ describe("KnowledgeDateRangeV2", () => {
     await click(
       await screen.findByRole("button", { name: /filter by date range/i }),
     );
-    expect(screen.queryByText("Applies to")).not.toBeInTheDocument();
     expect(screen.getByText("Quick ranges")).toBeInTheDocument();
     expect((await screen.findAllByText("10")).length).toBeGreaterThan(0);
     expect(screen.getByText("Custom range")).toBeInTheDocument();

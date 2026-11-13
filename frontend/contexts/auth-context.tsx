@@ -98,6 +98,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // request may write the flags, so a slow older response cannot overwrite them.
   const flagRequestSeqRef = useRef(0);
 
+  const lastFlagRefreshRef = useRef(0);
+
   const checkAuth = useCallback(async () => {
     setIsLoading(true);
     const flagSeq = ++flagRequestSeqRef.current;
@@ -116,6 +118,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (flagSeq === flagRequestSeqRef.current) {
         setDateRangeV2(data.date_range_v2 === true);
       }
+      // checkAuth just read the flag, so the first tab switch need not refetch.
+      lastFlagRefreshRef.current = Date.now();
 
       // Check auth mode flags
       if (data.ibm_auth_mode) {
@@ -227,7 +231,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     await checkAuth();
   }, [checkAuth]);
 
-  const lastFlagRefreshRef = useRef(0);
   const refreshFeatureFlags = useCallback(async () => {
     lastFlagRefreshRef.current = Date.now();
     const flagSeq = ++flagRequestSeqRef.current;
@@ -245,7 +248,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, []);
 
+  // The backend only reports date_range_v2 in OSS, so other run modes (and the
+  // not-yet-known null) never poll.
   useEffect(() => {
+    if (runMode !== "oss") return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -274,7 +280,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       document.removeEventListener("visibilitychange", onVisibility);
       clearTimeout(timer);
     };
-  }, [refreshFeatureFlags]);
+  }, [refreshFeatureFlags, runMode]);
 
   const [permissions, setPermissions] = useState<Set<string>>(new Set());
   const [roles, setRoles] = useState<string[]>([]);

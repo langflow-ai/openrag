@@ -316,7 +316,9 @@ describe("date range v2 flag", () => {
     ]);
     const afterBoot = calls;
 
-    // Throttle window starts at 0 (never refreshed) so the first event fires.
+    // checkAuth counts as a refresh, so move past the minimum gap first.
+    const realNow = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(realNow + 31_000);
     await act(async () => {
       document.dispatchEvent(new Event("visibilitychange"));
     });
@@ -329,5 +331,39 @@ describe("date range v2 flag", () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(calls).toBe(afterBoot + 1);
     vi.restoreAllMocks();
+  });
+
+  it("does not refetch on tab visibility outside OSS", async () => {
+    let calls = 0;
+    await renderAuth(authPresets.admin, [
+      http.get("/api/auth/me", () => {
+        calls += 1;
+        return HttpResponse.json({ ...authPresets.admin.me, run_mode: "saas" });
+      }),
+    ]);
+    const afterBoot = calls;
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(calls).toBe(afterBoot);
+  });
+
+  it("skips the first tab-switch refetch right after boot", async () => {
+    let calls = 0;
+    await renderAuth(authPresets.admin, [
+      http.get("/api/auth/me", () => {
+        calls += 1;
+        return HttpResponse.json({ ...authPresets.admin.me, run_mode: "oss" });
+      }),
+    ]);
+    const afterBoot = calls;
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(calls).toBe(afterBoot);
   });
 });

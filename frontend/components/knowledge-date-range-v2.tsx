@@ -8,7 +8,7 @@ import {
   subDays,
   subMonths,
 } from "date-fns";
-import { CalendarIcon, Maximize2, X } from "lucide-react";
+import { CalendarIcon, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { DateRange, DayContentProps } from "react-day-picker";
 import { useUploadHistogram } from "@/app/api/queries/useUploadHistogram";
@@ -16,7 +16,7 @@ import {
   CalendarPanel,
   DensityMark,
   useToday,
-} from "@/components/knowledge-date-range-filter";
+} from "@/components/knowledge-date-range-shared";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -249,7 +249,7 @@ export function KnowledgeDateRangeV2() {
                   </button>
                 );
               })}
-              <div className="flex items-center justify-between border-t px-4 py-2.5">
+              <div className="flex items-center border-t px-4 py-2.5">
                 <button
                   type="button"
                   onClick={() => setView("custom")}
@@ -257,14 +257,6 @@ export function KnowledgeDateRangeV2() {
                 >
                   <CalendarIcon className="h-4 w-4" />
                   Custom range
-                </button>
-                <button
-                  type="button"
-                  aria-label="Expand custom range"
-                  onClick={() => setView("custom")}
-                  className="text-primary"
-                >
-                  <Maximize2 className="h-4 w-4" />
                 </button>
               </div>
             </>
