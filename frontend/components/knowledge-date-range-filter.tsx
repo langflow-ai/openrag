@@ -2,8 +2,6 @@
 
 import {
   addDays,
-  endOfMonth,
-  isAfter,
   isSameDay,
   min,
   startOfDay,
@@ -15,6 +13,12 @@ import { CalendarIcon, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { DateRange, DayContentProps } from "react-day-picker";
 import { useUploadHistogram } from "@/app/api/queries/useUploadHistogram";
+import {
+  CalendarPanel,
+  DensityMark,
+  useToday,
+} from "@/components/knowledge-date-range-shared";
+import { KnowledgeDateRangeV2 } from "@/components/knowledge-date-range-v2";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -25,7 +29,23 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
-import { isDateRangeFilterEnabled } from "@/lib/date-range-filter";
+import {
+  isDateRangeFilterEnabled,
+  isDateRangeV2Enabled,
+} from "@/lib/date-range-filter";
+import {
+  countInRange,
+  describeToolbarRange,
+  EMPTY_DAYS,
+  earlierInstant,
+  filterValues,
+  formatDateLabel,
+  formatShortLabel,
+  laterInstant,
+  PRESETS,
+  type Preset,
+  type Range,
+} from "@/lib/knowledge-date-range";
 import {
   type DateRangeValue,
   foreignTimeZone,
@@ -39,130 +59,16 @@ import {
 } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
 
-type Range = { from: Date; to: Date };
-
-const EMPTY_DAYS: Record<string, number> = {};
 const MAX_CUSTOM_DAYS = 3650;
-
-interface Preset {
-  id: string;
-  label: string;
-  range: (today: Date) => Range | null;
-}
-
-const PRESETS: Preset[] = [
-  { id: "any", label: "Any time", range: () => null },
-  { id: "today", label: "Today", range: (t) => ({ from: t, to: t }) },
-  {
-    id: "yesterday",
-    label: "Yesterday",
-    range: (t) => ({ from: subDays(t, 1), to: subDays(t, 1) }),
-  },
-  {
-    id: "last-7",
-    label: "Last 7 days",
-    range: (t) => ({ from: subDays(t, 6), to: t }),
-  },
-  {
-    id: "last-30",
-    label: "Last 30 days",
-    range: (t) => ({ from: subDays(t, 29), to: t }),
-  },
-  {
-    id: "this-month",
-    label: "This month",
-    range: (t) => ({ from: startOfMonth(t), to: t }),
-  },
-  {
-    id: "last-month",
-    label: "Last month",
-    range: (t) => {
-      const prev = subMonths(t, 1);
-      return { from: startOfMonth(prev), to: endOfMonth(prev) };
-    },
-  },
-];
-
-function formatDateLabel(date: Date): string {
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function formatShortLabel(date: Date, today: Date): string {
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    ...(date.getFullYear() !== today.getFullYear() && { year: "numeric" }),
-  });
-}
-
-/** "A – B", a single day, or "From A" / "Until B" for a one-sided saved range. */
-function describeRange(
-  range: DateRangeValue | null,
-  format: (date: Date) => string,
-): string | null {
-  if (range?.from && range.to) {
-    return isSameDay(range.from, range.to)
-      ? format(range.from)
-      : `${format(range.from)} – ${format(range.to)}`;
-  }
-  if (range?.from) return `From ${format(range.from)}`;
-  if (range?.to) return `Until ${format(range.to)}`;
-  return null;
-}
-
-function earlierInstant(iso: string, other?: string): string {
-  return other && new Date(other) < new Date(iso) ? other : iso;
-}
-
-function laterInstant(iso: string, other?: string): string {
-  return other && new Date(other) > new Date(iso) ? other : iso;
-}
-
-function filterValues(values?: string[]) {
-  const filtered = values?.filter((value) => value !== "*");
-  return filtered && filtered.length > 0 ? filtered : undefined;
-}
-
-function countInRange(days: Record<string, number>, { from, to }: Range) {
-  let total = 0;
-  for (let d = startOfDay(from); !isAfter(d, to); d = addDays(d, 1)) {
-    total += days[toLocalDayKey(d)] ?? 0;
-  }
-  return total;
-}
-
-function DensityMark({
-  count,
-  inverted,
-}: {
-  count: number;
-  inverted: boolean;
-}) {
-  if (count <= 0) return <span aria-hidden className="h-1" />;
-  return (
-    <span
-      aria-hidden
-      data-testid="upload-density"
-      data-density={count >= 5 ? "high" : count >= 2 ? "medium" : "low"}
-      className={cn(
-        "h-1 rounded-full",
-        count >= 5 ? "w-5" : count >= 2 ? "w-3" : "w-1",
-        inverted ? "bg-primary-foreground" : "bg-primary",
-      )}
-    />
-  );
-}
 
 /** Toolbar picker: edits the temporary range of the Knowledge page. */
 export function KnowledgeDateRangeFilter() {
   const { dateRange, setDateRange, parsedFilterData, effectiveDateRange } =
     useKnowledgeFilter();
   const enabled = useDateRangeFilterEnabled();
+  const v2 = useDateRangeV2Enabled();
   if (!enabled) return null;
+  if (v2) return <KnowledgeDateRangeV2 />;
   return (
     <DateRangePicker
       value={dateRange}
@@ -179,26 +85,11 @@ export function useDateRangeFilterEnabled(): boolean {
   return isDateRangeFilterEnabled(runMode, { isCloudBrand });
 }
 
-function useToday(open: boolean) {
-  // Refreshed while open so a page left running past midnight never keeps
-  // yesterday as "today".
-  const [today, setToday] = useState(() => startOfDay(new Date()));
-
-  useEffect(() => {
-    if (!open) return;
-    const rollover = () => {
-      const now = startOfDay(new Date());
-      setToday((prev) => (isSameDay(prev, now) ? prev : now));
-    };
-    const nextMidnight = addDays(startOfDay(new Date()), 1);
-    const timer = setTimeout(
-      rollover,
-      nextMidnight.getTime() - Date.now() + 1000,
-    );
-    return () => clearTimeout(timer);
-  }, [open, today]);
-
-  return [today, setToday] as const;
+/** Date range v2 gate. Nothing consumes this yet. */
+export function useDateRangeV2Enabled(): boolean {
+  const { runMode, dateRangeV2 } = useAuth();
+  const isCloudBrand = useIsCloudBrand();
+  return isDateRangeV2Enabled(runMode, dateRangeV2, { isCloudBrand });
 }
 
 function QuickRanges({
@@ -263,62 +154,6 @@ function QuickRanges({
           className="h-8 w-16 rounded-md border bg-background px-2 text-sm tabular-nums"
         />
         <span className="text-sm text-muted-foreground">days</span>
-      </div>
-    </div>
-  );
-}
-
-function CalendarPanel({
-  draft,
-  month,
-  today,
-  DayContent,
-  onSelect,
-  onMonthChange,
-}: {
-  draft: DateRange | undefined;
-  month: Date;
-  today: Date;
-  DayContent: (props: DayContentProps) => React.JSX.Element;
-  onSelect: (next: DateRange | undefined) => void;
-  onMonthChange: (month: Date) => void;
-}) {
-  return (
-    <div className="flex flex-1 flex-col items-center px-1 py-3 sm:px-4">
-      <Calendar
-        mode="range"
-        selected={draft}
-        onSelect={onSelect}
-        month={month}
-        onMonthChange={onMonthChange}
-        toMonth={today}
-        disabled={{ after: today }}
-        components={{ DayContent }}
-        classNames={{
-          caption_label: "text-base font-semibold",
-          head_cell: "w-9 text-xs font-normal text-muted-foreground sm:w-14",
-          cell: cn(
-            "relative h-11 w-9 p-0 text-center text-sm sm:h-12 sm:w-14",
-            "[&:has([aria-selected])]:bg-accent",
-            "first:[&:has([aria-selected])]:rounded-l-md",
-            "last:[&:has([aria-selected])]:rounded-r-md",
-            "focus-within:relative focus-within:z-20",
-          ),
-          day: "inline-flex h-11 w-9 items-center justify-center rounded-md p-0 font-normal hover:bg-accent/70 aria-selected:opacity-100 sm:h-12 sm:w-14",
-        }}
-      />
-      <div className="mt-2 flex w-full items-center gap-4 px-3 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          <span className="h-1 w-1 rounded-full bg-primary" />1 upload
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-1 w-3 rounded-full bg-primary" />
-          2–4
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-1 w-5 rounded-full bg-primary" />
-          5+
-        </span>
       </div>
     </div>
   );
@@ -541,12 +376,12 @@ export function DateRangePicker({
     [days],
   );
 
-  const label = describeRange(dateRange, formatDateLabel);
+  const label = describeToolbarRange(dateRange, formatDateLabel);
 
   // A saved one-sided range has no closed draftRange; describe it as it is.
   const footerCount = openEndedUnedited ? undefined : presetCount(draftRange);
   const footerRange = openEndedUnedited
-    ? (describeRange(dateRange, (d) => formatShortLabel(d, today)) ??
+    ? (describeToolbarRange(dateRange, (d) => formatShortLabel(d, today)) ??
       "Any time")
     : draftRange
       ? isSameDay(draftRange.from, draftRange.to)

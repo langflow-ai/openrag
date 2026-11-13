@@ -6,6 +6,7 @@ import React, {
   use,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { apiClient } from "@/lib/api-client";
@@ -32,6 +33,8 @@ interface AuthContextType {
   isNoAuthMode: boolean;
   isIbmAuthMode: boolean;
   runMode: RunMode | null;
+  /** Backend `date_range_v2` flag (already AND-ed with run mode). False if absent. */
+  dateRangeV2: boolean;
   version: string | null;
   permissions: Set<string>;
   roles: string[];
@@ -57,6 +60,8 @@ interface AuthContextType {
   loginWithIbm: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
+  /** Lightweight /auth/me re-fetch that updates only runMode and dateRangeV2. */
+  refreshFeatureFlags: () => Promise<void>;
   refreshPermissions: () => Promise<void>;
   refreshOnboardingStatus: () => Promise<void>;
 }
@@ -71,6 +76,11 @@ export function useAuth() {
   return context;
 }
 
+/** Re-check feature flags at most this often while the tab is open. */
+const FEATURE_FLAG_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+/** Minimum gap between flag refreshes, so rapid tab switching can't spam. */
+const FEATURE_FLAG_MIN_GAP_MS = 30 * 1000;
+
 interface AuthProviderProps {
   children: ReactNode;
 }
@@ -82,9 +92,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isIbmAuthMode, setIsIbmAuthMode] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
   const [runMode, setRunMode] = useState<RunMode | null>(null);
+  const [dateRangeV2, setDateRangeV2] = useState(false);
+
+  // Shared by checkAuth and refreshFeatureFlags: only the newest /auth/me
+  // request may write the flags, so a slow older response cannot overwrite them.
+  const flagRequestSeqRef = useRef(0);
+
+  const lastFlagRefreshRef = useRef(0);
 
   const checkAuth = useCallback(async () => {
     setIsLoading(true);
+    const flagSeq = ++flagRequestSeqRef.current;
     try {
       const response = await apiClient.get("/auth/me");
 
@@ -97,6 +115,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const data = response.data;
       if (data.version) setVersion(data.version);
       if (data.run_mode) setRunMode(data.run_mode);
+      if (flagSeq === flagRequestSeqRef.current) {
+        setDateRangeV2(data.date_range_v2 === true);
+      }
+      // checkAuth just read the flag, so the first tab switch need not refetch.
+      lastFlagRefreshRef.current = Date.now();
 
       // Check auth mode flags
       if (data.ibm_auth_mode) {
@@ -207,6 +230,57 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const refreshAuth = useCallback(async () => {
     await checkAuth();
   }, [checkAuth]);
+
+  const refreshFeatureFlags = useCallback(async () => {
+    lastFlagRefreshRef.current = Date.now();
+    const flagSeq = ++flagRequestSeqRef.current;
+    try {
+      const response = await apiClient.get("/auth/me");
+      // Keep the last known values on any failure.
+      if (response.status < 200 || response.status >= 300) return;
+      const data = response.data;
+      if (data?.run_mode) setRunMode(data.run_mode);
+      if (flagSeq === flagRequestSeqRef.current) {
+        setDateRangeV2(data?.date_range_v2 === true);
+      }
+    } catch {
+      // Swallow: keep the last known flags.
+    }
+  }, []);
+
+  // The backend only reports date_range_v2 in OSS, so other run modes (and the
+  // not-yet-known null) never poll.
+  useEffect(() => {
+    if (runMode !== "oss") return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const maybeRefresh = async () => {
+      if (Date.now() - lastFlagRefreshRef.current < FEATURE_FLAG_MIN_GAP_MS) {
+        return;
+      }
+      await refreshFeatureFlags();
+    };
+    // Chain timeouts (the next one is armed only after the previous refresh
+    // settles) rather than a standing setInterval: bounded cadence, and no
+    // perpetual timer for fake-timer tests to spin on.
+    const schedule = () => {
+      timer = setTimeout(async () => {
+        if (document.visibilityState === "visible") await maybeRefresh();
+        if (!cancelled) schedule();
+      }, FEATURE_FLAG_REFRESH_INTERVAL_MS);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void maybeRefresh();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    schedule();
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      clearTimeout(timer);
+    };
+  }, [refreshFeatureFlags, runMode]);
 
   const [permissions, setPermissions] = useState<Set<string>>(new Set());
   const [roles, setRoles] = useState<string[]>([]);
@@ -325,6 +399,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isNoAuthMode,
     isIbmAuthMode,
     runMode,
+    dateRangeV2,
     version,
     permissions,
     roles,
@@ -338,6 +413,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     loginWithIbm,
     logout,
     refreshAuth,
+    refreshFeatureFlags,
     refreshPermissions,
     refreshOnboardingStatus,
   };
