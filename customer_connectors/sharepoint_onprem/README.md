@@ -59,6 +59,19 @@ Select **Test connection** to authenticate and check the specified scope without
 - The picker's **Update available** indicator compares `TimeLastModified` with the indexed copy; the adapter does not report ETags yet. SharePoint's `"{GUID},N"` ETag also changes on property-only edits, and whether the listing and file endpoints return the same tag is unverified on a real farm. Revisit after the acceptance run.
 - No webhooks or subscription events: updates use explicit or scheduled polling/re-sync. The host remains single-worker until its process-local permission caches are replaced.
 
+## Troubleshooting a failed Test connection
+
+The form shows a coarse reason after "Connector authentication failed" and never SharePoint's own text. The backend log has the detail, with no passwords, URLs or exception text:
+
+| Form says | Meaning | Backend log |
+|---|---|---|
+| the source denied access | HTTP 401/403, or the sign-in was rejected | `SharePoint denied access (HTTP 401, authentication challenge: NTLM)`: check the account, `domain`, that the zone offers NTLM, and the account's permissions on the nominated sites |
+| did not respond in time | connect (5 s) or reply (20 s) timeout | `SharePoint reply timed out`: a farm that has just restarted can take tens of seconds on its first requests (app pool and claims token warm-up). Browse to the site once, or retry. |
+| could not reach the source | DNS, refused, proxy or TLS failure | `SharePoint request failed (SSLError)` (the class only): check the URL, DNS, firewall and `OPENRAG_SHAREPOINT_CA_BUNDLE` |
+| configuration was rejected | an unapproved origin, a bad `site_paths` entry, a missing operator setting | `SharePoint connection settings were rejected: ...` or the site-path errors above |
+
+This plug-in logs these at ERROR because the host drops lower levels from installed packages. The host also logs a `Plugin connector authentication failed` warning with the category and exception class; in OSS mode it appears in the Console Status `openrag` log.
+
 ## Non-production acceptance before promotion
 
 1. From the **derived backend image** with `OPENRAG_SHAREPOINT_CA_BUNDLE` mounted for a private CA, authenticate with the approved NTLM account against the actual zone. Verify the unauthorized, expired-secret, TLS failure and cross-origin redirect cases fail safely, without logging a password or URL containing credentials.
