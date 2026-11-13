@@ -673,9 +673,10 @@ class ChatService:
 
     async def delete_session(self, user_id: str, session_id: str):
         """Delete a session from both local storage and Langflow"""
-        if DISABLE_CHAT_WITH_LANGFLOW and await self.native_chat_history_service.owns_conversation(
+        native_conversation = await self.native_chat_history_service.owns_conversation(
             session_id, user_id
-        ):
+        )
+        if DISABLE_CHAT_WITH_LANGFLOW and native_conversation:
             deleted = await self.native_chat_history_service.delete(session_id, user_id)
             if deleted:
                 await self.session_ownership_service.release_session(user_id, session_id)
@@ -706,16 +707,24 @@ class ChatService:
                 user_id, session_id, session_ids=session_ids
             )
 
-            if not local_deleted:
+            native_deleted = False
+            if native_conversation:
+                native_deleted = await self.native_chat_history_service.delete(session_id, user_id)
+
+            if not local_deleted and not native_deleted:
                 return {
                     "success": False,
                     "not_found": True,
                     "error": "Conversation not found",
                 }
 
+            if native_deleted and not local_deleted:
+                await self.session_ownership_service.release_session(user_id, session_id)
+
             return {
                 "success": True,
                 "local_deleted": local_deleted,
+                "native_deleted": native_deleted,
                 "langflow_deleted": langflow_deleted,
                 "error": None,
             }
