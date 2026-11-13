@@ -197,7 +197,9 @@ def chunk_scores(
         name = canonical_name(chunk.filename, run_prefix, corpus_names)
         if name is None:
             continue
-        scores.append([rank_of[name], round(chunk.score, 6)])
+        # Unrounded: rounding could lift a score onto a threshold and keep a
+        # chunk that the stack would cut.
+        scores.append([rank_of[name], chunk.score])
         if needle is not None and name in expected and needle in normalize(chunk.text):
             answers.append(len(scores))
     return scores, answers

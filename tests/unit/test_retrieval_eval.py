@@ -1869,7 +1869,7 @@ def test_live_cuts_that_match_the_simulation_say_so() -> None:
     analysis = scores.analyze(with_live_cuts(tuning_results(), 0.0, [0.1, 0.42, 0.6]))
 
     assert [
-        scores.matches(a, b)
+        scores.matches(a, b, 2)
         for a, b in zip(analysis["live"], analysis["simulated_at_live"], strict=True)
     ] == [
         True,
@@ -1967,3 +1967,70 @@ def test_run_rejects_unusable_live_thresholds(value: str) -> None:
 
     assert completed.returncode == 2
     assert "--live-thresholds" in completed.stderr
+
+
+def test_a_range_that_rounds_to_duplicates_gives_unique_thresholds() -> None:
+    assert scores.parse_thresholds("0:0.000001:0.0000001") == [0.0, 1e-06]
+
+
+def test_duplicate_live_thresholds_in_a_results_file_still_analyze() -> None:
+    # Written by an older version that did not de-duplicate rounded ranges.
+    results = with_live_cuts(tuning_results(), 0.0, [0.1, 0.1, 0.42])
+
+    analysis = scores.analyze(results)
+
+    assert len(analysis["live"]) == len(analysis["simulated_at_live"]) == 3
+
+
+def test_matches_notices_a_single_chunk_across_many_questions() -> None:
+    def row(chunks_kept: float) -> scores.SweepRow:
+        return scores.SweepRow(0.5, 1.0, 1.0, None, 0.0, (), (), 0.0, 0.0, chunks_kept)
+
+    assert scores.matches(row(40.0), row(40.0), 83)
+    assert not scores.matches(row(40.0 - 1 / 83), row(40.0), 83)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "warned"),
+    [
+        ("corpus_hash", "e" * 64, True),
+        ("retrieval_queries_hash", "f" * 64, True),
+        ("label", "other", False),
+        ("score_threshold", 0.000001, False),
+    ],
+)
+def test_scores_comparison_warns_only_when_the_data_differs(
+    field: str, value: object, warned: bool, tmp_path: Path
+) -> None:
+    before, after = tmp_path / "before.json", tmp_path / "after.json"
+    before.write_text(report.dumps(tuning_results()), encoding="utf-8")
+    changed = tuning_results()
+    changed["run"][field] = value
+    after.write_text(report.dumps(changed), encoding="utf-8")
+
+    completed = _run_cli("scores", str(after), "--baseline", str(before))
+
+    assert completed.returncode == 0, completed.stderr
+    assert ("**Warning:**" in completed.stdout) is warned
+
+
+def test_a_candidate_below_the_run_threshold_is_refused(tmp_path: Path) -> None:
+    path = tmp_path / "results.json"
+    path.write_text(report.dumps(tuning_results(score_threshold=0.3)), encoding="utf-8")
+
+    completed = _run_cli("scores", str(path), "--candidate", "0.1")
+
+    assert completed.returncode == 1
+    assert "below the run's score threshold 0.3" in completed.stderr
+
+
+def test_chunk_scores_keep_full_precision() -> None:
+    chunks = [chunk("a.md", "the answer", 0.4999996), chunk("b.md", "", 0.9)]
+    ranked_files = metrics.rank_files(chunks, PREFIX, CORPUS, "answer")
+
+    pairs, answers = metrics.chunk_scores(chunks, PREFIX, CORPUS, ranked_files, ["a.md"], "answer")
+    question = scored_query("q", chunks, ["a.md"], "answer")
+    row = scores.sweep(scores.load_questions(make_results([question])), [0.5], 5)[1]
+
+    assert pairs[0] == [1, 0.4999996] and answers == [1]
+    assert row.answers_lost == ("q",)  # a cut at 0.5 drops it; rounding would have kept it

@@ -143,13 +143,18 @@ def _snippet_missing(query: Mapping[str, Any]) -> list[str]:
     ]
 
 
-def _mismatch_warnings(baseline: Mapping[str, Any], current: Mapping[str, Any]) -> list[str]:
+def _run_field_mismatches(
+    base_run: Mapping[str, Any],
+    cur_run: Mapping[str, Any],
+    fields: Sequence[tuple[str, str]],
+) -> list[str]:
     warnings: list[str] = []
-    base_run, cur_run = baseline["run"], current["run"]
-    for field, label in _COMPARABLE_RUN_FIELDS:
+    for field, label in fields:
         base_value = base_run.get(field)
         cur_value = cur_run.get(field)
         if field == "queries_hash":
+            # Answer references do not change retrieval, so prefer the hash
+            # that leaves them out.
             base_value = base_run.get("retrieval_queries_hash", base_value)
             cur_value = cur_run.get("retrieval_queries_hash", cur_value)
         if base_value != cur_value:
@@ -157,6 +162,21 @@ def _mismatch_warnings(baseline: Mapping[str, Any], current: Mapping[str, Any]) 
                 f"The {label} differs between the runs "
                 f"(baseline {_short(base_run.get(field))}, current {_short(cur_run.get(field))})."
             )
+    return warnings
+
+
+def dataset_mismatches(base_run: Mapping[str, Any], cur_run: Mapping[str, Any]) -> list[str]:
+    """Why two runs did not score the same corpus and questions, empty when they did.
+
+    Unlike a baseline diff, a threshold comparison expects the scoring, the
+    settings and the label to differ, so only the dataset is checked.
+    """
+    return _run_field_mismatches(base_run, cur_run, _COMPARABLE_RUN_FIELDS[:2])
+
+
+def _mismatch_warnings(baseline: Mapping[str, Any], current: Mapping[str, Any]) -> list[str]:
+    base_run, cur_run = baseline["run"], current["run"]
+    warnings = _run_field_mismatches(base_run, cur_run, _COMPARABLE_RUN_FIELDS)
     base_settings = baseline.get("settings") or {}
     cur_settings = current.get("settings") or {}
     if not base_settings or not cur_settings:

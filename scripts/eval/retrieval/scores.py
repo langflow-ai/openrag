@@ -135,7 +135,8 @@ def parse_thresholds(text: str) -> list[float] | None:
         # Each value is start + i * step rather than a running sum, so float
         # error does not build up; EPSILON keeps an exact stop such as 0.3 in.
         count = math.floor((stop - start) / step + EPSILON) + 1
-        return [round(start + i * step, 6) for i in range(count)]
+        # Rounding can make neighbors equal when the step is tiny.
+        return sorted({round(start + i * step, 6) for i in range(count)})
     values = sorted({round(finite(part), 6) for part in text.split(",") if part.strip()})
     if not values:
         raise ValueError("no thresholds given")
@@ -387,12 +388,16 @@ def live_rows(results: Mapping[str, Any], k: int) -> list[SweepRow] | None:
     return rows
 
 
-def matches(live: SweepRow, simulated: SweepRow) -> bool:
-    """Whether the stack's own cut kept what the simulation predicts at the same threshold."""
+def matches(live: SweepRow, simulated: SweepRow, questions: int) -> bool:
+    """Whether the stack's own cut kept exactly what the simulation predicts.
+
+    ``chunks_kept`` is a mean over ``questions``, so the totals are compared:
+    a single chunk kept or cut differently is a mismatch.
+    """
     return (
         abs(live.recall - simulated.recall) <= EPSILON
         and set(live.answers_lost) == set(simulated.answers_lost)
-        and abs(live.chunks_kept - simulated.chunks_kept) < 0.05
+        and abs(live.chunks_kept - simulated.chunks_kept) * questions < 0.5
     )
 
 
@@ -510,12 +515,15 @@ def analyze(
         # Live thresholds are on the scale search returns, so compare them with
         # a simulation on the unnormalized scores.
         raw = load_questions(results)
-        simulated_at_live = sweep(raw, [row.threshold or 0.0 for row in live], k)[1:]
+        # One simulated row per live row, duplicates included, so the two lists
+        # always line up.
+        _, reference_cuts = _row(raw, None, k, None)
+        simulated_at_live = [_row(raw, row.threshold, k, reference_cuts)[0] for row in live]
         live_advice = recommend(live, max_recall_loss)
         differ = [
             (row, sim)
             for row, sim in zip(live, simulated_at_live, strict=True)
-            if not matches(row, sim)
+            if not matches(row, sim, len(raw))
         ]
         if differ:
             row, sim = differ[0]
@@ -532,6 +540,11 @@ def analyze(
             )
     # The threshold whose lost questions the report lists: the one asked for,
     # otherwise the highest that keeps recall.
+    if candidate is not None and method == "none" and 0 < floor and candidate < floor:
+        raise ScoresError(
+            f"--candidate {candidate:g} is below the run's score threshold {floor:g}, so "
+            f"chunks below {floor:g} were never returned and its cost cannot be measured"
+        )
     chosen = candidate
     if chosen is None and advice.keeps_recall is not None:
         chosen = advice.keeps_recall.threshold
@@ -555,6 +568,7 @@ def analyze(
         "live": live,
         "simulated_at_live": simulated_at_live,
         "live_recommendation": live_advice,
+        "question_count": len(questions),
         "lost": _lost_details(questions, chosen, k) if chosen is not None else [],
         "tiers": tiers(questions, tier_cutoffs[0], tier_cutoffs[1], hide),
     }
@@ -711,13 +725,20 @@ def _render_live(analysis: Mapping[str, Any], k: int) -> list[str]:
         "| Simulated answers lost | Live chunks kept | Simulated chunks kept | Matches |",
         "|---|---|---|---|---|---|---|---|",
     ]
+    count = analysis["question_count"]
     for live, sim in zip(analysis["live"], analysis["simulated_at_live"], strict=True):
         lines.append(
             f"| {_threshold(live)} | {live.recall:.3f} | {sim.recall:.3f} "
             f"| {len(live.answers_lost)} | {len(sim.answers_lost)} "
             f"| {live.chunks_kept:.1f} | {sim.chunks_kept:.1f} "
-            f"| {'yes' if matches(live, sim) else '**no**'} |"
+            f"| {'yes' if matches(live, sim, count) else '**no**'} |"
         )
+    lines += [
+        "",
+        "Matches compares exact counts, so a single chunk kept or cut differently is a "
+        "mismatch. Two searches can differ by a rank through index noise; rerun to confirm a "
+        "small mismatch.",
+    ]
     return lines
 
 
@@ -748,8 +769,16 @@ def _render_tiers(result: Mapping[str, Any]) -> list[str]:
     return lines
 
 
-def render_comparison(baseline: Mapping[str, Any], current: Mapping[str, Any]) -> str:
-    """Markdown table comparing two runs' threshold analyses side by side."""
+def render_comparison(
+    baseline: Mapping[str, Any],
+    current: Mapping[str, Any],
+    warnings: Sequence[str] = (),
+) -> str:
+    """Markdown table comparing two runs' threshold analyses side by side.
+
+    ``warnings`` says why the runs may not be comparable, such as a different
+    corpus or question set; each is shown above the table.
+    """
     k = current["k"]
 
     def describe(analysis: Mapping[str, Any]) -> list[str]:
@@ -792,9 +821,12 @@ def render_comparison(baseline: Mapping[str, Any], current: Mapping[str, Any]) -
         "Other files in High",
         "Answer chunks hidden",
     ]
-    lines = [
-        "# Relevance thresholds compared",
-        "",
+    lines = ["# Relevance thresholds compared", ""]
+    for warning in warnings:
+        lines.append(f"> **Warning:** {warning} The two runs did not score the same data.")
+    if warnings:
+        lines.append("")
+    lines += [
         "| | Baseline | Current |",
         "|---|---|---|",
     ]

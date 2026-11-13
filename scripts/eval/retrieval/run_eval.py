@@ -1047,7 +1047,8 @@ def score_report(args: argparse.Namespace) -> int:
         text = scores.render_report(current)
         if baseline_results is not None:
             baseline = scores.analyze(baseline_results, **options)
-            text = scores.render_comparison(baseline, current) + "\n" + text
+            mismatches = report.dataset_mismatches(baseline_results["run"], current_results["run"])
+            text = scores.render_comparison(baseline, current, mismatches) + "\n" + text
     except scores.ScoresError as exc:
         raise EvalError(str(exc)) from exc
     output = args.output or args.results.with_name("scores.md")
