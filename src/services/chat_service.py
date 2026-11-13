@@ -373,12 +373,27 @@ class ChatService:
             )
         prompt = ""
         if previous_response_id:
-            messages = []
-            # Try in-memory active conversation first
+            messages: list[dict[str, Any]] = []
+            # Native history is scoped to the owner, including API-key storage identities.
+            try:
+                native_history = await self.native_chat_history_service.history(conversation_user_id)
+                messages = next(
+                    (
+                        conversation.get("messages", [])
+                        for conversation in native_history.get("conversations", [])
+                        if conversation.get("response_id") == previous_response_id
+                    ),
+                    [],
+                )
+            except Exception as e:
+                logger.warning(f"Failed to fetch native messages for nudges: {e}")
+
+            # Fall back to the legacy in-memory conversation.
             from agent import active_conversations
 
             if (
-                conversation_user_id in active_conversations
+                not messages
+                and conversation_user_id in active_conversations
                 and previous_response_id in active_conversations[conversation_user_id]
             ):
                 messages = active_conversations[conversation_user_id][previous_response_id].get(

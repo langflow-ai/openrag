@@ -8,6 +8,13 @@ import agent
 from services.chat_service import ChatService
 
 
+@pytest.fixture(autouse=True)
+def native_history(monkeypatch):
+    history = AsyncMock(return_value={"conversations": []})
+    monkeypatch.setattr("services.native_chat_history_service.NativeChatHistoryService.history", history)
+    return history
+
+
 @pytest.mark.asyncio
 async def test_langflow_nudges_chat_with_chunks_in_memory(monkeypatch):
     """Ensure in-memory conversation chunks are formatted into the nudges prompt."""
@@ -126,3 +133,51 @@ async def test_langflow_nudges_chat_with_chunks_langflow_history(monkeypatch):
     assert "user: Tell me about security." in captured_prompt
     assert "Context Chunks:" in captured_prompt
     assert "Security info chunk." in captured_prompt
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("native_state", ["owned", "missing", "unavailable"])
+async def test_nudges_native_history_precedes_legacy(monkeypatch, native_history, native_state):
+    monkeypatch.setattr("services.chat_service.LANGFLOW_URL", "http://localhost:7860")
+    monkeypatch.setattr("services.chat_service.NUDGES_FLOW_ID", "nudges-flow-id")
+    monkeypatch.setattr(
+        "services.chat_service.clients.ensure_langflow_client", AsyncMock(return_value=MagicMock())
+    )
+    native_history.return_value = {
+        "conversations": [{
+            "response_id": "thread" if native_state == "owned" else "different-thread",
+            "messages": [
+                {"role": "system", "content": "Hidden system instructions"},
+                {"role": "user", "content": "Native question"},
+                {"role": "assistant", "content": "Native answer"},
+            ],
+        }]
+    }
+    if native_state == "unavailable":
+        native_history.side_effect = RuntimeError("History unavailable")
+    monkeypatch.setitem(agent.active_conversations, "storage-owner", {
+        "thread": {"messages": [{"role": "user", "content": "Legacy question"}]}
+    })
+    from services.langflow_history_service import langflow_history_service
+
+    legacy_history = AsyncMock()
+    monkeypatch.setattr(langflow_history_service, "get_session_messages", legacy_history)
+    run_flow = AsyncMock(return_value=("Nudge", "nudge-response", []))
+    monkeypatch.setattr(agent, "async_langflow_chat", run_flow)
+
+    result = await ChatService().langflow_nudges_chat(
+        user_id="auth-subject", storage_user_id="storage-owner", previous_response_id="thread"
+    )
+
+    native_history.assert_awaited_once_with("storage-owner")
+    legacy_history.assert_not_awaited()
+    prompt = run_flow.call_args.args[2]
+    if native_state == "owned":
+        assert "user: Native question" in prompt
+        assert "assistant: Native answer" in prompt
+        assert "Legacy question" not in prompt
+        assert "Hidden system instructions" not in prompt
+    else:
+        assert "user: Legacy question" in prompt
+        assert "Native question" not in prompt
+    assert result["response"] == "Nudge"
