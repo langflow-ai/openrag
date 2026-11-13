@@ -1985,7 +1985,9 @@ async def rollback_onboarding(
         # 5. Delete all user conversations
         deleted_conversations_count = 0
         try:
-            result = await chat_service.delete_all_user_sessions(user.user_id)
+            result = await chat_service.delete_all_user_sessions(
+                getattr(user, "db_user_id", None) or user.user_id
+            )
             if result.get("success"):
                 deleted_conversations_count = result.get("deleted_count", 0)
                 logger.info(f"Deleted {deleted_conversations_count} conversations during rollback")

@@ -40,6 +40,7 @@ async def test_native_history_replays_complete_assistant_turn_with_its_chunks(mo
     rows = [
         SimpleNamespace(
             role="assistant",
+            conversation_id="chat-1",
             content="Grounded answer.",
             created_at=now,
             error=False,
@@ -69,7 +70,7 @@ async def test_native_history_replays_complete_assistant_turn_with_its_chunks(mo
         async def list_conversations(self, _user_id):
             return [conversation]
 
-        async def list_messages(self, _conversation_id):
+        async def list_messages_for_conversations(self, _conversation_ids):
             return rows
 
     monkeypatch.setattr("services.native_chat_history_service.ChatHistoryRepo", Repo)

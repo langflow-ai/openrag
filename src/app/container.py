@@ -4,7 +4,6 @@ Returns a dict consumed by routes (via FastAPI Depends) and the lifespan hook.
 """
 
 from config.settings import (
-    DISABLE_CHAT_WITH_LANGFLOW,
     ENABLE_BACKEND_DOCLING_POLLING,
     INGESTION_TIMEOUT,
     JWT_SIGNING_KEY,
@@ -16,7 +15,6 @@ from config.settings import (
     is_dev_azure_blob_enabled,
     is_no_auth_mode,
 )
-from config.storage_mode import get_storage_mode
 from connectors.service import ConnectorService
 from services.api_key_service import APIKeyService
 from services.auth_service import AuthService
@@ -46,23 +44,6 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 
 logger = get_logger(__name__)
 
-
-def _validate_native_chat_storage_mode() -> None:
-    """Reject native chat before startup when its required DB storage is absent."""
-    if not DISABLE_CHAT_WITH_LANGFLOW:
-        return
-    storage_mode = get_storage_mode()
-    if storage_mode == "db":
-        return
-    message = (
-        "DISABLE_CHAT_WITH_LANGFLOW=true requires OPENRAG_STORAGE_MODE=db and "
-        "OPENRAG_DISABLE_DB_WORKSPACE_CONFIG=false; native chat history is stored only "
-        "in the database."
-    )
-    logger.error("[CHAT] Invalid native chat startup configuration", storage_mode=storage_mode)
-    raise RuntimeError(message)
-
-
 def _should_load_persisted_connections() -> bool:
     """Whether to load persisted connector connections at startup.
 
@@ -78,7 +59,6 @@ def _should_load_persisted_connections() -> bool:
 
 async def initialize_services():
     """Initialize all services and their dependencies"""
-    _validate_native_chat_storage_mode()
     await TelemetryClient.send_event(Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_START)
     from config.settings import IBM_AUTH_ENABLED
 
@@ -233,20 +213,18 @@ async def initialize_services():
     from services.native_chat_agent import NativeChatAgent
     from services.native_chat_history_service import NativeChatHistoryService
     from services.session_ownership_service import (
-        SessionOwnershipService,
         session_ownership_service,
     )
 
     session_ownership_service._session_factory = _lazy_session_factory
     conversation_persistence._session_factory = _lazy_session_factory
     native_history_service = NativeChatHistoryService(_lazy_session_factory)
-    native_ownership_service = SessionOwnershipService(_lazy_session_factory)
-    native_chat_agent = NativeChatAgent(native_history_service, native_ownership_service)
+    native_chat_agent = NativeChatAgent(native_history_service, session_ownership_service)
     chat_service = ChatService(
         flows_service=flows_service,
         native_chat_agent=native_chat_agent,
         native_chat_history_service=native_history_service,
-        session_ownership_service=native_ownership_service,
+        session_ownership_service=session_ownership_service,
     )
 
     file_service_v2 = FileServiceV2(session_manager=session_manager)

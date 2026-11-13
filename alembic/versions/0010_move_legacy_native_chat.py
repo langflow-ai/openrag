@@ -1,12 +1,12 @@
 """move legacy /chat metadata into native history tables
 
-Revision ID: 0010_move_legacy_native_chat_history
+Revision ID: 0010_move_legacy_native_chat
 Revises: 0009_native_chat_history
 """
 
 from alembic import op
 
-revision = "0010_move_legacy_native_chat_history"
+revision = "0010_move_legacy_native_chat"
 down_revision = "0009_native_chat_history"
 branch_labels = None
 depends_on = None

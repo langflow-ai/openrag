@@ -86,24 +86,12 @@ class NativeChatHistoryService:
         async with self._factory() as session:
             repo = ChatHistoryRepo(session)
             conversations = await repo.list_conversations(user_id)
+            rows_by_conversation: dict[str, list[Any]] = {conversation.id: [] for conversation in conversations}
+            for row in await repo.list_messages_for_conversations(list(rows_by_conversation)):
+                rows_by_conversation.setdefault(row.conversation_id, []).append(row)
             payload = []
             for conversation in conversations:
-                rows = await repo.list_messages(conversation.id)
-                messages: list[dict[str, Any]] = []
-                for row in rows:
-                    if row.role in {"user", "assistant"}:
-                        event_data = getattr(row, "event_data", None) or {}
-                        message: dict[str, Any] = {
-                            "role": row.role,
-                            "content": row.content or "",
-                            "timestamp": row.created_at.isoformat(),
-                            **({"error": True} if row.error else {}),
-                        }
-                        if row.role == "assistant" and isinstance(event_data.get("chunks"), list):
-                            message["chunks"] = event_data["chunks"]
-                        if row.role == "assistant" and event_data.get("usage"):
-                            message["response_data"] = {"usage": event_data["usage"]}
-                        messages.append(message)
+                messages = self._message_payload(rows_by_conversation[conversation.id])
                 payload.append(
                     {
                         "response_id": conversation.id,
@@ -124,6 +112,36 @@ class NativeChatHistoryService:
             "total_conversations": len(payload),
         }
 
+    async def messages_for(self, conversation_id: str, user_id: str) -> list[dict[str, Any]]:
+        """Return one owned conversation's display messages without loading all history."""
+        async with self._factory() as session:
+            repo = ChatHistoryRepo(session)
+            conversation = await repo.get_conversation(conversation_id)
+            if conversation is None or conversation.user_id != user_id:
+                return []
+            return self._message_payload(await repo.list_messages(conversation_id))
+
+    @staticmethod
+    def _message_payload(rows: list[Any]) -> list[dict[str, Any]]:
+        """Translate durable message rows to the public chat-history schema."""
+        messages: list[dict[str, Any]] = []
+        for row in rows:
+            if row.role not in {"user", "assistant"}:
+                continue
+            event_data = getattr(row, "event_data", None) or {}
+            message: dict[str, Any] = {
+                "role": row.role,
+                "content": row.content or "",
+                "timestamp": row.created_at.isoformat(),
+                **({"error": True} if row.error else {}),
+            }
+            if row.role == "assistant" and isinstance(event_data.get("chunks"), list):
+                message["chunks"] = event_data["chunks"]
+            if row.role == "assistant" and event_data.get("usage"):
+                message["response_data"] = {"usage": event_data["usage"]}
+            messages.append(message)
+        return messages
+
     async def delete(self, conversation_id: str, user_id: str) -> bool:
         async with self._factory() as session:
             deleted = await ChatHistoryRepo(session).delete_conversation(conversation_id, user_id)
@@ -135,3 +153,8 @@ class NativeChatHistoryService:
             deleted = await ChatHistoryRepo(session).delete_all_for_user(user_id)
             await session.commit()
             return deleted
+
+    async def conversation_ids(self, user_id: str) -> list[str]:
+        """Return all native conversation ids owned by ``user_id``."""
+        async with self._factory() as session:
+            return await ChatHistoryRepo(session).list_conversation_ids(user_id)

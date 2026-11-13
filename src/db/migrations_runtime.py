@@ -19,6 +19,7 @@ import json
 import os
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from typing import Any
 
 from pydantic_ai.messages import (
     ModelMessagesTypeAdapter,
@@ -48,6 +49,7 @@ JSON_TO_DB_V1 = "json_to_db_v1"
 # SQLite, so there's no longer dirty data to sweep.
 CONFIG_YAML_TO_DB_V1 = "config_yaml_to_db_v1"
 CHAT_HISTORY_JSON_TO_DB_V1 = "chat_history_json_to_db_v1"
+NATIVE_CHAT_HISTORY_JSON_TO_DB_V1 = "native_chat_history_json_to_db_v1"
 
 
 class RuntimeMigrationError(RuntimeError):
@@ -212,6 +214,84 @@ def _parse_legacy_dt(value: str | None) -> datetime | None:
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 
+async def _migrate_legacy_native_conversation(
+    native_repo: Any, user_id: str, response_id: str, metadata: dict[str, Any]
+) -> bool:
+    """Copy one legacy ``/chat`` conversation and its recoverable messages."""
+    if await native_repo.get_conversation(response_id) is not None:
+        return False
+    created = _parse_legacy_dt(metadata.get("created_at"))
+    last = _parse_legacy_dt(metadata.get("last_activity"))
+    conversation = await native_repo.create_conversation(
+        conversation_id=response_id,
+        user_id=user_id,
+        title=metadata.get("title"),
+        filter_id=metadata.get("filter_id"),
+        total_messages=0,
+        created_at=created,
+        last_activity=last,
+    )
+    legacy_messages = metadata.get("messages")
+    if isinstance(legacy_messages, list):
+        for message in legacy_messages:
+            if not isinstance(message, dict):
+                continue
+            role = message.get("role")
+            content = message.get("content")
+            if not isinstance(role, str) or role not in {"user", "assistant"} or not isinstance(content, str):
+                continue
+            event_data: dict[str, Any] = {}
+            if isinstance(message.get("chunks"), list):
+                event_data["chunks"] = message["chunks"]
+            response_data = message.get("response_data")
+            if isinstance(response_data, dict) and response_data.get("usage"):
+                event_data["usage"] = response_data["usage"]
+            history_message = (
+                ModelRequest(parts=[UserPromptPart(content=content)])
+                if role == "user"
+                else ModelResponse(parts=[TextPart(content=content)])
+            )
+            event_data["pydantic_messages"] = json.loads(
+                ModelMessagesTypeAdapter.dump_json([history_message])
+            )
+            await native_repo.append_message(
+                conversation=conversation,
+                role=role,
+                content=content,
+                event_data=event_data,
+                error=bool(message.get("error")),
+            )
+    conversation.total_messages = max(
+        conversation.total_messages, int(metadata.get("total_messages") or 0)
+    )
+    conversation.last_activity = last or conversation.last_activity
+    native_repo.session.add(conversation)
+    await native_repo.session.flush()
+    return True
+
+
+async def migrate_legacy_native_chat_history_json_to_db(session: AsyncSession) -> int:
+    """Move legacy ``/chat`` records even when the broader JSON migration ran."""
+    from db.repositories import ChatHistoryRepo
+
+    payload = await _read_json(get_data_file("conversations.json"))
+    if not isinstance(payload, dict):
+        return 0
+    native_repo = ChatHistoryRepo(session)
+    inserted = 0
+    for user_id, conversations in payload.items():
+        if not isinstance(conversations, dict):
+            continue
+        for response_id, metadata in conversations.items():
+            if not isinstance(metadata, dict) or metadata.get("endpoint") != "chat":
+                continue
+            if await _migrate_legacy_native_conversation(
+                native_repo, str(user_id), str(response_id), metadata
+            ):
+                inserted += 1
+    return inserted
+
+
 async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, int]:
     """Copy ``data/session_ownership.json`` and ``data/conversations.json``
     into the DB. Idempotent — only inserts rows that aren't already present.
@@ -255,68 +335,17 @@ async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, in
             for resp_id, meta in user_convs.items():
                 if not isinstance(meta, dict):
                     continue
-                created = _parse_legacy_dt(meta.get("created_at"))
-                last = _parse_legacy_dt(meta.get("last_activity"))
                 # Before native history had its own tables, the legacy `/chat`
                 # endpoint shared conversations.json with Langflow. Preserve
                 # those records in the source that now serves `/chat/history`.
                 if meta.get("endpoint") == "chat":
-                    if await native_repo.get_conversation(str(resp_id)) is None:
-                        conversation = await native_repo.create_conversation(
-                            conversation_id=str(resp_id),
-                            user_id=str(uid),
-                            title=meta.get("title"),
-                            filter_id=meta.get("filter_id"),
-                            total_messages=0,
-                            created_at=created,
-                            last_activity=last,
-                        )
-                        legacy_messages = meta.get("messages")
-                        if isinstance(legacy_messages, list):
-                            for message in legacy_messages:
-                                if not isinstance(message, dict):
-                                    continue
-                                role = message.get("role")
-                                content = message.get("content")
-                                if (
-                                    not isinstance(role, str)
-                                    or role
-                                    not in {
-                                        "user",
-                                        "assistant",
-                                    }
-                                    or not isinstance(content, str)
-                                ):
-                                    continue
-                                event_data = {}
-                                if isinstance(message.get("chunks"), list):
-                                    event_data["chunks"] = message["chunks"]
-                                response_data = message.get("response_data")
-                                if isinstance(response_data, dict) and response_data.get("usage"):
-                                    event_data["usage"] = response_data["usage"]
-                                history_message = (
-                                    ModelRequest(parts=[UserPromptPart(content=content)])
-                                    if role == "user"
-                                    else ModelResponse(parts=[TextPart(content=content)])
-                                )
-                                event_data["pydantic_messages"] = json.loads(
-                                    ModelMessagesTypeAdapter.dump_json([history_message])
-                                )
-                                await native_repo.append_message(
-                                    conversation=conversation,
-                                    role=role,
-                                    content=content,
-                                    event_data=event_data or None,
-                                    error=bool(message.get("error")),
-                                )
-                        conversation.total_messages = max(
-                            conversation.total_messages, int(meta.get("total_messages") or 0)
-                        )
-                        conversation.last_activity = last or conversation.last_activity
-                        session.add(conversation)
-                        await session.flush()
+                    if await _migrate_legacy_native_conversation(
+                        native_repo, str(uid), str(resp_id), meta
+                    ):
                         stats["native_conversations"] += 1
                     continue
+                created = _parse_legacy_dt(meta.get("created_at"))
+                last = _parse_legacy_dt(meta.get("last_activity"))
                 if await crepo.get(str(resp_id)) is not None:
                     continue
                 await crepo.upsert(
@@ -372,6 +401,22 @@ async def run(session: AsyncSession) -> None:
         )
         await _mark_done(session, CHAT_HISTORY_JSON_TO_DB_V1, notes=notes)
         logger.info("chat_history_json_to_db_v1 completed", **stats)
+
+    # This own marker intentionally runs after the original broad migration.
+    # Deployments that completed it before native history was introduced still
+    # need their legacy `/chat` records copied into the native tables.
+    if not await _already_done(session, NATIVE_CHAT_HISTORY_JSON_TO_DB_V1):
+        try:
+            inserted = await migrate_legacy_native_chat_history_json_to_db(session)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "native_chat_history_json_to_db_v1 failed; aborting startup", error=str(exc)
+            )
+            raise RuntimeMigrationError(f"{NATIVE_CHAT_HISTORY_JSON_TO_DB_V1} failed") from exc
+        await _mark_done(
+            session, NATIVE_CHAT_HISTORY_JSON_TO_DB_V1, notes=f"conversations={inserted}"
+        )
+        logger.info("native_chat_history_json_to_db_v1 completed", conversations=inserted)
 
     try:
         from db.seed import seed_roles_and_permissions

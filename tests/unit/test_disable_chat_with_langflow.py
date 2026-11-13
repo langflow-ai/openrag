@@ -91,7 +91,11 @@ async def test_langflow_chat_resumes_an_owned_native_conversation_when_disabled(
 async def test_delete_all_sessions_deletes_native_and_langflow_history(monkeypatch):
     monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", True)
     service = ChatService()
+    service.native_chat_history_service.conversation_ids = AsyncMock(
+        return_value=["native-1", "native-2"]
+    )
     service.native_chat_history_service.delete_all = AsyncMock(return_value=2)
+    service.session_ownership_service.release_conversation_sessions = AsyncMock()
     service.delete_session = AsyncMock(return_value={"success": True})
 
     async def get_user_conversations(_user_id):
@@ -110,3 +114,6 @@ async def test_delete_all_sessions_deletes_native_and_langflow_history(monkeypat
     }
     assert service.delete_session.await_args_list[0].args == ("db-user", "langflow-1")
     assert service.delete_session.await_args_list[1].args == ("db-user", "langflow-2")
+    service.session_ownership_service.release_conversation_sessions.assert_awaited_once_with(
+        "db-user", ["native-1", "native-2"]
+    )

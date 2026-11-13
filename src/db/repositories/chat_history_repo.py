@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import case, delete, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
@@ -27,6 +27,13 @@ class ChatHistoryRepo:
             .where(col(ChatConversation.user_id) == user_id)
             .order_by(col(ChatConversation.last_activity).desc())
             .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def list_conversation_ids(self, user_id: str) -> list[str]:
+        """Return every native conversation id for cleanup ownership releases."""
+        result = await self.session.execute(
+            select(col(ChatConversation.id)).where(col(ChatConversation.user_id) == user_id)
         )
         return list(result.scalars().all())
 
@@ -63,6 +70,19 @@ class ChatHistoryRepo:
         )
         return list(result.scalars().all())
 
+    async def list_messages_for_conversations(
+        self, conversation_ids: list[str]
+    ) -> list[ChatMessage]:
+        """Return messages for a page of conversations in one query."""
+        if not conversation_ids:
+            return []
+        result = await self.session.execute(
+            select(ChatMessage)
+            .where(col(ChatMessage.conversation_id).in_(conversation_ids))
+            .order_by(col(ChatMessage.conversation_id), col(ChatMessage.sequence))
+        )
+        return list(result.scalars().all())
+
     async def append_message(
         self,
         *,
@@ -77,7 +97,28 @@ class ChatHistoryRepo:
         error: bool = False,
         interrupted: bool = False,
     ) -> ChatMessage:
-        sequence = conversation.total_messages
+        now = datetime.now(UTC)
+        total_messages_column = col(ChatConversation.total_messages)
+        title_column = col(ChatConversation.title)
+        values: dict[str, Any] = {
+            "total_messages": total_messages_column + 1,
+            "last_activity": now,
+        }
+        if role == "user" and content:
+            title = content[:50] + ("..." if len(content) > 50 else "")
+            values["title"] = case(
+                (title_column.is_(None), title), else_=title_column
+            )
+        result = await self.session.execute(
+            update(ChatConversation)
+            .where(col(ChatConversation.id) == conversation.id)
+            .values(**values)
+            .returning(total_messages_column)
+        )
+        total_messages = result.scalar_one_or_none()
+        if total_messages is None:
+            raise ValueError("Conversation was not found")
+        sequence = total_messages - 1
         row = ChatMessage(
             # Conversation ids may use all 64 permitted characters, so do
             # not derive a message id from one. A UUID hex value is bounded
@@ -95,13 +136,9 @@ class ChatHistoryRepo:
             error=error,
             interrupted=interrupted,
         )
-        conversation.total_messages += 1
-        conversation.last_activity = datetime.now(UTC)
-        if role == "user" and not conversation.title and content:
-            conversation.title = content[:50] + ("..." if len(content) > 50 else "")
         self.session.add(row)
-        self.session.add(conversation)
         await self.session.flush()
+        await self.session.refresh(conversation)
         return row
 
     async def delete_conversation(self, conversation_id: str, user_id: str) -> bool:

@@ -79,7 +79,7 @@ dependencies = [
     "multidict>=6.9.1",
     "oauthlib>=4.0.0",
     "opentelemetry-api>=1.45.1",
-    "pydantic-ai==2.66.0",
+    "pydantic-ai-slim[openai]==2.66.0",
 ]
 
 # Optional extras. Install with `uv sync --extra <name>`.

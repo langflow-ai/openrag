@@ -18,12 +18,13 @@ import os
 import socket
 import time
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterable, AsyncIterator, Callable
 from dataclasses import asdict
 from html.parser import HTMLParser
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse, urlsplit, urlunsplit
 
+import httpcore
 import httpx
 
 # The onboarding banner is useful in a script, but noisy and misleading in a
@@ -66,6 +67,8 @@ logger = get_logger(__name__)
 MAX_ITERATIONS = 15
 MAX_CALCULATOR_INTEGER_BITS = 4_096
 MAX_CALCULATOR_EXPONENT = 4_096
+MAX_CALCULATOR_AST_NODES = 1_000
+MAX_URL_RESPONSE_BYTES = 1_000_000
 _BINARY_OPERATORS: dict[type[ast.operator], Callable[[int | float, int | float], int | float]] = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -91,8 +94,64 @@ class _TextExtractor(HTMLParser):
             self.parts.append(data.strip())
 
 
+class _PinnedAddressBackend:
+    """Connect HTTP requests to one already-validated IP address.
+
+    ``httpcore`` still receives the original request origin, so HTTPS keeps the
+    URL hostname for certificate validation and SNI while TCP is pinned to the
+    validated address.  This closes the resolution-to-connect DNS rebinding
+    window in the URL-reading tool.
+    """
+
+    def __init__(self, address: str) -> None:
+        self._address = address
+        from httpcore._backends.auto import AutoBackend
+
+        self._backend: Any = AutoBackend()
+
+    async def connect_tcp(self, host: str, port: int, **kwargs: Any) -> Any:
+        return await self._backend.connect_tcp(self._address, port, **kwargs)
+
+    async def connect_unix_socket(self, path: str, **kwargs: Any) -> Any:
+        return await self._backend.connect_unix_socket(path, **kwargs)
+
+    async def sleep(self, seconds: float) -> None:
+        await self._backend.sleep(seconds)
+
+
+class _PinnedAddressTransport(httpx.AsyncBaseTransport):
+    """An HTTPX transport that uses a pinned TCP address for one request host."""
+
+    def __init__(self, address: str) -> None:
+        self._pool = httpcore.AsyncConnectionPool(
+            network_backend=cast(httpcore.AsyncNetworkBackend, _PinnedAddressBackend(address))
+        )
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        response = await self._pool.handle_async_request(cast(Any, request))
+        return httpx.Response(
+            status_code=response.status,
+            headers=response.headers,
+            stream=httpx._transports.default.AsyncResponseStream(  # noqa: SLF001
+                cast(AsyncIterable[bytes], response.stream)
+            ),
+            extensions=response.extensions,
+            request=request,
+        )
+
+    async def aclose(self) -> None:
+        await self._pool.aclose()
+
+
 def _calculate(expression: str) -> dict[str, Any]:
     """The Calculator component's arithmetic-only behaviour."""
+
+    try:
+        tree = ast.parse(expression, mode="eval")
+    except (SyntaxError, RecursionError) as exc:
+        return {"error": str(exc)}
+    if sum(1 for _ in ast.walk(tree)) > MAX_CALCULATOR_AST_NODES:
+        return {"error": "Expression is too complex"}
 
     def validate_number(value: int | float) -> int | float:
         """Keep calculator operands within bounded CPU and memory limits."""
@@ -153,8 +212,8 @@ def _calculate(expression: str) -> dict[str, Any]:
         raise ValueError("Only numeric arithmetic expressions are supported")
 
     try:
-        return {"expression": expression, "result": visit(ast.parse(expression, mode="eval").body)}
-    except (SyntaxError, ValueError, ZeroDivisionError, OverflowError) as exc:
+        return {"expression": expression, "result": visit(tree.body)}
+    except (ValueError, ZeroDivisionError, OverflowError, RecursionError) as exc:
         return {"error": str(exc)}
 
 
@@ -169,18 +228,29 @@ async def _read_public_url(value: str) -> dict[str, Any]:
         )
         if any(not ipaddress.ip_address(address[4][0]).is_global for address in addresses):
             return {"error": "URLs resolving to private network addresses are not allowed"}
+        address = str(addresses[0][4][0])
     except (OSError, ValueError):
         return {"error": "Unable to resolve the URL host"}
     try:
-        async with httpx.AsyncClient(follow_redirects=False, timeout=20.0) as client:
-            response = await client.get(value, headers={"User-Agent": "OpenRAG/1.0"})
-            if response.is_redirect:
-                return {"error": "Redirecting URLs are not supported"}
-            response.raise_for_status()
+        async with httpx.AsyncClient(
+            transport=_PinnedAddressTransport(address),
+            follow_redirects=False,
+            timeout=20.0,
+            trust_env=False,
+        ) as client:
+            async with client.stream("GET", value, headers={"User-Agent": "OpenRAG/1.0"}) as response:
+                if response.is_redirect:
+                    return {"error": "Redirecting URLs are not supported"}
+                response.raise_for_status()
+                body = bytearray()
+                async for chunk in response.aiter_bytes():
+                    body.extend(chunk[: MAX_URL_RESPONSE_BYTES - len(body)])
+                    if len(body) >= MAX_URL_RESPONSE_BYTES:
+                        break
     except httpx.HTTPError as exc:
         return {"error": f"Could not read URL: {exc}"}
     extractor = _TextExtractor()
-    extractor.feed(response.text)
+    extractor.feed(body.decode(response.encoding or "utf-8", errors="replace"))
     text = " ".join(extractor.parts)[:50_000]
     return {
         "url": str(response.url),
@@ -293,7 +363,7 @@ class NativeChatAgent:
                 )
             )
             call_inputs: dict[str, dict[str, Any]] = {}
-            call_item_ids: dict[int, str] = {}
+            call_item_ids: dict[str, str] = {}
             while not task.done() or not events.empty():
                 get_event = asyncio.create_task(events.get())
                 done, _ = await asyncio.wait({task, get_event}, return_when=asyncio.FIRST_COMPLETED)
@@ -325,6 +395,12 @@ class NativeChatAgent:
                 sources=len(self._sources(result.new_messages())),
                 stream_events=len(chunks),
             )
+        except asyncio.CancelledError:
+            task = locals().get("task")
+            if task is not None and not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            raise
         except Exception as exc:
             message = self._public_error_message(exc)
             logger.warning(
@@ -437,8 +513,16 @@ class NativeChatAgent:
         """
         fenced = copy.deepcopy(response)
         for result in fenced.get("results", []):
-            if isinstance(result, dict) and isinstance(result.get("text"), str):
-                result["text"] = fence_untrusted_text(result["text"])
+            if not isinstance(result, dict):
+                continue
+            for field in ("text", "highlights"):
+                value = result.get(field)
+                if isinstance(value, str):
+                    result[field] = fence_untrusted_text(value)
+                elif isinstance(value, list):
+                    result[field] = [
+                        fence_untrusted_text(item) if isinstance(item, str) else item for item in value
+                    ]
         return fenced
 
     @staticmethod
@@ -447,7 +531,7 @@ class NativeChatAgent:
         conversation_id: str,
         model: str,
         call_inputs: dict[str, dict[str, Any]],
-        call_item_ids: dict[int, str],
+        call_item_ids: dict[str, str],
     ) -> list[dict[str, Any]]:
         if isinstance(event, PartStartEvent):
             if isinstance(event.part, TextPart) and event.part.content:
@@ -455,7 +539,7 @@ class NativeChatAgent:
             if isinstance(event.part, ToolCallPart):
                 call_inputs[event.part.tool_call_id] = NativeChatAgent._arguments(event.part.args)
                 item_id = event.part.id or f"fc_{event.part.tool_call_id}"
-                call_item_ids[event.index] = item_id
+                call_item_ids[event.part.tool_call_id] = item_id
                 return [
                     {
                         "item": {
@@ -481,8 +565,9 @@ class NativeChatAgent:
                 if delta:
                     return [
                         {
-                            "item_id": event.delta.tool_call_id
-                            or call_item_ids.get(event.index, ""),
+                            "item_id": call_item_ids.get(
+                                event.delta.tool_call_id or "", event.delta.tool_call_id or ""
+                            ),
                             "output_index": event.index,
                             "sequence_number": None,
                             "type": "response.function_call_arguments.delta",
@@ -500,7 +585,7 @@ class NativeChatAgent:
                 {
                     "arguments": arguments,
                     "item_id": event.part.id
-                    or call_item_ids.get(event.index)
+                    or call_item_ids.get(event.part.tool_call_id)
                     or f"fc_{event.part.tool_call_id}",
                     "name": None,
                     "output_index": event.index,
@@ -513,7 +598,9 @@ class NativeChatAgent:
             return [
                 {
                     "item": {
-                        "id": f"{event.part.tool_name}_{event.part.tool_call_id}",
+                        "id": call_item_ids.get(
+                            event.part.tool_call_id, f"fc_{event.part.tool_call_id}"
+                        ),
                         "content": None,
                         "role": None,
                         "status": "completed" if event.part.outcome == "success" else "failed",

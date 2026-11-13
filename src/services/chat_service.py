@@ -376,16 +376,8 @@ class ChatService:
             messages: list[dict[str, Any]] = []
             # Native history is scoped to the owner, including API-key storage identities.
             try:
-                native_history = await self.native_chat_history_service.history(
-                    conversation_user_id
-                )
-                messages = next(
-                    (
-                        conversation.get("messages", [])
-                        for conversation in native_history.get("conversations", [])
-                        if conversation.get("response_id") == previous_response_id
-                    ),
-                    [],
+                messages = await self.native_chat_history_service.messages_for(
+                    previous_response_id, conversation_user_id
                 )
             except Exception as e:
                 logger.warning(f"Failed to fetch native messages for nudges: {e}")
@@ -983,7 +975,11 @@ class ChatService:
 
         native_deleted_count = 0
         if DISABLE_CHAT_WITH_LANGFLOW:
+            native_session_ids = await self.native_chat_history_service.conversation_ids(user_id)
             native_deleted_count = await self.native_chat_history_service.delete_all(user_id)
+            await self.session_ownership_service.release_conversation_sessions(
+                user_id, native_session_ids
+            )
         conversations = await get_user_conversations(user_id)
         session_ids = list(conversations.keys())
 

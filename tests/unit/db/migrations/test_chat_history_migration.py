@@ -183,6 +183,17 @@ async def test_native_metadata_migration_recovers_messages_and_keeps_empty_histo
 
 
 @pytest.mark.asyncio
+async def test_native_chat_migration_runs_independently_of_legacy_marker(
+    staged_files, session_factory
+):
+    """Old installations can import native chat after their broad marker is done."""
+    async with session_factory() as session:
+        assert await migrations_runtime.migrate_legacy_native_chat_history_json_to_db(session) == 1
+        assert await migrations_runtime.migrate_legacy_native_chat_history_json_to_db(session) == 0
+        assert await ChatHistoryRepo(session).get_conversation("r-1") is not None
+
+
+@pytest.mark.asyncio
 async def test_migration_no_files_is_noop(tmp_path, monkeypatch, session_factory):
     """Migration on a fresh install (no JSON files) succeeds silently."""
     monkeypatch.setattr(
@@ -210,6 +221,9 @@ async def test_run_marks_migration_done(staged_files, session_factory):
     async with session_factory() as session:
         assert await migrations_runtime._already_done(
             session, migrations_runtime.CHAT_HISTORY_JSON_TO_DB_V1
+        )
+        assert await migrations_runtime._already_done(
+            session, migrations_runtime.NATIVE_CHAT_HISTORY_JSON_TO_DB_V1
         )
 
 

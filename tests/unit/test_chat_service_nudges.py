@@ -10,9 +10,9 @@ from services.chat_service import ChatService
 
 @pytest.fixture(autouse=True)
 def native_history(monkeypatch):
-    history = AsyncMock(return_value={"conversations": []})
+    history = AsyncMock(return_value=[])
     monkeypatch.setattr(
-        "services.native_chat_history_service.NativeChatHistoryService.history", history
+        "services.native_chat_history_service.NativeChatHistoryService.messages_for", history
     )
     return history
 
@@ -145,18 +145,11 @@ async def test_nudges_native_history_precedes_legacy(monkeypatch, native_history
     monkeypatch.setattr(
         "services.chat_service.clients.ensure_langflow_client", AsyncMock(return_value=MagicMock())
     )
-    native_history.return_value = {
-        "conversations": [
-            {
-                "response_id": "thread" if native_state == "owned" else "different-thread",
-                "messages": [
-                    {"role": "system", "content": "Hidden system instructions"},
-                    {"role": "user", "content": "Native question"},
-                    {"role": "assistant", "content": "Native answer"},
-                ],
-            }
+    if native_state == "owned":
+        native_history.return_value = [
+            {"role": "user", "content": "Native question"},
+            {"role": "assistant", "content": "Native answer"},
         ]
-    }
     if native_state == "unavailable":
         native_history.side_effect = RuntimeError("History unavailable")
     monkeypatch.setitem(
@@ -175,7 +168,7 @@ async def test_nudges_native_history_precedes_legacy(monkeypatch, native_history
         user_id="auth-subject", storage_user_id="storage-owner", previous_response_id="thread"
     )
 
-    native_history.assert_awaited_once_with("storage-owner")
+    native_history.assert_awaited_once_with("thread", "storage-owner")
     legacy_history.assert_not_awaited()
     prompt = run_flow.call_args.args[2]
     if native_state == "owned":
