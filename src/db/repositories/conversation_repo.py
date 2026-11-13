@@ -27,6 +27,13 @@ class LangflowConversationRepo:
         )
         return list(result.scalars().all())
 
+    async def list_all(self) -> list[LangflowConversation]:
+        """Return every legacy Langflow conversation for one-time history migration."""
+        result = await self.session.execute(
+            select(LangflowConversation).order_by(col(LangflowConversation.last_activity).desc())
+        )
+        return list(result.scalars().all())
+
     async def upsert(
         self,
         *,

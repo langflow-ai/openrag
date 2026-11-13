@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -50,6 +50,7 @@ JSON_TO_DB_V1 = "json_to_db_v1"
 CONFIG_YAML_TO_DB_V1 = "config_yaml_to_db_v1"
 CHAT_HISTORY_JSON_TO_DB_V1 = "chat_history_json_to_db_v1"
 NATIVE_CHAT_HISTORY_JSON_TO_DB_V1 = "native_chat_history_json_to_db_v1"
+LANGFLOW_HISTORY_TO_NATIVE_V1 = "langflow_history_to_native_v1"
 
 
 class RuntimeMigrationError(RuntimeError):
@@ -368,6 +369,65 @@ async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, in
     return stats
 
 
+async def migrate_langflow_history_to_native(
+    session: AsyncSession,
+    fetch_messages: Callable[[str], Awaitable[list[dict[str, Any]]]] | None = None,
+) -> dict[str, int]:
+    """Copy Langflow's remote message history into OpenRAG's native tables.
+
+    ``langflow_conversations`` has always held sidebar metadata only. This
+    migration fetches the message bodies from Langflow's monitor API and makes
+    the native tables the durable history source. Failed remote requests leave
+    their metadata intact and are retried on the next startup.
+    """
+    from db.repositories import ChatHistoryRepo, ConversationRepo, SessionOwnershipRepo
+    from services.langflow_history_service import langflow_history_service
+    from services.native_chat_history_service import NativeChatHistoryService
+
+    fetch = fetch_messages or langflow_history_service.fetch_session_messages
+    legacy_repo = ConversationRepo(session)
+    native_repo = ChatHistoryRepo(session)
+    ownership_repo = SessionOwnershipRepo(session)
+    stats = {"conversations": 0, "messages": 0, "failed": 0}
+
+    for legacy in await legacy_repo.list_all():
+        try:
+            messages = await fetch(legacy.response_id)
+            await NativeChatHistoryService.sync_langflow_conversation_in_session(
+                native_repo,
+                conversation_id=legacy.response_id,
+                user_id=legacy.user_id,
+                title=legacy.title,
+                filter_id=legacy.filter_id,
+                total_messages=legacy.total_messages or 0,
+                created_at=legacy.created_at,
+                last_activity=legacy.last_activity,
+                messages=messages,
+            )
+            await ownership_repo.upsert_raw(
+                response_id=legacy.response_id,
+                user_id=legacy.user_id,
+                created_at=legacy.created_at,
+                last_accessed=legacy.last_activity,
+            )
+            stats["conversations"] += 1
+            stats["messages"] += sum(
+                1
+                for message in messages
+                if message.get("role") in {"user", "assistant"}
+                and isinstance(message.get("content"), str)
+            )
+        except Exception as exc:  # noqa: BLE001
+            stats["failed"] += 1
+            logger.warning(
+                "langflow_history_to_native_v1: conversation import failed",
+                conversation_id=legacy.response_id,
+                error=str(exc),
+            )
+
+    return stats
+
+
 async def run(session: AsyncSession) -> None:
     """Top-level entry. Caller is responsible for committing."""
     if not await _already_done(session, JSON_TO_DB_V1):
@@ -421,6 +481,18 @@ async def run(session: AsyncSession) -> None:
             session, NATIVE_CHAT_HISTORY_JSON_TO_DB_V1, notes=f"conversations={inserted}"
         )
         logger.info("native_chat_history_json_to_db_v1 completed", conversations=inserted)
+
+    if not await _already_done(session, LANGFLOW_HISTORY_TO_NATIVE_V1):
+        stats = await migrate_langflow_history_to_native(session)
+        if stats["failed"]:
+            logger.warning(
+                "langflow_history_to_native_v1 incomplete; retrying next startup",
+                **stats,
+            )
+        else:
+            notes = f"conversations={stats['conversations']},messages={stats['messages']}"
+            await _mark_done(session, LANGFLOW_HISTORY_TO_NATIVE_V1, notes=notes)
+            logger.info("langflow_history_to_native_v1 completed", **stats)
 
     try:
         from db.seed import seed_roles_and_permissions

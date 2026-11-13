@@ -10,7 +10,6 @@ import { apiClient, isRequestCancelled } from "@/lib/api-client";
 export interface RawConversation {
   response_id: string;
   title: string;
-  endpoint: string;
   messages: Array<{
     role: string;
     content: string;
@@ -79,11 +78,12 @@ export const useGetConversationsQuery = (
       const history = response.data;
       const rawConversations = history.conversations || [];
 
-      // Cast conversations to proper type and ensure endpoint is correct
+      // History is shared; label each result with the endpoint that fetched it
+      // so selecting a conversation retains the current chat route.
       const conversations: ChatConversation[] = rawConversations.map(
         (conv: RawConversation) => ({
           ...conv,
-          endpoint: conv.endpoint as EndpointType,
+          endpoint,
         }),
       );
 

@@ -30,7 +30,13 @@ class ChatService:
         from services.native_chat_history_service import NativeChatHistoryService
         from services.session_ownership_service import SessionOwnershipService
 
-        self.native_chat_history_service = native_chat_history_service or NativeChatHistoryService()
+        if native_chat_history_service is None:
+            from agent import conversation_persistence
+
+            native_chat_history_service = NativeChatHistoryService(
+                conversation_persistence._resolve_session_factory()
+            )
+        self.native_chat_history_service = native_chat_history_service
         self.session_ownership_service = session_ownership_service or SessionOwnershipService()
         self.native_chat_agent = native_chat_agent or NativeChatAgent(
             self.native_chat_history_service,
@@ -665,211 +671,12 @@ class ChatService:
             return {"error": "User ID is required", "conversations": []}
         return await self.native_chat_history_service.history(user_id)
 
-    @staticmethod
-    def _messages_from_active_conversation(conversation_state: dict) -> list[dict]:
-        """Serialize in-memory OpenRAG thread messages for the history API."""
-        messages = []
-        for msg in conversation_state.get("messages", []):
-            if msg.get("role") not in ["user", "assistant"]:
-                continue
-            message_data = {
-                "role": msg["role"],
-                "content": msg["content"],
-                "timestamp": msg.get("timestamp").isoformat()
-                if hasattr(msg.get("timestamp"), "isoformat")
-                else msg.get("timestamp"),
-                "source": "openrag_memory",
-            }
-            if msg.get("error"):
-                message_data["error"] = True
-            if msg.get("chunks"):
-                message_data["chunks"] = msg["chunks"]
-            if msg.get("response_data"):
-                message_data["response_data"] = msg["response_data"]
-            messages.append(message_data)
-        return messages
-
-    async def get_langflow_history(self, user_id: str):
-        """Get langflow conversation history for a user - now fetches from both OpenRAG memory and Langflow database"""
-        if DISABLE_CHAT_WITH_LANGFLOW:
-            return await self.get_chat_history(user_id)
-
-        from agent import active_conversations, get_user_conversations
-        from services.langflow_history_service import langflow_history_service
-
-        if not user_id:
-            return {"error": "User ID is required", "conversations": []}
-
-        all_conversations = []
-        local_metadata: dict = {}
-        in_memory = active_conversations.get(user_id, {})
-
-        try:
-            # 1. Get local conversation metadata (no actual messages stored here)
-            conversations_dict = await get_user_conversations(user_id)
-
-            for response_id, conversation_metadata in conversations_dict.items():
-                # Store metadata for later use with Langflow data
-                local_metadata[response_id] = conversation_metadata
-
-            # 2. Get actual conversations from Langflow database (source of truth for messages)
-            logger.debug(f"Attempting to fetch Langflow history for user: {user_id}")
-            langflow_history = await langflow_history_service.get_user_conversation_history(
-                user_id, flow_id=LANGFLOW_CHAT_FLOW_ID
-            )
-
-            if langflow_history.get("conversations"):
-                for conversation in langflow_history["conversations"]:
-                    session_id = conversation["session_id"]
-
-                    # Only process sessions that belong to this user (exist in local metadata)
-                    if session_id not in local_metadata:
-                        continue
-
-                    # Use Langflow messages (with function calls) as source of truth
-                    messages = []
-                    for msg in conversation.get("messages", []):
-                        message_data = {
-                            "role": msg["role"],
-                            "content": msg["content"],
-                            "timestamp": msg.get("timestamp"),
-                            "langflow_message_id": msg.get("langflow_message_id"),
-                            "source": "langflow",
-                        }
-
-                        if msg.get("error"):
-                            message_data["error"] = True
-
-                        # Include function call data if present
-                        if msg.get("chunks"):
-                            message_data["chunks"] = msg["chunks"]
-                        if msg.get("response_data"):
-                            message_data["response_data"] = msg["response_data"]
-
-                        messages.append(message_data)
-
-                    # Prefer OpenRAG memory when it has more turns (error retries use a
-                    # fresh Langflow session under the same OpenRAG thread id).
-                    memory_messages = self._messages_from_active_conversation(
-                        in_memory.get(session_id, {})
-                    )
-                    if len(memory_messages) > len(messages):
-                        messages = memory_messages
-                        source = "openrag_memory_preferred"
-                    else:
-                        source = "langflow_enhanced"
-
-                    if messages:
-                        metadata = local_metadata.get(session_id, {})
-                        first_user_msg = next(
-                            (msg for msg in messages if msg["role"] == "user"), None
-                        )
-                        title = metadata.get("title") or (
-                            first_user_msg["content"][:50] + "..."
-                            if first_user_msg and len(first_user_msg["content"]) > 50
-                            else first_user_msg["content"]
-                            if first_user_msg
-                            else "Langflow chat"
-                        )
-
-                        all_conversations.append(
-                            {
-                                "response_id": session_id,
-                                "title": title,
-                                "endpoint": "langflow",
-                                "messages": messages,
-                                "created_at": metadata.get("created_at")
-                                or conversation.get("created_at"),
-                                "last_activity": metadata.get("last_activity")
-                                or conversation.get("last_activity"),
-                                "filter_id": metadata.get("filter_id"),
-                                "total_messages": max(
-                                    len(messages), metadata.get("total_messages") or 0
-                                ),
-                                "source": source,
-                                "langflow_session_id": session_id,
-                                "langflow_flow_id": conversation.get("flow_id"),
-                            }
-                        )
-
-        except Exception as e:
-            logger.error(f"Failed to fetch Langflow history: {e}")
-
-        # Local-only threads + upgrade listed ones from memory/metadata snapshots
-        # (Langflow history is incomplete after fresh-session error retries).
-        listed_ids = {c["response_id"] for c in all_conversations}
-        for response_id, metadata in local_metadata.items():
-            conversation_state = in_memory.get(response_id, {})
-            messages = self._messages_from_active_conversation(conversation_state)
-            if not messages and isinstance(metadata.get("messages"), list):
-                messages = [
-                    m
-                    for m in metadata["messages"]
-                    if isinstance(m, dict) and m.get("role") in ["user", "assistant"]
-                ]
-
-            if response_id in listed_ids:
-                existing = next(c for c in all_conversations if c["response_id"] == response_id)
-                if len(messages) > len(existing.get("messages") or []):
-                    existing["messages"] = messages
-                    existing["total_messages"] = max(
-                        len(messages), metadata.get("total_messages") or 0
-                    )
-                    existing["source"] = "openrag_memory_preferred"
-                continue
-
-            if not messages and not metadata.get("title"):
-                continue
-
-            first_user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
-            title = metadata.get("title") or (
-                first_user_msg["content"][:50] + "..."
-                if first_user_msg and len(first_user_msg["content"]) > 50
-                else first_user_msg["content"]
-                if first_user_msg
-                else "New Chat"
-            )
-            created_at = metadata.get("created_at") or conversation_state.get("created_at")
-            last_activity = metadata.get("last_activity") or conversation_state.get("last_activity")
-            all_conversations.append(
-                {
-                    "response_id": response_id,
-                    "title": title,
-                    "endpoint": "langflow",
-                    "messages": messages,
-                    "created_at": created_at.isoformat()
-                    if hasattr(created_at, "isoformat")
-                    else created_at,
-                    "last_activity": last_activity.isoformat()
-                    if hasattr(last_activity, "isoformat")
-                    else last_activity,
-                    "filter_id": metadata.get("filter_id") or conversation_state.get("filter_id"),
-                    "total_messages": max(len(messages), metadata.get("total_messages") or 0),
-                    "source": "local_error_fallback",
-                }
-            )
-
-        # Sort by last activity (most recent first)
-        all_conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
-
-        logger.debug(
-            "[CHAT] Returning conversations",
-            total=len(all_conversations),
-            from_local_metadata=len(local_metadata),
-        )
-
-        return {
-            "user_id": user_id,
-            "endpoint": "langflow",
-            "conversations": all_conversations,
-            "total_conversations": len(all_conversations),
-        }
-
     async def delete_session(self, user_id: str, session_id: str):
         """Delete a session from both local storage and Langflow"""
-        if DISABLE_CHAT_WITH_LANGFLOW and await self.native_chat_history_service.owns_conversation(
+        native_conversation = await self.native_chat_history_service.owns_conversation(
             session_id, user_id
-        ):
+        )
+        if DISABLE_CHAT_WITH_LANGFLOW and native_conversation:
             deleted = await self.native_chat_history_service.delete(session_id, user_id)
             if deleted:
                 await self.session_ownership_service.release_session(user_id, session_id)
@@ -900,16 +707,24 @@ class ChatService:
                 user_id, session_id, session_ids=session_ids
             )
 
-            if not local_deleted:
+            native_deleted = False
+            if native_conversation:
+                native_deleted = await self.native_chat_history_service.delete(session_id, user_id)
+
+            if not local_deleted and not native_deleted:
                 return {
                     "success": False,
                     "not_found": True,
                     "error": "Conversation not found",
                 }
 
+            if native_deleted and not local_deleted:
+                await self.session_ownership_service.release_session(user_id, session_id)
+
             return {
                 "success": True,
                 "local_deleted": local_deleted,
+                "native_deleted": native_deleted,
                 "langflow_deleted": langflow_deleted,
                 "error": None,
             }

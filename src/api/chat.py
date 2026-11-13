@@ -219,13 +219,13 @@ async def langflow_history_endpoint(
     chat_service=Depends(get_chat_service),
     user: User = Depends(require_permission("conversations:read:own")),
 ):
-    """Get langflow chat history for a user"""
+    """Get chat history through the Langflow-compatible route."""
     try:
-        history = await chat_service.get_langflow_history(_openrag_user_id(user))
+        history = await chat_service.get_chat_history(_openrag_user_id(user))
         return JSONResponse(history)
     except Exception:
-        logger.exception("[CHAT] Failed to get langflow history")
-        return JSONResponse({"error": "Failed to get langflow history"}, status_code=500)
+        logger.exception("[CHAT] Failed to get chat history")
+        return JSONResponse({"error": "Failed to get chat history"}, status_code=500)
 
 
 async def delete_session_endpoint(

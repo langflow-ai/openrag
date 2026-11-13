@@ -231,7 +231,7 @@ async def chat_list_endpoint(
 ):
     """List all conversations for the authenticated user. GET /v1/chat"""
     try:
-        history = await chat_service.get_langflow_history(_openrag_user_id(user))
+        history = await chat_service.get_chat_history(_openrag_user_id(user))
         conversations = [
             {
                 "chat_id": conv.get("response_id"),
@@ -255,7 +255,7 @@ async def chat_get_endpoint(
 ):
     """Get a specific conversation with full message history. GET /v1/chat/{chat_id}"""
     try:
-        history = await chat_service.get_langflow_history(_openrag_user_id(user))
+        history = await chat_service.get_chat_history(_openrag_user_id(user))
 
         conversation = None
         for conv in history.get("conversations", []):

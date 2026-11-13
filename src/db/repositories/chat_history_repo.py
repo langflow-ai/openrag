@@ -96,6 +96,7 @@ class ChatHistoryRepo:
         event_data: dict[str, Any] | None = None,
         error: bool = False,
         interrupted: bool = False,
+        created_at: datetime | None = None,
     ) -> ChatMessage:
         now = datetime.now(UTC)
         total_messages_column = col(ChatConversation.total_messages)
@@ -133,11 +134,19 @@ class ChatHistoryRepo:
             event_data=event_data,
             error=error,
             interrupted=interrupted,
+            created_at=created_at or datetime.now(UTC),
         )
         self.session.add(row)
         await self.session.flush()
         await self.session.refresh(conversation)
         return row
+
+    async def delete_messages(self, conversation_id: str) -> None:
+        """Remove the complete stored message history for one conversation."""
+        await self.session.execute(
+            delete(ChatMessage).where(col(ChatMessage.conversation_id) == conversation_id)
+        )
+        await self.session.flush()
 
     async def delete_conversation(self, conversation_id: str, user_id: str) -> bool:
         conversation = await self.get_conversation(conversation_id)

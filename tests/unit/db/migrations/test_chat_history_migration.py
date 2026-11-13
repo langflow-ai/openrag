@@ -212,8 +212,21 @@ async def test_migration_no_files_is_noop(tmp_path, monkeypatch, session_factory
 
 
 @pytest.mark.asyncio
-async def test_run_marks_migration_done(staged_files, session_factory):
-    """Top-level run() records the step in migration_status."""
+async def test_run_marks_migration_done(staged_files, session_factory, monkeypatch):
+    """Top-level run() records each completed history migration."""
+
+    async def _no_native_history(_session):
+        return 0
+
+    async def _no_langflow_history(_session):
+        return {"conversations": 0, "messages": 0, "failed": 0}
+
+    monkeypatch.setattr(
+        migrations_runtime, "migrate_legacy_native_chat_history_json_to_db", _no_native_history
+    )
+    monkeypatch.setattr(
+        migrations_runtime, "migrate_langflow_history_to_native", _no_langflow_history
+    )
     async with session_factory() as session:
         await migrations_runtime.run(session)
         await session.commit()
@@ -225,6 +238,79 @@ async def test_run_marks_migration_done(staged_files, session_factory):
         assert await migrations_runtime._already_done(
             session, migrations_runtime.NATIVE_CHAT_HISTORY_JSON_TO_DB_V1
         )
+        assert await migrations_runtime._already_done(
+            session, migrations_runtime.LANGFLOW_HISTORY_TO_NATIVE_V1
+        )
+
+
+@pytest.mark.asyncio
+async def test_langflow_history_migration_copies_remote_messages(session_factory):
+    async with session_factory() as session:
+        await ConversationRepo(session).upsert(
+            response_id="langflow-1",
+            user_id="alice",
+            title="Imported thread",
+            endpoint="langflow",
+            filter_id="filter-1",
+            total_messages=5,
+        )
+        await session.commit()
+
+    async def _fetch_messages(session_id):
+        assert session_id == "langflow-1"
+        return [
+            {"role": "user", "content": "Earlier question", "timestamp": "2026-01-01T10:00:00Z"},
+            {
+                "role": "assistant",
+                "content": "Earlier answer",
+                "timestamp": "2026-01-01T10:00:01Z",
+                "chunks": [{"type": "response.completed"}],
+            },
+        ]
+
+    async with session_factory() as session:
+        stats = await migrations_runtime.migrate_langflow_history_to_native(
+            session, _fetch_messages
+        )
+        await session.commit()
+
+    assert stats == {"conversations": 1, "messages": 2, "failed": 0}
+    async with session_factory() as session:
+        conversation = await ChatHistoryRepo(session).get_conversation("langflow-1")
+        messages = await ChatHistoryRepo(session).list_messages("langflow-1")
+        ownership = await SessionOwnershipRepo(session).get("langflow-1")
+
+    assert conversation.title == "Imported thread"
+    assert conversation.filter_id == "filter-1"
+    assert conversation.total_messages == 5
+    assert [(message.role, message.content) for message in messages] == [
+        ("user", "Earlier question"),
+        ("assistant", "Earlier answer"),
+    ]
+    assert messages[1].event_data["chunks"] == [{"type": "response.completed"}]
+    assert ownership.user_id == "alice"
+
+
+@pytest.mark.asyncio
+async def test_langflow_history_migration_leaves_failed_sessions_retryable(session_factory):
+    async with session_factory() as session:
+        await ConversationRepo(session).upsert(
+            response_id="unavailable",
+            user_id="alice",
+            endpoint="langflow",
+        )
+        await session.commit()
+
+    async def _unavailable(_session_id):
+        raise RuntimeError("Langflow is unavailable")
+
+    async with session_factory() as session:
+        stats = await migrations_runtime.migrate_langflow_history_to_native(session, _unavailable)
+        await session.commit()
+
+    assert stats == {"conversations": 0, "messages": 0, "failed": 1}
+    async with session_factory() as session:
+        assert await ChatHistoryRepo(session).get_conversation("unavailable") is None
 
 
 @pytest.mark.asyncio
