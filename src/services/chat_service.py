@@ -376,7 +376,9 @@ class ChatService:
             messages: list[dict[str, Any]] = []
             # Native history is scoped to the owner, including API-key storage identities.
             try:
-                native_history = await self.native_chat_history_service.history(conversation_user_id)
+                native_history = await self.native_chat_history_service.history(
+                    conversation_user_id
+                )
                 messages = next(
                     (
                         conversation.get("messages", [])

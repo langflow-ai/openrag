@@ -11,7 +11,9 @@ from services.chat_service import ChatService
 @pytest.fixture(autouse=True)
 def native_history(monkeypatch):
     history = AsyncMock(return_value={"conversations": []})
-    monkeypatch.setattr("services.native_chat_history_service.NativeChatHistoryService.history", history)
+    monkeypatch.setattr(
+        "services.native_chat_history_service.NativeChatHistoryService.history", history
+    )
     return history
 
 
@@ -144,20 +146,24 @@ async def test_nudges_native_history_precedes_legacy(monkeypatch, native_history
         "services.chat_service.clients.ensure_langflow_client", AsyncMock(return_value=MagicMock())
     )
     native_history.return_value = {
-        "conversations": [{
-            "response_id": "thread" if native_state == "owned" else "different-thread",
-            "messages": [
-                {"role": "system", "content": "Hidden system instructions"},
-                {"role": "user", "content": "Native question"},
-                {"role": "assistant", "content": "Native answer"},
-            ],
-        }]
+        "conversations": [
+            {
+                "response_id": "thread" if native_state == "owned" else "different-thread",
+                "messages": [
+                    {"role": "system", "content": "Hidden system instructions"},
+                    {"role": "user", "content": "Native question"},
+                    {"role": "assistant", "content": "Native answer"},
+                ],
+            }
+        ]
     }
     if native_state == "unavailable":
         native_history.side_effect = RuntimeError("History unavailable")
-    monkeypatch.setitem(agent.active_conversations, "storage-owner", {
-        "thread": {"messages": [{"role": "user", "content": "Legacy question"}]}
-    })
+    monkeypatch.setitem(
+        agent.active_conversations,
+        "storage-owner",
+        {"thread": {"messages": [{"role": "user", "content": "Legacy question"}]}},
+    )
     from services.langflow_history_service import langflow_history_service
 
     legacy_history = AsyncMock()
