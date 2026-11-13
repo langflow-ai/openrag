@@ -197,6 +197,16 @@ async def store_conversation_thread(user_id: str, response_id: str, conversation
         ]
 
     await conversation_persistence.store_conversation_thread(user_id, response_id, metadata_only)
+    if user_assistant_messages and user_assistant_messages[-1].get("role") == "assistant":
+        await conversation_persistence.sync_langflow_history(
+            user_id,
+            response_id,
+            metadata_only,
+            user_assistant_messages,
+            # A restored Langflow thread only has its new turn in memory. Append
+            # that turn to the native mirror instead of replacing imported history.
+            append_only=bool(persisted_metadata),
+        )
 
 
 # Legacy function for backward compatibility

@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
-from pydantic_ai.messages import ModelMessagesTypeAdapter
+from pydantic_ai.messages import (
+    ModelMessagesTypeAdapter,
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    UserPromptPart,
+)
 
 from db.repositories import ChatHistoryRepo
 
@@ -54,6 +61,125 @@ class NativeChatHistoryService:
             await repo.append_message(conversation=conversation, role=role, **message)
             await session.commit()
 
+    @staticmethod
+    def _timestamp(value: Any) -> datetime | None:
+        if isinstance(value, datetime):
+            return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+        if not isinstance(value, str):
+            return None
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+    @classmethod
+    async def sync_langflow_conversation_in_session(
+        cls,
+        repo: ChatHistoryRepo,
+        *,
+        conversation_id: str,
+        user_id: str,
+        title: str | None,
+        filter_id: str | None,
+        total_messages: int | None,
+        created_at: datetime | str | None,
+        last_activity: datetime | str | None,
+        messages: list[dict[str, Any]],
+        replace_history: bool = True,
+    ) -> None:
+        """Replace one Langflow thread's mirrored native history.
+
+        Langflow remains the execution engine for its endpoint, but OpenRAG's
+        database becomes the durable, user-visible history source. Replacing
+        the mirror makes repeated synchronization idempotent and avoids
+        duplicate streamed turns.
+        """
+        conversation = await repo.get_conversation(conversation_id)
+        if conversation is None:
+            conversation = await repo.create_conversation(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                title=title,
+                filter_id=filter_id,
+                total_messages=0,
+                created_at=cls._timestamp(created_at),
+                last_activity=cls._timestamp(last_activity),
+            )
+        elif conversation.user_id != user_id:
+            raise PermissionError("Conversation is not owned by this user")
+        elif replace_history:
+            await repo.delete_messages(conversation_id)
+            conversation.title = title
+            conversation.filter_id = filter_id
+            conversation.total_messages = 0
+
+        for message in messages:
+            role = message.get("role")
+            content = message.get("content")
+            if role not in {"user", "assistant"} or not isinstance(content, str):
+                continue
+            event_data: dict[str, Any] = {}
+            if isinstance(message.get("chunks"), list):
+                event_data["chunks"] = message["chunks"]
+            response_data = message.get("response_data")
+            if isinstance(response_data, dict) and response_data.get("usage"):
+                event_data["usage"] = response_data["usage"]
+            event_data["pydantic_messages"] = ModelMessagesTypeAdapter.dump_python(
+                [
+                    ModelRequest(parts=[UserPromptPart(content=content)])
+                    if role == "user"
+                    else ModelResponse(parts=[TextPart(content=content)])
+                ],
+                mode="json",
+            )
+            await repo.append_message(
+                conversation=conversation,
+                role=role,
+                content=content,
+                event_data=event_data,
+                error=bool(message.get("error")),
+                interrupted=bool(message.get("interrupted")),
+                created_at=cls._timestamp(message.get("timestamp")),
+            )
+
+        conversation.title = title or conversation.title
+        conversation.filter_id = filter_id
+        conversation.total_messages = max(conversation.total_messages, total_messages or 0)
+        conversation.created_at = cls._timestamp(created_at) or conversation.created_at
+        conversation.last_activity = cls._timestamp(last_activity) or conversation.last_activity
+        repo.session.add(conversation)
+        await repo.session.flush()
+
+    async def sync_langflow_conversation(
+        self,
+        *,
+        conversation_id: str,
+        user_id: str,
+        title: str | None,
+        filter_id: str | None,
+        total_messages: int | None,
+        created_at: datetime | str | None,
+        last_activity: datetime | str | None,
+        messages: list[dict[str, Any]],
+        replace_history: bool = True,
+    ) -> None:
+        """Synchronize one Langflow conversation into the native history tables."""
+        async with self._factory() as session:
+            await self.sync_langflow_conversation_in_session(
+                ChatHistoryRepo(session),
+                conversation_id=conversation_id,
+                user_id=user_id,
+                title=title,
+                filter_id=filter_id,
+                total_messages=total_messages,
+                created_at=created_at,
+                last_activity=last_activity,
+                messages=messages,
+                replace_history=replace_history,
+            )
+            await session.commit()
+
     async def pydantic_history(self, conversation_id: str, user_id: str) -> list[Any]:
         """Restore the exact Pydantic AI wire history from completed turns."""
         async with self._factory() as session:
@@ -98,7 +224,6 @@ class NativeChatHistoryService:
                     {
                         "response_id": conversation.id,
                         "title": conversation.title or "New chat",
-                        "endpoint": "chat",
                         "messages": messages,
                         "created_at": conversation.created_at.isoformat(),
                         "last_activity": conversation.last_activity.isoformat(),
@@ -109,7 +234,6 @@ class NativeChatHistoryService:
                 )
         return {
             "user_id": user_id,
-            "endpoint": "chat",
             "conversations": payload,
             "total_conversations": len(payload),
         }

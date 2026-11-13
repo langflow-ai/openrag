@@ -213,6 +213,33 @@ class ConversationPersistenceService:
         if db_writes_enabled():
             await self._db_upsert(user_id, response_id, serialized)
 
+    async def sync_langflow_history(
+        self,
+        user_id: str,
+        response_id: str,
+        metadata: dict[str, Any],
+        messages: list[dict[str, Any]],
+        *,
+        append_only: bool,
+    ) -> None:
+        """Mirror a completed Langflow thread into the native history store."""
+        session_factory = self._resolve_session_factory()
+        if session_factory is None:
+            return
+        from services.native_chat_history_service import NativeChatHistoryService
+
+        await NativeChatHistoryService(session_factory).sync_langflow_conversation(
+            conversation_id=response_id,
+            user_id=user_id,
+            title=metadata.get("title"),
+            filter_id=metadata.get("filter_id"),
+            total_messages=int(metadata.get("total_messages") or 0),
+            created_at=metadata.get("created_at"),
+            last_activity=metadata.get("last_activity"),
+            messages=messages,
+            replace_history=not append_only,
+        )
+
     async def get_conversation_thread(self, user_id: str, response_id: str) -> dict[str, Any]:
         mode = get_storage_mode()
         if mode != "files":
