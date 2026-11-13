@@ -210,6 +210,68 @@ async def plugin_defaults(
     }
 
 
+# Client-safe reason a plugin's authenticate() failed. The exception text and the
+# source's HTTP status never reach the browser; plugins log those themselves.
+_AUTH_FAILURE_DETAIL = {
+    "denied": (
+        "Connector authentication failed: the source denied access. "
+        "Check the account and its permissions."
+    ),
+    "timeout": (
+        "Connector authentication failed: the source did not respond in time. "
+        "A server that has just restarted can be slow; try again."
+    ),
+    "unreachable": (
+        "Connector authentication failed: could not reach the source. "
+        "Check the URL, DNS, TLS trust and firewall."
+    ),
+    "invalid": (
+        "Connector authentication failed: the configuration was rejected "
+        "(for example an unapproved URL or a site path that does not exist). "
+        "See the backend log."
+    ),
+    "unexpected": "Connector authentication failed: the source returned an unexpected response.",
+}
+
+
+def _auth_failure_category(exc: BaseException | None) -> str:
+    """Map an authenticate() outcome to a stable category.
+
+    ``None`` means authenticate() returned False, which plugins use for rejected
+    credentials. Anything unrecognised is ``failed`` (the generic message).
+    """
+    if exc is None or isinstance(exc, PermissionError):
+        return "denied"
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+    if isinstance(exc, ConnectionError):
+        return "unreachable"
+    if isinstance(exc, ValueError | FileNotFoundError):
+        return "invalid"
+    if isinstance(exc, RuntimeError):
+        return "unexpected"
+    return "failed"
+
+
+def _auth_failure(
+    connector_type: str, stage: str, exc: BaseException | None = None
+) -> HTTPException:
+    """Log why a plugin sign-in check failed and build the 400 for the client.
+
+    Only the exception class is logged: its text comes from third-party code
+    and could echo user input.
+    """
+    category = _auth_failure_category(exc)
+    logger.warning(
+        "Plugin connector authentication failed",
+        connector_type=connector_type,
+        stage=stage,
+        category=category,
+        error_type=type(exc).__name__ if exc is not None else None,
+    )
+    return HTTPException(400, _AUTH_FAILURE_DETAIL.get(category, "Connector authentication failed"))
+
+
 async def plugin_test(
     connector_type: str,
     request: Request,
@@ -224,10 +286,10 @@ async def plugin_test(
     config = _validated_config(cls, body.config, existing)
     try:
         authenticated = await cls({**config, "user_id": user.user_id}).authenticate()
-    except Exception:
-        raise HTTPException(400, "Connector authentication failed") from None
+    except Exception as exc:
+        raise _auth_failure(connector_type, "test", exc) from None
     if not authenticated:
-        raise HTTPException(400, "Connector authentication failed")
+        raise _auth_failure(connector_type, "test")
     return {"status": "ok"}
 
 
@@ -248,10 +310,10 @@ async def plugin_configure(
         raise HTTPException(422, "Invalid connection name")
     try:
         authenticated = await cls({**config, "user_id": user.user_id}).authenticate()
-    except Exception:
-        raise HTTPException(400, "Connector authentication failed") from None
+    except Exception as exc:
+        raise _auth_failure(connector_type, "configure", exc) from None
     if not authenticated:
-        raise HTTPException(400, "Connector authentication failed")
+        raise _auth_failure(connector_type, "configure")
 
     # Authentication above stays outside the lock so a slow source probe never
     # blocks other saves; only the recheck and the write are serialized.
@@ -347,7 +409,14 @@ async def plugin_picker_children(
     await _owned_connection(manager, connector_type, connection_id, user.user_id)
     try:
         connector = await manager.get_connector(connection_id)
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "Plugin connector authentication failed",
+            connector_type=connector_type,
+            stage="picker",
+            category=_auth_failure_category(exc),
+            error_type=type(exc).__name__,
+        )
         raise HTTPException(502, "Connector authentication failed") from None
     if connector is None:
         raise HTTPException(401, "Connector authentication failed")
@@ -362,7 +431,13 @@ async def plugin_picker_children(
             )
     except ValueError:
         raise HTTPException(400, "Invalid browse scope or cursor") from None
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "Plugin connector browse failed",
+            connector_type=connector_type,
+            category=_auth_failure_category(exc),
+            error_type=type(exc).__name__,
+        )
         raise HTTPException(502, "Connector browse failed") from None
     if cls.BROWSE_CAPABILITY == "flat":
         if (

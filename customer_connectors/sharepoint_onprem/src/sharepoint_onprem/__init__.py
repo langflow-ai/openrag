@@ -35,7 +35,8 @@ from connectors.base import BaseConnector, ConnectorDocument, DocumentACL
 
 # Stdlib logging is bridged into the host's structlog pipeline. The host drops
 # sub-ERROR records from installed packages, so operator-actionable
-# configuration errors are logged at ERROR.
+# configuration errors are logged at ERROR, as are denied access, timeouts and
+# connection failures (the host reports the sign-in outcome only as a category).
 logger = logging.getLogger(__name__)
 _MAX_METADATA_BYTES = 4 * 1024 * 1024
 _MAX_FILE_BYTES = 50 * 1024 * 1024
@@ -319,6 +320,17 @@ class SharePointOnPremConnector(BaseConnector):
             ) as response:
                 status = response.status_code
                 if status in (401, 403):
+                    # The header is server-controlled: collapse whitespace and cap it.
+                    challenge = " ".join(response.headers.get("WWW-Authenticate", "none").split())[
+                        :80
+                    ]
+                    logger.error(
+                        "SharePoint denied access (HTTP %d, authentication challenge: %s). "
+                        "Verify the account, its NTLM domain and its permissions on the "
+                        "nominated sites.",
+                        status,
+                        challenge,
+                    )
                     raise PermissionError("SharePoint denied access")
                 if status == 404:
                     raise FileNotFoundError("SharePoint resource not found")
@@ -333,9 +345,22 @@ class SharePointOnPremConnector(BaseConnector):
                         raise ValueError("SharePoint response exceeds size limit")
                     content.extend(chunk)
                 return bytes(content)
-        except requests.exceptions.Timeout:
+        except requests.exceptions.Timeout as exc:
+            phase = "connection" if isinstance(exc, requests.exceptions.ConnectTimeout) else "reply"
+            # Only the class is logged: the exception text can carry the URL.
+            logger.error(
+                "SharePoint %s timed out (limits: %ds connect, %ds read). A farm that has "
+                "just restarted can be slow on its first requests.",
+                phase,
+                *_TIMEOUT,
+            )
             raise TimeoutError("SharePoint request timed out") from None
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as exc:
+            logger.error(
+                "SharePoint request failed (%s). Check the URL, DNS, TLS trust "
+                "(OPENRAG_SHAREPOINT_CA_BUNDLE) and firewall.",
+                type(exc).__name__,
+            )
             raise ConnectionError("SharePoint request failed") from None
 
     def _json(self, session, url, *, params=None):
@@ -719,8 +744,14 @@ class SharePointOnPremConnector(BaseConnector):
         if time.monotonic() < self._authenticated_until:
             return True
 
-        def probe():
+        try:
             self._settings()
+        except ValueError as exc:
+            # These messages are static and secret-free; the host reports only a category.
+            logger.error("SharePoint connection settings were rejected: %s", exc)
+            raise
+
+        def probe():
             with self._borrow_session() as session:
                 for index, site in enumerate(self._sites):
                     logger.debug("Verifying nominated SharePoint site path %d...", index)

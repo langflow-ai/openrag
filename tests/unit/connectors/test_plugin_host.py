@@ -236,6 +236,90 @@ def _plugin_app(manager, session_manager, user):
     return app
 
 
+@pytest.mark.parametrize(
+    ("failure", "category"),
+    [
+        (None, "denied"),  # authenticate() returned False
+        (PermissionError("x"), "denied"),
+        (TimeoutError("x"), "timeout"),
+        (ConnectionError("x"), "unreachable"),
+        (ValueError("x"), "invalid"),
+        (FileNotFoundError("x"), "invalid"),
+        (RuntimeError("x"), "unexpected"),
+        (KeyError("x"), "failed"),
+    ],
+)
+def test_auth_failure_category(failure, category):
+    assert plugin_connectors._auth_failure_category(failure) == category
+
+
+@pytest.mark.asyncio
+async def test_failed_plugin_check_reports_a_category_and_logs_the_cause(
+    installed_wheel, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("OPENRAG_CONNECTOR_PLUGINS", "installed_demo")
+    monkeypatch.setenv("OPENRAG_RUN_MODE", "on_prem")
+    monkeypatch.setenv("OPENRAG_ENCRYPTION_KEY", "isolated-test-master-secret")
+    monkeypatch.setattr(encryption, "_cached_master_secret", None)
+    events = []
+
+    class RecordingLogger:
+        def warning(self, event, **fields):
+            events.append((event, fields))
+
+    monkeypatch.setattr(plugin_connectors, "logger", RecordingLogger())
+    outcome = {}
+
+    async def authenticate(self):
+        if isinstance(outcome["value"], BaseException):
+            raise outcome["value"]
+        return outcome["value"]
+
+    monkeypatch.setattr(
+        registry.get_plugin_connector_class("installed_demo"), "authenticate", authenticate
+    )
+    user = User(user_id="alice", name="Alice", email="alice@example.com")
+    app = _plugin_app(
+        ConnectionManager(str(tmp_path / "connections.json")), SimpleNamespace(), user
+    )
+    config = {
+        "endpoint": "https://intranet.example",
+        "username": "domain\\alice",
+        "password": "valid",
+    }
+    cases = [
+        (TimeoutError("password=hunter2"), "did not respond in time", "timeout"),
+        (ConnectionError("x"), "could not reach the source", "unreachable"),
+        (PermissionError("x"), "denied access", "denied"),
+        (False, "denied access", "denied"),
+        (ValueError("x"), "configuration was rejected", "invalid"),
+        (RuntimeError("x"), "unexpected response", "unexpected"),
+        (KeyError("password=hunter2"), None, "failed"),
+    ]
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        base = "/connectors/installed_demo"
+        for value, expected, category in cases:
+            outcome["value"] = value
+            events.clear()
+            for route in ("plugin-test", "plugin-configure"):
+                response = await client.post(base + "/" + route, json={"config": config})
+                detail = response.json()["detail"]
+                assert response.status_code == 400
+                assert detail.startswith("Connector authentication failed")
+                if expected is None:
+                    assert detail == "Connector authentication failed"
+                else:
+                    assert expected in detail
+                assert "hunter2" not in response.text
+            assert [fields["category"] for _, fields in events] == [category, category]
+            assert [fields["stage"] for _, fields in events] == ["test", "configure"]
+            assert "hunter2" not in repr(events)
+            if isinstance(value, BaseException):
+                assert events[0][1]["error_type"] == type(value).__name__
+
+
 @pytest.mark.asyncio
 async def test_plugin_form_auth_persistence_and_owner_scoped_picker(
     installed_wheel, monkeypatch, tmp_path

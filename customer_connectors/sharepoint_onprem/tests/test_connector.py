@@ -347,6 +347,58 @@ def test_download_not_found_denied_timeout_and_redirect_are_distinct(connector):
         run(adapter.get_file_content(file_id))
 
 
+def test_authentication_failures_are_logged_for_the_operator(connector, monkeypatch, caplog):
+    adapter, server = connector
+    original = server.response
+
+    def with_challenge(status, payload):
+        result = original(status, payload)
+        # Server-controlled: line breaks must not reach the log.
+        result.headers["WWW-Authenticate"] = "NTLM\r\nInjected: header"
+        return result
+
+    server.response = with_challenge
+    server.status[""] = 401
+    with caplog.at_level("ERROR", logger="sharepoint_onprem"):
+        assert run(adapter.authenticate()) is False
+    denied = [r.getMessage() for r in caplog.records]
+    assert any("HTTP 401" in m and "challenge: NTLM Injected: header" in m for m in denied)
+    assert not any("\n" in m or "\r" in m for m in denied)
+
+    server.status[""] = "timeout"
+    with caplog.at_level("ERROR", logger="sharepoint_onprem"), pytest.raises(TimeoutError):
+        run(adapter.authenticate())
+    assert any(
+        "timed out" in r.getMessage() and "5s connect, 20s read" in r.getMessage()
+        for r in caplog.records
+    )
+
+    def refuse(session, url, **options):
+        raise requests.exceptions.SSLError("secret password MUST NOT escape")
+
+    monkeypatch.setattr(requests.Session, "get", refuse)
+    with caplog.at_level("ERROR", logger="sharepoint_onprem"), pytest.raises(ConnectionError):
+        run(adapter.authenticate())
+    assert any("SSLError" in r.getMessage() for r in caplog.records)
+    assert all(r.levelname == "ERROR" for r in caplog.records)
+    assert "dont-log-me" not in caplog.text and "MUST NOT escape" not in caplog.text
+
+
+def test_rejected_settings_are_logged_before_the_error_propagates(connector, monkeypatch, caplog):
+    adapter, _ = connector
+    monkeypatch.delenv("OPENRAG_SHAREPOINT_ALLOWED_ORIGINS")
+    with (
+        caplog.at_level("ERROR", logger="sharepoint_onprem"),
+        pytest.raises(ValueError, match="Operator"),
+    ):
+        run(adapter.authenticate())
+    assert any(
+        "settings were rejected" in r.getMessage() and "Operator must configure" in r.getMessage()
+        for r in caplog.records
+    )
+    assert "dont-log-me" not in caplog.text
+
+
 def test_operator_allowlist_and_response_limits(connector, monkeypatch):
     adapter, server = connector
     monkeypatch.delenv("OPENRAG_SHAREPOINT_ALLOWED_ORIGINS")
