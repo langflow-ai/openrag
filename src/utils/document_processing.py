@@ -291,39 +291,56 @@ def resplit_chunks_character_windows(
     return out
 
 
-def _split_text_by_code_points(text: str, encoding, max_tokens: int) -> list[str]:
-    """Pack code points when token offsets do not round-trip to ``text``."""
-    pieces: list[str] = []
-    start = 0
-    length = len(text)
-    while start < length:
-        end = start + 1
-        while end < length and len(encoding.encode(text[start : end + 1])) <= max_tokens:
-            end += 1
-        pieces.append(text[start:end])
-        start = end
-    return pieces
+def _is_surrogate_pair(text: str, pos: int) -> bool:
+    return (
+        "\ud800" <= text[pos] <= "\udbff"
+        and pos + 1 < len(text)
+        and "\udc00" <= text[pos + 1] <= "\udfff"
+    )
+
+
+def _char_end(text: str, pos: int) -> int:
+    """End of the character tiktoken reads at ``pos``."""
+    return pos + 2 if _is_surrogate_pair(text, pos) else pos + 1
+
+
+def _decoded_to_text_index(text: str) -> list[int]:
+    """Map each index of tiktoken's view of ``text`` to its index in ``text``.
+
+    tiktoken joins a surrogate pair stored as two halves into one character
+    and replaces a lone surrogate with U+FFFD, so ``decode_with_offsets``
+    indexes a string that can be shorter than ``text``.
+    """
+    index: list[int] = []
+    pos = 0
+    while pos < len(text):
+        index.append(pos)
+        pos = _char_end(text, pos)
+    return index
 
 
 def _split_text_to_max_tokens(text: str, encoding, max_tokens: int) -> list[str]:
     """Cut ``text`` into pieces that each encode to at most ``max_tokens``.
 
     Encodes the chunk once and cuts on token start positions from
-    ``decode_with_offsets``. Each slice is re-encoded, and a slice that comes
-    back over the cap (a 500-token Watsonx window can re-encode to 501) moves
-    back one token. A single code point that is already over the cap is kept
+    ``decode_with_offsets``. Each slice is re-encoded: a slice that comes back
+    over the cap (a 500-token Watsonx window can re-encode to 501) moves back
+    one token, and a slice that fits is extended until the next one would not.
+    A single code point that is already over the cap is kept
     so the cursor still advances. The pieces join back to ``text``.
     """
     if max_tokens < 1:
-        return list(text)
+        raise ValueError(f"max_tokens must be at least 1, got {max_tokens}")
 
-    tokens = encoding.encode(text)
+    # Extracted documents can contain "<|endoftext|>" literally; count it as text.
+    tokens = encoding.encode(text, disallowed_special=())
     if len(tokens) <= max_tokens:
         return [text]
 
     decoded, offsets = encoding.decode_with_offsets(tokens)
     if decoded != text:
-        return _split_text_by_code_points(text, encoding, max_tokens)
+        text_index = _decoded_to_text_index(text)
+        offsets = [text_index[offset] for offset in offsets]
 
     pieces: list[str] = []
     char_pos = 0
@@ -338,23 +355,32 @@ def _split_text_to_max_tokens(text: str, encoding, max_tokens: int) -> list[str]
         cut = min(token_count, token_index + max_tokens)
         while cut < token_count and offsets[cut] <= char_pos:
             cut += 1
+        first_char_end = _char_end(text, char_pos)
+        fit_end = 0
         while True:
             char_end = text_length if cut >= token_count else offsets[cut]
             if char_end <= char_pos:
-                pieces.append(text[char_pos : char_pos + 1])
-                char_pos += 1
+                fit_end = fit_end or first_char_end
                 break
-            piece = text[char_pos:char_end]
-            over_cap = len(encoding.encode(piece)) > max_tokens
-            if not over_cap or len(piece) == 1:
-                pieces.append(piece)
-                char_pos = char_end
+            slice_tokens = len(encoding.encode(text[char_pos:char_end], disallowed_special=()))
+            if slice_tokens <= max_tokens:
+                fit_end = char_end
+                if cut >= token_count:
+                    break
+                # A slice can re-encode to fewer tokens than it spans (two
+                # spaces split across tokens become one), so try a longer one.
+                cut = min(token_count, cut + max(1, max_tokens - slice_tokens))
+                while cut < token_count and offsets[cut] <= char_end:
+                    cut += 1
+                continue
+            if fit_end:
                 break
-            if cut <= token_index + 1:
-                pieces.append(text[char_pos : char_pos + 1])
-                char_pos += 1
+            if char_end <= first_char_end or cut <= token_index + 1:
+                fit_end = first_char_end
                 break
             cut -= 1
+        pieces.append(text[char_pos:fit_end])
+        char_pos = fit_end
     return pieces
 
 

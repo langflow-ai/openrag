@@ -209,7 +209,7 @@ def test_split_text_to_max_tokens_fuzz():
     from src.utils.document_processing import _split_text_to_max_tokens
 
     encoding = tiktoken.get_encoding("cl100k_base")
-    alphabet = "abc \n地理的には。、😀𠀋👨‍👩‍👧‍👦"
+    alphabet = [*"abc \n地理的には。、😀𠀋", "👨‍👩‍👧‍👦", "\udc00", "\ud83d", "\ud800\udc00"]
     rng = random.Random(0)
     for _ in range(3000):
         text = "".join(rng.choice(alphabet) for _ in range(rng.randint(1, 200)))
@@ -218,7 +218,100 @@ def test_split_text_to_max_tokens_fuzz():
         assert "".join(pieces) == text
         assert all(pieces)
         for piece in pieces:
-            assert len(encoding.encode(piece)) <= cap or len(piece) == 1
+            assert len(encoding.encode(piece)) <= cap or _is_one_character(piece)
+
+
+def _is_one_character(piece: str) -> bool:
+    return len(piece) == 1 or (
+        len(piece) == 2 and "\ud800" <= piece[0] <= "\udbff" and "\udc00" <= piece[1] <= "\udfff"
+    )
+
+
+class _CountingEncoding:
+    def __init__(self, encoding):
+        self._encoding = encoding
+        self.encode_calls = 0
+
+    def encode(self, text, **kwargs):
+        self.encode_calls += 1
+        return self._encoding.encode(text, **kwargs)
+
+    def decode_with_offsets(self, tokens):
+        return self._encoding.decode_with_offsets(tokens)
+
+
+def test_split_with_lone_surrogate_uses_token_offsets():
+    import tiktoken
+
+    from src.utils.document_processing import _split_text_to_max_tokens
+
+    base = ("The quick brown fox jumps over the lazy dog. " * 800)[:36000]
+    text = base[:18000] + "\udc00" + base[18000:]
+    encoding = _CountingEncoding(tiktoken.get_encoding("cl100k_base"))
+    pieces = _split_text_to_max_tokens(text, encoding, 2000)
+    # A growing-window scan re-encodes once per character (tens of thousands).
+    assert encoding.encode_calls < 50
+    assert "".join(pieces) == text
+    assert all(len(encoding.encode(piece)) <= 2000 for piece in pieces)
+
+
+def test_split_keeps_surrogate_pair_halves_together():
+    import tiktoken
+
+    from src.utils.document_processing import _split_text_to_max_tokens
+
+    # tiktoken reads the two halves as one character, so its offsets index a
+    # string one shorter than ``text``.
+    text = "ab\ud83d\ude00cd" * 3
+    encoding = tiktoken.get_encoding("cl100k_base")
+    pieces = _split_text_to_max_tokens(text, encoding, 1)
+    assert "".join(pieces) == text
+    for piece in pieces:
+        assert not ("\ud800" <= piece[-1] <= "\udbff")
+        assert len(encoding.encode(piece)) <= 1 or _is_one_character(piece)
+
+
+def test_split_extends_slice_that_reencodes_shorter():
+    import tiktoken
+
+    from src.utils.document_processing import _split_text_to_max_tokens
+
+    # In context the second space starts the token holding the first bytes of
+    # "👩", but on their own the two spaces encode to a single token.
+    encoding = tiktoken.get_encoding("cl100k_base")
+    pieces = _split_text_to_max_tokens("  👩👦地", encoding, 1)
+    assert pieces == ["  ", "👩", "👦", "地"]
+
+
+def test_split_and_batch_accept_literal_special_token_text():
+    import tiktoken
+
+    from src.services.document_service import chunk_texts_for_embeddings
+    from src.utils.document_processing import split_chunks_by_max_tokens
+
+    text = "see the <|endoftext|> marker in this log line. " * 300
+    out = split_chunks_by_max_tokens(
+        [{"text": text}], max_tokens=500, model="text-embedding-3-small"
+    )
+    pieces = [chunk["text"] for chunk in out]
+    assert "".join(pieces) == text
+    encoding = tiktoken.get_encoding("cl100k_base")
+    assert all(len(encoding.encode(piece, disallowed_special=())) <= 500 for piece in pieces)
+
+    batches = chunk_texts_for_embeddings(pieces, max_tokens=500, model="text-embedding-3-small")
+    assert [piece for batch in batches for piece in batch] == pieces
+
+
+def test_split_rejects_non_positive_cap():
+    import pytest
+    import tiktoken
+
+    from src.utils.document_processing import _split_text_to_max_tokens
+
+    encoding = tiktoken.get_encoding("cl100k_base")
+    for cap in (0, -1):
+        with pytest.raises(ValueError):
+            _split_text_to_max_tokens("abc", encoding, cap)
 
 
 def test_split_chunks_by_max_tokens_emoji_token_override():
