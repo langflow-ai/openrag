@@ -298,9 +298,58 @@ class NativeChatAgent:
         self,
         history_service: NativeChatHistoryService | None = None,
         ownership_service: SessionOwnershipService | None = None,
+        document_service: Any | None = None,
+        models_service: Any | None = None,
     ) -> None:
         self._history_service = history_service or NativeChatHistoryService()
         self._ownership_service = ownership_service or SessionOwnershipService()
+        self._document_service = document_service
+        self._models_service = models_service
+
+    async def _ingest_public_url(self, value: str, user_id: str) -> dict[str, Any]:
+        """Fetch a public URL once, index it, and return its protected text to the model."""
+        page = await _read_public_url(value)
+        if page.get("error") or self._document_service is None or self._models_service is None:
+            return page if page.get("error") else {"error": "URL ingestion is not configured"}
+
+        from auth_context import get_auth_context
+        from models.tasks import FileTask, UploadTask
+        from models.url import UrlProcessor
+        from utils.url_content_fetcher import materialize_url_text_file
+
+        ingestion_page = copy.deepcopy(page)
+        strip_untrusted_fence_recursive(ingestion_page)
+        source_url = str(page["url"])
+        title = urlparse(source_url).hostname or "URL"
+        temp_file_path = materialize_url_text_file(
+            str(ingestion_page["text"]),
+            source_url=source_url,
+            title=title,
+            crawl_depth=1,
+            prefix="openrag-url-chat-",
+        )
+        owner_user_id, jwt_token = get_auth_context()
+        processor = UrlProcessor(
+            document_service=self._document_service,
+            models_service=self._models_service,
+            docs_url=source_url,
+            crawl_depth=1,
+            owner_user_id=owner_user_id or user_id,
+            jwt_token=jwt_token,
+            connector_type="url",
+            materialized_file_path=temp_file_path,
+            title=title,
+        )
+        file_task = FileTask(file_path=source_url)
+        try:
+            await processor.process_item(
+                UploadTask(task_id=str(uuid.uuid4()), total_files=1), source_url, file_task
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {"error": f"Could not ingest URL: {exc}"}
+        if file_task.error:
+            return {"error": f"Could not ingest URL: {file_task.error}"}
+        return {**page, "ingestion": file_task.result or {"status": "indexed"}}
 
     async def run(
         self,
@@ -493,7 +542,7 @@ class NativeChatAgent:
         ) -> dict[str, Any]:
             """Read a user-provided public URL; use only for an explicit http(s) URL request."""
             del session_id
-            return await _read_public_url(input_value)
+            return await self._ingest_public_url(input_value, user_id)
 
         return (
             Agent(

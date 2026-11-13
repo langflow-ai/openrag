@@ -25,6 +25,8 @@ class UrlProcessor(TaskProcessor):
         owner_email: str = None,
         connector_type: str = "openrag_docs",
         is_sample_data: bool = False,
+        materialized_file_path: str | None = None,
+        title: str | None = None,
     ):
         super().__init__(document_service=document_service, models_service=models_service)
         self.docs_url = docs_url
@@ -35,6 +37,8 @@ class UrlProcessor(TaskProcessor):
         self.owner_email = owner_email
         self.connector_type = connector_type
         self.is_sample_data = is_sample_data
+        self.materialized_file_path = materialized_file_path
+        self.title = title
 
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         from utils.hash_utils import hash_id
@@ -47,10 +51,13 @@ class UrlProcessor(TaskProcessor):
 
         temp_file_path = None
         try:
-            temp_file_path, title = await materialize_url_as_text_file(
-                docs_url=self.docs_url,
-                crawl_depth=self.crawl_depth,
-            )
+            if self.materialized_file_path:
+                temp_file_path, title = self.materialized_file_path, self.title or "URL"
+            else:
+                temp_file_path, title = await materialize_url_as_text_file(
+                    docs_url=self.docs_url,
+                    crawl_depth=self.crawl_depth,
+                )
 
             processor = DocumentFileProcessor(
                 self.document_service,
@@ -76,6 +83,7 @@ class UrlProcessor(TaskProcessor):
                 file_size=os.path.getsize(temp_file_path),
                 connector_type=self.connector_type,
                 is_sample_data=self.is_sample_data,
+                source_url=self.docs_url,
             )
 
             if result.get("status") == "error":
