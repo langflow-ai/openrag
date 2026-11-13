@@ -677,19 +677,30 @@ class ChatService:
 
     async def delete_session(self, user_id: str, session_id: str):
         """Delete a session from both local storage and Langflow"""
-        if db_writes_enabled() and await self.native_chat_history_service.owns_conversation(
+        native_conversation = db_writes_enabled() and await self.native_chat_history_service.owns_conversation(
             session_id, user_id
-        ):
-            deleted = await self.native_chat_history_service.delete(session_id, user_id)
-            if deleted:
+        )
+        native_deleted = False
+        if native_conversation:
+            native_deleted = await self.native_chat_history_service.delete(session_id, user_id)
+            if not native_deleted:
+                return {
+                    "success": False,
+                    "not_found": True,
+                    "local_deleted": False,
+                    "langflow_deleted": False,
+                    "error": "Conversation not found",
+                }
+            if DISABLE_CHAT_WITH_LANGFLOW:
                 await self.session_ownership_service.release_session(user_id, session_id)
-            return {
-                "success": deleted,
-                "not_found": not deleted,
-                "local_deleted": deleted,
-                "langflow_deleted": False,
-                "error": None if deleted else "Conversation not found",
-            }
+                return {
+                    "success": True,
+                    "not_found": False,
+                    "local_deleted": True,
+                    "langflow_deleted": False,
+                    "error": None,
+                }
+        session_ids: list[str] | None = None
         try:
             # Resolve the complete, owned group before removing any associations.
             from agent import delete_user_conversation
@@ -709,21 +720,34 @@ class ChatService:
                 user_id, session_id, session_ids=session_ids
             )
 
-            if not local_deleted:
+            if not local_deleted and not native_deleted:
                 return {
                     "success": False,
                     "not_found": True,
                     "error": "Conversation not found",
                 }
 
+            if native_deleted and not local_deleted:
+                await self.session_ownership_service.release_session(user_id, session_id)
+
             return {
                 "success": True,
                 "local_deleted": local_deleted,
+                "native_deleted": native_deleted,
                 "langflow_deleted": langflow_deleted,
                 "error": None,
             }
 
         except Exception as e:
+            if native_deleted and not session_ids:
+                await self.session_ownership_service.release_session(user_id, session_id)
+                return {
+                    "success": True,
+                    "local_deleted": False,
+                    "native_deleted": True,
+                    "langflow_deleted": False,
+                    "error": None,
+                }
             logger.error(f"Error deleting session {session_id} for user {user_id}: {e}")
             return {"success": False, "error": str(e)}
 
