@@ -32,6 +32,7 @@ from connectors.base import (
     DocumentACL,
     normalize_etag,
 )
+from connectors.bucket_errors import is_azure_blob_missing, object_missing_error
 from utils.logging_config import get_logger
 
 from .auth import account_name_from_config, create_blob_service_client
@@ -226,8 +227,9 @@ class AzureBlobConnector(BaseConnector):
             logger.debug("Azure Blob auto-discovered %d container(s)", len(containers))
             return containers
         except Exception as exc:
+            # An empty list would read as "no files anywhere" to orphan cleanup.
             logger.warning("Azure Blob could not auto-discover containers: %s", exc)
-            return []
+            raise
 
     def _list_files_sync(self, max_files: int | None) -> list[dict[str, Any]]:
         client = self._get_client()
@@ -265,8 +267,10 @@ class AzureBlobConnector(BaseConnector):
                     if max_files and len(files) >= max_files:
                         return files
             except Exception as exc:
+                # Never return a partial inventory: orphan cleanup would read
+                # every indexed file in the skipped container as deleted.
                 logger.error("Failed to list blobs in Azure container %s: %s", container_name, exc)
-                continue
+                raise
 
         return files
 
@@ -319,7 +323,8 @@ class AzureBlobConnector(BaseConnector):
         """List blobs across all configured (or auto-discovered) containers.
 
         The Azure SDK paginates internally, so a single pass returns all blobs;
-        ``next_page_token`` is always None.
+        ``next_page_token`` is always None. Raises if container discovery or
+        any container's listing fails, rather than returning the ones that did.
         """
         files = await asyncio.to_thread(self._list_files_sync, max_files)
         return {"files": files, "next_page_token": None}
@@ -331,7 +336,14 @@ class AzureBlobConnector(BaseConnector):
             file_id: Composite ID in the form "<container>::<blob>".
         """
         container_name, blob_name = _split_file_id(file_id)
-        result = await asyncio.to_thread(self._download_blob_sync, container_name, blob_name)
+        try:
+            result = await asyncio.to_thread(self._download_blob_sync, container_name, blob_name)
+        except Exception as exc:
+            # Only BlobNotFound proves deletion; a missing container, denied
+            # access or a transient failure must not remove the indexed copy.
+            if is_azure_blob_missing(exc):
+                raise object_missing_error(file_id) from exc
+            raise
 
         content: bytes = result["content"]
         last_modified: datetime = result["last_modified"] or datetime.now(UTC)

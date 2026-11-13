@@ -344,6 +344,19 @@ def is_dev_azure_blob_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def get_connector_plugin_allowlist() -> frozenset[str]:
+    """Operator allowlist of customer connector plugins to load.
+
+    ``OPENRAG_CONNECTOR_PLUGINS`` is a comma-separated list of
+    ``openrag.connectors.v1`` entry-point names (empty or unset = none). Read
+    at call time: the registry resolves it once at startup, and installed
+    wheels that are not listed are never imported. Names are validated by the
+    registry, which fails startup on an unknown or uninstalled entry.
+    """
+    raw = os.getenv("OPENRAG_CONNECTOR_PLUGINS", "")
+    return frozenset(name.strip() for name in raw.split(",") if name.strip())
+
+
 def is_dev_aws_s3_enabled() -> bool:
     """Local dev: enable the AWS S3 connector without IBM_AUTH_ENABLED.
 

@@ -21,6 +21,7 @@ import {
 import { frontendUrl } from "@/lib/frontend-base-path";
 import ConnectorCard, { type Connector } from "./connector-card";
 import ConnectorsSkeleton from "./connectors-skeleton";
+import PluginSettingsDialog from "./plugin-settings-dialog";
 
 export default function ConnectorCards() {
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode, cloudContext } =
@@ -50,17 +51,24 @@ export default function ConnectorCards() {
   const connectMutation = useConnectConnectorMutation();
   const disconnectMutation = useDisconnectConnectorMutation();
 
-  const getConnectorIcon = useCallback((connectorType: string) => {
-    const Icon = getConnectorDescriptor(connectorType)?.Icon;
-    if (!Icon) {
-      return (
-        <div className="w-8 h-8 bg-gray-500 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
-          ?
-        </div>
-      );
-    }
-    return <Icon />;
-  }, []);
+  const getConnectorIcon = useCallback(
+    (connectorType: string, icon?: string) => {
+      // Plugins have no built-in descriptor; they name a built-in icon instead.
+      const Icon = (
+        getConnectorDescriptor(connectorType) ??
+        (icon ? getConnectorDescriptor(icon) : undefined)
+      )?.Icon;
+      if (!Icon) {
+        return (
+          <div className="w-8 h-8 bg-gray-500 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
+            ?
+          </div>
+        );
+      }
+      return <Icon />;
+    },
+    [],
+  );
 
   const connectors = queryConnectors.reduce<Connector[]>((acc, c) => {
     if (c.type === "url" && !showUrlConnector) {
@@ -71,7 +79,7 @@ export default function ConnectorCards() {
     if (c.requiresOAuth || c.available !== false) {
       acc.push({
         ...c,
-        icon: getConnectorIcon(c.type),
+        icon: getConnectorIcon(c.type, c.icon),
       } as Connector);
     }
     return acc;
@@ -110,7 +118,7 @@ export default function ConnectorCards() {
 
   const getConfigureHandler = (connector: Connector) => {
     const descriptor = getConnectorDescriptor(connector.type);
-    if (descriptor?.SettingsDialog) {
+    if (descriptor?.SettingsDialog || (!descriptor && connector.configFields)) {
       return () => setOpenDialog(connector.type);
     }
     return undefined;
@@ -256,6 +264,23 @@ export default function ConnectorCards() {
       {showUrlConnector && (
         <UrlSourceDialog open={urlDialogOpen} onOpenChange={setUrlDialogOpen} />
       )}
+
+      {openDialog &&
+        !getConnectorDescriptor(openDialog)?.SettingsDialog &&
+        (() => {
+          const connector = queryConnectors.find(
+            (item) => item.type === openDialog,
+          );
+          return connector?.configFields ? (
+            <PluginSettingsDialog
+              key={openDialog}
+              connector={connector}
+              setOpen={(open) => {
+                if (!open) setOpenDialog(null);
+              }}
+            />
+          ) : null;
+        })()}
 
       <DeleteConfirmationDialog
         open={disconnectTarget !== null}

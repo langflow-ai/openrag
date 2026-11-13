@@ -14,6 +14,7 @@ from connectors.base import (
     DocumentACL,
     normalize_etag,
 )
+from connectors.bucket_errors import is_s3_object_missing, object_missing_error
 from utils.logging_config import get_logger
 
 from .auth import create_s3_client, create_s3_resource
@@ -162,8 +163,9 @@ class S3Connector(BaseConnector):
             logger.debug("S3 auto-discovered %d bucket(s)", len(buckets))
             return buckets
         except Exception as exc:
+            # An empty list would read as "no files anywhere" to orphan cleanup.
             logger.warning(f"S3 could not auto-discover buckets: {exc}")
-            return []
+            raise
 
     async def list_files(
         self,
@@ -180,6 +182,9 @@ class S3Connector(BaseConnector):
             dict with keys:
                 "files": list of file dicts (id, name, bucket, size, modified_time)
                 "next_page_token": always None (SDK handles pagination internally)
+
+        Raises if bucket discovery or any bucket's listing fails, rather than
+        returning the buckets that did list.
         """
         resource = self._get_resource()
         files: list[dict[str, Any]] = []
@@ -214,8 +219,10 @@ class S3Connector(BaseConnector):
                     if max_files and len(files) >= max_files:
                         return {"files": files, "next_page_token": None}
             except Exception as exc:
-                logger.error("Failed to list objects in S3 bucket: %s", exc)
-                continue
+                # Never return a partial inventory: orphan cleanup would read
+                # every indexed file in the skipped bucket as deleted.
+                logger.error("Failed to list objects in S3 bucket %s: %s", bucket_name, exc)
+                raise
 
         return {"files": files, "next_page_token": None}
 
@@ -231,8 +238,15 @@ class S3Connector(BaseConnector):
         bucket_name, key = _split_file_id(file_id)
         resource = self._get_resource()
 
-        response = resource.Object(bucket_name, key).get()
-        content: bytes = response["Body"].read()
+        try:
+            response = resource.Object(bucket_name, key).get()
+            content: bytes = response["Body"].read()
+        except Exception as exc:
+            # Only NoSuchKey proves deletion; a missing bucket, denied access or
+            # a transient failure must not remove the indexed copy.
+            if is_s3_object_missing(exc):
+                raise object_missing_error(file_id) from exc
+            raise
 
         last_modified: datetime = response.get("LastModified") or datetime.now(UTC)
         size: int = response.get("ContentLength", len(content))

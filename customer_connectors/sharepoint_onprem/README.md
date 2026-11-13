@@ -1,0 +1,82 @@
+# SharePoint Server on-premises (NTLM) example connector
+
+`openrag-sharepoint-onprem` is a separately packaged `sharepoint_onprem` adapter. It uses SharePoint Server REST and NTLM with **server-side** credentials; it does not use Microsoft Graph, SharePoint Online OAuth or the existing `sharepoint` browser popup. The generic OpenRAG form/picker displays configured sites, document libraries, nested folders and files, and sends selected file IDs to the backend for ingestion. It never sends the NTLM password to browser code except when the authorized user explicitly submits Test or Save over the OpenRAG HTTPS connection. This connector indexes documents for the **OpenRAG connection owner only**; it does not inherit SharePoint/AD ACLs.
+
+**Release gate:** no real SharePoint farm is supplied with this repository. Tests using simulated REST responses cannot prove NTLM handshake, selected farm's REST capability, custom CA, nested library permissions or >500-item paging on that farm. Enable this package only in an isolated non-production environment to perform the acceptance below; do not enable it in production until that gate passes. This is a draft integration, not a claim of live-farm certification.
+
+## Preconditions
+
+- SharePoint Server web-application zone offers **NTLM** and REST, with a least-privilege read-only Windows service identity permitted to the nominated sites and document libraries. Kerberos-only, FBA, SAML, OIDC or Graph-only endpoints are not supported; no Basic fallback. Confirm the challenge from inside the backend network before rollout.
+- Backend egress/DNS is limited to the approved intranet origin. For a private SharePoint CA, mount an operator-managed **PEM CA bundle** in the backend container and set `OPENRAG_SHAREPOINT_CA_BUNDLE` to its absolute, readable regular-file path. The adapter passes that bundle explicitly to Requests TLS verification; if unset or blank, Requests uses its default CA bundle. TLS verification cannot be disabled. Its HTTP session ignores proxy/CA environment variables (`trust_env=False`), so `REQUESTS_CA_BUNDLE` is not a supported configuration route.
+- `OPENRAG_SHAREPOINT_ALLOWED_ORIGINS` is a comma- or newline-separated list of **exact approved HTTPS origins** (scheme, DNS name and optional port, not arbitrary URLs). Every configured `root_url` must match one origin. No redirect is followed and file IDs cannot name arbitrary fetch URLs. Also enforce egress/DNS policy outside Python to mitigate DNS rebinding.
+- `OPENRAG_SHAREPOINT_ALLOW_INSECURE_HTTP=true` additionally permits plain `http://` origins in the allowlist and `root_url`. It exists **only for isolated test farms** without TLS: NTLM handshakes, session traffic and document content cross the network unencrypted. Never set it in production; when unset or any other value, `http://` is rejected.
+- A stable `OPENRAG_ENCRYPTION_KEY` is mounted at runtime; the host rejects missing or failed plugin-secret encryption. Preserve it for restart/restore. The package is installed into `/app/.venv` in an immutable derived backend image, and `OPENRAG_CONNECTOR_PLUGINS=sharepoint_onprem` is enabled in production **only after** the test farm gate.
+
+## Build
+
+The package entry point is `openrag.connectors.v1:sharepoint_onprem`, exports `SharePointOnPremConnector` and declares dependencies `requests>=2.31,<3` and `requests-ntlm>=1.3,<2`. Build and install a hash-pinned offline wheelhouse using the parent [customer connector guide](../README.md). The built-in Graph connector remains unchanged; do not modify OpenRAG's `src/connectors/registry.py` for this wheel.
+
+## Local development (explicit opt-in)
+
+`make backend` starts the stock backend: it does not install or enable customer wheels, so `make frontend` alone cannot add this card to Settings → Connectors. After stopping the existing host backend, use the dedicated target from the repository root:
+
+```bash
+make backend-sharepoint-onprem  # in one terminal; layers this package onto the project env and enables it
+make frontend                  # in another terminal
+```
+
+The card should appear at `http://localhost:3000/settings/connectors` even before configuring a connection. The **Test connection** and **Save** actions require a reachable, approved SharePoint farm, a valid NTLM account, `OPENRAG_SHAREPOINT_ALLOWED_ORIGINS` and a stable `OPENRAG_ENCRYPTION_KEY` in your private `.env`; set `OPENRAG_SHAREPOINT_CA_BUNDLE` for a private CA. Do not invent a permissive origin or disable TLS just to exercise the form. `make backend` neither installs the customer package nor enables its allowlist: restart with `make backend-sharepoint-onprem` to use this opt-in. The dedicated target layers the package onto the project environment with `uv run --with-editable` (the same command `make test-customer-connectors` and CI use), so it honours `UV_PROJECT_ENVIRONMENT` and leaves the project venv unchanged. Production deployments use the pinned derived-image procedure in the parent guide, not an editable development install.
+
+Run this package's tests from the repository root with `make test-customer-connectors`; CI runs the same command on every pull request that touches the backend or `customer_connectors/`. The tests clear every `OPENRAG_SHAREPOINT_*` variable first, so your `.env` settings do not change their outcome.
+
+The operator configures a connection in OpenRAG Settings after the approved wheel is loaded:
+
+| Field | Meaning |
+|---|---|
+| `root_url` | HTTPS SharePoint web-application root (may include its approved base path); no username, query or fragment. |
+| `username` / `password` | NTLM service identity; write-only secrets, masked on subsequent edits. Both must be supplied together for a new connection; an omitted pair reuses saved values on edit. |
+| `domain` | Optional NTLM domain (e.g. `CONTOSO`). |
+| `site_paths` | One nominated site path **per line**, relative to `root_url`, e.g. `sites/finance`; a line containing only `/` nominates the root site collection at `root_url` itself. No farm-wide discovery or implicit all-sites choice; saving an empty selection is rejected. Each path must match the server's casing exactly (e.g. `sites/Finance`, not `sites/finance`) and name a site, not a library or folder: **Test connection** rejects a mismatch, and the backend log (ERROR) names the server's path. |
+
+Select **Test connection** to authenticate and check the specified scope without persisting. **Save** revalidates and stores encrypted credentials and nominated sites. In Add Knowledge, navigate the configured site → its visible document libraries → folders → files. Use **Load more** to reach subsequent pages, select files across folder/page transitions, and ingest the selected IDs under the exact connection. Reopen the picker to inspect the indexed state; use regular connector re-sync for changed or removed source files. The first version supports **file selection, not recursive folder selection or full-farm ingest**; opening a folder never starts ingestion.
+
+## Known limits and safety
+
+- Configured site paths are explicit because SharePoint farm-wide Search/site discovery is not universally enabled. Hidden/system libraries should not appear; an inaccessible site or a failed page is an error, **not** an empty successful inventory. A user cannot browse or download a file outside the persisted selected sites/libraries.
+- The adapter caps downloads at **50 MiB**, serves at most **200 picker nodes per page** and at most **1,000 files per inventory call** with pagination. Inventory walks each library depth-first, and its resume cursor stays small however many folders a library holds. Folder nesting is capped at **64 levels**: a deeper tree fails the sync rather than deleting anything. Operators must validate very large libraries and traversal cost against their farm before enabling scheduled resync.
+- Each library's `Forms` folder (list view pages and document templates) is hidden from the picker and inventory; it holds no user documents.
+- SharePoint's legacy `GetFolderByServerRelativeUrl`/`GetFileByServerRelativeUrl` REST endpoints do not handle `#` or `%` correctly in names. This version **rejects those paths** rather than ingesting the wrong document; ResourcePath API support requires a subsequent reviewed implementation. Index visibility is owner-only, not SharePoint ACL parity; do not enable sharing for this source.
+- Source 401/403, timeout, invalid input, unexpected redirect or incomplete enumeration never signal deletion. Removing a configured `site_paths` entry or losing visibility of a document library leaves previously indexed files untouched: an ordinary re-sync only removes a missing file after a 404 from its scoped file endpoint while the site and library remain visible. Removing access is **not** a way to purge the index; use authorized OpenRAG deletion for intentional removal. A source ID is opaque to clients and revalidated against configured origin/site/library at use time.
+- IDs are deterministic for a file at the same origin and server-relative path across paging and restarts, but **rename/move changes the ID**. A re-sync sees the old path removed and the new path as a distinct file; review retention and duplicate handling before use where renames are frequent. This is not a durable SharePoint GUID mapping.
+- **IDs include the approved server origin.** The same path on two approved servers is two different files, so one server's 404 can never remove the other's documents.
+  - Changing **Server URL** gives every file a new ID, even when the new URL is an alias or the HTTPS name of the same farm. The previous server's documents stay indexed and are never removed automatically; delete them from Knowledge. Until you do, re-ingesting identical content under the new ID may be skipped as a content duplicate.
+  - IDs minted by earlier draft builds of this connector, which had no origin, are rejected as out of scope without deleting anything. Re-ingest those files.
+- **Indexed filenames carry a visible source-ID suffix (known UX trade-off).** The picker shows natural SharePoint basenames. Each document is indexed as `<stem>--sp-<32 hex><extension>`, where the hex is the first 32 characters of the SHA-256 of its source ID; for example, `report.pdf` becomes `report--sp-<32 hex>.pdf`. That name appears wherever OpenRAG shows a filename: the Knowledge table, its filters, chat sources and citations.
+  - The suffix exists because OpenRAG's duplicate gate is keyed on the filename. Without it, `team/report.pdf` and `finance/report.pdf` would be treated as one document, and ingesting the second would skip or overwrite the first. The duplicate dialog checks these indexed names, not the shared basename.
+  - Because the source ID comes from the server-relative path, renaming or moving a file also changes its suffix; see the previous point.
+  - Removing the suffix needs a host change: key duplicate detection for connector documents on the connector type and source file ID, and keep the natural filename for display. That is planned as a follow-up, not part of this version.
+- Each connection reuses a small pool of NTLM sessions, at most 4 idle and each dropped after 60 s idle, so files and picker pages share keep-alive connections instead of repeating the handshake. A document library listing is reused for **60 s** for browsing and downloads. A successful sign-in check is reused for **5 minutes**, so the host's per-request status check does not probe every site. **Test connection** and **Save** always run the full probe. Nothing negative is cached: a 404 or 403 under a cached listing is re-checked against a fresh one, and the deletion check (`is_definitively_missing`) always lists libraries fresh. A cached listing therefore never turns into a deletion. A library hidden from the account may stay browsable for up to 60 s; SharePoint still authorizes every request.
+- The picker's **Update available** indicator compares `TimeLastModified` with the indexed copy; the adapter does not report ETags yet. SharePoint's `"{GUID},N"` ETag also changes on property-only edits, and whether the listing and file endpoints return the same tag is unverified on a real farm. Revisit after the acceptance run.
+- No webhooks or subscription events: updates use explicit or scheduled polling/re-sync. The host remains single-worker until its process-local permission caches are replaced.
+
+## Troubleshooting a failed Test connection
+
+The form shows a coarse reason after "Connector authentication failed" and never SharePoint's own text. The backend log has the detail, with no passwords, URLs or exception text:
+
+| Form says | Meaning | Backend log |
+|---|---|---|
+| the source denied access | HTTP 401/403, or the sign-in was rejected | `SharePoint denied access (HTTP 401, authentication challenge: NTLM)`: check the account, `domain`, that the zone offers NTLM, and the account's permissions on the nominated sites |
+| did not respond in time | connect (5 s) or reply (20 s) timeout | `SharePoint reply timed out`: a farm that has just restarted can take tens of seconds on its first requests (app pool and claims token warm-up). Browse to the site once, or retry. |
+| could not reach the source | DNS, refused, proxy or TLS failure | `SharePoint request failed (SSLError)` (the class only): check the URL, DNS, firewall and `OPENRAG_SHAREPOINT_CA_BUNDLE` |
+| configuration was rejected | an unapproved origin, a bad `site_paths` entry, a missing operator setting | `SharePoint connection settings were rejected: ...` or the site-path errors above |
+
+This plug-in logs these at ERROR because the host drops lower levels from installed packages. The host also logs a `Plugin connector authentication failed` warning with the category and exception class; in OSS mode it appears in the Console Status `openrag` log.
+
+## Non-production acceptance before promotion
+
+1. From the **derived backend image** with `OPENRAG_SHAREPOINT_CA_BUNDLE` mounted for a private CA, authenticate with the approved NTLM account against the actual zone. Verify the unauthorized, expired-secret, TLS failure and cross-origin redirect cases fail safely, without logging a password or URL containing credentials.
+2. Test/Save a nominated site and a second inaccessible site; only the selected, readable scope is navigable. Test should not create a connection. Restart and verify saved secrets decrypt and the connection still works. Inspect `connections.json`: no plaintext username or password.
+3. Browse a library with nested folders, duplicate filenames and **more than 500 entries**, selecting files from distinct pages. Ingest; verify tasks and indexed content are owner-only. A forged `parent_id`, cursor, file ID, wrong connection ID and another OpenRAG user's connection must be rejected.
+4. Change and remove indexed files and re-sync; verify changed content replaces stale chunks and a definitive deletion removes its chunks. Revoke access or cause a timeout mid-enumeration and verify **no** indexed documents are deleted. Roll back the derived image to the prior signed version without losing saved connections or documents.
+
+If the farm uses Kerberos-only or a different identity zone, stop: a simulated test cannot turn it into an NTLM-capable connector. The Microsoft [SharePoint Server authentication overview](https://learn.microsoft.com/en-us/sharepoint/security-for-sharepoint-server/authentication-overview) describes the zone prerequisites; the [SharePoint REST folder/file guide](https://learn.microsoft.com/en-us/sharepoint/dev/sp-add-ins/working-with-folders-and-files-with-rest) documents the legacy URL-encoding restriction.

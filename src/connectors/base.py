@@ -95,6 +95,10 @@ class BaseConnector(ABC):
     # ConnectionManager entry (the URL connector is the first example).
     CONNECTOR_KIND: str = "oauth"
     ALWAYS_CONNECTED: bool = False
+    # Customer plugin contract (openrag.connectors.v1). Unset on built-in and
+    # enhancement connectors; the registry rejects a plugin that leaves them None.
+    CONNECTOR_API_VERSION: int | None = None
+    BROWSE_CAPABILITY: str | None = None
     # When a sync re-processes files that are already indexed, pass
     # replace_duplicates so the indexed copy is replaced and content changes
     # propagate, instead of being skipped by the duplicate-filename gate.
@@ -117,6 +121,12 @@ class BaseConnector(ABC):
     #                      metadata; without them detection falls back to
     #                      timestamps alone (see bucket_changed_file_ids).
     CHANGE_DETECTION: str = "replace_always"
+    # Set True when absence from list_files() does not prove a file was deleted
+    # (e.g. a removed site, or a library trimmed by source permissions). Orphan
+    # reconciliation then deletes only the files every active connection of
+    # this type confirms via is_definitively_missing(); the base implementation
+    # never confirms, so setting the flag without overriding it deletes nothing.
+    REQUIRES_CONFIRMED_DELETION: bool = False
     # Connector-specific keys in the config dict that must be encrypted at rest.
     SECRET_CONFIG_KEYS: tuple = ()
 
@@ -230,7 +240,12 @@ class BaseConnector(ABC):
     async def list_files(
         self, page_token: str | None = None, max_files: int | None = None, **kwargs: Any
     ) -> dict[str, Any]:
-        """List all files. Returns files and next_page_token if any."""
+        """List all files. Returns files and next_page_token if any.
+
+        Raise if any part of the source (a bucket, container, folder or page)
+        cannot be listed; never return what was readable. Orphan cleanup
+        treats a file missing from a successful listing as deleted.
+        """
         pass
 
     async def list_selected_files(
@@ -269,7 +284,14 @@ class BaseConnector(ABC):
 
     @abstractmethod
     async def get_file_content(self, file_id: str) -> ConnectorDocument:
-        """Get file content and metadata"""
+        """Get file content and metadata.
+
+        Raise ``FileNotFoundError`` only on positive proof that this file no
+        longer exists at the source (e.g. Graph 404/410, S3 ``NoSuchKey``,
+        Azure ``BlobNotFound``): the processor deletes its indexed chunks on
+        it. A missing bucket/container/site, an auth failure or a transient
+        error must propagate as itself, so the indexed copy is kept.
+        """
         pass
 
     @abstractmethod
@@ -306,6 +328,22 @@ class BaseConnector(ABC):
         connector does not support in-place renewal — the caller then falls
         back to cleanup_subscription + setup_subscription."""
         return None
+
+    def filename_for_index(self, file_id: str, filename: str) -> str:
+        """Return the filename this connector indexes ``file_id`` under.
+
+        Override when the indexed name is derived from the picker name (e.g.
+        keyed by source id): the duplicate check compares this name, so it must
+        match what ingestion writes. Default: the picker name unchanged."""
+        return filename
+
+    async def is_definitively_missing(self, file_id: str) -> bool:
+        """True only when the source positively proves ``file_id`` is gone.
+
+        Consulted by orphan reconciliation when REQUIRES_CONFIRMED_DELETION is
+        set. Errors, lost access and ambiguous responses must return False.
+        Default: never proven."""
+        return False
 
     @property
     def is_authenticated(self) -> bool:

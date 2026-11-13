@@ -407,6 +407,117 @@ async def test_multi_connection_one_offline_aborts_even_if_other_succeeds():
     opensearch_client.delete.assert_not_awaited()
 
 
+def _register_connector_type(monkeypatch, connector_type, *, requires_confirmed_deletion):
+    """Make the registry resolve `connector_type` to a class declaring the flag,
+    leaving every other type to the real registry."""
+    from connectors import registry
+    from connectors.base import BaseConnector
+
+    real = registry.get_connector_class
+    cls = type(
+        "FakeConnector",
+        (),
+        {
+            "CONNECTOR_TYPE": connector_type,
+            "REQUIRES_CONFIRMED_DELETION": requires_confirmed_deletion,
+            "SYNC_REPLACES_DUPLICATES": BaseConnector.SYNC_REPLACES_DUPLICATES,
+            "CHANGE_DETECTION": BaseConnector.CHANGE_DETECTION,
+        },
+    )
+    monkeypatch.setattr(
+        registry,
+        "get_connector_class",
+        lambda t: cls if t == connector_type else real(t),
+    )
+
+
+@pytest.mark.asyncio
+async def test_confirmed_deletion_connector_only_deletes_confirmed_missing_files(monkeypatch):
+    """A connector declaring REQUIRES_CONFIRMED_DELETION: absence from the
+    listing alone (e.g. a permission-trimmed library) never deletes; only a
+    file the source confirms missing does."""
+    from api.connectors import reconcile_orphans_for_connector_type
+
+    _register_connector_type(monkeypatch, "confirming", requires_confirmed_deletion=True)
+    conn = _make_connection("c1")
+    connector = _make_connector(remote_file_ids=["visible"])
+    connector.is_definitively_missing = AsyncMock(side_effect=lambda fid: fid == "deleted")
+    service = _make_service([conn], {"c1": connector})
+    client = _make_opensearch_client(chunk_ids=["chunk-deleted"])
+    write_client = _patch_write_client(monkeypatch)
+
+    result = await reconcile_orphans_for_connector_type(
+        connector_type="confirming",
+        user_id="alice",
+        connector_service=service,
+        session_manager=_make_session_manager(client),
+        jwt_token=None,
+        existing_file_ids=["visible", "scope-trimmed", "deleted"],
+    )
+
+    assert result == ["deleted"]
+    assert connector.is_definitively_missing.await_count == 2
+    shoulds = client.search.await_args.kwargs["body"]["query"]["bool"]["filter"][0]["bool"][
+        "should"
+    ]
+    assert {tuple(next(iter(term["terms"].values()))) for term in shoulds} == {("deleted",)}
+    assert write_client.delete.await_args.kwargs["id"] == "chunk-deleted"
+
+
+@pytest.mark.asyncio
+async def test_confirmed_deletion_connector_preserves_file_when_other_connection_cannot_prove_missing(
+    monkeypatch,
+):
+    from api.connectors import reconcile_orphans_for_connector_type
+
+    _register_connector_type(monkeypatch, "confirming", requires_confirmed_deletion=True)
+    connectors = [_make_connector([]), _make_connector([])]
+    connectors[0].is_definitively_missing = AsyncMock(return_value=True)
+    connectors[1].is_definitively_missing = AsyncMock(return_value=False)
+    service = _make_service(
+        [_make_connection("c1"), _make_connection("c2")],
+        {"c1": connectors[0], "c2": connectors[1]},
+    )
+    client = _make_opensearch_client()
+    result = await reconcile_orphans_for_connector_type(
+        connector_type="confirming",
+        user_id="alice",
+        connector_service=service,
+        session_manager=_make_session_manager(client),
+        jwt_token=None,
+        existing_file_ids=["file"],
+    )
+    assert result == []
+    client.search.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_connector_without_confirmed_deletion_never_asks_for_confirmation(monkeypatch):
+    """The default (REQUIRES_CONFIRMED_DELETION=False): absence from the
+    listing is the deletion signal, and is_definitively_missing is not called."""
+    from api.connectors import reconcile_orphans_for_connector_type
+
+    _register_connector_type(monkeypatch, "listing_is_truth", requires_confirmed_deletion=False)
+    connector = _make_connector(remote_file_ids=["visible"])
+    connector.is_definitively_missing = AsyncMock(return_value=False)
+    service = _make_service([_make_connection("c1")], {"c1": connector})
+    client = _make_opensearch_client(chunk_ids=["chunk-gone"])
+    write_client = _patch_write_client(monkeypatch)
+
+    result = await reconcile_orphans_for_connector_type(
+        connector_type="listing_is_truth",
+        user_id="alice",
+        connector_service=service,
+        session_manager=_make_session_manager(client),
+        jwt_token=None,
+        existing_file_ids=["visible", "gone"],
+    )
+
+    assert result == ["gone"]
+    connector.is_definitively_missing.assert_not_awaited()
+    assert write_client.delete.await_args.kwargs["id"] == "chunk-gone"
+
+
 @pytest.mark.asyncio
 async def test_paginated_listing_aggregates_all_pages():
     """Connectors without cfg (e.g. bucket connectors) use the paginated
