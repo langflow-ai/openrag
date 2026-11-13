@@ -1,7 +1,8 @@
 import json
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic_ai import Agent
@@ -342,6 +343,39 @@ async def test_native_url_reader_fences_embedded_marker_text(monkeypatch):
         "<<<END_UNTRUSTED_DOC_CHUNK>>>"
     )
     assert isinstance(client_options["transport"], _PinnedAddressTransport)
+
+
+@pytest.mark.asyncio
+async def test_native_url_tool_indexes_the_validated_page_with_the_url_processor(monkeypatch):
+    monkeypatch.setattr(
+        "services.native_chat_agent._read_public_url",
+        AsyncMock(
+            return_value={
+                "url": "https://example.com/doc",
+                "text": "<<<UNTRUSTED_DOC_CHUNK>>>\nDocument body\n<<<END_UNTRUSTED_DOC_CHUNK>>>",
+            }
+        ),
+    )
+    captured: dict[str, object] = {}
+
+    async def process_document_standard(*, file_path, **kwargs):
+        captured["content"] = Path(file_path).read_text()
+        captured.update(kwargs)
+        return {"status": "indexed", "id": "document-id"}
+
+    document_processor = MagicMock()
+    document_processor.process_document_standard = AsyncMock(side_effect=process_document_standard)
+    agent = NativeChatAgent(document_service=MagicMock(), models_service=MagicMock())
+
+    with patch("models.processors.DocumentFileProcessor", return_value=document_processor):
+        result = await agent._ingest_public_url("https://example.com/doc", "user-id")
+
+    assert result["ingestion"] == {"status": "indexed", "id": "document-id"}
+    assert captured["source_url"] == "https://example.com/doc"
+    assert captured["connector_type"] == "url"
+    assert captured["content"] == (
+        "example.com\n\nSource URL: https://example.com/doc\nCrawl depth: 1\n\nDocument body\n"
+    )
 
 
 @pytest.mark.asyncio
