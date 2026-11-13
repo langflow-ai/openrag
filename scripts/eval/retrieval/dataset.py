@@ -18,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 REQUIRED_FIELDS = frozenset({"query", "expected_files"})
-OPTIONAL_FIELDS = frozenset({"id", "expected_text", "tags"})
+OPTIONAL_FIELDS = frozenset({"id", "expected_text", "expected_answer", "tags"})
 
 
 class DatasetError(ValueError):
@@ -32,6 +32,7 @@ class Query:
     expected_files: tuple[str, ...]
     expected_text: str | None = None
     tags: tuple[str, ...] = ()
+    expected_answer: str | None = None
 
 
 def list_corpus(corpus_dir: Path) -> list[str]:
@@ -90,6 +91,12 @@ def _parse_row(row: object, corpus_names: frozenset[str]) -> tuple[Query | None,
     ):
         problems.append("'expected_text' must be a non-empty string")
 
+    expected_answer = row.get("expected_answer")
+    if "expected_answer" in row and (
+        not isinstance(expected_answer, str) or not expected_answer.strip()
+    ):
+        problems.append("'expected_answer' must be a non-empty string")
+
     tags = row.get("tags", [])
     if tags != [] and not _is_string_list(tags):
         problems.append("'tags' must be a list of non-empty strings")
@@ -103,6 +110,7 @@ def _parse_row(row: object, corpus_names: frozenset[str]) -> tuple[Query | None,
             expected_files=tuple(expected_files),
             expected_text=expected_text,
             tags=tuple(tags),
+            expected_answer=expected_answer,
         ),
         [],
     )
@@ -246,3 +254,21 @@ def old_enough(leftover: Leftover, now: datetime, min_age: timedelta) -> bool:
     shown to be old, so both are kept.
     """
     return leftover.indexed_time is not None and now - leftover.indexed_time >= min_age
+
+
+def retrieval_queries_hash(path: Path) -> str:
+    """Hash the legacy question file without additive answer references.
+
+    Rows with no answer reference keep their exact bytes. Answer-labeled rows
+    use the existing JSONL formatting, so the tracked phase-1 baseline remains
+    comparable. The full file hash is recorded separately for provenance.
+    """
+    lines = []
+    for line in path.read_text(encoding="utf-8").splitlines(keepends=True):
+        if line.strip():
+            row = json.loads(line)
+            if "expected_answer" in row:
+                del row["expected_answer"]
+                line = json.dumps(row, ensure_ascii=False) + ("\n" if line.endswith("\n") else "")
+        lines.append(line)
+    return hashlib.sha256("".join(lines).encode()).hexdigest()
