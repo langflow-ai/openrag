@@ -89,6 +89,7 @@ async def test_langflow_chat_resumes_an_owned_native_conversation_when_disabled(
 
 @pytest.mark.asyncio
 async def test_delete_all_sessions_deletes_native_and_langflow_history(monkeypatch):
+    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", True)
     service = ChatService()
     service.native_chat_history_service.delete_all = AsyncMock(return_value=2)
     service.delete_session = AsyncMock(return_value={"success": True})
