@@ -47,25 +47,27 @@ class LangflowHistoryService:
     async def get_session_messages(self, user_id: str, session_id: str) -> list[dict[str, Any]]:
         """Get all messages for a specific session"""
         try:
-            response = await clients.langflow_request(
-                "GET",
-                "/api/v1/monitor/messages",
-                params={"session_id": session_id, "order_by": "timestamp"},
-            )
-
-            if response.status_code == 200:
-                messages = response.json()
-                # Convert to OpenRAG format
-                return self._convert_langflow_messages(messages)
-            else:
-                logger.error(
-                    f"Failed to get messages for session {session_id}: {response.status_code}"
-                )
-                return []
+            return await self.fetch_session_messages(session_id)
 
         except Exception as e:
             logger.error(f"Error getting session messages: {e}")
             return []
+
+    async def fetch_session_messages(self, session_id: str) -> list[dict[str, Any]]:
+        """Fetch one session or raise so migrations can retry failed imports."""
+        response = await clients.langflow_request(
+            "GET",
+            "/api/v1/monitor/messages",
+            params={"session_id": session_id, "order_by": "timestamp"},
+        )
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"Langflow message fetch failed for {session_id}: {response.status_code}"
+            )
+        messages = response.json()
+        if not isinstance(messages, list):
+            raise RuntimeError(f"Langflow returned an invalid message list for {session_id}")
+        return self._convert_langflow_messages(messages)
 
     def _convert_langflow_messages(
         self, langflow_messages: list[dict[str, Any]]

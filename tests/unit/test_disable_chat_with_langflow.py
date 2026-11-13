@@ -46,23 +46,20 @@ async def test_langflow_chat_uses_direct_chat_when_disabled(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_langflow_history_uses_direct_history_when_disabled(monkeypatch):
-    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", True)
-
+async def test_chat_history_uses_native_history():
     service = ChatService()
-    service.get_chat_history = AsyncMock(
+    service.native_chat_history_service.history = AsyncMock(
         return_value={
             "user_id": "db-user",
-            "endpoint": "chat",
             "conversations": [],
             "total_conversations": 0,
         }
     )
 
-    result = await service.get_langflow_history("db-user")
+    result = await service.get_chat_history("db-user")
 
-    assert result["endpoint"] == "chat"
-    service.get_chat_history.assert_awaited_once_with("db-user")
+    assert result["user_id"] == "db-user"
+    service.native_chat_history_service.history.assert_awaited_once_with("db-user")
 
 
 @pytest.mark.asyncio
