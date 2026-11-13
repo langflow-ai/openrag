@@ -5,13 +5,14 @@
     uv run run_eval.py check
     uv run run_eval.py cleanup [--yes]
     uv run run_eval.py compare <baseline.json> <current.json>
+    uv run run_eval.py scores <results.json> [--baseline <other.json>]
 
 ``run`` ingests the checked-in corpus under run-unique filenames, sends every
 question through ``/v1/search``, scores the ranking by file, writes results and
 a summary, and deletes the documents it uploaded. ``check`` confirms a stack is
 ready for a run without uploading anything, and ``cleanup`` removes documents
-that interrupted runs left behind. ``compare`` diffs two results files offline.
-See README.md.
+that interrupted runs left behind. ``compare`` diffs two results files offline,
+and ``scores`` works out relevance-score thresholds from one. See README.md.
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ import answers
 import dataset
 import metrics
 import report
+import scores
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_URL = "http://localhost:3000"
@@ -54,6 +56,42 @@ def _parse_k_values(value: str) -> list[int]:
     if not k_values or k_values[0] < 1:
         raise argparse.ArgumentTypeError("k values must be positive integers")
     return k_values
+
+
+def _parse_thresholds(value: str) -> list[float] | None:
+    try:
+        return scores.parse_thresholds(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _finite_float(value: str) -> float:
+    try:
+        return scores.finite(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _parse_live_thresholds(value: str) -> list[float]:
+    try:
+        thresholds = scores.parse_thresholds(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+    if thresholds is None:
+        raise argparse.ArgumentTypeError("give the thresholds to test, such as 0.5,1,2 or 0:3:0.5")
+    return thresholds
+
+
+def _parse_tiers(value: str) -> tuple[float, float]:
+    try:
+        high, med = (scores.finite(part) for part in value.split(","))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"expected HIGH,MEDIUM as two finite numbers, got {value!r}"
+        ) from exc
+    if not 0 <= med <= high:
+        raise argparse.ArgumentTypeError("the Medium cutoff must be between 0 and the High cutoff")
+    return high, med
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -107,6 +145,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="chunks requested per question before deduplicating to files (default: 50)",
     )
     run.add_argument("--score-threshold", type=float, default=0.0)
+    run.add_argument(
+        "--live-thresholds",
+        type=_parse_live_thresholds,
+        help=(
+            "rerun every question once per threshold with the stack applying the score "
+            "threshold itself, such as 0.5,1,2 or 0:3:0.5, so `run_eval.py scores` can "
+            "report the real cut next to the offline simulation"
+        ),
+    )
+    run.add_argument(
+        "--label",
+        help=(
+            'what this run tests, such as "weights 0.7/0.3", stored with the results and '
+            "shown in summaries and comparisons"
+        ),
+    )
     run.add_argument("--concurrency", type=int, default=4, help="parallel uploads (default: 4)")
     run.add_argument(
         "--ingest-timeout", type=float, default=300.0, help="seconds per ingestion task"
@@ -173,6 +227,61 @@ def build_parser() -> argparse.ArgumentParser:
             "only delete documents indexed at least this many minutes ago, so a run "
             "still in progress is left alone (default: 60)"
         ),
+    )
+
+    score = commands.add_parser(
+        "scores",
+        help="work out relevance-score thresholds and check the tiers from a results file",
+    )
+    score.add_argument("results", type=Path, help="results file of a run")
+    score.add_argument(
+        "--baseline", type=Path, help="results file of another run to compare side by side"
+    )
+    score.add_argument(
+        "--normalize",
+        choices=scores.NORMALIZE_METHODS,
+        default="none",
+        help=(
+            "none (default) when the stack already returns scores in [0, 1]; minmax to "
+            "rescale each question's scores to [0, 1] first"
+        ),
+    )
+    score.add_argument(
+        "--k", type=int, help="cutoff for recall and passage hits (default: the run's)"
+    )
+    score.add_argument(
+        "--thresholds",
+        type=_parse_thresholds,
+        default=None,
+        help="auto (default), start:stop:step, or a comma-separated list",
+    )
+    score.add_argument(
+        "--tiers",
+        type=_parse_tiers,
+        default=scores.DEFAULT_TIERS,
+        help="High and Medium cutoffs, comma-separated (default: 0.65,0.35)",
+    )
+    score.add_argument(
+        "--hide",
+        type=_finite_float,
+        default=scores.DEFAULT_HIDE,
+        help="score below which results are hidden (default: 0.1)",
+    )
+    score.add_argument(
+        "--max-recall-loss",
+        type=_finite_float,
+        default=0.0,
+        help="average recall a recommended threshold may cost (default: 0)",
+    )
+    score.add_argument(
+        "--candidate",
+        type=_finite_float,
+        help="threshold whose lost questions to list (default: the highest that keeps recall)",
+    )
+    score.add_argument(
+        "--output",
+        type=Path,
+        help="where to write the report (default: scores.md next to the results file)",
     )
 
     compare = commands.add_parser("compare", help="diff two results files offline")
@@ -340,7 +449,7 @@ async def _run_queries(
         )
         chunks = [metrics.Chunk(r.filename, r.text, r.score) for r in response.results]
         ranked = metrics.rank_files(chunks, run_prefix, corpus_names, query.expected_text)
-        scores = metrics.score_query(ranked, query.expected_files, args.k_values)
+        query_scores = metrics.score_query(ranked, query.expected_files, args.k_values)
         snippet_found = None
         passage: dict[str, Any] = {}
         if query.expected_text is not None:
@@ -351,7 +460,10 @@ async def _run_queries(
                 chunks, run_prefix, corpus_names, query.expected_files, query.expected_text
             )
             passage = {"passage_rank": rank}
-            scores.update(metrics.score_passage(rank, args.k_values))
+            query_scores.update(metrics.score_passage(rank, args.k_values))
+        chunk_scores, answer_chunks = metrics.chunk_scores(
+            chunks, run_prefix, corpus_names, ranked, query.expected_files, query.expected_text
+        )
         records.append(
             {
                 "id": query.id,
@@ -374,7 +486,11 @@ async def _run_queries(
                 "expected_ranks": metrics.expected_ranks(ranked, query.expected_files),
                 "snippet_found": snippet_found,
                 **passage,
-                "metrics": scores,
+                # [file rank, score] for every chunk, in the order search returned
+                # them, so `run_eval.py scores` can test any threshold offline.
+                "chunk_scores": chunk_scores,
+                "answer_chunks": answer_chunks,
+                "metrics": query_scores,
             }
         )
     return records
@@ -536,6 +652,47 @@ async def _cleanup_chats(client: Any, chat_ids: list[str]) -> list[str]:
     return warnings
 
 
+async def _run_live_cuts(
+    client: Any,
+    queries: list[dataset.Query],
+    records: list[dict[str, Any]],
+    manifest: dict[str, str],
+    run_prefix: str,
+    args: argparse.Namespace,
+) -> None:
+    """Rerun every question at each live threshold and record what search kept.
+
+    The offline sweep cuts on the score search returns. A stack may apply its
+    threshold to a different score: since #2520, main cuts the hybrid score
+    before document-level security adds its own score to every hit. Asking
+    the stack to apply each threshold measures the cut it really makes.
+    """
+    from openrag_sdk import SearchFilters
+
+    corpus_names = frozenset(manifest.values())
+    scope = SearchFilters(data_sources=sorted(manifest))
+    for query, record in zip(queries, records, strict=True):
+        cuts: list[dict[str, Any]] = []
+        for threshold in args.live_thresholds:
+            response = await client.search.query(
+                query.query,
+                filters=scope,
+                limit=args.fetch_limit,
+                score_threshold=threshold,
+            )
+            chunks = [metrics.Chunk(r.filename, r.text, r.score) for r in response.results]
+            summary = metrics.summarize_cut(
+                chunks,
+                run_prefix,
+                corpus_names,
+                query.expected_files,
+                query.expected_text,
+                args.k_values,
+            )
+            cuts.append({"threshold": threshold, **summary})
+        record["live_cuts"] = cuts
+
+
 async def _cleanup(client: Any, manifest: dict[str, str]) -> list[str]:
     """Delete this run's documents by exact filename and confirm they are gone."""
     from openrag_sdk import SearchFilters
@@ -602,6 +759,9 @@ async def run(args: argparse.Namespace) -> int:
             settings, settings_note = await _settings_snapshot(client)
             print("Running questions...")
             records = await _run_queries(client, queries, manifest, run_prefix, args)
+            if args.live_thresholds:
+                print(f"Running questions at {len(args.live_thresholds)} live thresholds...")
+                await _run_live_cuts(client, queries, records, manifest, run_prefix, args)
             if args.answers:
                 answer_settings = await _answer_settings(client, args)
                 async with OpenRAGClient(
@@ -638,6 +798,8 @@ async def run(args: argparse.Namespace) -> int:
             "primary_k": metrics.primary_k(args.k_values),
             "fetch_limit": args.fetch_limit,
             "score_threshold": args.score_threshold,
+            "label": args.label,
+            "live_thresholds": args.live_thresholds,
         },
         "settings": settings,
         "settings_note": settings_note,
@@ -672,6 +834,12 @@ def _explain(exc: Exception, url: str) -> str:
     text = str(exc)
     if status == 401:
         return "the API key was rejected; create a new one under Settings → API Keys"
+    if status == 403 and "AuthenticationException" in text:
+        # The key was accepted; the backend's own login to OpenSearch failed.
+        return (
+            f"the stack accepted the API key, but its backend could not authenticate to "
+            f"OpenSearch ({text}); restarting the backend usually fixes this"
+        )
     if status == 403:
         return f"the API key lacks a permission this needs ({text})"
     if "CERTIFICATE_VERIFY_FAILED" in text:
@@ -859,6 +1027,37 @@ async def cleanup(args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def score_report(args: argparse.Namespace) -> int:
+    """Write the threshold and tier report for a results file, compared with another if given."""
+    current_results = report.load_results(args.results)
+    baseline_results = report.load_results(args.baseline) if args.baseline else None
+    # One cutoff for both runs. Left to each file, a baseline whose primary k
+    # differs would be scored at another cutoff and the comparison would mislead.
+    options: dict[str, Any] = {
+        "method": args.normalize,
+        "k": args.k or int(current_results["run"]["primary_k"]),
+        "thresholds": args.thresholds,
+        "tier_cutoffs": args.tiers,
+        "hide": args.hide,
+        "max_recall_loss": args.max_recall_loss,
+        "candidate": args.candidate,
+    }
+    try:
+        current = scores.analyze(current_results, **options)
+        text = scores.render_report(current)
+        if baseline_results is not None:
+            baseline = scores.analyze(baseline_results, **options)
+            mismatches = report.dataset_mismatches(baseline_results["run"], current_results["run"])
+            text = scores.render_comparison(baseline, current, mismatches) + "\n" + text
+    except scores.ScoresError as exc:
+        raise EvalError(str(exc)) from exc
+    output = args.output or args.results.with_name("scores.md")
+    output.write_text(text, encoding="utf-8")
+    print(text)
+    print(f"Wrote: {output}")
+    return 0
+
+
 def compare(args: argparse.Namespace) -> int:
     diff = report.diff_results(
         report.load_results(args.baseline),
@@ -879,7 +1078,7 @@ def promote(args: argparse.Namespace) -> int:
         print(f"Baseline not updated: {reason}")
         return NOT_PROMOTED
     args.baseline.parent.mkdir(parents=True, exist_ok=True)
-    args.baseline.write_text(json.dumps(current, indent=2) + "\n", encoding="utf-8")
+    args.baseline.write_text(report.dumps(current), encoding="utf-8")
     print(f"Baseline updated ({reason}): {args.baseline}")
     return 0
 
@@ -910,6 +1109,12 @@ def main(argv: list[str] | None = None) -> int:
             return compare(args)
         if args.command == "promote":
             return promote(args)
+        if args.command == "scores":
+            if args.max_recall_loss < 0:
+                parser.error("--max-recall-loss must not be negative")
+            if args.k is not None and args.k < 1:
+                parser.error("--k must be a positive integer")
+            return score_report(args)
         if args.command == "check":
             return asyncio.run(check(args))
         if args.command == "cleanup":

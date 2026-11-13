@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from scripts.eval.retrieval import answers, dataset, metrics, report
+from scripts.eval.retrieval import answers, dataset, metrics, report, scores
 
 PREFIX = "eval-abc12345-"
 CORPUS = frozenset({"a.md", "b.md", "c.md", "d.md"})
@@ -1108,6 +1108,7 @@ def load_answer_runner(monkeypatch: pytest.MonkeyPatch) -> Any:
         ("dataset", dataset),
         ("metrics", metrics),
         ("report", report),
+        ("scores", scores),
     ):
         monkeypatch.setitem(sys.modules, name, module)
     monkeypatch.setitem(sys.modules, "openrag_sdk", SimpleNamespace(SearchFilters=lambda **kw: kw))
@@ -1409,3 +1410,711 @@ def test_run_rejects_a_chat_timeout_that_is_not_positive(value: str) -> None:
 
     assert completed.returncode == 2
     assert "--chat-timeout must be positive" in completed.stderr
+
+
+# --- relevance-score thresholds -------------------------------------------
+
+
+def scored_query(
+    query_id: str,
+    chunks: list[metrics.Chunk],
+    expected_files: list[str],
+    expected_text: str | None = None,
+) -> dict[str, Any]:
+    """A question record built the way run_eval.py builds one."""
+    ranked_files = metrics.rank_files(chunks, PREFIX, CORPUS, expected_text)
+    query_metrics = metrics.score_query(ranked_files, expected_files, [5])
+    record: dict[str, Any] = {}
+    if expected_text is not None:
+        rank = metrics.passage_rank(chunks, PREFIX, CORPUS, expected_files, expected_text)
+        record["passage_rank"] = rank
+        query_metrics.update(metrics.score_passage(rank, [5]))
+    chunk_scores, answer_chunks = metrics.chunk_scores(
+        chunks, PREFIX, CORPUS, ranked_files, expected_files, expected_text
+    )
+    return {
+        "id": query_id,
+        "query": f"question {query_id}",
+        "tags": ["semantic"],
+        "expected_files": expected_files,
+        "expected_text": expected_text,
+        "ranked_files": [
+            {
+                "filename": f.filename,
+                "rank": f.rank,
+                "score": f.score,
+                "snippet_found": f.snippet_found,
+            }
+            for f in ranked_files
+        ],
+        "expected_ranks": metrics.expected_ranks(ranked_files, expected_files),
+        **record,
+        "chunk_scores": chunk_scores,
+        "answer_chunks": answer_chunks,
+        "metrics": query_metrics,
+    }
+
+
+def tuning_results(**run_overrides: Any) -> dict[str, Any]:
+    """Two questions whose answers score 0.8 and 0.5, among noise at 0.4 and below."""
+    first = scored_query(
+        "q1",
+        [chunk("a.md", "the answer", 0.8), chunk("b.md", "", 0.3), chunk("c.md", "", 0.2)],
+        ["a.md"],
+        "answer",
+    )
+    second = scored_query(
+        "q2",
+        [chunk("a.md", "the answer", 0.5), chunk("a.md", "intro", 0.45), chunk("b.md", "", 0.4)],
+        ["a.md"],
+        "answer",
+    )
+    return make_results([first, second], **run_overrides)
+
+
+def test_chunk_scores_skip_stray_documents_and_mark_answer_chunks() -> None:
+    chunks = [
+        chunk("b.md", "", 0.9),
+        chunk("a.md", "", 0.8, prefix="eval-other999-"),  # another run's copy
+        chunk("a.md", "intro", 0.7),
+        chunk("a.md", "The   ANSWER here", 0.6),
+        chunk("b.md", "answer", 0.5),  # holds the text, but not an expected file
+    ]
+    ranked_files = metrics.rank_files(chunks, PREFIX, CORPUS, "answer")
+
+    pairs, answers = metrics.chunk_scores(chunks, PREFIX, CORPUS, ranked_files, ["a.md"], "answer")
+
+    assert pairs == [[1, 0.9], [2, 0.7], [2, 0.6], [1, 0.5]]
+    assert answers == [3]
+    assert answers[0] == metrics.passage_rank(chunks, PREFIX, CORPUS, ["a.md"], "answer")
+    assert metrics.chunk_scores(chunks, PREFIX, CORPUS, ranked_files, ["a.md"], None)[1] == []
+
+
+def test_a_sweep_without_a_cut_matches_the_run_scores() -> None:
+    results = tuning_results()
+    questions = scores.load_questions(results)
+
+    rows = scores.sweep(questions, [0.0, 0.2], 5)
+
+    overall = results["metrics"]["overall"]
+    for row in rows:
+        assert row.recall == pytest.approx(overall["recall@5"])
+        assert row.mrr == pytest.approx(overall["mrr"])
+        assert row.passage_hit == pytest.approx(overall["passage_hit@5"])
+        assert row.recall_loss == 0
+        assert row.questions_lost == row.answers_lost == ()
+    assert rows[0].threshold is None
+    assert rows[2].noise_removed == pytest.approx(0.0)
+
+
+def test_a_threshold_above_every_score_removes_everything() -> None:
+    row = scores.sweep(scores.load_questions(tuning_results()), [0.95], 5)[1]
+
+    assert row.recall == 0
+    assert row.answers_lost == ("q1", "q2")
+    assert row.noise_removed == row.relevant_removed == 1
+    assert row.chunks_kept == 0
+
+
+def test_a_cut_between_the_relevant_chunks_and_the_noise_removes_only_noise() -> None:
+    # Every noise chunk scores 0.4 or less, and every relevant chunk 0.45 or more.
+    rows = scores.sweep(scores.load_questions(tuning_results()), [0.42], 5)
+
+    assert rows[1].chunks_kept == 1.5
+    assert rows[1].noise_removed == pytest.approx(1.0)
+    assert rows[1].relevant_removed == 0
+    assert rows[1].recall_loss == 0
+
+
+def test_recommend_picks_the_highest_threshold_within_each_limit() -> None:
+    rows = scores.sweep(
+        scores.load_questions(tuning_results()), scores.parse_thresholds("0:0.9:0.1") or [], 5
+    )
+
+    advice = scores.recommend(rows)
+
+    assert advice.keeps_recall is not None and advice.keeps_recall.threshold == 0.5
+    assert advice.one_answer is not None and advice.one_answer.threshold == 0.8
+    assert advice.one_answer.answers_lost == ("q2",)
+    loose = scores.recommend(rows, max_recall_loss=0.5)
+    assert loose.keeps_recall is not None and loose.keeps_recall.threshold == 0.8
+
+
+def test_recommend_stops_at_the_first_threshold_over_the_limit() -> None:
+    def row(threshold: float, loss: float) -> scores.SweepRow:
+        return scores.SweepRow(threshold, 1 - loss, 1.0, None, loss, (), (), 0.0, 0.0, 1.0)
+
+    rows = [row(0.1, 0.0), row(0.2, 0.1), row(0.3, 0.0)]
+
+    assert scores.recommend(rows).keeps_recall == rows[0]
+
+
+def test_minmax_rescales_each_question_and_handles_equal_scores() -> None:
+    question = scores.Question(
+        "q", "", frozenset({"a.md"}), ("a.md",), ((1, 2.0), (1, 4.0), (1, 3.0)), None
+    )
+    flat = scores.Question("f", "", frozenset({"a.md"}), ("a.md",), ((1, 7.0), (1, 7.0)), None)
+
+    rescaled, flattened = scores.normalize([question, flat], "minmax")
+
+    assert [s for _, s in rescaled.chunks] == [0.0, 1.0, 0.5]
+    assert [s for _, s in flattened.chunks] == [1.0, 1.0]
+    assert scores.normalize([question], "none") == [question]
+    with pytest.raises(ValueError, match="unknown normalization"):
+        scores.normalize([question], "zscore")
+
+
+def test_tiers_split_chunks_and_files_by_score() -> None:
+    result = scores.tiers(scores.load_questions(tuning_results()), high=0.65, med=0.35, hide=0.42)
+
+    assert result["chunks"] == {
+        "High": {"answer": 1, "relevant": 0, "noise": 0},
+        "Medium": {"answer": 1, "relevant": 1, "noise": 1},
+        "Low": {"answer": 0, "relevant": 0, "noise": 2},
+    }
+    # q1: a.md High, b.md and c.md Low. q2: a.md and b.md Medium.
+    assert result["files"] == {
+        "High": {"expected": 1, "other": 0},
+        "Medium": {"expected": 1, "other": 1},
+        "Low": {"expected": 0, "other": 2},
+    }
+    assert result["high_precision"] == 1.0
+    assert result["expected_files_low"] == result["other_files_high"] == 0
+    assert (result["hidden_answers"], result["answer_chunks"]) == (0, 2)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("auto", None),
+        ("0:0.2:0.1", [0.0, 0.1, 0.2]),
+        ("0.3, 0.1,0.1", [0.1, 0.3]),
+    ],
+)
+def test_parse_thresholds(text: str, expected: list[float] | None) -> None:
+    assert scores.parse_thresholds(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("0:1:0.6", [0.0, 0.6]),  # a step that does not divide the range stops below 1
+        ("0:1:0.25", [0.0, 0.25, 0.5, 0.75, 1.0]),
+        ("0:0.3:0.1", [0.0, 0.1, 0.2, 0.3]),  # 0.3 / 0.1 is 2.9999... in floats
+        ("0.2:0.2:0.1", [0.2]),
+    ],
+)
+def test_threshold_ranges_never_go_past_stop(text: str, expected: list[float]) -> None:
+    values = scores.parse_thresholds(text)
+
+    assert values == expected
+    assert values is not None and max(values) <= float(text.split(":")[1])
+
+
+@pytest.mark.parametrize(
+    "text", ["", "0:1", "1:0:0.1", "0:1:0", "x", "nan", "0.1,inf", "0:inf:0.1", "0:1:nan"]
+)
+def test_parse_thresholds_rejects_bad_input(text: str) -> None:
+    with pytest.raises(ValueError):
+        scores.parse_thresholds(text)
+
+
+def test_auto_thresholds_follow_the_score_range() -> None:
+    unit = scores.load_questions(tuning_results())
+    raw = [scores.Question("q", "", frozenset(), ("a.md",), ((1, 2.0), (1, 12.0)), None)]
+
+    assert scores.auto_thresholds(unit)[:3] == [0.0, 0.05, 0.1]
+    assert len(scores.auto_thresholds(unit)) == 21
+    assert scores.auto_thresholds(raw)[0] == 2.0
+    uneven = [scores.Question("q", "", frozenset(), ("a.md",), ((1, 1.2417), (1, 9.2317)), None)]
+    assert scores.auto_thresholds(uneven)[0] == 1.2417  # not rounded up past the lowest score
+    assert scores.auto_thresholds(raw)[-1] == 12.0
+
+
+def test_analysis_starts_the_sweep_at_the_run_threshold() -> None:
+    analysis = scores.analyze(tuning_results(score_threshold=0.3), thresholds=[0.1, 0.3, 0.5])
+
+    assert [row.threshold for row in analysis["rows"]] == [None, 0.3, 0.5]
+    assert "starts there" in analysis["notes"][0]
+    assert "0.1" in analysis["notes"][0]
+
+
+def test_analysis_lists_the_questions_a_candidate_costs() -> None:
+    analysis = scores.analyze(tuning_results(), thresholds=[0.5, 0.6], candidate=0.6)
+
+    assert [item["id"] for item in analysis["lost"]] == ["q2"]
+    assert analysis["lost"][0]["best_answer"] == 0.5
+    text = scores.render_report(analysis)
+    assert "keeps recall" in text
+    assert "Questions a simulated threshold of 0.6 would cost (1)" in text
+    assert "| q2 |" in text
+
+
+def test_old_results_without_chunk_scores_are_refused() -> None:
+    old = make_results([make_query("q", 1.0, 1.0, 1.0, 1)])
+
+    with pytest.raises(scores.ScoresError, match="rerun"):
+        scores.load_questions(old)
+
+
+def test_a_label_difference_is_a_note_and_the_gate_still_passes() -> None:
+    before = tuning_results(label="weights 0.7/0.3")
+    after = tuning_results(label="weights 0.6/0.4")
+
+    diff = report.diff_results(before, after)
+
+    assert diff["warnings"] == []
+    assert any("labeled differently" in note for note in diff["notes"])
+    assert report.recall_gate_failure(diff, 0.0) is None
+    summary = report.render_summary(after)
+    assert "**Label:** weights 0.6/0.4" in summary
+    assert "**Chunk scores:** 6 recorded, from 0.2000 to 0.8000" in summary
+
+
+def test_dumps_keeps_number_arrays_on_one_line_and_round_trips() -> None:
+    results = tuning_results()
+
+    text = report.dumps(results)
+
+    assert json.loads(text) == json.loads(json.dumps(results))
+    assert '"answer_chunks": [1]' in text
+    assert "[1, 0.8]" in text
+
+
+def test_scores_command_writes_a_report_and_compares_runs(tmp_path: Path) -> None:
+    before, after = tmp_path / "before.json", tmp_path / "after" / "results.json"
+    after.parent.mkdir()
+    before.write_text(report.dumps(tuning_results(label="before")), encoding="utf-8")
+    after.write_text(report.dumps(tuning_results(label="after")), encoding="utf-8")
+
+    completed = _run_cli("scores", str(after), "--baseline", str(before), "--thresholds", "0:1:0.1")
+
+    assert completed.returncode == 0, completed.stderr
+    written = (tmp_path / "after" / "scores.md").read_text(encoding="utf-8")
+    assert written.startswith("# Relevance thresholds compared")
+    assert "| Label | before | after |" in written
+    assert "## Simulated sweep" in written
+
+
+def test_scores_command_explains_an_old_results_file(tmp_path: Path) -> None:
+    old = tmp_path / "old.json"
+    old.write_text(json.dumps(make_results([make_query("q", 1.0, 1.0, 1.0, 1)])), encoding="utf-8")
+
+    completed = _run_cli("scores", str(old))
+
+    assert completed.returncode == 1
+    assert "rerun the eval" in completed.stderr
+
+
+def test_raw_scores_outside_the_unit_range_say_the_tiers_do_not_apply() -> None:
+    raw = make_results(
+        [
+            scored_query(
+                "q", [chunk("a.md", "the answer", 4.0), chunk("b.md", "", 1.5)], ["a.md"], "answer"
+            )
+        ]
+    )
+
+    notes = scores.analyze(raw)["notes"]
+    normalized = scores.analyze(raw, method="minmax")["notes"]
+
+    assert any("outside [0, 1]" in note for note in notes)
+    assert not any("outside [0, 1]" in note for note in normalized)
+
+
+def _two_k_results(primary_k: int) -> dict[str, Any]:
+    # The expected file comes back fourth: recall@3 is 0 and recall@5 is 1.
+    chunks = [chunk("b.md", "", 0.9), chunk("c.md", "", 0.8), chunk("d.md", "", 0.7)]
+    query = scored_query("q", [*chunks, chunk("a.md", "the answer", 0.6)], ["a.md"], "answer")
+    return make_results([query], primary_k=primary_k, label=f"k={primary_k}")
+
+
+def test_scores_compares_both_runs_at_the_current_runs_cutoff(tmp_path: Path) -> None:
+    before, after = tmp_path / "before.json", tmp_path / "after.json"
+    before.write_text(report.dumps(_two_k_results(3)), encoding="utf-8")
+    after.write_text(report.dumps(_two_k_results(5)), encoding="utf-8")
+
+    completed = _run_cli("scores", str(after), "--baseline", str(before))
+
+    assert completed.returncode == 0, completed.stderr
+    # At the baseline's own k=3 its recall would be 0.000.
+    assert "| recall@5, no cut | 1.000 | 1.000 |" in completed.stdout
+
+
+@pytest.mark.parametrize(
+    "option",
+    [
+        ["--hide", "nan"],
+        ["--hide", "inf"],
+        ["--max-recall-loss", "nan"],
+        ["--candidate=-inf"],
+        ["--tiers", "inf,0.35"],
+        ["--tiers", "0.65,nan"],
+        ["--thresholds", "0,nan"],
+    ],
+)
+def test_scores_rejects_numbers_that_are_not_finite(option: list[str], tmp_path: Path) -> None:
+    completed = _run_cli("scores", str(tmp_path / "unused.json"), *option)
+
+    assert completed.returncode == 2
+    assert "finite" in completed.stderr
+
+
+@pytest.mark.parametrize(
+    ("value", "expected_line"),
+    [
+        ([1, 2, 3], "[1, 2, 3]"),
+        ([-1, -0.5, 2], "[-1, -0.5, 2]"),
+        ([1e-05, -2.5e30, 0.0], "[1e-05, -2.5e+30, 0.0]"),
+        ([[1, 0.25], [2, -1e-07]], "[1, 0.25]"),
+    ],
+)
+def test_dumps_puts_number_arrays_on_one_line(value: list[Any], expected_line: str) -> None:
+    text = report.dumps({"values": value})
+
+    assert expected_line in text
+    assert json.loads(text) == {"values": value}
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        [1, "two", 3],  # mixed numbers and strings
+        ["a", "b"],
+        [{"x": 1}, {"x": 2}],
+        [True, False],
+        [1, None],
+    ],
+)
+def test_dumps_leaves_other_arrays_spread_out(value: list[Any]) -> None:
+    text = report.dumps({"values": value})
+
+    assert text == json.dumps({"values": value}, indent=2) + "\n"
+
+
+def test_dumps_never_changes_strings_that_look_like_number_arrays() -> None:
+    data = {"note": "[\n1,\n2\n]", "path": "a [1, 2] b", "empty": []}
+
+    text = report.dumps(data)
+
+    assert json.loads(text) == data
+    assert '"empty": []' in text
+
+
+def test_dumps_round_trips_nested_structures() -> None:
+    import random
+
+    rng = random.Random(2478)
+
+    def build(depth: int) -> Any:
+        kind = rng.choice(["num", "str", "list", "dict", "pair"] if depth < 4 else ["num", "str"])
+        if kind == "num":
+            return rng.choice([rng.randint(-5, 5), rng.uniform(-1e6, 1e6), 1e-9, -0.0])
+        if kind == "str":
+            return rng.choice(["x", "[\n1,\n2]", "-,", "e+"])
+        if kind == "pair":
+            return [rng.randint(1, 20), round(rng.uniform(0, 10), 6)]
+        if kind == "list":
+            return [build(depth + 1) for _ in range(rng.randint(0, 5))]
+        return {f"k{i}": build(depth + 1) for i in range(rng.randint(0, 4))}
+
+    for _ in range(300):
+        data = {"root": build(0)}
+        assert json.loads(report.dumps(data)) == data
+
+
+def test_dumps_number_array_pattern_fails_fast_on_hostile_input() -> None:
+    import time
+
+    # An array that starts like numbers and never closes, the shape CodeQL flagged.
+    hostile = "[\n" + "-,\n" * 50_000 + "x"
+
+    started = time.perf_counter()
+    report._NUMBER_ARRAY.sub("", hostile)
+
+    assert time.perf_counter() - started < 1.0
+
+
+def with_live_cuts(
+    results: dict[str, Any], offset: float, thresholds: list[float]
+) -> dict[str, Any]:
+    """Live cuts from a stack that applies its threshold to the returned score minus ``offset``.
+
+    An offset of 0 is a stack that cuts on the score search returns. A positive
+    offset is a stack that, like main since #2520, cuts before document-level
+    security adds its own score, so it drops more than the simulation predicts.
+    """
+    for record in results["queries"]:
+        files = [item["filename"] for item in record["ranked_files"]]
+        record["live_cuts"] = []
+        for threshold in thresholds:
+            chunks = [
+                chunk(
+                    files[int(rank) - 1],
+                    "the answer" if position in record["answer_chunks"] else "",
+                    score,
+                )
+                for position, (rank, score) in enumerate(record["chunk_scores"], start=1)
+                if score - offset >= threshold
+            ]
+            summary = metrics.summarize_cut(
+                chunks, PREFIX, CORPUS, record["expected_files"], record["expected_text"], [5]
+            )
+            record["live_cuts"].append({"threshold": threshold, **summary})
+    results["run"]["live_thresholds"] = thresholds
+    return results
+
+
+def test_live_cuts_that_match_the_simulation_say_so() -> None:
+    analysis = scores.analyze(with_live_cuts(tuning_results(), 0.0, [0.1, 0.42, 0.6]))
+
+    assert analysis["live_differences"] == [[], [], []]
+    assert any("matched the simulation at all 3" in note for note in analysis["notes"])
+    assert not any("simulated on the score" in note for note in analysis["notes"])
+    advice = analysis["live_recommendation"]
+    assert advice.keeps_recall.threshold == 0.42
+    assert advice.one_answer.threshold == 0.6
+
+
+def test_live_cuts_expose_a_stack_that_cuts_on_another_score() -> None:
+    # The stack subtracts 0.2 before cutting: at 0.42 it drops q2's answer (0.5).
+    analysis = scores.analyze(with_live_cuts(tuning_results(), 0.2, [0.1, 0.42]))
+
+    live, simulated = analysis["live"][1], analysis["simulated_at_live"][1]
+    assert simulated.answers_lost == ()
+    assert live.answers_lost == ("q2",)
+    assert any("differs from the simulation" in note for note in analysis["notes"])
+    assert analysis["live_recommendation"].keeps_recall.threshold == 0.1
+    text = scores.render_report(analysis)
+    assert "## Live cuts" in text
+    assert "| 0.42 | 0.500 | 1.000 | 1 | 0 | 0.5 | 1.5 | **1** |" in text
+    # At 0.1 the stack also cuts q1's noise chunk at 0.2, which the simulation keeps.
+    assert analysis["live_differences"] == [["q1"], ["q2"]]
+    assert "**Live, keeps recall@5:** 0.1" in text
+
+
+def test_without_live_cuts_the_report_says_thresholds_are_simulated() -> None:
+    analysis = scores.analyze(tuning_results())
+    text = scores.render_report(analysis)
+
+    assert analysis["live_recommendation"] is None
+    assert "**Simulated, keeps recall@5:**" in text
+    assert "Live, keeps recall" not in text
+    assert "--live-thresholds" in text
+    comparison = scores.render_comparison(analysis, analysis)
+    assert "| Live: keeps recall | not measured | not measured |" in comparison
+
+
+def test_partial_live_cuts_are_refused() -> None:
+    results = with_live_cuts(tuning_results(), 0.0, [0.1])
+    del results["queries"][1]["live_cuts"]
+
+    with pytest.raises(scores.ScoresError, match="only some questions"):
+        scores.analyze(results)
+
+
+def test_live_thresholds_are_not_a_comparison_warning() -> None:
+    before = tuning_results()
+    after = with_live_cuts(tuning_results(), 0.0, [0.1])
+
+    diff = report.diff_results(before, after)
+
+    assert diff["warnings"] == []
+    assert report.recall_gate_failure(diff, 0.0) is None
+
+
+def test_run_records_live_cuts_with_the_stack_applying_each_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    runner = load_answer_runner(monkeypatch)
+    calls: list[float] = []
+    hits = [("b.md", "", 0.9), ("a.md", "the answer", 0.5)]
+
+    async def query(text: str, **kwargs: Any) -> Any:
+        calls.append(kwargs["score_threshold"])
+        kept = [h for h in hits if h[2] - 0.2 >= kwargs["score_threshold"]]
+        return SimpleNamespace(
+            results=[SimpleNamespace(filename=PREFIX + n, text=t, score=s) for n, t, s in kept]
+        )
+
+    client = SimpleNamespace(search=SimpleNamespace(query=query))
+    args = SimpleNamespace(live_thresholds=[0.1, 0.4], fetch_limit=50, k_values=[1, 5])
+    queries = [dataset.Query("q", "question", ("a.md",), "answer")]
+    records: list[dict[str, Any]] = [{"metrics": {}}]
+    manifest = {PREFIX + "a.md": "a.md", PREFIX + "b.md": "b.md"}
+
+    asyncio.run(runner._run_live_cuts(client, queries, records, manifest, PREFIX, args))
+
+    assert calls == [0.1, 0.4]
+    first, second = records[0]["live_cuts"]
+    assert first["threshold"] == 0.1 and first["answer_kept"] is True and first["chunks"] == 2
+    assert second["threshold"] == 0.4 and second["answer_kept"] is False
+    assert second["metrics"]["recall@5"] == 0.0 and (second["noise"], second["relevant"]) == (1, 0)
+
+
+@pytest.mark.parametrize("value", ["auto", "nan", "0,inf", "1:0:0.1"])
+def test_run_rejects_unusable_live_thresholds(value: str) -> None:
+    completed = _run_cli("run", "--validate-only", "--live-thresholds", value)
+
+    assert completed.returncode == 2
+    assert "--live-thresholds" in completed.stderr
+
+
+def test_a_tiny_step_range_is_exact_and_unique() -> None:
+    values = scores.parse_thresholds("0:0.000001:0.0000001")
+
+    assert values == [i / 10_000_000 for i in range(11)]
+    assert len(set(values or [])) == 11
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("0.5000004", [0.5000004]),
+        ("0.5000004,0.1", [0.1, 0.5000004]),
+        ("0.1234567:0.1234567:0.1", [0.1234567]),  # rounding once gave 0.123457, past stop
+        ("0.1234567:0.3:0.1", [0.1234567, 0.2234567]),
+        ("0:0.3:0.1", [0.0, 0.1, 0.2, 0.3]),  # exactly the typed values, no float drift
+    ],
+)
+def test_thresholds_keep_the_precision_they_were_given(text: str, expected: list[float]) -> None:
+    values = scores.parse_thresholds(text)
+
+    assert values == expected
+    if ":" in text:
+        assert max(values or [0.0]) <= float(text.split(":")[1])
+
+
+def test_a_typed_threshold_cuts_exactly_like_the_candidate() -> None:
+    question = scored_query(
+        "q", [chunk("a.md", "the answer", 0.5000002), chunk("b.md", "", 0.9)], ["a.md"], "answer"
+    )
+    results = make_results([question])
+    thresholds = scores.parse_thresholds("0.5000004")
+
+    swept = scores.analyze(results, thresholds=thresholds)
+    candidate = scores.analyze(results, thresholds=[0.1], candidate=0.5000004)
+
+    assert swept["rows"][1].threshold == 0.5000004
+    assert swept["rows"][1].answers_lost == ("q",)  # 0.5000002 is below the cut
+    assert candidate["candidate"].answers_lost == ("q",)
+    assert "| 0.5000004 |" in scores.render_report(swept)  # shown as typed, not as 0.5
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("0.5000004,1", [0.5000004, 1.0]), ("1:1.2:0.1", [1.0, 1.1, 1.2])],
+)
+def test_live_thresholds_keep_their_precision(
+    value: str, expected: list[float], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = load_answer_runner(monkeypatch)
+
+    args = runner.build_parser().parse_args(["run", "--live-thresholds", value])
+
+    assert args.live_thresholds == expected
+
+
+def test_duplicate_live_thresholds_in_a_results_file_still_analyze() -> None:
+    # Written by an older version that did not de-duplicate rounded ranges.
+    results = with_live_cuts(tuning_results(), 0.0, [0.1, 0.1, 0.42])
+
+    analysis = scores.analyze(results)
+
+    assert len(analysis["live"]) == len(analysis["simulated_at_live"]) == 3
+
+
+def test_a_relevant_chunk_swapped_for_noise_is_a_difference() -> None:
+    results = with_live_cuts(tuning_results(), 0.0, [0.1])
+    live = results["queries"][1]["live_cuts"][0]
+    # Same total, same recall and answer: one relevant chunk became a noise chunk.
+    live["relevant"] -= 1
+    live["noise"] += 1
+
+    analysis = scores.analyze(results)
+
+    assert analysis["live_differences"] == [["q2"]]
+    assert analysis["live"][0].chunks_kept == analysis["simulated_at_live"][0].chunks_kept
+
+
+def test_questions_that_trade_a_recall_loss_are_differences() -> None:
+    # Without expected_text, so only file recall can differ.
+    first = scored_query("q1", [chunk("a.md", "", 0.8)], ["a.md"])
+    second = scored_query("q2", [chunk("b.md", "", 0.9), chunk("a.md", "", 0.3)], ["a.md"])
+    results = with_live_cuts(make_results([first, second]), 0.0, [0.5])
+    # At 0.5 the simulation keeps q1's file and cuts q2's. The live cut swaps them,
+    # so the averages, the answers lost and the chunk totals all still agree.
+    q1, q2 = (record["live_cuts"][0] for record in results["queries"])
+    q1["metrics"], q2["metrics"] = q2["metrics"], q1["metrics"]
+
+    analysis = scores.analyze(results)
+
+    live, simulated = analysis["live"][0], analysis["simulated_at_live"][0]
+    assert live.recall == simulated.recall and live.answers_lost == simulated.answers_lost
+    assert analysis["live_differences"] == [["q1", "q2"]]
+
+
+def test_losing_several_answer_chunks_of_one_question_counts_once() -> None:
+    chunks = [
+        chunk("a.md", "the answer, part one", 0.5),
+        chunk("a.md", "the answer, part two", 0.45),
+        chunk("a.md", "the answer, part three", 0.4),
+        chunk("b.md", "", 0.9),
+    ]
+    question = scored_query("q", chunks, ["a.md"], "answer")
+    analysis = scores.analyze(make_results([question]), thresholds=[0.6])
+
+    assert analysis["rows"][1].answers_lost == ("q",)  # three chunks, one question
+    text = scores.render_report(analysis)
+    assert "at most one question loses its answer" in text
+    assert "Questions that lost their answer" in text
+    assert "answer chunk:**" not in text
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "warned"),
+    [
+        ("corpus_hash", "e" * 64, True),
+        ("retrieval_queries_hash", "f" * 64, True),
+        ("label", "other", False),
+        ("score_threshold", 0.000001, False),
+    ],
+)
+def test_scores_comparison_warns_only_when_the_data_differs(
+    field: str, value: object, warned: bool, tmp_path: Path
+) -> None:
+    before, after = tmp_path / "before.json", tmp_path / "after.json"
+    before.write_text(report.dumps(tuning_results()), encoding="utf-8")
+    changed = tuning_results()
+    changed["run"][field] = value
+    after.write_text(report.dumps(changed), encoding="utf-8")
+
+    completed = _run_cli("scores", str(after), "--baseline", str(before))
+
+    assert completed.returncode == 0, completed.stderr
+    assert ("**Warning:**" in completed.stdout) is warned
+
+
+def test_a_candidate_below_the_run_threshold_is_refused(tmp_path: Path) -> None:
+    path = tmp_path / "results.json"
+    path.write_text(report.dumps(tuning_results(score_threshold=0.3)), encoding="utf-8")
+
+    completed = _run_cli("scores", str(path), "--candidate", "0.1")
+
+    assert completed.returncode == 1
+    assert "below the run's score threshold 0.3" in completed.stderr
+
+
+def test_chunk_scores_keep_full_precision() -> None:
+    chunks = [chunk("a.md", "the answer", 0.4999996), chunk("b.md", "", 0.9)]
+    ranked_files = metrics.rank_files(chunks, PREFIX, CORPUS, "answer")
+
+    pairs, answers = metrics.chunk_scores(chunks, PREFIX, CORPUS, ranked_files, ["a.md"], "answer")
+    question = scored_query("q", chunks, ["a.md"], "answer")
+    row = scores.sweep(scores.load_questions(make_results([question])), [0.5], 5)[1]
+
+    assert pairs[0] == [1, 0.4999996] and answers == [1]
+    assert row.answers_lost == ("q",)  # a cut at 0.5 drops it; rounding would have kept it
