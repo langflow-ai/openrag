@@ -230,7 +230,7 @@ class SweepRow:
     passage_hit: float | None
     recall_loss: float  # mean recall@k lost against no cut; negative when it rose
     questions_lost: tuple[str, ...]  # ids whose recall@k fell
-    answers_lost: tuple[str, ...]  # ids whose every answer chunk was cut
+    answers_lost: tuple[str, ...]  # ids of questions whose every answer chunk was cut
     noise_removed: float  # share of the noise chunks cut
     relevant_removed: float  # share of the relevant chunks cut
     chunks_kept: float  # mean chunks kept per question
@@ -290,7 +290,7 @@ def sweep(questions: Sequence[Question], thresholds: Sequence[float], k: int) ->
 @dataclass(frozen=True)
 class Recommendation:
     keeps_recall: SweepRow | None  # highest threshold with recall loss within the limit
-    one_answer: SweepRow | None  # highest threshold that loses at most one answer chunk
+    one_answer: SweepRow | None  # highest threshold where at most one question loses its answer
 
 
 def recommend(rows: Sequence[SweepRow], max_recall_loss: float = 0.0) -> Recommendation:
@@ -388,17 +388,36 @@ def live_rows(results: Mapping[str, Any], k: int) -> list[SweepRow] | None:
     return rows
 
 
-def matches(live: SweepRow, simulated: SweepRow, questions: int) -> bool:
-    """Whether the stack's own cut kept exactly what the simulation predicts.
+def differing_questions(
+    results: Mapping[str, Any],
+    questions: Sequence[Question],
+    index: int,
+    threshold: float,
+    k: int,
+) -> list[str]:
+    """Questions whose live cut at ``live_cuts[index]`` differs from the simulation.
 
-    ``chunks_kept`` is a mean over ``questions``, so the totals are compared:
-    a single chunk kept or cut differently is a mismatch.
+    Each question is compared on its own: recall@k, reciprocal rank, whether an
+    answer chunk survived, and how many relevant and noise chunks were kept.
+    Totals can agree while two questions trade places, so they are not enough.
+    Chunk identities are not recorded, so two different chunks of the same kind
+    still count as the same.
     """
-    return (
-        abs(live.recall - simulated.recall) <= EPSILON
-        and set(live.answers_lost) == set(simulated.answers_lost)
-        and abs(live.chunks_kept - simulated.chunks_kept) * questions < 0.5
-    )
+    key = f"recall@{k}"
+    differing: list[str] = []
+    for record, question in zip(results["queries"], questions, strict=True):
+        live = record["live_cuts"][index]
+        simulated = cut(question, threshold, k)
+        same = (
+            abs(live["metrics"][key] - simulated.recall) <= EPSILON
+            and abs(live["metrics"]["reciprocal_rank"] - simulated.reciprocal_rank) <= EPSILON
+            and live["answer_kept"] == simulated.answer_kept
+            and live["relevant"] == simulated.relevant_kept
+            and live["noise"] == simulated.noise_kept
+        )
+        if not same:
+            differing.append(record["id"])
+    return differing
 
 
 TIER_NAMES = ("High", "Medium", "Low")
@@ -508,6 +527,7 @@ def analyze(
     advice = recommend(rows, max_recall_loss)
     live = live_rows(results, k)
     simulated_at_live: list[SweepRow] = []
+    live_differences: list[list[str]] = []
     live_advice: Recommendation | None = None
     if live is None:
         notes.append(SIMULATION_NOTE)
@@ -520,19 +540,20 @@ def analyze(
         _, reference_cuts = _row(raw, None, k, None)
         simulated_at_live = [_row(raw, row.threshold, k, reference_cuts)[0] for row in live]
         live_advice = recommend(live, max_recall_loss)
-        differ = [
-            (row, sim)
-            for row, sim in zip(live, simulated_at_live, strict=True)
-            if not matches(row, sim, len(raw))
+        live_differences = [
+            differing_questions(results, raw, index, row.threshold or 0.0, k)
+            for index, row in enumerate(live)
         ]
+        differ = [(row, ids) for row, ids in zip(live, live_differences, strict=True) if ids]
         if differ:
-            row, sim = differ[0]
+            row, ids = differ[0]
+            examples = ", ".join(ids[:3]) + (", …" if len(ids) > 3 else "")
             notes.append(
                 f"At {len(differ)} of {len(live)} live thresholds the stack's cut differs from "
-                f"the simulation (at {row.threshold:g}: live recall@{k} {row.recall:.3f} and "
-                f"{len(row.answers_lost)} answers lost, simulated {sim.recall:.3f} and "
-                f"{len(sim.answers_lost)}). The stack applies its threshold to a different score "
-                "than search returns, so use the live thresholds, not the simulated ones."
+                f"the simulation for some questions (at {row.threshold:g}: {len(ids)} of "
+                f"{len(raw)}, such as {examples}). The stack applies its threshold to a "
+                "different score than search returns, so use the live thresholds, not the "
+                "simulated ones."
             )
         else:
             notes.append(
@@ -568,7 +589,7 @@ def analyze(
         "live": live,
         "simulated_at_live": simulated_at_live,
         "live_recommendation": live_advice,
-        "question_count": len(questions),
+        "live_differences": live_differences,
         "lost": _lost_details(questions, chosen, k) if chosen is not None else [],
         "tiers": tiers(questions, tier_cutoffs[0], tier_cutoffs[1], hide),
     }
@@ -644,13 +665,14 @@ def render_report(analysis: Mapping[str, Any]) -> str:
             if analysis["max_recall_loss"]
             else ""
         ),
-        f"- **Simulated, loses at most one answer chunk:** {_threshold(advice.one_answer)}",
+        f"- **Simulated, at most one question loses its answer:** {_threshold(advice.one_answer)}",
     ]
     live_advice: Recommendation | None = analysis.get("live_recommendation")
     if live_advice is not None:
         lines += [
             f"- **Live, keeps recall@{k}:** {_threshold(live_advice.keeps_recall)}",
-            f"- **Live, loses at most one answer chunk:** {_threshold(live_advice.one_answer)}",
+            f"- **Live, at most one question loses its answer:** "
+            f"{_threshold(live_advice.one_answer)}",
         ]
     lines.append("")
     for note in analysis["notes"]:
@@ -663,7 +685,7 @@ def render_report(analysis: Mapping[str, Any]) -> str:
         if row is advice.keeps_recall:
             tags.append("keeps recall")
         if row is advice.one_answer:
-            tags.append("≤ 1 answer lost")
+            tags.append("≤ 1 question loses its answer")
         return ", ".join(tags)
 
     lines += [
@@ -672,7 +694,8 @@ def render_report(analysis: Mapping[str, Any]) -> str:
         "Each row drops every chunk whose returned score is below the threshold and scores "
         "what is left. Losses are counted against no cut.",
         "",
-        f"| Threshold | recall@{k} | MRR | passage hit@{k} | Questions lost | Answers lost "
+        f"| Threshold | recall@{k} | MRR | passage hit@{k} | Questions lost "
+        "| Questions that lost their answer "
         "| Noise removed | Relevant removed | Chunks kept | |",
         "|---|---|---|---|---|---|---|---|---|---|",
     ]
@@ -721,23 +744,28 @@ def _render_live(analysis: Mapping[str, Any], k: int) -> list[str]:
         "Each row reran every question with the stack applying the threshold itself, next to "
         "what the simulation predicts at the same threshold.",
         "",
-        f"| Threshold | Live recall@{k} | Simulated recall@{k} | Live answers lost "
-        "| Simulated answers lost | Live chunks kept | Simulated chunks kept | Matches |",
+        f"| Threshold | Live recall@{k} | Simulated recall@{k} "
+        "| Live: questions that lost their answer | Simulated: questions that lost their answer "
+        "| Live chunks kept | Simulated chunks kept | Questions that differ |",
         "|---|---|---|---|---|---|---|---|",
     ]
-    count = analysis["question_count"]
-    for live, sim in zip(analysis["live"], analysis["simulated_at_live"], strict=True):
+    rows = zip(
+        analysis["live"], analysis["simulated_at_live"], analysis["live_differences"], strict=True
+    )
+    for live, sim, ids in rows:
+        differ = f"**{len(ids)}**" if ids else "0"
         lines.append(
             f"| {_threshold(live)} | {live.recall:.3f} | {sim.recall:.3f} "
             f"| {len(live.answers_lost)} | {len(sim.answers_lost)} "
-            f"| {live.chunks_kept:.1f} | {sim.chunks_kept:.1f} "
-            f"| {'yes' if matches(live, sim, count) else '**no**'} |"
+            f"| {live.chunks_kept:.1f} | {sim.chunks_kept:.1f} | {differ} |"
         )
     lines += [
         "",
-        "Matches compares exact counts, so a single chunk kept or cut differently is a "
-        "mismatch. Two searches can differ by a rank through index noise; rerun to confirm a "
-        "small mismatch.",
+        "A question differs when its live cut and the simulation disagree on recall@k, "
+        "reciprocal rank, whether an answer chunk survived, or how many relevant or noise "
+        "chunks were kept. Chunk identities are not recorded, so this does not prove the same "
+        "chunks were kept. Two searches can also differ by a rank through index noise; rerun "
+        "to confirm a small difference.",
     ]
     return lines
 
@@ -811,11 +839,11 @@ def render_comparison(
         "Label",
         f"recall@{k}, no cut",
         "Simulated: keeps recall",
-        "Simulated: loses ≤ 1 answer",
+        "Simulated: ≤ 1 question loses its answer",
         "Live: keeps recall",
         "Compared threshold (simulated)",
         "Noise removed there",
-        "Answers lost there",
+        "Questions that lost their answer there",
         "High-tier chunks relevant",
         "Expected files in Low",
         "Other files in High",

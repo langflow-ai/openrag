@@ -285,8 +285,8 @@ has these parts:
   many questions lost recall, how many lost every answer chunk, and the share
   of noise and relevant chunks removed. Losses are counted against no cut.
 - **Simulated thresholds.** The highest threshold that keeps recall@5
-  (`--max-recall-loss` allows some loss), and the highest that loses at most
-  one answer chunk. A threshold counts only if every lower one also stays
+  (`--max-recall-loss` allows some loss), and the highest at which at most
+  one question loses every answer chunk. A threshold counts only if every lower one also stays
   within the limit.
 - **Live cuts**, when the run measured them (see below). The same scores with
   the stack applying each threshold itself, next to the simulation, and the
@@ -317,7 +317,7 @@ make eval-scores RESULTS=results/after/results.json BASELINE=results/before/resu
 ```
 
 The comparison puts both runs side by side: the recommended thresholds, the
-noise removed and answers lost there, and the tier counts. Runs with different
+noise removed and questions that lost their answer there, and the tier counts. Runs with different
 labels still compare with `compare`; the label difference is a note, not a
 warning, so it never fails the recall gate.
 
@@ -340,8 +340,11 @@ uv run run_eval.py scores results/live/results.json
 After the normal pass, while its documents are still uploaded, the run asks
 every question again once per threshold, with the stack applying the threshold
 itself. That costs one search per question per threshold and no extra uploads.
-The report then shows a **Live cuts** table and flags every threshold where the
-stack kept something different from the simulation. Pick `score_threshold` from
+The report then shows a **Live cuts** table and, at each threshold, how many
+questions differ from the simulation. A question differs when its live cut and
+the simulation disagree on recall@5, reciprocal rank, whether an answer chunk
+survived, or how many relevant or noise chunks were kept. Chunk identities are
+not recorded, so a match does not prove the same chunks were kept. Pick `score_threshold` from
 the live thresholds. Without live cuts, the report says its thresholds are
 simulated.
 

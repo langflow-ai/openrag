@@ -1868,14 +1868,7 @@ def with_live_cuts(
 def test_live_cuts_that_match_the_simulation_say_so() -> None:
     analysis = scores.analyze(with_live_cuts(tuning_results(), 0.0, [0.1, 0.42, 0.6]))
 
-    assert [
-        scores.matches(a, b, 2)
-        for a, b in zip(analysis["live"], analysis["simulated_at_live"], strict=True)
-    ] == [
-        True,
-        True,
-        True,
-    ]
+    assert analysis["live_differences"] == [[], [], []]
     assert any("matched the simulation at all 3" in note for note in analysis["notes"])
     assert not any("simulated on the score" in note for note in analysis["notes"])
     advice = analysis["live_recommendation"]
@@ -1894,8 +1887,9 @@ def test_live_cuts_expose_a_stack_that_cuts_on_another_score() -> None:
     assert analysis["live_recommendation"].keeps_recall.threshold == 0.1
     text = scores.render_report(analysis)
     assert "## Live cuts" in text
-    assert "| 0.42 | 0.500 | 1.000 | 1 | 0 |" in text
-    assert "**no**" in text
+    assert "| 0.42 | 0.500 | 1.000 | 1 | 0 | 0.5 | 1.5 | **1** |" in text
+    # At 0.1 the stack also cuts q1's noise chunk at 0.2, which the simulation keeps.
+    assert analysis["live_differences"] == [["q1"], ["q2"]]
     assert "**Live, keeps recall@5:** 0.1" in text
 
 
@@ -1982,12 +1976,51 @@ def test_duplicate_live_thresholds_in_a_results_file_still_analyze() -> None:
     assert len(analysis["live"]) == len(analysis["simulated_at_live"]) == 3
 
 
-def test_matches_notices_a_single_chunk_across_many_questions() -> None:
-    def row(chunks_kept: float) -> scores.SweepRow:
-        return scores.SweepRow(0.5, 1.0, 1.0, None, 0.0, (), (), 0.0, 0.0, chunks_kept)
+def test_a_relevant_chunk_swapped_for_noise_is_a_difference() -> None:
+    results = with_live_cuts(tuning_results(), 0.0, [0.1])
+    live = results["queries"][1]["live_cuts"][0]
+    # Same total, same recall and answer: one relevant chunk became a noise chunk.
+    live["relevant"] -= 1
+    live["noise"] += 1
 
-    assert scores.matches(row(40.0), row(40.0), 83)
-    assert not scores.matches(row(40.0 - 1 / 83), row(40.0), 83)
+    analysis = scores.analyze(results)
+
+    assert analysis["live_differences"] == [["q2"]]
+    assert analysis["live"][0].chunks_kept == analysis["simulated_at_live"][0].chunks_kept
+
+
+def test_questions_that_trade_a_recall_loss_are_differences() -> None:
+    # Without expected_text, so only file recall can differ.
+    first = scored_query("q1", [chunk("a.md", "", 0.8)], ["a.md"])
+    second = scored_query("q2", [chunk("b.md", "", 0.9), chunk("a.md", "", 0.3)], ["a.md"])
+    results = with_live_cuts(make_results([first, second]), 0.0, [0.5])
+    # At 0.5 the simulation keeps q1's file and cuts q2's. The live cut swaps them,
+    # so the averages, the answers lost and the chunk totals all still agree.
+    q1, q2 = (record["live_cuts"][0] for record in results["queries"])
+    q1["metrics"], q2["metrics"] = q2["metrics"], q1["metrics"]
+
+    analysis = scores.analyze(results)
+
+    live, simulated = analysis["live"][0], analysis["simulated_at_live"][0]
+    assert live.recall == simulated.recall and live.answers_lost == simulated.answers_lost
+    assert analysis["live_differences"] == [["q1", "q2"]]
+
+
+def test_losing_several_answer_chunks_of_one_question_counts_once() -> None:
+    chunks = [
+        chunk("a.md", "the answer, part one", 0.5),
+        chunk("a.md", "the answer, part two", 0.45),
+        chunk("a.md", "the answer, part three", 0.4),
+        chunk("b.md", "", 0.9),
+    ]
+    question = scored_query("q", chunks, ["a.md"], "answer")
+    analysis = scores.analyze(make_results([question]), thresholds=[0.6])
+
+    assert analysis["rows"][1].answers_lost == ("q",)  # three chunks, one question
+    text = scores.render_report(analysis)
+    assert "at most one question loses its answer" in text
+    assert "Questions that lost their answer" in text
+    assert "answer chunk:**" not in text
 
 
 @pytest.mark.parametrize(
