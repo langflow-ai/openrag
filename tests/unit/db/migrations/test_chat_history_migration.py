@@ -224,7 +224,9 @@ async def test_run_marks_migration_done(staged_files, session_factory, monkeypat
     monkeypatch.setattr(
         migrations_runtime, "migrate_legacy_native_chat_history_json_to_db", _no_native_history
     )
-    monkeypatch.setattr(migrations_runtime, "migrate_langflow_history_to_native", _no_langflow_history)
+    monkeypatch.setattr(
+        migrations_runtime, "migrate_langflow_history_to_native", _no_langflow_history
+    )
     async with session_factory() as session:
         await migrations_runtime.run(session)
         await session.commit()
