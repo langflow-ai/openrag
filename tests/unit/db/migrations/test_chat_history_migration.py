@@ -283,7 +283,7 @@ def test_session_alias_schema_upgrade_and_downgrade():
 
 
 def test_legacy_native_chat_rows_move_out_of_langflow_history():
-    migration_path = ROOT / "alembic" / "versions" / "0010_move_legacy_native_chat_history.py"
+    migration_path = ROOT / "alembic" / "versions" / "0010_move_legacy_native_chat.py"
     spec = importlib.util.spec_from_file_location("migration_0010", migration_path)
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
