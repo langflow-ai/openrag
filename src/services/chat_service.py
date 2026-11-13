@@ -1,9 +1,15 @@
 import json
 from typing import Any
 
-from agent import async_chat, async_chat_stream, async_langflow
+from agent import async_langflow
 from auth_context import set_auth_context
-from config.settings import LANGFLOW_CHAT_FLOW_ID, LANGFLOW_URL, NUDGES_FLOW_ID, clients
+from config.settings import (
+    DISABLE_CHAT_WITH_LANGFLOW,
+    LANGFLOW_CHAT_FLOW_ID,
+    LANGFLOW_URL,
+    NUDGES_FLOW_ID,
+    clients,
+)
 from utils.langflow_utils import fence_untrusted_text
 from utils.logging_config import get_logger
 from utils.opensearch_queries import build_filter_clauses
@@ -12,8 +18,24 @@ logger = get_logger(__name__)
 
 
 class ChatService:
-    def __init__(self, flows_service=None):
+    def __init__(
+        self,
+        flows_service=None,
+        native_chat_agent=None,
+        native_chat_history_service=None,
+        session_ownership_service=None,
+    ):
         self.flows_service = flows_service
+        from services.native_chat_agent import NativeChatAgent
+        from services.native_chat_history_service import NativeChatHistoryService
+        from services.session_ownership_service import SessionOwnershipService
+
+        self.native_chat_history_service = native_chat_history_service or NativeChatHistoryService()
+        self.session_ownership_service = session_ownership_service or SessionOwnershipService()
+        self.native_chat_agent = native_chat_agent or NativeChatAgent(
+            self.native_chat_history_service,
+            self.session_ownership_service,
+        )
 
     async def chat(
         self,
@@ -25,35 +47,48 @@ class ChatService:
         filter_id: str = None,
         storage_user_id: str = None,
     ):
-        """Handle chat requests using the patched OpenAI client"""
+        """Handle chat requests with OpenRAG's native Python agent."""
         if not prompt:
             raise ValueError("Prompt is required")
         conversation_user_id = storage_user_id or user_id
+
+        from config.settings import get_openrag_config
+
+        config = get_openrag_config()
+        agent_config = getattr(config, "agent", None)
+        knowledge_config = getattr(config, "knowledge", None)
+        logger.info(
+            "[CHAT] Native OpenRAG chat request",
+            stream=stream,
+            continuing=bool(previous_response_id),
+            prompt_chars=len(prompt),
+            llm_provider=getattr(agent_config, "llm_provider", None),
+            llm_model=getattr(agent_config, "llm_model", None),
+            embedding_provider=getattr(knowledge_config, "embedding_provider", None),
+            embedding_model=getattr(knowledge_config, "embedding_model", None),
+        )
 
         # Set authentication context for this request so tools can access it
         if user_id and jwt_token:
             set_auth_context(user_id, jwt_token)
 
         if stream:
-            return async_chat_stream(
-                clients.patched_llm_client,
-                prompt,
-                conversation_user_id,
+            return self.native_chat_agent.stream(
+                prompt=prompt,
+                user_id=conversation_user_id,
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
             )
-        else:
-            response_text, response_id = await async_chat(
-                clients.patched_llm_client,
-                prompt,
-                conversation_user_id,
-                previous_response_id=previous_response_id,
-                filter_id=filter_id,
-            )
-            response_data = {"response": response_text}
-            if response_id:
-                response_data["response_id"] = response_id
-            return response_data
+        response_text, response_id, sources = await self.native_chat_agent.run(
+            prompt=prompt,
+            user_id=conversation_user_id,
+            previous_response_id=previous_response_id,
+            filter_id=filter_id,
+        )
+        response_data: dict[str, Any] = {"response": response_text, "response_id": response_id}
+        if sources:
+            response_data["sources"] = sources
+        return response_data
 
     async def langflow_chat(
         self,
@@ -73,6 +108,29 @@ class ChatService:
         if not prompt:
             raise ValueError("Prompt is required")
         conversation_user_id = storage_user_id or user_id
+
+        if DISABLE_CHAT_WITH_LANGFLOW:
+            logger.info(
+                "[CHAT] DISABLE_CHAT_WITH_LANGFLOW enabled; routing /langflow to native /chat"
+            )
+            native_previous_response_id = previous_response_id
+            if (
+                native_previous_response_id is None
+                and conversation_id
+                and await self.native_chat_history_service.owns_conversation(
+                    conversation_id, conversation_user_id
+                )
+            ):
+                native_previous_response_id = conversation_id
+            return await self.chat(
+                prompt,
+                user_id,
+                jwt_token,
+                previous_response_id=native_previous_response_id,
+                stream=stream,
+                filter_id=filter_id,
+                storage_user_id=storage_user_id,
+            )
 
         if not LANGFLOW_URL or not LANGFLOW_CHAT_FLOW_ID:
             raise ValueError(
@@ -315,12 +373,21 @@ class ChatService:
             )
         prompt = ""
         if previous_response_id:
-            messages = []
-            # Try in-memory active conversation first
+            messages: list[dict[str, Any]] = []
+            # Native history is scoped to the owner, including API-key storage identities.
+            try:
+                messages = await self.native_chat_history_service.messages_for(
+                    previous_response_id, conversation_user_id
+                )
+            except Exception as e:
+                logger.warning(f"Failed to fetch native messages for nudges: {e}")
+
+            # Fall back to the legacy in-memory conversation.
             from agent import active_conversations
 
             if (
-                conversation_user_id in active_conversations
+                not messages
+                and conversation_user_id in active_conversations
                 and previous_response_id in active_conversations[conversation_user_id]
             ):
                 messages = active_conversations[conversation_user_id][previous_response_id].get(
@@ -486,7 +553,7 @@ class ChatService:
         )
         conversation_user_id = storage_user_id or user_id
 
-        if endpoint == "langflow":
+        if endpoint == "langflow" and not DISABLE_CHAT_WITH_LANGFLOW:
             # Prepare extra headers for JWT authentication and embedding model.
             # NOTE: extra_headers accumulates raw secrets (JWT, provider API keys).
             # Never log this dict or pass it to a logger call
@@ -580,126 +647,23 @@ class ChatService:
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
             )
-        else:  # chat
-            # Set auth context for chat tools and provide user_id
-            if user_id and jwt_token:
-                set_auth_context(user_id, jwt_token)
-            response_text, response_id = await async_chat(
-                clients.patched_llm_client,
+        else:  # native chat
+            response = await self.chat(
                 document_prompt,
-                conversation_user_id,
+                user_id,
+                jwt_token,
                 previous_response_id=previous_response_id,
+                storage_user_id=conversation_user_id,
             )
+            response_text, response_id = response["response"], response["response_id"]
 
         return response_text, response_id
 
     async def get_chat_history(self, user_id: str):
-        """Get chat conversation history for a user"""
-        from agent import active_conversations, get_user_conversations
-
+        """Get durable native-agent history (never Langflow messages)."""
         if not user_id:
             return {"error": "User ID is required", "conversations": []}
-
-        # Get metadata from persistent storage
-        conversations_dict = await get_user_conversations(user_id)
-
-        # Get in-memory conversations (with function calls)
-        in_memory_conversations = active_conversations.get(user_id, {})
-
-        logger.debug(
-            "Getting chat history for user",
-            user_id=user_id,
-            persistent_count=len(conversations_dict),
-            in_memory_count=len(in_memory_conversations),
-        )
-
-        # Convert conversations dict to list format with metadata
-        conversations = []
-
-        # First, process in-memory conversations (they have function calls)
-        for response_id, conversation_state in in_memory_conversations.items():
-            # Filter out system messages
-            messages = []
-            for msg in conversation_state.get("messages", []):
-                if msg.get("role") in ["user", "assistant"]:
-                    message_data = {
-                        "role": msg["role"],
-                        "content": msg["content"],
-                        "timestamp": msg.get("timestamp").isoformat()
-                        if msg.get("timestamp")
-                        else None,
-                    }
-                    if msg.get("response_id"):
-                        message_data["response_id"] = msg["response_id"]
-
-                    # Include function call data if present
-                    if msg.get("chunks"):
-                        message_data["chunks"] = msg["chunks"]
-                    if msg.get("response_data"):
-                        message_data["response_data"] = msg["response_data"]
-
-                    messages.append(message_data)
-
-            if messages:  # Only include conversations with actual messages
-                # Generate title from first user message
-                first_user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
-                title = (
-                    first_user_msg["content"][:50] + "..."
-                    if first_user_msg and len(first_user_msg["content"]) > 50
-                    else first_user_msg["content"]
-                    if first_user_msg
-                    else "New chat"
-                )
-                persisted_metadata = conversation_state.get("_persisted_metadata", {})
-
-                conversations.append(
-                    {
-                        "response_id": response_id,
-                        "title": persisted_metadata.get("title") or title,
-                        "endpoint": "chat",
-                        "messages": messages,
-                        "created_at": conversation_state.get("created_at").isoformat()
-                        if conversation_state.get("created_at")
-                        else None,
-                        "last_activity": conversation_state.get("last_activity").isoformat()
-                        if conversation_state.get("last_activity")
-                        else None,
-                        "previous_response_id": conversation_state.get("previous_response_id"),
-                        "filter_id": conversation_state.get("filter_id"),
-                        "total_messages": (persisted_metadata.get("total_messages") or 0)
-                        + len(messages),
-                        "source": "in_memory",
-                    }
-                )
-
-        # Then, add any persistent metadata that doesn't have in-memory data
-        for response_id, metadata in conversations_dict.items():
-            if response_id not in in_memory_conversations:
-                # This is metadata-only conversation (no function calls)
-                conversations.append(
-                    {
-                        "response_id": response_id,
-                        "title": metadata.get("title", "New Chat"),
-                        "endpoint": "chat",
-                        "messages": [],  # No messages in metadata-only
-                        "created_at": metadata.get("created_at"),
-                        "last_activity": metadata.get("last_activity"),
-                        "previous_response_id": metadata.get("previous_response_id"),
-                        "filter_id": metadata.get("filter_id"),
-                        "total_messages": metadata.get("total_messages", 0),
-                        "source": "metadata_only",
-                    }
-                )
-
-        # Sort by last activity (most recent first)
-        conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
-
-        return {
-            "user_id": user_id,
-            "endpoint": "chat",
-            "conversations": conversations,
-            "total_conversations": len(conversations),
-        }
+        return await self.native_chat_history_service.history(user_id)
 
     @staticmethod
     def _messages_from_active_conversation(conversation_state: dict) -> list[dict]:
@@ -727,6 +691,9 @@ class ChatService:
 
     async def get_langflow_history(self, user_id: str):
         """Get langflow conversation history for a user - now fetches from both OpenRAG memory and Langflow database"""
+        if DISABLE_CHAT_WITH_LANGFLOW:
+            return await self.get_chat_history(user_id)
+
         from agent import active_conversations, get_user_conversations
         from services.langflow_history_service import langflow_history_service
 
@@ -816,7 +783,9 @@ class ChatService:
                                 "last_activity": metadata.get("last_activity")
                                 or conversation.get("last_activity"),
                                 "filter_id": metadata.get("filter_id"),
-                                "total_messages": len(messages),
+                                "total_messages": max(
+                                    len(messages), metadata.get("total_messages") or 0
+                                ),
                                 "source": source,
                                 "langflow_session_id": session_id,
                                 "langflow_flow_id": conversation.get("flow_id"),
@@ -843,7 +812,9 @@ class ChatService:
                 existing = next(c for c in all_conversations if c["response_id"] == response_id)
                 if len(messages) > len(existing.get("messages") or []):
                     existing["messages"] = messages
-                    existing["total_messages"] = len(messages)
+                    existing["total_messages"] = max(
+                        len(messages), metadata.get("total_messages") or 0
+                    )
                     existing["source"] = "openrag_memory_preferred"
                 continue
 
@@ -873,7 +844,7 @@ class ChatService:
                     if hasattr(last_activity, "isoformat")
                     else last_activity,
                     "filter_id": metadata.get("filter_id") or conversation_state.get("filter_id"),
-                    "total_messages": len(messages) or metadata.get("total_messages", 0),
+                    "total_messages": max(len(messages), metadata.get("total_messages") or 0),
                     "source": "local_error_fallback",
                 }
             )
@@ -896,6 +867,19 @@ class ChatService:
 
     async def delete_session(self, user_id: str, session_id: str):
         """Delete a session from both local storage and Langflow"""
+        if DISABLE_CHAT_WITH_LANGFLOW and await self.native_chat_history_service.owns_conversation(
+            session_id, user_id
+        ):
+            deleted = await self.native_chat_history_service.delete(session_id, user_id)
+            if deleted:
+                await self.session_ownership_service.release_session(user_id, session_id)
+            return {
+                "success": deleted,
+                "not_found": not deleted,
+                "local_deleted": deleted,
+                "langflow_deleted": False,
+                "error": None if deleted else "Conversation not found",
+            }
         try:
             # Resolve the complete, owned group before removing any associations.
             from agent import delete_user_conversation
@@ -989,6 +973,13 @@ class ChatService:
         """Delete all sessions for a user from both local storage and Langflow"""
         from agent import get_user_conversations
 
+        native_deleted_count = 0
+        if DISABLE_CHAT_WITH_LANGFLOW:
+            native_session_ids = await self.native_chat_history_service.conversation_ids(user_id)
+            native_deleted_count = await self.native_chat_history_service.delete_all(user_id)
+            await self.session_ownership_service.release_conversation_sessions(
+                user_id, native_session_ids
+            )
         conversations = await get_user_conversations(user_id)
         session_ids = list(conversations.keys())
 
@@ -997,8 +988,17 @@ class ChatService:
             result = await self.delete_session(user_id, session_id)
             results.append(result)
 
+        langflow_deleted_count = len([r for r in results if r.get("success")])
+        if not DISABLE_CHAT_WITH_LANGFLOW:
+            return {
+                "success": True,
+                "deleted_count": langflow_deleted_count,
+                "total_count": len(session_ids),
+            }
         return {
             "success": True,
-            "deleted_count": len([r for r in results if r.get("success")]),
-            "total_count": len(session_ids),
+            "deleted_count": native_deleted_count + langflow_deleted_count,
+            "total_count": native_deleted_count + len(session_ids),
+            "native_deleted_count": native_deleted_count,
+            "langflow_deleted_count": langflow_deleted_count,
         }

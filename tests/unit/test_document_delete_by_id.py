@@ -278,11 +278,17 @@ async def test_delete_documents_by_filename_reports_confirmed_chunks_on_partial_
 ):
     monkeypatch.setattr("config.settings.get_index_name", lambda: "documents")
     opensearch_client = FakeOpenSearchClient(
-        owned_hits=[{"_id": "chunk-1", "_source": {"owner": "user-1"}}]
+        owned_hits=[
+            {"_id": "chunk-1", "_source": {"owner": "user-1"}},
+            {"_id": "chunk-2", "_source": {"owner": "user-1"}},
+        ]
     )
     backend_opensearch_client = FakeOpenSearchClient()
+    submitted_body = None
 
     async def _partial_bulk(*, body, refresh=False):
+        nonlocal submitted_body
+        submitted_body = body
         return {
             "errors": True,
             "items": [
@@ -305,3 +311,7 @@ async def test_delete_documents_by_filename_reports_confirmed_chunks_on_partial_
     assert payload["success"] is False
     assert payload["deleted_chunks"] == 1
     assert "boom" not in payload["error"]
+    assert [action["delete"]["_id"] for action in submitted_body] == [
+        "chunk-1",
+        "chunk-2",
+    ]

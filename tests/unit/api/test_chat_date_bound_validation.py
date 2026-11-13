@@ -58,6 +58,37 @@ async def test_chat_endpoint_accepts_valid_date_bounds(monkeypatch, user):
 
 
 @pytest.mark.asyncio
+async def test_chat_endpoint_rejects_native_chat_without_database_storage(monkeypatch, user):
+    """The native endpoint is unavailable, while the rest of the app can start."""
+    monkeypatch.setattr(chat_api, "get_storage_mode", lambda: "files")
+    chat_service = SimpleNamespace(chat=AsyncMock())
+
+    response = await chat_api.chat_endpoint(
+        chat_api.ChatBody(prompt="hi"), chat_service, None, user
+    )
+
+    assert response.status_code == 503
+    assert response.body == b'{"error":"Chat is temporarily unavailable. Please try again later."}'
+    chat_service.chat.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_langflow_endpoint_reports_native_storage_error_when_switch_is_enabled(
+    monkeypatch, user
+):
+    monkeypatch.setattr(chat_api, "DISABLE_CHAT_WITH_LANGFLOW", True)
+    monkeypatch.setattr(chat_api, "get_storage_mode", lambda: "files")
+    chat_service = SimpleNamespace(langflow_chat=AsyncMock())
+
+    response = await chat_api.langflow_endpoint(
+        chat_api.ChatBody(prompt="hi"), chat_service, None, user
+    )
+
+    assert response.status_code == 503
+    chat_service.langflow_chat.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("filters", BAD_FILTERS)
 async def test_v1_chat_rejects_invalid_date_bounds(user, filters):
     chat_service = SimpleNamespace(chat=AsyncMock())

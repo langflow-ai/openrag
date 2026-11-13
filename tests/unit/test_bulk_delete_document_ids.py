@@ -150,6 +150,12 @@ class _FailingSecondBatchClient(_BulkClient):
         return await super().bulk(body=body, refresh=refresh)
 
 
+class _FailingFirstBatchClient(_BulkClient):
+    async def bulk(self, *, body, refresh=False):
+        self.calls.append({"body": body, "refresh": refresh})
+        raise ConnectionError("opensearch down")
+
+
 @pytest.mark.asyncio
 async def test_request_failure_reports_only_confirmed_deletions_and_stops():
     _prime_caches()
@@ -179,6 +185,19 @@ async def test_refresh_failure_does_not_replace_the_original_bulk_error():
         )
 
     assert exc_info.value.deleted_count == 2
+    assert search_cache.SUGGEST_CACHE.get("g") is None
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_bulk_failure_refreshes_and_invalidates_caches():
+    _prime_caches()
+    client = _FailingFirstBatchClient()
+
+    with pytest.raises(BulkDeleteError, match="opensearch down") as exc_info:
+        await bulk_delete_document_ids(client, index="documents", document_ids=["a"])
+
+    assert exc_info.value.deleted_count == 0
+    assert client.indices.refresh_calls == ["documents"]
     assert search_cache.SUGGEST_CACHE.get("g") is None
 
 
