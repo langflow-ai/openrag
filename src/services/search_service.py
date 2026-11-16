@@ -441,6 +441,15 @@ async def search_tool(query: str, embedding_model: str = None) -> dict[str, Any]
     return await _global_search_service.search_tool(query, embedding_model=embedding_model)
 
 
+@tool
+async def raw_search_tool(query: str | dict[str, Any]) -> dict[str, Any]:
+    """Run a raw OpenSearch DSL query using the caller's access-controlled client."""
+    if not _global_search_service:
+        logger.error("Raw search tool called before initialization")
+        return {"hits": {"hits": []}, "error": "Search service not available"}
+    return await _global_search_service.raw_search_tool(query)
+
+
 class SearchService:
     def __init__(self, session_manager=None, models_service=None):
         self.session_manager = session_manager
@@ -560,6 +569,48 @@ class SearchService:
             response = await self._search(query, embedding_model)
             _record_search_response(search_trace, response)
             return response
+
+    async def raw_search_tool(self, query: str | dict[str, Any]) -> dict[str, Any]:
+        """Execute the flow's raw OpenSearch tool without semantic retrieval."""
+        from auth_context import get_search_filters
+        from utils.langflow_utils import fence_untrusted_text
+
+        if isinstance(query, dict):
+            body = copy.deepcopy(query)
+        elif isinstance(query, str):
+            try:
+                body = json.loads(query)
+            except json.JSONDecodeError:
+                body = {
+                    "query": {
+                        "multi_match": {
+                            "query": query,
+                            "fields": ["text^2", "filename^1.5"],
+                            "type": "best_fields",
+                            "fuzziness": "AUTO",
+                        }
+                    }
+                }
+        else:
+            raise TypeError("raw_search query must be an OpenSearch DSL object or string")
+        if not isinstance(body, dict):
+            raise ValueError("raw_search query must decode to an OpenSearch DSL object")
+
+        filters = _build_search_filter_clauses(get_search_filters() or {})
+        if filters:
+            original_query = body.get("query", {"match_all": {}})
+            body["query"] = {"bool": {"must": [original_query], "filter": filters}}
+
+        user_id, jwt_token = get_auth_context()
+        client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+        response = await client.search(
+            index=get_index_name(), body=body, params={"terminate_after": 0}
+        )
+        for hit in response.get("hits", {}).get("hits", []):
+            source = hit.get("_source") if isinstance(hit, dict) else None
+            if isinstance(source, dict) and isinstance(source.get("text"), str):
+                source["text"] = fence_untrusted_text(source["text"])
+        return response
 
     async def _search(self, query: str, embedding_model: str) -> dict[str, Any]:
         """The search itself; ``search_tool`` wraps it in its trace."""

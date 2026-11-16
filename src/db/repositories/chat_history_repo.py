@@ -1,6 +1,6 @@
 """CRUD for the durable, native OpenRAG chat history tables."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -160,6 +160,23 @@ class ChatHistoryRepo:
         )
         result: CursorResult = await self.session.execute(  # type: ignore[assignment]
             delete(ChatConversation).where(col(ChatConversation.user_id) == user_id)
+        )
+        await self.session.flush()
+        return result.rowcount or 0
+
+    async def delete_stale(self, ttl_days: int) -> int:
+        """Delete expired native conversations and their messages."""
+        if ttl_days < 1:
+            raise ValueError(f"ttl_days must be at least 1, got {ttl_days}")
+        cutoff = datetime.now(UTC) - timedelta(days=ttl_days)
+        stale_conversations = select(ChatConversation.id).where(  # type: ignore[call-overload]
+            col(ChatConversation.last_activity) < cutoff
+        )
+        await self.session.execute(
+            delete(ChatMessage).where(col(ChatMessage.conversation_id).in_(stale_conversations))
+        )
+        result: CursorResult = await self.session.execute(  # type: ignore[assignment]
+            delete(ChatConversation).where(col(ChatConversation.last_activity) < cutoff)
         )
         await self.session.flush()
         return result.rowcount or 0

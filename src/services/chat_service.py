@@ -10,6 +10,7 @@ from config.settings import (
     NUDGES_FLOW_ID,
     clients,
 )
+from config.storage_mode import db_writes_enabled
 from utils.langflow_utils import fence_untrusted_text
 from utils.logging_config import get_logger
 from utils.opensearch_queries import build_filter_clauses
@@ -28,10 +29,19 @@ class ChatService:
         self.flows_service = flows_service
         from services.native_chat_agent import NativeChatAgent
         from services.native_chat_history_service import NativeChatHistoryService
-        from services.session_ownership_service import SessionOwnershipService
+        from services.session_ownership_service import (
+            session_ownership_service as default_ownership_service,
+        )
 
-        self.native_chat_history_service = native_chat_history_service or NativeChatHistoryService()
-        self.session_ownership_service = session_ownership_service or SessionOwnershipService()
+        # Production constructs and injects these dependencies in the app
+        # container.  Retain a coherent fallback for direct callers (and the
+        # legacy service helpers): the history service must share the same DB
+        # session factory as ownership, rather than constructing an
+        # unconfigured standalone service.
+        self.session_ownership_service = session_ownership_service or default_ownership_service
+        self.native_chat_history_service = native_chat_history_service or NativeChatHistoryService(
+            self.session_ownership_service._session_factory
+        )
         self.native_chat_agent = native_chat_agent or NativeChatAgent(
             self.native_chat_history_service,
             self.session_ownership_service,
@@ -867,7 +877,7 @@ class ChatService:
 
     async def delete_session(self, user_id: str, session_id: str):
         """Delete a session from both local storage and Langflow"""
-        if DISABLE_CHAT_WITH_LANGFLOW and await self.native_chat_history_service.owns_conversation(
+        if db_writes_enabled() and await self.native_chat_history_service.owns_conversation(
             session_id, user_id
         ):
             deleted = await self.native_chat_history_service.delete(session_id, user_id)
@@ -883,9 +893,7 @@ class ChatService:
         try:
             # Resolve the complete, owned group before removing any associations.
             from agent import delete_user_conversation
-            from services.session_ownership_service import session_ownership_service
-
-            session_ids = await session_ownership_service.get_conversation_sessions(
+            session_ids = await self.session_ownership_service.get_conversation_sessions(
                 user_id, session_id
             )
 
@@ -923,14 +931,12 @@ class ChatService:
 
         Returns {"deleted": [ids], "failed": [ids]}.
         """
-        from services.session_ownership_service import session_ownership_service
-
         deleted: list[str] = []
         failed: list[str] = []
 
         for session_id in dict.fromkeys(session_ids):
             try:
-                owner = await session_ownership_service.get_session_owner(session_id)
+                owner = await self.session_ownership_service.get_session_owner(session_id)
                 if owner is not None and owner != user_id:
                     logger.warning("bulk_delete: %s not owned by %s", session_id, user_id)
                     failed.append(session_id)
@@ -974,7 +980,7 @@ class ChatService:
         from agent import get_user_conversations
 
         native_deleted_count = 0
-        if DISABLE_CHAT_WITH_LANGFLOW:
+        if db_writes_enabled():
             native_session_ids = await self.native_chat_history_service.conversation_ids(user_id)
             native_deleted_count = await self.native_chat_history_service.delete_all(user_id)
             await self.session_ownership_service.release_conversation_sessions(
@@ -989,12 +995,6 @@ class ChatService:
             results.append(result)
 
         langflow_deleted_count = len([r for r in results if r.get("success")])
-        if not DISABLE_CHAT_WITH_LANGFLOW:
-            return {
-                "success": True,
-                "deleted_count": langflow_deleted_count,
-                "total_count": len(session_ids),
-            }
         return {
             "success": True,
             "deleted_count": native_deleted_count + langflow_deleted_count,

@@ -117,3 +117,20 @@ async def test_delete_all_sessions_deletes_native_and_langflow_history(monkeypat
     service.session_ownership_service.release_conversation_sessions.assert_awaited_once_with(
         "db-user", ["native-1", "native-2"]
     )
+
+
+@pytest.mark.asyncio
+async def test_delete_session_removes_native_history_when_langflow_chat_is_enabled(monkeypatch):
+    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", False)
+    monkeypatch.setattr("services.chat_service.db_writes_enabled", lambda: True)
+    service = ChatService()
+    service.native_chat_history_service.owns_conversation = AsyncMock(return_value=True)
+    service.native_chat_history_service.delete = AsyncMock(return_value=True)
+    service.session_ownership_service.release_session = AsyncMock()
+
+    result = await service.delete_session("db-user", "native-1")
+
+    assert result["success"] is True
+    assert result["langflow_deleted"] is False
+    service.native_chat_history_service.delete.assert_awaited_once_with("native-1", "db-user")
+    service.session_ownership_service.release_session.assert_awaited_once_with("db-user", "native-1")

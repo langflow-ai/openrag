@@ -1,6 +1,6 @@
 """Regression tests for durable native-chat repository operations."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -100,5 +100,70 @@ async def test_append_message_uses_a_bounded_id_for_a_maximum_length_conversatio
             )
             assert len(message.id) <= 64
             assert "c" * 64 not in message.id
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_delete_stale_removes_expired_native_history_and_messages():
+    """Retention removes native messages along with their expired conversation."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    now = datetime.now(UTC)
+    try:
+        async with factory() as session:
+            session.add_all(
+                [
+                    ChatConversation(
+                        id="expired",
+                        user_id="alice",
+                        filter_id=None,
+                        total_messages=1,
+                        created_at=now - timedelta(days=10),
+                        last_activity=now - timedelta(days=10),
+                    ),
+                    ChatConversation(
+                        id="current",
+                        user_id="alice",
+                        filter_id=None,
+                        total_messages=1,
+                        created_at=now,
+                        last_activity=now,
+                    ),
+                ]
+            )
+            session.add_all(
+                [
+                    ChatMessage(
+                        id="expired-message",
+                        conversation_id="expired",
+                        sequence=0,
+                        role="user",
+                        content="Old question",
+                    ),
+                    ChatMessage(
+                        id="current-message",
+                        conversation_id="current",
+                        sequence=0,
+                        role="user",
+                        content="Current question",
+                    ),
+                ]
+            )
+            await session.commit()
+
+        async with factory() as session:
+            repo = ChatHistoryRepo(session)
+            assert await repo.delete_stale(7) == 1
+            await session.commit()
+
+        async with factory() as session:
+            repo = ChatHistoryRepo(session)
+            assert await repo.get_conversation("expired") is None
+            assert await repo.list_messages("expired") == []
+            assert await repo.get_conversation("current") is not None
+            assert len(await repo.list_messages("current")) == 1
     finally:
         await engine.dispose()

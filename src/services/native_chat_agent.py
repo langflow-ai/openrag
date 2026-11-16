@@ -57,7 +57,7 @@ from config.settings import (
 )
 from services.langflow_llm_token_service import HOP_PURPOSE_CHAT, LangflowLlmTokenService
 from services.native_chat_history_service import NativeChatHistoryService
-from services.search_service import search_tool
+from services.search_service import raw_search_tool, search_tool
 from services.session_ownership_service import SessionOwnershipService
 from utils.langflow_utils import fence_untrusted_text, strip_untrusted_fence_recursive
 from utils.logging_config import get_logger
@@ -310,29 +310,51 @@ class NativeChatAgent:
         previous_response_id: str | None,
         filter_id: str | None,
     ) -> tuple[str, str, list[dict[str, Any]]]:
-        conversation_id, history = await self._start(
-            prompt, user_id, previous_response_id, filter_id
-        )
-        agent, model = self._agent(user_id)
-        result = await agent.run(
-            _flow_prompt(prompt),
-            message_history=history,
-            conversation_id=conversation_id,
-            usage_limits=UsageLimits(request_limit=MAX_ITERATIONS),
-        )
-        response = str(result.output)
-        self._require_response_text(response)
-        sources = self._sources(result.new_messages())
-        await self._save_completed_turn(conversation_id, user_id, response, [], result)
-        logger.info(
-            "[CHAT] Native OpenRAG chat completed",
-            conversation_id=conversation_id,
-            response_chars=len(response),
-            sources=len(sources),
-            llm_model=model,
-            stream=False,
-        )
-        return response, conversation_id, sources
+        conversation_id: str | None = previous_response_id
+        try:
+            conversation_id, history = await self._start(
+                prompt, user_id, previous_response_id, filter_id
+            )
+            agent, model = self._agent(user_id)
+            result = await agent.run(
+                _flow_prompt(prompt),
+                message_history=history,
+                conversation_id=conversation_id,
+                usage_limits=UsageLimits(request_limit=MAX_ITERATIONS),
+            )
+            response = str(result.output)
+            self._require_response_text(response)
+            sources = self._sources(result.new_messages())
+            await self._save_completed_turn(conversation_id, user_id, response, [], result)
+            logger.info(
+                "[CHAT] Native OpenRAG chat completed",
+                conversation_id=conversation_id,
+                response_chars=len(response),
+                sources=len(sources),
+                llm_model=model,
+                stream=False,
+            )
+            return response, conversation_id, sources
+        except Exception as exc:
+            logger.warning(
+                "[CHAT] Native OpenRAG chat failed",
+                conversation_id=conversation_id,
+                error_type=type(exc).__name__,
+                error_message=self._public_error_message(exc),
+                error_detail=str(exc.__cause__ or exc),
+            )
+            if conversation_id:
+                try:
+                    await self._history_service.append(
+                        conversation_id,
+                        user_id,
+                        "assistant",
+                        content=self._public_error_message(exc),
+                        error=True,
+                    )
+                except Exception:
+                    logger.exception("[CHAT] Failed to persist native chat error")
+            raise
 
     async def stream(
         self,
@@ -344,6 +366,8 @@ class NativeChatAgent:
     ) -> AsyncIterator[bytes]:
         conversation_id: str | None = previous_response_id
         chunks: list[dict[str, Any]] = []
+        task: asyncio.Task[Any] | None = None
+        get_event: asyncio.Task[Any] | None = None
         try:
             conversation_id, history = await self._start(
                 prompt, user_id, previous_response_id, filter_id
@@ -377,9 +401,11 @@ class NativeChatAgent:
                         strip_untrusted_fence_recursive(display_payload)
                         chunks.append(display_payload)
                         yield self._event(display_payload)
+                    get_event = None
                 else:
                     get_event.cancel()
                     await asyncio.gather(get_event, return_exceptions=True)
+                    get_event = None
             result = await task
             response = str(result.output)
             self._require_response_text(response)
@@ -397,12 +423,6 @@ class NativeChatAgent:
                 sources=len(self._sources(result.new_messages())),
                 stream_events=len(chunks),
             )
-        except asyncio.CancelledError:
-            task = locals().get("task")
-            if task is not None and not task.done():
-                task.cancel()
-                await asyncio.gather(task, return_exceptions=True)
-            raise
         except Exception as exc:
             message = self._public_error_message(exc)
             logger.warning(
@@ -427,6 +447,14 @@ class NativeChatAgent:
             if conversation_id:
                 error_payload.update({"id": conversation_id, "response_id": conversation_id})
             yield self._event(error_payload)
+        finally:
+            for pending in (get_event, task):
+                if pending is not None and not pending.done():
+                    pending.cancel()
+            await asyncio.gather(
+                *(pending for pending in (get_event, task) if pending is not None),
+                return_exceptions=True,
+            )
 
     async def _start(
         self,
@@ -448,18 +476,6 @@ class NativeChatAgent:
                 raise RuntimeError("Unable to establish native chat session ownership")
             history = []
         await self._history_service.append(conversation_id, user_id, "user", content=prompt)
-        config = get_openrag_config()
-        logger.info(
-            "[CHAT] Native OpenRAG agent started",
-            conversation_id=conversation_id,
-            continuing=bool(previous_response_id),
-            history_messages=len(history),
-            prompt_chars=len(prompt),
-            llm_provider=getattr(config.agent, "llm_provider", None),
-            llm_model=getattr(config.agent, "llm_model", None),
-            embedding_provider=getattr(config.knowledge, "embedding_provider", None),
-            embedding_model=getattr(config.knowledge, "embedding_model", None),
-        )
         return conversation_id, history
 
     def _agent(self, user_id: str) -> tuple[Agent, str]:
@@ -480,9 +496,9 @@ class NativeChatAgent:
             """Search indexed OpenRAG documents for relevant content."""
             return self._fence_search_response(await search_tool(search_query))
 
-        async def raw_search(search_query: str) -> dict[str, Any]:
-            """Search indexed OpenRAG documents and return the raw matching chunks."""
-            return self._fence_search_response(await search_tool(search_query))
+        async def raw_search(query: str | dict[str, Any]) -> dict[str, Any]:
+            """Run an access-controlled raw OpenSearch DSL query."""
+            return await raw_search_tool(query)
 
         def calculator(expression: str) -> dict[str, Any]:
             """Evaluate a numeric arithmetic expression."""
@@ -498,7 +514,7 @@ class NativeChatAgent:
         return (
             Agent(
                 model,
-                system_prompt=getattr(agent_config, "system_prompt", None) or DEFAULT_SYSTEM_PROMPT,
+                instructions=getattr(agent_config, "system_prompt", None) or DEFAULT_SYSTEM_PROMPT,
                 tools=[search_documents, raw_search, calculator, opensearch_url_ingestion_flow],
             ),
             model_name,

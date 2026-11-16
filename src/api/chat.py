@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from api.files import validate_date_filter_bounds
 from config.settings import DISABLE_CHAT_WITH_LANGFLOW
-from config.storage_mode import get_storage_mode
+from config.storage_mode import db_writes_enabled
 from dependencies import (
     get_chat_service,
     get_session_manager,
@@ -31,7 +31,7 @@ def _openrag_user_id(user: User) -> str:
 
 def _native_chat_storage_error() -> JSONResponse | None:
     """Return a configuration error when native chat cannot persist history."""
-    if get_storage_mode() == "db":
+    if db_writes_enabled():
         return None
     logger.error("[CHAT] Native chat is unavailable", configuration_error=NATIVE_CHAT_STORAGE_ERROR)
     return JSONResponse({"error": NATIVE_CHAT_UNAVAILABLE_ERROR}, status_code=503)
@@ -207,6 +207,8 @@ async def chat_history_endpoint(
     user: User = Depends(require_permission("conversations:read:own")),
 ):
     """Get chat history for a user"""
+    if response := _native_chat_storage_error():
+        return response
     try:
         history = await chat_service.get_chat_history(_openrag_user_id(user))
         return JSONResponse(history)

@@ -1,3 +1,4 @@
+import asyncio
 import json
 from decimal import Decimal
 from types import SimpleNamespace
@@ -179,7 +180,7 @@ def test_native_agent_uses_the_configured_system_prompt(monkeypatch):
 
     agent, _ = NativeChatAgent()._agent("user")
 
-    assert agent._system_prompts == ("Follow team policy.",)
+    assert [instruction.instruction for instruction in agent._instructions] == ["Follow team policy."]
 
 
 def test_native_agent_fences_search_result_text_without_mutating_citations():
@@ -365,6 +366,52 @@ async def test_native_stream_returns_a_browser_readable_error_when_setup_fails(m
             "error": {"message": "The chat request could not be completed. Please try again."},
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_native_run_persists_an_error_reply_when_the_model_fails(monkeypatch):
+    agent = NativeChatAgent()
+    append = AsyncMock()
+    monkeypatch.setattr(agent, "_start", AsyncMock(return_value=("chat-1", [])))
+    monkeypatch.setattr(agent._history_service, "append", append)
+
+    class FailingAgent:
+        async def run(self, *_args, **_kwargs):
+            raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(agent, "_agent", lambda _user_id: (FailingAgent(), "test-model"))
+
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        await agent.run(prompt="hello", user_id="user", previous_response_id=None, filter_id=None)
+
+    assert append.await_args.args[:3] == ("chat-1", "user", "assistant")
+    assert append.await_args.kwargs["error"] is True
+
+
+@pytest.mark.asyncio
+async def test_native_stream_cancels_model_task_when_closed_at_a_yield(monkeypatch):
+    agent = NativeChatAgent()
+    cancelled = asyncio.Event()
+    monkeypatch.setattr(agent, "_start", AsyncMock(return_value=("chat-1", [])))
+
+    class BlockingAgent:
+        async def run(self, *_args, event_stream_handler, **_kwargs):
+            async def events():
+                yield PartDeltaEvent(index=0, delta=TextPartDelta(content_delta="First chunk"))
+
+            await event_stream_handler(None, events())
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+    monkeypatch.setattr(agent, "_agent", lambda _user_id: (BlockingAgent(), "test-model"))
+
+    stream = agent.stream(prompt="hello", user_id="user", previous_response_id=None, filter_id=None)
+    assert json.loads(await anext(stream))["delta"]["content"] == "First chunk"
+    await stream.aclose()
+    await asyncio.wait_for(cancelled.wait(), timeout=1)
 
 
 @pytest.mark.asyncio

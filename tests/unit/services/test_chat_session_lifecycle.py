@@ -29,6 +29,7 @@ from services.session_ownership_service import SessionOwnershipService
 def _use_langflow_chat(monkeypatch):
     """Keep legacy-session tests independent of the developer's deployment env."""
     monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", False)
+    monkeypatch.setattr("api.chat.DISABLE_CHAT_WITH_LANGFLOW", False)
 
 
 async def _collect_error_chunks(stream) -> list[dict]:
@@ -602,6 +603,8 @@ async def test_delete_all_removes_persisted_orphans_only_for_caller(
         "success": True,
         "deleted_count": 1,
         "total_count": 1,
+        "native_deleted_count": 0,
+        "langflow_deleted_count": 1,
     }
     assert await persistence.get_user_conversations("alice") == {}
     assert await persistence.get_conversation_thread("mallory", "foreign")
