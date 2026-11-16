@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-NETTY_VERSION="4.2.15.Final"
+NETTY_VERSION="4.2.16.Final"
 MAVEN_BASE_URL="https://repo1.maven.org/maven2/io/netty"
 DOWNLOAD_DIR="/tmp/netty-${NETTY_VERSION}"
 
@@ -31,17 +31,25 @@ download_with_retry() {
 declare -A CORE_NETTY_ARTIFACTS=(
     ["netty-buffer"]=1
     ["netty-codec"]=1
+    ["netty-codec-base"]=1
+    ["netty-codec-classes-quic"]=1
+    ["netty-codec-compression"]=1
     ["netty-codec-dns"]=1
     ["netty-codec-http"]=1
     ["netty-codec-http2"]=1
+    ["netty-codec-http3"]=1
     ["netty-codec-socks"]=1
     ["netty-common"]=1
     ["netty-handler"]=1
     ["netty-handler-proxy"]=1
+    ["netty-handler-ssl-ocsp"]=1
     ["netty-resolver"]=1
     ["netty-resolver-dns"]=1
+    ["netty-resolver-dns-classes-macos"]=1
     ["netty-transport"]=1
     ["netty-transport-classes-epoll"]=1
+    ["netty-transport-classes-io_uring"]=1
+    ["netty-transport-classes-kqueue"]=1
     ["netty-transport-native-unix-common"]=1
 )
 
