@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from config.settings import get_openrag_config
 from services.llm_gateway import chat_completions, model_capabilities, qualified_model_id
+from services.search_service import _build_search_filter_clauses
 from utils.langflow_utils import fence_untrusted_text
 from utils.logging_config import get_logger
 
@@ -169,7 +170,9 @@ async def sample_documents(
             limit=size,
             score_threshold=score_threshold or 0,
             source="nudges",
-            exclude_sample_data=not search_filters,
+            # Count only filters the search applies: a value it ignores, such as
+            # {"owners": None}, must not let sample data back in.
+            exclude_sample_data=not _build_search_filter_clauses(search_filters),
         )
     except Exception as exc:
         logger.warning("Nudges document search failed", error=str(exc))

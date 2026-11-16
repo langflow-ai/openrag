@@ -22,8 +22,11 @@ def _completion(content: str) -> dict:
 
 
 def _tool_completion(arguments) -> dict:
-    call = {"id": "c1", "type": "function"}
-    call["function"] = {"name": "suggest_nudges", "arguments": arguments}
+    call = {
+        "id": "c1",
+        "type": "function",
+        "function": {"name": "suggest_nudges", "arguments": arguments},
+    }
     return {"choices": [{"message": {"role": "assistant", "content": None, "tool_calls": [call]}}]}
 
 
@@ -127,6 +130,23 @@ async def test_sample_documents_only_empty_filters_still_excludes_sample_data():
     )
     assert search.calls[0]["filters"] == {}
     assert search.calls[0]["exclude_sample_data"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "filters, excluded",
+    [
+        ({"owners": None}, True),
+        ({"created_after": None}, True),
+        ({"created_after": "2026-01-01T00:00:00Z"}, False),
+    ],
+)
+async def test_sample_documents_counts_only_filters_the_search_applies(filters, excluded):
+    search = _FakeSearch([])
+    await native_nudges.sample_documents(
+        search, user_id="u1", jwt_token="jwt", filters=filters, limit=None
+    )
+    assert search.calls[0]["exclude_sample_data"] is excluded
 
 
 @pytest.mark.asyncio

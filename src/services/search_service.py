@@ -1145,6 +1145,7 @@ class SearchService:
             set_auth_context(user_id, jwt_token)
 
         from auth_context import (
+            get_exclude_sample_data,
             set_exclude_sample_data,
             set_score_threshold,
             set_search_filters,
@@ -1158,9 +1159,14 @@ class SearchService:
         set_search_limit(limit)
         set_score_threshold(score_threshold)
         set_search_result_mode(result_mode)
+        # Restore the sample-data flag afterwards: search_tool() does not reset
+        # it, so a later direct call in this task would otherwise inherit it.
+        previous_exclude_sample_data = get_exclude_sample_data()
         set_exclude_sample_data(exclude_sample_data)
-
-        return await self.search_tool(query, embedding_model=embedding_model, source=source)
+        try:
+            return await self.search_tool(query, embedding_model=embedding_model, source=source)
+        finally:
+            set_exclude_sample_data(previous_exclude_sample_data)
 
     # ------------------------------------------------------------------
     # Search-as-you-type suggestions
