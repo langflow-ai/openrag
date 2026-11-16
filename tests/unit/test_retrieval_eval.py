@@ -1531,12 +1531,12 @@ def test_recommend_picks_the_highest_threshold_within_each_limit() -> None:
         scores.load_questions(tuning_results()), scores.parse_thresholds("0:0.9:0.1") or [], 5
     )
 
-    advice = scores.recommend(rows)
+    advice = scores.recommend(rows, questions=2, answer_questions=2)
 
     assert advice.keeps_recall is not None and advice.keeps_recall.threshold == 0.5
     assert advice.one_answer is not None and advice.one_answer.threshold == 0.8
     assert advice.one_answer.answers_lost == ("q2",)
-    loose = scores.recommend(rows, max_recall_loss=0.5)
+    loose = scores.recommend(rows, max_recall_loss=0.5, questions=2, answer_questions=2)
     assert loose.keeps_recall is not None and loose.keeps_recall.threshold == 0.8
 
 
@@ -2118,3 +2118,79 @@ def test_chunk_scores_keep_full_precision() -> None:
 
     assert pairs[0] == [1, 0.4999996] and answers == [1]
     assert row.answers_lost == ("q",)  # a cut at 0.5 drops it; rounding would have kept it
+
+
+def _unlabeled_results() -> dict[str, Any]:
+    # No expected_text anywhere, so no question can lose its answer.
+    first = scored_query("q1", [chunk("a.md", "", 0.8), chunk("b.md", "", 0.3)], ["a.md"])
+    second = scored_query("q2", [chunk("b.md", "", 0.9), chunk("a.md", "", 0.4)], ["a.md"])
+    return make_results([first, second])
+
+
+def test_answer_recommendations_need_answer_labels() -> None:
+    results = with_live_cuts(_unlabeled_results(), 0.0, [0.1, 0.5, 0.9])
+
+    analysis = scores.analyze(results, thresholds=[0.1, 0.5, 0.9])
+
+    # Before, both picked 0.9, where recall@5 is 0 and almost nothing is kept.
+    assert analysis["recommendation"].one_answer is None
+    assert analysis["live_recommendation"].one_answer is None
+    assert analysis["recommendation"].keeps_recall.threshold == 0.1
+    text = scores.render_report(analysis)
+    assert f"loses its answer:** {scores.NOT_MEASURED}" in text
+    assert text.count("lost answers are not measured") == 1
+    comparison = scores.render_comparison(analysis, analysis)
+    assert "| Simulated: ≤ 1 question loses its answer | not measured" in comparison
+    assert "| Questions that lost their answer there | n/a | n/a |" in comparison
+
+
+def test_an_unlabeled_run_shows_no_measured_zeros() -> None:
+    results = with_live_cuts(_unlabeled_results(), 0.0, [0.1, 0.5])
+
+    text = scores.render_report(scores.analyze(results, thresholds=[0.1, 0.5]))
+
+    sweep = text[text.index("## Simulated sweep") : text.index("## Live cuts")]
+    live = text[text.index("## Live cuts") : text.index("## Tiers")]
+    for row in [line for line in sweep.splitlines() if line.startswith("| 0.")]:
+        assert row.split(" | ")[5] == "n/a"
+    for row in [line for line in live.splitlines() if line.startswith("| 0.")]:
+        assert row.split(" | ")[3:5] == ["n/a", "n/a"]
+
+
+def test_labels_whose_text_is_never_found_measure_nothing() -> None:
+    # Every question has an expected_text, but no returned chunk contains it.
+    first = scored_query("q1", [chunk("a.md", "", 0.8), chunk("b.md", "", 0.3)], ["a.md"], "x")
+    second = scored_query("q2", [chunk("b.md", "", 0.9), chunk("a.md", "", 0.4)], ["a.md"], "x")
+    results = with_live_cuts(make_results([first, second]), 0.0, [0.1, 0.9])
+
+    analysis = scores.analyze(results, thresholds=[0.1, 0.5, 0.9])
+
+    assert analysis["recommendation"].answer_questions == 0
+    assert analysis["recommendation"].one_answer is None
+    assert analysis["live_recommendation"].one_answer is None
+
+
+def test_partial_answer_labels_scope_the_recommendation() -> None:
+    labeled = tuning_results()["queries"]
+    unlabeled = _unlabeled_results()["queries"][:1]
+    unlabeled[0]["id"] = "plain"
+    results = with_live_cuts(make_results([*labeled, *unlabeled]), 0.0, [0.1, 0.5])
+
+    analysis = scores.analyze(results, thresholds=scores.parse_thresholds("0:0.9:0.1"))
+    text = scores.render_report(analysis)
+
+    advice = analysis["recommendation"]
+    assert (advice.answer_questions, advice.questions) == (2, 3)
+    assert advice.one_answer.threshold == 0.8
+    assert "at most one of the 2 questions whose answer was found loses it:** 0.8" in text
+    assert text.count("counts only the 2 of 3 questions") == 1  # once, even with live cuts
+    full = scores.analyze(tuning_results(), thresholds=scores.parse_thresholds("0:0.9:0.1"))
+    comparison = scores.render_comparison(analysis, full)
+    assert "| Simulated: ≤ 1 question loses its answer | 0.8 (of 2 questions) | 0.8 |" in comparison
+
+
+def test_fully_labeled_runs_keep_the_plain_wording() -> None:
+    text = scores.render_report(scores.analyze(tuning_results()))
+
+    assert "**Simulated, at most one question loses its answer:**" in text
+    assert "with an answer label" not in text

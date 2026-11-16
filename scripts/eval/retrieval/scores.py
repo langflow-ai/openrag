@@ -300,13 +300,38 @@ def sweep(questions: Sequence[Question], thresholds: Sequence[float], k: int) ->
 class Recommendation:
     keeps_recall: SweepRow | None  # highest threshold with recall loss within the limit
     one_answer: SweepRow | None  # highest threshold where at most one question loses its answer
+    questions: int = 0  # questions scored
+    answer_questions: int = 0  # questions whose answer chunk was found with no cut
+
+    @property
+    def answers_measured(self) -> bool:
+        """Whether any question could lose its answer, so answer losses mean something."""
+        return self.answer_questions > 0
 
 
-def recommend(rows: Sequence[SweepRow], max_recall_loss: float = 0.0) -> Recommendation:
+def answers_found(questions: Sequence[Question]) -> int:
+    """Questions whose answer chunk search returned with no cut.
+
+    Only these can lose their answer to a threshold. A question without an
+    ``expected_text``, or whose text no returned chunk contains, never can.
+    """
+    return sum(1 for question in questions if question.answer_positions)
+
+
+def recommend(
+    rows: Sequence[SweepRow],
+    max_recall_loss: float = 0.0,
+    *,
+    questions: int = 0,
+    answer_questions: int = 0,
+) -> Recommendation:
     """The highest thresholds that stay within each limit.
 
     A threshold qualifies only if it and every lower threshold stay within the
     limit, so a recall that recovers at a high cutoff by chance is not picked.
+    ``answer_questions`` is how many questions could lose their answer (see
+    ``answers_found``). With none, every threshold would look safe for
+    answers, so ``one_answer`` is None instead of the highest threshold.
     """
 
     def highest(ok: Any) -> SweepRow | None:
@@ -321,7 +346,9 @@ def recommend(rows: Sequence[SweepRow], max_recall_loss: float = 0.0) -> Recomme
 
     return Recommendation(
         keeps_recall=highest(lambda row: row.recall_loss <= max_recall_loss + EPSILON),
-        one_answer=highest(lambda row: len(row.answers_lost) <= 1),
+        one_answer=highest(lambda row: len(row.answers_lost) <= 1) if answer_questions else None,
+        questions=questions,
+        answer_questions=answer_questions,
     )
 
 
@@ -533,7 +560,10 @@ def analyze(
             "normalizes scores."
         )
     rows = sweep(questions, wanted, k)
-    advice = recommend(rows, max_recall_loss)
+    # One count for both recommendations: the live pass loses an answer only for
+    # questions whose answer the main pass found, the same questions as here.
+    counts = {"questions": len(questions), "answer_questions": answers_found(questions)}
+    advice = recommend(rows, max_recall_loss, **counts)
     live = live_rows(results, k)
     simulated_at_live: list[SweepRow] = []
     live_differences: list[list[str]] = []
@@ -548,7 +578,7 @@ def analyze(
         # always line up.
         _, reference_cuts = _row(raw, None, k, None)
         simulated_at_live = [_row(raw, row.threshold, k, reference_cuts)[0] for row in live]
-        live_advice = recommend(live, max_recall_loss)
+        live_advice = recommend(live, max_recall_loss, **counts)
         live_differences = [
             differing_questions(results, raw, index, row.threshold or 0.0, k)
             for index, row in enumerate(live)
@@ -647,6 +677,53 @@ def _value(value: float) -> str:
     return f"{value:.12g}"
 
 
+NOT_MEASURED = "not measured (no question's expected_text was found in the returned chunks)"
+
+
+def _answer_threshold(advice: Recommendation, row: SweepRow | None) -> str:
+    return _threshold(row) if advice.answers_measured else NOT_MEASURED
+
+
+def _answers_lost(advice: Recommendation, row: SweepRow | None) -> str:
+    """How many questions lost their answer, or n/a when none could."""
+    if row is None or not advice.answers_measured:
+        return "n/a"
+    return str(len(row.answers_lost))
+
+
+def _answer_label(advice: Recommendation) -> str:
+    """The answer recommendation's name, scoped when only some questions count."""
+    found, count = advice.answer_questions, advice.questions
+    if 0 < found < count:
+        noun = "question" if found == 1 else "questions"
+        return f"at most one of the {found} {noun} whose answer was found loses it"
+    return "at most one question loses its answer"
+
+
+def _scope(advice: Recommendation) -> str:
+    """A suffix naming how many questions an answer number covers, when not all."""
+    found, count = advice.answer_questions, advice.questions
+    return f" (of {found} questions)" if 0 < found < count else ""
+
+
+def _answer_scope_note(advice: Recommendation) -> list[str]:
+    found, count = advice.answer_questions, advice.questions
+    if found == 0:
+        return [
+            "",
+            "No question's expected_text was found in the returned chunks, so lost answers "
+            "are not measured.",
+        ]
+    if found < count:
+        return [
+            "",
+            f"Questions that lost their answer counts only the {found} of {count} questions "
+            "whose answer chunk was found with no cut; the others have no expected_text, or "
+            "no returned chunk contains it.",
+        ]
+    return []
+
+
 def _threshold(row: SweepRow | None) -> str:
     if row is None:
         return "none"
@@ -679,14 +756,14 @@ def render_report(analysis: Mapping[str, Any]) -> str:
             if analysis["max_recall_loss"]
             else ""
         ),
-        f"- **Simulated, at most one question loses its answer:** {_threshold(advice.one_answer)}",
+        f"- **Simulated, {_answer_label(advice)}:** {_answer_threshold(advice, advice.one_answer)}",
     ]
     live_advice: Recommendation | None = analysis.get("live_recommendation")
     if live_advice is not None:
         lines += [
             f"- **Live, keeps recall@{k}:** {_threshold(live_advice.keeps_recall)}",
-            f"- **Live, at most one question loses its answer:** "
-            f"{_threshold(live_advice.one_answer)}",
+            f"- **Live, {_answer_label(live_advice)}:** "
+            f"{_answer_threshold(live_advice, live_advice.one_answer)}",
         ]
     lines.append("")
     for note in analysis["notes"]:
@@ -716,12 +793,12 @@ def render_report(analysis: Mapping[str, Any]) -> str:
     for row in analysis["rows"]:
         lines.append(
             f"| {_threshold(row)} | {row.recall:.3f} | {row.mrr:.3f} | {_num(row.passage_hit)} "
-            f"| {len(row.questions_lost)} | {len(row.answers_lost)} | {_pct(row.noise_removed)} "
+            f"| {len(row.questions_lost)} | {_answers_lost(advice, row)} | {_pct(row.noise_removed)} "
             f"| {_pct(row.relevant_removed)} | {row.chunks_kept:.1f} | {mark(row)} |"
         )
-
     if analysis.get("live"):
         lines += _render_live(analysis, k)
+    lines += _answer_scope_note(advice)
 
     lines += _render_tiers(analysis["tiers"])
 
@@ -751,6 +828,7 @@ def render_report(analysis: Mapping[str, Any]) -> str:
 
 
 def _render_live(analysis: Mapping[str, Any], k: int) -> list[str]:
+    advice: Recommendation = analysis["recommendation"]
     lines = [
         "",
         "## Live cuts",
@@ -770,7 +848,7 @@ def _render_live(analysis: Mapping[str, Any], k: int) -> list[str]:
         differ = f"**{len(ids)}**" if ids else "0"
         lines.append(
             f"| {_threshold(live)} | {live.recall:.3f} | {sim.recall:.3f} "
-            f"| {len(live.answers_lost)} | {len(sim.answers_lost)} "
+            f"| {_answers_lost(advice, live)} | {_answers_lost(advice, sim)} "
             f"| {live.chunks_kept:.1f} | {sim.chunks_kept:.1f} | {differ} |"
         )
     lines += [
@@ -833,7 +911,7 @@ def render_comparison(
             _cell(analysis.get("label") or "none"),
             f"{rows[0].recall:.3f}",
             _threshold(advice.keeps_recall),
-            _threshold(advice.one_answer),
+            _answer_threshold(advice, advice.one_answer) + _scope(advice),
             (
                 _threshold(analysis["live_recommendation"].keeps_recall)
                 if analysis.get("live_recommendation")
@@ -841,7 +919,7 @@ def render_comparison(
             ),
             _threshold(candidate),
             _pct(candidate.noise_removed) if candidate else "n/a",
-            str(len(candidate.answers_lost)) if candidate else "n/a",
+            _answers_lost(advice, candidate),
             _num(result["high_precision"]),
             str(result["expected_files_low"]),
             str(result["other_files_high"]),
