@@ -15,6 +15,7 @@ from config.settings import (
     DOCLING_ERROR_DETAIL_MAX_LENGTH,
     DOCLING_SERVE_URL,
     DOCLING_SERVE_VERIFY_SSL,
+    get_easyocr_confidence_threshold,
     get_openrag_config,
 )
 from utils.container_utils import transform_localhost_url
@@ -182,7 +183,18 @@ def get_docling_preset_configs(
         "do_picture_description": picture_descriptions,
     }
 
-    if ocr_languages:
+    threshold = get_easyocr_confidence_threshold() if ocr and engine == "easyocr" else None
+    if threshold is not None:
+        # docling-serve rejects a named preset alongside a custom config; "auto"
+        # is the sentinel that defers to it. The custom config ignores ocr_lang,
+        # so the languages move inside it.
+        custom: dict[str, Any] = {"kind": engine}
+        if ocr_languages:
+            custom["lang"] = resolve_ocr_languages(engine, ocr_languages)
+        custom["confidence_threshold"] = threshold
+        config["ocr_preset"] = "auto"
+        config["ocr_custom_config"] = custom
+    elif ocr_languages:
         config["ocr_lang"] = resolve_ocr_languages(engine, ocr_languages)
 
     return config
