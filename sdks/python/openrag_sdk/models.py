@@ -168,6 +168,8 @@ class SearchFilters(BaseModel):
 
     data_sources: list[str] | None = None
     document_types: list[str] | None = None
+    owners: list[str] | None = None
+    connector_types: list[str] | None = None
 
 
 # Settings update models

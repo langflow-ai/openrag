@@ -1,7 +1,8 @@
 """OpenRAG SDK chat client with streaming support."""
 
 import json
-from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, overload
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import httpx
 
@@ -253,7 +254,8 @@ class ChatClient:
             message: The message to send.
             stream: Whether to stream the response (default False).
             chat_id: ID of existing conversation to continue.
-            filters: Optional search filters (data_sources, document_types).
+            filters: Optional search filters (data_sources, document_types, owners,
+                connector_types).
             limit: Maximum number of search results (default 10).
             score_threshold: Minimum search score threshold (default 0).
             filter_id: Optional knowledge filter ID to apply.
@@ -414,7 +416,8 @@ class ChatClient:
         Args:
             message: The message to send.
             chat_id: ID of existing conversation to continue.
-            filters: Optional search filters (data_sources, document_types).
+            filters: Optional search filters (data_sources, document_types, owners,
+                connector_types).
             limit: Maximum number of search results (default 10).
             score_threshold: Minimum search score threshold (default 0).
             filter_id: Optional knowledge filter ID to apply.
@@ -500,7 +503,3 @@ class ChatClient:
             return data.get("success", False)
         except NotFoundError:
             return False
-
-
-# Import Literal for type hints
-from typing import Literal
