@@ -893,6 +893,7 @@ class ChatService:
         try:
             # Resolve the complete, owned group before removing any associations.
             from agent import delete_user_conversation
+
             session_ids = await self.session_ownership_service.get_conversation_sessions(
                 user_id, session_id
             )

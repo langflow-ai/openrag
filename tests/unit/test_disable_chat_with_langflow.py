@@ -133,4 +133,6 @@ async def test_delete_session_removes_native_history_when_langflow_chat_is_enabl
     assert result["success"] is True
     assert result["langflow_deleted"] is False
     service.native_chat_history_service.delete.assert_awaited_once_with("native-1", "db-user")
-    service.session_ownership_service.release_session.assert_awaited_once_with("db-user", "native-1")
+    service.session_ownership_service.release_session.assert_awaited_once_with(
+        "db-user", "native-1"
+    )

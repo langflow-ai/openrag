@@ -104,10 +104,7 @@ async def test_v1_stream_forwards_native_chat_error_event():
     async def raw_stream():
         yield b'{"status":"failed","error":{"message":"Model unavailable"}}\n'
 
-    events = [
-        event
-        async for event in v1_chat._transform_stream_to_sse(raw_stream(), {})
-    ]
+    events = [event async for event in v1_chat._transform_stream_to_sse(raw_stream(), {})]
 
     assert '"type": "error"' in events[0]
     assert "Model unavailable" in events[0]

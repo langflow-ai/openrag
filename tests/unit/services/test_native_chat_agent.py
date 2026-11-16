@@ -180,7 +180,9 @@ def test_native_agent_uses_the_configured_system_prompt(monkeypatch):
 
     agent, _ = NativeChatAgent()._agent("user")
 
-    assert [instruction.instruction for instruction in agent._instructions] == ["Follow team policy."]
+    assert [instruction.instruction for instruction in agent._instructions] == [
+        "Follow team policy."
+    ]
 
 
 def test_native_agent_fences_search_result_text_without_mutating_citations():

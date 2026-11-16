@@ -36,7 +36,9 @@ def _native_chat_storage_error() -> JSONResponse | None:
         return None
     from api.chat import NATIVE_CHAT_STORAGE_ERROR, NATIVE_CHAT_UNAVAILABLE_ERROR
 
-    logger.error("[CHAT V1] Native chat is unavailable", configuration_error=NATIVE_CHAT_STORAGE_ERROR)
+    logger.error(
+        "[CHAT V1] Native chat is unavailable", configuration_error=NATIVE_CHAT_STORAGE_ERROR
+    )
     return JSONResponse({"error": NATIVE_CHAT_UNAVAILABLE_ERROR}, status_code=503)
 
 
