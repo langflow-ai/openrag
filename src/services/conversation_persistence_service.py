@@ -312,13 +312,14 @@ class ConversationPersistenceService:
                 deleted += await self._prune_file_store(cutoff_local)
 
         if db_writes_enabled():
-            from db.repositories import ConversationRepo
+            from db.repositories import ChatHistoryRepo, ConversationRepo
 
             sess_factory = self._resolve_session_factory()
             if sess_factory is not None:
                 try:
                     async with sess_factory() as session:
                         n = await ConversationRepo(session).delete_stale(ttl_days)
+                        n += await ChatHistoryRepo(session).delete_stale(ttl_days)
                         await session.commit()
                         deleted += n
                 except Exception as exc:  # noqa: BLE001

@@ -110,7 +110,8 @@ async def bulk_delete_document_ids(
     refreshes dominate latency.
 
     When ``refresh`` is true the index is refreshed once after any confirmed
-    deletions, including before a failure is propagated. A per-request
+    deletion or an ambiguous bulk-request failure, including before a failure
+    is propagated. A per-request
     ``refresh=true`` would only cover the shards that request touched, so it is
     not used. A failed refresh is logged and never masks the delete result or
     the original error; corpus caches are invalidated regardless.
@@ -127,16 +128,20 @@ async def bulk_delete_document_ids(
         raise ValueError("batch_size must be > 0")
     ids = list(document_ids)
     deleted_count = 0
+    request_attempted = False
+    outcome_ambiguous = False
     first_error: str | None = None
     try:
         for start in range(0, len(ids), batch_size):
             batch = ids[start : start + batch_size]
             try:
+                request_attempted = True
                 response = await opensearch_client.bulk(
                     body=[{"delete": {"_index": index, "_id": doc_id}} for doc_id in batch],
                     refresh=False,
                 )
             except Exception as e:
+                outcome_ambiguous = True
                 raise BulkDeleteError(str(e), deleted_count) from e
             for item in response.get("items", []):
                 action = item.get("delete", {})
@@ -145,7 +150,7 @@ async def bulk_delete_document_ids(
                 elif action.get("status") != 404 and first_error is None:
                     first_error = str(action.get("error") or action.get("status"))
     finally:
-        if deleted_count:
+        if deleted_count or (request_attempted and outcome_ambiguous):
             try:
                 if refresh:
                     await opensearch_client.indices.refresh(index=index)
