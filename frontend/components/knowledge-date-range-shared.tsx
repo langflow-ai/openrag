@@ -19,7 +19,6 @@ export function DensityMark({
   return (
     <span
       aria-hidden
-      data-testid="upload-density"
       data-density={count >= 5 ? "high" : count >= 2 ? "medium" : "low"}
       className={cn(
         "h-1 rounded-full",
