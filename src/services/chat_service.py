@@ -932,12 +932,20 @@ class ChatService:
 
         Returns {"deleted": [ids], "failed": [ids]}.
         """
+        ownership_service = getattr(self, "session_ownership_service", None)
+        if ownership_service is None:
+            # Compatibility for lightweight callers that construct this
+            # service without __init__ (including legacy extension hooks).
+            from services.session_ownership_service import session_ownership_service
+
+            ownership_service = session_ownership_service
+
         deleted: list[str] = []
         failed: list[str] = []
 
         for session_id in dict.fromkeys(session_ids):
             try:
-                owner = await self.session_ownership_service.get_session_owner(session_id)
+                owner = await ownership_service.get_session_owner(session_id)
                 if owner is not None and owner != user_id:
                     logger.warning("bulk_delete: %s not owned by %s", session_id, user_id)
                     failed.append(session_id)
