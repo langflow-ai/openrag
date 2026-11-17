@@ -7,6 +7,9 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME:-openrag}-opensearch
     environment:
       - discovery.type=single-node
+      # The only password variable this container needs: the upstream entrypoint
+      # requires this exact name (OpenSearch >= 2.12), and setup-security.sh and
+      # the healthcheck below both read it. Don't add a second copy under another name.
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
       - OPENRAG_BACKEND_PORT=${OPENRAG_BACKEND_PORT:-8000}
@@ -27,7 +30,7 @@ services:
       - opensearch-data:/usr/share/opensearch/data
     stop_grace_period: 2m
     healthcheck:
-      test: ["CMD-SHELL", "curl -ku admin:$$OPENSEARCH_PASSWORD 'https://localhost:9200/_cluster/health' -s | grep -qE '\"status\":\"(green|yellow)\"'"]
+      test: ["CMD-SHELL", "curl -ku admin:$$OPENSEARCH_INITIAL_ADMIN_PASSWORD 'https://localhost:9200/_cluster/health' -s | grep -qE '\"status\":\"(green|yellow)\"'"]
       interval: 15s
       timeout: 10s
       retries: 20
