@@ -660,7 +660,9 @@ class LangflowFileService:
                 )
 
                 raise
-            return resp_json
+            # The run the backend callback stamped on every chunk (None when
+            # Langflow wrote directly); chunk stats are scoped to it.
+            return {**resp_json, "ingest_run_id": ingest_run_id}
         except asyncio.CancelledError:
             # Clean up partial ingestion before propagating cancellation
             try:
@@ -1280,4 +1282,7 @@ class LangflowFileService:
             "docling_task_id": task_id,
             "ingestion": ingest_result,
             "message": f"File '{filename}' processed via Docling and ingested successfully",
+            # Which pipeline chunked the file; chunk stats are labelled with it.
+            "ingest_path": "langflow",
+            "ingest_run_id": ingest_result.get("ingest_run_id"),
         }

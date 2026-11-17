@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import ANY
 
 import pytest
 
@@ -114,7 +115,13 @@ async def test_standard_processor_uses_shared_writer_for_embedding_mapping_and_w
         embedding_model="text-embedding-3-small",
     )
 
-    assert result == {"status": "indexed", "id": "file-1", "chunk_count": 1}
+    assert result == {
+        "status": "indexed",
+        "id": "file-1",
+        "chunk_count": 1,
+        "ingest_path": "openrag",
+        "ingest_run_id": ANY,
+    }
     assert mapping_clients == [admin_client]
     assert user_client.search_calls[0] == {
         "index": "documents",
@@ -208,7 +215,13 @@ async def test_standard_processor_routes_onprem_embeddings_through_gateway(
         jwt_token="Bearer user-token",
     )
 
-    assert result == {"status": "indexed", "id": "file-1", "chunk_count": 1}
+    assert result == {
+        "status": "indexed",
+        "id": "file-1",
+        "chunk_count": 1,
+        "ingest_path": "openrag",
+        "ingest_run_id": ANY,
+    }
     assert gateway_calls == [
         {
             "model": "watsonx_onprem:ibm/slate-30m-english-rtrvr",

@@ -37,6 +37,25 @@ def summarize_docling_document(document: dict[str, Any]) -> dict[str, int]:
     }
 
 
+def document_chunks_query(document_id: str) -> dict[str, Any]:
+    """OpenSearch query for every chunk of one indexed document.
+
+    Matches ``connector_file_id`` too: bucket-connector chunks carry the
+    connector's id there and a hash in ``document_id``; ``.keyword`` covers
+    indices that predate that field's keyword mapping.
+    """
+    return {
+        "bool": {
+            "should": [
+                {"term": {"document_id": document_id}},
+                {"term": {"connector_file_id": document_id}},
+                {"term": {"connector_file_id.keyword": document_id}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+
 def _chunk_sequence(chunk_id: str | None) -> int:
     """Numeric suffix from chunk ``_id`` (last underscore-delimited segment)."""
     if not chunk_id:
@@ -245,7 +264,7 @@ class IngestPreviewService:
                 index=get_index_name(),
                 body={
                     "size": INDEX_PROOF_MAX_CHUNKS,
-                    "query": {"term": {"document_id": document_id}},
+                    "query": document_chunks_query(document_id),
                     "sort": [{"page": "asc"}],
                     "_source": {
                         "includes": [
