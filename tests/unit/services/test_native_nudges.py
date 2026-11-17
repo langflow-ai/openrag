@@ -71,7 +71,7 @@ def test_parse_suggestions_reads_schema_json_and_cleans_it():
     [
         "",
         '{"nudges": []}',
-        "What is A?\nSummarize B",  # plain text is not shown as nudges
+        "What is A?\nSummarize B",  # plain text is the line fallback's job
         '<think>hmm</think>{"nudges": ["A?"]}',
         '{"nudges": "One?\\nTwo?"}',
         '{"nudges": [1, 2]}',
@@ -81,6 +81,26 @@ def test_parse_suggestions_reads_schema_json_and_cleans_it():
 )
 def test_parse_suggestions_rejects_anything_off_schema(text):
     assert native_nudges.parse_suggestions(text) == []
+
+
+def test_parse_line_suggestions_caps_dedupes_and_strips_markers():
+    text = '1. What is A?\n- "Summarize B"\n\n* What is A?\n2) List C\nExtra'
+    assert native_nudges.parse_line_suggestions(text) == ["What is A?", "Summarize B", "List C"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        "<think>reasoning\nmore reasoning</think>",
+        '{"nudges": "One?\\nTwo?"}',
+        '["A?", "B?"]',
+        "{\n",
+        "x" * (native_nudges.MAX_LINE_NUDGE_CHARS + 1),
+    ],
+)
+def test_parse_line_suggestions_skips_non_nudge_lines(text):
+    assert native_nudges.parse_line_suggestions(text) == []
 
 
 # ------------------------------------------------------------- sample_documents
@@ -235,15 +255,13 @@ async def test_generate_nudges_unknown_model_gets_schema():
 @pytest.mark.parametrize(
     "reply",
     [
-        _completion("What is A?\nSummarize B"),
         _completion("<think>reasoning</think>"),
         _completion('{"nudges": "A?"}'),
         {"choices": []},
     ],
 )
 async def test_generate_nudges_returns_blank_when_reply_is_off_schema(reply):
-    # The gateway drops response_format for providers that do not support it, so
-    # a raw-text reply must not be shown as nudges.
+    # Neither the schema nor the line fallback yields a nudge from these.
     gateway = _FakeGateway(reply)
     result = await native_nudges.generate_nudges(
         history_prompt="",
@@ -253,6 +271,20 @@ async def test_generate_nudges_returns_blank_when_reply_is_off_schema(reply):
         capabilities=_caps("structured_output"),
     )
     assert result == {"response": ""}
+
+
+@pytest.mark.asyncio
+async def test_generate_nudges_falls_back_to_lines_when_schema_is_ignored():
+    # An unknown model gets response_format; a provider that silently drops it
+    # may answer one nudge per line, which must not leave the panel blank.
+    gateway = _FakeGateway(
+        _completion("<think>hmm</think>\n1. What is A?\n2. Summarize B\n3. What is A?\n4. List C")
+    )
+    result = await native_nudges.generate_nudges(
+        history_prompt="", documents=[], config=_config(), complete=gateway, capabilities=_caps()
+    )
+    assert "response_format" in gateway.bodies[0]
+    assert result == {"response": "What is A?\nSummarize B\nList C"}
 
 
 @pytest.mark.asyncio

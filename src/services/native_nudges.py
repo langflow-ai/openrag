@@ -25,6 +25,8 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 MAX_NUDGES = 3
+# Longer lines in a plain-text reply are prose, not nudges.
+MAX_LINE_NUDGE_CHARS = 120
 DEFAULT_DOCUMENT_LIMIT = 10
 MAX_DOCUMENT_CHARS = 2000
 # The flow's search query: the two-character string `""`, not an empty one.
@@ -91,6 +93,8 @@ _NUDGES_TOOL = {
     },
 }
 _CODE_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$")
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+_LIST_MARKER = re.compile(r"^(?:[-*•]|\d+[.)])\s+")
 
 Completion = Callable[..., Awaitable[Any]]
 Capabilities = Callable[..., frozenset[str]]
@@ -123,20 +127,40 @@ def _reply_json(payload: Any, mode: str) -> str:
     return _CODE_FENCE.sub("", (message.get("content") or "").strip())
 
 
-def parse_suggestions(text: str) -> list[str]:
-    """Validated nudges, cleaned and deduplicated. Empty when the reply is malformed."""
-    try:
-        suggestions = NudgeSuggestions.model_validate_json(text)
-    except ValidationError:
-        return []
+def _capped_unique(items: list[str]) -> list[str]:
+    """Up to MAX_NUDGES non-empty nudges, unquoted and deduplicated, in order."""
     nudges: list[str] = []
-    for item in suggestions.nudges:
+    for item in items:
         nudge = item.strip().strip("\"'").strip()
         if nudge and nudge not in nudges:
             nudges.append(nudge)
         if len(nudges) == MAX_NUDGES:
             break
     return nudges
+
+
+def parse_suggestions(text: str) -> list[str]:
+    """Validated nudges, cleaned and deduplicated. Empty when the reply is malformed."""
+    try:
+        suggestions = NudgeSuggestions.model_validate_json(text)
+    except ValidationError:
+        return []
+    return _capped_unique(suggestions.nudges)
+
+
+def parse_line_suggestions(text: str) -> list[str]:
+    """One nudge per line, for a provider that ignored `response_format`.
+
+    Drops reasoning blocks, list markers, JSON fragments, markup and lines too
+    long to be a nudge. Capped and deduplicated like the JSON path.
+    """
+    lines: list[str] = []
+    for raw in _THINK_BLOCK.sub("", text).splitlines():
+        line = _LIST_MARKER.sub("", raw.strip())
+        if not line or line[0] in "{}[]<" or len(line) > MAX_LINE_NUDGE_CHARS:
+            continue
+        lines.append(line)
+    return _capped_unique(lines)
 
 
 def _without_empty_lists(filters: dict | None) -> dict:
@@ -218,7 +242,14 @@ async def generate_nudges(
     else:
         body["response_format"] = _JSON_SCHEMA_FORMAT
     payload = await (complete or chat_completions)(body, config=cfg)
-    nudges = parse_suggestions(_reply_json(payload, mode))
+    reply = _reply_json(payload, mode)
+    nudges = parse_suggestions(reply)
+    if not nudges and mode == "json_schema":
+        # The gateway drops response_format for a provider that does not support
+        # it, and the model may then answer in plain text.
+        nudges = parse_line_suggestions(reply)
+        if nudges:
+            logger.info("Nudges reply was not JSON; used one nudge per line")
     if not nudges:
         logger.warning("Nudges reply did not match the schema", output_mode=mode)
     return {"response": "\n".join(nudges)}
