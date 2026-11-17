@@ -701,7 +701,6 @@ class ChatService:
                     "langflow_deleted": False,
                     "error": None,
                 }
-        session_ids: list[str] | None = None
         try:
             # Resolve the complete, owned group before removing any associations.
             from agent import delete_user_conversation
@@ -740,15 +739,6 @@ class ChatService:
             }
 
         except Exception as e:
-            if native_deleted and not session_ids:
-                await self.session_ownership_service.release_session(user_id, session_id)
-                return {
-                    "success": True,
-                    "local_deleted": False,
-                    "native_deleted": True,
-                    "langflow_deleted": False,
-                    "error": None,
-                }
             logger.error(f"Error deleting session {session_id} for user {user_id}: {e}")
             return {"success": False, "error": str(e)}
 

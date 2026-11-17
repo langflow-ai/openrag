@@ -168,6 +168,8 @@ async def test_native_chat_session_delete_releases_its_ownership(monkeypatch):
 @pytest.mark.asyncio
 async def test_langflow_session_delete_removes_its_native_history_mirror(monkeypatch):
     monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", False)
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    monkeypatch.delenv("OPENRAG_DISABLE_DB_WORKSPACE_CONFIG", raising=False)
     service = ChatService()
     native_delete = AsyncMock(return_value=True)
     monkeypatch.setattr(
