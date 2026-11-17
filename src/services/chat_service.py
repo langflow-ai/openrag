@@ -677,8 +677,9 @@ class ChatService:
 
     async def delete_session(self, user_id: str, session_id: str):
         """Delete a session from both local storage and Langflow"""
-        native_conversation = db_writes_enabled() and await self.native_chat_history_service.owns_conversation(
-            session_id, user_id
+        native_conversation = (
+            db_writes_enabled()
+            and await self.native_chat_history_service.owns_conversation(session_id, user_id)
         )
         native_deleted = False
         if native_conversation:
