@@ -284,7 +284,9 @@ async def _migrate_legacy_native_conversation(
     if existing is not None and not recovered_messages:
         return False
     conversation.total_messages = max(
-        conversation.total_messages, existing_total_messages, int(metadata.get("total_messages") or 0)
+        conversation.total_messages,
+        existing_total_messages,
+        int(metadata.get("total_messages") or 0),
     )
     conversation.last_activity = last or conversation.last_activity
     native_repo.session.add(conversation)
