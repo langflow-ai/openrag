@@ -219,20 +219,26 @@ async def _migrate_legacy_native_conversation(
     native_repo: Any, user_id: str, response_id: str, metadata: dict[str, Any]
 ) -> bool:
     """Copy one legacy ``/chat`` conversation and its recoverable messages."""
-    if await native_repo.get_conversation(response_id) is not None:
-        return False
     created = _parse_legacy_dt(metadata.get("created_at"))
     last = _parse_legacy_dt(metadata.get("last_activity"))
-    conversation = await native_repo.create_conversation(
-        conversation_id=response_id,
-        user_id=user_id,
-        title=metadata.get("title"),
-        filter_id=metadata.get("filter_id"),
-        total_messages=0,
-        created_at=created,
-        last_activity=last,
-    )
+    existing = await native_repo.get_conversation(response_id)
+    if existing is not None:
+        if existing.user_id != user_id or await native_repo.list_messages(response_id):
+            return False
+        conversation = existing
+    else:
+        conversation = await native_repo.create_conversation(
+            conversation_id=response_id,
+            user_id=user_id,
+            title=metadata.get("title"),
+            filter_id=metadata.get("filter_id"),
+            total_messages=0,
+            created_at=created,
+            last_activity=last,
+        )
     legacy_messages = metadata.get("messages")
+    recovered_messages = 0
+    existing_total_messages = conversation.total_messages
     if isinstance(legacy_messages, list):
         for message in legacy_messages:
             if not isinstance(message, dict):
@@ -259,15 +265,26 @@ async def _migrate_legacy_native_conversation(
             event_data["pydantic_messages"] = json.loads(
                 ModelMessagesTypeAdapter.dump_json([history_message])
             )
+            if existing is not None and not recovered_messages:
+                # Revision 0010 copied only metadata. Reserve message sequence
+                # numbers from the recovered snapshot, then restore the
+                # metadata count below if it is larger than the snapshot.
+                conversation.total_messages = 0
+                native_repo.session.add(conversation)
+                await native_repo.session.flush()
             await native_repo.append_message(
                 conversation=conversation,
                 role=role,
                 content=content,
                 event_data=event_data,
                 error=bool(message.get("error")),
+                created_at=_parse_legacy_dt(message.get("timestamp")),
             )
+            recovered_messages += 1
+    if existing is not None and not recovered_messages:
+        return False
     conversation.total_messages = max(
-        conversation.total_messages, int(metadata.get("total_messages") or 0)
+        conversation.total_messages, existing_total_messages, int(metadata.get("total_messages") or 0)
     )
     conversation.last_activity = last or conversation.last_activity
     native_repo.session.add(conversation)

@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -147,8 +148,16 @@ async def test_native_metadata_migration_recovers_messages_and_keeps_empty_histo
     """Native metadata-only rows remain valid continuations after migration."""
     conversations = json.loads((staged_files / "conversations.json").read_text())
     conversations["alice"]["r-1"]["messages"] = [
-        {"role": "user", "content": "Earlier question"},
-        {"role": "assistant", "content": "Earlier answer"},
+        {
+            "role": "user",
+            "content": "Earlier question",
+            "timestamp": "2026-04-01T10:01:00Z",
+        },
+        {
+            "role": "assistant",
+            "content": "Earlier answer",
+            "timestamp": "2026-04-01T10:02:00Z",
+        },
         {"role": ["user"], "content": "Skip malformed role"},
     ]
     conversations["alice"]["metadata-only"] = {
@@ -171,6 +180,10 @@ async def test_native_metadata_migration_recovers_messages_and_keeps_empty_histo
         ("user", "Earlier question"),
         ("assistant", "Earlier answer"),
     ]
+    assert [row.created_at for row in recovered] == [
+        datetime(2026, 4, 1, 10, 1, tzinfo=UTC),
+        datetime(2026, 4, 1, 10, 2, tzinfo=UTC),
+    ]
     history = await NativeChatHistoryService(session_factory=session_factory).pydantic_history(
         "r-1", "alice"
     )
@@ -180,6 +193,92 @@ async def test_native_metadata_migration_recovers_messages_and_keeps_empty_histo
     ]
     assert metadata_only is not None
     assert metadata_only.total_messages == 2
+
+
+@pytest.mark.asyncio
+async def test_json_import_recovers_snapshot_after_0010_metadata_move(tmp_path, monkeypatch):
+    """A 0010 metadata row is completed once its legacy JSON snapshot is found."""
+    database_path = tmp_path / "history.db"
+    migration_path = ROOT / "alembic" / "versions" / "0010_move_legacy_native_chat.py"
+    spec = importlib.util.spec_from_file_location("migration_0010_snapshot", migration_path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    sync_engine = sa.create_engine(f"sqlite:///{database_path}")
+    SQLModel.metadata.create_all(sync_engine)
+    with sync_engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO langflow_conversations
+                    (response_id, user_id, title, endpoint, previous_response_id, filter_id,
+                     total_messages, created_at, last_activity)
+                VALUES
+                    ('legacy-chat', 'alice', 'Legacy chat', 'chat', NULL, NULL, 2,
+                     '2026-04-01 10:00:00', '2026-04-01 10:02:00')
+                """
+            )
+        )
+        migration.op = Operations(MigrationContext.configure(connection))
+        migration.upgrade()
+    sync_engine.dispose()
+
+    (tmp_path / "conversations.json").write_text(
+        json.dumps(
+            {
+                "alice": {
+                    "legacy-chat": {
+                        "endpoint": "chat",
+                        "total_messages": 2,
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": "Earlier question",
+                                "timestamp": "2026-04-01T10:01:00Z",
+                            },
+                            {
+                                "role": "assistant",
+                                "content": "Earlier answer",
+                                "timestamp": "2026-04-01T10:02:00Z",
+                            },
+                        ],
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setattr(migrations_runtime, "get_data_file", lambda name: str(tmp_path / name))
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            stats = await migrations_runtime.migrate_chat_history_json_to_db(session)
+            await session.commit()
+
+        assert stats["native_conversations"] == 1
+        async with factory() as session:
+            repo = ChatHistoryRepo(session)
+            conversation = await repo.get_conversation("legacy-chat")
+            messages = await repo.list_messages("legacy-chat")
+
+        assert conversation is not None
+        assert conversation.total_messages == 2
+        assert [(message.role, message.content) for message in messages] == [
+            ("user", "Earlier question"),
+            ("assistant", "Earlier answer"),
+        ]
+        assert [message.created_at for message in messages] == [
+            datetime(2026, 4, 1, 10, 1, tzinfo=UTC),
+            datetime(2026, 4, 1, 10, 2, tzinfo=UTC),
+        ]
+
+        async with factory() as session:
+            repeated = await migrations_runtime.migrate_chat_history_json_to_db(session)
+            await session.commit()
+        assert repeated["native_conversations"] == 0
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
