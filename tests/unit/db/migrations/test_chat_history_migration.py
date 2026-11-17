@@ -20,7 +20,8 @@ if str(SRC) not in sys.path:
 
 import db.migrations_runtime as migrations_runtime  # noqa: E402
 import db.models  # noqa: E402,F401
-from db.repositories import ConversationRepo, SessionOwnershipRepo  # noqa: E402
+from db.repositories import ChatHistoryRepo, ConversationRepo, SessionOwnershipRepo  # noqa: E402
+from services.native_chat_history_service import NativeChatHistoryService  # noqa: E402
 
 
 @pytest_asyncio.fixture
@@ -100,18 +101,21 @@ async def test_migration_copies_both_files(staged_files, session_factory):
         await session.commit()
 
     assert stats["sessions_inserted"] == 2
-    assert stats["conversations_inserted"] == 2
+    assert stats["conversations_inserted"] == 1
+    assert stats["native_conversations"] == 1
 
     async with session_factory() as session:
         so_repo = SessionOwnershipRepo(session)
         assert (await so_repo.get("sess-1")).user_id == "alice"
         assert (await so_repo.get("sess-2")).user_id == "bob"
 
-        conv_repo = ConversationRepo(session)
-        r1 = await conv_repo.get("r-1")
+        native_repo = ChatHistoryRepo(session)
+        r1 = await native_repo.get_conversation("r-1")
         assert r1.title == "Project sync"
         assert r1.user_id == "alice"
         assert r1.total_messages == 4
+
+        conv_repo = ConversationRepo(session)
         r2 = await conv_repo.get("r-2")
         assert r2.endpoint == "langflow"
 
@@ -128,10 +132,65 @@ async def test_migration_is_idempotent(staged_files, session_factory):
         await session.commit()
 
     assert first["sessions_inserted"] == 2
-    assert first["conversations_inserted"] == 2
+    assert first["conversations_inserted"] == 1
+    assert first["native_conversations"] == 1
     # Second pass: rows already there, no new inserts
     assert second["sessions_inserted"] == 0
     assert second["conversations_inserted"] == 0
+    assert second["native_conversations"] == 0
+
+
+@pytest.mark.asyncio
+async def test_native_metadata_migration_recovers_messages_and_keeps_empty_history_continuable(
+    staged_files, session_factory
+):
+    """Native metadata-only rows remain valid continuations after migration."""
+    conversations = json.loads((staged_files / "conversations.json").read_text())
+    conversations["alice"]["r-1"]["messages"] = [
+        {"role": "user", "content": "Earlier question"},
+        {"role": "assistant", "content": "Earlier answer"},
+        {"role": ["user"], "content": "Skip malformed role"},
+    ]
+    conversations["alice"]["metadata-only"] = {
+        "title": "No message snapshot",
+        "endpoint": "chat",
+        "total_messages": 2,
+    }
+    (staged_files / "conversations.json").write_text(json.dumps(conversations))
+
+    async with session_factory() as session:
+        await migrations_runtime.migrate_chat_history_json_to_db(session)
+        await session.commit()
+
+    async with session_factory() as session:
+        repo = ChatHistoryRepo(session)
+        recovered = await repo.list_messages("r-1")
+        metadata_only = await repo.get_conversation("metadata-only")
+
+    assert [(row.role, row.content) for row in recovered] == [
+        ("user", "Earlier question"),
+        ("assistant", "Earlier answer"),
+    ]
+    history = await NativeChatHistoryService(session_factory=session_factory).pydantic_history(
+        "r-1", "alice"
+    )
+    assert [part.content for message in history for part in message.parts] == [
+        "Earlier question",
+        "Earlier answer",
+    ]
+    assert metadata_only is not None
+    assert metadata_only.total_messages == 2
+
+
+@pytest.mark.asyncio
+async def test_native_chat_migration_runs_independently_of_legacy_marker(
+    staged_files, session_factory
+):
+    """Old installations can import native chat after their broad marker is done."""
+    async with session_factory() as session:
+        assert await migrations_runtime.migrate_legacy_native_chat_history_json_to_db(session) == 1
+        assert await migrations_runtime.migrate_legacy_native_chat_history_json_to_db(session) == 0
+        assert await ChatHistoryRepo(session).get_conversation("r-1") is not None
 
 
 @pytest.mark.asyncio
@@ -145,7 +204,11 @@ async def test_migration_no_files_is_noop(tmp_path, monkeypatch, session_factory
     async with session_factory() as session:
         stats = await migrations_runtime.migrate_chat_history_json_to_db(session)
         await session.commit()
-    assert stats == {"sessions_inserted": 0, "conversations_inserted": 0}
+    assert stats == {
+        "sessions_inserted": 0,
+        "conversations_inserted": 0,
+        "native_conversations": 0,
+    }
 
 
 @pytest.mark.asyncio
@@ -158,6 +221,9 @@ async def test_run_marks_migration_done(staged_files, session_factory):
     async with session_factory() as session:
         assert await migrations_runtime._already_done(
             session, migrations_runtime.CHAT_HISTORY_JSON_TO_DB_V1
+        )
+        assert await migrations_runtime._already_done(
+            session, migrations_runtime.NATIVE_CHAT_HISTORY_JSON_TO_DB_V1
         )
 
 
@@ -213,4 +279,114 @@ def test_session_alias_schema_upgrade_and_downgrade():
         assert "conversation_id" not in {
             column["name"] for column in sa.inspect(connection).get_columns("session_ownership")
         }
+    engine.dispose()
+
+
+def test_legacy_native_chat_rows_move_out_of_langflow_history():
+    migration_path = ROOT / "alembic" / "versions" / "0010_move_legacy_native_chat.py"
+    spec = importlib.util.spec_from_file_location("migration_0010", migration_path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    engine = sa.create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE langflow_conversations (
+                    response_id VARCHAR(64) PRIMARY KEY,
+                    user_id VARCHAR(64) NOT NULL,
+                    title VARCHAR(512),
+                    endpoint VARCHAR(64),
+                    previous_response_id VARCHAR(64),
+                    filter_id VARCHAR(128),
+                    total_messages INTEGER NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    last_activity DATETIME NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE chat_messages (
+                    id VARCHAR(64) PRIMARY KEY,
+                    conversation_id VARCHAR(64) NOT NULL,
+                    sequence INTEGER NOT NULL,
+                    role VARCHAR(32) NOT NULL,
+                    content TEXT,
+                    tool_call_id VARCHAR(128),
+                    tool_name VARCHAR(128),
+                    tool_arguments JSON,
+                    tool_result JSON,
+                    event_data JSON,
+                    error BOOLEAN NOT NULL,
+                    interrupted BOOLEAN NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    CONSTRAINT uq_chat_messages_conversation_sequence
+                        UNIQUE (conversation_id, sequence),
+                    FOREIGN KEY(conversation_id) REFERENCES chat_conversations (id)
+                )
+                """
+            )
+        )
+        connection.execute(sa.text("PRAGMA foreign_keys = ON"))
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE chat_conversations (
+                    id VARCHAR(64) PRIMARY KEY,
+                    user_id VARCHAR(64) NOT NULL,
+                    title VARCHAR(512),
+                    filter_id VARCHAR(128),
+                    total_messages INTEGER NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    last_activity DATETIME NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO langflow_conversations VALUES
+                    ('legacy-chat', 'alice', 'Native chat', 'chat', NULL, NULL, 2,
+                     '2026-04-01', '2026-04-02'),
+                    ('langflow-chat', 'alice', 'Flow chat', 'langflow', NULL, NULL, 1,
+                     '2026-04-03', '2026-04-04')
+                """
+            )
+        )
+        migration.op = Operations(MigrationContext.configure(connection))
+        migration.upgrade()
+
+        assert (
+            connection.execute(
+                sa.text("SELECT title FROM chat_conversations WHERE id = 'legacy-chat'")
+            ).scalar_one()
+            == "Native chat"
+        )
+        assert connection.execute(
+            sa.text("SELECT response_id FROM langflow_conversations ORDER BY response_id")
+        ).scalars().all() == ["langflow-chat"]
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO chat_messages
+                    (id, conversation_id, sequence, role, error, interrupted, created_at)
+                VALUES ('legacy-chat:0', 'legacy-chat', 0, 'user', 0, 0, '2026-04-01')
+                """
+            )
+        )
+
+        migration.downgrade()
+        assert (
+            connection.execute(
+                sa.text(
+                    "SELECT endpoint FROM langflow_conversations WHERE response_id = 'legacy-chat'"
+                )
+            ).scalar_one()
+            == "chat"
+        )
+        assert connection.execute(sa.text("SELECT COUNT(*) FROM chat_messages")).scalar_one() == 1
     engine.dispose()

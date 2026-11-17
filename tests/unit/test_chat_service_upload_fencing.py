@@ -16,6 +16,9 @@ from services.chat_service import ChatService  # noqa: E402
 async def test_upload_context_chat_fences_document_content(monkeypatch):
     """VULN-13906: uploaded document text must be fenced as untrusted before entering the prompt."""
 
+    # This test asserts the Langflow path, so pin the static deployment switch off.
+    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", False)
+
     fake_langflow_client = MagicMock()
     monkeypatch.setattr(
         "config.settings.clients.ensure_langflow_client",
@@ -65,6 +68,9 @@ async def test_upload_context_chat_escapes_embedded_end_delimiter(monkeypatch):
     """VULN-13906: a document embedding a fake end-of-fence marker followed by a
     directive must not be able to terminate the fence early in the sent prompt —
     only the real, framing terminator may function as a delimiter."""
+
+    # This test asserts the Langflow path, so pin the static deployment switch off.
+    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", False)
 
     fake_langflow_client = MagicMock()
     monkeypatch.setattr(

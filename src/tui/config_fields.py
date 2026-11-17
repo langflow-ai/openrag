@@ -168,6 +168,17 @@ CONFIG_SECTIONS: list[ConfigSection] = [
                 helper_text="External URL for Langflow access",
                 advanced=True,
             ),
+            ConfigField(
+                "disable_chat_with_langflow",
+                "DISABLE_CHAT_WITH_LANGFLOW",
+                "Disable Langflow Chat",
+                placeholder="false",
+                default="False",
+                helper_text=(
+                    "Set true to use OpenRAG's built-in Python chat agent. "
+                    "Requires database-backed OpenRAG storage; restart the backend after saving."
+                ),
+            ),
         ],
     ),
     # ── AI Providers ────────────────────────────────────────────

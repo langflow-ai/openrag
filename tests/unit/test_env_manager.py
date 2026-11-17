@@ -357,3 +357,31 @@ class TestLangfuseBaseUrl:
         env_vars = {f.env_var for f in langfuse.fields}
         assert "LANGFUSE_BASE_URL" in env_vars
         assert "LANGFUSE_HOST" not in env_vars
+
+
+class TestNativeChatSetting:
+    """The TUI exposes and persists the native-chat deployment setting."""
+
+    def test_disable_langflow_chat_round_trips(self, env_manager, tmp_path):
+        from tui.managers.env_manager import EnvManager
+
+        env_manager.config.disable_chat_with_langflow = "true"
+        env_manager.config.opensearch_password = "OpenSearchPass123!"
+        env_manager.config.langflow_superuser_password = "LangflowPass123!"
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            assert env_manager.save_env_file() is True
+
+        content = (tmp_path / ".env").read_text()
+        assert content.count("DISABLE_CHAT_WITH_LANGFLOW=") == 1
+        assert "DISABLE_CHAT_WITH_LANGFLOW='true'" in content
+
+        reloaded = EnvManager(env_file=tmp_path / ".env")
+        reloaded.load_existing_env()
+        assert reloaded.config.disable_chat_with_langflow == "true"
+
+    def test_disable_langflow_chat_is_in_the_tui_langflow_section(self):
+        from tui.config_fields import CONFIG_SECTIONS
+
+        (langflow,) = [section for section in CONFIG_SECTIONS if section.name == "Langflow"]
+        assert "DISABLE_CHAT_WITH_LANGFLOW" in {field.env_var for field in langflow.fields}
