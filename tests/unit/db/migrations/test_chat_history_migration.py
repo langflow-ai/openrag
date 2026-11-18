@@ -462,6 +462,90 @@ async def test_langflow_history_migration_skips_foreign_native_conversation_and_
 
 
 @pytest.mark.asyncio
+async def test_langflow_history_migration_replaces_a_partial_native_mirror(session_factory):
+    """A turn mirrored before import must not hide older Langflow history."""
+    async with session_factory() as session:
+        await ConversationRepo(session).upsert(
+            response_id="partial-mirror",
+            user_id="alice",
+            endpoint="langflow",
+            total_messages=4,
+        )
+        native_repo = ChatHistoryRepo(session)
+        conversation = await native_repo.create_conversation(
+            conversation_id="partial-mirror",
+            user_id="alice",
+            title="Newest turn only",
+            filter_id=None,
+        )
+        await native_repo.append_message(
+            conversation=conversation,
+            role="user",
+            content="Newest question",
+        )
+        await native_repo.append_message(
+            conversation=conversation,
+            role="assistant",
+            content="Newest answer",
+        )
+        await session.commit()
+
+    fetched: list[str] = []
+
+    async def _fetch_messages(session_id):
+        fetched.append(session_id)
+        return [
+            {"role": "user", "content": "Earlier question"},
+            {"role": "assistant", "content": "Earlier answer"},
+            {"role": "user", "content": "Newest question"},
+            {"role": "assistant", "content": "Newest answer"},
+        ]
+
+    async with session_factory() as session:
+        stats = await migrations_runtime.migrate_langflow_history_to_native(
+            session, _fetch_messages
+        )
+
+    assert stats == {"conversations": 1, "messages": 4, "failed": 0}
+    assert fetched == ["partial-mirror"]
+    async with session_factory() as session:
+        messages = await ChatHistoryRepo(session).list_messages("partial-mirror")
+    assert [(message.role, message.content) for message in messages] == [
+        ("user", "Earlier question"),
+        ("assistant", "Earlier answer"),
+        ("user", "Newest question"),
+        ("assistant", "Newest answer"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_langflow_history_migration_commits_successes_before_later_fetch_failure(
+    session_factory,
+):
+    """A cancelled or failed later fetch cannot roll back completed imports."""
+    async with session_factory() as session:
+        legacy_repo = ConversationRepo(session)
+        await legacy_repo.upsert(response_id="first", user_id="alice", endpoint="langflow")
+        await legacy_repo.upsert(response_id="second", user_id="alice", endpoint="langflow")
+        await session.commit()
+
+    async def _fetch_messages(session_id):
+        if session_id == "second":
+            raise RuntimeError("Langflow unavailable")
+        return [{"role": "user", "content": "Persisted before failure"}]
+
+    async with session_factory() as session:
+        stats = await migrations_runtime.migrate_langflow_history_to_native(
+            session, _fetch_messages
+        )
+
+    assert stats == {"conversations": 1, "messages": 1, "failed": 1}
+    async with session_factory() as session:
+        assert await ChatHistoryRepo(session).get_conversation("first") is not None
+        assert await ChatHistoryRepo(session).get_conversation("second") is None
+
+
+@pytest.mark.asyncio
 async def test_json_migration_preserves_alias_association(staged_files, session_factory):
     ownership_file = staged_files / "session_ownership.json"
     payload = json.loads(ownership_file.read_text())

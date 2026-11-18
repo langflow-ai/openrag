@@ -397,7 +397,7 @@ async def migrate_langflow_history_to_native(
 
     ``langflow_conversations`` has always held sidebar metadata only. This
     migration fetches the message bodies from Langflow's monitor API and makes
-    the native tables the durable history source. Existing native histories are
+    the native tables the durable history source. Complete native histories are
     not fetched again; failed remote requests leave only that conversation to
     retry on the next startup.
     """
@@ -413,7 +413,12 @@ async def migrate_langflow_history_to_native(
     skipped = 0
     already_imported = 0
 
-    for legacy in await legacy_repo.list_all():
+    # Release the metadata read transaction before any remote request. SQLite
+    # otherwise keeps a transaction open while this loop waits on Langflow.
+    legacy_conversations = await legacy_repo.list_all()
+    await session.commit()
+
+    for legacy in legacy_conversations:
         existing_state = "missing"
         try:
             # Keep even the lookup in a savepoint. A database failure while
@@ -424,9 +429,12 @@ async def migrate_langflow_history_to_native(
                 if existing is not None:
                     if existing.user_id != legacy.user_id:
                         existing_state = "foreign"
-                    elif await native_repo.list_messages(legacy.response_id):
+                    elif len(await native_repo.list_messages(legacy.response_id)) >= max(
+                        (legacy.total_messages or 0), 1
+                    ):
                         existing_state = "imported"
         except Exception as exc:  # noqa: BLE001
+            await session.rollback()
             stats["failed"] += 1
             logger.warning(
                 "langflow_history_to_native_v1: conversation lookup failed",
@@ -434,6 +442,10 @@ async def migrate_langflow_history_to_native(
                 error=str(exc),
             )
             continue
+
+        # The savepoint released, but its read transaction may still be open.
+        # Do not hold it while fetching the next conversation from Langflow.
+        await session.commit()
 
         if existing_state == "foreign":
             skipped += 1
@@ -481,7 +493,12 @@ async def migrate_langflow_history_to_native(
                     last_accessed=legacy.last_activity,
                 )
                 await session.flush()
+            # Persist every successful conversation independently. A restart
+            # or later failure then retries only unfinished rows, rather than
+            # rolling back all remote work completed earlier in this pass.
+            await session.commit()
         except (PermissionError, IntegrityError, ValueError) as exc:
+            await session.rollback()
             skipped += 1
             logger.warning(
                 "langflow_history_to_native_v1: skipping unrecoverable conversation",
@@ -490,6 +507,7 @@ async def migrate_langflow_history_to_native(
             )
             continue
         except Exception as exc:  # noqa: BLE001
+            await session.rollback()
             stats["failed"] += 1
             logger.warning(
                 "langflow_history_to_native_v1: conversation import failed",
