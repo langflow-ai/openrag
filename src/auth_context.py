@@ -19,6 +19,9 @@ _current_score_threshold: ContextVar[float | None] = ContextVar(
 _current_search_result_mode: ContextVar[str] = ContextVar(
     "current_search_result_mode", default="chunks"
 )
+_current_exclude_sample_data: ContextVar[bool] = ContextVar(
+    "current_exclude_sample_data", default=False
+)
 
 
 def set_auth_context(user_id: str, jwt_token: str):
@@ -80,3 +83,13 @@ def set_search_result_mode(result_mode: str):
 def get_search_result_mode() -> str:
     """Get the result surface that requested this search."""
     return _current_search_result_mode.get()
+
+
+def set_exclude_sample_data(exclude: bool):
+    """Set whether the current search leaves out the bundled sample documents."""
+    _current_exclude_sample_data.set(exclude)
+
+
+def get_exclude_sample_data() -> bool:
+    """Whether the current search leaves out the bundled sample documents."""
+    return _current_exclude_sample_data.get()

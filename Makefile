@@ -115,7 +115,7 @@ endef
        instana-agent-up instana-agent-down \
        shell-backend shell-frontend install \
        test test-unit test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
-       eval-validate eval-check eval-cleanup eval-run eval-answers eval-baseline eval-compare \
+       eval-validate eval-check eval-cleanup eval-run eval-answers eval-baseline eval-compare eval-scores \
        ci-build-images ci-save-images \
        backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
@@ -371,6 +371,8 @@ help_test: ## Show testing commands
 	@echo "  $(PURPLE)make eval-baseline$(NC)   - Run the eval and save it as results/baseline.json"
 	@echo "  $(PURPLE)make eval-compare$(NC)    - Compare two results files offline"
 	@echo "                         (BASELINE=... CURRENT=..., default baseline vs latest run)"
+	@echo "  $(PURPLE)make eval-scores$(NC)     - Work out relevance-score thresholds from a run"
+	@echo "                         (RESULTS=..., default latest run; BASELINE=... to compare two runs)"
 	@echo ''
 	@echo "$(PURPLE)Diagnostic Tests:$(NC)"
 	@echo "  $(PURPLE)make test-os-jwt$(NC)     - Test JWT authentication against OpenSearch"
@@ -1389,6 +1391,9 @@ eval-baseline: ## Run the retrieval eval and save it as $(OUTPUT_DIR)/baseline.j
 
 eval-compare: ## Compare two retrieval eval results files offline (BASELINE=..., CURRENT=...)
 	cd $(EVAL_DIR) && uv run run_eval.py compare $(or $(BASELINE),$(OUTPUT_DIR)/baseline.json) $(CURRENT)
+
+eval-scores: ## Work out relevance-score thresholds from a retrieval eval run (RESULTS=..., BASELINE=... to compare)
+	cd $(EVAL_DIR) && uv run run_eval.py scores $(or $(RESULTS),$(CURRENT)) $(if $(BASELINE),--baseline $(BASELINE)) $(EVAL_ARGS)
 
 lint: ## Run linting checks
 	@echo "$(YELLOW)Running linting checks...$(NC)"
