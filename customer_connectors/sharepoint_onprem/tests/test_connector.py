@@ -61,6 +61,9 @@ class SharePointServer:
         self.mutate = None
         # Field overrides merged into file metadata responses.
         self.file_metadata = {}
+        # "next": pages of 73 with __next; "none": honours $top, never sends
+        # __next; "all": ignores $top and returns the whole collection.
+        self.paging = "next"
 
     def lists_calls(self):
         return sum("/_api/web/lists" in url for url in self.calls)
@@ -207,10 +210,16 @@ class SharePointServer:
         if self.mutate:
             items = self.mutate(endpoint, items)
         offset = int(query.get("$skiptoken", ["0"])[0])
-        size = min(int(query.get("$top", ["200"])[0]), 73)  # Server pages independently of the UI.
+        top = int(query.get("$top", ["200"])[0])
+        if self.paging == "all":  # Ignores $top and returns the whole collection.
+            size = len(items)
+        elif self.paging == "none":  # Honours $top but never sends __next.
+            size = top
+        else:
+            size = min(top, 73)  # Server pages independently of the UI.
         page = items[offset : offset + size]
         data = {"results": page}
-        if offset + size < len(items):
+        if self.paging == "next" and offset + size < len(items):
             q = {key: value[0] for key, value in query.items() if key != "$skiptoken"}
             q["$skiptoken"] = str(offset + size)
             data["__next"] = f"{self.next_origin}{parts.path}?{urlencode(q)}"
@@ -1021,3 +1030,63 @@ def test_root_url_switch_cannot_reuse_another_servers_ids(connector, monkeypatch
         assert switched.filename_for_index(first["id"], "doc.txt") != switched.filename_for_index(
             second["id"], "doc.txt"
         )
+
+
+# Review r4556905926: whether SharePoint Server sends __next for SP.Folder
+# Folders/Files collections is unverified. A server that honours $top without a
+# continuation must fail the listing, not silently truncate the folder.
+
+
+def test_full_page_without_continuation_fails_instead_of_truncating(connector, caplog):
+    adapter, server = connector
+    _, nested = navigate(adapter)
+    server.paging = "none"
+    with caplog.at_level("ERROR", logger="sharepoint_onprem"):
+        with pytest.raises(ValueError, match="did not provide a continuation"):
+            full_inventory(adapter, 1000)
+        with pytest.raises(ValueError, match="did not provide a continuation"):
+            run(adapter.list_children(nested["id"]))
+    assert any(
+        "Failed to list SharePoint Files" in record.getMessage()
+        and "without a continuation link" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+@pytest.mark.parametrize("count", [0, 5, 199, 200])
+def test_collection_ending_on_a_page_boundary_is_not_a_false_failure(connector, count):
+    adapter, server = connector
+    server.paging = "none"
+    server.count = count
+    names = {entry["name"] for entry in full_inventory(adapter, 1000)}
+    assert names == {f"doc-{n}.txt" for n in range(count)}
+
+
+def test_picker_page_boundary_without_continuation(connector):
+    adapter, server = connector
+    _, nested = navigate(adapter)
+    server.paging = "none"
+    server.count = 100  # Exactly the default picker page size.
+    page = run(adapter.list_children(nested["id"]))
+    assert len(page["nodes"]) == 100 and page["next_cursor"] is None
+    server.count = 101
+    with pytest.raises(ValueError, match="did not provide a continuation"):
+        run(adapter.list_children(nested["id"]))
+
+
+def test_server_ignoring_top_fails_loudly(connector):
+    adapter, server = connector
+    _, nested = navigate(adapter)
+    server.paging = "all"
+    with pytest.raises(ValueError, match="exceeds requested size"):
+        run(adapter.list_children(nested["id"]))
+
+
+def test_deletion_check_unaffected_without_continuations(connector):
+    adapter, server = connector
+    _, nested = navigate(adapter)
+    file_id = run(adapter.list_children(nested["id"], None, 1))["nodes"][0]["id"]
+    server.paging = "none"
+    assert run(adapter.is_definitively_missing(file_id)) is False
+    server.status["GetFileByServerRelativeUrl('" + NESTED + "/doc-0.txt')"] = 404
+    assert run(adapter.is_definitively_missing(file_id)) is True

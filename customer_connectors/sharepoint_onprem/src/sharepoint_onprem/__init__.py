@@ -438,6 +438,24 @@ class SharePointOnPremConnector(BaseConnector):
             next_page = values
             if next_page == continuation:
                 raise ValueError("SharePoint continuation did not advance")
+        top = int(params["$top"])
+        if next_page is None and len(response["results"]) == top:
+            # A full page without a continuation is ambiguous: the collection may
+            # end exactly here, or the server stopped at $top without a __next link
+            # (unverified for SP.Folder Folders/Files collections). One extra item
+            # tells them apart, so a truncated listing fails instead of reading as
+            # complete and silently hiding the rest of the folder.
+            probe = self._json(session, base_url, params={**args, "$top": str(top + 1)})
+            if not isinstance(probe, dict) or not isinstance(probe.get("results"), list):
+                raise ValueError("Invalid SharePoint REST page")
+            if len(probe["results"]) > top:
+                logger.error(
+                    "Failed to list SharePoint %s. Error: a full page of %d entries "
+                    "arrived without a continuation link.",
+                    endpoint.rsplit("/", 1)[-1],
+                    top,
+                )
+                raise ValueError("SharePoint did not provide a continuation")
         return response["results"], next_page
 
     def _libraries(self, session, site):
