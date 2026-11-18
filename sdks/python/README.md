@@ -122,6 +122,28 @@ for msg in conversation.messages:
 await client.chat.delete(chat_id)
 ```
 
+### Answer Feedback
+
+Persist a thumbs-up/down (and an optional comment) for an answer. Always use
+the server-provided `message_id` — from `ChatResponse.message_id`, the stream's
+`DoneEvent` / `stream.message_id`, or `get()` history. It is `None` when the
+answer could not be saved, in which case feedback is unavailable.
+
+```python
+response = await client.chat.create(message="What is RAG?")
+if response.message_id:
+    saved = await client.chat.feedback(
+        response.chat_id, response.message_id, "down", comment="Missed a source"
+    )
+    print(saved.rating, saved.updated_at)
+```
+
+Each call replaces the whole saved value (omitting `comment` clears it);
+repeating the same value is a no-op. Errors: `NotFoundError` (unknown chat or
+message), `AuthenticationError` (not the owner), `ValidationError` (bad rating,
+comment over 2,000 characters, or a message that is not a final answer). The
+Python SDK is async-only, so there is no separate sync variant.
+
 ## Search
 
 ```python

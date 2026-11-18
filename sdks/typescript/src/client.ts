@@ -187,6 +187,7 @@ export class OpenRAGClient {
       403: "Access denied",
       404: "Resource not found",
       400: "Invalid request",
+      422: "Invalid request",
       429: "Rate limit exceeded",
     };
 
@@ -196,7 +197,7 @@ export class OpenRAGClient {
       throw new AuthenticationError(message, statusCode);
     } else if (statusCode === 404) {
       throw new NotFoundError(message, statusCode);
-    } else if (statusCode === 400) {
+    } else if (statusCode === 400 || statusCode === 422) {
       throw new ValidationError(message, statusCode);
     } else if (statusCode === 429) {
       throw new RateLimitError(message, statusCode);

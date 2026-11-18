@@ -59,6 +59,10 @@ class MeResponse(BaseModel):
     rbac_enforced: bool
     # SaaS/cloud context — connector policy and gated settings tabs.
     cloud_context: bool
+    # Effective access to Settings -> Activity: requires RBAC enforcement, a
+    # real (non-no-auth) session and an actual audit:read grant. Do not infer
+    # from `permissions`, which is the full catalog when RBAC is off.
+    activity_access: bool = False
 
 
 @router.get("/me", response_model=MeResponse)
@@ -79,6 +83,12 @@ async def get_me(
     roles = await role_repo.list_user_roles(db_id)
     perms = await _effective_permissions(rbac, db_id, session)
 
+    from config.settings import is_no_auth_mode
+
+    activity_access = (
+        is_rbac_enforced() and not is_no_auth_mode() and "audit:read" in perms
+    )
+
     return MeResponse(
         user_id=user.user_id,
         email=user.email or "",
@@ -89,6 +99,7 @@ async def get_me(
         permissions=sorted(perms),
         rbac_enforced=is_rbac_enforced(),
         cloud_context=is_cloud_context(),
+        activity_access=activity_access,
     )
 
 

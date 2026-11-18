@@ -99,6 +99,12 @@ export function isConnectorTypeVisible(
 // --- Settings tab access (nav, RSC guards, auth-context `can()`) ---
 
 export type SettingsTabAccessContext = {
+  /**
+   * Server-computed: RBAC enforced, not no-auth, and an actual audit:read
+   * grant. Never derive this from `permissions`/`hasRbacPermission`, which
+   * report true for everything when RBAC is off.
+   */
+  activityAccess: boolean;
   isSaasPolicy: boolean;
   isNoAuthMode: boolean;
   rbacEnforced: boolean;
@@ -111,6 +117,7 @@ export function buildSettingsTabAccess({
   isNoAuthMode,
   permissions,
   rbacEnforced,
+  activityAccess = false,
   brand = DEFAULT_BRAND,
   useClientBrandPolicy = true,
 }: {
@@ -119,11 +126,13 @@ export function buildSettingsTabAccess({
   isNoAuthMode: boolean;
   permissions: Set<string>;
   rbacEnforced: boolean;
+  activityAccess?: boolean;
   brand?: Brand | string;
   /** False on RSC tab guards — brand lives in localStorage, not on the server. */
   useClientBrandPolicy?: boolean;
 }): SettingsTabAccessContext {
   return {
+    activityAccess,
     isSaasPolicy: isSaasPolicyContext({
       isIbmAuthMode,
       cloudContext,
@@ -158,6 +167,11 @@ export function canShowRbacGatedSettingsTab(
 ): boolean {
   if (!ctx.isSaasPolicy) return true;
   return hasRbacPermission(perm, ctx);
+}
+
+/** Settings -> Activity: requires the server-reported effective capability. */
+export function canAccessActivityTab(ctx: SettingsTabAccessContext): boolean {
+  return ctx.activityAccess && ctx.rbacEnforced && !ctx.isNoAuthMode;
 }
 
 export function canAccessConnectorAccessTab(

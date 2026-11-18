@@ -1,6 +1,7 @@
 """OpenRAG SDK chat client with streaming support."""
 
 import json
+from urllib.parse import quote
 from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, overload
 
 import httpx
@@ -12,6 +13,7 @@ from .models import (
     ConversationDetail,
     ConversationListResponse,
     DoneEvent,
+    FeedbackResponse,
     Message,
     SearchFilters,
     Source,
@@ -71,6 +73,7 @@ class ChatStream:
         # Aggregated data
         self._text = ""
         self._chat_id: str | None = None
+        self._message_id: str | None = None
         self._sources: list[Source] = []
         self._response: httpx.Response | None = None
         self._consumed = False
@@ -84,6 +87,11 @@ class ChatStream:
     def chat_id(self) -> str | None:
         """The chat ID for continuing the conversation."""
         return self._chat_id
+
+    @property
+    def message_id(self) -> str | None:
+        """Durable id of the saved answer (available after the stream ends)."""
+        return self._message_id
 
     @property
     def sources(self) -> list[Source]:
@@ -169,7 +177,8 @@ class ChatStream:
 
                     elif event_type == "done":
                         self._chat_id = data.get("chat_id")
-                        yield DoneEvent(chat_id=self._chat_id)
+                        self._message_id = data.get("message_id")
+                        yield DoneEvent(chat_id=self._chat_id, message_id=self._message_id)
 
                 except json.JSONDecodeError:
                     continue
@@ -332,6 +341,7 @@ class ChatClient:
             response=data.get("response", ""),
             chat_id=data.get("chat_id"),
             sources=sources,
+            message_id=data.get("message_id"),
         )
 
     async def _stream_response(
@@ -393,7 +403,10 @@ class ChatClient:
                             sources = [Source(**s) for s in data.get("sources", [])]
                             yield SourcesEvent(sources=sources)
                         elif event_type == "done":
-                            yield DoneEvent(chat_id=data.get("chat_id"))
+                            yield DoneEvent(
+                                chat_id=data.get("chat_id"),
+                                message_id=data.get("message_id"),
+                            )
 
                     except json.JSONDecodeError:
                         continue
@@ -481,6 +494,38 @@ class ChatClient:
             message_count=len(messages),
             messages=messages,
         )
+
+    async def feedback(
+        self,
+        chat_id: str,
+        message_id: str,
+        rating: Literal["up", "down"],
+        comment: str | None = None,
+    ) -> FeedbackResponse:
+        """
+        Record thumbs-up/down feedback (and an optional comment) for an answer.
+
+        Every call replaces the whole saved value, so omitting ``comment``
+        clears an earlier comment. Repeating the same value is safe.
+
+        Args:
+            chat_id: The conversation the answer belongs to.
+            message_id: The server-provided ``message_id`` from the chat
+                response, the final stream event, or conversation history.
+            rating: ``"up"`` or ``"down"``.
+            comment: Optional free text, at most 2,000 characters.
+
+        Raises:
+            NotFoundError: Unknown conversation or message.
+            AuthenticationError: Missing/invalid key or not the owner.
+            ValidationError: Invalid rating/comment or a non-answer message.
+        """
+        response = await self._client._request(
+            "POST",
+            f"/api/v1/chat/{quote(chat_id, safe='')}/messages/{quote(message_id, safe='')}/feedback",
+            json={"rating": rating, "comment": comment},
+        )
+        return FeedbackResponse(**response.json())
 
     async def delete(self, chat_id: str) -> bool:
         """

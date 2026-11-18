@@ -228,7 +228,7 @@ class OpenRAGClient:
             raise AuthenticationError(message, status_code)
         elif status_code == 404:
             raise NotFoundError(message, status_code)
-        elif status_code == 400:
+        elif status_code in (400, 422):
             raise ValidationError(message, status_code)
         elif status_code == 429:
             raise RateLimitError(message, status_code)

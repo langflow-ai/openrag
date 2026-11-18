@@ -15,6 +15,13 @@ export interface RawConversation {
     content: string;
     timestamp?: string;
     response_id?: string;
+    message_id?: string;
+    feedback?: {
+      rating: "up" | "down";
+      comment: string | null;
+      created_at?: string;
+      updated_at?: string;
+    } | null;
   }>;
   created_at?: string;
   last_activity?: string;

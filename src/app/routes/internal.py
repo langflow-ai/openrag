@@ -9,6 +9,7 @@ Depends, not here. This module only wires URL → handler.
 from fastapi import FastAPI, status
 
 from api import (
+    activity,
     auth,
     chat,
     connectors,
@@ -228,6 +229,17 @@ def register_internal_routes(app: FastAPI):
 
     # Chat endpoints
     app.add_api_route("/chat", chat.chat_endpoint, methods=["POST"], tags=["internal"])
+    app.add_api_route(
+        "/chat/{chat_id}/messages/{message_id}/feedback",
+        chat.submit_feedback_endpoint,
+        methods=["POST"],
+        tags=["internal"],
+    )
+    for path, handler in (
+        ("/activity/feedback", activity.feedback_list_endpoint),
+        ("/activity/feedback/summary", activity.feedback_summary_endpoint),
+    ):
+        app.add_api_route(path, handler, methods=["GET"], tags=["internal"])
     app.add_api_route("/langflow", chat.langflow_endpoint, methods=["POST"], tags=["internal"])
 
     # Chat history endpoints

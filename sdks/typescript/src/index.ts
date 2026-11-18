@@ -58,6 +58,8 @@ export {
   ContentEvent,
   SourcesEvent,
   DoneEvent,
+  FeedbackRating,
+  FeedbackResponse,
   Source,
   // Search types
   SearchResponse,

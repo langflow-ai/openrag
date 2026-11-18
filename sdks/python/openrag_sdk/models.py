@@ -22,6 +22,9 @@ class ChatResponse(BaseModel):
     response: str
     chat_id: str | None = None
     sources: list[Source] = Field(default_factory=list)
+    # Durable id of the saved answer; pass it to ``chat.feedback``. ``None``
+    # when the answer could not be persisted (feedback is then unavailable).
+    message_id: str | None = None
 
 
 class StreamEvent(BaseModel):
@@ -49,6 +52,7 @@ class DoneEvent(StreamEvent):
 
     type: Literal["done"] = "done"
     chat_id: str | None = None
+    message_id: str | None = None
 
 
 # Search models
@@ -104,12 +108,26 @@ class DeleteDocumentResponse(BaseModel):
 
 
 # Chat history models
+class FeedbackResponse(BaseModel):
+    """Canonical saved feedback for one answer."""
+
+    message_id: str
+    rating: Literal["up", "down"]
+    comment: str | None = None
+    created_at: str
+    updated_at: str
+
+
 class Message(BaseModel):
     """A message in a conversation."""
 
     role: str
     content: str
     timestamp: str | None = None
+    # Present only on persisted, feedback-capable assistant answers.
+    message_id: str | None = None
+    # The caller's own feedback for this answer, if any.
+    feedback: FeedbackResponse | None = None
 
 
 class Conversation(BaseModel):

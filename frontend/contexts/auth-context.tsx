@@ -45,6 +45,8 @@ interface AuthContextType {
   rbacEnforced: boolean;
   /** SaaS/cloud context from backend (connector policy, gated settings). */
   cloudContext: boolean;
+  /** Server-computed effective audit:read access (false when RBAC is off). */
+  activityAccess: boolean;
   /** False until the first /api/users/me permissions fetch finishes. */
   permissionsResolved: boolean;
   /** True iff the workspace has been onboarded. Sourced from the public
@@ -215,6 +217,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // this is just a UI affordance.
   const [rbacEnforced, setRbacEnforced] = useState<boolean>(true);
   const [cloudContext, setCloudContext] = useState<boolean>(false);
+  const [activityAccess, setActivityAccess] = useState<boolean>(false);
   const [permissionsResolved, setPermissionsResolved] =
     useState<boolean>(false);
 
@@ -223,6 +226,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setRoles([]);
     setRbacEnforced(true);
     setCloudContext(false);
+    setActivityAccess(false);
   }, []);
 
   const fetchPermissions = useCallback(async () => {
@@ -246,6 +250,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setCloudContext(
         typeof data?.cloud_context === "boolean" ? data.cloud_context : false,
       );
+      setActivityAccess(data?.activity_access === true);
     } catch {
       resetPermissionState();
     } finally {
@@ -330,6 +335,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     roles,
     rbacEnforced,
     cloudContext,
+    activityAccess,
     permissionsResolved,
     isOnboarded,
     onboardingStep,

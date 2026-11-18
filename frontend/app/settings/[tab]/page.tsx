@@ -5,9 +5,11 @@ import { redirect } from "next/navigation";
 import { getQueryClient } from "@/app/api/get-query-client";
 import {
   buildSettingsTabAccess,
+  canAccessActivityTab,
   canAccessConnectorAccessTab,
   canShowRbacGatedSettingsTab,
 } from "@/lib/brand";
+import { ActivitySection } from "../_components/activity/activity-section";
 import { AgentSettingsSection } from "../_components/agent-settings-section";
 import { ApiKeysSection } from "../_components/api-keys-section";
 import { ConnectorAccessSection } from "../_components/connector-access-section";
@@ -22,6 +24,7 @@ const VALID_TABS = [
   "agent",
   "api-keys",
   "connector-access",
+  "activity",
 ] as const;
 
 type Tab = (typeof VALID_TABS)[number];
@@ -82,6 +85,7 @@ async function getTabAuthContext() {
     typeof meData.rbac_enforced === "boolean" ? meData.rbac_enforced : true;
   const cloudContext =
     typeof meData.cloud_context === "boolean" ? meData.cloud_context : false;
+  const activityAccess = meData.activity_access === true;
 
   return {
     isNoAuthMode: Boolean(authData.no_auth_mode),
@@ -90,6 +94,7 @@ async function getTabAuthContext() {
     permissions,
     rbacEnforced,
     cloudContext,
+    activityAccess,
     backendBaseUrl,
     forwardedHeaders,
   };
@@ -113,6 +118,7 @@ export default async function SettingsTabPage({
     permissions,
     rbacEnforced,
     cloudContext,
+    activityAccess,
     backendBaseUrl,
     forwardedHeaders,
   } = await getTabAuthContext();
@@ -123,6 +129,7 @@ export default async function SettingsTabPage({
     isNoAuthMode,
     rbacEnforced,
     permissions,
+    activityAccess,
     useClientBrandPolicy: false,
   });
 
@@ -136,6 +143,9 @@ export default async function SettingsTabPage({
     tab === "providers" &&
     !canShowRbacGatedSettingsTab("providers:write", tabAccess)
   ) {
+    redirect("/settings/connectors");
+  }
+  if (tab === "activity" && !canAccessActivityTab(tabAccess)) {
     redirect("/settings/connectors");
   }
   if (tab === "connector-access" && !canAccessConnectorAccessTab(tabAccess)) {
@@ -195,6 +205,7 @@ export default async function SettingsTabPage({
       {tab === "agent" && <AgentSettingsSection />}
       {tab === "api-keys" && <ApiKeysSection />}
       {tab === "connector-access" && <ConnectorAccessSection />}
+      {tab === "activity" && <ActivitySection />}
     </HydrationBoundary>
   );
 }

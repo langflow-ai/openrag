@@ -77,6 +77,11 @@ const sidebars = {
     "reference/configuration",
     {
       type: "doc",
+      id: "reference/activity",
+      label: "Activity: feedback and audit",
+    },
+    {
+      type: "doc",
       id: "reference/observability",
       label: "Monitor with IBM Instana",
     },

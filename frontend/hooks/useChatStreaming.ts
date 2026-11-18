@@ -156,6 +156,8 @@ export function useChatStreaming({
       const currentFunctionCalls: FunctionCall[] = [];
       const usage: { value: TokenUsage | undefined } = { value: undefined };
       let providerStreamError: string | null = null;
+      // Only advertised by the server after the answer row has committed.
+      let persistedMessageId: string | undefined;
 
       if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
         setStreamingMessage({
@@ -188,6 +190,12 @@ export function useChatStreaming({
             if (line.trim()) {
               try {
                 const chunk = JSON.parse(line);
+
+                const chunkMessageId =
+                  chunk.message_id ?? chunk.response?.message_id;
+                if (typeof chunkMessageId === "string" && chunkMessageId) {
+                  persistedMessageId = chunkMessageId;
+                }
 
                 if (chunk.id) {
                   newResponseId = chunk.id;
@@ -277,6 +285,7 @@ export function useChatStreaming({
         timestamp: new Date(),
         isStreaming: false,
         usage: usage.value,
+        ...(persistedMessageId ? { messageId: persistedMessageId } : {}),
       };
 
       if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {

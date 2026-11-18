@@ -43,6 +43,7 @@ import type {
   FunctionCall,
   KnowledgeFilterData,
   Message,
+  MessageFeedback,
   RequestBody,
   ToolCallResult,
 } from "./_types/types";
@@ -454,6 +455,8 @@ function ChatPage() {
           content: string;
           timestamp?: string;
           response_id?: string;
+          message_id?: string;
+          feedback?: MessageFeedback | null;
           error?: boolean;
           chunks?: Array<{
             item?: {
@@ -489,6 +492,9 @@ function ChatPage() {
               : msg.content,
             timestamp: new Date(msg.timestamp || new Date()),
             error: isProviderError,
+            ...(msg.role === "assistant" && msg.message_id && !isProviderError
+              ? { messageId: msg.message_id, feedback: msg.feedback ?? null }
+              : {}),
           };
 
           // Extract function calls from chunks or response_data
@@ -796,6 +802,9 @@ function ChatPage() {
             content: result.response,
             timestamp: new Date(),
             usage: result.usage,
+            ...(typeof result.message_id === "string" && result.message_id
+              ? { messageId: result.message_id }
+              : {}),
           };
           setMessages((prev) => [...prev, assistantMessage]);
           setChatError(false);
@@ -1167,6 +1176,9 @@ function ChatPage() {
                             isInitialGreeting={!!message.isGreeting}
                             usage={message.usage}
                             timestamp={message.timestamp}
+                            conversationId={currentConversationId ?? undefined}
+                            messageId={message.messageId}
+                            feedback={message.feedback}
                           />
                         )}
                       </div>

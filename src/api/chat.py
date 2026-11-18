@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from api.files import validate_date_filter_bounds
+from api.schemas.feedback import FeedbackBody
 from config.settings import DISABLE_CHAT_WITH_LANGFLOW
 from config.storage_mode import db_writes_enabled
 from dependencies import (
@@ -276,3 +277,24 @@ async def bulk_delete_sessions_endpoint(
         logger.exception("Error bulk-deleting sessions")
 
         return JSONResponse({"error": "Failed to delete sessions"}, status_code=500)
+
+
+async def submit_feedback_endpoint(
+    chat_id: str,
+    message_id: str,
+    body: FeedbackBody,
+    user: User = Depends(require_permission("chat:use")),
+):
+    """Record the caller's thumbs up/down (and optional comment) for one answer."""
+    if response := _native_chat_storage_error():
+        return response
+    from services.feedback_service import FeedbackService
+
+    saved = await FeedbackService().submit(
+        user_id=_openrag_user_id(user),
+        conversation_id=chat_id,
+        message_id=message_id,
+        rating=body.rating,
+        comment=body.comment,
+    )
+    return JSONResponse(saved)

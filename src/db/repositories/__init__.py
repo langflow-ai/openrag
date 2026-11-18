@@ -7,6 +7,7 @@ from db.repositories.conversation_repo import (
     ConversationRepo,
     LangflowConversationRepo,
 )
+from db.repositories.feedback_repo import FeedbackRepo
 from db.repositories.permission_repo import PermissionRepo
 from db.repositories.preferences_repo import PreferencesRepo
 from db.repositories.role_repo import RoleRepo
@@ -24,6 +25,7 @@ __all__ = [
     "AuditRepo",
     "ChatHistoryRepo",
     "ConversationRepo",
+    "FeedbackRepo",
     "LangflowConversationRepo",
     "PermissionRepo",
     "PreferencesRepo",

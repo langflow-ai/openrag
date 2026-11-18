@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from api.files import validate_date_filter_bounds
+from api.schemas.feedback import FeedbackBody
 from api.v1._filter_resolution import merge_filter_overrides, resolve_filter_id
 from auth_context import set_auth_context, set_score_threshold, set_search_filters, set_search_limit
 from config.settings import DISABLE_CHAT_WITH_LANGFLOW
@@ -77,6 +78,7 @@ async def _transform_stream_to_sse(raw_stream, chat_id_container: dict):
     """Transform raw Langflow streaming format to clean SSE events for v1 API."""
     full_text = ""
     chat_id = None
+    message_id = None
 
     async for chunk in raw_stream:
         try:
@@ -123,6 +125,8 @@ async def _transform_stream_to_sse(raw_stream, chat_id_container: dict):
 
             if not chat_id:
                 chat_id = chunk_data.get("id") or chunk_data.get("response_id")
+            if chunk_data.get("message_id"):
+                message_id = chunk_data["message_id"]
 
         except json.JSONDecodeError:
             if chunk_str:
@@ -131,7 +135,7 @@ async def _transform_stream_to_sse(raw_stream, chat_id_container: dict):
         except Exception as e:
             logger.warning("Error processing stream chunk", error=str(e))
 
-    yield f"data: {json.dumps({'type': 'done', 'chat_id': chat_id})}\n\n"
+    yield f"data: {json.dumps({'type': 'done', 'chat_id': chat_id, 'message_id': message_id})}\n\n"
     chat_id_container["chat_id"] = chat_id
 
 
@@ -242,6 +246,7 @@ async def chat_create_endpoint(
                 "response": result.get("response", ""),
                 "chat_id": result.get("response_id"),
                 "sources": result.get("sources", []),
+                "message_id": result.get("message_id"),
             }
         )
 
@@ -303,6 +308,10 @@ async def chat_get_endpoint(
             )
             if usage:
                 message_data["usage"] = usage
+            if msg.get("message_id"):
+                message_data["message_id"] = msg["message_id"]
+            if msg.get("feedback"):
+                message_data["feedback"] = msg["feedback"]
             messages.append(message_data)
 
         return JSONResponse(
@@ -349,3 +358,22 @@ async def chat_delete_endpoint(
             "Failed to delete conversation", error=str(e), user_id=user.user_id, chat_id=chat_id
         )
         return JSONResponse({"error": f"Failed to delete conversation: {str(e)}"}, status_code=500)
+
+
+async def chat_feedback_endpoint(
+    chat_id: str,
+    message_id: str,
+    body: FeedbackBody,
+    user: User = Depends(require_api_key_permission("chat:use")),
+):
+    """Record feedback for one answer. POST /v1/chat/{chat_id}/messages/{message_id}/feedback"""
+    from services.feedback_service import FeedbackService
+
+    saved = await FeedbackService().submit(
+        user_id=_openrag_user_id(user),
+        conversation_id=chat_id,
+        message_id=message_id,
+        rating=body.rating,
+        comment=body.comment,
+    )
+    return JSONResponse(saved)

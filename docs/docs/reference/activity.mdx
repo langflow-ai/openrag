@@ -1,0 +1,66 @@
+---
+title: Activity - answer feedback
+slug: /reference/activity
+---
+
+**Settings → Activity** gives administrators a read-only **Feedback** panel summarizing the thumbs-up/down votes users leave on chat answers. It measures *reported answer satisfaction*. An Audit panel for operational and security events is planned as a follow-up.
+
+## Access policy {#access}
+
+Activity is deliberately more conservative than the rest of OpenRAG.
+
+| Condition | Activity |
+| --- | --- |
+| `OPENRAG_RBAC_ENFORCE=true` and the effective role grants `audit:read` (built in: `admin`) | Available |
+| `OPENRAG_RBAC_ENFORCE=false` (the default) | `403`, and the tab is hidden |
+| No-auth mode | `403`, and the tab is hidden |
+| API key whose role restrictions omit `audit:read` | `403` |
+
+**Administrators must enable RBAC to use Activity.** With RBAC off, every signed-in user would otherwise pass every permission check, so these endpoints refuse instead. This policy applies only to Activity and does not change the global RBAC switch. The tab is also guarded on the server, and the backend endpoints enforce the same rule, so hiding a tab is not what protects the data.
+
+Activity endpoints are browser-authenticated in this release. They are not part of the public `/v1` API.
+
+## Answer feedback {#feedback}
+
+Users can rate a *saved* assistant answer with thumbs up or down, and optionally add a comment (up to 2,000 characters). A thumbs-down is recorded immediately; the comment editor is optional, and cancelling it keeps the vote.
+
+* Each user has one feedback value per answer. Every submission replaces the whole value (rating and comment); repeating the same value changes nothing. There is no vote-removal operation, but users can switch rating and edit or clear the comment.
+* Feedback is available only for final answers that were committed to chat history. Greetings, streaming or errored answers, answers whose persistence failed, and Langflow-sourced or pre-existing messages have no message ID and show no controls.
+* Your own feedback is restored when you reload a conversation. Other users' feedback never appears in chat history.
+* Writes require `chat:use` and ownership of the conversation. Ownership is checked on the server even when RBAC is off.
+
+The Feedback panel reports thumbs-up, thumbs-down, total votes, and the **positive percentage** (shown as "—" when there are no votes). This is *feedback satisfaction*. It is not an answer-accuracy score and not a response rate, because most answers receive no vote.
+
+### What is stored, and what is not
+
+Each row stores the rating, comment, user, message, and a **snapshot taken when the answer was generated**: model provider, model, and the document and chunk **identifiers** that were retrieved. No prompt, answer text, or retrieved source text is copied into feedback, and the admin views never show them.
+
+Provenance limitations:
+
+* The snapshot comes from the saved answer, not the current configuration, so changing the model later does not rewrite older votes.
+* A known empty retrieval (the agent searched and found nothing) is stored as empty lists. Answers saved before this release have no snapshot and are not rateable.
+* Identifiers refer to the index at generation time; re-ingested documents may have new IDs.
+
+### Lifecycle
+
+Feedback is deleted with its message or conversation (including bulk deletion and conversation expiry) and with its user. Audit entries are independent and are not deleted by those operations. OpenRAG does not ship a retention or archival job for feedback or audit data; define that separately, including any legal-hold requirements.
+
+## Feedback API {#api}
+
+```http
+POST /v1/chat/{chat_id}/messages/{message_id}/feedback
+Content-Type: application/json
+
+{ "rating": "up", "comment": null }
+```
+
+The browser equivalent is `POST /chat/{chat_id}/messages/{message_id}/feedback`. Both return `200` with the saved feedback and timestamps. Errors: `422` invalid rating, over-long comment, or a message that is not a final assistant answer; `404` unknown conversation or a message outside that conversation; `403` conversation owned by someone else. The `/v1` route needs an API key with `chat:use`.
+
+`message_id` is returned by `POST /v1/chat` (non-streaming `message_id`, and on the final streaming `done` event) and by `GET /v1/chat/{chat_id}` history, which also includes the caller's own `feedback`. See the [Python and TypeScript SDK](/reference/api-sdk-overview) pages for `chat.feedback`.
+
+## Deployment compatibility {#deployment}
+
+* Adds Alembic revision `0011_message_feedback` (one new table, `message_feedback`); it runs automatically on startup. Downgrading to `0010_move_legacy_native_chat` drops that table and its votes.
+* Response and history fields (`message_id`, `feedback`) are additive. Existing clients keep working.
+* The upsert uses SQLite and PostgreSQL `ON CONFLICT`. Other databases are unsupported.
+* As with RBAC itself, run a single backend worker; permission caches are per-process.
