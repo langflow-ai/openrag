@@ -166,7 +166,10 @@ export function KnowledgeFilterDateField({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="max-h-[80vh] w-[min(24rem,calc(100vw-2rem))] overflow-y-auto p-0"
+        // Capped to the space Radix reports for the chosen side, so a calendar that
+        // expands near the screen edge scrolls inside the popover instead of
+        // flipping it past the top of the viewport.
+        className="max-h-[min(80vh,var(--radix-popover-content-available-height))] w-[min(24rem,calc(100vw-2rem))] overflow-y-auto p-0"
         align="start"
         collisionPadding={16}
       >
