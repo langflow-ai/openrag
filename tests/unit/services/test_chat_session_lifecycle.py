@@ -746,6 +746,124 @@ async def test_restart_alias_only_continuation_keeps_durable_canonical(
 
 
 @pytest.mark.asyncio
+async def test_restart_does_not_duplicate_restored_turns_in_native_history(
+    monkeypatch, durable_stream_stores
+):
+    _, persistence, factory = durable_stream_stores
+    answers = {
+        "turn A": "answer A",
+        "turn B": "answer B",
+        "turn C": "answer C",
+    }
+
+    async def upstream(_client, prompt, *_args, **_kwargs):
+        yield (json.dumps({"id": "thread", "delta": {"content": answers[prompt]}}) + "\n").encode()
+
+    monkeypatch.setattr(agent_module, "async_stream", upstream)
+    await _collect_error_chunks(
+        agent_module.async_langflow_chat_stream(object(), "flow", "turn A", "alice")
+    )
+
+    # Restarting the backend clears only process-local state; the database
+    # conversation and its native history mirror must remain authoritative.
+    monkeypatch.setattr(
+        "services.session_ownership_service.session_ownership_service",
+        SessionOwnershipService(session_factory=factory),
+    )
+    monkeypatch.setattr(agent_module, "active_conversations", {})
+    monkeypatch.setattr(
+        agent_module,
+        "conversation_persistence",
+        ConversationPersistenceService(
+            storage_file=persistence.storage_file, session_factory=factory
+        ),
+    )
+
+    for prompt in ("turn B", "turn C"):
+        await _collect_error_chunks(
+            agent_module.async_langflow_chat_stream(
+                object(),
+                "flow",
+                prompt,
+                "alice",
+                previous_response_id="thread",
+                conversation_id="thread",
+            )
+        )
+
+    history = await NativeChatHistoryService(factory).history("alice")
+    messages = history["conversations"][0]["messages"]
+    assert [(message["role"], message["content"]) for message in messages] == [
+        ("user", "turn A"),
+        ("assistant", "answer A"),
+        ("user", "turn B"),
+        ("assistant", "answer B"),
+        ("user", "turn C"),
+        ("assistant", "answer C"),
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("durable_stream_stores", ["db"], indirect=True)
+async def test_langflow_continuation_preserves_native_history_after_restart(
+    monkeypatch, durable_stream_stores
+):
+    monkeypatch.delenv("OPENRAG_DISABLE_DB_WORKSPACE_CONFIG", raising=False)
+    ownership, persistence, factory = durable_stream_stores
+    native_history = NativeChatHistoryService(factory)
+    await native_history.start_conversation("native-thread", "alice", "filter-a")
+    await native_history.append("native-thread", "alice", "user", content="turn A")
+    await native_history.append("native-thread", "alice", "assistant", content="answer A")
+    await ownership.claim_session("alice", "native-thread")
+
+    # Keep a newer pre-switch conversation so the continuation must update its
+    # last activity and become the first entry in durable history.
+    await native_history.start_conversation("other-thread", "alice", None)
+    await native_history.append("other-thread", "alice", "user", content="other")
+    await native_history.append("other-thread", "alice", "assistant", content="other answer")
+
+    async def upstream(*_args, **_kwargs):
+        yield b'{"id":"native-thread","delta":{"content":"answer B"}}\n'
+
+    monkeypatch.setattr(agent_module, "async_stream", upstream)
+    monkeypatch.setattr(
+        "services.session_ownership_service.session_ownership_service",
+        SessionOwnershipService(session_factory=factory),
+    )
+    monkeypatch.setattr(agent_module, "active_conversations", {})
+    monkeypatch.setattr(
+        agent_module,
+        "conversation_persistence",
+        ConversationPersistenceService(
+            storage_file=persistence.storage_file, session_factory=factory
+        ),
+    )
+
+    await _collect_error_chunks(
+        agent_module.async_langflow_chat_stream(
+            object(),
+            "flow",
+            "turn B",
+            "alice",
+            previous_response_id="native-thread",
+            conversation_id="native-thread",
+        )
+    )
+
+    history = await native_history.history("alice")
+    continued = next(c for c in history["conversations"] if c["response_id"] == "native-thread")
+    assert history["conversations"][0]["response_id"] == "native-thread"
+    assert [(message["role"], message["content"]) for message in continued["messages"]] == [
+        ("user", "turn A"),
+        ("assistant", "answer A"),
+        ("user", "turn B"),
+        ("assistant", "answer B"),
+    ]
+    timestamps = [datetime.fromisoformat(message["timestamp"]) for message in continued["messages"]]
+    assert timestamps == sorted(timestamps)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("durable_stream_stores", ["files"], indirect=True)
 @pytest.mark.parametrize("created_at", [None, "not-a-date", 123])
 async def test_restart_invalid_creation_time_keeps_default(

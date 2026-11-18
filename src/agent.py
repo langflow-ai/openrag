@@ -198,15 +198,28 @@ async def store_conversation_thread(user_id: str, response_id: str, conversation
 
     await conversation_persistence.store_conversation_thread(user_id, response_id, metadata_only)
     if user_assistant_messages and user_assistant_messages[-1].get("role") == "assistant":
+        # A restarted thread only reconstructs its newly submitted turns in
+        # memory. Mirror each of those turns once: subsequent turns must not
+        # append the earlier restored turns again.
+        mirrored_message_count = conversation_state.get("_mirrored_message_count", 0)
+        if not isinstance(mirrored_message_count, int) or mirrored_message_count < 0:
+            mirrored_message_count = 0
+        messages_to_sync = (
+            user_assistant_messages[mirrored_message_count:]
+            if persisted_metadata
+            else user_assistant_messages
+        )
         await conversation_persistence.sync_langflow_history(
             user_id,
             response_id,
             metadata_only,
-            user_assistant_messages,
+            messages_to_sync,
             # A restored Langflow thread only has its new turn in memory. Append
             # that turn to the native mirror instead of replacing imported history.
             append_only=bool(persisted_metadata),
         )
+        if persisted_metadata:
+            conversation_state["_mirrored_message_count"] = len(user_assistant_messages)
 
 
 # Legacy function for backward compatibility
@@ -776,10 +789,10 @@ async def async_langflow_chat(
         )
 
     # Add user message to conversation with timestamp
-    from datetime import datetime
+    from datetime import UTC, datetime
 
     if store_conversation:
-        user_message = {"role": "user", "content": prompt, "timestamp": datetime.now()}
+        user_message = {"role": "user", "content": prompt, "timestamp": datetime.now(UTC)}
         conversation_state["messages"].append(user_message)
         logger.debug(
             "Added user message to langflow",
@@ -815,7 +828,7 @@ async def async_langflow_chat(
             "role": "assistant",
             "content": response_text,
             "response_id": response_id,
-            "timestamp": datetime.now(),
+            "timestamp": datetime.now(UTC),
             "response_data": response_obj.model_dump()
             if hasattr(response_obj, "model_dump")
             else str(response_obj),  # Store complete response for function calls
@@ -880,7 +893,10 @@ async def async_langflow_chat(
 
         if not await session_ownership_service.claim_session(user_id, response_id):
             raise RuntimeError("Unable to establish chat session ownership")
-        conversation_state["last_activity"] = datetime.now()
+        # Native history stores UTC timestamps. Keep the Langflow mirror in
+        # the same time base so recent Langflow turns sort above older native
+        # conversations after a source switch.
+        conversation_state["last_activity"] = datetime.now(UTC)
         await store_conversation_thread(user_id, response_id, conversation_state)
 
         logger.debug(
@@ -941,7 +957,7 @@ async def async_langflow_chat_stream(
                 persisted_metadata = await conversation_persistence.get_conversation_thread(
                     user_id, thread_id
                 )
-    from datetime import datetime
+    from datetime import UTC, datetime
 
     conversation_state = get_conversation_thread(user_id, thread_id)
     if persisted_metadata:
@@ -958,7 +974,7 @@ async def async_langflow_chat_stream(
         conversation_state["response_ids"] = list(owned_session_ids)
 
     conversation_state["messages"].append(
-        {"role": "user", "content": prompt, "timestamp": datetime.now()}
+        {"role": "user", "content": prompt, "timestamp": datetime.now(UTC)}
     )
     if filter_id:
         conversation_state["filter_id"] = filter_id
@@ -1002,7 +1018,10 @@ async def async_langflow_chat_stream(
             response_ids = conversation_state.setdefault("response_ids", [])
             if session_id not in response_ids:
                 response_ids.append(session_id)
-        conversation_state["last_activity"] = datetime.now()
+        # Native history stores UTC timestamps. Keep the Langflow mirror in
+        # the same time base so recent Langflow turns sort above older native
+        # conversations after a source switch.
+        conversation_state["last_activity"] = datetime.now(UTC)
         await store_conversation_thread(user_id, store_id, conversation_state)
 
     upstream = async_stream(
@@ -1096,7 +1115,7 @@ async def async_langflow_chat_stream(
                     "role": "assistant",
                     "content": display_text,
                     "response_id": response_id,
-                    "timestamp": datetime.now(),
+                    "timestamp": datetime.now(UTC),
                     "chunks": collected_chunks,
                     "error": True,
                 }
@@ -1111,7 +1130,7 @@ async def async_langflow_chat_stream(
                 "role": "assistant",
                 "content": full_response,
                 "response_id": response_id,
-                "timestamp": datetime.now(),
+                "timestamp": datetime.now(UTC),
                 "chunks": collected_chunks,
                 "error": error_occurred,
             }
@@ -1132,7 +1151,7 @@ async def async_langflow_chat_stream(
                         "role": "assistant",
                         "content": full_response,
                         "response_id": response_id,
-                        "timestamp": datetime.now(),
+                        "timestamp": datetime.now(UTC),
                         "chunks": collected_chunks,
                         "interrupted": True,
                     }
@@ -1155,7 +1174,7 @@ async def async_langflow_chat_stream(
             {
                 "role": "assistant",
                 "content": display_text,
-                "timestamp": datetime.now(),
+                "timestamp": datetime.now(UTC),
                 "error": True,
             }
         )

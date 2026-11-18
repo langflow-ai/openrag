@@ -246,6 +246,18 @@ class ConversationPersistenceService:
             payload = await self._db_get_one(response_id, user_id)
             if payload is not None:
                 return payload
+            # Native chats have no Langflow metadata row. Return their durable
+            # metadata so a later Langflow continuation appends its new turn
+            # instead of replacing the conversation's native history.
+            session_factory = self._resolve_session_factory()
+            if session_factory is not None:
+                from services.native_chat_history_service import NativeChatHistoryService
+
+                native_metadata = await NativeChatHistoryService(
+                    session_factory
+                ).conversation_metadata(response_id, user_id)
+                if native_metadata is not None:
+                    return native_metadata
             if mode == "db":
                 return {}
         # files or hybrid-with-no-db-row → JSON

@@ -208,6 +208,23 @@ class NativeChatHistoryService:
             conversation = await ChatHistoryRepo(session).get_conversation(conversation_id)
             return conversation is not None and conversation.user_id == user_id
 
+    async def conversation_metadata(
+        self, conversation_id: str, user_id: str
+    ) -> dict[str, Any] | None:
+        """Return durable metadata for an owned conversation."""
+        async with self._factory() as session:
+            conversation = await ChatHistoryRepo(session).get_conversation(conversation_id)
+            if conversation is None or conversation.user_id != user_id:
+                return None
+            return {
+                "response_id": conversation.id,
+                "title": conversation.title,
+                "filter_id": conversation.filter_id,
+                "total_messages": conversation.total_messages,
+                "created_at": conversation.created_at.isoformat(),
+                "last_activity": conversation.last_activity.isoformat(),
+            }
+
     async def history(self, user_id: str) -> dict[str, Any]:
         async with self._factory() as session:
             repo = ChatHistoryRepo(session)
