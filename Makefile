@@ -370,7 +370,8 @@ help_test: ## Show testing commands
 	@echo "  $(PURPLE)make eval-answers$(NC)    - Score chat answers and retrieval (opt-in LLM calls)"
 	@echo "  $(PURPLE)make eval-baseline$(NC)   - Run the eval and save it as results/baseline.json"
 	@echo "  $(PURPLE)make eval-compare$(NC)    - Compare two results files offline"
-	@echo "                         (BASELINE=... CURRENT=..., default baseline vs latest run)"
+	@echo "                         (BASELINE=... CURRENT=..., default baseline vs latest run;"
+	@echo "                          HTML=path also writes a visual report)"
 	@echo "  $(PURPLE)make eval-scores$(NC)     - Work out relevance-score thresholds from a run"
 	@echo "                         (RESULTS=..., default latest run; BASELINE=... to compare two runs)"
 	@echo ''
@@ -1389,8 +1390,8 @@ eval-baseline: ## Run the retrieval eval and save it as $(OUTPUT_DIR)/baseline.j
 	cd $(EVAL_DIR) && uv run run_eval.py run --output-dir $(OUTPUT_DIR) $(EVAL_ARGS) && cp $(OUTPUT_DIR)/results.json $(OUTPUT_DIR)/baseline.json
 	@echo "$(PURPLE)Saved $(EVAL_DIR)/$(OUTPUT_DIR)/baseline.json$(NC)"
 
-eval-compare: ## Compare two retrieval eval results files offline (BASELINE=..., CURRENT=...)
-	cd $(EVAL_DIR) && uv run run_eval.py compare $(or $(BASELINE),$(OUTPUT_DIR)/baseline.json) $(CURRENT)
+eval-compare: ## Compare two retrieval eval results files offline (BASELINE=..., CURRENT=..., HTML=report.html)
+	cd $(EVAL_DIR) && uv run run_eval.py compare $(or $(BASELINE),$(OUTPUT_DIR)/baseline.json) $(CURRENT) $(if $(HTML),--html $(HTML))
 
 eval-scores: ## Work out relevance-score thresholds from a retrieval eval run (RESULTS=..., BASELINE=... to compare)
 	cd $(EVAL_DIR) && uv run run_eval.py scores $(or $(RESULTS),$(CURRENT)) $(if $(BASELINE),--baseline $(BASELINE)) $(EVAL_ARGS)
