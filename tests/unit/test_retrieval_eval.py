@@ -2501,3 +2501,45 @@ def test_changes_under_the_noise_floor_are_muted_everywhere() -> None:
     assert "Changes under 0.005 (half of one question's worth across 100 questions)" in page
     verdict, _ = html_report.summary(current, diff)
     assert verdict == "No meaningful change: recall and ranking held steady."
+
+
+def test_noise_floor_never_drops_below_what_the_tiles_can_show() -> None:
+    results = make_results([make_query(f"q{i}", 1.0, 1.0, 1.0, 1) for i in range(2000)])
+
+    assert html_report.noise_floor(results) == html_report.SHOWN_CHANGE
+
+
+def test_summary_names_the_cutoff_the_comparison_used() -> None:
+    def query(recall: float) -> dict[str, Any]:
+        q = make_query("q", recall, 1.0, recall, 1)
+        q["metrics"] = {"recall@3": recall, "reciprocal_rank": 1.0, "ndcg@3": recall}
+        return q
+
+    baseline = make_results([query(0.5)], k_values=[1, 3], primary_k=3)
+    current = make_results([query(1.0)], k_values=[1, 3, 5], primary_k=5)
+    current["queries"][0]["metrics"]["recall@5"] = 1.0
+    diff = report.diff_results(baseline, current)
+
+    _, points = html_report.summary(current, diff)
+
+    assert diff["compare_metrics"][0] == "recall@3"
+    assert points[0].endswith("more expected files reach the top 3.")
+
+
+def test_answer_section_does_not_claim_unjudged_answers_were_judged() -> None:
+    query = make_query("q1", 1.0, 1.0, 1.0, 1)
+    query["metrics"].update({"answer_cited": 1.0})
+    query["answer"] = {"text": "x", "judgement": None, "judge_error": None, "chat_error": None}
+    failed = make_query("q2", 1.0, 1.0, 1.0, 1)
+    failed["answer"] = {
+        "text": None,
+        "judgement": None,
+        "judge_error": None,
+        "chat_error": "timeout",
+    }
+
+    page = html_report.render_html(make_results([query, failed]))
+
+    assert "2 questions sent to chat; 0 judged by an LLM; 1 chat error." in page
+    assert "No answers were judged" in page
+    assert "No answers judged wrong." not in page

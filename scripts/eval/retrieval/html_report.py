@@ -43,9 +43,11 @@ def noise_floor(results: Mapping[str, Any]) -> float:
     Every metric is averaged over the questions, so one question moving one
     rank shifts an average by roughly 0.5 / questions or more. Anything smaller
     is rounding or run-to-run noise. The tiles, summary and table all use this.
+    It never goes below ``SHOWN_CHANGE``, the smallest change three decimals can
+    show, so on very large question sets the summary and tiles still agree.
     """
     count = len(results.get("queries") or ())
-    return 0.5 / count if count else 0.005
+    return max(0.5 / count, SHOWN_CHANGE) if count else 0.005
 
 
 def _delta(current: float, baseline: float | None, noise: float) -> str:
@@ -391,10 +393,12 @@ def summary_parts(
     points = []
     if recall in aggregate:
         what = {"up": "more", "down": "fewer", "flat": "about as many"}[found]
+        # The comparison may fall back to a cutoff both runs have (see compare_k).
+        compared_k = recall.partition("@")[2] or k
         points.append(
             [
                 *_move(aggregate, recall, noise),
-                (f": {what} expected files reach the top {k}.", None),
+                (f": {what} expected files reach the top {compared_k}.", None),
             ]
         )
     if "mrr" in aggregate:
@@ -726,6 +730,9 @@ def _answers(results: Mapping[str, Any], base: Mapping[str, float], noise: float
         return ""
     overall = results["metrics"].get("overall", {})
     names = ["answer_correct", "answer_grounded", "answer_cited", "answer_has_phrase"]
+    judged = sum(1 for q in rows if q["answer"].get("judgement") is not None)
+    chat_errors = sum(1 for q in rows if q["answer"].get("chat_error"))
+    judge_errors = sum(1 for q in rows if q["answer"].get("judge_error"))
     wrong = [q for q in rows if (q["answer"].get("judgement") or {}).get("correctness") == 0]
     wrong_rows = [
         [
@@ -736,15 +743,25 @@ def _answers(results: Mapping[str, Any], base: Mapping[str, float], noise: float
         ]
         for q in wrong
     ]
-    table = (
-        _table(["Question", "Reference", "Answer excerpt", "Judge's reason"], wrong_rows, 9)
-        if wrong_rows
-        else '<p class="empty">No answers judged wrong.</p>'
-    )
+    if wrong_rows:
+        table = _table(["Question", "Reference", "Answer excerpt", "Judge's reason"], wrong_rows, 9)
+    elif judged:
+        table = '<p class="empty">No answers judged wrong.</p>'
+    else:
+        table = (
+            '<p class="empty">No answers were judged (the run had no judge, or every '
+            "judgement failed), so correctness is not shown.</p>"
+        )
+    counts = [f"{len(rows)} questions sent to chat", f"{judged} judged by an LLM"]
+    if chat_errors:
+        counts.append(f"{chat_errors} chat {'error' if chat_errors == 1 else 'errors'}")
+    if judge_errors:
+        counts.append(f"{judge_errors} judge {'error' if judge_errors == 1 else 'errors'}")
     return (
         "<section><h2>Answer quality</h2>"
-        f'<p class="lede">{len(rows)} questions sent to chat and judged by an LLM. '
-        "Informational; the recall gate does not use these scores.</p>"
+        f'<p class="lede">{_e("; ".join(counts))}. Only judged answers count toward '
+        "correctness and groundedness. Informational; the recall gate does not use "
+        "these scores.</p>"
         + _tiles(names, overall, base, noise)
         + f'<details class="fold sub"{" open" if len(wrong) <= OPEN_UP_TO else ""}>'
         + f"<summary><h3>Answers judged wrong ({len(wrong)})</h3></summary>{table}</details>"
