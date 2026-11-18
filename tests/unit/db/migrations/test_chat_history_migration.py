@@ -546,6 +546,44 @@ async def test_langflow_history_migration_commits_successes_before_later_fetch_f
 
 
 @pytest.mark.asyncio
+async def test_langflow_history_migration_continues_after_a_sync_failure(
+    monkeypatch, session_factory
+):
+    """Rollback of one sync failure cannot expire later legacy rows."""
+    async with session_factory() as session:
+        legacy_repo = ConversationRepo(session)
+        await legacy_repo.upsert(response_id="broken", user_id="alice", endpoint="langflow")
+        await legacy_repo.upsert(response_id="healthy", user_id="alice", endpoint="langflow")
+        await session.commit()
+
+    original_sync = NativeChatHistoryService.sync_langflow_conversation_in_session.__func__
+
+    async def _fail_broken_sync(cls, repo, **kwargs):
+        if kwargs["conversation_id"] == "broken":
+            raise ValueError("malformed legacy conversation")
+        return await original_sync(cls, repo, **kwargs)
+
+    monkeypatch.setattr(
+        NativeChatHistoryService,
+        "sync_langflow_conversation_in_session",
+        classmethod(_fail_broken_sync),
+    )
+
+    async def _fetch_messages(session_id):
+        return [{"role": "user", "content": f"{session_id} question"}]
+
+    async with session_factory() as session:
+        stats = await migrations_runtime.migrate_langflow_history_to_native(
+            session, _fetch_messages
+        )
+
+    assert stats == {"conversations": 1, "messages": 1, "failed": 0}
+    async with session_factory() as session:
+        assert await ChatHistoryRepo(session).get_conversation("broken") is None
+        assert await ChatHistoryRepo(session).get_conversation("healthy") is not None
+
+
+@pytest.mark.asyncio
 async def test_json_migration_preserves_alias_association(staged_files, session_factory):
     ownership_file = staged_files / "session_ownership.json"
     payload = json.loads(ownership_file.read_text())

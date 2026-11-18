@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Awaitable, Callable, Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -52,6 +53,19 @@ CHAT_HISTORY_JSON_TO_DB_V1 = "chat_history_json_to_db_v1"
 NATIVE_CHAT_HISTORY_JSON_TO_DB_V1 = "native_chat_history_json_to_db_v1"
 NATIVE_CHAT_HISTORY_JSON_TO_DB_V2 = "native_chat_history_json_to_db_v2"
 LANGFLOW_HISTORY_TO_NATIVE_V1 = "langflow_history_to_native_v1"
+
+
+@dataclass(frozen=True)
+class _LegacyLangflowConversation:
+    """Values needed to import one detached Langflow conversation row."""
+
+    response_id: str
+    user_id: str
+    title: str | None
+    filter_id: str | None
+    total_messages: int
+    created_at: datetime
+    last_activity: datetime
 
 
 class RuntimeMigrationError(RuntimeError):
@@ -415,7 +429,18 @@ async def migrate_langflow_history_to_native(
 
     # Release the metadata read transaction before any remote request. SQLite
     # otherwise keeps a transaction open while this loop waits on Langflow.
-    legacy_conversations = await legacy_repo.list_all()
+    legacy_conversations = [
+        _LegacyLangflowConversation(
+            response_id=legacy.response_id,
+            user_id=legacy.user_id,
+            title=legacy.title,
+            filter_id=legacy.filter_id,
+            total_messages=legacy.total_messages,
+            created_at=legacy.created_at,
+            last_activity=legacy.last_activity,
+        )
+        for legacy in await legacy_repo.list_all()
+    ]
     await session.commit()
 
     for legacy in legacy_conversations:
