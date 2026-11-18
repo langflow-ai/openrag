@@ -37,6 +37,15 @@ const FILE_TYPE_LABELS: Record<string, string> = {
   "application/vnd.ms-powerpoint": "PowerPoint",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation":
     "PowerPoint",
+  // Google-native formats (stored as-is before export)
+  "application/vnd.google-apps.document": "Google Doc",
+  "application/vnd.google-apps.spreadsheet": "Google Sheet",
+  "application/vnd.google-apps.presentation": "Google Slides",
+  "application/vnd.google-apps.drawing": "Google Drawing",
+  "application/vnd.google-apps.form": "Google Form",
+  "application/vnd.google-apps.script": "Google Script",
+  // Generic binary fallback (OneDrive/SharePoint/S3/Azure Blob unknown types)
+  "application/octet-stream": "Binary",
 };
 
 /**

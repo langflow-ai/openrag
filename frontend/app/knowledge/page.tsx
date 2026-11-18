@@ -29,7 +29,6 @@ import {
 import {
   BOLD_MATCH_CLASS,
   HighlightedText,
-  PREVIEW_TEXT_CLASS,
 } from "@/components/highlighted-text";
 import { KnowledgeDataTable } from "@/components/knowledge-data-table";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
@@ -45,6 +44,7 @@ import { isFileCancelled } from "@/lib/task-error-display";
 import {
   EMPTY_SEARCH_RESULT,
   type File,
+  RELEVANCE_HIDE_THRESHOLD,
   type SearchResult,
   useGetSearchQuery,
 } from "../api/queries/useGetSearchQuery";
@@ -58,6 +58,15 @@ import { KnowledgeBatchActionsBar } from "@/components/knowledge-batch-actions-b
 import { KnowledgePaginationFooter } from "@/components/knowledge-pagination-footer";
 import { KnowledgeSearchBar } from "@/components/knowledge-search-bar";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
+import { LowRelevanceBanner } from "@/components/low-relevance-banner";
+import {
+  getRelevanceReasoning,
+  getScoreTier,
+  RELEVANCE_PILL_STYLES,
+  RELEVANCE_TEXT_COLORS,
+  WifiSignalIcon,
+} from "@/components/relevance-signal-icon";
+import { RequirePermission } from "@/components/require-permission";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Tooltip,
@@ -150,6 +159,13 @@ const AG_FIELD_TO_SORT_BY: Record<string, string> = {
   status: "status",
 };
 
+export function isLowRelevanceFile(file: File): boolean {
+  return (
+    typeof file.maxScore === "number" &&
+    file.maxScore < RELEVANCE_HIDE_THRESHOLD
+  );
+}
+
 function listFilesFilterValues(values?: string[]) {
   const filtered = values?.filter((value) => value !== "*");
   return filtered && filtered.length > 0 ? filtered : undefined;
@@ -230,10 +246,6 @@ export function getOwnerLabel(file?: File): string {
   return file?.owner_name?.trim() || file?.owner_email?.trim() || "—";
 }
 
-export function formatAvgScoreLabel(value: unknown): string {
-  return typeof value === "number" ? value.toFixed(2) : "-";
-}
-
 export function formatChunkCountLabel(chunkCount?: number): string {
   return chunkCount?.toString() ?? "-";
 }
@@ -262,11 +274,11 @@ export function compareStatusRank(
   return getStatusSortRank(valueA) - getStatusSortRank(valueB);
 }
 
-export function compareAvgScore(
+export function compareRelevance(
   valueA: number | undefined,
   valueB: number | undefined,
 ): number {
-  return (valueA || 0) - (valueB || 0);
+  return (valueA ?? 0) - (valueB ?? 0);
 }
 
 export function getFileStatus(status?: File["status"]): string {
@@ -288,20 +300,107 @@ export function buildWebsitePagesUrl(
   return `/knowledge?${params.toString()}`;
 }
 
-const AVG_SCORE_TOOLTIP =
-  "Average relevance score across the matched chunks of this file. Higher means a stronger match — sort by this column to rank results by relevance.";
+export function RelevanceCellContent({ data }: { data?: File }) {
+  const tier = data?.relevanceTier;
+  if (!tier) return <span className="text-muted-foreground text-xs">—</span>;
 
-export function AvgScoreCellContent({ value }: { value: unknown }) {
-  const label = formatAvgScoreLabel(value);
+  const breakdown = getRelevanceReasoning(data);
+  const pct = breakdown.topChunkScorePct;
+  const badgeLabel = pct !== null ? `${pct}%` : "";
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded cursor-default">
-          {label}
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full border cursor-default transition-colors",
+            RELEVANCE_PILL_STYLES[tier],
+          )}
+        >
+          <WifiSignalIcon tier={tier} size={13} />
+          {badgeLabel && <span>{badgeLabel}</span>}
         </span>
       </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-56 text-center">
-        {AVG_SCORE_TOOLTIP}
+      <TooltipContent
+        side="top"
+        className="max-w-72 text-left p-3 space-y-2.5 bg-popover text-popover-foreground border border-border shadow-md"
+      >
+        <div>
+          <p className="font-semibold text-xs text-popover-foreground flex items-center gap-1.5">
+            <WifiSignalIcon tier={tier} size={14} />
+            <span>
+              Why it's ranked{" "}
+              <span className={RELEVANCE_TEXT_COLORS[tier]}>
+                {breakdown.tierLabel}
+              </span>
+            </span>
+          </p>
+          <p className="text-muted-foreground text-xs mt-1 leading-relaxed">
+            {breakdown.reasoning}
+          </p>
+        </div>
+
+        <div className="rounded-md border border-border/80 bg-muted/80 p-2.5 text-xs space-y-2 dark:bg-muted/40">
+          {/* Keyword row — flush left labels and stacked wifi icons */}
+          <div className="grid grid-cols-[58px_16px_1fr] items-center gap-2">
+            <span className="text-muted-foreground font-medium">Keyword:</span>
+            <WifiSignalIcon tier={breakdown.keywordTier} size={13} />
+            <span className="text-foreground text-xxs font-normal">
+              {breakdown.keywordMentionCount > 0 ? (
+                <>
+                  Mentioned{" "}
+                  <span
+                    className={cn(
+                      "font-semibold",
+                      RELEVANCE_TEXT_COLORS[breakdown.keywordTier],
+                    )}
+                  >
+                    {breakdown.keywordMentionCount}
+                  </span>{" "}
+                  time{breakdown.keywordMentionCount !== 1 ? "s" : ""}
+                </>
+              ) : (
+                <span className={RELEVANCE_TEXT_COLORS.low}>
+                  0 direct matches
+                </span>
+              )}
+            </span>
+          </div>
+
+          {/* Meaning row — flush left labels and stacked wifi icons */}
+          <div className="grid grid-cols-[58px_16px_1fr] items-center gap-2">
+            <span className="text-muted-foreground font-medium">Meaning:</span>
+            <WifiSignalIcon tier={breakdown.meaningTier} size={13} />
+            <span className="text-foreground text-xxs font-normal">
+              <span
+                className={cn(
+                  "font-semibold",
+                  RELEVANCE_TEXT_COLORS[breakdown.meaningTier],
+                )}
+              >
+                {breakdown.meaningDetail}
+              </span>
+            </span>
+          </div>
+
+          {/* Top score & matched chunks metadata */}
+          <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-border/50 text-muted-foreground text-xxs">
+            <span>Matched chunks: {breakdown.matchedChunksCount}</span>
+            {pct !== null && (
+              <span>
+                Top score:{" "}
+                <span
+                  className={cn(
+                    "font-semibold",
+                    RELEVANCE_TEXT_COLORS[getScoreTier(pct)],
+                  )}
+                >
+                  {pct}%
+                </span>
+              </span>
+            )}
+          </div>
+        </div>
       </TooltipContent>
     </Tooltip>
   );
@@ -450,6 +549,7 @@ function SearchPage() {
     effectiveDateRange,
   } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
+  const [showLowRelevance, setShowLowRelevance] = useState(false);
 
   const [sortBy, setSortBy] = useState<string>("filename");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
@@ -743,7 +843,14 @@ function SearchPage() {
   const serverTotal = isWildcardQuery
     ? (listFilesData?.total ?? 0)
     : searchFiles.length;
-  const gridRows: File[] = fileResults;
+
+  const hiddenLowRelevanceFiles = !isWildcardQuery
+    ? fileResults.filter(isLowRelevanceFile)
+    : [];
+  const gridRows: File[] =
+    !isWildcardQuery && !showLowRelevance
+      ? fileResults.filter((f) => !isLowRelevanceFile(f))
+      : fileResults;
   const totalPages = Math.max(1, Math.ceil(serverTotal / currentPageSize));
 
   useEffect(() => {
@@ -859,8 +966,7 @@ function SearchPage() {
             <button
               type="button"
               className={cn(
-                "flex gap-2 text-left flex-1 overflow-hidden transition-colors",
-                preview ? "items-start" : "items-center",
+                "flex items-center gap-2 text-left flex-1 overflow-hidden transition-colors",
                 isActive
                   ? isCloudBrand
                     ? "cursor-pointer hover:text-primary"
@@ -888,6 +994,9 @@ function SearchPage() {
                     <span
                       className={cn(
                         "font-medium truncate min-w-0",
+                        // AG Grid sets a row-tall line-height on cells; tighten it
+                        // so the preview sits right under the filename.
+                        preview && "leading-tight",
                         showOpenragSourceAnimation
                           ? "text-primary animate-pulse"
                           : "text-foreground",
@@ -902,21 +1011,14 @@ function SearchPage() {
                 </Tooltip>
                 {preview && (
                   <span
-                    className={cn(
-                      "block truncate text-xs font-normal",
-                      PREVIEW_TEXT_CLASS,
-                    )}
+                    className="mt-0.5 block truncate text-[10px] font-normal leading-tight text-muted-foreground"
                     title={stripMarks(preview.text)}
                   >
-                    {preview.kind === "keyword" ? (
-                      <HighlightedText
-                        highlights={[preview.text]}
-                        fallbackText=""
-                        markClassName={BOLD_MATCH_CLASS}
-                      />
-                    ) : (
-                      preview.text
-                    )}
+                    <HighlightedText
+                      highlights={[preview.text]}
+                      fallbackText=""
+                      markClassName={BOLD_MATCH_CLASS}
+                    />
                   </span>
                 )}
               </span>
@@ -941,19 +1043,6 @@ function SearchPage() {
       topPreviews,
     ],
   );
-
-  // Rows that carry a preview line need extra height. The cloud grid already
-  // uses a 64px row, which fits two lines.
-  const getRowHeight = useCallback(
-    (params: { data?: File }) =>
-      topPreviews.has(getKnowledgeFileIdentity(params.data)) ? 56 : undefined,
-    [topPreviews],
-  );
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: topPreviews changes which rows are tall, so heights must be recomputed.
-  useEffect(() => {
-    getGridApi()?.resetRowHeights();
-  }, [topPreviews, getGridApi]);
 
   const colSize: ColDef<File> = {
     field: "size",
@@ -1020,15 +1109,15 @@ function SearchPage() {
       formatChunkCountLabel(params.data?.chunkCount),
   };
 
-  const colAvgScore: ColDef<File> = {
-    field: "avgScore",
-    headerName: "Avg score",
+  const colRelevance: ColDef<File> = {
+    field: "maxScore",
+    headerName: "Relevance",
     hide: isWildcardQuery,
     ...(isCloudBrand ? { flex: 1, minWidth: 120 } : { width: 120 }),
     sortable: true,
-    comparator: compareAvgScore,
-    cellRenderer: ({ value }: CustomCellRendererProps<File>) => (
-      <AvgScoreCellContent value={value} />
+    comparator: compareRelevance,
+    cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
+      <RelevanceCellContent data={data} />
     ),
   };
 
@@ -1102,7 +1191,7 @@ function SearchPage() {
 
   // ── Layout-aware column sets ─────────────────────────────────────────────
   const columnDefs: ColDef<File>[] = isNarrow
-    ? [colSource, colChunks, colAvgScore, colStatus, colActions]
+    ? [colSource, colChunks, colRelevance, colStatus, colActions]
     : [
         colSource,
         colSize,
@@ -1110,7 +1199,7 @@ function SearchPage() {
         colOwner,
         colIndexedTime,
         colChunks,
-        colAvgScore,
+        colRelevance,
         colStatus,
         colActions,
       ];
@@ -1205,7 +1294,7 @@ function SearchPage() {
   return (
     <>
       <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between gap-3 mb-6">
           <h2
             className={cn(
               "text-lg font-semibold",
@@ -1214,12 +1303,17 @@ function SearchPage() {
           >
             Project Knowledge
           </h2>
-          {!isCloudBrand && isNarrow && (
-            <KnowledgeSearchInput
-              placeholder="Search..."
-              className="max-w-[180px]"
-            />
-          )}
+          <div className="flex items-center gap-3">
+            {!isCloudBrand && isNarrow && (
+              <KnowledgeSearchInput
+                placeholder="Search..."
+                className="max-w-[180px]"
+              />
+            )}
+            {/* Primary action shares the title row (non-cloud) so it never wraps
+                onto its own line above the search toolbar. */}
+            {!isCloudBrand && <KnowledgeDropdown />}
+          </div>
         </div>
         {isCloudBrand ? (
           <div className="relative overflow-hidden h-12 shrink-0">
@@ -1319,6 +1413,17 @@ function SearchPage() {
               }
             : {})}
         />
+
+        {hiddenLowRelevanceFiles.length > 0 && (
+          <div className="mt-2">
+            <LowRelevanceBanner
+              showingAll={showLowRelevance}
+              hiddenMessage={`${hiddenLowRelevanceFiles.length} file${hiddenLowRelevanceFiles.length > 1 ? "s" : ""} below 10% relevance hidden`}
+              shownMessage="Showing files including those below 10% relevance"
+              onToggle={() => setShowLowRelevance((prev) => !prev)}
+            />
+          </div>
+        )}
 
         <KnowledgePaginationFooter
           currentPage={currentPage}

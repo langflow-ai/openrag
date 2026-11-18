@@ -42,7 +42,10 @@ export function FunctionCallResult({ result }: FunctionCallResultProps) {
       <span className="font-medium">Result:</span>
       <div className="mt-1 space-y-2">
         {items.map((item, idx) => (
-          <div key={idx} className="fc-result p-2 bg-muted/30 rounded">
+          <div
+            key={item.chunk_id ?? item.id ?? idx}
+            className="fc-result p-2 bg-muted/30 rounded"
+          >
             {(() => {
               const displayFilename = item.data?.file_path || item.filename;
               if (!displayFilename) return null;

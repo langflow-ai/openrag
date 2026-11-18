@@ -1,0 +1,14 @@
+{
+  "_comment": "Source of truth for backend search scoring thresholds (loaded by search_constants.py). The frontend keeps its own copy at frontend/lib/search-scoring.json; keep the two in sync when editing shared values.",
+
+  "hybrid_pipeline_name": "openrag_hybrid_pipeline",
+
+  "score_threshold": 0.1,
+
+  "semantic_weight": 0.7,
+  "keyword_weight": 0.3,
+
+  "relevance_high_threshold": 0.65,
+  "relevance_med_threshold": 0.35,
+  "relevance_hide_threshold": 0.1
+}

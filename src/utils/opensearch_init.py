@@ -5,6 +5,7 @@ configuration. Imported by app startup orchestration and by api/* modules
 that need to (re)create the documents index after onboarding completes.
 """
 
+from config.search_constants import HYBRID_PIPELINE_NAME, KEYWORD_WEIGHT, SEMANTIC_WEIGHT
 from config.settings import (
     ACL_PRINCIPAL_LABELS_MAPPING,
     API_KEYS_INDEX_BODY,
@@ -159,6 +160,49 @@ async def ensure_openrag_index_replicas(os_client=None) -> None:
                 index_name=index_name,
                 error=str(e),
             )
+
+
+async def ensure_hybrid_search_pipeline(os_client=None) -> None:
+    """Create or update the hybrid search normalization pipeline.
+
+    The pipeline normalizes k-NN and BM25 sub-query scores to [0, 1]
+    independently before combining them with the configured weights, so
+    the semantic/keyword split is meaningful regardless of raw score scale.
+    Idempotent: overwrites the pipeline on every call so weight changes in
+    search_scoring.json take effect on the next startup without manual cleanup.
+    """
+    os_client = os_client or clients.opensearch
+    pipeline_body = {
+        "description": "OpenRAG hybrid search: min-max normalize k-NN and BM25 scores then combine",
+        "phase_results_processors": [
+            {
+                "normalization-processor": {
+                    "normalization": {"technique": "min_max"},
+                    "combination": {
+                        "technique": "arithmetic_mean",
+                        "parameters": {"weights": [SEMANTIC_WEIGHT, KEYWORD_WEIGHT]},
+                    },
+                }
+            }
+        ],
+    }
+    try:
+        await os_client.http.put(
+            f"/_search/pipeline/{HYBRID_PIPELINE_NAME}",
+            body=pipeline_body,
+        )
+        logger.info(
+            "Hybrid search pipeline created/updated",
+            pipeline=HYBRID_PIPELINE_NAME,
+            semantic_weight=SEMANTIC_WEIGHT,
+            keyword_weight=KEYWORD_WEIGHT,
+        )
+    except Exception as e:
+        logger.warning(
+            "Failed to create hybrid search pipeline — hybrid queries will fall back to unweighted scoring",
+            pipeline=HYBRID_PIPELINE_NAME,
+            error=str(e),
+        )
 
 
 async def wait_for_opensearch(opensearch_client=None, max_retries: int = 30):
@@ -407,6 +451,9 @@ async def init_index(opensearch_client=None, admin_username: str = None):
 
         step = "configure_alerting_security"
         await configure_alerting_security()
+
+        step = "hybrid_search_pipeline"
+        await ensure_hybrid_search_pipeline(os_client)
 
     except Exception as e:
         from utils.opensearch_utils import (

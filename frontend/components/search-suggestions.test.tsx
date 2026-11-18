@@ -53,6 +53,7 @@ function serve(payload: SearchSuggestResult | { error: string }, status = 200) {
 
 interface HarnessProps {
   initialQuery?: string;
+  recentSearches?: string[];
   enabled?: boolean;
   onPickSuggestion?: (text: string) => void;
   onPickFile?: (filename: string) => void;
@@ -60,6 +61,7 @@ interface HarnessProps {
 
 function Harness({
   initialQuery = "",
+  recentSearches,
   enabled = true,
   onPickSuggestion = () => {},
   onPickFile = () => {},
@@ -69,6 +71,7 @@ function Harness({
     query,
     filters: undefined,
     enabled,
+    recentSearches,
     onPickSuggestion: (text) => {
       setQuery(text);
       onPickSuggestion(text);
@@ -206,6 +209,69 @@ describe("search suggestions dropdown", () => {
 
     expect(requests).toHaveLength(0);
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+});
+
+describe("recent searches", () => {
+  const RECENT = ["docling serve", "vector index", "Quarterly report"];
+
+  it("lists recent searches when focused with an empty box, without any request", async () => {
+    const requests = serve(PAYLOAD);
+    const { user, input } = setup({ recentSearches: RECENT });
+
+    await user.click(input);
+
+    expect(screen.getByText("Recent searches")).toBeInTheDocument();
+    expect(screen.getAllByRole("option")).toHaveLength(RECENT.length);
+    expect(requests).toHaveLength(0);
+  });
+
+  it("stays closed with an empty box and no history", async () => {
+    serve(PAYLOAD);
+    const { user, input } = setup({ recentSearches: [] });
+
+    await user.click(input);
+
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("picking a recent search runs it", async () => {
+    serve(PAYLOAD);
+    const onPickSuggestion = vi.fn();
+    const { user, input } = setup({
+      recentSearches: RECENT,
+      onPickSuggestion,
+    });
+
+    await user.click(input);
+    await user.click(screen.getByRole("option", { name: /vector index/ }));
+
+    expect(onPickSuggestion).toHaveBeenCalledWith("vector index");
+  });
+
+  it("filters history by the typed text and puts it above suggestions", async () => {
+    serve(PAYLOAD);
+    const { user } = setup({ recentSearches: RECENT });
+    await openWithResults(user);
+    await screen.findByText("Files");
+
+    const labels = screen
+      .getAllByText(/^(Recent searches|Suggestions|Files)$/)
+      .map((node) => node.textContent);
+    expect(labels).toEqual(["Recent searches", "Suggestions", "Files"]);
+    const options = screen.getAllByRole("option");
+    expect(options[0]).toHaveTextContent("docling serve");
+  });
+
+  it("does not repeat a recent search that equals the typed text", async () => {
+    serve(PAYLOAD);
+    const { user, input } = setup({ recentSearches: ["docl"] });
+
+    await user.click(input);
+    await user.type(input, "docl");
+    await screen.findByRole("option", { name: /docling serve/ });
+
+    expect(screen.queryByText("Recent searches")).not.toBeInTheDocument();
   });
 });
 

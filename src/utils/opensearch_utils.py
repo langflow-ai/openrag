@@ -13,6 +13,7 @@ logger = get_logger(__name__)
 
 OPENRAG_USER_ROLE = "openrag_user_role"
 OPENRAG_USER_ACL_ROLE = "openrag_user_acl_role"
+OPENRAG_USER_BACKEND_ROLE = "openrag_user"
 ALL_ACCESS_ROLE = "all_access"
 ROLE_MAPPING_PRINCIPAL_FIELDS = {"users", "hosts", "backend_roles", "and_backend_roles"}
 
@@ -358,7 +359,12 @@ async def setup_opensearch_security(
 
     This should be called during initial setup after OpenSearch is ready.
     """
-    from config.settings import IBM_AUTH_ENABLED, PLATFORM_AUTH_DEV_MODE
+    from config.settings import (
+        IBM_AUTH_ENABLED,
+        PLATFORM_AUTH_DEV_MODE,
+        has_no_auth_connectors,
+        is_no_auth_mode,
+    )
 
     if IBM_AUTH_ENABLED and PLATFORM_AUTH_DEV_MODE:
         logger.info("Skipping OpenSearch security configuration in IBM dev mode.")
@@ -460,12 +466,30 @@ async def setup_opensearch_security(
             mapping_name for mapping_name in mapping_names if mapping_name == OPENRAG_USER_ROLE
         ]
 
+        # The ACL role's terms lookup makes OpenSearch reject hybrid queries under DLS.
+        # OAuth connectors cannot run in no-auth mode, so there are no connector ACLs to
+        # enforce and the role is not granted by default there. Dev bucket connectors
+        # can still run in no-auth mode and need the role.
+        skip_acl_default_mapping = is_no_auth_mode() and not has_no_auth_connectors()
+        if skip_acl_default_mapping:
+            logger.info(
+                "[OPENSEARCH] No-auth mode: not mapping default users to the ACL role",
+                role=OPENRAG_USER_ACL_ROLE,
+            )
+
         def merged_mapping_body(mapping_name: str) -> dict[str, Any]:
             configured = copy.deepcopy(mapping_config[mapping_name])
             existing_same = rolesmapping_response.get(mapping_name, {})
             if mapping_name == OPENRAG_USER_ACL_ROLE:
                 existing_legacy = rolesmapping_response.get(OPENRAG_USER_ROLE, {})
-                return _merge_role_mappings(configured, existing_legacy, existing_same)
+                merged = _merge_role_mappings(configured, existing_legacy, existing_same)
+                if skip_acl_default_mapping:
+                    merged["backend_roles"] = [
+                        role
+                        for role in merged.get("backend_roles", [])
+                        if role != OPENRAG_USER_BACKEND_ROLE
+                    ]
+                return merged
             if mapping_name == OPENRAG_USER_ROLE:
                 return _merge_role_mappings(configured, existing_same)
             return _merge_role_mappings(configured, existing_same)

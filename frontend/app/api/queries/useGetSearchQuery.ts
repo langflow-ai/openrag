@@ -5,7 +5,7 @@ import {
 } from "@tanstack/react-query";
 import type { ParsedQueryData } from "@/contexts/knowledge-filter-context";
 import { apiClient, isRequestCancelled } from "@/lib/api-client";
-import { SEARCH_CONSTANTS } from "@/lib/constants";
+import { SEARCH_CONSTANTS, SEARCH_SCORING } from "@/lib/constants";
 import {
   buildSearchPayloadFilters,
   type FilterInput,
@@ -26,11 +26,11 @@ export interface ChunkResult {
   mimetype: string;
   page: number;
   text: string;
-  /** Keyword-match highlight fragments from OpenSearch. Each fragment is a
-   *  substring of `text` with matched terms wrapped in `<mark>` tags.
-   *  Empty array when no keyword match exists (pure semantic/KNN hit). */
+  /** OpenSearch highlight fragments with matched terms wrapped in `<mark>` tags. Empty when no keyword match. */
   highlights?: string[];
   score: number;
+  /** Relevance score in [0, 1], normalized by the backend (see useGetSearchQuery). */
+  normalizedScore?: number;
   source_url?: string;
   owner?: string;
   owner_name?: string;
@@ -59,11 +59,25 @@ export interface ChunkResult {
   chunk_count?: number;
 }
 
+export type RelevanceTier = "high" | "medium" | "low";
+export interface ChunkTiers {
+  high: number;
+  medium: number;
+  low: number;
+}
+
 export interface File {
   filename: string;
   mimetype: string;
   chunkCount?: number;
-  avgScore?: number;
+  /** Highest normalised chunk score [0, 1] for this file. */
+  maxScore?: number;
+  /** Relevance tier derived from maxScore. */
+  relevanceTier?: RelevanceTier;
+  /** Count of matched chunks per tier, shown in the relevance tooltip. */
+  chunkTiers?: ChunkTiers;
+  /** True if top match for this file was semantically relevant (vector match without keyword highlights). */
+  isSemanticMatch?: boolean;
   source_url: string;
   owner?: string;
   owner_name?: string;
@@ -83,14 +97,11 @@ export interface File {
     | "sync"
     | "disabled";
   error?: string;
-  /**
-   * Skip reason forwarded from result.reason (e.g. "duplicate_content",
-   * "deleted_at_source"). Only set when status === "skipped".
-   */
+  /** Skip reason from the backend (e.g. "duplicate_content", "deleted_at_source"). Only set when status === "skipped". */
   skip_reason?: string;
-  /** Warning message for skipped rows (e.g. duplicate_content). */
+  /** Human-readable warning for skipped rows. */
   warning?: string;
-  task_id?: string; // Task ID for file-level cancellation
+  task_id?: string;
   chunks?: ChunkResult[];
   allowed_users?: string[];
   allowed_groups?: string[];
@@ -102,9 +113,7 @@ export interface File {
   web_child_count?: number;
 }
 
-// Non-fatal signal from the backend — e.g. an embedding provider was removed
-// so some models in the corpus can't be queried semantically. Results still
-// come back via keyword matching.
+/** Non-fatal backend signal, e.g. an embedding provider is unavailable. Results still return via keyword matching. */
 export interface SearchWarning {
   code: string;
   models?: string[];
@@ -125,6 +134,11 @@ export interface SearchResultDisplayOptions {
 const EMPTY_SEARCH_RESULT: SearchResult = { files: [], warnings: [] };
 
 export { EMPTY_SEARCH_RESULT };
+
+/** Min-max normalised score thresholds for bucketing chunks into High / Medium / Low tiers. */
+export const RELEVANCE_HIDE_THRESHOLD = SEARCH_SCORING.relevance_hide_threshold;
+export const RELEVANCE_HIGH_THRESHOLD = SEARCH_SCORING.relevance_high_threshold;
+export const RELEVANCE_MED_THRESHOLD = SEARCH_SCORING.relevance_med_threshold;
 
 const getFileIdentity = (
   chunk: ChunkResult,
@@ -176,14 +190,11 @@ export const useGetSearchQuery = (
 ) => {
   const queryClient = useQueryClient();
 
-  // Normalize the query to match what will actually be searched
   const effectiveQuery = query || queryData?.query || "*";
   const normalizedQuery = effectiveQuery.trim();
 
   async function getFiles(): Promise<SearchResult> {
     try {
-      // For wildcard queries, use a high limit to get all files
-      // Otherwise use the limit from queryData or default to 100
       const isWildcardQuery =
         effectiveQuery.trim() === "*" || effectiveQuery.trim() === "";
       const searchLimit = isWildcardQuery
@@ -192,7 +203,7 @@ export const useGetSearchQuery = (
 
       const baseScoreThreshold =
         queryData?.scoreThreshold ?? SEARCH_CONSTANTS.DEFAULT_SCORE_THRESHOLD;
-      const dynamicScoreThreshold = resolveScoreThreshold(
+      const scoreThreshold = resolveScoreThreshold(
         normalizedQuery,
         baseScoreThreshold,
       );
@@ -200,7 +211,7 @@ export const useGetSearchQuery = (
       const searchPayload: SearchPayload = {
         query: effectiveQuery,
         limit: searchLimit,
-        scoreThreshold: dynamicScoreThreshold,
+        scoreThreshold,
         resultMode: displayOptions.resultMode,
       };
       if (queryData?.filters) {
@@ -229,14 +240,12 @@ export const useGetSearchQuery = (
       }
 
       const data = response.data;
-      // Group chunks by filename to create file results similar to page.tsx
       const fileMap = new Map<
         string,
         {
           filename: string;
           mimetype: string;
           chunks: ChunkResult[];
-          totalScore: number;
           source_url?: string;
           owner?: string;
           owner_name?: string;
@@ -271,7 +280,6 @@ export const useGetSearchQuery = (
         const existing = fileMap.get(fileIdentity);
         if (existing) {
           existing.chunks.push(chunkWithHighlights);
-          existing.totalScore += chunk.score;
           if (!existing.embedding_model && chunk.embedding_model) {
             existing.embedding_model = chunk.embedding_model;
           }
@@ -295,7 +303,6 @@ export const useGetSearchQuery = (
                 : fileIdentity,
             mimetype: chunk.mimetype,
             chunks: [chunkWithHighlights],
-            totalScore: chunk.score,
             source_url: chunk.source_url,
             owner: chunk.owner,
             owner_name: chunk.owner_name,
@@ -320,35 +327,90 @@ export const useGetSearchQuery = (
         }
       });
 
-      const files: File[] = Array.from(fileMap.values()).map((file) => ({
-        filename: file.filename,
-        mimetype: file.mimetype,
-        chunkCount: file.chunk_count ?? file.chunks.length,
-        avgScore: file.totalScore / file.chunks.length,
-        source_url: file.source_url || "",
-        owner: file.owner || "",
-        owner_name: file.owner_name || "",
-        owner_email: file.owner_email || "",
-        size: file.file_size || 0,
-        connector_type: file.connector_type || "local",
-        embedding_model: file.embedding_model,
-        embedding_dimensions: file.embedding_dimensions,
-        chunks: file.chunks,
-        allowed_users: file.allowed_users || [],
-        allowed_groups: file.allowed_groups || [],
-        indexed_time: file.indexed_time,
-        document_id: file.document_id,
-        web_source_id: file.web_source_id,
-        web_page_id: file.web_page_id,
-        web_page_depth: file.web_page_depth,
-        web_child_count: file.web_child_count,
-        status: file.status,
-        error: file.error,
-      }));
-
       const warnings: SearchWarning[] = Array.isArray(data.warnings)
         ? data.warnings
         : [];
+
+      // The backend guarantees [0,1] scores on every non-wildcard path and
+      // reports which path produced them via `normalized`: "pipeline" (weighted
+      // OpenSearch blend) or "default" (backend min-max, e.g. filter-level DLS or
+      // keyword-only). Either way the score is used directly; re-normalising here
+      // would double-normalize it. The min-max fallback only runs when the flag is
+      // absent (website-page projection or an older backend).
+      const backendNormalized =
+        data.normalized === "pipeline" || data.normalized === "default";
+
+      // Fallback min-max (only computed when the backend didn't normalize, e.g. a
+      // website-page projection or an older backend): best chunk → 1.0, worst →
+      // 0.0. Single result → 1.0 (avoids / 0).
+      let normalise = (raw: number): number => raw;
+      if (!backendNormalized) {
+        const rawScores = Array.from(fileMap.values()).flatMap((f) =>
+          f.chunks.map((c) => c.score ?? 0),
+        );
+        const globalMin = Math.min(...rawScores);
+        const scoreSpread = Math.max(...rawScores) - globalMin;
+        normalise = (raw: number): number =>
+          scoreSpread > 0 ? (raw - globalMin) / scoreSpread : 1;
+      }
+
+      const toTier = (norm: number): RelevanceTier =>
+        norm >= RELEVANCE_HIGH_THRESHOLD
+          ? "high"
+          : norm >= RELEVANCE_MED_THRESHOLD
+            ? "medium"
+            : "low";
+
+      const files: File[] = Array.from(fileMap.values()).map((file) => {
+        const chunksWithNorm = file.chunks.map((c) => ({
+          ...c,
+          normalizedScore: normalise(c.score ?? 0),
+        }));
+        const normScores = chunksWithNorm.map((c) => c.normalizedScore ?? 0);
+        const fileMaxNorm = Math.max(...normScores);
+        const chunkTiers: ChunkTiers = { high: 0, medium: 0, low: 0 };
+        for (const norm of normScores) {
+          chunkTiers[toTier(norm)]++;
+        }
+        const topChunk = chunksWithNorm.reduce(
+          (best, c) => ((c.score ?? 0) > (best.score ?? 0) ? c : best),
+          chunksWithNorm[0],
+        );
+        const hasHighlights =
+          Array.isArray(topChunk?.highlights) &&
+          topChunk.highlights.length > 0 &&
+          topChunk.highlights.some((h) => h.includes("<mark>"));
+        const isSemanticMatch = (topChunk?.score ?? 0) > 0 && !hasHighlights;
+
+        return {
+          filename: file.filename,
+          mimetype: file.mimetype,
+          chunkCount: file.chunk_count ?? file.chunks.length,
+          maxScore: fileMaxNorm,
+          relevanceTier: toTier(fileMaxNorm),
+          chunkTiers,
+          isSemanticMatch,
+          source_url: file.source_url || "",
+          owner: file.owner || "",
+          owner_name: file.owner_name || "",
+          owner_email: file.owner_email || "",
+          size: file.file_size || 0,
+          connector_type: file.connector_type || "local",
+          embedding_model: file.embedding_model,
+          embedding_dimensions: file.embedding_dimensions,
+          chunks: chunksWithNorm,
+          allowed_users: file.allowed_users || [],
+          allowed_groups: file.allowed_groups || [],
+          indexed_time: file.indexed_time,
+          document_id: file.document_id,
+          web_source_id: file.web_source_id,
+          web_page_id: file.web_page_id,
+          web_page_depth: file.web_page_depth,
+          web_child_count: file.web_child_count,
+          status: file.status,
+          error: file.error,
+        };
+      });
 
       return { files, warnings };
     } catch (error) {
@@ -367,7 +429,7 @@ export const useGetSearchQuery = (
       placeholderData: (prev) => prev,
       staleTime: 0,
       queryFn: getFiles,
-      retry: false, // Don't retry on errors - show them immediately
+      retry: false,
       ...options,
     },
     queryClient,

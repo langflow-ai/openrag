@@ -154,4 +154,52 @@ describe("HighlightedText", () => {
     expect(mark).toBeInTheDocument();
     expect(mark?.textContent).toBe("");
   });
+
+  it("applies semantic highlight span to relevant sentence when isSemanticMatch is true and highlights are empty", () => {
+    const { container } = render(
+      <HighlightedText
+        highlights={[]}
+        fallbackText="Docling converts documents. Table structure extraction reconstructs cells."
+        isSemanticMatch
+        searchQuery="table extraction"
+      />,
+    );
+    const mark = container.querySelector("mark");
+    expect(mark).toBeInTheDocument();
+    expect(mark?.textContent).toContain("Table structure extraction");
+    expect(mark?.className).toContain("bg-emerald-100");
+  });
+
+  it("skips markdown table formatting dividers and highlights substantive body text", () => {
+    const tableText = `|--------|----------------------|\n| 1 large chunk | Document processing, OCR, layout extraction, Markdown conversion |`;
+    const { container } = render(
+      <HighlightedText
+        highlights={[]}
+        fallbackText={tableText}
+        isSemanticMatch
+        searchQuery="document processing layout"
+      />,
+    );
+    const mark = container.querySelector("mark");
+    expect(mark).toBeInTheDocument();
+    expect(mark?.textContent).not.toBe("|--------|----------------------|");
+    expect(mark?.textContent).toContain(
+      "Document processing, OCR, layout extraction",
+    );
+  });
+
+  it("applies semantic highlight span to matching unspaced CJK sentence when isSemanticMatch is true", () => {
+    const { container } = render(
+      <HighlightedText
+        highlights={[]}
+        fallbackText="これは最初の文です。全文検索エンジンは高速です。最後の文です。"
+        isSemanticMatch
+        searchQuery="検索"
+      />,
+    );
+    const mark = container.querySelector("mark");
+    expect(mark).toBeInTheDocument();
+    expect(mark?.textContent).toBe("全文検索エンジンは高速です。");
+    expect(mark?.className).toContain("bg-emerald-100");
+  });
 });
