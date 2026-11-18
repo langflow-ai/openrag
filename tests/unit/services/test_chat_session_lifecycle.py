@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -684,6 +684,7 @@ async def test_delete_uses_one_owned_snapshot_for_upstream_and_revocation(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("durable_stream_stores", ["db", "hybrid"], indirect=True)
 async def test_restart_alias_only_continuation_keeps_durable_canonical(
     monkeypatch, durable_stream_stores
 ):
@@ -746,6 +747,7 @@ async def test_restart_alias_only_continuation_keeps_durable_canonical(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("durable_stream_stores", ["db", "hybrid"], indirect=True)
 async def test_restart_does_not_duplicate_restored_turns_in_native_history(
     monkeypatch, durable_stream_stores
 ):
@@ -864,7 +866,7 @@ async def test_langflow_continuation_preserves_native_history_after_restart(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("durable_stream_stores", ["files"], indirect=True)
+@pytest.mark.parametrize("durable_stream_stores", ["db"], indirect=True)
 @pytest.mark.parametrize("created_at", [None, "not-a-date", 123])
 async def test_restart_invalid_creation_time_keeps_default(
     monkeypatch, durable_stream_stores, created_at
@@ -872,6 +874,7 @@ async def test_restart_invalid_creation_time_keeps_default(
     ownership, persistence, _ = durable_stream_stores
     await ownership.claim_session("alice", "canonical")
     await ownership.claim_session("alice", "alias", conversation_id="canonical")
+    started = datetime.now(UTC)
     await persistence.store_conversation_thread(
         "alice",
         "canonical",
@@ -882,7 +885,6 @@ async def test_restart_invalid_creation_time_keeps_default(
         yield b'{"id":"next","delta":{"content":"Answer"}}\n'
 
     monkeypatch.setattr(agent_module, "async_stream", upstream)
-    started = datetime.now()
     await _collect_error_chunks(
         agent_module.async_langflow_chat_stream(
             object(), "flow", "Follow-up", "alice", previous_response_id="alias"
@@ -890,8 +892,8 @@ async def test_restart_invalid_creation_time_keeps_default(
     )
     history = await ChatService().get_chat_history("alice")
     restored = next(c for c in history["conversations"] if c["response_id"] == "canonical")
-    restored_created_at = datetime.fromisoformat(restored["created_at"]).replace(tzinfo=None)
-    assert started <= restored_created_at <= datetime.now()
+    restored_created_at = datetime.fromisoformat(restored["created_at"])
+    assert started <= restored_created_at <= datetime.now(UTC)
     assert restored["title"] == "Saved title"
     assert restored["total_messages"] == 6
 
