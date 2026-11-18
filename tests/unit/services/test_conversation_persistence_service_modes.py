@@ -15,7 +15,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import db.models  # noqa: E402,F401
-from db.repositories import ConversationRepo  # noqa: E402
+from db.repositories import ChatHistoryRepo, ConversationRepo  # noqa: E402
 from services.conversation_persistence_service import (  # noqa: E402
     ConversationPersistenceService,
 )
@@ -105,14 +105,10 @@ async def test_hybrid_mode_dual_writes(monkeypatch, storage_path, session_factor
 
 
 @pytest.mark.asyncio
-async def test_db_mode_ignores_pre_existing_json(
-    monkeypatch, storage_path, session_factory
-):
-    storage_path.write_text(json.dumps({
-        "alice": {
-            "ghost-r": {"title": "leak", "total_messages": 1}
-        }
-    }))
+async def test_db_mode_ignores_pre_existing_json(monkeypatch, storage_path, session_factory):
+    storage_path.write_text(
+        json.dumps({"alice": {"ghost-r": {"title": "leak", "total_messages": 1}}})
+    )
 
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
     svc = _svc(storage_path, session_factory)
@@ -122,15 +118,13 @@ async def test_db_mode_ignores_pre_existing_json(
 
 
 @pytest.mark.asyncio
-async def test_hybrid_merges_db_and_json_on_read(
-    monkeypatch, storage_path, session_factory
-):
+async def test_hybrid_merges_db_and_json_on_read(monkeypatch, storage_path, session_factory):
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "hybrid")
 
     # Seed JSON with one entry
-    storage_path.write_text(json.dumps({
-        "alice": {"r-json": {"title": "from-json", "total_messages": 0}}
-    }))
+    storage_path.write_text(
+        json.dumps({"alice": {"r-json": {"title": "from-json", "total_messages": 0}}})
+    )
 
     svc = _svc(storage_path, session_factory)
     # Add a DB-only entry
@@ -156,9 +150,7 @@ async def test_delete_only_owner_can_delete(monkeypatch, storage_path, session_f
 
 
 @pytest.mark.asyncio
-async def test_clear_user_removes_all_their_threads(
-    monkeypatch, storage_path, session_factory
-):
+async def test_clear_user_removes_all_their_threads(monkeypatch, storage_path, session_factory):
     monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
     svc = _svc(storage_path, session_factory)
 
@@ -174,3 +166,22 @@ async def test_clear_user_removes_all_their_threads(
     assert convs == {}
     bob_convs = await svc.get_user_conversations("bob")
     assert "r-3" in bob_convs
+
+
+@pytest.mark.asyncio
+async def test_files_mode_does_not_mirror_langflow_history_to_native_store(
+    monkeypatch, storage_path, session_factory
+):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
+    svc = _svc(storage_path, session_factory)
+
+    await svc.sync_langflow_history(
+        "alice",
+        "langflow-thread",
+        _payload(endpoint="langflow"),
+        [{"role": "user", "content": "Question"}],
+        append_only=True,
+    )
+
+    async with session_factory() as session:
+        assert await ChatHistoryRepo(session).get_conversation("langflow-thread") is None

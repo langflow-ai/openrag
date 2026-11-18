@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -50,6 +51,21 @@ JSON_TO_DB_V1 = "json_to_db_v1"
 CONFIG_YAML_TO_DB_V1 = "config_yaml_to_db_v1"
 CHAT_HISTORY_JSON_TO_DB_V1 = "chat_history_json_to_db_v1"
 NATIVE_CHAT_HISTORY_JSON_TO_DB_V1 = "native_chat_history_json_to_db_v1"
+NATIVE_CHAT_HISTORY_JSON_TO_DB_V2 = "native_chat_history_json_to_db_v2"
+LANGFLOW_HISTORY_TO_NATIVE_V1 = "langflow_history_to_native_v1"
+
+
+@dataclass(frozen=True)
+class _LegacyLangflowConversation:
+    """Values needed to import one detached Langflow conversation row."""
+
+    response_id: str
+    user_id: str
+    title: str | None
+    filter_id: str | None
+    total_messages: int
+    created_at: datetime
+    last_activity: datetime
 
 
 class RuntimeMigrationError(RuntimeError):
@@ -218,20 +234,26 @@ async def _migrate_legacy_native_conversation(
     native_repo: Any, user_id: str, response_id: str, metadata: dict[str, Any]
 ) -> bool:
     """Copy one legacy ``/chat`` conversation and its recoverable messages."""
-    if await native_repo.get_conversation(response_id) is not None:
-        return False
     created = _parse_legacy_dt(metadata.get("created_at"))
     last = _parse_legacy_dt(metadata.get("last_activity"))
-    conversation = await native_repo.create_conversation(
-        conversation_id=response_id,
-        user_id=user_id,
-        title=metadata.get("title"),
-        filter_id=metadata.get("filter_id"),
-        total_messages=0,
-        created_at=created,
-        last_activity=last,
-    )
+    existing = await native_repo.get_conversation(response_id)
+    if existing is not None:
+        if existing.user_id != user_id or await native_repo.list_messages(response_id):
+            return False
+        conversation = existing
+    else:
+        conversation = await native_repo.create_conversation(
+            conversation_id=response_id,
+            user_id=user_id,
+            title=metadata.get("title"),
+            filter_id=metadata.get("filter_id"),
+            total_messages=0,
+            created_at=created,
+            last_activity=last,
+        )
     legacy_messages = metadata.get("messages")
+    recovered_messages = 0
+    existing_total_messages = conversation.total_messages
     if isinstance(legacy_messages, list):
         for message in legacy_messages:
             if not isinstance(message, dict):
@@ -258,15 +280,28 @@ async def _migrate_legacy_native_conversation(
             event_data["pydantic_messages"] = json.loads(
                 ModelMessagesTypeAdapter.dump_json([history_message])
             )
+            if existing is not None and not recovered_messages:
+                # Revision 0010 copied only metadata. Reserve message sequence
+                # numbers from the recovered snapshot, then restore the
+                # metadata count below if it is larger than the snapshot.
+                conversation.total_messages = 0
+                native_repo.session.add(conversation)
+                await native_repo.session.flush()
             await native_repo.append_message(
                 conversation=conversation,
                 role=role,
                 content=content,
                 event_data=event_data,
                 error=bool(message.get("error")),
+                created_at=_parse_legacy_dt(message.get("timestamp")),
             )
+            recovered_messages += 1
+    if existing is not None and not recovered_messages:
+        return False
     conversation.total_messages = max(
-        conversation.total_messages, int(metadata.get("total_messages") or 0)
+        conversation.total_messages,
+        existing_total_messages,
+        int(metadata.get("total_messages") or 0),
     )
     conversation.last_activity = last or conversation.last_activity
     native_repo.session.add(conversation)
@@ -368,8 +403,187 @@ async def migrate_chat_history_json_to_db(session: AsyncSession) -> dict[str, in
     return stats
 
 
-async def run(session: AsyncSession) -> None:
-    """Top-level entry. Caller is responsible for committing."""
+async def migrate_langflow_history_to_native(
+    session: AsyncSession,
+    fetch_messages: Callable[[str], Awaitable[list[dict[str, Any]]]] | None = None,
+) -> dict[str, int]:
+    """Copy Langflow's remote message history into OpenRAG's native tables.
+
+    ``langflow_conversations`` has always held sidebar metadata only. This
+    migration fetches the message bodies from Langflow's monitor API and makes
+    the native tables the durable history source. Complete native histories are
+    not fetched again; failed remote requests leave only that conversation to
+    retry on the next startup.
+    """
+    from db.repositories import ChatHistoryRepo, ConversationRepo, SessionOwnershipRepo
+    from services.langflow_history_service import langflow_history_service
+    from services.native_chat_history_service import NativeChatHistoryService
+
+    fetch = fetch_messages or langflow_history_service.fetch_session_messages
+    legacy_repo = ConversationRepo(session)
+    native_repo = ChatHistoryRepo(session)
+    ownership_repo = SessionOwnershipRepo(session)
+    stats = {"conversations": 0, "messages": 0, "failed": 0}
+    skipped = 0
+    already_imported = 0
+
+    # Release the metadata read transaction before any remote request. SQLite
+    # otherwise keeps a transaction open while this loop waits on Langflow.
+    legacy_conversations = [
+        _LegacyLangflowConversation(
+            response_id=legacy.response_id,
+            user_id=legacy.user_id,
+            title=legacy.title,
+            filter_id=legacy.filter_id,
+            total_messages=legacy.total_messages,
+            created_at=legacy.created_at,
+            last_activity=legacy.last_activity,
+        )
+        for legacy in await legacy_repo.list_all()
+    ]
+    await session.commit()
+
+    for legacy in legacy_conversations:
+        existing_state = "missing"
+        try:
+            # Keep even the lookup in a savepoint. A database failure while
+            # checking one legacy row must not leave PostgreSQL's surrounding
+            # transaction unusable for every following row.
+            async with session.begin_nested():
+                existing = await native_repo.get_conversation(legacy.response_id)
+                if existing is not None:
+                    if existing.user_id != legacy.user_id:
+                        existing_state = "foreign"
+                    elif len(await native_repo.list_messages(legacy.response_id)) >= max(
+                        (legacy.total_messages or 0), 1
+                    ):
+                        existing_state = "imported"
+        except Exception as exc:  # noqa: BLE001
+            await session.rollback()
+            stats["failed"] += 1
+            logger.warning(
+                "langflow_history_to_native_v1: conversation lookup failed",
+                conversation_id=legacy.response_id,
+                error=str(exc),
+            )
+            continue
+
+        # The savepoint released, but its read transaction may still be open.
+        # Do not hold it while fetching the next conversation from Langflow.
+        await session.commit()
+
+        if existing_state == "foreign":
+            skipped += 1
+            logger.warning(
+                "langflow_history_to_native_v1: skipping conversation owned by another user",
+                conversation_id=legacy.response_id,
+                legacy_user_id=legacy.user_id,
+                native_user_id=existing.user_id,
+            )
+            continue
+        if existing_state == "imported":
+            already_imported += 1
+            continue
+
+        try:
+            messages = await fetch(legacy.response_id)
+        except Exception as exc:  # noqa: BLE001
+            stats["failed"] += 1
+            logger.warning(
+                "langflow_history_to_native_v1: conversation fetch failed",
+                conversation_id=legacy.response_id,
+                error=str(exc),
+            )
+            continue
+
+        try:
+            # A single bad legacy row must not invalidate earlier imports or
+            # poison PostgreSQL's outer startup transaction.
+            async with session.begin_nested():
+                await NativeChatHistoryService.sync_langflow_conversation_in_session(
+                    native_repo,
+                    conversation_id=legacy.response_id,
+                    user_id=legacy.user_id,
+                    title=legacy.title,
+                    filter_id=legacy.filter_id,
+                    total_messages=legacy.total_messages or 0,
+                    created_at=legacy.created_at,
+                    last_activity=legacy.last_activity,
+                    messages=messages,
+                )
+                await ownership_repo.upsert_raw(
+                    response_id=legacy.response_id,
+                    user_id=legacy.user_id,
+                    created_at=legacy.created_at,
+                    last_accessed=legacy.last_activity,
+                )
+                await session.flush()
+            # Persist every successful conversation independently. A restart
+            # or later failure then retries only unfinished rows, rather than
+            # rolling back all remote work completed earlier in this pass.
+            await session.commit()
+        except (PermissionError, IntegrityError, ValueError) as exc:
+            await session.rollback()
+            skipped += 1
+            logger.warning(
+                "langflow_history_to_native_v1: skipping unrecoverable conversation",
+                conversation_id=legacy.response_id,
+                error=str(exc),
+            )
+            continue
+        except Exception as exc:  # noqa: BLE001
+            await session.rollback()
+            stats["failed"] += 1
+            logger.warning(
+                "langflow_history_to_native_v1: conversation import failed",
+                conversation_id=legacy.response_id,
+                error=str(exc),
+            )
+            continue
+
+        stats["conversations"] += 1
+        stats["messages"] += sum(
+            1
+            for message in messages
+            if message.get("role") in {"user", "assistant"}
+            and isinstance(message.get("content"), str)
+        )
+
+    if skipped or already_imported:
+        logger.info(
+            "langflow_history_to_native_v1 reconciliation complete",
+            skipped=skipped,
+            already_imported=already_imported,
+        )
+
+    return stats
+
+
+async def run_langflow_history_migration(session: AsyncSession) -> None:
+    """Run the remote Langflow history import when it has not completed yet."""
+    if await _already_done(session, LANGFLOW_HISTORY_TO_NATIVE_V1):
+        return
+
+    stats = await migrate_langflow_history_to_native(session)
+    if stats["failed"]:
+        logger.warning(
+            "langflow_history_to_native_v1 incomplete; retrying next startup",
+            **stats,
+        )
+        return
+    notes = f"conversations={stats['conversations']},messages={stats['messages']}"
+    await _mark_done(session, LANGFLOW_HISTORY_TO_NATIVE_V1, notes=notes)
+    logger.info("langflow_history_to_native_v1 completed", **stats)
+
+
+async def run(session: AsyncSession, *, run_langflow_history: bool = True) -> None:
+    """Run local runtime migrations. Caller is responsible for committing.
+
+    ``run_langflow_history`` is kept for direct callers and tests. The
+    application startup handler disables it and schedules the remote Langflow
+    import separately so an unavailable Langflow instance cannot delay
+    readiness.
+    """
     if not await _already_done(session, JSON_TO_DB_V1):
         inserted = 0
         try:
@@ -421,6 +635,25 @@ async def run(session: AsyncSession) -> None:
             session, NATIVE_CHAT_HISTORY_JSON_TO_DB_V1, notes=f"conversations={inserted}"
         )
         logger.info("native_chat_history_json_to_db_v1 completed", conversations=inserted)
+
+    # V1 ran before metadata-only native conversations could be recovered.
+    # Re-run the idempotent importer once for deployments that already have its
+    # V1 marker, so any recoverable message snapshots fill those rows.
+    if not await _already_done(session, NATIVE_CHAT_HISTORY_JSON_TO_DB_V2):
+        try:
+            inserted = await migrate_legacy_native_chat_history_json_to_db(session)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "native_chat_history_json_to_db_v2 failed; aborting startup", error=str(exc)
+            )
+            raise RuntimeMigrationError(f"{NATIVE_CHAT_HISTORY_JSON_TO_DB_V2} failed") from exc
+        await _mark_done(
+            session, NATIVE_CHAT_HISTORY_JSON_TO_DB_V2, notes=f"conversations={inserted}"
+        )
+        logger.info("native_chat_history_json_to_db_v2 completed", conversations=inserted)
+
+    if run_langflow_history:
+        await run_langflow_history_migration(session)
 
     try:
         from db.seed import seed_roles_and_permissions
