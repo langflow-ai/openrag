@@ -72,17 +72,18 @@ export function KnowledgeDateRangeV2() {
   const hasRange = hasBounds(effectiveDateRange);
 
   const earliest = startOfDay(subDays(today, MAX_HISTOGRAM_DAYS));
-  // Cover everything the popover displays: each preset (quarters included), the
-  // visible month, and the custom draft. The cap keeps the request bounded.
+  // Cover everything the popover displays: each preset (quarters included) and,
+  // in the custom view only, the visible month and the draft. The cap keeps the
+  // request bounded.
   const presetStarts = V2_PRESETS.map(
     (preset) => preset.range(today)?.from,
   ).filter((d): d is Date => Boolean(d));
   const windowStart = min([
-    startOfMonth(month),
     startOfMonth(subMonths(today, 1)),
     subDays(today, 29),
     ...presetStarts,
-    ...(draft?.from ? [startOfDay(draft.from)] : []),
+    ...(view === "custom" ? [startOfMonth(month)] : []),
+    ...(view === "custom" && draft?.from ? [startOfDay(draft.from)] : []),
   ]);
   const clampedStart = windowStart < earliest ? earliest : windowStart;
   // Quick presets are viewer-local days, so they are always counted in the
@@ -128,7 +129,10 @@ export function KnowledgeDateRangeV2() {
   // Days before the requested window, or while a changed window is still
   // loading, have no data yet; they must not read as "no uploads".
   const histogramReady = Boolean(histogram) && !isPlaceholderData;
-  const coveredFrom = startOfDay(min([clampedStart, new Date(requestStart)]));
+  // A primitive, so DayContent's memo isn't defeated by a fresh Date each render.
+  const coveredFromTime = startOfDay(
+    min([clampedStart, new Date(requestStart)]),
+  ).getTime();
 
   const DayContent = useMemo(
     () =>
@@ -141,7 +145,7 @@ export function KnowledgeDateRangeV2() {
             <span data-day-number>{date.getDate()}</span>
             <DensityMark
               count={
-                histogramReady && startOfDay(date) >= coveredFrom
+                histogramReady && startOfDay(date).getTime() >= coveredFromTime
                   ? (days[toLocalDayKey(date)] ?? 0)
                   : 0
               }
@@ -150,22 +154,25 @@ export function KnowledgeDateRangeV2() {
           </span>
         );
       },
-    [days, histogramReady, coveredFrom],
+    [days, histogramReady, coveredFromTime],
   );
+
+  // Start the custom calendar from the applied range, like the classic picker.
+  // Also discards an abandoned custom draft (opening, or Back from Custom).
+  const resetDraft = (fallbackMonth: Date) => {
+    setDraft(
+      shown?.from || shown?.to ? { from: shown.from, to: shown.to } : undefined,
+    );
+    setMonth(shown?.to ?? shown?.from ?? fallbackMonth);
+    setEdited(false);
+  };
 
   const handleOpenChange = (next: boolean) => {
     if (next) {
       const fresh = startOfDay(new Date());
       setToday(fresh);
       setView("quick");
-      // Start the custom calendar from the current range, like the classic picker.
-      setDraft(
-        shown?.from || shown?.to
-          ? { from: shown.from, to: shown.to }
-          : undefined,
-      );
-      setMonth(shown?.to ?? shown?.from ?? fresh);
-      setEdited(false);
+      resetDraft(fresh);
     }
     setOpen(next);
   };
@@ -220,9 +227,7 @@ export function KnowledgeDateRangeV2() {
                 // keeps its saved UTC bounds, which viewer-local days cannot
                 // count; show it as unavailable instead of a wrong number.
                 const keepsSavedBounds =
-                  preset.id === activePresetId &&
-                  !edited &&
-                  savedTimeZone !== null;
+                  preset.id === activePresetId && savedTimeZone !== null;
                 const count = keepsSavedBounds ? null : countFor(range);
                 return (
                   <button
@@ -286,7 +291,10 @@ export function KnowledgeDateRangeV2() {
                   variant="secondary"
                   ignoreTitleCase
                   className="h-auto flex-1 rounded-none py-3"
-                  onClick={() => setView("quick")}
+                  onClick={() => {
+                    resetDraft(today);
+                    setView("quick");
+                  }}
                 >
                   Back
                 </Button>

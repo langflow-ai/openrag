@@ -439,4 +439,61 @@ describe("KnowledgeDateRangeV2 saved time zone", () => {
       "Europe/London",
     );
   });
+
+  it("discards an unapplied custom draft on Back and keeps the saved preset count unavailable", async () => {
+    // Saved in LA as exactly "Today" (June 20), so the Today preset matches it.
+    const today = {
+      ...saved,
+      query_data: JSON.stringify({
+        ...JSON.parse(saved.query_data),
+        filters: {
+          ...JSON.parse(saved.query_data).filters,
+          created_after: "2024-06-20T07:00:00.000Z",
+          created_before: "2024-06-21T06:59:59.999999Z",
+        },
+        date_range_context: {
+          from: "2024-06-20",
+          to: "2024-06-20",
+          timezone: LA,
+        },
+      }),
+    };
+    function Probe2() {
+      const ctx = useKnowledgeFilter();
+      // biome-ignore lint/correctness/useExhaustiveDependencies: select once
+      useEffect(() => ctx.setSelectedFilter(today), []);
+      return <KnowledgeDateRangeFilter />;
+    }
+    renderWithProviders(<Probe2 />, {
+      providers: ["auth", "knowledgeFilter"],
+      auth: withAuth(authPresets.admin, {
+        me: { run_mode: "oss", date_range_v2: true },
+      }),
+      handlers: [histogramHandler],
+    });
+
+    await click(await screen.findByRole("button", { name: /Jun/ }));
+    const todayRow = await screen.findByRole("button", { name: /^Today/ });
+    expect(within(todayRow).getByText("–")).toBeInTheDocument();
+
+    // Edit the draft in Custom range, then go Back without applying.
+    await click(await screen.findByText("Custom range"));
+    await click(
+      within(screen.getByRole("grid")).getByRole("gridcell", { name: "15" }),
+    );
+    await click(screen.getByRole("button", { name: "Back" }));
+
+    // The abandoned edit must not change what Quick ranges shows.
+    const after = await screen.findByRole("button", { name: /^Today/ });
+    expect(within(after).getByText("–")).toBeInTheDocument();
+
+    // Re-entering Custom range starts from the applied range, not the old draft.
+    await click(screen.getByText("Custom range"));
+    expect(
+      within(screen.getByRole("grid")).getByRole("gridcell", { name: "20" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      within(screen.getByRole("grid")).getByRole("gridcell", { name: "15" }),
+    ).not.toHaveAttribute("aria-selected", "true");
+  });
 });
