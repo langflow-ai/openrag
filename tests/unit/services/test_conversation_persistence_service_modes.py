@@ -15,7 +15,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import db.models  # noqa: E402,F401
-from db.repositories import ConversationRepo  # noqa: E402
+from db.repositories import ChatHistoryRepo, ConversationRepo  # noqa: E402
 from services.conversation_persistence_service import (  # noqa: E402
     ConversationPersistenceService,
 )
@@ -174,3 +174,22 @@ async def test_clear_user_removes_all_their_threads(
     assert convs == {}
     bob_convs = await svc.get_user_conversations("bob")
     assert "r-3" in bob_convs
+
+
+@pytest.mark.asyncio
+async def test_files_mode_does_not_mirror_langflow_history_to_native_store(
+    monkeypatch, storage_path, session_factory
+):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "files")
+    svc = _svc(storage_path, session_factory)
+
+    await svc.sync_langflow_history(
+        "alice",
+        "langflow-thread",
+        _payload(endpoint="langflow"),
+        [{"role": "user", "content": "Question"}],
+        append_only=True,
+    )
+
+    async with session_factory() as session:
+        assert await ChatHistoryRepo(session).get_conversation("langflow-thread") is None

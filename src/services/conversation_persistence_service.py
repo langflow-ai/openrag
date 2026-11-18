@@ -223,6 +223,8 @@ class ConversationPersistenceService:
         append_only: bool,
     ) -> None:
         """Mirror a completed Langflow thread into the native history store."""
+        if not db_writes_enabled():
+            return
         session_factory = self._resolve_session_factory()
         if session_factory is None:
             return

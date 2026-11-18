@@ -91,13 +91,13 @@ async def _persist_error_conversation(
     Claiming is required: otherwise the client may retry with this response_id and
     ``_assert_owns`` returns 404 (session_not_found) for an unclaimed session.
     """
-    from datetime import datetime
+    from datetime import UTC, datetime
 
     from services.session_ownership_service import session_ownership_service
 
     if not await session_ownership_service.claim_session(user_id, store_id):
         raise RuntimeError("Unable to establish chat session ownership")
-    conversation_state["last_activity"] = datetime.now()
+    conversation_state["last_activity"] = datetime.now(UTC)
     await store_conversation_thread(user_id, store_id, conversation_state)
 
 
@@ -123,7 +123,7 @@ async def get_user_conversations(user_id: str):
 
 def get_conversation_thread(user_id: str, previous_response_id: str = None):
     """Get or create a specific conversation thread with function call preservation"""
-    from datetime import datetime
+    from datetime import UTC, datetime
 
     # Create user namespace if it doesn't exist
     if user_id not in active_conversations:
@@ -145,8 +145,8 @@ def get_conversation_thread(user_id: str, previous_response_id: str = None):
             }
         ],
         "previous_response_id": previous_response_id,  # Parent response_id for branching
-        "created_at": datetime.now(),
-        "last_activity": datetime.now(),
+        "created_at": datetime.now(UTC),
+        "last_activity": datetime.now(UTC),
     }
 
     return new_conversation
@@ -198,27 +198,30 @@ async def store_conversation_thread(user_id: str, response_id: str, conversation
 
     await conversation_persistence.store_conversation_thread(user_id, response_id, metadata_only)
     if user_assistant_messages and user_assistant_messages[-1].get("role") == "assistant":
-        # A restarted thread only reconstructs its newly submitted turns in
-        # memory. Mirror each of those turns once: subsequent turns must not
-        # append the earlier restored turns again.
+        # Mirror each completed turn once. This is also needed for a live
+        # Langflow thread: its in-memory state holds all preceding turns.
         mirrored_message_count = conversation_state.get("_mirrored_message_count", 0)
         if not isinstance(mirrored_message_count, int) or mirrored_message_count < 0:
             mirrored_message_count = 0
-        messages_to_sync = (
-            user_assistant_messages[mirrored_message_count:]
-            if persisted_metadata
-            else user_assistant_messages
-        )
-        await conversation_persistence.sync_langflow_history(
-            user_id,
-            response_id,
-            metadata_only,
-            messages_to_sync,
-            # A restored Langflow thread only has its new turn in memory. Append
-            # that turn to the native mirror instead of replacing imported history.
-            append_only=bool(persisted_metadata),
-        )
-        if persisted_metadata:
+        messages_to_sync = user_assistant_messages[mirrored_message_count:]
+        try:
+            await conversation_persistence.sync_langflow_history(
+                user_id,
+                response_id,
+                metadata_only,
+                messages_to_sync,
+                # The native copy is best-effort and must never invalidate an
+                # answer Langflow has already delivered to the user.
+                append_only=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Failed to mirror Langflow history to native chat storage",
+                user_id=user_id,
+                response_id=response_id,
+                error=str(exc),
+            )
+        else:
             conversation_state["_mirrored_message_count"] = len(user_assistant_messages)
 
 

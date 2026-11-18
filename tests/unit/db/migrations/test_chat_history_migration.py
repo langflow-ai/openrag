@@ -338,6 +338,9 @@ async def test_run_marks_migration_done(staged_files, session_factory, monkeypat
             session, migrations_runtime.NATIVE_CHAT_HISTORY_JSON_TO_DB_V1
         )
         assert await migrations_runtime._already_done(
+            session, migrations_runtime.NATIVE_CHAT_HISTORY_JSON_TO_DB_V2
+        )
+        assert await migrations_runtime._already_done(
             session, migrations_runtime.LANGFLOW_HISTORY_TO_NATIVE_V1
         )
 
@@ -410,6 +413,52 @@ async def test_langflow_history_migration_leaves_failed_sessions_retryable(sessi
     assert stats == {"conversations": 0, "messages": 0, "failed": 1}
     async with session_factory() as session:
         assert await ChatHistoryRepo(session).get_conversation("unavailable") is None
+
+
+@pytest.mark.asyncio
+async def test_langflow_history_migration_skips_foreign_native_conversation_and_imports_rest(
+    session_factory,
+):
+    """One permanently conflicting row cannot block other Langflow imports."""
+    async with session_factory() as session:
+        legacy_repo = ConversationRepo(session)
+        await legacy_repo.upsert(
+            response_id="foreign-native",
+            user_id="alice",
+            endpoint="langflow",
+        )
+        await legacy_repo.upsert(
+            response_id="importable",
+            user_id="alice",
+            endpoint="langflow",
+        )
+        await ChatHistoryRepo(session).create_conversation(
+            conversation_id="foreign-native",
+            user_id="bob",
+            title="Bob's thread",
+            filter_id=None,
+        )
+        await session.commit()
+
+    fetched: list[str] = []
+
+    async def _fetch_messages(session_id):
+        fetched.append(session_id)
+        return [{"role": "user", "content": "Imported question"}]
+
+    async with session_factory() as session:
+        stats = await migrations_runtime.migrate_langflow_history_to_native(
+            session, _fetch_messages
+        )
+        await session.commit()
+
+    assert stats == {"conversations": 1, "messages": 1, "failed": 0}
+    assert fetched == ["importable"]
+    async with session_factory() as session:
+        imported = await ChatHistoryRepo(session).get_conversation("importable")
+        foreign = await ChatHistoryRepo(session).get_conversation("foreign-native")
+    assert imported is not None
+    assert foreign is not None and foreign.user_id == "bob"
 
 
 @pytest.mark.asyncio

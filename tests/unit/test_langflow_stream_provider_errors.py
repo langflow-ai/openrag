@@ -546,3 +546,64 @@ async def test_chat_stream_yields_provider_error_chunk(monkeypatch, store_in_mem
     assert not stored_id.startswith("error_")
     assert chunks[0].get("id") == stored_id
     assert stored_id in agent_module.active_conversations.get(user_id, {})
+
+
+@pytest.mark.asyncio
+async def test_store_conversation_thread_appends_only_new_langflow_turns(monkeypatch):
+    stored: list[dict] = []
+    mirrored: list[tuple[list[dict], bool]] = []
+
+    async def _store(*_args):
+        stored.append(_args[-1])
+
+    async def _sync(_user_id, _response_id, _metadata, messages, *, append_only):
+        mirrored.append((messages, append_only))
+
+    monkeypatch.setattr(agent_module.conversation_persistence, "store_conversation_thread", _store)
+    monkeypatch.setattr(agent_module.conversation_persistence, "sync_langflow_history", _sync)
+    state = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "turn A"},
+            {"role": "assistant", "content": "answer A"},
+        ],
+    }
+
+    await agent_module.store_conversation_thread("alice", "thread", state)
+    state["messages"].extend(
+        [
+            {"role": "user", "content": "turn B"},
+            {"role": "assistant", "content": "answer B"},
+        ]
+    )
+    await agent_module.store_conversation_thread("alice", "thread", state)
+
+    assert stored
+    assert [(len(messages), append_only) for messages, append_only in mirrored] == [
+        (2, True),
+        (2, True),
+    ]
+    assert [message["content"] for message in mirrored[1][0]] == ["turn B", "answer B"]
+
+
+@pytest.mark.asyncio
+async def test_store_conversation_thread_keeps_langflow_turn_when_mirroring_fails(monkeypatch):
+    async def _store(*_args):
+        return None
+
+    async def _fail(*_args, **_kwargs):
+        raise RuntimeError("native history unavailable")
+
+    monkeypatch.setattr(agent_module.conversation_persistence, "store_conversation_thread", _store)
+    monkeypatch.setattr(agent_module.conversation_persistence, "sync_langflow_history", _fail)
+    state = {
+        "messages": [
+            {"role": "user", "content": "question"},
+            {"role": "assistant", "content": "answer"},
+        ],
+    }
+
+    await agent_module.store_conversation_thread("alice", "mirror-failure", state)
+
+    assert state["messages"][-1]["content"] == "answer"
+    assert "_mirrored_message_count" not in state
