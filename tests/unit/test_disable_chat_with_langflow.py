@@ -46,23 +46,20 @@ async def test_langflow_chat_uses_direct_chat_when_disabled(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_langflow_history_uses_direct_history_when_disabled(monkeypatch):
-    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", True)
-
+async def test_chat_history_uses_native_history():
     service = ChatService()
-    service.get_chat_history = AsyncMock(
+    service.native_chat_history_service.history = AsyncMock(
         return_value={
             "user_id": "db-user",
-            "endpoint": "chat",
             "conversations": [],
             "total_conversations": 0,
         }
     )
 
-    result = await service.get_langflow_history("db-user")
+    result = await service.get_chat_history("db-user")
 
-    assert result["endpoint"] == "chat"
-    service.get_chat_history.assert_awaited_once_with("db-user")
+    assert result["user_id"] == "db-user"
+    service.native_chat_history_service.history.assert_awaited_once_with("db-user")
 
 
 @pytest.mark.asyncio
@@ -122,11 +119,14 @@ async def test_delete_all_sessions_deletes_native_and_langflow_history(monkeypat
 @pytest.mark.asyncio
 async def test_delete_session_removes_native_history_when_langflow_chat_is_enabled(monkeypatch):
     monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", False)
-    monkeypatch.setattr("services.chat_service.db_writes_enabled", lambda: True)
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    monkeypatch.delenv("OPENRAG_DISABLE_DB_WORKSPACE_CONFIG", raising=False)
     service = ChatService()
     service.native_chat_history_service.owns_conversation = AsyncMock(return_value=True)
     service.native_chat_history_service.delete = AsyncMock(return_value=True)
     service.session_ownership_service.release_session = AsyncMock()
+    service.session_ownership_service.get_conversation_sessions = AsyncMock(return_value=[])
+    monkeypatch.setattr("agent.delete_user_conversation", AsyncMock(return_value=False))
 
     result = await service.delete_session("db-user", "native-1")
 
@@ -136,3 +136,29 @@ async def test_delete_session_removes_native_history_when_langflow_chat_is_enabl
     service.session_ownership_service.release_session.assert_awaited_once_with(
         "db-user", "native-1"
     )
+
+
+@pytest.mark.asyncio
+async def test_delete_session_keeps_ownership_when_legacy_resolution_fails(monkeypatch):
+    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", False)
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    monkeypatch.delenv("OPENRAG_DISABLE_DB_WORKSPACE_CONFIG", raising=False)
+    service = ChatService()
+    service.native_chat_history_service.owns_conversation = AsyncMock(return_value=True)
+    service.native_chat_history_service.delete = AsyncMock(return_value=True)
+    service.session_ownership_service.get_conversation_sessions = AsyncMock(
+        side_effect=RuntimeError("ownership lookup failed")
+    )
+    service.session_ownership_service.release_session = AsyncMock()
+    delete_langflow_session = AsyncMock(return_value=True)
+    monkeypatch.setattr(service, "_delete_langflow_session", delete_langflow_session)
+    delete_user_conversation = AsyncMock(return_value=True)
+    monkeypatch.setattr("agent.delete_user_conversation", delete_user_conversation)
+
+    result = await service.delete_session("db-user", "native-1")
+
+    assert result == {"success": False, "error": "ownership lookup failed"}
+    service.native_chat_history_service.delete.assert_awaited_once_with("native-1", "db-user")
+    service.session_ownership_service.release_session.assert_not_awaited()
+    delete_langflow_session.assert_not_awaited()
+    delete_user_conversation.assert_not_awaited()

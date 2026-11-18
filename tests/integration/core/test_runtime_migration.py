@@ -247,19 +247,17 @@ async def _shutdown_app(app) -> None:
 
 async def _db_snapshot() -> dict[str, int]:
     from db.engine import SessionLocal
-    from db.models import Conversation, MigrationStatus, SessionOwnership, User
+    from db.models import Conversation, SessionOwnership, User
 
     assert SessionLocal is not None
     async with SessionLocal() as session:
         users = await session.scalar(select(func.count()).select_from(User))
         conversations = await session.scalar(select(func.count()).select_from(Conversation))
         ownership = await session.scalar(select(func.count()).select_from(SessionOwnership))
-        statuses = await session.scalar(select(func.count()).select_from(MigrationStatus))
     return {
         "users": int(users or 0),
         "conversations": int(conversations or 0),
         "ownership": int(ownership or 0),
-        "statuses": int(statuses or 0),
     }
 
 

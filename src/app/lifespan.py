@@ -143,6 +143,24 @@ async def _periodic_webhook_renewal(services):
         await asyncio.sleep(WEBHOOK_RENEWAL_INTERVAL_SECONDS)
 
 
+async def _migrate_langflow_history_in_background() -> None:
+    """Import legacy Langflow messages without delaying application readiness."""
+    try:
+        from db.engine import SessionLocal
+        from db.migrations_runtime import run_langflow_history_migration
+
+        if SessionLocal is None:
+            logger.warning("Skipping Langflow history import: database is unavailable")
+            return
+        async with SessionLocal() as session:
+            await run_langflow_history_migration(session)
+            await session.commit()
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Background Langflow history import failed", error=str(exc))
+
+
 async def run_startup(app: FastAPI):
     """Single source of truth for startup work.
 
@@ -228,7 +246,7 @@ async def run_startup(app: FastAPI):
 
         if _SL is not None:
             async with _SL() as _session:
-                await run_runtime_migration(_session)
+                await run_runtime_migration(_session, run_langflow_history=False)
                 await _session.commit()
     except Exception as e:
         logger.error("Runtime DB migration failed", error=str(e))
@@ -371,6 +389,12 @@ async def run_startup(app: FastAPI):
     renewal_task = asyncio.create_task(_periodic_webhook_renewal(services))
     app.state.background_tasks.add(renewal_task)
     renewal_task.add_done_callback(app.state.background_tasks.discard)
+
+    # Remote Langflow calls are best-effort. Keep them out of the startup
+    # transaction so a slow or unavailable Langflow cannot prevent readiness.
+    history_migration_task = asyncio.create_task(_migrate_langflow_history_in_background())
+    app.state.background_tasks.add(history_migration_task)
+    history_migration_task.add_done_callback(app.state.background_tasks.discard)
 
 
 async def run_shutdown(app: FastAPI):

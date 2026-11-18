@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -147,8 +148,16 @@ async def test_native_metadata_migration_recovers_messages_and_keeps_empty_histo
     """Native metadata-only rows remain valid continuations after migration."""
     conversations = json.loads((staged_files / "conversations.json").read_text())
     conversations["alice"]["r-1"]["messages"] = [
-        {"role": "user", "content": "Earlier question"},
-        {"role": "assistant", "content": "Earlier answer"},
+        {
+            "role": "user",
+            "content": "Earlier question",
+            "timestamp": "2026-04-01T10:01:00Z",
+        },
+        {
+            "role": "assistant",
+            "content": "Earlier answer",
+            "timestamp": "2026-04-01T10:02:00Z",
+        },
         {"role": ["user"], "content": "Skip malformed role"},
     ]
     conversations["alice"]["metadata-only"] = {
@@ -171,6 +180,10 @@ async def test_native_metadata_migration_recovers_messages_and_keeps_empty_histo
         ("user", "Earlier question"),
         ("assistant", "Earlier answer"),
     ]
+    assert [row.created_at for row in recovered] == [
+        datetime(2026, 4, 1, 10, 1, tzinfo=UTC),
+        datetime(2026, 4, 1, 10, 2, tzinfo=UTC),
+    ]
     history = await NativeChatHistoryService(session_factory=session_factory).pydantic_history(
         "r-1", "alice"
     )
@@ -180,6 +193,92 @@ async def test_native_metadata_migration_recovers_messages_and_keeps_empty_histo
     ]
     assert metadata_only is not None
     assert metadata_only.total_messages == 2
+
+
+@pytest.mark.asyncio
+async def test_json_import_recovers_snapshot_after_0010_metadata_move(tmp_path, monkeypatch):
+    """A 0010 metadata row is completed once its legacy JSON snapshot is found."""
+    database_path = tmp_path / "history.db"
+    migration_path = ROOT / "alembic" / "versions" / "0010_move_legacy_native_chat.py"
+    spec = importlib.util.spec_from_file_location("migration_0010_snapshot", migration_path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    sync_engine = sa.create_engine(f"sqlite:///{database_path}")
+    SQLModel.metadata.create_all(sync_engine)
+    with sync_engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO langflow_conversations
+                    (response_id, user_id, title, endpoint, previous_response_id, filter_id,
+                     total_messages, created_at, last_activity)
+                VALUES
+                    ('legacy-chat', 'alice', 'Legacy chat', 'chat', NULL, NULL, 2,
+                     '2026-04-01 10:00:00', '2026-04-01 10:02:00')
+                """
+            )
+        )
+        migration.op = Operations(MigrationContext.configure(connection))
+        migration.upgrade()
+    sync_engine.dispose()
+
+    (tmp_path / "conversations.json").write_text(
+        json.dumps(
+            {
+                "alice": {
+                    "legacy-chat": {
+                        "endpoint": "chat",
+                        "total_messages": 2,
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": "Earlier question",
+                                "timestamp": "2026-04-01T10:01:00Z",
+                            },
+                            {
+                                "role": "assistant",
+                                "content": "Earlier answer",
+                                "timestamp": "2026-04-01T10:02:00Z",
+                            },
+                        ],
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setattr(migrations_runtime, "get_data_file", lambda name: str(tmp_path / name))
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            stats = await migrations_runtime.migrate_chat_history_json_to_db(session)
+            await session.commit()
+
+        assert stats["native_conversations"] == 1
+        async with factory() as session:
+            repo = ChatHistoryRepo(session)
+            conversation = await repo.get_conversation("legacy-chat")
+            messages = await repo.list_messages("legacy-chat")
+
+        assert conversation is not None
+        assert conversation.total_messages == 2
+        assert [(message.role, message.content) for message in messages] == [
+            ("user", "Earlier question"),
+            ("assistant", "Earlier answer"),
+        ]
+        assert [message.created_at for message in messages] == [
+            datetime(2026, 4, 1, 10, 1, tzinfo=UTC),
+            datetime(2026, 4, 1, 10, 2, tzinfo=UTC),
+        ]
+
+        async with factory() as session:
+            repeated = await migrations_runtime.migrate_chat_history_json_to_db(session)
+            await session.commit()
+        assert repeated["native_conversations"] == 0
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
@@ -212,8 +311,21 @@ async def test_migration_no_files_is_noop(tmp_path, monkeypatch, session_factory
 
 
 @pytest.mark.asyncio
-async def test_run_marks_migration_done(staged_files, session_factory):
-    """Top-level run() records the step in migration_status."""
+async def test_run_marks_migration_done(staged_files, session_factory, monkeypatch):
+    """Top-level run() records each completed history migration."""
+
+    async def _no_native_history(_session):
+        return 0
+
+    async def _no_langflow_history(_session):
+        return {"conversations": 0, "messages": 0, "failed": 0}
+
+    monkeypatch.setattr(
+        migrations_runtime, "migrate_legacy_native_chat_history_json_to_db", _no_native_history
+    )
+    monkeypatch.setattr(
+        migrations_runtime, "migrate_langflow_history_to_native", _no_langflow_history
+    )
     async with session_factory() as session:
         await migrations_runtime.run(session)
         await session.commit()
@@ -225,6 +337,250 @@ async def test_run_marks_migration_done(staged_files, session_factory):
         assert await migrations_runtime._already_done(
             session, migrations_runtime.NATIVE_CHAT_HISTORY_JSON_TO_DB_V1
         )
+        assert await migrations_runtime._already_done(
+            session, migrations_runtime.NATIVE_CHAT_HISTORY_JSON_TO_DB_V2
+        )
+        assert await migrations_runtime._already_done(
+            session, migrations_runtime.LANGFLOW_HISTORY_TO_NATIVE_V1
+        )
+
+
+@pytest.mark.asyncio
+async def test_langflow_history_migration_copies_remote_messages(session_factory):
+    async with session_factory() as session:
+        await ConversationRepo(session).upsert(
+            response_id="langflow-1",
+            user_id="alice",
+            title="Imported thread",
+            endpoint="langflow",
+            filter_id="filter-1",
+            total_messages=5,
+        )
+        await session.commit()
+
+    async def _fetch_messages(session_id):
+        assert session_id == "langflow-1"
+        return [
+            {"role": "user", "content": "Earlier question", "timestamp": "2026-01-01T10:00:00Z"},
+            {
+                "role": "assistant",
+                "content": "Earlier answer",
+                "timestamp": "2026-01-01T10:00:01Z",
+                "chunks": [{"type": "response.completed"}],
+            },
+        ]
+
+    async with session_factory() as session:
+        stats = await migrations_runtime.migrate_langflow_history_to_native(
+            session, _fetch_messages
+        )
+        await session.commit()
+
+    assert stats == {"conversations": 1, "messages": 2, "failed": 0}
+    async with session_factory() as session:
+        conversation = await ChatHistoryRepo(session).get_conversation("langflow-1")
+        messages = await ChatHistoryRepo(session).list_messages("langflow-1")
+        ownership = await SessionOwnershipRepo(session).get("langflow-1")
+
+    assert conversation.title == "Imported thread"
+    assert conversation.filter_id == "filter-1"
+    assert conversation.total_messages == 5
+    assert [(message.role, message.content) for message in messages] == [
+        ("user", "Earlier question"),
+        ("assistant", "Earlier answer"),
+    ]
+    assert messages[1].event_data["chunks"] == [{"type": "response.completed"}]
+    assert ownership.user_id == "alice"
+
+
+@pytest.mark.asyncio
+async def test_langflow_history_migration_leaves_failed_sessions_retryable(session_factory):
+    async with session_factory() as session:
+        await ConversationRepo(session).upsert(
+            response_id="unavailable",
+            user_id="alice",
+            endpoint="langflow",
+        )
+        await session.commit()
+
+    async def _unavailable(_session_id):
+        raise RuntimeError("Langflow is unavailable")
+
+    async with session_factory() as session:
+        stats = await migrations_runtime.migrate_langflow_history_to_native(session, _unavailable)
+        await session.commit()
+
+    assert stats == {"conversations": 0, "messages": 0, "failed": 1}
+    async with session_factory() as session:
+        assert await ChatHistoryRepo(session).get_conversation("unavailable") is None
+
+
+@pytest.mark.asyncio
+async def test_langflow_history_migration_skips_foreign_native_conversation_and_imports_rest(
+    session_factory,
+):
+    """One permanently conflicting row cannot block other Langflow imports."""
+    async with session_factory() as session:
+        legacy_repo = ConversationRepo(session)
+        await legacy_repo.upsert(
+            response_id="foreign-native",
+            user_id="alice",
+            endpoint="langflow",
+        )
+        await legacy_repo.upsert(
+            response_id="importable",
+            user_id="alice",
+            endpoint="langflow",
+        )
+        await ChatHistoryRepo(session).create_conversation(
+            conversation_id="foreign-native",
+            user_id="bob",
+            title="Bob's thread",
+            filter_id=None,
+        )
+        await session.commit()
+
+    fetched: list[str] = []
+
+    async def _fetch_messages(session_id):
+        fetched.append(session_id)
+        return [{"role": "user", "content": "Imported question"}]
+
+    async with session_factory() as session:
+        stats = await migrations_runtime.migrate_langflow_history_to_native(
+            session, _fetch_messages
+        )
+        await session.commit()
+
+    assert stats == {"conversations": 1, "messages": 1, "failed": 0}
+    assert fetched == ["importable"]
+    async with session_factory() as session:
+        imported = await ChatHistoryRepo(session).get_conversation("importable")
+        foreign = await ChatHistoryRepo(session).get_conversation("foreign-native")
+    assert imported is not None
+    assert foreign is not None and foreign.user_id == "bob"
+
+
+@pytest.mark.asyncio
+async def test_langflow_history_migration_replaces_a_partial_native_mirror(session_factory):
+    """A turn mirrored before import must not hide older Langflow history."""
+    async with session_factory() as session:
+        await ConversationRepo(session).upsert(
+            response_id="partial-mirror",
+            user_id="alice",
+            endpoint="langflow",
+            total_messages=4,
+        )
+        native_repo = ChatHistoryRepo(session)
+        conversation = await native_repo.create_conversation(
+            conversation_id="partial-mirror",
+            user_id="alice",
+            title="Newest turn only",
+            filter_id=None,
+        )
+        await native_repo.append_message(
+            conversation=conversation,
+            role="user",
+            content="Newest question",
+        )
+        await native_repo.append_message(
+            conversation=conversation,
+            role="assistant",
+            content="Newest answer",
+        )
+        await session.commit()
+
+    fetched: list[str] = []
+
+    async def _fetch_messages(session_id):
+        fetched.append(session_id)
+        return [
+            {"role": "user", "content": "Earlier question"},
+            {"role": "assistant", "content": "Earlier answer"},
+            {"role": "user", "content": "Newest question"},
+            {"role": "assistant", "content": "Newest answer"},
+        ]
+
+    async with session_factory() as session:
+        stats = await migrations_runtime.migrate_langflow_history_to_native(
+            session, _fetch_messages
+        )
+
+    assert stats == {"conversations": 1, "messages": 4, "failed": 0}
+    assert fetched == ["partial-mirror"]
+    async with session_factory() as session:
+        messages = await ChatHistoryRepo(session).list_messages("partial-mirror")
+    assert [(message.role, message.content) for message in messages] == [
+        ("user", "Earlier question"),
+        ("assistant", "Earlier answer"),
+        ("user", "Newest question"),
+        ("assistant", "Newest answer"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_langflow_history_migration_commits_successes_before_later_fetch_failure(
+    session_factory,
+):
+    """A cancelled or failed later fetch cannot roll back completed imports."""
+    async with session_factory() as session:
+        legacy_repo = ConversationRepo(session)
+        await legacy_repo.upsert(response_id="first", user_id="alice", endpoint="langflow")
+        await legacy_repo.upsert(response_id="second", user_id="alice", endpoint="langflow")
+        await session.commit()
+
+    async def _fetch_messages(session_id):
+        if session_id == "second":
+            raise RuntimeError("Langflow unavailable")
+        return [{"role": "user", "content": "Persisted before failure"}]
+
+    async with session_factory() as session:
+        stats = await migrations_runtime.migrate_langflow_history_to_native(
+            session, _fetch_messages
+        )
+
+    assert stats == {"conversations": 1, "messages": 1, "failed": 1}
+    async with session_factory() as session:
+        assert await ChatHistoryRepo(session).get_conversation("first") is not None
+        assert await ChatHistoryRepo(session).get_conversation("second") is None
+
+
+@pytest.mark.asyncio
+async def test_langflow_history_migration_continues_after_a_sync_failure(
+    monkeypatch, session_factory
+):
+    """Rollback of one sync failure cannot expire later legacy rows."""
+    async with session_factory() as session:
+        legacy_repo = ConversationRepo(session)
+        await legacy_repo.upsert(response_id="broken", user_id="alice", endpoint="langflow")
+        await legacy_repo.upsert(response_id="healthy", user_id="alice", endpoint="langflow")
+        await session.commit()
+
+    original_sync = NativeChatHistoryService.sync_langflow_conversation_in_session.__func__
+
+    async def _fail_broken_sync(cls, repo, **kwargs):
+        if kwargs["conversation_id"] == "broken":
+            raise ValueError("malformed legacy conversation")
+        return await original_sync(cls, repo, **kwargs)
+
+    monkeypatch.setattr(
+        NativeChatHistoryService,
+        "sync_langflow_conversation_in_session",
+        classmethod(_fail_broken_sync),
+    )
+
+    async def _fetch_messages(session_id):
+        return [{"role": "user", "content": f"{session_id} question"}]
+
+    async with session_factory() as session:
+        stats = await migrations_runtime.migrate_langflow_history_to_native(
+            session, _fetch_messages
+        )
+
+    assert stats == {"conversations": 1, "messages": 1, "failed": 0}
+    async with session_factory() as session:
+        assert await ChatHistoryRepo(session).get_conversation("broken") is None
+        assert await ChatHistoryRepo(session).get_conversation("healthy") is not None
 
 
 @pytest.mark.asyncio
