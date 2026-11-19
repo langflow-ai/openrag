@@ -312,6 +312,13 @@ describe("ImportWizard", () => {
     );
     expect(start).toBeDisabled();
 
+    await user.hover(
+      screen.getByRole("button", { name: "What is an analyser file?" }),
+    );
+    expect(
+      (await screen.findAllByText(/A snapshot keeps only the path/))[0],
+    ).toBeInTheDocument();
+
     await user.upload(
       input,
       new File(["dna, deoxyribonucleic acid\n"], "field_synonyms.txt", {

@@ -1,9 +1,15 @@
 "use client";
 
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Info } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   type AnalyserFileRef,
   type AnalyserFileUpload,
@@ -105,7 +111,28 @@ export function PreflightReport({
       {result.analyser_files.length > 0 && (
         <div className="space-y-3">
           <div>
-            <p className="text-sm font-medium">Analyser files</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-sm font-medium">Analyser files</p>
+              <TooltipProvider delayDuration={100}>
+                <Tooltip>
+                  <TooltipTrigger
+                    type="button"
+                    aria-label="What is an analyser file?"
+                  >
+                    <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-xs">
+                    OpenSearch analysers decide how text is matched. Some read
+                    their rules from a file on the cluster, such as a synonym
+                    list (synonyms_path, e.g. “dna, deoxyribonucleic acid”) or a
+                    stop-word list (stopwords_path). A snapshot keeps only the
+                    path, not the file, so the index cannot open without it.
+                    Upload the same file the source cluster used; you can get it
+                    from that cluster’s config directory or its owner.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
             <p className="text-xs text-muted-foreground">
               These indices reference files stored on the source cluster, which
               snapshots do not contain. Upload each file; its lines are inlined
