@@ -31,8 +31,9 @@ cp results/results.json results/baseline.json
 # After a change to search, chunking or embeddings, run again and compare.
 uv run run_eval.py run --baseline results/baseline.json
 
-# Read the summary of the latest run.
+# Read the summary of the latest run, or open the visual report.
 cat results/summary.md
+open results/report.html
 ```
 
 The same steps are available as `make` targets from the repository root.
@@ -48,6 +49,7 @@ Paths are relative to this directory.
 | `make eval-baseline` | `uv run run_eval.py run`, then copy the results to `results/baseline.json` |
 | `make eval-compare` | `uv run run_eval.py compare results/baseline.json results/results.json` |
 | `make eval-compare BASELINE=a.json CURRENT=b.json` | `uv run run_eval.py compare a.json b.json` |
+| `make eval-compare HTML=compare.html` | `uv run run_eval.py compare … --html compare.html` |
 | `make eval-baseline OUTPUT_DIR=results/demo` | `uv run run_eval.py run --output-dir results/demo`, then copy the results to `results/demo/baseline.json` |
 
 Pass any other option with `EVAL_ARGS`, for example
@@ -69,6 +71,7 @@ The rest of this file explains each step.
 | `metrics.py` | Turns ranked chunks into ranked files and scores them |
 | `report.py` | Writes results, the summary and the baseline diff |
 | `scores.py` | Tests relevance-score thresholds and tiers offline from one run |
+| `html_report.py` | Renders the same results as a self-contained HTML report |
 | `FRAMEWORK_COMPARISON.md` | How this harness compares with RAGAS, DeepEval, LangSmith and others |
 | `results/` | Output of each run (not committed) |
 
@@ -466,8 +469,37 @@ scores were compared.
 
 ## Results files
 
-Each run writes four files to the output directory: `results.json` and
-`summary.md` for the latest run, and a timestamped copy of each.
+Each run writes six files to the output directory: `results.json`,
+`summary.md` and `report.html` for the latest run, and a timestamped copy of
+each.
+
+### The visual report
+
+`report.html` shows the same numbers as `summary.md` as a page you can open in
+a browser, attach to a pull request or share:
+
+- headline figures (recall@5, MRR, nDCG@5, passage scores) with the change from
+  the baseline, marked with an arrow and a sign;
+- recall at each cutoff and recall@5 by tag, the current run next to the
+  baseline;
+- a plain-language summary first, such as "Recall improved, but relevant
+  results tend to rank lower", built from recall@5 and MRR (changes under 0.005
+  count as no change);
+- with a baseline, how many questions regressed, stayed the same or improved,
+  then Regressed and Improved tabs with one row per question, largest change
+  first. Open a row for its metrics and its file and answer-chunk ranks before
+  and after;
+- the questions below full recall@5, answer quality when the run scored
+  answers, and every metric as a table. A list longer than five rows starts
+  collapsed.
+
+Hover over a bar, or tab to it, to see its value. The file is self-contained:
+no network access, no external scripts or fonts, light and dark mode. To get a
+report for any two results files, pass `--html`:
+
+```bash
+uv run run_eval.py compare results/baseline.json results/results.json --html compare.html
+```
 
 `results.json` has these parts:
 

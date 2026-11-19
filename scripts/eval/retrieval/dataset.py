@@ -121,11 +121,17 @@ def _normalize(text: str) -> str:
     return " ".join(text.casefold().split())
 
 
+# Cache marker for an expected file that is not UTF-8 text (a PDF, DOCX...).
+BINARY = "\0binary"
+
+
 def _snippet_problems(query: Query, corpus_dir: Path, cache: dict[str, str]) -> list[str]:
     """Expected files that do not contain the question's ``expected_text``.
 
     A snippet that is not in the source document can never be found in one of
-    its chunks, so the question would score zero on every run.
+    its chunks, so the question would score zero on every run. Files that are
+    not UTF-8 text, such as PDFs, cannot be read here; for those the snippet is
+    only checked at run time, against the text search returns.
     """
     if query.expected_text is None:
         return []
@@ -133,7 +139,12 @@ def _snippet_problems(query: Query, corpus_dir: Path, cache: dict[str, str]) -> 
     problems = []
     for name in query.expected_files:
         if name not in cache:
-            cache[name] = _normalize((corpus_dir / name).read_text(encoding="utf-8"))
+            try:
+                cache[name] = _normalize((corpus_dir / name).read_text(encoding="utf-8"))
+            except UnicodeDecodeError:
+                cache[name] = BINARY
+        if cache[name] is BINARY:
+            continue
         if needle not in cache[name]:
             problems.append(f"'expected_text' {query.expected_text!r} does not appear in {name}")
     return problems

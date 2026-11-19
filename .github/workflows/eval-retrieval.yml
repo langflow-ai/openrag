@@ -204,6 +204,10 @@ jobs:
         run: |
           if [ -f scripts/eval/retrieval/results/summary.md ]; then
             cat scripts/eval/retrieval/results/summary.md >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo
+              echo "For charts, download the \`retrieval-eval-results\` artifact and open \`report.html\`."
+            } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "The eval did not produce a summary." >> "$GITHUB_STEP_SUMMARY"
           fi

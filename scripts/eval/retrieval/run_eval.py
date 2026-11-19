@@ -34,6 +34,7 @@ from typing import Any
 
 import answers
 import dataset
+import html_report
 import metrics
 import report
 import scores
@@ -287,6 +288,9 @@ def build_parser() -> argparse.ArgumentParser:
     compare = commands.add_parser("compare", help="diff two results files offline")
     compare.add_argument("baseline", type=Path)
     compare.add_argument("current", type=Path)
+    compare.add_argument(
+        "--html", type=Path, help="also write the comparison as an HTML report to this path"
+    )
 
     promote = commands.add_parser(
         "promote", help="replace the baseline with a results file, only if it improves on it"
@@ -813,7 +817,8 @@ async def run(args: argparse.Namespace) -> int:
         results["answer_settings"] = answer_settings
     diff = report.diff_results(baseline, results) if baseline is not None else None
     summary = report.render_summary(results, diff)
-    written = report.write_results(results, summary, args.output_dir, started_at)
+    page = html_report.render_html(results, diff, baseline)
+    written = report.write_results(results, summary, args.output_dir, started_at, page)
 
     print()
     print(summary)
@@ -1059,11 +1064,14 @@ def score_report(args: argparse.Namespace) -> int:
 
 
 def compare(args: argparse.Namespace) -> int:
-    diff = report.diff_results(
-        report.load_results(args.baseline),
-        report.load_results(args.current),
-    )
+    baseline = report.load_results(args.baseline)
+    current = report.load_results(args.current)
+    diff = report.diff_results(baseline, current)
     print(report.render_diff(diff))
+    if args.html is not None:
+        args.html.parent.mkdir(parents=True, exist_ok=True)
+        args.html.write_text(html_report.render_html(current, diff, baseline), encoding="utf-8")
+        print(f"Wrote: {args.html}")
     return 0
 
 
