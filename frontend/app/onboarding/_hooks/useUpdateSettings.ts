@@ -76,6 +76,8 @@ export function useUpdateSettings(
           updatedSettings.watsonx_endpoint = config.endpoint;
         } else if (provider === "ollama") {
           updatedSettings.ollama_endpoint = config.endpoint;
+        } else if (provider === "openai") {
+          updatedSettings.openai_base_url = config.endpoint;
         }
       }
 
