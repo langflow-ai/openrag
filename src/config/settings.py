@@ -395,6 +395,18 @@ def is_ingest_preview_flag_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def is_date_range_v2_flag_enabled() -> bool:
+    """Raw opt-in flag for the date range v2 experience.
+
+    Read per-call from the environment. Note that a running process does not see
+    its environment change, so turning the flag off still requires a restart or
+    redeploy. Run-mode gating is applied by
+    ``utils.date_range_flag.is_date_range_v2_enabled()``.
+    """
+    raw = os.getenv("OPENRAG_DATE_RANGE_V2_ENABLED", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
 def is_url_connector_enabled() -> bool:
     """Feature flag for the managed public-website connector.
 
