@@ -49,6 +49,7 @@ async def test_sync_specific_files_does_not_raise_on_incompatible_type():
     connector.list_files = AsyncMock(return_value=expanded_response)
     connector.list_selected_files = AsyncMock(return_value=expanded_response)
     connector.cfg = MagicMock()
+    connector.filename_for_index = lambda _file_id, name: name  # BaseConnector default
 
     service.get_connector = AsyncMock(return_value=connector)
 
@@ -135,6 +136,7 @@ async def test_connector_check_duplicates():
     connector.list_files = AsyncMock(return_value=expanded_files)
     connector.list_selected_files = AsyncMock(return_value=expanded_files)
     connector.cfg = MagicMock()
+    connector.filename_for_index = lambda _file_id, name: name  # BaseConnector default
     connector_service.get_connector = AsyncMock(return_value=connector)
 
     # Mock session_manager and OpenSearch client
@@ -306,6 +308,7 @@ async def test_connector_sync_skip_duplicates_returns_no_files_when_all_selected
     connector.is_authenticated = True
     connector.authenticate = AsyncMock(return_value=True)
     connector.cfg = MagicMock()
+    connector.filename_for_index = lambda _file_id, name: name  # BaseConnector default
     expanded_files = {
         "files": [
             {"id": "file-1", "name": "existing.pdf", "mimeType": "application/pdf"},
@@ -379,6 +382,7 @@ async def test_connector_sync_skip_duplicates_submits_only_expanded_non_duplicat
     connector.is_authenticated = True
     connector.authenticate = AsyncMock(return_value=True)
     connector.cfg = MagicMock()
+    connector.filename_for_index = lambda _file_id, name: name  # BaseConnector default
     expanded_files = {
         "files": [
             {"id": "file-1", "name": "existing.pdf", "mimeType": "application/pdf"},
@@ -452,6 +456,7 @@ async def test_connector_sync_does_not_report_all_duplicates_when_expansion_is_e
     connector.is_authenticated = True
     connector.authenticate = AsyncMock(return_value=True)
     connector.cfg = MagicMock()
+    connector.filename_for_index = lambda _file_id, name: name  # BaseConnector default
     connector.list_files = AsyncMock(return_value={"files": []})
     connector_service.get_connector = AsyncMock(return_value=connector)
     connector_service.sync_specific_files = AsyncMock(return_value="task-id")
@@ -617,6 +622,7 @@ async def test_selected_files_check_logs_an_empty_expansion(monkeypatch):
 
     connector = MagicMock()
     connector.cfg = MagicMock()
+    connector.filename_for_index = lambda _file_id, name: name  # BaseConnector default
     connector.list_selected_files = AsyncMock(return_value={"files": []})
 
     logged = []
@@ -648,6 +654,7 @@ async def test_selected_files_check_logs_when_no_name_is_comparable(monkeypatch)
 
     connector = MagicMock()
     connector.cfg = None  # not a cfg-backed connector: use the raw selection
+    connector.filename_for_index = lambda _file_id, name: name  # BaseConnector default
 
     logged = []
     monkeypatch.setattr(connectors_api.logger, "info", lambda msg, **kw: logged.append((msg, kw)))
@@ -686,6 +693,7 @@ async def test_selected_files_check_names_its_connector_in_the_summary(monkeypat
 
     connector = MagicMock()
     connector.cfg = None
+    connector.filename_for_index = lambda _file_id, name: name  # BaseConnector default
 
     logged = []
     monkeypatch.setattr(connectors_api.logger, "info", lambda msg, **kw: logged.append((msg, kw)))
