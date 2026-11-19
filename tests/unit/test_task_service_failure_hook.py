@@ -12,7 +12,7 @@ import pytest
 
 from models.processors import ConnectorFileProcessor
 from models.tasks import FileTask, TaskStatus, UploadTask
-from services.task_service import TaskService
+from services.task_service import INFLIGHT_CLAIM_WINNER_FAILED_ERROR, TaskService
 
 ITEM = "bucket::docs/report.pdf"
 
@@ -91,6 +91,35 @@ async def test_user_cancellations_are_not_reported(message):
     await _run(processor)
 
     assert processor.finished == []
+
+
+@pytest.mark.asyncio
+async def test_retryable_failures_are_not_reported():
+    async def unavailable(upload_task, item, file_task):
+        file_task.status = TaskStatus.FAILED
+        file_task.error = INFLIGHT_CLAIM_WINNER_FAILED_ERROR
+
+    processor = _HookProcessor(unavailable)
+    await _run(processor)
+
+    assert processor.finished == []
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_hook_does_not_hold_the_worker():
+    async def ok(upload_task, item, file_task):
+        file_task.status = TaskStatus.COMPLETED
+
+    async def stalls(upload_task, item, file_task):
+        await asyncio.sleep(30)
+
+    processor = _HookProcessor(ok)
+    processor.on_file_finished = stalls
+    with patch("services.task_service._FILE_FINISHED_HOOK_TIMEOUT_SECONDS", 0.1):
+        task = await asyncio.wait_for(_run(processor), timeout=5)
+
+    assert task.file_tasks[ITEM].status == TaskStatus.COMPLETED
+    assert task.processed_files == 1
 
 
 @pytest.mark.asyncio

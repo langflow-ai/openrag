@@ -258,6 +258,10 @@ def _is_langflow_transport_failure(error: str) -> bool:
     )
 
 
+# Upper bound on a processor's on_file_finished hook (registry bookkeeping).
+_FILE_FINISHED_HOOK_TIMEOUT_SECONDS = 10
+
+
 class IngestionTimeoutError(Exception):
     """Raised when file processing exceeds the configured timeout"""
 
@@ -368,18 +372,32 @@ class TaskService:
         """Give a processor the file's final status via its optional on_file_finished hook.
 
         Called after this service has settled the status, including the FAILED
-        it assigns on timeout. User cancellations are not the file's fault, so
-        they are not reported.
+        it assigns on timeout. Failures that are not the file's fault are not
+        reported: user cancellations and failures classified RETRYABLE (transient
+        infrastructure errors), so a later sync tries those files again.
+
+        Best effort and time-bounded, so a stalled hook cannot hold an ingestion
+        worker.
         """
         hook = getattr(processor, "on_file_finished", None)
         if hook is None:
             return
-        if file_task.status == TaskStatus.FAILED and _is_task_cancellation_error(
-            file_task.error or ""
-        ):
-            return
+        if file_task.status == TaskStatus.FAILED:
+            if _is_task_cancellation_error(file_task.error or ""):
+                return
+            metadata = self._infer_failure_metadata(file_task)
+            if metadata and metadata.get("actionable_by") == "RETRYABLE":
+                return
         try:
-            await hook(upload_task, item, file_task)
+            await asyncio.wait_for(
+                hook(upload_task, item, file_task), timeout=_FILE_FINISHED_HOOK_TIMEOUT_SECONDS
+            )
+        except TimeoutError:
+            logger.warning(
+                "Processor on_file_finished hook timed out",
+                task_id=getattr(upload_task, "task_id", None),
+                file_path=file_task.file_path,
+            )
         except Exception:
             logger.warning(
                 "Processor on_file_finished hook failed",

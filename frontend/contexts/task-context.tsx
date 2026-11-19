@@ -49,6 +49,7 @@ import {
   isDeletedAtSourceFile,
   isTaskInProgressStatus,
   isTerminalFailedTask,
+  isTerminalTaskStatus,
 } from "@/lib/task-utils";
 
 // Task interface is now imported from useGetTasksQuery
@@ -678,7 +679,14 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           currentTask,
         );
 
-        if (taskJustReachedTerminal) {
+        // A task submitted and finished between two polls is first seen already
+        // terminal. Historical tasks loaded at init are excluded (isInitialLoad).
+        const taskFirstSeenTerminal =
+          !previousTask &&
+          !isInitialLoad &&
+          isTerminalTaskStatus(currentTask.status);
+
+        if (taskJustReachedTerminal || taskFirstSeenTerminal) {
           // Failures are recorded server-side as files fail, so refresh the
           // Failed documents count whenever a task ends, toast or no toast.
           queryClient.invalidateQueries({

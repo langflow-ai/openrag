@@ -553,6 +553,7 @@ class ConnectorService:
             shared=shared,
             allow_anonymous_delete=allow_anonymous_delete,
             file_versions=file_versions,
+            preview_mode=preview_mode,
         )
 
         # Create custom task using TaskService

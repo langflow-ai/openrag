@@ -272,16 +272,17 @@ describe("KnowledgeSearchBar failed documents", () => {
 
   function serveFailures(failures: unknown[]) {
     serveDropdownDefaults();
-    server.use(
+    return [
       http.get("/api/connectors/failed-ingestions", () =>
         HttpResponse.json({ max_attempts: 3, failures }),
       ),
-    );
+    ];
   }
 
   it("shows the count and opens the dialog in the OSS layout", async () => {
-    serveFailures([failure]);
+    const handlers = serveFailures([failure]);
     renderWithProviders(<KnowledgeSearchBar />, {
+      handlers,
       providers: ["knowledgeFilter", "task", "brand"],
       brand: "oss",
     });
@@ -298,8 +299,9 @@ describe("KnowledgeSearchBar failed documents", () => {
   });
 
   it("shows the button in the cloud layout too", async () => {
-    serveFailures([failure]);
+    const handlers = serveFailures([failure]);
     renderWithProviders(<KnowledgeSearchBar />, {
+      handlers,
       providers: ["knowledgeFilter", "task", "brand"],
       brand: "ibm",
     });
@@ -315,8 +317,9 @@ describe("KnowledgeSearchBar failed documents", () => {
   });
 
   it("hides the button when nothing has failed", async () => {
-    serveFailures([]);
+    const handlers = serveFailures([]);
     renderWithProviders(<KnowledgeSearchBar />, {
+      handlers,
       providers: ["knowledgeFilter", "task", "brand"],
       brand: "oss",
     });
@@ -325,5 +328,25 @@ describe("KnowledgeSearchBar failed documents", () => {
     expect(
       screen.queryByRole("button", { name: /failed documents/i }),
     ).toBeNull();
+  });
+
+  it("opens the dialog from the button when the bar is controlled", async () => {
+    const handlers = serveFailures([failure]);
+    renderWithProviders(
+      <KnowledgeSearchBar value="" onSearch={() => {}} onClear={() => {}} />,
+      {
+        handlers,
+        providers: ["knowledgeFilter", "task", "brand"],
+        brand: "oss",
+      },
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /failed documents \(1\)/i }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: /^failed documents$/i }),
+    ).toBeInTheDocument();
   });
 });

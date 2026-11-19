@@ -96,3 +96,22 @@ async def test_known_folder_ids_are_not_readded():
     )
 
     assert _synced_ids(service) == ["child-1"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("preview_mode", [True, False])
+async def test_preview_mode_reaches_the_processor(preview_mode):
+    """A preview sync must not write to the failed-ingestion registry."""
+    service = _make_service(live_files=[{"id": "live-1", "name": "a.pdf"}])
+
+    await service.sync_specific_files(
+        connection_id="conn-1",
+        user_id="user-1",
+        file_ids=["live-1"],
+        jwt_token="jwt",
+        allow_anonymous_delete=True,
+        preview_mode=preview_mode,
+    )
+
+    processor = service.task_service.create_custom_task.await_args.args[2]
+    assert processor.preview_mode is preview_mode

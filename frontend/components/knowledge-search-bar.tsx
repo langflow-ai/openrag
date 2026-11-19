@@ -340,12 +340,10 @@ export const KnowledgeSearchBar = ({
           )
         }
       />
-      {!controlled && (
-        <FailedDocumentsDialog
-          open={failedDocsOpen}
-          onOpenChange={setFailedDocsOpen}
-        />
-      )}
+      <FailedDocumentsDialog
+        open={failedDocsOpen}
+        onOpenChange={setFailedDocsOpen}
+      />
       {!controlled && (
         <SyncConfirmDialog
           open={syncDialogOpen}

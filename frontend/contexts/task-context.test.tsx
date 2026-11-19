@@ -9,6 +9,7 @@ import {
   act,
   createTestQueryClient,
   renderHook,
+  renderWithProviders,
   waitFor,
 } from "@/test-utils/render";
 import { TaskProvider, useTask } from "./task-context";
@@ -776,6 +777,11 @@ describe("TaskProvider — source-deleted overlays", () => {
 });
 
 describe("TaskProvider — failed documents refresh", () => {
+  function TaskConsumer() {
+    useTask();
+    return null;
+  }
+
   function serveRunningThenCompleted(finalStatus: Task["status"]) {
     let callCount = 0;
     const runningTask: Task = makeTask({
@@ -789,23 +795,27 @@ describe("TaskProvider — failed documents refresh", () => {
       failed_files: 1,
       files: { "file.pdf": { status: "failed", error: "corrupt file" } },
     };
-    server.use(
+    const handlers = [
       http.get("/api/tasks/enhanced", () => {
         callCount++;
         return HttpResponse.json({
           tasks: [callCount === 1 ? runningTask : finalTask],
         });
       }),
-    );
-    return () => callCount;
+    ];
+    return { handlers, calls: () => callCount };
   }
 
   it("invalidates the failed-ingestions query when a task completes", async () => {
     const qc = createTestQueryClient();
     const invalidate = vi.spyOn(qc, "invalidateQueries");
-    const calls = serveRunningThenCompleted("completed");
+    const { handlers, calls } = serveRunningThenCompleted("completed");
 
-    renderHook(() => useTask(), { wrapper: wrapper(qc) });
+    renderWithProviders(<TaskConsumer />, {
+      queryClient: qc,
+      providers: ["task"],
+      handlers,
+    });
 
     await waitFor(() => expect(calls()).toBeGreaterThanOrEqual(2), {
       timeout: 5000,
@@ -822,9 +832,79 @@ describe("TaskProvider — failed documents refresh", () => {
   it("does not invalidate it while the task is still running", async () => {
     const qc = createTestQueryClient();
     const invalidate = vi.spyOn(qc, "invalidateQueries");
-    const calls = serveRunningThenCompleted("running");
+    const { handlers, calls } = serveRunningThenCompleted("running");
 
-    renderHook(() => useTask(), { wrapper: wrapper(qc) });
+    renderWithProviders(<TaskConsumer />, {
+      queryClient: qc,
+      providers: ["task"],
+      handlers,
+    });
+
+    await waitFor(() => expect(calls()).toBeGreaterThanOrEqual(2), {
+      timeout: 5000,
+    });
+    expect(invalidate).not.toHaveBeenCalledWith({
+      queryKey: ["failed-ingestions"],
+    });
+  });
+
+  function serveSecondTaskAlreadyTerminal(historical: boolean) {
+    let callCount = 0;
+    const other: Task = makeTask({ task_id: "other", status: "running" });
+    const quick: Task = makeTask({
+      task_id: "quick",
+      status: "completed",
+      successful_files: 0,
+      failed_files: 1,
+      files: { "file.pdf": { status: "failed", error: "corrupt file" } },
+    });
+    const handlers = [
+      http.get("/api/tasks/enhanced", () => {
+        callCount++;
+        // Poll 1 loads `other` (and `quick` too when it is historical); poll 2
+        // shows `quick` for the first time when it is not.
+        const first = historical ? [other, quick] : [other];
+        return HttpResponse.json({
+          tasks: callCount === 1 ? first : [other, quick],
+        });
+      }),
+    ];
+    return { handlers, calls: () => callCount };
+  }
+
+  it("invalidates it for a task first seen already terminal", async () => {
+    const qc = createTestQueryClient();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    const { handlers, calls } = serveSecondTaskAlreadyTerminal(false);
+
+    renderWithProviders(<TaskConsumer />, {
+      queryClient: qc,
+      providers: ["task"],
+      handlers,
+    });
+
+    await waitFor(() => expect(calls()).toBeGreaterThanOrEqual(2), {
+      timeout: 5000,
+    });
+    await waitFor(
+      () =>
+        expect(invalidate).toHaveBeenCalledWith({
+          queryKey: ["failed-ingestions"],
+        }),
+      { timeout: 5000 },
+    );
+  });
+
+  it("does not invalidate it for terminal tasks loaded at initialization", async () => {
+    const qc = createTestQueryClient();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    const { handlers, calls } = serveSecondTaskAlreadyTerminal(true);
+
+    renderWithProviders(<TaskConsumer />, {
+      queryClient: qc,
+      providers: ["task"],
+      handlers,
+    });
 
     await waitFor(() => expect(calls()).toBeGreaterThanOrEqual(2), {
       timeout: 5000,

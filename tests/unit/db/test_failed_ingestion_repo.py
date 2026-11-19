@@ -174,6 +174,19 @@ async def test_failure_on_changed_modified_time_restarts_the_budget(session_fact
 
 
 @pytest.mark.asyncio
+async def test_failure_without_version_info_keeps_the_stored_version_and_budget(session_factory):
+    async with session_factory() as s:
+        repo = FailedIngestionRepo(s)
+        await _fail(repo, etag="e1", modified="2026-01-01T00:00:00Z")
+        row = await _fail(repo, etag=None, modified=None)
+        await s.commit()
+
+    assert row.attempt_count == 2
+    assert row.content_etag == "e1"
+    assert row.modified_time == "2026-01-01T00:00:00Z"
+
+
+@pytest.mark.asyncio
 async def test_long_error_is_truncated(session_factory):
     async with session_factory() as s:
         row = await _fail(FailedIngestionRepo(s), error="x" * 10_000)

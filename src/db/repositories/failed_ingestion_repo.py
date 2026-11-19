@@ -53,7 +53,8 @@ class FailedIngestionRepo:
 
         Repeats against the same source version add to ``attempt_count``. When
         the stored version differs from this one the file was changed at the
-        source in between, so the count starts again at 1.
+        source in between, so the count starts again at 1. A failure with no
+        version information counts against the stored version.
         """
         now = datetime.now(UTC)
         error = error[:_MAX_ERROR_CHARS] if error else error
@@ -76,13 +77,18 @@ class FailedIngestionRepo:
             await self.session.flush()
             return row
 
-        same_version = (
+        # No version metadata (e.g. a sync of named files without a listing) says
+        # nothing about whether the file changed, so keep the stored version and
+        # budget rather than resetting a known version to "unknown".
+        version_unknown = content_etag is None and modified_time is None
+        same_version = version_unknown or (
             existing.content_etag == content_etag and existing.modified_time == modified_time
         )
         existing.attempt_count = existing.attempt_count + 1 if same_version else 1
         existing.filename = filename or existing.filename
-        existing.content_etag = content_etag
-        existing.modified_time = modified_time
+        if not version_unknown:
+            existing.content_etag = content_etag
+            existing.modified_time = modified_time
         existing.last_error = error
         existing.last_failed_at = now
         self.session.add(existing)
