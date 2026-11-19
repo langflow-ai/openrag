@@ -167,7 +167,7 @@ describe("KnowledgeDateRangeFilter", () => {
     await openPopover();
     const density = (day: number) =>
       juneDay(day)
-        .querySelector("[data-testid='upload-density']")
+        .querySelector("[data-density]")
         ?.getAttribute("data-density");
     expect(density(20)).toBe("low");
     expect(density(19)).toBe("medium");

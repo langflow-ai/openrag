@@ -55,6 +55,39 @@ describe("parseSavedDateRange", () => {
   });
 });
 
+describe("saved format contract", () => {
+  it("ignores camelCase keys: only snake_case is the persisted format", () => {
+    expect(
+      parseSavedDateRange({
+        filters: {
+          createdAfter: LA_RANGE.createdAfter,
+          createdBefore: LA_RANGE.createdBefore,
+        },
+      }),
+    ).toEqual({});
+    expect(
+      parseSavedDateRange({
+        filters: {
+          created_after: LA_RANGE.createdAfter,
+          created_before: LA_RANGE.createdBefore,
+        },
+        dateRangeContext: LA_RANGE.context,
+      }),
+    ).toEqual({
+      createdAfter: LA_RANGE.createdAfter,
+      createdBefore: LA_RANGE.createdBefore,
+    });
+  });
+
+  it("keeps a null selection distinct from the shared NO_DATE_RANGE only by clearing to it", () => {
+    // Clearing a saved range yields the NO_DATE_RANGE sentinel itself...
+    expect(applySelection(LA_RANGE, null)).toBe(NO_DATE_RANGE);
+    // ...while a parsed range with no bounds is a fresh object, not the sentinel.
+    expect(parseSavedDateRange({ filters: {} })).not.toBe(NO_DATE_RANGE);
+    expect(parseSavedDateRange({ filters: {} })).toEqual(NO_DATE_RANGE);
+  });
+});
+
 describe("timezone handling", () => {
   it("restores the saved calendar days, not the viewer's shifted days", () => {
     process.env.TZ = "Europe/London";

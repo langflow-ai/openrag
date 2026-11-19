@@ -19,7 +19,6 @@ import {
 import { cn } from "@/lib/utils";
 
 const PRESET_DAYS = [30, 60, 90] as const;
-const DEFAULT_CUSTOM_DAYS = 30;
 
 type Field = "from" | "to";
 
@@ -108,15 +107,9 @@ export function KnowledgeFilterDateField({
     {
       id: "custom",
       label: "Custom date range",
-      select: () => {
-        if (!draft?.from && !draft?.to) {
-          update({
-            from: subDays(today, DEFAULT_CUSTOM_DAYS - 1),
-            to: today,
-          });
-        }
-        setExpanded("from");
-      },
+      // Opens the From calendar without inventing a range: nothing is
+      // selected until the user picks a day.
+      select: () => setExpanded("from"),
     },
   ];
 
@@ -166,7 +159,10 @@ export function KnowledgeFilterDateField({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="max-h-[80vh] w-[min(24rem,calc(100vw-2rem))] overflow-y-auto p-0"
+        // Capped to the space Radix reports for the chosen side, so a calendar that
+        // expands near the screen edge scrolls inside the popover instead of
+        // flipping it past the top of the viewport.
+        className="max-h-[min(80vh,var(--radix-popover-content-available-height))] w-[min(24rem,calc(100vw-2rem))] overflow-y-auto p-0"
         align="start"
         collisionPadding={16}
       >
