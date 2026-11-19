@@ -347,22 +347,34 @@ def summary_parts(
         points: list[list[Segment]] = [
             [
                 (
-                    f"{overall[f'recall@{k}'] * 100:.0f}% of expected files are in the top {k} "
-                    f"results (recall@{k} {_fmt(overall[f'recall@{k}'])}).",
+                    f"On average, {overall[f'recall@{k}'] * 100:.0f}% of each question's expected "
+                    f"files are in the top {k} results (recall@{k} {_fmt(overall[f'recall@{k}'])}).",
                     None,
                 )
             ]
         ]
-        if "recall@1" in overall:
-            points.append(
-                [
-                    (
-                        f"The right file is ranked first {overall['recall@1'] * 100:.0f}% of "
-                        f"the time (recall@1 {_fmt(overall['recall@1'])}).",
-                        None,
-                    )
-                ]
-            )
+        # How often a question succeeds at rank 1 is not recall@1: a question
+        # expecting two files, ranked first and second, has recall@1 0.5 but a
+        # relevant file first every time. A reciprocal rank of 1 is that success.
+        queries = results["queries"]
+        first = sum(
+            1 for q in queries if q["metrics"].get("reciprocal_rank", 0) >= 1 - report.EPSILON
+        )
+        rank_one = (
+            f"; recall@1, the share of each question's expected files at rank 1, is "
+            f"{_fmt(overall['recall@1'])}"
+            if "recall@1" in overall
+            else ""
+        )
+        points.append(
+            [
+                (
+                    f"A relevant file is ranked first for {first / len(queries) * 100:.0f}% of "
+                    f"questions ({first} of {len(queries)}){rank_one}.",
+                    None,
+                )
+            ]
+        )
         tags = results["metrics"].get("by_tag", {})
         scored = {t: v[f"recall@{k}"] for t, v in tags.items() if f"recall@{k}" in v}
         if len(scored) > 1:

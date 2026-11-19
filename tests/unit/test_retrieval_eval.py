@@ -2368,7 +2368,7 @@ def test_html_summary_for_a_single_run_describes_it() -> None:
     verdict, points = html_report.summary(results, None)
 
     assert verdict == "Recall@5 is 0.500 and MRR is 0.500."
-    assert points[0].startswith("50% of expected files are in the top 5 results")
+    assert points[0].startswith("On average, 50% of each question's expected files")
 
 
 def _many_changes(regressed: int, improved: int) -> tuple[Any, Any, Any]:
@@ -2543,3 +2543,20 @@ def test_answer_section_does_not_claim_unjudged_answers_were_judged() -> None:
     assert "2 questions sent to chat; 0 judged by an LLM; 1 chat error." in page
     assert "No answers were judged" in page
     assert "No answers judged wrong." not in page
+
+
+def test_single_run_summary_counts_questions_won_at_rank_one_not_recall_at_one() -> None:
+    # Two expected files ranked first and second: recall@1 is 0.5, yet a
+    # relevant file is first for this question.
+    query = make_query("q", 1.0, 1.0, 1.0, 1)
+    query["expected_files"] = ["a.md", "b.md"]
+    query["metrics"] = {"recall@1": 0.5, "recall@5": 1.0, "reciprocal_rank": 1.0, "ndcg@5": 1.0}
+    missed = make_query("m", 0.0, 0.5, 0.0, 2)
+    missed["metrics"]["recall@1"] = 0.0
+
+    _, points = html_report.summary(make_results([query, missed], k_values=[1, 5]), None)
+
+    assert points[1] == (
+        "A relevant file is ranked first for 50% of questions (1 of 2); recall@1, the share "
+        "of each question's expected files at rank 1, is 0.250."
+    )
