@@ -1,0 +1,8 @@
+# Search-time synonyms for the scientific_discoveries fixture index.
+# Referenced by `synonyms_path`, so it is NOT inside the snapshot: importing
+# the index needs this file inlined (the analyser-file preflight case).
+dna, deoxyribonucleic acid
+radiation, radioactivity
+antibiotic, antibacterial
+gravity, gravitation
+genes, heredity, inheritance

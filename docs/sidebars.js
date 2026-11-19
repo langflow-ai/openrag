@@ -67,6 +67,7 @@ const sidebars = {
         "core-components/knowledge-browse",
         "core-components/knowledge-filters",
         "core-components/knowledge-connectors",
+        "core-components/knowledge-snapshot-import",
       ],
     },
     {
@@ -84,6 +85,11 @@ const sidebars = {
       type: "doc",
       id: "reference/api-sdk-overview",
       label: "SDK and MCP API references",
+    },
+    {
+      type: "doc",
+      id: "reference/search-api",
+      label: "Search API",
     },
     "support/contribute",
     "support/troubleshoot",

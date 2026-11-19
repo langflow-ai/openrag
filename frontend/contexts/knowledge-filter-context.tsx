@@ -46,6 +46,11 @@ export interface ParsedQueryData {
     created_before?: string;
     document_ids?: string[];
     web_source_ids?: string[];
+    /**
+     * Imported snapshot datasets. Missing (or `["*"]`) = all visible datasets,
+     * `[]` = none, otherwise exactly the listed ids. Carried as saved.
+     */
+    datasets?: string[];
   };
   /** Calendar days + timezone the saved bounds were picked in (display only). */
   dateRangeContext?: DateRangeContext;
@@ -158,6 +163,9 @@ export function KnowledgeFilterProvider({
             document_types: raw.filters?.document_types ?? ["*"],
             owners: raw.filters?.owners ?? ["*"],
             connector_types: raw.filters?.connector_types ?? ["*"],
+            ...(Array.isArray(raw.filters?.datasets) && {
+              datasets: raw.filters.datasets as string[],
+            }),
             ...(saved.createdAfter && { created_after: saved.createdAfter }),
             ...(saved.createdBefore && {
               created_before: saved.createdBefore,

@@ -17,6 +17,7 @@ from dependencies import (
     require_permission,
 )
 from session_manager import User
+from utils.dataset_selection import DATASETS_KEY, normalize_selection
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -115,7 +116,7 @@ def normalize_query_data(query_data: str | dict) -> str:
 
     Optional ``created_after``/``created_before`` bounds are validated and kept
     inside ``filters``; filters saved without dates stay unrestricted.
-    Raises ValueError for malformed date data.
+    Raises ValueError for malformed date data or a malformed ``datasets`` selection.
     """
     if isinstance(query_data, str):
         try:
@@ -134,6 +135,12 @@ def normalize_query_data(query_data: str | dict) -> str:
     }
     bounds, date_context = _normalize_date_range(data, filters)
     normalized_filters.update(bounds)
+    if DATASETS_KEY in filters:
+        # Kept by presence: a missing key means all datasets, an explicit list
+        # selects those, and [] selects none. "*" is stored the way the other
+        # dimensions store "all". Malformed values are rejected, never widened.
+        selection = normalize_selection(filters[DATASETS_KEY])
+        normalized_filters["datasets"] = ["*"] if selection is None else selection
 
     normalized = {
         "query": data.get("query", ""),

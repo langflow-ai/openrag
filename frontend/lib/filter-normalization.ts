@@ -8,6 +8,11 @@ export interface FilterInput {
   created_before?: string;
   document_ids?: string[];
   web_source_ids?: string[];
+  /**
+   * Imported snapshot datasets to search alongside documents. Unlike the other
+   * dimensions: missing or `["*"]` = every visible dataset, `[]` = none.
+   */
+  datasets?: string[];
 }
 
 export interface NormalizedSelectedFilters {
@@ -39,6 +44,48 @@ function normalizeSelectedFilters(
   };
 }
 
+/**
+ * Parse a saved/typed dataset selection.
+ * `undefined` = all visible datasets (missing, malformed or `["*"]`),
+ * `[]` = none, otherwise exactly the listed ids.
+ */
+export function normalizeDatasetSelection(
+  values: unknown,
+): string[] | undefined {
+  if (!Array.isArray(values) || values.includes("*")) return undefined;
+  return values.filter((value): value is string => typeof value === "string");
+}
+
+/**
+ * Apply one checkbox change to a selection. Ticking the last unticked dataset
+ * returns to `undefined` (all) so datasets imported later are included too;
+ * ids no longer visible stay in an explicit list untouched.
+ */
+export function toggleDatasetSelection(
+  selection: string[] | undefined,
+  visibleIds: string[],
+  id: string,
+  checked: boolean,
+): string[] | undefined {
+  const current =
+    selection === undefined || selection.includes("*") ? visibleIds : selection;
+  const next = checked
+    ? current.includes(id)
+      ? [...current]
+      : [...current, id]
+    : current.filter((value) => value !== id);
+  return visibleIds.every((value) => next.includes(value)) ? undefined : next;
+}
+
+export function isDatasetSelected(
+  selection: string[] | undefined,
+  id: string,
+): boolean {
+  return (
+    selection === undefined || selection.includes("*") || selection.includes(id)
+  );
+}
+
 function dateBound(value?: string): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
 }
@@ -48,13 +95,15 @@ function dateBound(value?: string): string | undefined {
  *
  * Saved date bounds are included by default. The Knowledge page passes
  * `includeDates: false` because it sends its effective bounds separately, so a
- * cleared temporary range can never fall back to the saved one.
+ * cleared temporary range can never fall back to the saved one. Callers that
+ * only search documents (Knowledge page, suggestions) pass
+ * `includeDatasets: false`.
  */
 export function buildSearchPayloadFilters(
   filters?: FilterInput,
-  options: { includeDates?: boolean } = {},
+  options: { includeDates?: boolean; includeDatasets?: boolean } = {},
 ): FilterInput | undefined {
-  const { includeDates = true } = options;
+  const { includeDates = true, includeDatasets = true } = options;
   const normalized = normalizeSelectedFilters(filters);
   const payloadFilters: FilterInput = {};
 
@@ -81,6 +130,11 @@ export function buildSearchPayloadFilters(
   }
   if (normalized.web_source_ids.length > 0) {
     payloadFilters.web_source_ids = normalized.web_source_ids;
+  }
+  if (includeDatasets) {
+    // `[]` is meaningful (search no datasets), so it is kept.
+    const datasets = normalizeDatasetSelection(filters?.datasets);
+    if (datasets !== undefined) payloadFilters.datasets = datasets;
   }
 
   return Object.keys(payloadFilters).length > 0 ? payloadFilters : undefined;

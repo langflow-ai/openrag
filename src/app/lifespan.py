@@ -372,6 +372,24 @@ async def run_startup(app: FastAPI):
     else:
         logger.info("OpenSearch startup security/replica tasks disabled - skipping")
 
+    # Snapshot-import reconciliation: park jobs the previous process left
+    # running in the non-startable ``recovery`` state (DB only, before requests
+    # are served), then, in the background, restore aliases, clean their
+    # OpenSearch artifacts and re-apply dataset roles. Imports in ``recovery``
+    # accept no job until that finishes (a retry also reconciles inline under the
+    # import lock). Runs after DB init and the security bootstrap, outside the
+    # documents-index branch of startup_tasks (which IBM mode skips).
+    try:
+        from connectors.opensearch_snapshot import service as snapshot_service
+
+        if snapshot_service.availability()[0]:
+            await snapshot_service.mark_interrupted_jobs()
+            reconcile_task = asyncio.create_task(snapshot_service.reconcile_roles())
+            app.state.background_tasks.add(reconcile_task)
+            reconcile_task.add_done_callback(app.state.background_tasks.discard)
+    except Exception as e:
+        logger.warning("Snapshot import reconciliation could not start", error=str(e))
+
     # Start index initialization in background to avoid blocking OIDC endpoints
     t1 = asyncio.create_task(startup_tasks(services))
     app.state.background_tasks.add(t1)

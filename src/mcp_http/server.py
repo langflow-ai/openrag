@@ -97,7 +97,13 @@ COMPONENT_CUSTOMIZATIONS: dict[tuple[str, str], dict[str, str]] = {
             "Optionally pass `filter_id` to scope results to a knowledge "
             "filter's data_sources, or inline `filters` (data_sources, "
             "document_types, owners, connector_types) for a per-call scope. "
-            "If both are provided, inline filters override per-field."
+            "If both are provided, inline filters override per-field. "
+            "When imported OpenSearch datasets are available, results also "
+            "include matching dataset records; each result carries a `dataset` "
+            "object (null for documents). Pass `datasets` to choose them: omit "
+            'or "*" for every dataset you can see, a list of dataset ids for '
+            "just those, or [] for none. `datasets` overrides `filters.datasets`, "
+            "which overrides a saved filter's datasets."
         ),
     },
     # Documents endpoints

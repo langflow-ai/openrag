@@ -149,6 +149,14 @@ export function ChunkPopup({
           >
             {filename}
           </h3>
+          {item.dataset?.name && (
+            <span
+              className="shrink-0 max-w-[10rem] truncate rounded-full bg-accent-purple/20 px-2 py-0.5 text-xxs text-accent-purple-foreground"
+              title={`Dataset: ${item.dataset.name}`}
+            >
+              {item.dataset.name}
+            </span>
+          )}
           {pageLabel && (
             <span className="shrink-0 text-muted-foreground text-xxs font-semibold">
               {pageLabel}

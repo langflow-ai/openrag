@@ -71,6 +71,10 @@ export default function ConnectorCards() {
   );
 
   const connectors = queryConnectors.reduce<Connector[]>((acc, c) => {
+    // Rendered by OpenSearchSnapshotCard, which has its own import wizard.
+    if (c.type === "opensearch_snapshot") {
+      return acc;
+    }
     if (c.type === "url" && !showUrlConnector) {
       return acc;
     }

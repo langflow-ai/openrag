@@ -12,6 +12,9 @@ services:
       # the healthcheck below both read it. Don't add a second copy under another name.
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      # Snapshot import staging: the backend copies snapshot files here and
+      # OpenSearch restores from an `fs` repository under this path.
+      - path.repo=/usr/share/opensearch/snapshots
       - OPENRAG_BACKEND_PORT=${OPENRAG_BACKEND_PORT:-8000}
       - OPENRAG_BACKEND_HOST=${OPENRAG_BACKEND_HOST:-openrag-backend}
       - OPENRAG_BACKEND_INTERNAL_URL=${OPENRAG_BACKEND_INTERNAL_URL:-http://${OPENRAG_BACKEND_HOST:-openrag-backend}:${OPENRAG_BACKEND_PORT:-8000}}
@@ -28,6 +31,7 @@ services:
       - "${OPENSEARCH_PERF_PORT:-9600}:9600"
     volumes:
       - opensearch-data:/usr/share/opensearch/data
+      - ${OPENRAG_SNAPSHOT_STAGING_HOST_PATH:-./opensearch-snapshots}:/usr/share/opensearch/snapshots:z
     stop_grace_period: 2m
     healthcheck:
       test: ["CMD-SHELL", "curl -sku \"admin:$$OPENSEARCH_INITIAL_ADMIN_PASSWORD\" 'https://localhost:9200/_cluster/health' | grep -qE '\"status\":\"(green|yellow)\"'"]
@@ -143,6 +147,24 @@ services:
       - IBM_AUTH_ENABLED=${IBM_AUTH_ENABLED:-false}
       - OPENRAG_AZURE_BLOB_ENABLED=${OPENRAG_AZURE_BLOB_ENABLED:-true}
       - OPENRAG_URL_CONNECTOR_ENABLED=${OPENRAG_URL_CONNECTOR_ENABLED:-false}
+      - OPENRAG_SNAPSHOT_IMPORT_ENABLED=${OPENRAG_SNAPSHOT_IMPORT_ENABLED:-false}
+      - OPENRAG_SNAPSHOT_STAGING_TYPE=${OPENRAG_SNAPSHOT_STAGING_TYPE:-fs}
+      - OPENRAG_SNAPSHOT_STAGING_PATH=/app/opensearch-snapshots
+      - OPENRAG_SNAPSHOT_STAGING_REPO_LOCATION=/usr/share/opensearch/snapshots
+      - OPENRAG_SNAPSHOT_STAGING_S3_ENDPOINT=${OPENRAG_SNAPSHOT_STAGING_S3_ENDPOINT:-}
+      - OPENRAG_SNAPSHOT_STAGING_S3_REGION=${OPENRAG_SNAPSHOT_STAGING_S3_REGION:-}
+      - OPENRAG_SNAPSHOT_STAGING_S3_BUCKET=${OPENRAG_SNAPSHOT_STAGING_S3_BUCKET:-}
+      - OPENRAG_SNAPSHOT_STAGING_S3_PREFIX=${OPENRAG_SNAPSHOT_STAGING_S3_PREFIX:-}
+      - OPENRAG_SNAPSHOT_STAGING_S3_ACCESS_KEY=${OPENRAG_SNAPSHOT_STAGING_S3_ACCESS_KEY:-}
+      - OPENRAG_SNAPSHOT_STAGING_S3_SECRET_KEY=${OPENRAG_SNAPSHOT_STAGING_S3_SECRET_KEY:-}
+      - OPENRAG_SNAPSHOT_STAGING_S3_CLIENT=${OPENRAG_SNAPSHOT_STAGING_S3_CLIENT:-openrag}
+      - OPENRAG_SNAPSHOT_STAGING_S3_SSE_TYPE=${OPENRAG_SNAPSHOT_STAGING_S3_SSE_TYPE:-}
+      - OPENRAG_SNAPSHOT_MAX_IMPORT_BYTES=${OPENRAG_SNAPSHOT_MAX_IMPORT_BYTES:-10737418240}
+      - OPENRAG_SNAPSHOT_MAX_IMPORTS_PER_USER=${OPENRAG_SNAPSHOT_MAX_IMPORTS_PER_USER:-10}
+      - OPENRAG_SNAPSHOT_MAX_ANALYSER_FILE_BYTES=${OPENRAG_SNAPSHOT_MAX_ANALYSER_FILE_BYTES:-1048576}
+      - OPENRAG_SNAPSHOT_ALLOWED_ENDPOINTS=${OPENRAG_SNAPSHOT_ALLOWED_ENDPOINTS:-}
+      - OPENRAG_SNAPSHOT_REQUIRE_ENDPOINT_ALLOWLIST=${OPENRAG_SNAPSHOT_REQUIRE_ENDPOINT_ALLOWLIST:-false}
+      - OPENRAG_SNAPSHOT_SHARED_BACKEND_ROLE=${OPENRAG_SNAPSHOT_SHARED_BACKEND_ROLE:-openrag_user}
       - PLATFORM_AUTH_DEV_MODE=${PLATFORM_AUTH_DEV_MODE:-false}
       - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://host.docker.internal:5001}
       - DOCLING_SERVE_VERIFY_SSL=${DOCLING_SERVE_VERIFY_SSL:-true}
@@ -205,6 +227,7 @@ services:
       - ${OPENRAG_FLOWS_BACKUP_PATH:-./flows/backup}:/app/flows/backup:U,z
       - ${OPENRAG_CONFIG_PATH:-./config}:/app/config:U,z
       - ${OPENRAG_DATA_PATH:-./data}:/app/data:U,z
+      - ${OPENRAG_SNAPSHOT_STAGING_HOST_PATH:-./opensearch-snapshots}:/app/opensearch-snapshots:z
     # Linux: Docker Engine does not auto-inject host.docker.internal; map it to the host gateway
     extra_hosts:
       - "host.docker.internal:host-gateway"

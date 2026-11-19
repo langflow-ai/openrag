@@ -588,6 +588,7 @@ function SearchPage() {
   const hasActiveFilters = parsedFilterData?.filters
     ? buildSearchPayloadFilters(parsedFilterData.filters, {
         includeDates: false,
+        includeDatasets: false,
       }) !== undefined
     : false;
   const isWildcardQuery =

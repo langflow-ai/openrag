@@ -1,0 +1,4 @@
+# "Vendor" OpenSearch for the snapshot import fixture: a stock cluster that is
+# NOT OpenRAG's, plus the S3 repository plugin so it can back up to S3.
+FROM opensearchproject/opensearch:3.8.0
+RUN opensearch-plugin install --batch repository-s3

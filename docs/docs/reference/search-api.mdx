@@ -1,0 +1,89 @@
+---
+title: Search API
+slug: /reference/search-api
+---
+
+`POST /v1/search` searches your OpenRAG knowledge base and, when the [OpenSearch snapshot connector](/reference/configuration#opensearch-snapshot-import-settings) is enabled, the OpenSearch datasets you have imported. Authenticate with the `X-Username` and `X-Api-Key` headers. The same endpoint is available to MCP clients as the `openrag_search` tool.
+
+## Request
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `query` | string | Required. The text to search for. |
+| `limit` | integer | Maximum number of results. Default `10`. |
+| `score_threshold` | number | Minimum relevance score for documents. Default `0`. It does not apply to dataset records. |
+| `filters` | object | Optional per-call scope: `data_sources`, `document_types`, `owners`, `connector_types`, `created_after`, `created_before`, and `datasets`. |
+| `filter_id` | string | Optional. The ID of a saved knowledge filter to apply. |
+| `datasets` | array of strings, or `"*"` | Optional. Which imported datasets to search. |
+
+```bash
+curl -X POST "$OPENRAG_URL/v1/search" \
+  -H "Content-Type: application/json" \
+  -H "X-Username: $OPENRAG_USERNAME" \
+  -H "X-Api-Key: $OPENRAG_API_KEY" \
+  -d '{"query": "deoxyribonucleic acid", "limit": 5, "datasets": ["DATASET_ID"]}'
+```
+
+If you authenticate with an API key, the username must start with `ibmlhapikey_`.
+
+### Choose datasets
+
+You can only search datasets that you own or that were shared with you. A selection can narrow that set but never widen it.
+
+| `datasets` value | Datasets searched |
+|------------------|-------------------|
+| Omitted, `null`, `"*"`, or `["*"]` | Every dataset you can see. |
+| `["ID1", "ID2"]` | Only those datasets, if you can see them. |
+| `[]` | None. Only documents are searched. |
+
+Dataset fields under a `nested` mapping are not supported in v1 and are skipped when searching; use fields that are plain `object` or leaf fields.
+
+When more than one place selects datasets, the most specific one applies:
+
+1. The top-level `datasets` field of the request, if the key is present. An explicit `null` counts as present and selects every dataset you can see, overriding the settings below.
+2. `filters.datasets` in the request, if the key is present.
+3. The `datasets` of the saved filter named by `filter_id`, if it has one.
+4. Otherwise, every dataset you can see.
+
+An empty list is a choice, not a missing value: `"datasets": []` and `"filters": {"datasets": []}` both mean no datasets, and they override a saved filter that selects some. A saved filter that does not mention datasets selects all of them.
+
+Dataset selection never narrows document results. The other `filters` fields apply to documents only.
+
+## Response
+
+```json
+{
+  "results": [
+    {
+      "filename": "Famous scientists / Rosalind Franklin",
+      "text": "…",
+      "score": 0.0328,
+      "page": null,
+      "mimetype": "application/x-opensearch-document",
+      "dataset": {
+        "id": "DATASET_ID",
+        "name": "Famous scientists",
+        "import_name": "Scientists v1",
+        "source_index": "famous_scientists"
+      }
+    }
+  ]
+}
+```
+
+Each result has `filename`, `text`, `score`, `page`, `mimetype`, and `dataset`. `dataset` is `null` for a document and an object for a dataset record. Clients written before datasets existed can ignore the new field.
+
+- When dataset records are returned, documents and dataset records are merged with reciprocal-rank fusion and cut to `limit`. In that case `score` is the fusion score, which is only comparable between results of the same response.
+- If a dataset cannot be searched, for example because access was removed or it timed out, the other results are still returned and the response adds `dataset_errors`, a list of `{"dataset_id": "…", "code": "…"}`. The key is absent when nothing failed.
+- When datasets are not available, or you select none, the response is the documents-only response with `dataset: null` on each result.
+
+## Prerequisites
+
+Dataset search needs all of the following:
+
+- `OPENRAG_SNAPSHOT_IMPORT_ENABLED=true`.
+- The built-in Python chat agent: `DISABLE_CHAT_WITH_LANGFLOW=true`. Datasets are not searched through Langflow chat.
+- Database-backed storage: `OPENRAG_STORAGE_MODE=db` (or `hybrid`).
+- A single backend worker process.
+
+See [OpenSearch snapshot import settings](/reference/configuration#opensearch-snapshot-import-settings) for the remaining deployment settings.

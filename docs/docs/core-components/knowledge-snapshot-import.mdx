@@ -1,0 +1,50 @@
+---
+title: Import OpenSearch snapshots
+slug: /knowledge-snapshot-import
+---
+
+Some reference data is only distributed as an OpenSearch snapshot, without the source documents. The OpenSearch snapshot connector imports indices from such a snapshot stored in S3-compatible storage, so you can search them next to the documents you ingest.
+
+Imported indices keep their own mappings and analysers. They are stored as separate indices in OpenRAG's OpenSearch and are never copied into the OpenRAG documents index. Chat and [`/v1/search`](/reference/search-api) search them as **datasets**: each imported index is one dataset.
+
+## Requirements
+
+- The connector is turned on with `OPENRAG_SNAPSHOT_IMPORT_ENABLED=true`. See [OpenSearch snapshot import settings](/reference/configuration#opensearch-snapshot-import-settings).
+- OpenRAG runs its built-in Python chat agent (`DISABLE_CHAT_WITH_LANGFLOW=true`) with `OPENRAG_STORAGE_MODE=db`. Datasets are not searched by the Langflow chat flow.
+- A staging repository is set up once for the deployment. OpenSearch only reads S3 credentials from its own keystore, so OpenRAG copies the snapshot files there with the credentials you enter, and OpenSearch restores from that copy.
+- The snapshot was taken by OpenSearch 2.x or 3.x, and its indices were created by OpenSearch 2.x or 3.x. Indices created by Elasticsearch or OpenSearch 1.x cannot be opened by OpenSearch 3.x and must be reindexed first.
+
+## Import a snapshot
+
+1. On the **Connectors** settings page, open **OpenSearch snapshot**.
+2. Add a source: the S3 endpoint (leave it empty for AWS), region, bucket, the prefix that holds the snapshot repository, and an access key and secret key. Leave the keys empty for a public bucket. Private or loopback endpoints, such as an in-cluster MinIO, must be listed in `OPENRAG_SNAPSHOT_ALLOWED_ENDPOINTS`.
+3. Pick a snapshot. The latest successful snapshot is selected.
+4. Pick the indices to import. All regular indices are selected; system indices (names starting with `.`) are never imported.
+5. Review the checks. OpenRAG blocks the import if an index version is not supported, the snapshot is too large for the configured limit, or there is not enough disk space.
+   If an index uses an analyser file that is not inside the snapshot, such as a synonym or stop-word file referenced by `synonyms_path`, upload that file. Without it the index cannot be opened.
+6. Name the import and choose whether to share it, then start it. The import runs as a background task.
+7. When the import finishes, review the suggested fields for each dataset: the text fields to search, the title field and the link field. If an index stores vectors, choose the embedding model that produced them to also search by meaning; otherwise datasets are searched by keyword.
+8. Activate the import. OpenRAG checks that you can search every dataset before it becomes available in chat.
+
+## Who can see a dataset
+
+An import is private to the user who created it unless they share it. Sharing makes its datasets readable by every OpenRAG user. OpenSearch itself enforces this, so a private dataset cannot be read by other users through any OpenRAG feature.
+
+When OpenRAG does not manage OpenSearch security (`OPENRAG_SKIP_OS_SECURITY_SETUP=true`), and in IBM authentication mode, imports can only be shared. OpenRAG shows the OpenSearch role and role mapping that your OpenSearch administrator must apply, and activation waits until search access works.
+
+## Use datasets
+
+- **Chat**: the agent searches your documents and your datasets, and cites dataset records with the dataset name.
+- **Knowledge filters**: every dataset you can see is included by default. Clear a dataset in a filter to leave it out of chats and searches that use that filter.
+- **Search API and MCP**: `/v1/search` returns dataset records next to documents, each tagged with its dataset. See [Search API](/reference/search-api).
+
+## Update or remove an import
+
+- **Re-import** loads a newer snapshot into the same datasets. OpenRAG restores the new copy first, then switches all datasets of the import at once, so searches keep working during the update. If anything fails, the previous copy stays in use.
+- **Delete** removes the imported indices, the staged files and the access role.
+
+## Limitations
+
+- Fields inside `nested` mappings cannot be used as text, title or link fields.
+- Imported datasets are read-only. To change the data, re-import a newer snapshot.
+- Import does not copy data into the documents index, so documents features such as the Knowledge list and facets do not include datasets.

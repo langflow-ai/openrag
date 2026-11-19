@@ -73,6 +73,9 @@ def _build_search_filter_clauses(filters: dict[str, Any] | None) -> list[dict[st
     """Translate public search filters into OpenSearch clauses in one place."""
     clauses: list[dict[str, Any]] = []
     for filter_key, values in (filters or {}).items():
+        if filter_key == "datasets":
+            # Dataset selection scopes imported datasets, never document chunks.
+            continue
         if not isinstance(values, list):
             continue
         field_name = _SEARCH_FILTER_FIELDS.get(filter_key, filter_key)

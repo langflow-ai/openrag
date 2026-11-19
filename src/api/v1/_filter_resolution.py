@@ -14,6 +14,8 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from utils.dataset_selection import DATASETS_KEY, normalize_selection
+
 _FILTER_DIMENSIONS = ("data_sources", "document_types", "owners", "connector_types")
 _DATE_BOUNDS = ("created_after", "created_before")
 
@@ -34,6 +36,16 @@ def _strip_wildcards(filters: dict[str, Any] | None) -> dict[str, Any]:
         value = filters.get(key)
         if isinstance(value, str) and value:
             cleaned[key] = value
+    if DATASETS_KEY in filters:
+        # Unlike the other dimensions an empty list is a choice (no datasets) and
+        # is kept; "*" means all, which is the absence of the key. A value that
+        # cannot be read fails closed to none instead of widening to all.
+        try:
+            selection = normalize_selection(filters[DATASETS_KEY])
+        except ValueError:
+            selection = []
+        if selection is not None:
+            cleaned[DATASETS_KEY] = selection
     return cleaned
 
 

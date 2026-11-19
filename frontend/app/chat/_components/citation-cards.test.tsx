@@ -59,4 +59,41 @@ describe("CitationCards", () => {
       "cursor-default",
     );
   });
+
+  it("shows the dataset name as a badge on dataset sources only", () => {
+    const mixed: CitedSource[] = [
+      {
+        index: 1,
+        item: {
+          chunk_id: "ds-1-UGhvdG8",
+          filename: "Scientists / Photo 51",
+          dataset: {
+            id: "ds-1",
+            name: "Scientists",
+            import_name: "Lab import",
+            source_index: "famous_scientists",
+          },
+        },
+      },
+      {
+        index: 2,
+        item: {
+          chunk_id: "ds-2-UGhvdG8",
+          filename: "Discoveries / Photo 51",
+          dataset: { id: "ds-2", name: "Discoveries" },
+        },
+      },
+      {
+        index: 3,
+        item: { chunk_id: "doc-1", filename: "Photo 51", dataset: null },
+      },
+    ];
+    render(<CitationCards citedSources={mixed} interactive={false} />);
+
+    // Duplicate titles stay distinguishable by their dataset badge.
+    expect(screen.getAllByText("Photo 51")).toHaveLength(3);
+    expect(screen.getByText("Scientists")).toBeVisible();
+    expect(screen.getByText("Discoveries")).toBeVisible();
+    expect(screen.getAllByTitle(/^Dataset: /)).toHaveLength(2);
+  });
 });

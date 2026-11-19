@@ -231,7 +231,8 @@ def build_filter_clauses(
         return clauses
 
     for filter_key, values in filters.items():
-        if values is None or not isinstance(values, list):
+        # Snapshot-import datasets are separate indices, not a documents field.
+        if filter_key == "datasets" or values is None or not isinstance(values, list):
             continue
         field_name = FILTER_FIELD_MAPPING.get(filter_key, filter_key)
         if len(values) == 0:

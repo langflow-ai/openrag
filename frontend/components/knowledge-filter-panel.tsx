@@ -9,6 +9,8 @@ import {
   type FacetBucket,
   useGetSearchAggregations,
 } from "@/app/api/queries/useGetSearchAggregations";
+import { useSnapshotDatasetsQuery } from "@/app/api/queries/useSnapshotDatasetsQuery";
+import { useSnapshotStatusQuery } from "@/app/api/queries/useSnapshotStatusQuery";
 import { FilterIconPopover } from "@/components/filter-icon-popover";
 import { useDateRangeFilterEnabled } from "@/components/knowledge-date-range-filter";
 import { KnowledgeFilterDateField } from "@/components/knowledge-filter-date-field";
@@ -20,6 +22,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MultiSelect } from "@/components/ui/multi-select";
@@ -29,6 +32,10 @@ import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import { trackButton } from "@/lib/analytics";
 import type { FilterColor, IconKey } from "@/lib/filter-constants";
+import {
+  isDatasetSelected,
+  toggleDatasetSelection,
+} from "@/lib/filter-normalization";
 import {
   applySelection,
   displayRangeFromSaved,
@@ -107,6 +114,8 @@ export function KnowledgeFilterPanel() {
     owners: ["*"] as string[], // Default to wildcard
     connector_types: ["*"] as string[], // Default to wildcard
   });
+  // undefined = all datasets (key absent), [] = none, list = exactly those.
+  const [datasets, setDatasets] = useState<string[] | undefined>(undefined);
   // Unsaved draft of the filter's date range; the toolbar's temporary range is separate.
   const [dateDraft, setDateDraft] = useState<SavedDateRange>(NO_DATE_RANGE);
   const dateRangeEnabled = useDateRangeFilterEnabled();
@@ -139,6 +148,7 @@ export function KnowledgeFilterPanel() {
         owners: filters.owners ?? ["*"],
         connector_types: filters.connector_types ?? ["*"],
       };
+      setDatasets(filters.datasets);
 
       setSelectedFilters(processedFilters);
       setDateDraft(savedDateRangeOf(parsedFilterData));
@@ -164,6 +174,7 @@ export function KnowledgeFilterPanel() {
         owners: filters.owners ?? ["*"],
         connector_types: filters.connector_types ?? ["*"],
       });
+      setDatasets(filters.datasets);
       setDateDraft(savedDateRangeOf(parsedFilterData));
       setResultLimit(parsedFilterData.limit || 10);
       setScoreThreshold(parsedFilterData.scoreThreshold || 0);
@@ -181,6 +192,14 @@ export function KnowledgeFilterPanel() {
     staleTime: 0,
     gcTime: 5 * 60_000,
   });
+
+  // Snapshot datasets (only when the connector is enabled for this deployment)
+  const { data: snapshotStatus } = useSnapshotStatusQuery({
+    enabled: isPanelOpen,
+  });
+  const { data: datasetsData } = useSnapshotDatasetsQuery(
+    isPanelOpen && snapshotStatus?.enabled === true,
+  );
 
   useEffect(() => {
     if (!aggregations) return;
@@ -204,6 +223,14 @@ export function KnowledgeFilterPanel() {
     label: formatFacetLabel(bucket),
   }));
   const availableSourceValues = new Set(sourceOptions.map((o) => o.value));
+  const datasetListings = datasetsData ?? [];
+  const visibleDatasetIds = datasetListings.map((dataset) => dataset.id);
+  const noDatasetsSelected = visibleDatasetIds.every(
+    (id) => !isDatasetSelected(datasets, id),
+  );
+  const allDatasetsSelected = visibleDatasetIds.every((id) =>
+    isDatasetSelected(datasets, id),
+  );
 
   // Don't render if panel is closed or we don't have any data
   if (!isPanelOpen || !parsedFilterData) return null;
@@ -218,6 +245,8 @@ export function KnowledgeFilterPanel() {
       query,
       filters: {
         ...selectedFilters,
+        // Missing = all datasets; `[]` = none. Saved exactly as chosen.
+        ...(datasets !== undefined && { datasets }),
         ...(dateDraft.createdAfter && {
           created_after: dateDraft.createdAfter,
         }),
@@ -456,6 +485,60 @@ export function KnowledgeFilterPanel() {
                 allOptionLabel="All connectors"
               />
             </div>
+
+            {datasetListings.length > 0 && (
+              <fieldset className="space-y-2">
+                <legend className="mb-2 text-sm font-medium">Datasets</legend>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="filter-datasets-all"
+                    checked={
+                      allDatasetsSelected
+                        ? true
+                        : noDatasetsSelected
+                          ? false
+                          : "indeterminate"
+                    }
+                    onCheckedChange={() =>
+                      setDatasets(allDatasetsSelected ? [] : undefined)
+                    }
+                  />
+                  <Label htmlFor="filter-datasets-all" className="text-sm">
+                    All datasets
+                  </Label>
+                </div>
+                {datasetListings.map((dataset) => {
+                  const id = `filter-dataset-${dataset.id}`;
+                  return (
+                    <div
+                      key={dataset.id}
+                      className="flex items-center gap-2 pl-4"
+                    >
+                      <Checkbox
+                        id={id}
+                        checked={isDatasetSelected(datasets, dataset.id)}
+                        onCheckedChange={(checked) =>
+                          setDatasets(
+                            toggleDatasetSelection(
+                              datasets,
+                              visibleDatasetIds,
+                              dataset.id,
+                              checked === true,
+                            ),
+                          )
+                        }
+                      />
+                      <Label htmlFor={id} className="text-sm">
+                        {dataset.display_name}
+                      </Label>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {dataset.import_name}
+                      </span>
+                    </div>
+                  );
+                })}
+              </fieldset>
+            )}
 
             {dateRangeEnabled && (
               <div className="space-y-2">

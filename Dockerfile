@@ -22,7 +22,7 @@ RUN opensearch-plugin install --batch file:///tmp/opensearch-jvector-plugin/repo
     opensearch-plugin install --batch file:///tmp/opensearch-neural-search/plugin.zip && \
     opensearch-plugin install --batch repository-gcs && \
     opensearch-plugin install --batch repository-azure && \
-    # opensearch-plugin install --batch repository-s3 && \
+    opensearch-plugin install --batch repository-s3 && \
     opensearch-plugin install --batch https://github.com/opensearch-project/opensearch-prometheus-exporter/releases/download/3.8.0.0/prometheus-exporter-3.8.0.0.zip
 
 # Apply Netty patch

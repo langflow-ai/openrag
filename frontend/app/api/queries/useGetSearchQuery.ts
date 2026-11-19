@@ -207,6 +207,7 @@ export const useGetSearchQuery = (
         searchPayload.filters =
           buildSearchPayloadFilters(queryData.filters, {
             includeDates: false,
+            includeDatasets: false,
           }) ?? undefined;
       }
       if (dateRange?.createdAfter) {

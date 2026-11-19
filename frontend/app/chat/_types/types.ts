@@ -56,6 +56,13 @@ export interface FunctionCall {
   type?: string;
 }
 
+export interface ToolCallDataset {
+  id: string;
+  name: string;
+  import_name?: string;
+  source_index?: string;
+}
+
 export interface ToolCallResult {
   text_key?: string;
   data?: {
@@ -85,6 +92,8 @@ export interface ToolCallResult {
   page?: number | string;
   score?: number | string;
   source_url?: string | null;
+  /** Set for results from imported snapshot datasets (null for documents). */
+  dataset?: ToolCallDataset | null;
   text?: string;
   highlights?: string[];
   embedding_model?: string;
@@ -108,6 +117,8 @@ export interface SelectedFilters {
   document_types: string[];
   owners: string[];
   connector_types: string[];
+  /** Missing = all datasets, `[]` = none. */
+  datasets?: string[];
 }
 
 export interface KnowledgeFilterData {

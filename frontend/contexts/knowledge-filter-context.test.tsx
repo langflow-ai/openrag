@@ -169,3 +169,39 @@ describe("KnowledgeFilterProvider saved date range", () => {
     );
   });
 });
+
+describe("KnowledgeFilterProvider datasets", () => {
+  const datasetsOf = (queryData: object) => {
+    const { result } = setup();
+    act(() => result.current.setSelectedFilter(filter("kf", queryData)));
+    return result.current.parsedFilterData?.filters;
+  };
+
+  it("leaves datasets absent when the saved filter has none (= all)", () => {
+    expect(datasetsOf({ filters: { owners: ["me"] } })).not.toHaveProperty(
+      "datasets",
+    );
+  });
+
+  it.each([
+    [["ds-1", "ds-2"]],
+    [[]],
+    [["*"]],
+  ])("carries saved datasets %j through unchanged", (datasets) => {
+    expect(datasetsOf({ filters: { datasets } })?.datasets).toEqual(datasets);
+  });
+
+  it("ignores a malformed datasets value", () => {
+    expect(datasetsOf({ filters: { datasets: "ds-1" } })).not.toHaveProperty(
+      "datasets",
+    );
+  });
+
+  it("does not seed datasets in create mode", () => {
+    const { result } = setup();
+    act(() => result.current.startCreateMode());
+    expect(result.current.parsedFilterData?.filters).not.toHaveProperty(
+      "datasets",
+    );
+  });
+});

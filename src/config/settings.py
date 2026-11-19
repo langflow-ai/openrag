@@ -434,6 +434,107 @@ def is_url_connector_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def _snapshot_env(key: str, default: str = "") -> str:
+    return os.getenv(key, default).strip()
+
+
+def _snapshot_int(key: str, default: int, minimum: int = 0) -> int:
+    raw = _snapshot_env(key)
+    try:
+        value = int(raw) if raw else default
+    except ValueError:
+        value = default
+    return max(value, minimum)
+
+
+def is_snapshot_import_available() -> tuple[bool, str | None]:
+    """Whether the OpenSearch snapshot import connector can run.
+
+    Returns ``(True, None)`` or ``(False, reason)`` where reason is one of
+    ``disabled`` (feature flag off), ``langflow_chat`` (chat still runs through
+    Langflow, which cannot use dataset search) or ``storage_mode`` (the import
+    registry needs database writes). Environment is read per call.
+    """
+    from config.storage_mode import db_writes_enabled
+
+    flag = _snapshot_env("OPENRAG_SNAPSHOT_IMPORT_ENABLED", "false").lower()
+    if flag not in ("true", "1", "yes", "on"):
+        return False, "disabled"
+    if not DISABLE_CHAT_WITH_LANGFLOW:
+        return False, "langflow_chat"
+    if not db_writes_enabled():
+        return False, "storage_mode"
+    return True, None
+
+
+def get_snapshot_staging_type() -> str:
+    """``fs`` (default) or ``s3``; unknown values fall back to ``fs``."""
+    value = _snapshot_env("OPENRAG_SNAPSHOT_STAGING_TYPE", "fs").lower()
+    return value if value in ("fs", "s3") else "fs"
+
+
+def get_snapshot_staging_path() -> str:
+    """fs staging root as the backend process sees it."""
+    return _snapshot_env("OPENRAG_SNAPSHOT_STAGING_PATH") or "opensearch-snapshots"
+
+
+def get_snapshot_staging_repo_location() -> str:
+    """fs staging root as OpenSearch sees it (must be inside ``path.repo``)."""
+    return (
+        _snapshot_env("OPENRAG_SNAPSHOT_STAGING_REPO_LOCATION") or "/usr/share/opensearch/snapshots"
+    )
+
+
+def get_snapshot_staging_s3_settings() -> dict[str, str | None]:
+    """s3 staging settings; unset values are ``None`` (``client`` defaults to ``openrag``)."""
+
+    def opt(name: str) -> str | None:
+        return _snapshot_env(f"OPENRAG_SNAPSHOT_STAGING_S3_{name}") or None
+
+    return {
+        "endpoint": opt("ENDPOINT"),
+        "region": opt("REGION"),
+        "bucket": opt("BUCKET"),
+        "prefix": opt("PREFIX"),
+        "access_key": opt("ACCESS_KEY"),
+        "secret_key": opt("SECRET_KEY"),
+        "client": opt("CLIENT") or "openrag",
+        "sse_type": opt("SSE_TYPE"),
+        "sse_kms_key_id": opt("SSE_KMS_KEY_ID"),
+    }
+
+
+def get_snapshot_allowed_endpoints() -> list[str]:
+    """Operator allowlist for source/staging endpoints (``host``, ``host:port``, ``*.suffix``)."""
+    raw = _snapshot_env("OPENRAG_SNAPSHOT_ALLOWED_ENDPOINTS")
+    return [part.strip().lower() for part in raw.split(",") if part.strip()]
+
+
+def snapshot_endpoint_allowlist_required() -> bool:
+    return _snapshot_env("OPENRAG_SNAPSHOT_REQUIRE_ENDPOINT_ALLOWLIST", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+        "on",
+    )
+
+
+def get_snapshot_shared_backend_role() -> str:
+    return _snapshot_env("OPENRAG_SNAPSHOT_SHARED_BACKEND_ROLE") or "openrag_user"
+
+
+def get_snapshot_max_import_bytes() -> int:
+    return _snapshot_int("OPENRAG_SNAPSHOT_MAX_IMPORT_BYTES", 10 * 1024**3, 1)
+
+
+def get_snapshot_max_imports_per_user() -> int:
+    return _snapshot_int("OPENRAG_SNAPSHOT_MAX_IMPORTS_PER_USER", 10, 1)
+
+
+def get_snapshot_max_analyser_file_bytes() -> int:
+    return _snapshot_int("OPENRAG_SNAPSHOT_MAX_ANALYSER_FILE_BYTES", 1024 * 1024, 1)
+
+
 def is_tracing_flag_enabled() -> bool:
     """Opt-in flag for backend LLM/ingest/search tracing to Langfuse.
 

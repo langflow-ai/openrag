@@ -11,6 +11,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { cn } from "@/lib/utils";
 import ConnectorCards from "./connector-cards";
+import OpenSearchSnapshotCard from "./opensearch-snapshot/opensearch-snapshot-card";
 
 export function ConnectorsTab() {
   const isCloudBrand = useIsCloudBrand();
@@ -67,6 +68,7 @@ export function ConnectorsTab() {
         </Card>
       )}
       <ConnectorCards />
+      <OpenSearchSnapshotCard />
     </div>
   );
 }

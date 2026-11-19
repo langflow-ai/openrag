@@ -56,7 +56,8 @@ async function fetchSuggestions(
     {
       query,
       semantic,
-      filters: buildSearchPayloadFilters(filters) ?? {},
+      filters:
+        buildSearchPayloadFilters(filters, { includeDatasets: false }) ?? {},
       scoreThreshold,
     },
     { signal },
@@ -104,7 +105,9 @@ export function useSearchSuggestions(
     atWordBoundary ? 0 : SUGGEST_SEMANTIC_DEBOUNCE_MS,
   );
 
-  const filtersKey = JSON.stringify(buildSearchPayloadFilters(filters) ?? {});
+  const filtersKey = JSON.stringify(
+    buildSearchPayloadFilters(filters, { includeDatasets: false }) ?? {},
+  );
 
   const keywordThreshold = resolveScoreThreshold(
     keywordQuery,

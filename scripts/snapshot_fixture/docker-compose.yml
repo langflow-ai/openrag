@@ -1,0 +1,65 @@
+# Snapshot import fixture: a stand-in for a customer's OpenSearch ("source")
+# and S3-compatible object storage (local MinIO) to back it up into.
+#
+# Neither service belongs to OpenRAG; OpenRAG only ever reads the bucket.
+# Driven by `make snapshot-fixture` (see scripts/snapshot_fixture/README.md).
+name: openrag-snapshot-fixture
+
+services:
+  minio:
+    # Community build of MinIO; upstream minio/minio images are no longer
+    # published on Docker Hub.
+    image: docker.io/pgsty/minio:latest
+    command: ["minio", "server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${SNAPSHOT_MINIO_ROOT_USER:-snapshotadmin}
+      MINIO_ROOT_PASSWORD: ${SNAPSHOT_MINIO_ROOT_PASSWORD:-snapshotadmin123}
+      # OpenSearch 3.x repository-s3 sends an SSE-S3 (AES256) header on every
+      # upload; MinIO rejects that unless a KMS key is configured. Throwaway
+      # static key for this local fixture only.
+      MINIO_KMS_SECRET_KEY: ${SNAPSHOT_MINIO_KMS_SECRET_KEY:-fixture-key:hwZJBRUQax+nNPqSTW10sAtHKwn1r2wZN3F8TuCB/Sg=}
+    ports:
+      - "${SNAPSHOT_MINIO_PORT:-9100}:9000"
+      - "${SNAPSHOT_MINIO_CONSOLE_PORT:-9101}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  source-opensearch:
+    build:
+      context: .
+      dockerfile: Dockerfile.source
+    image: openrag-snapshot-fixture-opensearch:3.8.0
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+      # Static S3 client settings; keys go into the keystore at backup time.
+      s3.client.default.endpoint: ${SNAPSHOT_S3_CLUSTER_ENDPOINT:-minio:9000}
+      s3.client.default.protocol: ${SNAPSHOT_S3_CLUSTER_PROTOCOL:-http}
+      s3.client.default.path_style_access: ${SNAPSHOT_S3_PATH_STYLE:-true}
+      s3.client.default.region: ${SNAPSHOT_S3_REGION:-us-east-1}
+    ports:
+      - "${SNAPSHOT_SOURCE_OS_PORT:-9201}:9200"
+    volumes:
+      # Analyser file referenced by `synonyms_path`; deliberately outside the
+      # snapshot, like the customer's synonym indices.
+      - ./analysis:/usr/share/opensearch/config/analysis:ro
+      - source-os-data:/usr/share/opensearch/data
+    depends_on:
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+volumes:
+  minio-data:
+  source-os-data:

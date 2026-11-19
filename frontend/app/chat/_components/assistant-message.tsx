@@ -327,6 +327,7 @@ export function AssistantMessage({
               activeCitedSource.item.data?.file_path,
               activeCitedSource.item.filename,
               "Document",
+              activeCitedSource.item.dataset,
             )}
             score={
               activeCitedSource.item.score !== undefined

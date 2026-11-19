@@ -36,7 +36,14 @@ export const deriveDisplayFilename = (
   filePath: string | undefined,
   filename: string | undefined,
   fallback: string = "Document",
+  dataset?: { name: string } | null,
 ): string => {
+  if (dataset) {
+    // Dataset results are titled "<dataset> / <title>"; the title itself may
+    // contain "/", so strip the dataset prefix instead of taking the last part.
+    const title = (filename ?? "").replace(`${dataset.name} / `, "").trim();
+    return title || fallback;
+  }
   const path = filePath || filename || fallback;
   return path.split("/").pop() || path;
 };

@@ -112,6 +112,7 @@ endef
 .PHONY: help check_tools help_docker help_dev help_test help_local help_utils help_operator \
        dev dev-cpu dev-local dev-local-cpu dev-local-build-lf dev-local-build-lf-cpu stop clean build logs \
        azurite-up azurite-down \
+       snapshot-fixture snapshot-fixture-up snapshot-fixture-data snapshot-fixture-backup snapshot-fixture-down \
        instana-agent-up instana-agent-down \
        shell-backend shell-frontend install \
        test test-unit test-customer-connectors test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
@@ -398,6 +399,8 @@ help_local: ## Show local development commands
 	@echo "  $(PURPLE)make docling-stop$(NC)    - Stop docling-serve"
 	@echo "  $(PURPLE)make azurite-up$(NC)      - Start Azurite (local Azure Blob emulator) for connector testing"
 	@echo "  $(PURPLE)make azurite-down$(NC)    - Stop Azurite emulator"
+	@echo "  $(PURPLE)make snapshot-fixture$(NC) - Start source OpenSearch + MinIO, load sample indices, back them up to S3"
+	@echo "  $(PURPLE)make snapshot-fixture-down$(NC) - Stop the snapshot fixture and delete its data"
 	@echo "  $(PURPLE)make instana-agent-up$(NC)   - Start the local Instana host agent (forwards to INSTANA_AGENT_ENDPOINT)"
 	@echo "  $(PURPLE)make instana-agent-down$(NC) - Stop the local Instana host agent"
 	@echo ''
@@ -473,8 +476,8 @@ ensure-langflow-data: ## Create the langflow-data directory if it does not exist
 	@chmod 777 langflow-data
 
 ensure-backend-volumes: ## Create and permission backend volume directories
-	@mkdir -p flows keys config data openrag-documents
-	@chmod 775 flows keys config data openrag-documents 2>/dev/null \
+	@mkdir -p flows keys config data openrag-documents opensearch-snapshots
+	@chmod 775 flows keys config data openrag-documents opensearch-snapshots 2>/dev/null \
 		|| echo "$(YELLOW)Warning: Could not chmod backend volume directories.$(NC)"
 
 check-env: ## Verify required environment variables are set in .env
@@ -930,6 +933,29 @@ azurite-down: ## Stop Azurite emulator
 	@echo "$(YELLOW)Stopping Azurite...$(NC)"
 	$(COMPOSE_CMD) --profile azurite stop azurite
 	@echo "$(PURPLE)Azurite stopped.$(NC)"
+
+# Snapshot import fixture: a stand-in customer OpenSearch plus local MinIO.
+# Override the backup target with SNAPSHOT_S3_ENDPOINT, SNAPSHOT_S3_ACCESS_KEY,
+# SNAPSHOT_S3_SECRET_KEY, SNAPSHOT_S3_BUCKET, SNAPSHOT_S3_BASE_PATH,
+# SNAPSHOT_S3_REGION and SNAPSHOT_NAME (see scripts/snapshot_fixture/README.md).
+SNAPSHOT_FIXTURE_COMPOSE := docker compose -f scripts/snapshot_fixture/docker-compose.yml
+
+snapshot-fixture: SNAPSHOT_OVERWRITE ?= 1
+snapshot-fixture: snapshot-fixture-up snapshot-fixture-data snapshot-fixture-backup ## Start source OpenSearch + MinIO, load sample indices, back them up to S3
+
+snapshot-fixture-up: ## Start the fixture's source OpenSearch (port 9201) and MinIO (9100, console 9101)
+	@echo "$(YELLOW)Starting snapshot fixture (source OpenSearch + MinIO)...$(NC)"
+	$(SNAPSHOT_FIXTURE_COMPOSE) up -d --build --wait
+	@echo "$(PURPLE)Source OpenSearch: http://localhost:9201  MinIO: http://localhost:9100 (console :9101)$(NC)"
+
+snapshot-fixture-data: ## Create and load the famous_scientists and scientific_discoveries indices
+	@uv run python scripts/snapshot_fixture/create_index.py --recreate
+
+snapshot-fixture-backup: ## Snapshot the fixture indices into S3 (local MinIO unless SNAPSHOT_S3_* is set)
+	@uv run python scripts/snapshot_fixture/backup_to_s3.py $(if $(SNAPSHOT_OVERWRITE),--overwrite,)
+
+snapshot-fixture-down: ## Stop the snapshot fixture and delete its volumes
+	$(SNAPSHOT_FIXTURE_COMPOSE) down -v
 
 instana-agent-up: ## Start the local Instana host agent (forwards to INSTANA_AGENT_ENDPOINT)
 	@echo "$(YELLOW)Starting Instana host agent...$(NC)"

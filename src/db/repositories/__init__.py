@@ -11,6 +11,7 @@ from db.repositories.permission_repo import PermissionRepo
 from db.repositories.preferences_repo import PreferencesRepo
 from db.repositories.role_repo import RoleRepo
 from db.repositories.session_ownership_repo import SessionOwnershipRepo
+from db.repositories.snapshot_import_repo import SnapshotImportRepo
 from db.repositories.user_repo import UserRepo
 from db.repositories.workspace_config_repo import (
     SECTIONS as WORKSPACE_CONFIG_SECTIONS,
@@ -29,6 +30,7 @@ __all__ = [
     "PreferencesRepo",
     "RoleRepo",
     "SessionOwnershipRepo",
+    "SnapshotImportRepo",
     "UserRepo",
     "WorkspaceConfigRepo",
     "WORKSPACE_CONFIG_SECTIONS",

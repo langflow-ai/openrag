@@ -47,6 +47,7 @@ export function CitationCards({
           item.data?.file_path,
           item.filename,
           "document",
+          item.dataset,
         );
         const score = toNumber(item.score);
 
@@ -83,6 +84,14 @@ export function CitationCards({
               <span className="text-mmd text-foreground truncate max-w-[160px] leading-tight">
                 {filename}
               </span>
+              {item.dataset?.name && (
+                <span
+                  className="mt-1 w-fit max-w-[160px] truncate rounded-full bg-accent-purple/20 px-1.5 py-px text-xxs leading-tight text-accent-purple-foreground"
+                  title={`Dataset: ${item.dataset.name}`}
+                >
+                  {item.dataset.name}
+                </span>
+              )}
               <span className="text-xxs text-muted-foreground mt-1 leading-none">
                 {pageLabel}
                 {pageLabel && score !== undefined && score > 0 && ` • `}

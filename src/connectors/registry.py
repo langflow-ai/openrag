@@ -18,6 +18,7 @@ from .aws_s3 import S3Connector
 from .base import BaseConnector
 from .google_drive import GoogleDriveConnector
 from .onedrive import OneDriveConnector
+from .opensearch_snapshot.connector import OpenSearchSnapshotConnector
 from .sharepoint import SharePointConnector
 from .url import URLConnector
 
@@ -29,6 +30,7 @@ BUILTIN_CONNECTORS: list[type[BaseConnector]] = [
     SharePointConnector,
     S3Connector,
     URLConnector,
+    OpenSearchSnapshotConnector,
 ]
 
 PLUGIN_ENTRY_POINT_GROUP = "openrag.connectors.v1"

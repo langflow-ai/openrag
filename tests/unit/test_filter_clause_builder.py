@@ -67,3 +67,14 @@ def test_date_bounds_are_sent_as_explicit_instants(raw, expected):
     assert normalize_date_bound(raw) == expected
     clause = build_date_range_query("indexed_time", gte=raw, lte=raw)
     assert clause == {"range": {"indexed_time": {"gte": expected, "lte": expected}}}
+
+
+@pytest.mark.parametrize("empty_matches_nothing", [False, True])
+def test_dataset_selection_never_filters_documents(empty_matches_nothing):
+    """A saved filter's `datasets` selects imported indices, not a documents field."""
+    for datasets in (["ds-1", "ds-2"], ["ds-1"], []):
+        clauses = build_filter_clauses(
+            {"datasets": datasets, "owners": ["a"]},
+            empty_list_matches_nothing=empty_matches_nothing,
+        )
+        assert clauses == [{"term": {"owner": "a"}}]

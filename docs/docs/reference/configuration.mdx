@@ -260,6 +260,32 @@ For Langflow flow IDs and Langflow timeout settings, see [Langflow settings](#la
 | `OPENRAG_MAX_UPLOAD_MB` | `100` | Largest accepted upload, in mebibytes. A larger file is refused before ingestion starts, after the request body has been received. Cap the request at the reverse proxy in front of OpenRAG if temp disk must be bounded. This does not raise the body limit on the proxy in front of Docling Serve. A `proxy-body-size` annotation on the OpenRAG ingress does not change that proxy. Raise the Docling proxy's `client_max_body_size`, or set this variable to that proxy's real limit. |
 | `OPENRAG_EMBEDDING_OVERFLOW_POLICY` | `average` | What OpenRAG does when the embedding model rejects a chunk or query as longer than its input limit. With `average`, OpenRAG embeds the text in smaller pieces and stores the length-weighted average of their vectors, so ingestion continues; the full text is still stored and searchable by keyword. With `error`, the request fails and the file reports that a section is longer than the model accepts. |
 
+## OpenSearch snapshot import settings {#opensearch-snapshot-import-settings}
+
+Import indices from an OpenSearch snapshot stored in S3-compatible storage, and search them next to your documents. Imported indices keep their own mappings and analysers and are never copied into the OpenRAG documents index. They are searched by the built-in Python chat agent and by `/v1/search`, so the connector requires `DISABLE_CHAT_WITH_LANGFLOW=true` and `OPENRAG_STORAGE_MODE=db`.
+
+OpenSearch only reads S3 credentials from its own keystore, so OpenRAG copies the snapshot files into a staging repository that its OpenSearch can already read, then restores from there. Set up staging once per deployment:
+
+- `fs` (default): a directory shared by the OpenRAG backend and OpenSearch, listed in OpenSearch's `path.repo`. The Docker Compose file mounts `./opensearch-snapshots` into both containers.
+- `s3`: a staging bucket. OpenSearch needs the `repository-s3` plugin and an S3 client named by `OPENRAG_SNAPSHOT_STAGING_S3_CLIENT` in its keystore.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENRAG_SNAPSHOT_IMPORT_ENABLED` | `false` | Enable the OpenSearch snapshot connector. |
+| `OPENRAG_SNAPSHOT_STAGING_TYPE` | `fs` | Staging repository type: `fs` or `s3`. |
+| `OPENRAG_SNAPSHOT_STAGING_HOST_PATH` | `./opensearch-snapshots` | Docker Compose only: host directory mounted into the backend and OpenSearch containers for `fs` staging. |
+| `OPENRAG_SNAPSHOT_STAGING_PATH` | `opensearch-snapshots` | `fs` staging directory as the backend sees it. |
+| `OPENRAG_SNAPSHOT_STAGING_REPO_LOCATION` | `/usr/share/opensearch/snapshots` | The same directory as OpenSearch sees it. Must be inside `path.repo`. |
+| `OPENRAG_SNAPSHOT_STAGING_S3_ENDPOINT`, `OPENRAG_SNAPSHOT_STAGING_S3_REGION`, `OPENRAG_SNAPSHOT_STAGING_S3_BUCKET`, `OPENRAG_SNAPSHOT_STAGING_S3_PREFIX`, `OPENRAG_SNAPSHOT_STAGING_S3_ACCESS_KEY`, `OPENRAG_SNAPSHOT_STAGING_S3_SECRET_KEY` | Not set | `s3` staging: the bucket the backend writes staged files to, and its credentials. |
+| `OPENRAG_SNAPSHOT_STAGING_S3_CLIENT` | `openrag` | `s3` staging: the `s3.client.<name>` OpenSearch uses to read the staging bucket. |
+| `OPENRAG_SNAPSHOT_STAGING_S3_SSE_TYPE` | Not set | `s3` staging: server-side encryption header the backend sends on upload: not set (bucket default), `AES256`, or `aws:kms`. |
+| `OPENRAG_SNAPSHOT_ALLOWED_ENDPOINTS` | Not set | Comma-separated `host`, `host:port` or `*.domain` entries. Source endpoints on private, loopback or link-local addresses are refused unless listed here. |
+| `OPENRAG_SNAPSHOT_REQUIRE_ENDPOINT_ALLOWLIST` | `false` | When `true`, every source endpoint must be listed in `OPENRAG_SNAPSHOT_ALLOWED_ENDPOINTS`. |
+| `OPENRAG_SNAPSHOT_SHARED_BACKEND_ROLE` | `openrag_user` | OpenSearch backend role that shared imports are granted to. |
+| `OPENRAG_SNAPSHOT_MAX_IMPORT_BYTES` | `10737418240` | Largest snapshot copy one import may stage, in bytes. |
+| `OPENRAG_SNAPSHOT_MAX_IMPORTS_PER_USER` | `10` | Number of imports one user may keep. |
+| `OPENRAG_SNAPSHOT_MAX_ANALYSER_FILE_BYTES` | `1048576` | Largest synonym or stop-word file a user may upload for an imported index. |
+
 ## Langflow settings {#langflow-settings}
 
 Configure the OpenRAG Langflow server's authentication, contact point, and built-in flow definitions.

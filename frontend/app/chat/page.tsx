@@ -672,7 +672,10 @@ function ChatPage() {
   // Prepare filters for nudges (same as chat)
   const processedFiltersForNudges = parsedFilterData?.filters
     ? (() => {
-        return buildSearchPayloadFilters(parsedFilterData.filters);
+        // Nudges are suggested from documents only.
+        return buildSearchPayloadFilters(parsedFilterData.filters, {
+          includeDatasets: false,
+        });
       })()
     : undefined;
 

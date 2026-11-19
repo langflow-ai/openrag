@@ -34,6 +34,8 @@ logs
 
 # OpenSearch data directory
 opensearch-data/
+# Snapshot import staging (shared with the OpenSearch container's path.repo)
+opensearch-snapshots/
 # Langflow data directory
 langflow-data/
 
