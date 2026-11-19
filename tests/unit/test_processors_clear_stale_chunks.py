@@ -104,16 +104,28 @@ def _patch_embedding_pipeline(monkeypatch, chunk_count: int, write_client=None):
 
 
 @pytest.mark.asyncio
-async def test_url_reconciliation_removes_legacy_source_chunks_after_stable_deduping(monkeypatch):
-    """A URL's old content-derived ID must not survive its stable URL ID."""
+async def test_url_reconciliation_excludes_managed_website_chunks(monkeypatch):
+    """Only legacy chat chunks, not managed website pages, are reconciled."""
     processor, user_client = _make_processor_with_mocks()
     write_client = AsyncMock()
     write_client.delete = AsyncMock(return_value={"result": "deleted"})
     _patch_embedding_pipeline(monkeypatch, chunk_count=1, write_client=write_client)
     processor.check_document_exists = AsyncMock(return_value=True)
-    user_client.search = AsyncMock(
-        return_value={"_scroll_id": None, "hits": {"hits": [{"_id": "legacy-chunk"}]}}
-    )
+    candidates = [("legacy-chat-chunk", False), ("website-chunk", True)]
+
+    async def search(**kwargs):
+        query = kwargs["body"]["query"]
+        assert {"exists": {"field": "web_source_id"}} in query["bool"]["must_not"]
+        return {
+            "_scroll_id": None,
+            "hits": {
+                "hits": [
+                    {"_id": chunk_id} for chunk_id, has_web_source in candidates if not has_web_source
+                ]
+            },
+        }
+
+    user_client.search = AsyncMock(side_effect=search)
 
     result = await processor.process_document_standard(
         file_path="unused.txt",
@@ -133,11 +145,14 @@ async def test_url_reconciliation_removes_legacy_source_chunks_after_stable_dedu
                 {"term": {"connector_type": "url"}},
                 {"term": {"owner": "alice"}},
             ],
-            "must_not": [{"term": {"document_id": "stable-url-id"}}],
+            "must_not": [
+                {"term": {"document_id": "stable-url-id"}},
+                {"exists": {"field": "web_source_id"}},
+            ],
         }
     }
     write_client.delete.assert_awaited_once_with(
-        index="test-index", id="legacy-chunk", refresh=True
+        index="test-index", id="legacy-chat-chunk", refresh=True
     )
 
 

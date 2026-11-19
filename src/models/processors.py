@@ -642,7 +642,10 @@ class TaskProcessor:
                                 {"term": {"connector_type": connector_type}},
                                 {"term": {"owner": owner_user_id}},
                             ],
-                            "must_not": [{"term": {"document_id": stable_document_id}}],
+                            "must_not": [
+                                {"term": {"document_id": stable_document_id}},
+                                {"exists": {"field": "web_source_id"}},
+                            ],
                         }
                     },
                 )
