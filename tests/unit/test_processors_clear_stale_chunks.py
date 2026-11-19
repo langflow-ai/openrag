@@ -120,7 +120,9 @@ async def test_url_reconciliation_excludes_managed_website_chunks(monkeypatch):
             "_scroll_id": None,
             "hits": {
                 "hits": [
-                    {"_id": chunk_id} for chunk_id, has_web_source in candidates if not has_web_source
+                    {"_id": chunk_id}
+                    for chunk_id, has_web_source in candidates
+                    if not has_web_source
                 ]
             },
         }
