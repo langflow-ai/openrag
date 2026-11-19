@@ -19,7 +19,6 @@ import {
 import { cn } from "@/lib/utils";
 
 const PRESET_DAYS = [30, 60, 90] as const;
-const DEFAULT_CUSTOM_DAYS = 30;
 
 type Field = "from" | "to";
 
@@ -108,15 +107,9 @@ export function KnowledgeFilterDateField({
     {
       id: "custom",
       label: "Custom date range",
-      select: () => {
-        if (!draft?.from && !draft?.to) {
-          update({
-            from: subDays(today, DEFAULT_CUSTOM_DAYS - 1),
-            to: today,
-          });
-        }
-        setExpanded("from");
-      },
+      // Opens the From calendar without inventing a range: nothing is
+      // selected until the user picks a day.
+      select: () => setExpanded("from"),
     },
   ];
 

@@ -289,6 +289,12 @@ describe("KnowledgeFilterPanel date ingested", () => {
       "aria-expanded",
       "true",
     );
+    // Choosing Custom must not invent a range: both fields start empty.
+    expect(screen.getAllByText("Select date")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "All dates" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
 
     const dayButton = (n: number) =>
       screen
@@ -306,8 +312,8 @@ describe("KnowledgeFilterPanel date ingested", () => {
     await click(screen.getByRole("button", { name: "Apply" }));
 
     const data = await save();
-    // Custom starts as Sep 24 - Oct 23, so the From calendar opens on September.
-    expect(data.date_range_context.from).toBe("2026-09-07");
+    // The From calendar opens on the current month (October).
+    expect(data.date_range_context.from).toBe("2026-10-07");
     // A To before the draft's start would invert the range; the field keeps it
     // disabled, so the To pick above is the first selectable day on or after From.
     expect(data.date_range_context.to).toBe("2026-10-10");
