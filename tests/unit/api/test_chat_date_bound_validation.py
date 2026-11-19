@@ -18,7 +18,7 @@ BAD_FILTERS = [
 
 @pytest.fixture
 def user():
-    return SimpleNamespace(user_id="u1", jwt_token="jwt")
+    return SimpleNamespace(user_id="u1", jwt_token="jwt", name="User", email="user@example.test")
 
 
 @pytest.mark.asyncio

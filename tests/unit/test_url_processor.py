@@ -1,3 +1,4 @@
+import io
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -5,6 +6,7 @@ import pytest
 from models.tasks import FileTask, TaskStatus, UploadTask
 from models.url import UrlProcessor
 from services.task_service import TaskService
+from utils.hash_utils import hash_id
 
 
 @pytest.mark.asyncio
@@ -37,6 +39,12 @@ async def test_url_processor_retains_successful_processing_result(tmp_path):
     assert file_task.result == result
     assert upload_task.successful_files == 1
     assert upload_task.failed_files == 0
+    call = document_processor.process_document_standard.await_args
+    assert call is not None
+    assert call.kwargs["document_id"] == hash_id(
+        io.BytesIO(processor.docs_url.encode("utf-8"))
+    )
+    assert call.kwargs["reconcile_source_url"] is True
 
 
 @pytest.mark.asyncio

@@ -561,6 +561,7 @@ class TaskProcessor:
         shared: bool = False,
         document_id: str | None = None,
         replace_existing: bool = False,
+        reconcile_source_url: bool = False,
         source_url: str | None = None,
         web_source_id: str | None = None,
         web_page_id: str | None = None,
@@ -623,6 +624,38 @@ class TaskProcessor:
             opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
                 owner_user_id, jwt_token
             )
+
+            if reconcile_source_url and source_url:
+                # URL documents used to derive their ID from temporary-file content.
+                # Remove only visible chunks for the same URL that use an older ID,
+                # then let the stable URL ID retain the regular unchanged fast path.
+                from utils.opensearch_delete import (
+                    collect_visible_document_ids,
+                    delete_document_ids,
+                )
+
+                write_client = clients.opensearch
+                if write_client is None:
+                    raise RuntimeError("Backend OpenSearch write client is unavailable")
+                legacy_chunk_ids = await collect_visible_document_ids(
+                    opensearch_client,
+                    index=get_index_name(),
+                    query={
+                        "bool": {
+                            "filter": [
+                                {"term": {"source_url": source_url}},
+                                {"term": {"connector_type": connector_type}},
+                            ],
+                            "must_not": [{"term": {"document_id": stable_document_id}}],
+                        }
+                    },
+                )
+                if legacy_chunk_ids:
+                    await delete_document_ids(
+                        write_client,
+                        index=get_index_name(),
+                        document_ids=legacy_chunk_ids,
+                    )
 
             # URL sources own normalized-content deduplication. A page re-sync
             # deliberately replaces chunks under its stable document ID.

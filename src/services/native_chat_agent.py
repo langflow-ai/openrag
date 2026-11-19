@@ -320,13 +320,19 @@ class NativeChatAgent:
     async def _ingest_public_url(self, value: str, user_id: str) -> dict[str, Any]:
         """Fetch a public URL once, index it, and return its protected text to the model."""
         page = await _read_public_url(value)
-        if page.get("error") or self._document_service is None or self._models_service is None:
-            return page if page.get("error") else {"error": "URL ingestion is not configured"}
+        if page.get("error"):
+            return page
 
-        from auth_context import get_auth_context
+        from auth_context import get_auth_context, get_chat_ingestion_context
         from models.tasks import FileTask, UploadTask
         from models.url import UrlProcessor
         from utils.url_content_fetcher import materialize_url_text_file
+
+        owner_name, owner_email, can_upload_knowledge = get_chat_ingestion_context()
+        if not can_upload_knowledge:
+            return {**page, "ingestion": {"status": "skipped", "reason": "not_authorized"}}
+        if self._document_service is None or self._models_service is None:
+            return {**page, "ingestion": {"status": "skipped", "reason": "not_configured"}}
 
         ingestion_page = copy.deepcopy(page)
         strip_untrusted_fence_recursive(ingestion_page)
@@ -347,6 +353,8 @@ class NativeChatAgent:
             crawl_depth=1,
             owner_user_id=owner_user_id or user_id,
             jwt_token=jwt_token,
+            owner_name=owner_name,
+            owner_email=owner_email,
             connector_type="url",
             materialized_file_path=temp_file_path,
             title=title,
@@ -357,9 +365,25 @@ class NativeChatAgent:
                 UploadTask(task_id=str(uuid.uuid4()), total_files=1), source_url, file_task
             )
         except Exception as exc:  # noqa: BLE001
-            return {"error": f"Could not ingest URL: {exc}"}
+            logger.warning("[CHAT] Native URL ingestion failed", url=source_url, error=str(exc))
+            return {
+                **page,
+                "ingestion": {
+                    "status": "error",
+                    "error": "The page could not be added to the knowledge base",
+                },
+            }
         if file_task.error:
-            return {"error": f"Could not ingest URL: {file_task.error}"}
+            logger.warning(
+                "[CHAT] Native URL ingestion failed", url=source_url, error=file_task.error
+            )
+            return {
+                **page,
+                "ingestion": {
+                    "status": "error",
+                    "error": "The page could not be added to the knowledge base",
+                },
+            }
         return {**page, "ingestion": file_task.result or {"status": "indexed"}}
 
     async def run(
@@ -567,7 +591,7 @@ class NativeChatAgent:
         async def opensearch_url_ingestion_flow(
             input_value: str, session_id: str | None = None
         ) -> dict[str, Any]:
-            """Read a user-provided public URL; use only for an explicit http(s) URL request."""
+            """Read a public URL and, when authorized, add it to the knowledge base."""
             del session_id
             return await self._ingest_public_url(input_value, user_id)
 

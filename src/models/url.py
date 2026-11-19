@@ -1,3 +1,4 @@
+import io
 import os
 import time
 from typing import Any
@@ -58,6 +59,7 @@ class UrlProcessor(TaskProcessor):
                     docs_url=self.docs_url,
                     crawl_depth=self.crawl_depth,
                 )
+            document_id = hash_id(io.BytesIO(self.docs_url.encode("utf-8")))
 
             processor = DocumentFileProcessor(
                 self.document_service,
@@ -74,7 +76,9 @@ class UrlProcessor(TaskProcessor):
             )
             result = await processor.process_document_standard(
                 file_path=temp_file_path,
-                file_hash=hash_id(temp_file_path),
+                file_hash=document_id,
+                document_id=document_id,
+                reconcile_source_url=True,
                 owner_user_id=self.owner_user_id,
                 original_filename=title,
                 jwt_token=self.jwt_token,

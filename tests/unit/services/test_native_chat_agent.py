@@ -21,6 +21,7 @@ from pydantic_ai.messages import (
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.usage import RunUsage
 
+from auth_context import set_chat_ingestion_context
 from services.native_chat_agent import (
     NativeChatAgent,
     _calculate,
@@ -380,17 +381,58 @@ async def test_native_url_tool_indexes_the_validated_page_with_the_url_processor
     document_processor.process_document_standard = AsyncMock(side_effect=process_document_standard)
     agent = NativeChatAgent(document_service=MagicMock(), models_service=MagicMock())
 
-    with patch("models.processors.DocumentFileProcessor", return_value=document_processor):
-        result = await agent._ingest_public_url("https://example.com/doc", "user-id")
+    set_chat_ingestion_context("Owner Name", "owner@example.test", True)
+    try:
+        with patch("models.processors.DocumentFileProcessor", return_value=document_processor):
+            result = await agent._ingest_public_url("https://example.com/doc", "user-id")
+    finally:
+        set_chat_ingestion_context(None, None, False)
 
     assert result["ingestion"] == {"status": "indexed", "id": "document-id"}
     assert captured["source_url"] == "https://example.com/doc"
     assert captured["connector_type"] == "url"
+    assert captured["owner_name"] == "Owner Name"
+    assert captured["owner_email"] == "owner@example.test"
     assert captured["original_filename"] == _url_filename("https://example.com/doc")
     assert captured["content"] == (
         f"{_url_filename('https://example.com/doc')}\n\n"
         "Source URL: https://example.com/doc\nCrawl depth: 1\n\nDocument body\n"
     )
+
+
+@pytest.mark.asyncio
+async def test_native_url_tool_skips_indexing_without_upload_permission(monkeypatch):
+    page = {"url": "https://example.com/doc", "text": "Document body"}
+    monkeypatch.setattr("services.native_chat_agent._read_public_url", AsyncMock(return_value=page))
+    agent = NativeChatAgent(document_service=MagicMock(), models_service=MagicMock())
+    set_chat_ingestion_context(None, None, False)
+
+    result = await agent._ingest_public_url("https://example.com/doc", "user-id")
+
+    assert result == {**page, "ingestion": {"status": "skipped", "reason": "not_authorized"}}
+
+
+@pytest.mark.asyncio
+async def test_native_url_tool_returns_page_when_indexing_fails(monkeypatch):
+    page = {"url": "https://example.com/doc", "text": "Document body"}
+    monkeypatch.setattr("services.native_chat_agent._read_public_url", AsyncMock(return_value=page))
+    document_processor = MagicMock()
+    document_processor.process_document_standard = AsyncMock(side_effect=RuntimeError("bad embeddings"))
+    agent = NativeChatAgent(document_service=MagicMock(), models_service=MagicMock())
+    set_chat_ingestion_context(None, None, True)
+    try:
+        with patch("models.processors.DocumentFileProcessor", return_value=document_processor):
+            result = await agent._ingest_public_url("https://example.com/doc", "user-id")
+    finally:
+        set_chat_ingestion_context(None, None, False)
+
+    assert result == {
+        **page,
+        "ingestion": {
+            "status": "error",
+            "error": "The page could not be added to the knowledge base",
+        },
+    }
 
 
 @pytest.mark.asyncio

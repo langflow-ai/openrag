@@ -104,6 +104,43 @@ def _patch_embedding_pipeline(monkeypatch, chunk_count: int, write_client=None):
 
 
 @pytest.mark.asyncio
+async def test_url_reconciliation_removes_legacy_source_chunks_before_deduping(monkeypatch):
+    """A URL's old content-derived ID must not survive its stable URL ID."""
+    processor, user_client = _make_processor_with_mocks()
+    write_client = AsyncMock()
+    write_client.delete = AsyncMock(return_value={"result": "deleted"})
+    _patch_embedding_pipeline(monkeypatch, chunk_count=1, write_client=write_client)
+    processor.check_document_exists = AsyncMock(return_value=True)
+    user_client.search = AsyncMock(
+        return_value={"_scroll_id": None, "hits": {"hits": [{"_id": "legacy-chunk"}]}}
+    )
+
+    result = await processor.process_document_standard(
+        file_path="unused.txt",
+        file_hash="stable-url-id",
+        document_id="stable-url-id",
+        reconcile_source_url=True,
+        source_url="https://example.test/page",
+        connector_type="url",
+        owner_user_id="alice",
+    )
+
+    assert result == {"status": "unchanged", "id": "stable-url-id"}
+    assert user_client.search.await_args.kwargs["body"]["query"] == {
+        "bool": {
+            "filter": [
+                {"term": {"source_url": "https://example.test/page"}},
+                {"term": {"connector_type": "url"}},
+            ],
+            "must_not": [{"term": {"document_id": "stable-url-id"}}],
+        }
+    }
+    write_client.delete.assert_awaited_once_with(
+        index="test-index", id="legacy-chunk", refresh=True
+    )
+
+
+@pytest.mark.asyncio
 async def test_stale_chunks_cleared_before_reindex(monkeypatch):
     """Stale chunks must be cleared (via primary-id deletes) before the writer
     upsert so prior chunks cannot survive a re-index with fewer chunks.
