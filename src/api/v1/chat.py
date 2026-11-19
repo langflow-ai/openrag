@@ -179,9 +179,7 @@ async def chat_create_endpoint(
     if resolved_filters:
         validate_date_filter_bounds(resolved_filters)
         set_search_filters(resolved_filters)
-    can_upload_knowledge = await has_effective_permission(
-        request, user, rbac, "knowledge:upload"
-    )
+    can_upload_knowledge = await has_effective_permission(request, user, rbac, "knowledge:upload")
     set_search_limit(resolved_limit)
     set_score_threshold(resolved_score_threshold)
     set_auth_context(user_id, jwt_token)

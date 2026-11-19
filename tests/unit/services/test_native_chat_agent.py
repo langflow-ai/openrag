@@ -417,7 +417,9 @@ async def test_native_url_tool_returns_page_when_indexing_fails(monkeypatch):
     page = {"url": "https://example.com/doc", "text": "Document body"}
     monkeypatch.setattr("services.native_chat_agent._read_public_url", AsyncMock(return_value=page))
     document_processor = MagicMock()
-    document_processor.process_document_standard = AsyncMock(side_effect=RuntimeError("bad embeddings"))
+    document_processor.process_document_standard = AsyncMock(
+        side_effect=RuntimeError("bad embeddings")
+    )
     agent = NativeChatAgent(document_service=MagicMock(), models_service=MagicMock())
     set_chat_ingestion_context(None, None, True)
     try:

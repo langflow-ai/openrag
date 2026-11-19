@@ -41,9 +41,7 @@ async def test_url_processor_retains_successful_processing_result(tmp_path):
     assert upload_task.failed_files == 0
     call = document_processor.process_document_standard.await_args
     assert call is not None
-    assert call.kwargs["document_id"] == hash_id(
-        io.BytesIO(processor.docs_url.encode("utf-8"))
-    )
+    assert call.kwargs["document_id"] == hash_id(io.BytesIO(processor.docs_url.encode("utf-8")))
     assert call.kwargs["reconcile_source_url"] is True
 
 
