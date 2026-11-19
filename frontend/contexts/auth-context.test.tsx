@@ -11,9 +11,9 @@
  * no user, and RBAC-disabled grants everything while holding no permissions.
  * Both look falsy to a naive gate.
  */
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { HttpResponse, http, type RequestHandler } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { type User, useAuth } from "@/contexts/auth-context";
 import {
   type AuthScenario,
@@ -235,5 +235,135 @@ describe("AuthProvider", () => {
       expect(result.current.isNoAuthMode).toBe(true);
       expect(result.current.can("config:write")).toBe(true);
     });
+  });
+});
+
+describe("date range v2 flag", () => {
+  it("is false when /auth/me omits the field (older backend)", async () => {
+    const { result } = await renderAuth(
+      withAuth(authPresets.admin, { me: { run_mode: "oss" } }),
+    );
+    expect(result.current.dateRangeV2).toBe(false);
+  });
+
+  it("is true when the backend reports it", async () => {
+    const { result } = await renderAuth(
+      withAuth(authPresets.admin, {
+        me: { run_mode: "oss", date_range_v2: true },
+      }),
+    );
+    expect(result.current.dateRangeV2).toBe(true);
+  });
+
+  it("flips to false on refresh without ever toggling isLoading", async () => {
+    let enabled = true;
+    const { result } = await renderAuth(authPresets.admin, [
+      http.get("/api/auth/me", () =>
+        HttpResponse.json({
+          ...authPresets.admin.me,
+          run_mode: "oss",
+          date_range_v2: enabled,
+        }),
+      ),
+    ]);
+    expect(result.current.dateRangeV2).toBe(true);
+
+    const loadingStates: boolean[] = [];
+    enabled = false;
+    const refresh = result.current.refreshFeatureFlags();
+    loadingStates.push(result.current.isLoading);
+    await act(async () => {
+      await refresh;
+    });
+    loadingStates.push(result.current.isLoading);
+
+    await waitFor(() => expect(result.current.dateRangeV2).toBe(false));
+    expect(loadingStates).toEqual([false, false]);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.user?.email).toBe("tester@example.com");
+  });
+
+  it("keeps the previous value when a refresh fails", async () => {
+    let fail = false;
+    const { result } = await renderAuth(authPresets.admin, [
+      http.get("/api/auth/me", () =>
+        fail
+          ? HttpResponse.json({ detail: "boom" }, { status: 500 })
+          : HttpResponse.json({
+              ...authPresets.admin.me,
+              run_mode: "oss",
+              date_range_v2: true,
+            }),
+      ),
+    ]);
+    expect(result.current.dateRangeV2).toBe(true);
+
+    fail = true;
+    await act(async () => {
+      await result.current.refreshFeatureFlags();
+    });
+    expect(result.current.dateRangeV2).toBe(true);
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it("refreshes when the tab becomes visible, throttled by the minimum gap", async () => {
+    let calls = 0;
+    await renderAuth(authPresets.admin, [
+      http.get("/api/auth/me", () => {
+        calls += 1;
+        return HttpResponse.json({ ...authPresets.admin.me, run_mode: "oss" });
+      }),
+    ]);
+    const afterBoot = calls;
+
+    // checkAuth counts as a refresh, so move past the minimum gap first.
+    const realNow = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(realNow + 31_000);
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await waitFor(() => expect(calls).toBe(afterBoot + 1));
+
+    // A second event inside the minimum gap is ignored.
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(calls).toBe(afterBoot + 1);
+    vi.restoreAllMocks();
+  });
+
+  it("does not refetch on tab visibility outside OSS", async () => {
+    let calls = 0;
+    await renderAuth(authPresets.admin, [
+      http.get("/api/auth/me", () => {
+        calls += 1;
+        return HttpResponse.json({ ...authPresets.admin.me, run_mode: "saas" });
+      }),
+    ]);
+    const afterBoot = calls;
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(calls).toBe(afterBoot);
+  });
+
+  it("skips the first tab-switch refetch right after boot", async () => {
+    let calls = 0;
+    await renderAuth(authPresets.admin, [
+      http.get("/api/auth/me", () => {
+        calls += 1;
+        return HttpResponse.json({ ...authPresets.admin.me, run_mode: "oss" });
+      }),
+    ]);
+    const afterBoot = calls;
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(calls).toBe(afterBoot);
   });
 });

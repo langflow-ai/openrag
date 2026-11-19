@@ -19,6 +19,11 @@ from ..microsoft_graph_acl import (
     microsoft_user_principal,
     microsoft_user_principal_label,
 )
+from ..microsoft_graph_errors import (
+    GRAPH_ITEM_MISSING_STATUSES,
+    graph_error_status,
+    is_graph_item_missing,
+)
 from .oauth import OneDriveOAuth
 
 logger = get_logger(__name__)
@@ -471,7 +476,9 @@ class OneDriveConnector(BaseConnector):
 
         except Exception as e:
             logger.error(f"Failed to list OneDrive files: {e}")
-            return {"files": [], "next_page_token": None}
+            # Never report an empty listing on failure: orphan reconciliation
+            # would read it as "everything was deleted" and drop the index.
+            raise
 
     async def _extract_onedrive_acl(self, file_id: str, file_metadata: dict) -> DocumentACL:
         """
@@ -693,7 +700,7 @@ class OneDriveConnector(BaseConnector):
                             created_time=datetime.now(),
                             metadata={"onedrive_path": "", "size": 0},
                         )
-                raise ValueError(f"File not found: {file_id}")
+                raise FileNotFoundError(f"File not found: {file_id}")
 
             download_url = file_metadata.get("download_url")
             if download_url:
@@ -768,11 +775,23 @@ class OneDriveConnector(BaseConnector):
             return None
 
         except Exception as e:
+            # Only Graph's positive "not found" means deleted at source; every
+            # other failure must propagate so callers keep the indexed copy.
+            if is_graph_item_missing(e):
+                logger.info(f"OneDrive item not found: {file_id}")
+                return None
             logger.error(f"Failed to get file metadata for {file_id}: {e}")
-            return None
+            raise
 
     async def _fetch_item_metadata(self, file_id: str) -> dict[str, Any] | None:
-        """Fetch item metadata, trying multiple endpoints for different ID formats."""
+        """Fetch item metadata, trying multiple endpoints for different ID formats.
+
+        Returns None only when no endpoint resolved the item and every failure
+        was conclusive: Graph said the item is missing (404/410), or rejected an
+        encoding/endpoint that does not apply to this id shape (400). Any other
+        failure (auth, throttling, server, network) is re-raised, because a
+        None here is read as "deleted at source" and deletes indexed chunks.
+        """
         import base64
 
         params = dict(self._default_params)
@@ -783,6 +802,27 @@ class OneDriveConnector(BaseConnector):
             if len(parts) == 2:
                 drive_id = parts[0]
                 item_id = parts[1]
+                inconclusive: BaseException | None = None
+
+                async def attempt(url: str, label: str) -> dict[str, Any] | None:
+                    nonlocal inconclusive
+                    try:
+                        response = await self._make_graph_request(url, params=params)
+                    except Exception as e:
+                        status = graph_error_status(e)
+                        if status not in GRAPH_ITEM_MISSING_STATUSES and status != 400:
+                            inconclusive = e
+                        logger.debug(f"{label} failed: {e}")
+                        return None
+                    if response.status_code == 200:
+                        return response.json()
+                    if (
+                        response.status_code not in GRAPH_ITEM_MISSING_STATUSES
+                        and response.status_code != 400
+                    ):
+                        inconclusive = RuntimeError(f"{label} returned HTTP {response.status_code}")
+                    logger.debug(f"{label} failed with status {response.status_code}")
+                    return None
 
                 # Handle sharing IDs (item ID starts with 's')
                 if item_id.startswith("s"):
@@ -801,33 +841,21 @@ class OneDriveConnector(BaseConnector):
                     ]
 
                     for i, encoded in enumerate(share_encodings):
-                        try:
-                            url = f"{self._graph_base_url}/shares/{encoded}/driveItem"
-                            logger.debug(f"Trying shares endpoint approach {i + 1}: {url}")
-                            response = await self._make_graph_request(url, params=params)
-                            if response.status_code == 200:
-                                logger.info(f"Shares endpoint approach {i + 1} succeeded")
-                                return response.json()
-                            else:
-                                logger.debug(
-                                    f"Shares approach {i + 1} failed with status {response.status_code}"
-                                )
-                        except Exception as e:
-                            logger.debug(f"Shares approach {i + 1} failed: {e}")
+                        url = f"{self._graph_base_url}/shares/{encoded}/driveItem"
+                        logger.debug(f"Trying shares endpoint approach {i + 1}: {url}")
+                        item = await attempt(url, f"Shares approach {i + 1}")
+                        if item is not None:
+                            logger.info(f"Shares endpoint approach {i + 1} succeeded")
+                            return item
 
                 # Try: /drives/{driveId}/items/{itemId} with full item ID (including 's' prefix)
                 logger.info(f"Trying drives endpoint: /drives/{drive_id}/items/{item_id}")
-                try:
-                    url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}"
-                    response = await self._make_graph_request(url, params=params)
-                    if response.status_code == 200:
-                        return response.json()
-                    else:
-                        logger.warning(
-                            f"Drives endpoint failed with status {response.status_code}: {response.text}"
-                        )
-                except Exception as e:
-                    logger.debug(f"Drives endpoint failed: {e}")
+                item = await attempt(
+                    f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}",
+                    "Drives endpoint",
+                )
+                if item is not None:
+                    return item
 
                 # Try: /drives/{driveId}/items/{itemId} without 's' prefix
                 if item_id.startswith("s"):
@@ -835,33 +863,31 @@ class OneDriveConnector(BaseConnector):
                     logger.info(
                         f"Trying drives endpoint without 's' prefix: /drives/{drive_id}/items/{clean_item_id}"
                     )
-                    try:
-                        url = f"{self._graph_base_url}/drives/{drive_id}/items/{clean_item_id}"
-                        response = await self._make_graph_request(url, params=params)
-                        if response.status_code == 200:
-                            return response.json()
-                        else:
-                            logger.warning(
-                                f"Drives endpoint without 's' prefix failed with status {response.status_code}: {response.text}"
-                            )
-                    except Exception as e:
-                        logger.debug(f"Drives endpoint (no prefix) failed: {e}")
+                    item = await attempt(
+                        f"{self._graph_base_url}/drives/{drive_id}/items/{clean_item_id}",
+                        "Drives endpoint without 's' prefix",
+                    )
+                    if item is not None:
+                        return item
 
                 # Try: /me/drive/items/{full_id} as fallback
                 logger.info(f"Trying standard endpoint: /me/drive/items/{file_id}")
-                try:
-                    url = f"{self._graph_base_url}/me/drive/items/{file_id}"
-                    response = await self._make_graph_request(url, params=params)
-                    if response.status_code == 200:
-                        return response.json()
-                    else:
-                        logger.warning(
-                            f"Standard endpoint failed with status {response.status_code}: {response.text}"
-                        )
-                except Exception as e:
-                    logger.debug(f"Standard endpoint exception: {e}")
+                item = await attempt(
+                    f"{self._graph_base_url}/me/drive/items/{file_id}", "Standard endpoint"
+                )
+                if item is not None:
+                    return item
+
+                if inconclusive is not None:
+                    # At least one endpoint failed for a reason that says
+                    # nothing about the item; absence is unproven.
+                    logger.warning(
+                        f"Could not resolve {file_id}: an endpoint failed inconclusively"
+                    )
+                    raise inconclusive
         else:
-            # Standard item ID without '!'
+            # Standard item ID without '!'. _make_graph_request raises on
+            # non-2xx, so a failure propagates to _get_file_metadata_by_id.
             url = f"{self._graph_base_url}/me/drive/items/{file_id}"
             response = await self._make_graph_request(url, params=params)
             if response.status_code == 200:
@@ -1012,8 +1038,11 @@ class OneDriveConnector(BaseConnector):
                         folder_files = await self._list_folder_contents(file_id)
                         files.extend(folder_files)
                 except Exception as e:
+                    # A missing file is already skipped above (metadata None).
+                    # Dropping an id on any other failure would make orphan
+                    # reconciliation delete it, so fail the whole listing.
                     logger.warning(f"Failed to get file {file_id}: {e}")
-                    continue
+                    raise
 
         # Process selected folder IDs
         if self.cfg.folder_ids:

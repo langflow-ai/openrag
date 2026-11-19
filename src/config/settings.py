@@ -358,6 +358,19 @@ def is_dev_azure_blob_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def get_connector_plugin_allowlist() -> frozenset[str]:
+    """Operator allowlist of customer connector plugins to load.
+
+    ``OPENRAG_CONNECTOR_PLUGINS`` is a comma-separated list of
+    ``openrag.connectors.v1`` entry-point names (empty or unset = none). Read
+    at call time: the registry resolves it once at startup, and installed
+    wheels that are not listed are never imported. Names are validated by the
+    registry, which fails startup on an unknown or uninstalled entry.
+    """
+    raw = os.getenv("OPENRAG_CONNECTOR_PLUGINS", "")
+    return frozenset(name.strip() for name in raw.split(",") if name.strip())
+
+
 def is_dev_aws_s3_enabled() -> bool:
     """Local dev: enable the AWS S3 connector without IBM_AUTH_ENABLED.
 
@@ -406,6 +419,18 @@ def is_ingest_preview_flag_enabled() -> bool:
     by ``utils.ingest_preview_flag.is_ingest_preview_enabled()``.
     """
     raw = os.getenv("OPENRAG_INGEST_PREVIEW_ENABLED", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
+
+
+def is_date_range_v2_flag_enabled() -> bool:
+    """Raw opt-in flag for the date range v2 experience.
+
+    Read per-call from the environment. Note that a running process does not see
+    its environment change, so turning the flag off still requires a restart or
+    redeploy. Run-mode gating is applied by
+    ``utils.date_range_flag.is_date_range_v2_enabled()``.
+    """
+    raw = os.getenv("OPENRAG_DATE_RANGE_V2_ENABLED", "false").strip().lower()
     return raw in ("true", "1", "yes", "on")
 
 

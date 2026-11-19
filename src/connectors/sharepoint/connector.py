@@ -19,6 +19,7 @@ from ..microsoft_graph_acl import (
     microsoft_user_principal,
     microsoft_user_principal_label,
 )
+from ..microsoft_graph_errors import is_graph_item_missing
 from .oauth import SharePointOAuth
 
 logger = get_logger(__name__)
@@ -532,7 +533,9 @@ class SharePointConnector(BaseConnector):
 
         except Exception as e:
             logger.error(f"Failed to list SharePoint files: {e}")
-            return {"files": [], "next_page_token": None}  # Return empty result instead of raising
+            # Never report an empty listing on failure: orphan reconciliation
+            # would read it as "everything was deleted" and drop the index.
+            raise
 
     async def _extract_sharepoint_acl(self, file_id: str, file_metadata: dict) -> DocumentACL:
         """
@@ -755,7 +758,7 @@ class SharePointConnector(BaseConnector):
             file_metadata = await self._get_file_metadata_by_id(file_id)
 
             if not file_metadata:
-                raise ValueError(f"File not found: {file_id}")
+                raise FileNotFoundError(f"File not found: {file_id}")
 
             # Download file content
             download_url = file_metadata.get("download_url")
@@ -840,12 +843,17 @@ class SharePointConnector(BaseConnector):
             return None
 
         except Exception as e:
+            # Only Graph's positive "not found" means deleted at source; every
+            # other failure must propagate so callers keep the indexed copy.
+            if is_graph_item_missing(e):
+                logger.info(f"SharePoint item not found: {file_id}")
+                return None
             logger.error(
                 f"Failed to get file metadata for {file_id}: {e}. "
                 f"Site info: {self._parse_sharepoint_url()}, "
                 f"SharePoint URL: {self.sharepoint_url}"
             )
-            return None
+            raise
 
     async def _download_file_content(self, file_id: str) -> bytes:
         """Download file content by file ID using Graph API"""
@@ -896,8 +904,11 @@ class SharePointConnector(BaseConnector):
                         folder_files = await self._list_folder_contents(file_id)
                         files.extend(folder_files)
                 except Exception as e:
+                    # A missing file is already skipped above (metadata None).
+                    # Dropping an id on any other failure would make orphan
+                    # reconciliation delete it, so fail the whole listing.
                     logger.warning(f"Failed to get file {file_id}: {e}")
-                    continue
+                    raise
 
         # Process selected folder IDs
         if self.cfg.folder_ids:
