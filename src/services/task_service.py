@@ -984,21 +984,27 @@ class TaskService:
                         file_task.updated_at = time.time()
                         # Runs before processed_files is bumped, so a task never
                         # reads as finished ahead of its failure records.
-                        await self._notify_file_finished(processor, upload_task, item, file_task)
-                        # Only increment processed_files if the file reached a terminal state
-                        # This prevents counter inconsistency on cancellation.
-                        # SKIPPED is terminal too — e.g. source-deleted files in
-                        # connector sync — and must count, or the upload task
-                        # never reaches processed_files >= total_files and stays
-                        # open forever.
-                        if file_task.status in [
-                            TaskStatus.COMPLETED,
-                            TaskStatus.FAILED,
-                            TaskStatus.SKIPPED,
-                        ]:
-                            async with self._get_task_lock(task_id):
-                                upload_task.processed_files += 1
-                        upload_task.updated_at = time.time()
+                        try:
+                            await self._notify_file_finished(
+                                processor, upload_task, item, file_task
+                            )
+                        finally:
+                            # Only increment processed_files if the file reached a terminal state
+                            # This prevents counter inconsistency on cancellation.
+                            # SKIPPED is terminal too — e.g. source-deleted files in
+                            # connector sync — and must count, or the upload task
+                            # never reaches processed_files >= total_files and stays
+                            # open forever. In a finally block so a cancellation during
+                            # the notification still counts the file; the cancellation
+                            # then propagates.
+                            if file_task.status in [
+                                TaskStatus.COMPLETED,
+                                TaskStatus.FAILED,
+                                TaskStatus.SKIPPED,
+                            ]:
+                                async with self._get_task_lock(task_id):
+                                    upload_task.processed_files += 1
+                            upload_task.updated_at = time.time()
 
             # Create tasks and track them for file-level cancellation
             tasks = []
