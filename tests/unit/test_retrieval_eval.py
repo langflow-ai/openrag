@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from scripts.eval.retrieval import answers, dataset, metrics, report, scores
+from scripts.eval.retrieval import answers, dataset, html_report, metrics, report, scores
 
 PREFIX = "eval-abc12345-"
 CORPUS = frozenset({"a.md", "b.md", "c.md", "d.md"})
@@ -1106,6 +1106,7 @@ def load_answer_runner(monkeypatch: pytest.MonkeyPatch) -> Any:
     for name, module in (
         ("answers", answers),
         ("dataset", dataset),
+        ("html_report", html_report),
         ("metrics", metrics),
         ("report", report),
         ("scores", scores),
@@ -2194,3 +2195,368 @@ def test_fully_labeled_runs_keep_the_plain_wording() -> None:
 
     assert "**Simulated, at most one question loses its answer:**" in text
     assert "with an answer label" not in text
+
+
+# --- HTML report ------------------------------------------------------------
+
+
+def _html_pair() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    baseline = make_results(
+        [make_query("q1", 0.0, 0.25, 0.0, 4), make_query("q2", 1.0, 1.0, 1.0, 1)]
+    )
+    current = make_results(
+        [make_query("q1", 1.0, 1.0, 1.0, 1), make_query("q2", 1.0, 1.0, 1.0, 1)],
+        run_id="eval-22222222",
+    )
+    return baseline, current, report.diff_results(baseline, current)
+
+
+def test_html_report_for_a_single_run_has_no_comparison() -> None:
+    results = make_results([make_query("q1", 0.5, 0.5, 0.5, 2)], label="weights 0.7/0.3")
+
+    page = html_report.render_html(results)
+
+    assert page.startswith("<!doctype html>")
+    assert "Retrieval evaluation</h1>" in page
+    assert ">0.500<" in page  # recall@5 headline tile
+    assert "weights 0.7/0.3" in page
+    # Run metadata sits in a collapsed row so the headline figures come first.
+    assert '<details class="run-details"><summary>Run details</summary>' in page
+    assert page.index("Run details") < page.index("<h2>Headline</h2>")
+    assert "What changed" not in page
+    assert "baseline 0." not in page  # no baseline tile line without a comparison
+    assert "Questions below full recall@5 (1)" in page
+
+
+def test_html_report_shows_changes_against_the_baseline() -> None:
+    baseline, current, diff = _html_pair()
+
+    page = html_report.render_html(current, diff, baseline)
+
+    assert "compared with baseline" in page
+    assert "+0.500" in page and "baseline 0.500" in page  # recall@5 tile: 0.5 → 1.0
+    assert 'class="delta good"' in page
+    assert 'aria-label="0 regressed, 1 unchanged, 1 improved"' in page
+    assert '<code class="change-id">q1</code>' in page and "#4 → <strong>#1</strong>" in page
+    assert "Baseline" in page and "Current run" in page  # legend for two series
+
+
+def test_html_report_escapes_text_from_the_dataset() -> None:
+    query = make_query("q<1>", 0.0, 0.0, 0.0, None)
+    query["query"] = '<script>alert("x")</script>'
+    query["ranked_files"] = [
+        {"filename": "<b>evil.md</b>", "rank": 1, "score": 0.9, "snippet_found": None}
+    ]
+    results = make_results([query], label='"><img src=x onerror=alert(1)>')
+
+    page = html_report.render_html(results)
+
+    assert "<script>alert" not in page
+    assert "&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;" in page
+    assert "<b>evil.md</b>" not in page and "<img src=x" not in page
+    assert page.count("<script>") == 1  # only the report's own tooltip script
+
+
+def test_html_report_shows_answer_quality_when_answers_were_scored() -> None:
+    query = make_query("q1", 1.0, 1.0, 1.0, 1)
+    query["metrics"].update({"answer_correct": 0.0, "answer_grounded": 1.0})
+    query["expected_answer"] = "Rotate with an overlap window."
+    query["answer"] = {
+        "text": "Delete the key.",
+        "judgement": {"correctness": 0, "grounded": "yes", "reason": "contradicts reference"},
+        "judge_error": None,
+        "chat_error": None,
+    }
+
+    page = html_report.render_html(make_results([query]))
+
+    assert "Answer quality" in page and "Answer correctness" in page
+    assert "Answers judged wrong (1)" in page and "contradicts reference" in page
+
+
+def test_html_report_tooltips_and_charts_cover_every_cutoff() -> None:
+    baseline, current, diff = _html_pair()
+    for results in (baseline, current):
+        results["metrics"]["overall"].update({"recall@1": 0.5, "recall@3": 0.75, "recall@10": 1.0})
+
+    page = html_report.render_html(current, diff, baseline)
+
+    for k in (1, 3, 5, 10):
+        assert f">top {k}<" in page
+    # Tooltip: the value first, then which bar, then the other series at that cutoff.
+    assert 'data-tip="1.000\ntop 5, Current run\nBaseline: 0.500"' in page
+    assert ">0.500 → 1.000<" in page  # one label per cutoff: baseline → current
+    assert "Results looked at (k)" in page and "Recall (share of expected files found)" in page
+    assert "> (baseline 0.500)<" in page  # tag chart names the baseline value beside each bar
+    assert 'role="img"' in page and "All metrics as a table" in page
+
+
+def test_write_results_adds_the_html_report_when_given(tmp_path: Path) -> None:
+    results = make_results([make_query("q", 1.0, 1.0, 1.0, 1)])
+    started_at = datetime(2026, 10, 12, 9, 30, 5, tzinfo=UTC)
+
+    written = report.write_results(results, "# s\n", tmp_path, started_at, "<html></html>")
+
+    assert [path.name for path in written][-2:] == ["report.html", "report_20261012_093005.html"]
+    assert (tmp_path / "report.html").read_text(encoding="utf-8") == "<html></html>"
+
+
+def test_compare_can_write_an_html_report(tmp_path: Path) -> None:
+    baseline, current, _ = _html_pair()
+    before, after = tmp_path / "before.json", tmp_path / "after.json"
+    before.write_text(json.dumps(baseline), encoding="utf-8")
+    after.write_text(json.dumps(current), encoding="utf-8")
+    page = tmp_path / "out" / "compare.html"
+
+    completed = _run_cli("compare", str(before), str(after), "--html", str(page))
+
+    assert completed.returncode == 0, completed.stderr
+    assert "## Compared with baseline" in completed.stdout
+    assert "compared with baseline" in page.read_text(encoding="utf-8")
+
+
+def test_html_report_warnings_are_carbon_inline_notifications() -> None:
+    baseline, current, _ = _html_pair()
+    current["run"]["fetch_limit"] = 20  # a warning: the runs are not like for like
+    diff = report.diff_results(baseline, current)
+
+    page = html_report.render_html(current, diff, baseline)
+
+    assert '<div class="notification warning" role="status">' in page
+    assert '<span class="notification-title">Runs differ</span>' in page
+    assert "The fetch limit differs between the runs" in page
+    assert 'class="notification-icon"' in page and 'aria-hidden="true"' in page
+    note = html_report.notification("info", "Note", "<b>escaped</b>")
+    assert note.startswith('<div class="notification info" role="status">')
+    assert "&lt;b&gt;escaped&lt;/b&gt;" in note
+
+
+def _summary_pair(recall: tuple[float, float], rr: tuple[float, float]) -> tuple[Any, Any]:
+    baseline = make_results([make_query("q", recall[0], rr[0], recall[0], 1)])
+    current = make_results([make_query("q", recall[1], rr[1], recall[1], 1)])
+    return current, report.diff_results(baseline, current)
+
+
+@pytest.mark.parametrize(
+    ("recall", "rr", "verdict"),
+    [
+        ((0.5, 1.0), (1.0, 0.5), "Recall improved, but relevant results tend to rank lower."),
+        ((0.5, 1.0), (0.5, 1.0), "Recall improved, and relevant results rank higher."),
+        ((1.0, 0.5), (0.5, 1.0), "Recall fell, though the files that are found rank higher."),
+        ((1.0, 1.0), (1.0, 0.5), "Recall held steady, but relevant results tend to rank lower."),
+        ((1.0, 1.002), (1.0, 0.998), "No meaningful change: recall and ranking held steady."),
+    ],
+)
+def test_html_summary_states_the_trade_off(
+    recall: tuple[float, float], rr: tuple[float, float], verdict: str
+) -> None:
+    current, diff = _summary_pair(recall, rr)
+
+    said, points = html_report.summary(current, diff)
+
+    assert said == verdict
+    assert any("Question by question:" in point for point in points)
+    page = html_report.render_html(current, diff)
+    assert page.index("<h2>Summary</h2>") < page.index("<h2>Headline</h2>")
+    parts, _, _ = html_report.summary_parts(current, diff)
+    assert "".join(text for text, _ in parts) == verdict
+
+
+def test_html_summary_for_a_single_run_describes_it() -> None:
+    results = make_results([make_query("q", 0.5, 0.5, 0.5, 2)])
+
+    verdict, points = html_report.summary(results, None)
+
+    assert verdict == "Recall@5 is 0.500 and MRR is 0.500."
+    assert points[0].startswith("On average, 50% of each question's expected files")
+
+
+def _many_changes(regressed: int, improved: int) -> tuple[Any, Any, Any]:
+    """A baseline and current run with the given numbers of regressed and improved questions."""
+    before, after = [], []
+    for i in range(regressed):
+        drop = 0.1 * (i + 1)  # q-r1 drops least, the last drops most
+        before.append(make_query(f"r{i + 1}", 1.0, 1.0, 1.0, 1))
+        after.append(make_query(f"r{i + 1}", 1.0, 1.0 - drop / 2, 1.0, 2))
+    for i in range(improved):
+        before.append(make_query(f"i{i + 1}", 0.0, 0.2, 0.0, None))
+        after.append(make_query(f"i{i + 1}", 1.0, 1.0, 1.0, 1))
+    baseline, current = make_results(before), make_results(after)
+    return baseline, current, report.diff_results(baseline, current)
+
+
+def test_what_changed_is_two_tabs_with_regressed_selected() -> None:
+    baseline, current, diff = _many_changes(3, 2)
+
+    page = html_report.render_html(current, diff, baseline)
+
+    assert '<div class="tabs" role="tablist" aria-label="Changed questions">' in page
+    assert 'id="tab-regressed" aria-controls="panel-regressed" aria-selected="true"' in page
+    assert 'id="tab-improved" aria-controls="panel-improved" aria-selected="false"' in page
+    assert "Regressed (3)</button>" in page and "Improved (2)</button>" in page
+    # Both panels are in the page and not hidden, so they all show without JavaScript.
+    assert 'role="tabpanel" id="panel-regressed"' in page
+    assert 'role="tabpanel" id="panel-improved"' in page
+    panel_tags = [tag for tag in page.split("<div ") if tag.startswith('role="tabpanel"')]
+    assert len(panel_tags) == 2
+    assert not any("hidden" in tag.split(">")[0] for tag in panel_tags)
+
+
+def test_improved_tab_is_selected_when_nothing_regressed() -> None:
+    baseline, current, diff = _many_changes(0, 2)
+
+    page = html_report.render_html(current, diff, baseline)
+
+    assert 'id="tab-improved" aria-controls="panel-improved" aria-selected="true"' in page
+    assert "No question regressed." in page
+
+
+def test_changed_rows_collapse_and_put_the_largest_change_first() -> None:
+    baseline, current, diff = _many_changes(3, 0)
+
+    page = html_report.render_html(current, diff, baseline)
+
+    panel = page.split('id="panel-regressed"')[1].split('id="panel-improved"')[0]
+    order = [panel.index(f'<code class="change-id">r{n}</code>') for n in (3, 2, 1)]
+    assert order == sorted(order)  # r3 dropped most, so it comes first
+    assert panel.count('<details class="change">') == 3  # every row starts closed
+    assert '<span class="change-move">Reciprocal rank 1.000 → 0.850</span>' in panel
+
+
+@pytest.mark.parametrize(("misses", "opened"), [(5, True), (6, False)])
+def test_long_sections_start_collapsed(misses: int, opened: bool) -> None:
+    queries = [make_query(f"m{i}", 0.0, 0.0, 0.0, None) for i in range(misses)]
+
+    page = html_report.render_html(make_results(queries))
+
+    section = f"<summary><h2>Questions below full recall@5 ({misses})</h2></summary>"
+    marker = '<details class="fold" open>' if opened else '<details class="fold">'
+    assert marker + section in page
+
+
+def test_expected_text_on_a_binary_file_is_left_to_the_run(tmp_path: Path) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "handbook.pdf").write_bytes(b"%PDF-1.4\n\xff\xfe\x00binary")
+    (corpus / "notes.md").write_text("The fare is two dollars.", encoding="utf-8")
+    questions = tmp_path / "q.jsonl"
+    questions.write_text(
+        json.dumps({"query": "pdf", "expected_files": ["handbook.pdf"], "expected_text": "x"})
+        + "\n"
+        + json.dumps({"query": "md", "expected_files": ["notes.md"], "expected_text": "missing"})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(dataset.DatasetError) as caught:
+        dataset.load_queries(questions, ["handbook.pdf", "notes.md"], corpus)
+
+    # The PDF line is not checked here; the text file still is.
+    assert "handbook.pdf" not in str(caught.value)
+    assert "'missing' does not appear in notes.md" in str(caught.value)
+
+
+def test_html_verdict_colors_each_side_of_a_trade_off() -> None:
+    current, diff = _summary_pair((0.5, 1.0), (1.0, 0.5))
+
+    page = html_report.render_html(current, diff)
+
+    assert (
+        '<p class="verdict"><strong class="tone good">Recall improved</strong>, but '
+        '<strong class="tone bad">relevant results tend to rank lower</strong>.</p>'
+    ) in page
+    # Each change in the bullets is bold in its own color.
+    assert '<strong class="tone good">1.000 (+0.500)</strong>' in page
+    assert '<strong class="tone bad">0.500 (-0.500)</strong>' in page
+
+
+def test_no_meaningful_change_is_gray() -> None:
+    current, diff = _summary_pair((1.0, 1.002), (1.0, 0.998))
+
+    page = html_report.render_html(current, diff)
+
+    assert '<strong class="tone same">No meaningful change' in page
+    assert '<strong class="tone same">0 regressed</strong>' in page
+
+
+def test_noise_floor_is_half_of_one_question() -> None:
+    eighty_three = make_results([make_query(f"q{i}", 1.0, 1.0, 1.0, 1) for i in range(83)])
+
+    assert html_report.noise_floor(eighty_three) == pytest.approx(0.5 / 83)
+    assert html_report.noise_floor({"queries": []}) == 0.005
+
+
+def test_changes_under_the_noise_floor_are_muted_everywhere() -> None:
+    before = [make_query(f"q{i}", 1.0, 1.0, 1.0, 1) for i in range(100)]
+    after = [make_query(f"q{i}", 1.0, 1.0, 1.0, 1) for i in range(100)]
+    after[0] = make_query("q0", 1.0, 0.75, 1.0, 1)  # one question: MRR average moves 0.0025
+    baseline, current = make_results(before), make_results(after)
+    diff = report.diff_results(baseline, current)
+
+    page = html_report.render_html(current, diff, baseline)
+
+    # 0.0025 is under the 0.005 floor for 100 questions: gray, "≈", no arrow, no color.
+    assert '<span class="delta same">≈ -0.002<span class="sr"> (noise)</span></span>' in page
+    assert 'class="delta bad"' not in page
+    assert "Changes under 0.005 (half of one question's worth across 100 questions)" in page
+    verdict, _ = html_report.summary(current, diff)
+    assert verdict == "No meaningful change: recall and ranking held steady."
+
+
+def test_noise_floor_never_drops_below_what_the_tiles_can_show() -> None:
+    results = make_results([make_query(f"q{i}", 1.0, 1.0, 1.0, 1) for i in range(2000)])
+
+    assert html_report.noise_floor(results) == html_report.SHOWN_CHANGE
+
+
+def test_summary_names_the_cutoff_the_comparison_used() -> None:
+    def query(recall: float) -> dict[str, Any]:
+        q = make_query("q", recall, 1.0, recall, 1)
+        q["metrics"] = {"recall@3": recall, "reciprocal_rank": 1.0, "ndcg@3": recall}
+        return q
+
+    baseline = make_results([query(0.5)], k_values=[1, 3], primary_k=3)
+    current = make_results([query(1.0)], k_values=[1, 3, 5], primary_k=5)
+    current["queries"][0]["metrics"]["recall@5"] = 1.0
+    diff = report.diff_results(baseline, current)
+
+    _, points = html_report.summary(current, diff)
+
+    assert diff["compare_metrics"][0] == "recall@3"
+    assert points[0].endswith("more expected files reach the top 3.")
+
+
+def test_answer_section_does_not_claim_unjudged_answers_were_judged() -> None:
+    query = make_query("q1", 1.0, 1.0, 1.0, 1)
+    query["metrics"].update({"answer_cited": 1.0})
+    query["answer"] = {"text": "x", "judgement": None, "judge_error": None, "chat_error": None}
+    failed = make_query("q2", 1.0, 1.0, 1.0, 1)
+    failed["answer"] = {
+        "text": None,
+        "judgement": None,
+        "judge_error": None,
+        "chat_error": "timeout",
+    }
+
+    page = html_report.render_html(make_results([query, failed]))
+
+    assert "2 questions sent to chat; 0 judged by an LLM; 1 chat error." in page
+    assert "No answers were judged" in page
+    assert "No answers judged wrong." not in page
+
+
+def test_single_run_summary_counts_questions_won_at_rank_one_not_recall_at_one() -> None:
+    # Two expected files ranked first and second: recall@1 is 0.5, yet a
+    # relevant file is first for this question.
+    query = make_query("q", 1.0, 1.0, 1.0, 1)
+    query["expected_files"] = ["a.md", "b.md"]
+    query["metrics"] = {"recall@1": 0.5, "recall@5": 1.0, "reciprocal_rank": 1.0, "ndcg@5": 1.0}
+    missed = make_query("m", 0.0, 0.5, 0.0, 2)
+    missed["metrics"]["recall@1"] = 0.0
+
+    _, points = html_report.summary(make_results([query, missed], k_values=[1, 5]), None)
+
+    assert points[1] == (
+        "A relevant file is ranked first for 50% of questions (1 of 2); recall@1, the share "
+        "of each question's expected files at rank 1, is 0.250."
+    )

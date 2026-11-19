@@ -89,14 +89,16 @@ def write_results(
     summary: str,
     output_dir: Path,
     started_at: datetime,
+    html: str | None = None,
 ) -> list[Path]:
-    """Write results and summary twice: as the latest run and as a timestamped copy."""
+    """Write results, summary and the HTML report twice: as the latest run and a timestamped copy."""
     stamp = started_at.astimezone(UTC).strftime("%Y%m%d_%H%M%S")
     output_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for stem, suffix, content in (
         ("results", ".json", dumps(results)),
         ("summary", ".md", summary),
+        *((("report", ".html", html),) if html is not None else ()),
     ):
         for path in (output_dir / f"{stem}{suffix}", output_dir / f"{stem}_{stamp}{suffix}"):
             path.write_text(content, encoding="utf-8")
