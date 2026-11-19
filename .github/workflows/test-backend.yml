@@ -9,6 +9,10 @@ name: Test Backend
 # Tests that already fail on main are tracked in tests/unit/known_failures.txt
 # and marked strict xfail, so this job gates on NEW failures while that list is
 # worked down. See the header of that file for the rules.
+#
+# The same job also runs the customer connector plug-in tests
+# (customer_connectors/), which carry the plug-in's security checks (origin
+# allowlist, scope confinement, response limits) and would otherwise gate nothing.
 
 on:
   pull_request:
@@ -18,6 +22,7 @@ on:
       # tests/unit/test_retrieval_eval.py covers the harness in this directory.
       - 'scripts/eval/**'
       - 'custom_components/**'
+      - 'customer_connectors/**'
       - 'flows/**'
       - 'config/**'
       - 'pyproject.toml'
@@ -62,3 +67,11 @@ jobs:
           # mistyped line fails loudly instead of silently protecting nothing.
           OPENRAG_ENFORCE_KNOWN_FAILURES: '1'
         run: uv run --locked pytest tests/unit -q --color=yes
+
+      - name: Run customer connector plug-in tests
+        # The plug-in is not a backend dependency (absent from uv.lock): layer it
+        # and its requests-ntlm dependency over the locked environment for this
+        # run. Same command as `make test-customer-connectors`.
+        run: >-
+          uv run --locked --with-editable ./customer_connectors/sharepoint_onprem
+          pytest customer_connectors -q --color=yes

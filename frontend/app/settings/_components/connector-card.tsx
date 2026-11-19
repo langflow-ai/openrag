@@ -26,6 +26,13 @@ export interface Connector {
   connectionId?: string;
   requiresOAuth?: boolean;
   alwaysConnected?: boolean;
+  description?: string;
+  configFields?: Array<{
+    name: string;
+    label: string;
+    type: "text" | "secret";
+    required: boolean;
+  }>;
 }
 
 interface ConnectorCardProps {
@@ -106,13 +113,14 @@ export default function ConnectorCard({
                   isCloudBrand && "text-layer-contextual-foreground!",
                 )}
               >
-                {isConnected
-                  ? `${connector.name} is connected.`
-                  : isConfigured
-                    ? `${connector.name} is configured.`
-                    : connector?.available && !connector.requiresOAuth
-                      ? `${connector.name} is available to connect.`
-                      : "Allowed for this workspace — OAuth credentials not configured yet."}
+                {(connector.configFields && connector.description) ||
+                  (isConnected
+                    ? `${connector.name} is connected.`
+                    : isConfigured
+                      ? `${connector.name} is configured.`
+                      : connector?.available && !connector.requiresOAuth
+                        ? `${connector.name} is available to connect.`
+                        : "Allowed for this workspace — OAuth credentials not configured yet.")}
               </CardDescription>
             </div>
           </div>
@@ -150,6 +158,7 @@ export default function ConnectorCard({
                         : onConnect(connector)
                     }
                     disabled={isConnecting || isDisconnecting}
+                    aria-label={`Configure ${connector.name}`}
                     className={cn(
                       "cursor-pointer",
                       isCloudBrand &&
@@ -223,7 +232,7 @@ export default function ConnectorCard({
                     Connecting...
                   </>
                 ) : (
-                  <>Connect</>
+                  <>{connector.configFields ? "Configure" : "Connect"}</>
                 )}
               </Button>
             )}

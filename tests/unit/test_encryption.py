@@ -173,3 +173,57 @@ def test_auto_upgrade_features(tmp_path, monkeypatch):
     assert upgraded_data["providers"]["openai"]["api_key"]["algorithm"] == "AES-256-GCM"
     assert cm.get_config().providers.openai.api_key == "raw-unencrypted-openai-key-from-past"
     print("Auto-upgrade OK")
+
+
+@pytest.mark.asyncio
+async def test_ibm_credentials_round_trip_decrypts(tmp_path):
+    """ibm_credentials has no connector class; its known secret must still decrypt."""
+    import json
+
+    path = tmp_path / "connections.json"
+    writer = ConnectionManager(str(path))
+    await writer.upsert_ibm_credentials("u1", "Basic abc", "alice")
+    stored = json.loads(path.read_text())["connections"][0]["config"]
+    assert stored["basic_credentials"]["algorithm"] == "AES-256-GCM"
+
+    reader = ConnectionManager(str(path))
+    await reader.load_connections()
+    (conn,) = await reader.list_connections(user_id="u1", connector_type="ibm_credentials")
+    assert conn.config["basic_credentials"] == "Basic abc"
+
+
+@pytest.mark.asyncio
+async def test_malformed_record_is_quarantined_and_preserved(tmp_path):
+    """A bad record must not abort the load or be dropped by the next save."""
+    import json
+
+    path = tmp_path / "connections.json"
+    malformed = {
+        "connection_id": "bad-1",
+        "connector_type": "google_drive",
+        "name": "Broken",
+        "config": {},
+        "user_id": "u1",
+        "created_at": "not-a-date",
+    }
+    good = {
+        "connection_id": "good-1",
+        "connector_type": "google_drive",
+        "name": "Drive",
+        "config": {"other_setting": "x"},
+        "user_id": "u1",
+        "created_at": "2026-01-01T00:00:00",
+    }
+    path.write_text(json.dumps({"connections": [malformed, good]}))
+
+    cm = ConnectionManager(str(path))
+    await cm.load_connections()
+    assert set(cm.connections) == {"good-1"}
+
+    await cm.create_connection(
+        connector_type="aws_s3", name="S3", config={"bucket_names": ["b"]}, user_id="u2"
+    )
+    saved = json.loads(path.read_text())["connections"]
+    assert malformed in saved
+    assert {c["connection_id"] for c in saved} >= {"bad-1", "good-1"}
+    assert len(saved) == 3
