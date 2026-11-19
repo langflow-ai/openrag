@@ -85,9 +85,7 @@ async def get_me(
 
     from config.settings import is_no_auth_mode
 
-    activity_access = (
-        is_rbac_enforced() and not is_no_auth_mode() and "audit:read" in perms
-    )
+    activity_access = is_rbac_enforced() and not is_no_auth_mode() and "audit:read" in perms
 
     return MeResponse(
         user_id=user.user_id,

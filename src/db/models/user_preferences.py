@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Optional
 
 from sqlalchemy import Column
 from sqlmodel import Field, SQLModel
@@ -15,7 +16,7 @@ class UserPreferences(SQLModel, table=True):
         max_length=64,
     )
 
-    agent_system_prompt_override: str | None = Field(
+    agent_system_prompt_override: Optional[str] = Field(
         default=None,
         sa_column=Column(
             "agent_system_prompt_override",
@@ -23,12 +24,12 @@ class UserPreferences(SQLModel, table=True):
             nullable=True,
         ),
     )
-    default_kf_id: str | None = Field(default=None, max_length=128)
-    theme: str | None = Field(default=None, max_length=32)
-    language: str | None = Field(default=None, max_length=16)
+    default_kf_id: Optional[str] = Field(default=None, max_length=128)
+    theme: Optional[str] = Field(default=None, max_length=32)
+    language: Optional[str] = Field(default=None, max_length=16)
 
     # JSON blob: {"openai":{"api_key":"..."}, "anthropic":{...}}
-    provider_overrides: str | None = Field(
+    provider_overrides: Optional[str] = Field(
         default=None,
         sa_column=Column(
             "provider_overrides",
@@ -38,7 +39,7 @@ class UserPreferences(SQLModel, table=True):
     )
 
     # Future-proof bag for additional opt-in preferences.
-    preferences_json: str | None = Field(
+    preferences_json: Optional[str] = Field(
         default=None,
         sa_column=Column(
             "preferences_json",

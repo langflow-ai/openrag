@@ -1,3 +1,4 @@
+from typing import Optional
 
 from sqlmodel import Field, SQLModel
 
@@ -9,4 +10,4 @@ class Permission(SQLModel, table=True):
     name: str = Field(max_length=128, unique=True, index=True)
     resource: str = Field(max_length=64, index=True)
     action: str = Field(max_length=64)
-    description: str | None = Field(default=None, max_length=512)
+    description: Optional[str] = Field(default=None, max_length=512)
