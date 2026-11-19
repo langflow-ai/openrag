@@ -624,19 +624,14 @@ class TaskProcessor:
             opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
                 owner_user_id, jwt_token
             )
+            legacy_chunk_ids: list[str] = []
 
-            if reconcile_source_url and source_url:
+            if reconcile_source_url and source_url and owner_user_id:
                 # URL documents used to derive their ID from temporary-file content.
-                # Remove only visible chunks for the same URL that use an older ID,
-                # then let the stable URL ID retain the regular unchanged fast path.
-                from utils.opensearch_delete import (
-                    collect_visible_document_ids,
-                    delete_document_ids,
-                )
+                # Stage only this user's older chunks. They are deleted only once
+                # a stable replacement has been confirmed or indexed successfully.
+                from utils.opensearch_delete import collect_visible_document_ids
 
-                write_client = clients.opensearch
-                if write_client is None:
-                    raise RuntimeError("Backend OpenSearch write client is unavailable")
                 legacy_chunk_ids = await collect_visible_document_ids(
                     opensearch_client,
                     index=get_index_name(),
@@ -645,16 +640,32 @@ class TaskProcessor:
                             "filter": [
                                 {"term": {"source_url": source_url}},
                                 {"term": {"connector_type": connector_type}},
+                                {"term": {"owner": owner_user_id}},
                             ],
                             "must_not": [{"term": {"document_id": stable_document_id}}],
                         }
                     },
                 )
-                if legacy_chunk_ids:
+
+            async def delete_legacy_chunks() -> None:
+                if not legacy_chunk_ids:
+                    return
+                try:
+                    from utils.opensearch_delete import delete_document_ids
+
+                    write_client = clients.opensearch
+                    if write_client is None:
+                        raise RuntimeError("Backend OpenSearch write client is unavailable")
                     await delete_document_ids(
                         write_client,
                         index=get_index_name(),
                         document_ids=legacy_chunk_ids,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "Failed to clear replaced legacy URL chunks",
+                        document_id=stable_document_id,
+                        error=str(exc),
                     )
 
             # URL sources own normalized-content deduplication. A page re-sync
@@ -662,6 +673,7 @@ class TaskProcessor:
             if not replace_existing and await self.check_document_exists(
                 stable_document_id, opensearch_client
             ):
+                await delete_legacy_chunks()
                 ingest_trace.set(status="unchanged")
                 return {"status": "unchanged", "id": stable_document_id}
 
@@ -943,6 +955,7 @@ class TaskProcessor:
                 await document_index_writer.index_chunks(index_context, index_chunks, final=True)
                 index.set(chunks_indexed=len(index_chunks))
 
+            await delete_legacy_chunks()
             ingest_trace.set(status="indexed", chunks=len(index_chunks))
             return {
                 "status": "indexed",

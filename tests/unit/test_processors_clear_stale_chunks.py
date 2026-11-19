@@ -104,7 +104,7 @@ def _patch_embedding_pipeline(monkeypatch, chunk_count: int, write_client=None):
 
 
 @pytest.mark.asyncio
-async def test_url_reconciliation_removes_legacy_source_chunks_before_deduping(monkeypatch):
+async def test_url_reconciliation_removes_legacy_source_chunks_after_stable_deduping(monkeypatch):
     """A URL's old content-derived ID must not survive its stable URL ID."""
     processor, user_client = _make_processor_with_mocks()
     write_client = AsyncMock()
@@ -131,6 +131,7 @@ async def test_url_reconciliation_removes_legacy_source_chunks_before_deduping(m
             "filter": [
                 {"term": {"source_url": "https://example.test/page"}},
                 {"term": {"connector_type": "url"}},
+                {"term": {"owner": "alice"}},
             ],
             "must_not": [{"term": {"document_id": "stable-url-id"}}],
         }
@@ -138,6 +139,81 @@ async def test_url_reconciliation_removes_legacy_source_chunks_before_deduping(m
     write_client.delete.assert_awaited_once_with(
         index="test-index", id="legacy-chunk", refresh=True
     )
+
+
+@pytest.mark.asyncio
+async def test_url_reconciliation_preserves_legacy_chunks_when_replacement_fails(monkeypatch):
+    """An indexing failure must leave the prior URL content available."""
+    processor, user_client = _make_processor_with_mocks()
+    write_client = AsyncMock()
+    write_client.delete = AsyncMock(return_value={"result": "deleted"})
+    _patch_embedding_pipeline(monkeypatch, chunk_count=1, write_client=write_client)
+    processor.check_document_exists = AsyncMock(return_value=False)
+    user_client.search = AsyncMock(
+        return_value={"_scroll_id": None, "hits": {"hits": [{"_id": "legacy-chunk"}]}}
+    )
+
+    async def fail_embeddings(*_args, **_kwargs):
+        raise RuntimeError("embedding unavailable")
+
+    monkeypatch.setattr("services.llm_gateway.embeddings", fail_embeddings)
+
+    with pytest.raises(RuntimeError, match="embedding unavailable"):
+        await processor.process_document_standard(
+            file_path="unused.txt",
+            file_hash="stable-url-id",
+            document_id="stable-url-id",
+            reconcile_source_url=True,
+            source_url="https://example.test/page",
+            connector_type="url",
+            owner_user_id="alice",
+        )
+
+    write_client.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_url_reconciliation_deletes_legacy_chunks_after_indexing(monkeypatch):
+    """A new stable URL document is published before legacy cleanup begins."""
+    processor, user_client = _make_processor_with_mocks()
+    events: list[str] = []
+    write_client = AsyncMock()
+
+    async def delete(**_kwargs):
+        events.append("delete")
+        return {"result": "deleted"}
+
+    async def search(**kwargs):
+        query = kwargs["body"]["query"]
+        filters = query.get("bool", {}).get("filter", [])
+        if filters and filters[0] == {"term": {"source_url": "https://example.test/page"}}:
+            return {"_scroll_id": None, "hits": {"hits": [{"_id": "legacy-chunk"}]}}
+        return {"_scroll_id": None, "hits": {"hits": []}}
+
+    class Writer:
+        async def index_chunks(self, _context, _chunks, *, final):
+            assert final is True
+            events.append("index")
+            return {"indexed_chunks": 1}
+
+    write_client.delete = AsyncMock(side_effect=delete)
+    _patch_embedding_pipeline(monkeypatch, chunk_count=1, write_client=write_client)
+    processor.check_document_exists = AsyncMock(return_value=False)
+    user_client.search = AsyncMock(side_effect=search)
+    processor.document_service.document_index_writer = Writer()
+
+    result = await processor.process_document_standard(
+        file_path="unused.txt",
+        file_hash="stable-url-id",
+        document_id="stable-url-id",
+        reconcile_source_url=True,
+        source_url="https://example.test/page",
+        connector_type="url",
+        owner_user_id="alice",
+    )
+
+    assert result["status"] == "indexed"
+    assert events == ["index", "delete"]
 
 
 @pytest.mark.asyncio
