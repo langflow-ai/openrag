@@ -2,7 +2,7 @@ import json
 from typing import Any
 
 from agent import async_langflow
-from auth_context import set_auth_context
+from auth_context import set_auth_context, set_chat_ingestion_context
 from config.settings import (
     DISABLE_CHAT_WITH_LANGFLOW,
     DISABLE_NUDGES_WITH_LANGFLOW,
@@ -57,6 +57,9 @@ class ChatService:
         stream: bool = False,
         filter_id: str = None,
         storage_user_id: str = None,
+        owner_name: str | None = None,
+        owner_email: str | None = None,
+        can_upload_knowledge: bool = False,
     ):
         """Handle chat requests with OpenRAG's native Python agent."""
         if not prompt:
@@ -82,6 +85,7 @@ class ChatService:
         # Set authentication context for this request so tools can access it
         if user_id and jwt_token:
             set_auth_context(user_id, jwt_token)
+        set_chat_ingestion_context(owner_name, owner_email, can_upload_knowledge)
 
         if stream:
             return self.native_chat_agent.stream(
@@ -114,6 +118,7 @@ class ChatService:
         owner_name: str = None,
         owner_email: str = None,
         storage_user_id: str = None,
+        can_upload_knowledge: bool = False,
     ):
         """Handle Langflow chat requests"""
         if not prompt:
@@ -141,6 +146,9 @@ class ChatService:
                 stream=stream,
                 filter_id=filter_id,
                 storage_user_id=storage_user_id,
+                owner_name=owner_name,
+                owner_email=owner_email,
+                can_upload_knowledge=can_upload_knowledge,
             )
 
         if not LANGFLOW_URL or not LANGFLOW_CHAT_FLOW_ID:

@@ -10,6 +10,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import copy
+import hashlib
 import ipaddress
 import json
 import math
@@ -128,7 +129,19 @@ class _PinnedAddressTransport(httpx.AsyncBaseTransport):
         )
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        response = await self._pool.handle_async_request(cast(Any, request))
+        core_request = httpcore.Request(
+            method=request.method,
+            url=httpcore.URL(
+                scheme=request.url.raw_scheme,
+                host=request.url.raw_host,
+                port=request.url.port,
+                target=request.url.raw_path,
+            ),
+            headers=request.headers.raw,
+            content=request.stream,
+            extensions=request.extensions,
+        )
+        response = await self._pool.handle_async_request(core_request)
         return httpx.Response(
             status_code=response.status,
             headers=response.headers,
@@ -220,16 +233,28 @@ def _calculate(expression: str) -> dict[str, Any]:
 async def _read_public_url(value: str) -> dict[str, Any]:
     """Native counterpart to the flow's URL-ingestion tool, with SSRF protection."""
     parsed = urlparse(value.strip())
+    url_host = parsed.hostname
+    logger.info("[CHAT] Native URL fetch started", url_host=url_host, url_chars=len(value))
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        logger.warning("[CHAT] Native URL fetch rejected", reason="invalid_url", url_host=url_host)
         return {"error": "URL must be a bare http:// or https:// address"}
     try:
         addresses = await asyncio.get_running_loop().run_in_executor(
             None, lambda: socket.getaddrinfo(parsed.hostname, None, type=socket.SOCK_STREAM)
         )
         if any(not ipaddress.ip_address(address[4][0]).is_global for address in addresses):
+            logger.warning(
+                "[CHAT] Native URL fetch rejected", reason="private_address", url_host=url_host
+            )
             return {"error": "URLs resolving to private network addresses are not allowed"}
         address = str(addresses[0][4][0])
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        logger.warning(
+            "[CHAT] Native URL host resolution failed",
+            url_host=url_host,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         return {"error": "Unable to resolve the URL host"}
     try:
         async with httpx.AsyncClient(
@@ -246,14 +271,45 @@ async def _read_public_url(value: str) -> dict[str, Any]:
                 response.raise_for_status()
                 body = bytearray()
                 async for chunk in response.aiter_bytes():
+                    if isinstance(chunk, str):
+                        chunk = chunk.encode(response.encoding or "utf-8", errors="replace")
                     body.extend(chunk[: MAX_URL_RESPONSE_BYTES - len(body)])
                     if len(body) >= MAX_URL_RESPONSE_BYTES:
                         break
     except httpx.HTTPError as exc:
+        logger.warning(
+            "[CHAT] Native URL fetch failed",
+            url_host=url_host,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         return {"error": f"Could not read URL: {exc}"}
+    logger.info(
+        "[CHAT] Native URL fetch completed",
+        url_host=url_host,
+        status_code=getattr(response, "status_code", None),
+        content_type=getattr(response, "headers", {}).get("content-type"),
+        body_bytes=len(body),
+        encoding=response.encoding,
+    )
     extractor = _TextExtractor()
-    extractor.feed(body.decode(response.encoding or "utf-8", errors="replace"))
+    try:
+        extractor.feed(bytes(body).decode(response.encoding or "utf-8", errors="replace"))
+    except (TypeError, UnicodeError) as exc:
+        logger.exception(
+            "[CHAT] Native URL content parsing failed",
+            url_host=url_host,
+            body_bytes=len(body),
+            encoding=response.encoding,
+            error_type=type(exc).__name__,
+        )
+        return {"error": "Could not read URL content"}
     text = " ".join(extractor.parts)[:50_000]
+    logger.info(
+        "[CHAT] Native URL content extracted",
+        url_host=url_host,
+        text_chars=len(text),
+    )
     return {
         "url": str(response.url),
         "text": fence_untrusted_text(text),
@@ -291,6 +347,16 @@ def _native_llm_gateway_url() -> str:
     return urlunsplit((parsed.scheme or "http", f"127.0.0.1:{port}", parsed.path, parsed.query, ""))
 
 
+def _url_filename(url: str) -> str:
+    """Return a bounded, stable filename unique to one URL page."""
+    parsed = urlsplit(url)
+    path_and_query = f"{parsed.netloc}{parsed.path or '/'}"
+    if parsed.query:
+        path_and_query = f"{path_and_query}?{parsed.query}"
+    digest = hashlib.sha256(url.encode()).hexdigest()[:16]
+    return f"{path_and_query[: 512 - len(digest) - 1]}-{digest}"
+
+
 class NativeChatAgent:
     """Run OpenRAG chat without starting Langflow."""
 
@@ -298,9 +364,128 @@ class NativeChatAgent:
         self,
         history_service: NativeChatHistoryService | None = None,
         ownership_service: SessionOwnershipService | None = None,
+        document_service: Any | None = None,
+        models_service: Any | None = None,
     ) -> None:
         self._history_service = history_service or NativeChatHistoryService()
         self._ownership_service = ownership_service or SessionOwnershipService()
+        self._document_service = document_service
+        self._models_service = models_service
+
+    async def _ingest_public_url(self, value: str, user_id: str) -> dict[str, Any]:
+        """Fetch a public URL once, index it, and return its protected text to the model."""
+        requested_host = urlparse(value.strip()).hostname
+        logger.info(
+            "[CHAT] Native URL ingestion started",
+            url_host=requested_host,
+            user_id=user_id,
+        )
+        page = await _read_public_url(value)
+        if page.get("error"):
+            logger.warning(
+                "[CHAT] Native URL ingestion stopped",
+                url_host=requested_host,
+                reason="fetch_failed",
+                error=page["error"],
+            )
+            return page
+
+        from auth_context import get_auth_context, get_chat_ingestion_context
+        from models.tasks import FileTask, UploadTask
+        from models.url import UrlProcessor
+        from utils.url_content_fetcher import materialize_url_text_file
+
+        owner_name, owner_email, can_upload_knowledge = get_chat_ingestion_context()
+        if not can_upload_knowledge:
+            logger.warning(
+                "[CHAT] Native URL ingestion skipped",
+                url_host=requested_host,
+                reason="not_authorized",
+            )
+            return {**page, "ingestion": {"status": "skipped", "reason": "not_authorized"}}
+        if self._document_service is None or self._models_service is None:
+            logger.warning(
+                "[CHAT] Native URL ingestion skipped",
+                url_host=requested_host,
+                reason="not_configured",
+            )
+            return {**page, "ingestion": {"status": "skipped", "reason": "not_configured"}}
+
+        ingestion_page = copy.deepcopy(page)
+        strip_untrusted_fence_recursive(ingestion_page)
+        source_url = str(page["url"])
+        title = _url_filename(source_url)
+        config = get_openrag_config()
+        logger.info(
+            "[CHAT] Native URL indexing started",
+            url_host=urlparse(source_url).hostname,
+            filename=title,
+            embedding_provider=getattr(config, "embedding_provider", None),
+            embedding_model=getattr(config, "embedding_model", None),
+        )
+        temp_file_path = materialize_url_text_file(
+            str(ingestion_page["text"]),
+            source_url=source_url,
+            title=title,
+            crawl_depth=1,
+            prefix="openrag-url-chat-",
+        )
+        owner_user_id, jwt_token = get_auth_context()
+        processor = UrlProcessor(
+            document_service=self._document_service,
+            models_service=self._models_service,
+            docs_url=source_url,
+            crawl_depth=1,
+            owner_user_id=owner_user_id or user_id,
+            jwt_token=jwt_token,
+            owner_name=owner_name,
+            owner_email=owner_email,
+            connector_type="url",
+            materialized_file_path=temp_file_path,
+            title=title,
+        )
+        file_task = FileTask(file_path=source_url)
+        try:
+            await processor.process_item(
+                UploadTask(task_id=str(uuid.uuid4()), total_files=1), source_url, file_task
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "[CHAT] Native URL ingestion failed",
+                url_host=urlparse(source_url).hostname,
+                filename=title,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            return {
+                **page,
+                "ingestion": {
+                    "status": "error",
+                    "error": "The page could not be added to the knowledge base",
+                },
+            }
+        if file_task.error:
+            logger.warning(
+                "[CHAT] Native URL ingestion failed",
+                url_host=urlparse(source_url).hostname,
+                filename=title,
+                error=file_task.error,
+            )
+            return {
+                **page,
+                "ingestion": {
+                    "status": "error",
+                    "error": "The page could not be added to the knowledge base",
+                },
+            }
+        ingestion = file_task.result or {"status": "indexed"}
+        logger.info(
+            "[CHAT] Native URL ingestion completed",
+            url_host=urlparse(source_url).hostname,
+            filename=title,
+            status=ingestion.get("status"),
+        )
+        return {**page, "ingestion": ingestion}
 
     async def run(
         self,
@@ -336,7 +521,7 @@ class NativeChatAgent:
             )
             return response, conversation_id, sources
         except Exception as exc:
-            logger.warning(
+            logger.exception(
                 "[CHAT] Native OpenRAG chat failed",
                 conversation_id=conversation_id,
                 error_type=type(exc).__name__,
@@ -425,7 +610,7 @@ class NativeChatAgent:
             )
         except Exception as exc:
             message = self._public_error_message(exc)
-            logger.warning(
+            logger.exception(
                 "[CHAT] Native OpenRAG chat failed",
                 conversation_id=conversation_id,
                 error_type=type(exc).__name__,
@@ -507,9 +692,9 @@ class NativeChatAgent:
         async def opensearch_url_ingestion_flow(
             input_value: str, session_id: str | None = None
         ) -> dict[str, Any]:
-            """Read a user-provided public URL; use only for an explicit http(s) URL request."""
+            """Read a public URL and, when authorized, add it to the knowledge base."""
             del session_id
-            return await _read_public_url(input_value)
+            return await self._ingest_public_url(input_value, user_id)
 
         return (
             Agent(
