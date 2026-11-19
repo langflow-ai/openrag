@@ -27,7 +27,8 @@ async def _fetch_models(provider, config, models_service):
             return None, JSONResponse(
                 {"error": "OpenAI API key not configured. Set it in Settings."}, status_code=400
             )
-        models = await models_service.get_openai_models(api_key=api_key)
+        api_base = config.providers.credential_values("openai").get("api_base")
+        models = await models_service.get_openai_models(api_key=api_key, api_base=api_base)
         return models, None
 
     if provider == "anthropic":

@@ -16,6 +16,7 @@ from config.model_constants import (
 )
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
+from utils.provider_urls import openai_compatible_url
 
 logger = get_logger(__name__)
 
@@ -164,7 +165,9 @@ class ModelsService:
                 if config.providers.openai.api_key:
                     try:
                         res = await self.get_openai_models(
-                            config.providers.openai.api_key, update_index=False
+                            config.providers.openai.api_key,
+                            api_base=config.providers.credential_values("openai").get("api_base"),
+                            update_index=False,
                         )
                         self.add_models(res, "openai", new_registry)
                     except Exception as e:
@@ -326,7 +329,7 @@ class ModelsService:
         return False
 
     async def get_openai_models(
-        self, api_key: str, update_index: bool = True
+        self, api_key: str, update_index: bool = True, api_base: str | None = None
     ) -> dict[str, list[dict[str, str]]]:
         """Fetch available models from OpenAI API with lightweight validation"""
         try:
@@ -338,7 +341,7 @@ class ModelsService:
             # Lightweight validation: check if API key is valid with retry logic
             response = await _http_request_with_retry(
                 "GET",
-                "https://api.openai.com/v1/models",
+                openai_compatible_url(api_base, "models"),
                 headers=headers,
                 timeout=30.0,
             )
@@ -350,6 +353,9 @@ class ModelsService:
                 # Classify live inventory into embedding vs chat; drop non-chat junk.
                 language_models = []
                 embedding_models = []
+                is_custom_endpoint = bool(
+                    api_base and api_base.rstrip("/") != "https://api.openai.com/v1"
+                )
 
                 for model in models:
                     model_id = model.get("id", "")
@@ -364,7 +370,7 @@ class ModelsService:
                                 "default": False,
                             }
                         )
-                    elif is_openai_language_model(model_id):
+                    elif is_custom_endpoint or is_openai_language_model(model_id):
                         language_models.append(
                             {
                                 "value": model_id,
