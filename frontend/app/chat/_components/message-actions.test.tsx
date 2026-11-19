@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { authPresets } from "@/test-utils/fixtures/auth";
@@ -18,6 +18,8 @@ function setup(
   handler?: Parameters<typeof http.post>[1],
 ) {
   const bodies: unknown[] = [];
+  // Counted the moment a request reaches the network layer, before any body is read.
+  const requests: string[] = [];
   const track = vi.fn();
   const utils = renderWithProviders(
     <MessageActions
@@ -34,6 +36,7 @@ function setup(
           "/api/chat/c1/messages/m1/feedback",
           handler ??
             (async ({ request }) => {
+              requests.push(request.url);
               const body = (await request.json()) as {
                 rating: "up" | "down";
                 comment: string | null;
@@ -45,7 +48,7 @@ function setup(
       ],
     },
   );
-  return { ...utils, bodies, track };
+  return { ...utils, bodies, requests, track };
 }
 
 describe("MessageActions", () => {
@@ -77,9 +80,15 @@ describe("MessageActions", () => {
   });
 
   it("does not resubmit the already selected rating", async () => {
-    const { bodies } = setup({ feedback: { rating: "up", comment: null } });
-    fireEvent.click(await screen.findByRole("button", { name: "Like" }));
-    expect(bodies).toEqual([]);
+    const { requests } = setup({ feedback: { rating: "up", comment: null } });
+    const like = await screen.findByRole("button", { name: "Like" });
+    fireEvent.click(like);
+    // Let any (incorrect) request flush before asserting none was made.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(requests).toEqual([]);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("thumbs-down opens an optional comment; saving sends the full value", async () => {
@@ -156,5 +165,29 @@ describe("MessageActions", () => {
     release();
     await waitFor(() => expect(like).toHaveAttribute("aria-pressed", "true"));
     expect(calls).toBe(1);
+  });
+
+  it("disables the comment box while a save is in flight", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    setup({ feedback: { rating: "up", comment: null } }, async () => {
+      await gate;
+      return HttpResponse.json(saved("up", "typed"));
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: /add comment/i }),
+    );
+    const box = await screen.findByLabelText("Feedback comment");
+    fireEvent.change(box, { target: { value: "typed" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save comment$/i }));
+    await waitFor(() => expect(box).toBeDisabled());
+    release();
+    await waitFor(() =>
+      expect(
+        screen.queryByLabelText("Feedback comment"),
+      ).not.toBeInTheDocument(),
+    );
   });
 });

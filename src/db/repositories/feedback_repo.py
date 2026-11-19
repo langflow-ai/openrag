@@ -23,11 +23,8 @@ def _upsert_insert(session: AsyncSession):
     return insert
 
 
-def naive_utc(value: datetime) -> datetime:
-    """Normalise to aware UTC (the ORM column type requires tz-aware values).
-
-    Name kept for the audit repo import; storage is UTC either way.
-    """
+def as_utc(value: datetime) -> datetime:
+    """Normalise to timezone-aware UTC (the columns are timezone-aware)."""
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
@@ -82,7 +79,7 @@ class FeedbackRepo:
         rating or comment really changes, so an identical resubmission is a
         no-op. Provenance is copied once at creation and never rewritten.
         """
-        now = naive_utc(datetime.now(UTC))
+        now = as_utc(datetime.now(UTC))
         stmt = _upsert_insert(self.session)(MessageFeedback).values(
             id=uuid4().hex,
             message_id=message_id,
@@ -120,9 +117,9 @@ class FeedbackRepo:
     def _filters(*, start: datetime | None, end: datetime | None, rating: str | None) -> list[Any]:
         clauses: list[Any] = []
         if start is not None:
-            clauses.append(col(MessageFeedback.created_at) >= naive_utc(start))
+            clauses.append(col(MessageFeedback.created_at) >= as_utc(start))
         if end is not None:
-            clauses.append(col(MessageFeedback.created_at) < naive_utc(end))
+            clauses.append(col(MessageFeedback.created_at) < as_utc(end))
         if rating is not None:
             clauses.append(col(MessageFeedback.rating) == rating)
         return clauses
@@ -150,9 +147,9 @@ class FeedbackRepo:
             ts, row_id = after
             stmt = stmt.where(
                 or_(
-                    col(MessageFeedback.created_at) < naive_utc(ts),
+                    col(MessageFeedback.created_at) < as_utc(ts),
                     and_(
-                        col(MessageFeedback.created_at) == naive_utc(ts),
+                        col(MessageFeedback.created_at) == as_utc(ts),
                         col(MessageFeedback.id) < row_id,
                     ),
                 )

@@ -78,7 +78,7 @@ describe("ActivitySection", () => {
     expect(await screen.findByText("75%")).toBeInTheDocument();
     expect(screen.getByText("Total votes").nextSibling).toHaveTextContent("4");
     expect(
-      screen.getByText("<img src=x onerror=alert(1)>"),
+      await screen.findByText("<img src=x onerror=alert(1)>"),
     ).toBeInTheDocument();
     expect(document.querySelector("img")).toBeNull();
     expect(screen.getByText("2026-01-02 03:04:05 UTC")).toBeInTheDocument();

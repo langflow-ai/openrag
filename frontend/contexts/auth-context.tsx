@@ -294,8 +294,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [activityAccess, setActivityAccess] = useState<boolean>(false);
   const [permissionsResolved, setPermissionsResolved] =
     useState<boolean>(false);
+  // Bumped whenever the session changes or a newer fetch starts, so a slow
+  // response for a previous session can never overwrite current permissions.
+  const permissionsRequestId = useRef(0);
 
   const resetPermissionState = useCallback(() => {
+    permissionsRequestId.current += 1;
     setPermissions(new Set());
     setRoles([]);
     setRbacEnforced(true);
@@ -304,10 +308,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   const fetchPermissions = useCallback(async () => {
+    const requestId = ++permissionsRequestId.current;
+    const isCurrent = () => requestId === permissionsRequestId.current;
     try {
       const r = await apiClient.get("/users/me");
+      if (!isCurrent()) return;
       if (r.status < 200 || r.status >= 300) {
         resetPermissionState();
+        // The reset above advances the request id, so resolve explicitly.
+        setPermissionsResolved(true);
         return;
       }
       const data = r.data;
@@ -326,9 +335,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       );
       setActivityAccess(data?.activity_access === true);
     } catch {
-      resetPermissionState();
+      if (isCurrent()) {
+        resetPermissionState();
+        setPermissionsResolved(true);
+      }
     } finally {
-      setPermissionsResolved(true);
+      if (isCurrent()) setPermissionsResolved(true);
     }
   }, [resetPermissionState]);
 

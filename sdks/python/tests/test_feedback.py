@@ -11,6 +11,12 @@ from openrag_sdk import (
     ValidationError,
 )
 
+HISTORY_FEEDBACK = {
+    "rating": "up",
+    "comment": None,
+    "created_at": "2026-01-01T00:00:00+00:00",
+    "updated_at": "2026-01-01T00:00:00+00:00",
+}
 SAVED = {
     "message_id": "m1",
     "rating": "up",

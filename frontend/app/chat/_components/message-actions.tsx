@@ -148,6 +148,7 @@ const MessageActions = ({
           <Textarea
             aria-label="Feedback comment"
             value={draft}
+            disabled={pending}
             maxLength={MAX_COMMENT}
             onChange={(e) => setDraft(e.target.value)}
             placeholder="Optional: tell us more"

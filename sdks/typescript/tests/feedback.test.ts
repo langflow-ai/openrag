@@ -79,7 +79,7 @@ describe("message ids", () => {
             chat_id: "c",
             messages: [
               { role: "user", content: "q" },
-              { role: "assistant", content: "a", message_id: "m9", feedback: SAVED },
+              { role: "assistant", content: "a", message_id: "m9", feedback: { rating: "up", comment: null, created_at: SAVED.created_at, updated_at: SAVED.updated_at } },
             ],
           })
     );

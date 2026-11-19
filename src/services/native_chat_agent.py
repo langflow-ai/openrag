@@ -787,15 +787,32 @@ class NativeChatAgent:
         """Snapshot generation-time model and retrieval identifiers (no text)."""
         document_ids: list[str] = []
         chunk_ids: list[str] = []
-        for source in cls._sources(result.new_messages()):
-            if not isinstance(source, dict):
-                continue
-            doc_id = source.get("document_id")
-            chunk_id = source.get("chunk_id") or source.get("id")
-            if isinstance(doc_id, str) and doc_id not in document_ids:
+
+        def add(doc_id: Any, chunk_id: Any) -> None:
+            if isinstance(doc_id, str) and doc_id and doc_id not in document_ids:
                 document_ids.append(doc_id)
-            if isinstance(chunk_id, str) and chunk_id not in chunk_ids:
+            if isinstance(chunk_id, str) and chunk_id and chunk_id not in chunk_ids:
                 chunk_ids.append(chunk_id)
+
+        for message in result.new_messages():
+            for part in getattr(message, "parts", []):
+                content = getattr(part, "content", None)
+                tool = getattr(part, "tool_name", None)
+                if tool not in {"search_documents", "raw_search"} or not isinstance(content, dict):
+                    continue
+                # Normalised semantic search: content["results"][*].
+                for item in content.get("results") or []:
+                    if isinstance(item, dict):
+                        add(item.get("document_id"), item.get("chunk_id") or item.get("id"))
+                # Raw OpenSearch DSL: content["hits"]["hits"][*] with _id/_source.
+                hits = (content.get("hits") or {}).get("hits") or []
+                for hit in hits if isinstance(hits, list) else []:
+                    if isinstance(hit, dict):
+                        source = hit.get("_source")
+                        add(
+                            source.get("document_id") if isinstance(source, dict) else None,
+                            hit.get("_id"),
+                        )
         return {
             "model_provider": provider,
             "model": model,

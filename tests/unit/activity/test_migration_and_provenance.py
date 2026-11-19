@@ -59,3 +59,29 @@ async def test_save_completed_turn_returns_none_when_persistence_fails():
     assert await agent._save_completed_turn("c", "u", "r", [], None) is None
     agent._save_turn = AsyncMock(return_value="mid")
     assert await agent._save_completed_turn("c", "u", "r", [], None) == "mid"
+
+
+def test_provenance_reads_raw_search_hits_identifiers_only():
+    raw = SimpleNamespace(
+        tool_name="raw_search",
+        content={
+            "hits": {
+                "hits": [
+                    {"_id": "k7", "_source": {"document_id": "d7", "text": "SECRET"}},
+                    {"_id": "k8", "_source": {}},
+                    {"_source": {"document_id": 5}},  # missing/invalid ids are skipped
+                ]
+            }
+        },
+    )
+    result = SimpleNamespace(new_messages=lambda: [SimpleNamespace(parts=[raw])])
+    out = NativeChatAgent._provenance("openai", "m", result)
+    assert out["retrieval"] == {"document_ids": ["d7"], "chunk_ids": ["k7", "k8"]}
+    assert "SECRET" not in json.dumps(out)
+
+
+def test_feedback_service_is_provided_by_dependency_container():
+    from dependencies import get_feedback_service
+
+    svc = object()
+    assert get_feedback_service({"feedback_service": svc}) is svc

@@ -56,5 +56,8 @@ class MessageFeedback(SQLModel, table=True):
     # NULL = unknown (historical answer); {"document_ids": [], "chunk_ids": []}
     # = known retrieval, possibly empty. Identifiers only, never retrieved text.
     retrieval: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    # Timezone policy: timezone-aware UTC end to end. SQLModel maps ``datetime``
+    # to its UTC-aware column type, the migration declares ``timezone=True``,
+    # and the repository normalises every bound value with ``as_utc``.
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

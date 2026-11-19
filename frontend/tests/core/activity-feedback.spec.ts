@@ -14,7 +14,7 @@ test("feedback persists across reload", async ({ page }) => {
   await page.getByTestId("chat-input").fill("What is OpenRAG?");
   await page.getByTestId("send-button").click();
 
-  const like = page.getByRole("button", { name: "Like" });
+  const like = page.getByRole("button", { name: "Like", exact: true });
   // Controls appear only after the answer row has been committed.
   await expect(like).toBeVisible({ timeout: 90000 });
 
@@ -30,11 +30,9 @@ test("feedback persists across reload", async ({ page }) => {
     .getByTestId("conversation-button-What is OpenRAG?")
     .first()
     .click();
-  await expect(page.getByRole("button", { name: "Like" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-    { timeout: 30000 },
-  );
+  await expect(
+    page.getByRole("button", { name: "Like", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true", { timeout: 30000 });
 });
 
 test("activity tab is guarded", async ({ page }) => {
@@ -46,7 +44,7 @@ test("activity tab is guarded", async ({ page }) => {
     // Server-side guard redirects; the tab is not rendered.
     await expect(page).toHaveURL(/\/settings\/connectors/);
     await expect(page.getByRole("link", { name: "Activity" })).toHaveCount(0);
-    const denied = await page.request.get("/api/activity/audit");
+    const denied = await page.request.get("/api/activity/feedback/summary");
     expect(denied.status()).toBe(403);
     return;
   }

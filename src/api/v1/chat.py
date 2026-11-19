@@ -21,6 +21,7 @@ from config.settings import DISABLE_CHAT_WITH_LANGFLOW
 from config.storage_mode import db_writes_enabled
 from dependencies import (
     get_chat_service,
+    get_feedback_service,
     get_knowledge_filter_service,
     get_session_manager,
     require_api_key_permission,
@@ -364,12 +365,11 @@ async def chat_feedback_endpoint(
     chat_id: str,
     message_id: str,
     body: FeedbackBody,
+    feedback_service=Depends(get_feedback_service),
     user: User = Depends(require_api_key_permission("chat:use")),
 ):
     """Record feedback for one answer. POST /v1/chat/{chat_id}/messages/{message_id}/feedback"""
-    from services.feedback_service import FeedbackService
-
-    saved = await FeedbackService().submit(
+    saved = await feedback_service.submit(
         user_id=_openrag_user_id(user),
         conversation_id=chat_id,
         message_id=message_id,

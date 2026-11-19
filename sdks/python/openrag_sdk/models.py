@@ -118,6 +118,19 @@ class FeedbackResponse(BaseModel):
     updated_at: str
 
 
+class MessageFeedback(BaseModel):
+    """The caller's own feedback as embedded in a history message.
+
+    The enclosing message already carries ``message_id``, so the server omits
+    it here; ``chat.get()`` fills it in on the message.
+    """
+
+    rating: Literal["up", "down"]
+    comment: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
 class Message(BaseModel):
     """A message in a conversation."""
 
@@ -127,7 +140,7 @@ class Message(BaseModel):
     # Present only on persisted, feedback-capable assistant answers.
     message_id: str | None = None
     # The caller's own feedback for this answer, if any.
-    feedback: FeedbackResponse | None = None
+    feedback: MessageFeedback | None = None
 
 
 class Conversation(BaseModel):

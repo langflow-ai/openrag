@@ -66,6 +66,37 @@ export const useMessageFeedbackMutation = (
         ),
         saved,
       );
+      // Keep the conversation-history snapshot in step, so a remount after the
+      // message-feedback cache entry is collected still shows the saved vote.
+      queryClient.setQueriesData<
+        Array<{
+          response_id: string;
+          messages: Array<{ message_id?: string; feedback?: unknown }>;
+        }>
+      >({ queryKey: ["conversations"] }, (old) =>
+        Array.isArray(old)
+          ? old.map((conversation) =>
+              conversation.response_id === variables.conversationId
+                ? {
+                    ...conversation,
+                    messages: conversation.messages.map((message) =>
+                      message.message_id === variables.messageId
+                        ? {
+                            ...message,
+                            feedback: {
+                              rating: saved.rating,
+                              comment: saved.comment,
+                              created_at: saved.created_at,
+                              updated_at: saved.updated_at,
+                            },
+                          }
+                        : message,
+                    ),
+                  }
+                : conversation,
+            )
+          : old,
+      );
       options?.onSuccess?.(saved, variables, ...rest);
     },
     onError: options?.onError,

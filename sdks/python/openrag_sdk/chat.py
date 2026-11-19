@@ -1,8 +1,9 @@
 """OpenRAG SDK chat client with streaming support."""
 
 import json
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any, Literal, overload
 from urllib.parse import quote
-from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, overload
 
 import httpx
 
@@ -178,7 +179,9 @@ class ChatStream:
                     elif event_type == "done":
                         self._chat_id = data.get("chat_id")
                         self._message_id = data.get("message_id")
-                        yield DoneEvent(chat_id=self._chat_id, message_id=self._message_id)
+                        yield DoneEvent(
+                            chat_id=self._chat_id, message_id=self._message_id
+                        )
 
                 except json.JSONDecodeError:
                     continue
@@ -520,9 +523,11 @@ class ChatClient:
             AuthenticationError: Missing/invalid key or not the owner.
             ValidationError: Invalid rating/comment or a non-answer message.
         """
+        chat_part = quote(chat_id, safe="")
+        message_part = quote(message_id, safe="")
         response = await self._client._request(
             "POST",
-            f"/api/v1/chat/{quote(chat_id, safe='')}/messages/{quote(message_id, safe='')}/feedback",
+            f"/api/v1/chat/{chat_part}/messages/{message_part}/feedback",
             json={"rating": rating, "comment": comment},
         )
         return FeedbackResponse(**response.json())
@@ -546,6 +551,3 @@ class ChatClient:
         except NotFoundError:
             return False
 
-
-# Import Literal for type hints
-from typing import Literal

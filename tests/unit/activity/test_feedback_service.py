@@ -175,3 +175,47 @@ async def test_db_constraints(factory):
         s.add(MessageFeedback(id="f", message_id="ma", user_id="alice", rating="sideways"))
         with pytest.raises(IntegrityError):
             await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_delete_stale_removes_feedback_only_for_expired_conversations(factory):
+    from datetime import UTC, datetime, timedelta
+
+    from db.models import ChatConversation
+
+    await seed(factory)
+    await submit(factory)  # feedback on c1/ma
+    async with factory() as s:
+        old = datetime.now(UTC) - timedelta(days=30)
+        (await s.get(ChatConversation, "c1")).last_activity = old
+        await s.commit()
+    async with factory() as s:
+        # c2 is fresh and has feedback that must survive the prune.
+        await FeedbackRepo(s).upsert(
+            user_id="alice",
+            message_id="mo",
+            rating="down",
+            comment=None,
+            model_provider=None,
+            model="m",
+            retrieval=None,
+        )
+        await s.commit()
+    async with factory() as s:
+        assert await ChatHistoryRepo(s).delete_stale(7) == 1
+        await s.commit()
+    async with factory() as s:
+        remaining = (await s.execute(select(MessageFeedback))).scalars().all()
+        assert [f.message_id for f in remaining] == ["mo"]
+        assert await s.get(ChatMessage, "ma") is None
+        assert await s.get(ChatMessage, "mo") is not None
+
+
+@pytest.mark.asyncio
+async def test_feedback_timestamps_round_trip_as_aware_utc(factory):
+    await seed(factory)
+    await submit(factory)
+    async with factory() as s:
+        row = await FeedbackRepo(s).get("alice", "ma")
+        assert row.created_at.tzinfo is not None
+        assert row.created_at.utcoffset().total_seconds() == 0
