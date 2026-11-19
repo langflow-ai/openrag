@@ -47,9 +47,12 @@ export function FeedbackPanel() {
       </div>
 
       {summary.isError ? (
-        <p role="alert" className="text-sm text-destructive">
-          {summary.error.message}
-        </p>
+        <div role="alert" className="text-sm text-destructive">
+          {summary.error.message}{" "}
+          <Button variant="link" size="sm" onClick={() => summary.refetch()}>
+            Retry summary
+          </Button>
+        </div>
       ) : summary.data ? (
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat label="Thumbs up" value={summary.data.up} />
@@ -70,7 +73,7 @@ export function FeedbackPanel() {
 
       {list.isPending ? (
         <p className="text-sm text-muted-foreground">Loading feedback…</p>
-      ) : list.isError ? (
+      ) : list.isError && items.length === 0 ? (
         <div role="alert" className="text-sm text-destructive">
           {list.error.message}{" "}
           <Button variant="link" size="sm" onClick={() => list.refetch()}>
@@ -107,7 +110,28 @@ export function FeedbackPanel() {
           ))}
         </ul>
       )}
-      {list.hasNextPage && (
+      {/* Loaded rows stay on screen. Retry the operation that actually failed:
+          a failed "load more" re-requests the next page, while a failed
+          background refresh re-requests the pages already shown. */}
+      {list.isError && items.length > 0 && (
+        <div role="alert" className="text-sm text-destructive">
+          {list.error.message}{" "}
+          {list.isFetchNextPageError ? (
+            <Button
+              variant="link"
+              size="sm"
+              onClick={() => list.fetchNextPage()}
+            >
+              Retry loading more
+            </Button>
+          ) : (
+            <Button variant="link" size="sm" onClick={() => list.refetch()}>
+              Retry refresh
+            </Button>
+          )}
+        </div>
+      )}
+      {list.hasNextPage && !list.isError && (
         <Button
           variant="outline"
           size="sm"

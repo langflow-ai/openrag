@@ -369,6 +369,12 @@ async def chat_feedback_endpoint(
     user: User = Depends(require_api_key_permission("chat:use")),
 ):
     """Record feedback for one answer. POST /v1/chat/{chat_id}/messages/{message_id}/feedback"""
+    # Feedback lives only in the native database, so unlike chat-create this
+    # does not depend on DISABLE_CHAT_WITH_LANGFLOW: match the browser route.
+    from api.chat import _native_chat_storage_error as db_storage_error
+
+    if response := db_storage_error():
+        return response
     saved = await feedback_service.submit(
         user_id=_openrag_user_id(user),
         conversation_id=chat_id,

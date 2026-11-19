@@ -9,6 +9,7 @@ from fastapi import HTTPException
 
 from db.models.message_feedback import MAX_FEEDBACK_COMMENT_LENGTH
 from db.repositories import FeedbackRepo
+from db.repositories.feedback_repo import MessageGoneError
 from services.native_chat_history_service import NativeChatHistoryService
 
 VALID_RATINGS = ("up", "down")
@@ -79,15 +80,20 @@ class FeedbackService:
                         status_code=422, detail={"error": "message_not_feedback_capable"}
                     )
                 provenance = (message.event_data or {})["provenance"]
-                row = await repo.upsert(
-                    user_id=user_id,
-                    message_id=message.id,
-                    rating=rating,
-                    comment=comment,
-                    model_provider=provenance.get("model_provider"),
-                    model=provenance.get("model"),
-                    retrieval=provenance.get("retrieval"),
-                )
+                try:
+                    row = await repo.upsert(
+                        user_id=user_id,
+                        message_id=message.id,
+                        rating=rating,
+                        comment=comment,
+                        model_provider=provenance.get("model_provider"),
+                        model=provenance.get("model"),
+                        retrieval=provenance.get("retrieval"),
+                    )
+                except MessageGoneError as exc:
+                    raise HTTPException(
+                        status_code=404, detail={"error": "message_not_found"}
+                    ) from exc
                 payload = serialize_feedback(row)
                 await session.commit()
             except Exception:

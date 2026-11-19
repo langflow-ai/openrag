@@ -5,13 +5,17 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, func, literal, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
 from db.models import ChatConversation, ChatMessage, MessageFeedback
+
+
+class MessageGoneError(Exception):
+    """The answer was deleted between validation and the feedback write."""
 
 
 def _upsert_insert(session: AsyncSession) -> Callable[..., Any]:
@@ -81,19 +85,33 @@ class FeedbackRepo:
         no-op. Provenance is copied once at creation and never rewritten.
         """
         now = as_utc(datetime.now(UTC))
-        stmt = _upsert_insert(self.session)(MessageFeedback).values(
-            id=uuid4().hex,
-            message_id=message_id,
-            user_id=user_id,
-            rating=rating,
-            comment=comment,
-            model_provider=model_provider,
-            model=model,
-            retrieval=retrieval,
-            created_at=now,
-            updated_at=now,
-        )
         table = MessageFeedback.__table__  # type: ignore[attr-defined]
+        values = {
+            "id": uuid4().hex,
+            "message_id": message_id,
+            "user_id": user_id,
+            "rating": rating,
+            "comment": comment,
+            "model_provider": model_provider,
+            "model": model,
+            "retrieval": retrieval,
+            "created_at": now,
+            "updated_at": now,
+        }
+        # INSERT ... SELECT ... WHERE EXISTS makes "the message still exists"
+        # and the write one statement. SQLite does not enforce the FK by
+        # default, so a message deleted after ownership validation would
+        # otherwise accept an orphan feedback row. The deletion paths remove
+        # feedback explicitly, which stays effective for rows committed before
+        # them; this guard covers rows that would commit after.
+        source = select(
+            *(literal(values[name], type_=table.c[name].type) for name in values)
+        ).where(
+            select(ChatMessage.id)  # type: ignore[call-overload]
+            .where(col(ChatMessage.id) == message_id)
+            .exists()
+        )
+        stmt = _upsert_insert(self.session)(MessageFeedback).from_select(list(values), source)
         stmt = stmt.on_conflict_do_update(
             index_elements=["user_id", "message_id"],
             set_={
@@ -108,7 +126,9 @@ class FeedbackRepo:
         )
         await self.session.execute(stmt)
         row = await self.get(user_id, message_id)
-        assert row is not None
+        if row is None:
+            # The message was deleted after validation; nothing was written.
+            raise MessageGoneError(message_id)
         await self.session.refresh(row)
         return row
 

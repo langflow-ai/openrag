@@ -15,19 +15,33 @@ import db.models  # noqa: E402,F401
 from db.models import ChatConversation, ChatMessage, User  # noqa: E402
 
 
-@pytest_asyncio.fixture
-async def factory(tmp_path):
+async def _make_factory(tmp_path, *, foreign_keys: bool):
     engine = create_async_engine(
         f"sqlite+aiosqlite:///{tmp_path / 'a.db'}", connect_args={"check_same_thread": False}
     )
 
     @event.listens_for(engine.sync_engine, "connect")
     def _fk(dbapi, _):
-        dbapi.execute("PRAGMA foreign_keys=ON")
+        dbapi.execute(f"PRAGMA foreign_keys={'ON' if foreign_keys else 'OFF'}")
 
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
-    yield async_sessionmaker(engine, expire_on_commit=False)
+    return engine, async_sessionmaker(engine, expire_on_commit=False)
+
+
+@pytest_asyncio.fixture
+async def factory(tmp_path):
+    """SQLite with foreign keys ON (mirrors PostgreSQL's enforced cascades)."""
+    engine, sessions = await _make_factory(tmp_path, foreign_keys=True)
+    yield sessions
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture(params=[True, False], ids=["fk-on", "fk-off"])
+async def factory_fk_modes(tmp_path, request):
+    """Both modes: production SQLite leaves FKs OFF, so explicit cleanup must work alone."""
+    engine, sessions = await _make_factory(tmp_path, foreign_keys=request.param)
+    yield sessions
     await engine.dispose()
 
 

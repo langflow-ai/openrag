@@ -123,16 +123,22 @@ describe("MessageActions", () => {
 
   it("keeps the prior selection on error and retries", async () => {
     let calls = 0;
-    setup({ feedback: { rating: "up", comment: null } }, () => {
-      calls += 1;
-      return calls === 1
-        ? HttpResponse.json({ detail: "boom" }, { status: 500 })
-        : HttpResponse.json(saved("down", null));
-    });
+    const { track } = setup(
+      { feedback: { rating: "up", comment: null } },
+      () => {
+        calls += 1;
+        return calls === 1
+          ? HttpResponse.json({ detail: "boom" }, { status: 500 })
+          : HttpResponse.json(saved("down", null));
+      },
+    );
     fireEvent.click(await screen.findByRole("button", { name: "Dislike" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /couldn.t save/i,
     );
+    // A failed save must not count as feedback or open the comment editor.
+    expect(track).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Feedback comment")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Like" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -144,6 +150,36 @@ describe("MessageActions", () => {
         "true",
       ),
     );
+    // Once the retried rating saves, tracking and the editor fire exactly once.
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenCalledWith("dislike");
+    expect(
+      await screen.findByLabelText("Feedback comment"),
+    ).toBeInTheDocument();
+  });
+
+  it("posts to the conversation that owns the message (e.g. after a fork)", async () => {
+    const urls: string[] = [];
+    renderWithProviders(
+      <MessageActions
+        trackFeedback={vi.fn()}
+        conversationId="parent-chat"
+        messageId="m-inherited"
+      />,
+      {
+        providers: ["auth"],
+        auth: authPresets.admin,
+        handlers: [
+          http.post("/api/chat/:chat/messages/:msg/feedback", ({ request }) => {
+            urls.push(new URL(request.url).pathname);
+            return HttpResponse.json(saved("up", null));
+          }),
+        ],
+      },
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Like" }));
+    await waitFor(() => expect(urls).toHaveLength(1));
+    expect(urls[0]).toBe("/api/chat/parent-chat/messages/m-inherited/feedback");
   });
 
   it("blocks duplicate in-flight submissions", async () => {

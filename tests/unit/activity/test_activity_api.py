@@ -7,14 +7,24 @@ from fastapi import HTTPException
 import api.activity as activity
 from db.models import MessageFeedback
 from services.activity_cursor import decode_cursor, encode_cursor
+from services.activity_service import ActivityService
 from tests.unit.activity.conftest import seed
 
 T0 = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 @pytest.fixture(autouse=True)
-def patch_session(factory, monkeypatch):
-    monkeypatch.setattr(activity, "_session", lambda: factory())
+def inject_service(factory, monkeypatch):
+    """Route handlers get their ActivityService by dependency; call them directly."""
+    service = ActivityService(factory)
+    for name in ("feedback_list_endpoint", "feedback_summary_endpoint"):
+        original = getattr(activity, name)
+
+        async def wrapped(*a, __orig=original, **kw):
+            kw.setdefault("activity_service", service)
+            return await __orig(*a, **kw)
+
+        monkeypatch.setattr(activity, name, wrapped)
 
 
 async def drain(handler, **kw):
@@ -176,3 +186,26 @@ async def test_admin_gate_honours_permission_grants(monkeypatch):
     with pytest.raises(HTTPException):
         await activity.require_activity_admin(request=SimpleNamespace(), user=None, rbac=None)
     assert seen["perm"] == "audit:read"
+
+
+@pytest.mark.asyncio
+async def test_v1_feedback_route_returns_503_when_db_storage_is_unavailable(monkeypatch):
+    from types import SimpleNamespace
+
+    import api.v1.chat as v1_chat
+
+    monkeypatch.setattr("api.chat.db_writes_enabled", lambda: False)
+    called = []
+
+    async def submit(**kw):
+        called.append(kw)
+
+    resp = await v1_chat.chat_feedback_endpoint(
+        chat_id="c1",
+        message_id="m1",
+        body=SimpleNamespace(rating="up", comment=None),
+        feedback_service=SimpleNamespace(submit=submit),
+        user=SimpleNamespace(user_id="u", db_user_id="u"),
+    )
+    assert resp.status_code == 503
+    assert called == []

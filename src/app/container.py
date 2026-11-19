@@ -228,9 +228,11 @@ async def initialize_services():
         session_ownership_service=session_ownership_service,
     )
 
+    from services.activity_service import ActivityService
     from services.feedback_service import FeedbackService
 
     feedback_service = FeedbackService(_lazy_session_factory)
+    activity_service = ActivityService(_lazy_session_factory)
 
     file_service_v2 = FileServiceV2(session_manager=session_manager)
     file_service = FileService(session_manager=session_manager)
@@ -241,6 +243,7 @@ async def initialize_services():
         "task_service": task_service,
         "chat_service": chat_service,
         "feedback_service": feedback_service,
+        "activity_service": activity_service,
         "flows_service": flows_service,
         "langflow_file_service": langflow_file_service,
         "document_index_writer": document_index_writer,

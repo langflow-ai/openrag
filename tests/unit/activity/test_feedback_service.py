@@ -130,13 +130,22 @@ async def test_append_returns_committed_id(factory):
 
 
 @pytest.mark.asyncio
-async def test_cascades_on_conversation_delete_and_user_delete(factory):
+async def test_conversation_delete_removes_feedback_with_and_without_fk_enforcement(
+    factory_fk_modes,
+):
+    factory = factory_fk_modes
     await seed(factory)
     await submit(factory)
     async with factory() as s:
         assert await ChatHistoryRepo(s).delete_conversation("c1", "alice")
         await s.commit()
         assert (await s.execute(select(MessageFeedback))).first() is None
+
+
+@pytest.mark.asyncio
+async def test_user_delete_cascades_feedback_when_fk_enforced(factory):
+    # Needs enforced foreign keys (PostgreSQL always; SQLite only when enabled).
+    await seed(factory)
     await seed_again(factory)
 
 
@@ -178,7 +187,8 @@ async def test_db_constraints(factory):
 
 
 @pytest.mark.asyncio
-async def test_delete_stale_removes_feedback_only_for_expired_conversations(factory):
+async def test_delete_stale_removes_feedback_only_for_expired_conversations(factory_fk_modes):
+    factory = factory_fk_modes
     from datetime import UTC, datetime, timedelta
 
     from db.models import ChatConversation
@@ -219,3 +229,43 @@ async def test_feedback_timestamps_round_trip_as_aware_utc(factory):
         row = await FeedbackRepo(s).get("alice", "ma")
         assert row.created_at.tzinfo is not None
         assert row.created_at.utcoffset().total_seconds() == 0
+
+
+@pytest.mark.asyncio
+async def test_feedback_is_not_written_for_a_message_deleted_after_validation(factory_fk_modes):
+    """INSERT ... WHERE EXISTS: no orphan row even with SQLite FKs off."""
+    from db.repositories.feedback_repo import MessageGoneError
+
+    factory = factory_fk_modes
+    await seed(factory)
+    async with factory() as s:
+        await s.execute(text("delete from chat_messages where id='ma'"))
+        await s.commit()
+    async with factory() as s:
+        with pytest.raises(MessageGoneError):
+            await FeedbackRepo(s).upsert(
+                user_id="alice",
+                message_id="ma",
+                rating="up",
+                comment=None,
+                model_provider=None,
+                model="m",
+                retrieval=None,
+            )
+        await s.rollback()
+        assert (await s.execute(select(MessageFeedback))).first() is None
+
+
+@pytest.mark.asyncio
+async def test_service_maps_a_vanished_message_to_404(factory, monkeypatch):
+    await seed(factory)
+
+    async def gone(self, **kw):
+        from db.repositories.feedback_repo import MessageGoneError
+
+        raise MessageGoneError(kw["message_id"])
+
+    monkeypatch.setattr(FeedbackRepo, "upsert", gone)
+    with pytest.raises(HTTPException) as exc:
+        await submit(factory)
+    assert exc.value.status_code == 404

@@ -43,7 +43,7 @@ Provenance limitations:
 
 ### Lifecycle
 
-Feedback is deleted with its message or conversation (including bulk deletion and conversation expiry) and with its user. Audit entries are independent and are not deleted by those operations. OpenRAG does not ship a retention or archival job for feedback or audit data; define that separately, including any legal-hold requirements.
+Feedback is deleted with its message or conversation, including bulk deletion and conversation expiry, because those code paths remove it explicitly on every supported database. Deleting a *user* removes their feedback through a database foreign-key cascade. PostgreSQL always enforces that cascade. SQLite enforces it only when foreign keys are enabled (`PRAGMA foreign_keys=ON`), which OpenRAG does not set by default, so on a default SQLite install deleting a user can leave their feedback rows behind. Don't rely on user deletion to erase feedback there. Audit entries are independent and are not deleted by those operations. OpenRAG does not ship a retention or archival job for feedback or audit data; define that separately, including any legal-hold requirements.
 
 ## Feedback API {#api}
 

@@ -92,7 +92,10 @@ describe("ActivitySection", () => {
       ),
     ]);
     expect(await screen.findByText(/no feedback matches/i)).toBeInTheDocument();
-    expect(screen.getByText("Positive").nextSibling).toHaveTextContent("—");
+    // The summary loads independently of the list, so wait for it too.
+    expect((await screen.findByText("Positive")).nextSibling).toHaveTextContent(
+      "—",
+    );
   });
 
   it("filters by rating and paginates with the server cursor", async () => {
@@ -157,5 +160,118 @@ describe("ActivitySection", () => {
     expect(
       (await screen.findAllByText(/do not have access/i)).length,
     ).toBeGreaterThan(0);
+  });
+
+  it("offers a retry when only the summary fails", async () => {
+    let fail = true;
+    render([
+      http.get("/api/activity/feedback/summary", () =>
+        fail
+          ? HttpResponse.json({ detail: "x" }, { status: 500 })
+          : HttpResponse.json({
+              up: 1,
+              down: 0,
+              total: 1,
+              positive_percentage: 100,
+            }),
+      ),
+      http.get("/api/activity/feedback", () =>
+        HttpResponse.json({
+          items: [feedbackItem("f1", "up")],
+          next_cursor: null,
+        }),
+      ),
+    ]);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^retry summary$/i }),
+    );
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: /^retry summary$/i }));
+    expect(await screen.findByText("100%")).toBeInTheDocument();
+    // The list was unaffected and stays visible.
+    expect(screen.getAllByText("Thumbs up").length).toBeGreaterThan(0);
+  });
+
+  it("keeps loaded rows and offers retry when a later page fails", async () => {
+    let pageTwoAttempts = 0;
+    render([
+      summary(),
+      http.get("/api/activity/feedback", ({ request }) => {
+        if (!new URL(request.url).searchParams.get("cursor")) {
+          return HttpResponse.json({
+            items: [feedbackItem("f1", "up")],
+            next_cursor: "C",
+          });
+        }
+        pageTwoAttempts += 1;
+        // Fail the first attempt at page two only, then succeed.
+        return pageTwoAttempts === 1
+          ? HttpResponse.json({ detail: "x" }, { status: 500 })
+          : HttpResponse.json({
+              items: [feedbackItem("f2", "up")],
+              next_cursor: null,
+            });
+      }),
+    ]);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^load more$/i }),
+    );
+    const retry = await screen.findByRole("button", {
+      name: /^retry loading more$/i,
+    });
+    // The first page is still on screen next to the error.
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(screen.getAllByRole("listitem")).toHaveLength(2),
+    );
+    expect(
+      screen.queryByRole("button", { name: /^retry loading more$/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("retries a failed refresh with refetch, and a failed next page with fetchNextPage", async () => {
+    const cursors: Array<string | null> = [];
+    let failNext = 0;
+    const { queryClient } = renderWithProviders(<ActivitySection />, {
+      providers: ["auth"],
+      auth: authPresets.admin,
+      handlers: [
+        summary(),
+        http.get("/api/activity/feedback", ({ request }) => {
+          const cursor = new URL(request.url).searchParams.get("cursor");
+          cursors.push(cursor);
+          if (failNext > 0) {
+            failNext -= 1;
+            return HttpResponse.json({ detail: "x" }, { status: 500 });
+          }
+          return HttpResponse.json({
+            items: [feedbackItem(cursor ? "f2" : "f1", "up")],
+            next_cursor: cursor ? null : "C",
+          });
+        }),
+      ],
+    });
+    await screen.findAllByRole("listitem");
+
+    // 1. A background refresh fails while page one is on screen.
+    failNext = 1;
+    await queryClient.refetchQueries({ queryKey: ["activity"] });
+    const refresh = await screen.findByRole("button", {
+      name: /^retry refresh$/i,
+    });
+    expect(
+      screen.queryByRole("button", { name: /retry loading more/i }),
+    ).toBeNull();
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    cursors.length = 0;
+    fireEvent.click(refresh);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /^retry refresh$/i }),
+      ).toBeNull(),
+    );
+    // The retry re-requested page one (no cursor), it did not paginate.
+    expect(cursors[0]).toBeNull();
   });
 });

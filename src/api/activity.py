@@ -9,16 +9,14 @@ Activity.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from auth.permission_dependencies import enforce_permission
-from db.repositories import FeedbackRepo
-from dependencies import get_current_user, get_rbac_service
-from services.activity_cursor import decode_cursor, encode_cursor
+from dependencies import get_activity_service, get_current_user, get_rbac_service
 from session_manager import User
 
 DEFAULT_LIMIT = 50
@@ -75,58 +73,20 @@ def serialize_feedback_admin(row: Any, conversation_id: str) -> dict[str, Any]:
     }
 
 
-def _session():
-    from db.engine import SessionLocal, init_engine
-
-    if SessionLocal is None:
-        init_engine()
-    from db.engine import SessionLocal as factory
-
-    assert factory is not None
-    return factory()
-
-
-def _feedback_filters(start, end, rating) -> dict:
-    return {
-        "k": "feedback",
-        "s": start.isoformat() if start else None,
-        "e": end.isoformat() if end else None,
-        "r": rating,
-    }
-
-
-def _bounded_end(end: datetime | None, cursor_upper: datetime | None) -> datetime:
-    """Freeze an exclusive upper bound so later inserts never shift paging."""
-    frozen = cursor_upper or datetime.now(UTC) + timedelta(microseconds=1)
-    return min(frozen, end) if end is not None else frozen
-
-
 async def feedback_list_endpoint(
     start: datetime | None = Query(default=None),
     end: datetime | None = Query(default=None),
     rating: Literal["up", "down"] | None = Query(default=None),
     limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     cursor: str | None = Query(default=None),
+    activity_service=Depends(get_activity_service),
     _user: User = Depends(require_activity_admin),
 ):
     start, end = _aware(start), _aware(end)
     _check_range(start, end)
-    filters = _feedback_filters(start, end, rating)
-    decoded = decode_cursor(cursor, filters) if cursor else None
-    upper = _bounded_end(end, decoded.upper if decoded else None)
-    async with _session() as session:
-        rows = await FeedbackRepo(session).list_page(
-            start=start,
-            end=upper,
-            rating=rating,
-            limit=limit + 1,
-            after=(decoded.ts, decoded.id) if decoded else None,
-        )
-    page = rows[:limit]
-    next_cursor = None
-    if len(rows) > limit and page:
-        last = page[-1][0]
-        next_cursor = encode_cursor(last.created_at, last.id, upper, filters)
+    page, next_cursor = await activity_service.list_feedback(
+        start=start, end=end, rating=rating, limit=limit, cursor=cursor
+    )
     return JSONResponse(
         {
             "items": [serialize_feedback_admin(r, c) for r, c in page],
@@ -140,13 +100,10 @@ async def feedback_summary_endpoint(
     start: datetime | None = Query(default=None),
     end: datetime | None = Query(default=None),
     rating: Literal["up", "down"] | None = Query(default=None),
+    activity_service=Depends(get_activity_service),
     _user: User = Depends(require_activity_admin),
 ):
     start, end = _aware(start), _aware(end)
     _check_range(start, end)
-    async with _session() as session:
-        summary = await FeedbackRepo(session).summary(start=start, end=end, rating=rating)
-    return JSONResponse(
-        {**summary, "metric": "feedback_satisfaction"},
-        headers=NO_STORE,
-    )
+    summary = await activity_service.feedback_summary(start=start, end=end, rating=rating)
+    return JSONResponse({**summary, "metric": "feedback_satisfaction"}, headers=NO_STORE)

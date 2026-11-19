@@ -27,6 +27,12 @@ export interface Message {
    * legacy/Langflow rows. Never invented client-side.
    */
   messageId?: string;
+  /**
+   * Conversation that owns `messageId`. A forked chat inherits earlier
+   * messages from its parent, so this is NOT always the open conversation;
+   * feedback must target the owner.
+   */
+  conversationId?: string;
   /** The current user's saved feedback, restored from history. */
   feedback?: MessageFeedback | null;
   role: "user" | "assistant";

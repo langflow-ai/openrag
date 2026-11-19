@@ -54,30 +54,36 @@ const MessageActions = ({
   const save = (
     rating: FeedbackRating,
     comment: string | null,
-    closeEditor = false,
+    onSaved?: () => void,
   ) => {
     if (pending || !conversationId || !messageId) return;
     mutation.mutate(
       { conversationId, messageId, rating, comment },
-      {
-        onSuccess: () => {
-          if (closeEditor) setEditing(false);
-        },
-      },
+      { onSuccess: () => onSaved?.() },
     );
   };
 
   const choose = (rating: FeedbackRating) => {
     if (pending || selected === rating) return;
-    trackFeedback(rating === "up" ? "like" : "dislike");
     // A rating change keeps any existing comment (full-value replace).
-    save(rating, canonical?.comment ?? null);
-    if (rating === "down") setEditing(true);
+    // Analytics and the comment editor only react to a *saved* rating, so a
+    // failed or retried save does not fire them early.
+    save(rating, canonical?.comment ?? null, () => {
+      trackFeedback(rating === "up" ? "like" : "dislike");
+      if (rating === "down") setEditing(true);
+    });
   };
 
   const retry = () => {
     const vars = mutation.variables;
-    if (vars) save(vars.rating, vars.comment);
+    if (!vars) return;
+    save(vars.rating, vars.comment, () => {
+      // Retrying a rating change is still a rating change that has now saved.
+      if (vars.rating !== selected) {
+        trackFeedback(vars.rating === "up" ? "like" : "dislike");
+        if (vars.rating === "down") setEditing(true);
+      }
+    });
   };
 
   return (
@@ -169,7 +175,11 @@ const MessageActions = ({
             <Button
               size="sm"
               disabled={pending}
-              onClick={() => save(selected, draft.trim() ? draft : null, true)}
+              onClick={() =>
+                save(selected, draft.trim() ? draft : null, () =>
+                  setEditing(false),
+                )
+              }
             >
               Save comment
             </Button>
