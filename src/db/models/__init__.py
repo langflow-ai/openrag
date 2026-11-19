@@ -6,7 +6,9 @@ Alembic autogenerate can see them.
 
 from db.models.api_key import ApiKey
 from db.models.audit_log import AuditLog
-from db.models.conversation import Conversation
+from db.models.chat_conversation import ChatConversation
+from db.models.chat_message import ChatMessage
+from db.models.conversation import Conversation, LangflowConversation
 from db.models.failed_ingestion import FailedIngestion
 from db.models.migration_status import MigrationStatus
 from db.models.permission import Permission
@@ -21,8 +23,11 @@ from db.models.workspace_config import WorkspaceConfig
 __all__ = [
     "ApiKey",
     "AuditLog",
+    "ChatConversation",
+    "ChatMessage",
     "Conversation",
     "FailedIngestion",
+    "LangflowConversation",
     "MigrationStatus",
     "Permission",
     "Role",

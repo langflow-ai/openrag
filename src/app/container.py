@@ -117,7 +117,6 @@ async def initialize_services():
         session_manager=session_manager,
     )
     flows_service = FlowsService()
-    chat_service = ChatService(flows_service=flows_service)
     knowledge_filter_service = KnowledgeFilterService(session_manager)
     monitor_service = MonitorService(session_manager)
     langflow_file_service = LangflowFileService(
@@ -208,15 +207,26 @@ async def initialize_services():
         session_factory=_lazy_session_factory,
     )
 
-    # Plumb the session factory into the two chat-history services
-    # (session_ownership + conversation_persistence). They lazy-resolve
-    # `db.engine.SessionLocal` as a fallback, but setting it here makes
-    # the wiring explicit and avoids the import path on the hot loop.
+    # Legacy Langflow persistence remains process-wide while `agent.py` still
+    # exposes compatibility functions. Native chat dependencies are instead
+    # constructed here and injected through ChatService.
     from services.conversation_persistence_service import conversation_persistence
-    from services.session_ownership_service import session_ownership_service
+    from services.native_chat_agent import NativeChatAgent
+    from services.native_chat_history_service import NativeChatHistoryService
+    from services.session_ownership_service import (
+        session_ownership_service,
+    )
 
     session_ownership_service._session_factory = _lazy_session_factory
     conversation_persistence._session_factory = _lazy_session_factory
+    native_history_service = NativeChatHistoryService(_lazy_session_factory)
+    native_chat_agent = NativeChatAgent(native_history_service, session_ownership_service)
+    chat_service = ChatService(
+        flows_service=flows_service,
+        native_chat_agent=native_chat_agent,
+        native_chat_history_service=native_history_service,
+        session_ownership_service=session_ownership_service,
+    )
 
     file_service_v2 = FileServiceV2(session_manager=session_manager)
     file_service = FileService(session_manager=session_manager)

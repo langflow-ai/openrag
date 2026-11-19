@@ -1,15 +1,15 @@
 """Registry of connector files that failed to ingest.
 
-Revision ID: 0009_failed_ingestion
-Revises: 0008_session_conversation_id
+Revision ID: 0011_failed_ingestion
+Revises: 0010_move_legacy_native_chat
 """
 
 import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0009_failed_ingestion"
-down_revision = "0008_session_conversation_id"
+revision = "0011_failed_ingestion"
+down_revision = "0010_move_legacy_native_chat"
 branch_labels = None
 depends_on = None
 

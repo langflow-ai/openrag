@@ -2,7 +2,11 @@
 
 from db.repositories.api_key_repo import ApiKeyRepo
 from db.repositories.audit_repo import AuditRepo
-from db.repositories.conversation_repo import ConversationRepo
+from db.repositories.chat_history_repo import ChatHistoryRepo
+from db.repositories.conversation_repo import (
+    ConversationRepo,
+    LangflowConversationRepo,
+)
 from db.repositories.failed_ingestion_repo import FailedIngestionRepo
 from db.repositories.permission_repo import PermissionRepo
 from db.repositories.preferences_repo import PreferencesRepo
@@ -19,8 +23,10 @@ from db.repositories.workspace_config_repo import (
 __all__ = [
     "ApiKeyRepo",
     "AuditRepo",
+    "ChatHistoryRepo",
     "ConversationRepo",
     "FailedIngestionRepo",
+    "LangflowConversationRepo",
     "PermissionRepo",
     "PreferencesRepo",
     "RoleRepo",

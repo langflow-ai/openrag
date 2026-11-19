@@ -247,19 +247,17 @@ async def _shutdown_app(app) -> None:
 
 async def _db_snapshot() -> dict[str, int]:
     from db.engine import SessionLocal
-    from db.models import Conversation, MigrationStatus, SessionOwnership, User
+    from db.models import Conversation, SessionOwnership, User
 
     assert SessionLocal is not None
     async with SessionLocal() as session:
         users = await session.scalar(select(func.count()).select_from(User))
         conversations = await session.scalar(select(func.count()).select_from(Conversation))
         ownership = await session.scalar(select(func.count()).select_from(SessionOwnership))
-        statuses = await session.scalar(select(func.count()).select_from(MigrationStatus))
     return {
         "users": int(users or 0),
         "conversations": int(conversations or 0),
         "ownership": int(ownership or 0),
-        "statuses": int(statuses or 0),
     }
 
 
@@ -271,6 +269,7 @@ async def _assert_migrated_db_state() -> None:
         JSON_TO_DB_V1,
     )
     from db.models import (
+        ChatConversation,
         Conversation,
         MigrationStatus,
         SessionOwnership,
@@ -302,11 +301,15 @@ async def _assert_migrated_db_state() -> None:
         assert legacy_session is not None
         assert legacy_session.user_id == "anonymous"
 
-        conversation = await session.get(Conversation, "legacy-session")
+        conversation = await session.get(ChatConversation, "legacy-session")
         assert conversation is not None
         assert conversation.user_id == "anonymous"
         assert conversation.title == "Migrated chat"
         assert conversation.total_messages == 3
+
+        langflow_conversation = await session.get(Conversation, "other-session")
+        assert langflow_conversation is not None
+        assert langflow_conversation.user_id == "legacy-owner"
 
         subjects = {
             row.oauth_subject

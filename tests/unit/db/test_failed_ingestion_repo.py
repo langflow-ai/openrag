@@ -111,9 +111,9 @@ def test_migration_file_id_width_matches_the_model():
 
     from db.models.failed_ingestion import FailedIngestion
 
-    migration = (ROOT / "alembic" / "versions" / "0009_failed_ingestion.py").read_text()
+    migration = (ROOT / "alembic" / "versions" / "0011_failed_ingestion.py").read_text()
     match = re.search(r'sa\.Column\("file_id", sa\.String\((\d+)\)', migration)
-    assert match, "file_id column not found in migration 0009"
+    assert match, "file_id column not found in migration 0011"
     assert int(match.group(1)) == FailedIngestion.__table__.c.file_id.type.length
     assert int(match.group(1)) >= len(MAX_S3_FILE_ID)
 

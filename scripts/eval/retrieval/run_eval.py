@@ -5,19 +5,21 @@
     uv run run_eval.py check
     uv run run_eval.py cleanup [--yes]
     uv run run_eval.py compare <baseline.json> <current.json>
+    uv run run_eval.py scores <results.json> [--baseline <other.json>]
 
 ``run`` ingests the checked-in corpus under run-unique filenames, sends every
 question through ``/v1/search``, scores the ranking by file, writes results and
 a summary, and deletes the documents it uploaded. ``check`` confirms a stack is
 ready for a run without uploading anything, and ``cleanup`` removes documents
-that interrupted runs left behind. ``compare`` diffs two results files offline.
-See README.md.
+that interrupted runs left behind. ``compare`` diffs two results files offline,
+and ``scores`` works out relevance-score thresholds from one. See README.md.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import io
 import json
 import os
@@ -25,13 +27,16 @@ import subprocess
 import sys
 import time
 import uuid
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import answers
 import dataset
 import metrics
 import report
+import scores
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_URL = "http://localhost:3000"
@@ -51,6 +56,42 @@ def _parse_k_values(value: str) -> list[int]:
     if not k_values or k_values[0] < 1:
         raise argparse.ArgumentTypeError("k values must be positive integers")
     return k_values
+
+
+def _parse_thresholds(value: str) -> list[float] | None:
+    try:
+        return scores.parse_thresholds(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _finite_float(value: str) -> float:
+    try:
+        return scores.finite(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _parse_live_thresholds(value: str) -> list[float]:
+    try:
+        thresholds = scores.parse_thresholds(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+    if thresholds is None:
+        raise argparse.ArgumentTypeError("give the thresholds to test, such as 0.5,1,2 or 0:3:0.5")
+    return thresholds
+
+
+def _parse_tiers(value: str) -> tuple[float, float]:
+    try:
+        high, med = (scores.finite(part) for part in value.split(","))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"expected HIGH,MEDIUM as two finite numbers, got {value!r}"
+        ) from exc
+    if not 0 <= med <= high:
+        raise argparse.ArgumentTypeError("the Medium cutoff must be between 0 and the High cutoff")
+    return high, med
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -104,6 +145,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="chunks requested per question before deduplicating to files (default: 50)",
     )
     run.add_argument("--score-threshold", type=float, default=0.0)
+    run.add_argument(
+        "--live-thresholds",
+        type=_parse_live_thresholds,
+        help=(
+            "rerun every question once per threshold with the stack applying the score "
+            "threshold itself, such as 0.5,1,2 or 0:3:0.5, so `run_eval.py scores` can "
+            "report the real cut next to the offline simulation"
+        ),
+    )
+    run.add_argument(
+        "--label",
+        help=(
+            'what this run tests, such as "weights 0.7/0.3", stored with the results and '
+            "shown in summaries and comparisons"
+        ),
+    )
     run.add_argument("--concurrency", type=int, default=4, help="parallel uploads (default: 4)")
     run.add_argument(
         "--ingest-timeout", type=float, default=300.0, help="seconds per ingestion task"
@@ -132,6 +189,28 @@ def build_parser() -> argparse.ArgumentParser:
     )
     check.add_argument("--queries", type=Path, default=HERE / "queries.jsonl")
 
+    for command in (run, check):
+        command.add_argument(
+            "--answers", action="store_true", help="also evaluate chat answers (LLM calls)"
+        )
+        command.add_argument(
+            "--judge-model", help="judge model (default: stack default chat model)"
+        )
+        command.add_argument(
+            "--no-judge", action="store_true", help="deterministic answer checks only"
+        )
+        command.add_argument(
+            "--answer-limit", type=int, default=10, help="chat retrieval limit (default: 10)"
+        )
+        command.add_argument(
+            "--chat-timeout",
+            type=float,
+            default=180.0,
+            help="seconds per chat or judge request (default: 180); an agent answer "
+            "with tool calls can take longer than --request-timeout",
+        )
+    check.add_argument("--score-threshold", type=float, default=0.0)
+
     cleanup = commands.add_parser(
         "cleanup",
         parents=[stack],
@@ -148,6 +227,61 @@ def build_parser() -> argparse.ArgumentParser:
             "only delete documents indexed at least this many minutes ago, so a run "
             "still in progress is left alone (default: 60)"
         ),
+    )
+
+    score = commands.add_parser(
+        "scores",
+        help="work out relevance-score thresholds and check the tiers from a results file",
+    )
+    score.add_argument("results", type=Path, help="results file of a run")
+    score.add_argument(
+        "--baseline", type=Path, help="results file of another run to compare side by side"
+    )
+    score.add_argument(
+        "--normalize",
+        choices=scores.NORMALIZE_METHODS,
+        default="none",
+        help=(
+            "none (default) when the stack already returns scores in [0, 1]; minmax to "
+            "rescale each question's scores to [0, 1] first"
+        ),
+    )
+    score.add_argument(
+        "--k", type=int, help="cutoff for recall and passage hits (default: the run's)"
+    )
+    score.add_argument(
+        "--thresholds",
+        type=_parse_thresholds,
+        default=None,
+        help="auto (default), start:stop:step, or a comma-separated list",
+    )
+    score.add_argument(
+        "--tiers",
+        type=_parse_tiers,
+        default=scores.DEFAULT_TIERS,
+        help="High and Medium cutoffs, comma-separated (default: 0.65,0.35)",
+    )
+    score.add_argument(
+        "--hide",
+        type=_finite_float,
+        default=scores.DEFAULT_HIDE,
+        help="score below which results are hidden (default: 0.1)",
+    )
+    score.add_argument(
+        "--max-recall-loss",
+        type=_finite_float,
+        default=0.0,
+        help="average recall a recommended threshold may cost (default: 0)",
+    )
+    score.add_argument(
+        "--candidate",
+        type=_finite_float,
+        help="threshold whose lost questions to list (default: the highest that keeps recall)",
+    )
+    score.add_argument(
+        "--output",
+        type=Path,
+        help="where to write the report (default: scores.md next to the results file)",
     )
 
     compare = commands.add_parser("compare", help="diff two results files offline")
@@ -315,7 +449,7 @@ async def _run_queries(
         )
         chunks = [metrics.Chunk(r.filename, r.text, r.score) for r in response.results]
         ranked = metrics.rank_files(chunks, run_prefix, corpus_names, query.expected_text)
-        scores = metrics.score_query(ranked, query.expected_files, args.k_values)
+        query_scores = metrics.score_query(ranked, query.expected_files, args.k_values)
         snippet_found = None
         passage: dict[str, Any] = {}
         if query.expected_text is not None:
@@ -326,7 +460,10 @@ async def _run_queries(
                 chunks, run_prefix, corpus_names, query.expected_files, query.expected_text
             )
             passage = {"passage_rank": rank}
-            scores.update(metrics.score_passage(rank, args.k_values))
+            query_scores.update(metrics.score_passage(rank, args.k_values))
+        chunk_scores, answer_chunks = metrics.chunk_scores(
+            chunks, run_prefix, corpus_names, ranked, query.expected_files, query.expected_text
+        )
         records.append(
             {
                 "id": query.id,
@@ -334,6 +471,7 @@ async def _run_queries(
                 "tags": list(query.tags),
                 "expected_files": list(query.expected_files),
                 "expected_text": query.expected_text,
+                "expected_answer": query.expected_answer,
                 "chunks_returned": len(chunks),
                 "unique_files_returned": len(ranked),
                 "ranked_files": [
@@ -348,10 +486,211 @@ async def _run_queries(
                 "expected_ranks": metrics.expected_ranks(ranked, query.expected_files),
                 "snippet_found": snippet_found,
                 **passage,
-                "metrics": scores,
+                # [file rank, score] for every chunk, in the order search returned
+                # them, so `run_eval.py scores` can test any threshold offline.
+                "chunk_scores": chunk_scores,
+                "answer_chunks": answer_chunks,
+                "metrics": query_scores,
             }
         )
     return records
+
+
+async def _answer_settings(client: Any, args: argparse.Namespace) -> dict[str, Any]:
+    try:
+        agent = (await client.settings.get()).agent
+        return {
+            "llm_provider": agent.llm_provider,
+            "llm_model": agent.llm_model,
+            "system_prompt_sha256": hashlib.sha256(
+                (agent.system_prompt or "").encode()
+            ).hexdigest(),
+            "judge_model": args.judge_model or agent.llm_model,
+            "judge_enabled": not args.no_judge,
+            "answer_limit": args.answer_limit,
+        }
+    except Exception as exc:
+        return {
+            "error": f"could not read agent settings: {type(exc).__name__}: {exc}",
+            "judge_model": args.judge_model,
+            "judge_enabled": not args.no_judge,
+            "answer_limit": args.answer_limit,
+        }
+
+
+async def _judge(
+    client: Any, messages: list[dict[str, str]], model: str | None
+) -> answers.Judgement:
+    body: dict[str, Any] = {"messages": messages, "stream": False, "temperature": 0}
+    if model:
+        body["model"] = model
+    response = await client._request("POST", "/api/v1/chat/completions", json=body)
+    try:
+        text = response.json()["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise EvalError("judge response has no message content") from exc
+    judgement = answers.parse_judgement(text)
+    if judgement is None:
+        raise EvalError("judge reply could not be parsed")
+    return judgement
+
+
+MAX_CHAT_FAILURES_IN_A_ROW = 3
+
+
+def _failed_answer(error: str, chat_ms: float) -> dict[str, Any]:
+    """An answer record for a question whose chat request failed.
+
+    It gets no answer scores, so it is left out of the answer averages and
+    counted in the summary instead, the same way a judge error is.
+    """
+    return {
+        "text": None,
+        "chat_ms": chat_ms,
+        "sources": [],
+        "cited_rank": None,
+        "judgement": None,
+        "judge_error": None,
+        "chat_error": error,
+    }
+
+
+async def _run_answers(
+    client: Any,
+    queries: list[dataset.Query],
+    manifest: dict[str, str],
+    run_prefix: str,
+    args: argparse.Namespace,
+    records: list[dict[str, Any]],
+    chat_ids: list[str],
+) -> None:
+    from openrag_sdk import SearchFilters
+
+    scope = SearchFilters(data_sources=sorted(manifest))
+    corpus_names = frozenset(manifest.values())
+    failures_in_a_row = 0
+    for index, (query, record) in enumerate(zip(queries, records, strict=True), 1):
+        if failures_in_a_row >= MAX_CHAT_FAILURES_IN_A_ROW:
+            # The stack is unlikely to recover mid-run; skipping keeps a dead chat
+            # endpoint from costing --chat-timeout per remaining question.
+            record["answer"] = _failed_answer(
+                f"skipped after {MAX_CHAT_FAILURES_IN_A_ROW} chat failures in a row", 0.0
+            )
+            continue
+        print(f"  answer {index}/{len(queries)}: {query.id}", flush=True)
+        started = time.monotonic()
+        try:
+            response = await client.chat.create(
+                query.query,
+                filters=scope,
+                limit=args.answer_limit,
+                score_threshold=args.score_threshold,
+            )
+        except Exception as exc:
+            failures_in_a_row += 1
+            elapsed = round((time.monotonic() - started) * 1000, 1)
+            error = f"{type(exc).__name__}: {exc}"
+            print(f"warning: chat failed for {query.id}: {error}", file=sys.stderr)
+            record["answer"] = _failed_answer(error, elapsed)
+            continue
+        failures_in_a_row = 0
+        if response.chat_id:
+            chat_ids.append(response.chat_id)
+        elapsed = round((time.monotonic() - started) * 1000, 1)
+        sources = [
+            {"filename": source.filename, "text": source.text} for source in response.sources
+        ]
+        rank = answers.cited_rank(sources, run_prefix, corpus_names, query.expected_files)
+        judgement = None
+        judge_error = None
+        if not args.no_judge:
+            if query.expected_answer is None:
+                judge_error = "no expected_answer reference"
+            else:
+                try:
+                    judgement = await _judge(
+                        client,
+                        answers.judge_messages(
+                            query.query,
+                            query.expected_answer,
+                            response.response,
+                            sources,
+                        ),
+                        args.judge_model,
+                    )
+                except Exception as exc:
+                    judge_error = f"{type(exc).__name__}: {exc}"
+        record["answer"] = {
+            "text": response.response,
+            "chat_ms": elapsed,
+            "sources": [
+                {"filename": source["filename"], "rank": i} for i, source in enumerate(sources, 1)
+            ],
+            "cited_rank": rank,
+            "judgement": asdict(judgement) if judgement else None,
+            "judge_error": judge_error,
+            "chat_error": None,
+        }
+        record["metrics"].update(
+            answers.score_answer(
+                response.response,
+                rank,
+                query.expected_text,
+                judgement,
+            )
+        )
+
+
+async def _cleanup_chats(client: Any, chat_ids: list[str]) -> list[str]:
+    warnings = []
+    for chat_id in dict.fromkeys(chat_ids):
+        try:
+            if not await client.chat.delete(chat_id):
+                warnings.append(f"conversation {chat_id} was not deleted (or was already absent)")
+        except Exception as exc:
+            warnings.append(f"could not delete conversation {chat_id}: {type(exc).__name__}: {exc}")
+    return warnings
+
+
+async def _run_live_cuts(
+    client: Any,
+    queries: list[dataset.Query],
+    records: list[dict[str, Any]],
+    manifest: dict[str, str],
+    run_prefix: str,
+    args: argparse.Namespace,
+) -> None:
+    """Rerun every question at each live threshold and record what search kept.
+
+    The offline sweep cuts on the score search returns. A stack may apply its
+    threshold to a different score: since #2520, main cuts the hybrid score
+    before document-level security adds its own score to every hit. Asking
+    the stack to apply each threshold measures the cut it really makes.
+    """
+    from openrag_sdk import SearchFilters
+
+    corpus_names = frozenset(manifest.values())
+    scope = SearchFilters(data_sources=sorted(manifest))
+    for query, record in zip(queries, records, strict=True):
+        cuts: list[dict[str, Any]] = []
+        for threshold in args.live_thresholds:
+            response = await client.search.query(
+                query.query,
+                filters=scope,
+                limit=args.fetch_limit,
+                score_threshold=threshold,
+            )
+            chunks = [metrics.Chunk(r.filename, r.text, r.score) for r in response.results]
+            summary = metrics.summarize_cut(
+                chunks,
+                run_prefix,
+                corpus_names,
+                query.expected_files,
+                query.expected_text,
+                args.k_values,
+            )
+            cuts.append({"threshold": threshold, **summary})
+        record["live_cuts"] = cuts
 
 
 async def _cleanup(client: Any, manifest: dict[str, str]) -> list[str]:
@@ -404,6 +743,8 @@ async def run(args: argparse.Namespace) -> int:
     run_prefix = f"{run_id}-"
     manifest = {f"{run_prefix}{name}": name for name in corpus_names}
 
+    chat_ids: list[str] = []
+    answer_settings = None
     target_url = report.redact_url(args.url)
     print(f"Run {run_id}: {len(corpus_names)} documents, {len(queries)} questions → {target_url}")
     async with OpenRAGClient(
@@ -418,7 +759,20 @@ async def run(args: argparse.Namespace) -> int:
             settings, settings_note = await _settings_snapshot(client)
             print("Running questions...")
             records = await _run_queries(client, queries, manifest, run_prefix, args)
+            if args.live_thresholds:
+                print(f"Running questions at {len(args.live_thresholds)} live thresholds...")
+                await _run_live_cuts(client, queries, records, manifest, run_prefix, args)
+            if args.answers:
+                answer_settings = await _answer_settings(client, args)
+                async with OpenRAGClient(
+                    api_key=args.api_key, base_url=args.url, timeout=args.chat_timeout
+                ) as answer_client:
+                    await _run_answers(
+                        answer_client, queries, manifest, run_prefix, args, records, chat_ids
+                    )
         finally:
+            for warning in await _cleanup_chats(client, chat_ids):
+                print(f"warning: cleanup: {warning}", file=sys.stderr)
             if args.keep_documents:
                 print(f"Kept documents with prefix {run_prefix}")
             else:
@@ -439,10 +793,13 @@ async def run(args: argparse.Namespace) -> int:
             "query_count": len(queries),
             "passage_questions": sum(1 for query in queries if query.expected_text is not None),
             "queries_hash": dataset.hash_file(args.queries),
+            "retrieval_queries_hash": dataset.retrieval_queries_hash(args.queries),
             "k_values": args.k_values,
             "primary_k": metrics.primary_k(args.k_values),
             "fetch_limit": args.fetch_limit,
             "score_threshold": args.score_threshold,
+            "label": args.label,
+            "live_thresholds": args.live_thresholds,
         },
         "settings": settings,
         "settings_note": settings_note,
@@ -452,6 +809,8 @@ async def run(args: argparse.Namespace) -> int:
         ),
         "queries": records,
     }
+    if args.answers:
+        results["answer_settings"] = answer_settings
     diff = report.diff_results(baseline, results) if baseline is not None else None
     summary = report.render_summary(results, diff)
     written = report.write_results(results, summary, args.output_dir, started_at)
@@ -475,6 +834,12 @@ def _explain(exc: Exception, url: str) -> str:
     text = str(exc)
     if status == 401:
         return "the API key was rejected; create a new one under Settings → API Keys"
+    if status == 403 and "AuthenticationException" in text:
+        # The key was accepted; the backend's own login to OpenSearch failed.
+        return (
+            f"the stack accepted the API key, but its backend could not authenticate to "
+            f"OpenSearch ({text}); restarting the backend usually fixes this"
+        )
     if status == 403:
         return f"the API key lacks a permission this needs ({text})"
     if "CERTIFICATE_VERIFY_FAILED" in text:
@@ -546,6 +911,41 @@ async def check(args: argparse.Namespace) -> int:
                 f"{settings.get('embedding_model')}, chunk size {settings.get('chunk_size')}, "
                 f"overlap {settings.get('chunk_overlap')}"
             )
+
+        if args.answers:
+            chat_ids: list[str] = []
+            try:
+                question = dataset.Query(
+                    "answer-check",
+                    "Reply with the word ready.",
+                    ("eval-check-0000",),
+                    expected_answer="ready",
+                )
+                records: list[dict[str, Any]] = [{"metrics": {}}]
+                async with OpenRAGClient(
+                    api_key=args.api_key, base_url=args.url, timeout=args.chat_timeout
+                ) as answer_client:
+                    await _run_answers(
+                        answer_client,
+                        [question],
+                        {"eval-check-0000": "eval-check-0000"},
+                        "",
+                        args,
+                        records,
+                        chat_ids,
+                    )
+                answer = records[0]["answer"]
+                error = answer["chat_error"] or answer["judge_error"]
+                if error:
+                    raise EvalError(error)
+                print("  ok    answers: chat" + (" and judge" if not args.no_judge else ""))
+            except Exception as exc:
+                failed = True
+                print(f"  FAIL  answers: {_explain(exc, target_url)}")
+            finally:
+                for warning in await _cleanup_chats(client, chat_ids):
+                    failed = True
+                    print(f"  FAIL  answers cleanup: {warning}")
 
         try:
             leftovers = await _list_leftovers(client, corpus_names)
@@ -627,6 +1027,37 @@ async def cleanup(args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def score_report(args: argparse.Namespace) -> int:
+    """Write the threshold and tier report for a results file, compared with another if given."""
+    current_results = report.load_results(args.results)
+    baseline_results = report.load_results(args.baseline) if args.baseline else None
+    # One cutoff for both runs. Left to each file, a baseline whose primary k
+    # differs would be scored at another cutoff and the comparison would mislead.
+    options: dict[str, Any] = {
+        "method": args.normalize,
+        "k": args.k or int(current_results["run"]["primary_k"]),
+        "thresholds": args.thresholds,
+        "tier_cutoffs": args.tiers,
+        "hide": args.hide,
+        "max_recall_loss": args.max_recall_loss,
+        "candidate": args.candidate,
+    }
+    try:
+        current = scores.analyze(current_results, **options)
+        text = scores.render_report(current)
+        if baseline_results is not None:
+            baseline = scores.analyze(baseline_results, **options)
+            mismatches = report.dataset_mismatches(baseline_results["run"], current_results["run"])
+            text = scores.render_comparison(baseline, current, mismatches) + "\n" + text
+    except scores.ScoresError as exc:
+        raise EvalError(str(exc)) from exc
+    output = args.output or args.results.with_name("scores.md")
+    output.write_text(text, encoding="utf-8")
+    print(text)
+    print(f"Wrote: {output}")
+    return 0
+
+
 def compare(args: argparse.Namespace) -> int:
     diff = report.diff_results(
         report.load_results(args.baseline),
@@ -647,7 +1078,7 @@ def promote(args: argparse.Namespace) -> int:
         print(f"Baseline not updated: {reason}")
         return NOT_PROMOTED
     args.baseline.parent.mkdir(parents=True, exist_ok=True)
-    args.baseline.write_text(json.dumps(current, indent=2) + "\n", encoding="utf-8")
+    args.baseline.write_text(report.dumps(current), encoding="utf-8")
     print(f"Baseline updated ({reason}): {args.baseline}")
     return 0
 
@@ -655,6 +1086,10 @@ def promote(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command in ("run", "check") and args.answer_limit < 1:
+        parser.error("--answer-limit must be positive")
+    if args.command in ("run", "check") and args.chat_timeout <= 0:
+        parser.error("--chat-timeout must be positive")
     if args.command == "promote" and args.min_gain < 0:
         parser.error("--min-gain must not be negative")
     if args.command == "run" and args.max_recall_drop is not None:
@@ -674,6 +1109,12 @@ def main(argv: list[str] | None = None) -> int:
             return compare(args)
         if args.command == "promote":
             return promote(args)
+        if args.command == "scores":
+            if args.max_recall_loss < 0:
+                parser.error("--max-recall-loss must not be negative")
+            if args.k is not None and args.k < 1:
+                parser.error("--k must be a positive integer")
+            return score_report(args)
         if args.command == "check":
             return asyncio.run(check(args))
         if args.command == "cleanup":

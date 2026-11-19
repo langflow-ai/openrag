@@ -16,6 +16,9 @@ from services.document_index_writer import DocumentIndexContext  # noqa: E402
 
 @pytest.mark.asyncio
 async def test_langflow_chat_passes_owner_metadata(monkeypatch):
+    # This test asserts the Langflow path, so pin the static deployment switch off.
+    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", False)
+
     # Mock settings / clients dependencies
     fake_langflow_client = MagicMock()
     monkeypatch.setattr(
@@ -78,6 +81,9 @@ async def test_langflow_chat_passes_owner_metadata(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_upload_context_chat_passes_owner_metadata(monkeypatch):
+    # This test asserts the Langflow path, so pin the static deployment switch off.
+    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", False)
+
     # Mock settings / clients dependencies
     fake_langflow_client = MagicMock()
     monkeypatch.setattr(
@@ -138,3 +144,47 @@ async def test_upload_context_chat_passes_owner_metadata(monkeypatch):
     assert context.owner_name == "Another User"
     assert context.owner_email == "another@example.com"
     assert context.embedding_provider == "openai"
+
+
+@pytest.mark.asyncio
+async def test_native_chat_session_delete_releases_its_ownership(monkeypatch):
+    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", True)
+    delete = AsyncMock(return_value=True)
+    owns_conversation = AsyncMock(return_value=True)
+    release_session = AsyncMock(return_value=True)
+    service = ChatService()
+    monkeypatch.setattr(service.native_chat_history_service, "owns_conversation", owns_conversation)
+    monkeypatch.setattr(service.native_chat_history_service, "delete", delete)
+    monkeypatch.setattr(service.session_ownership_service, "release_session", release_session)
+
+    result = await service.delete_session("user-1", "chat-1")
+
+    assert result["success"] is True
+    owns_conversation.assert_awaited_once_with("chat-1", "user-1")
+    delete.assert_awaited_once_with("chat-1", "user-1")
+    release_session.assert_awaited_once_with("user-1", "chat-1")
+
+
+@pytest.mark.asyncio
+async def test_langflow_session_delete_removes_its_native_history_mirror(monkeypatch):
+    monkeypatch.setattr("services.chat_service.DISABLE_CHAT_WITH_LANGFLOW", False)
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    monkeypatch.delenv("OPENRAG_DISABLE_DB_WORKSPACE_CONFIG", raising=False)
+    service = ChatService()
+    native_delete = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        service.native_chat_history_service, "owns_conversation", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(service.native_chat_history_service, "delete", native_delete)
+    monkeypatch.setattr(
+        "services.session_ownership_service.session_ownership_service.get_conversation_sessions",
+        AsyncMock(return_value=["langflow-1"]),
+    )
+    monkeypatch.setattr(ChatService, "_delete_langflow_session", AsyncMock(return_value=True))
+    monkeypatch.setattr("agent.delete_user_conversation", AsyncMock(return_value=True))
+
+    result = await service.delete_session("user-1", "langflow-1")
+
+    assert result["success"] is True
+    assert result["native_deleted"] is True
+    native_delete.assert_awaited_once_with("langflow-1", "user-1")

@@ -16,6 +16,8 @@ from pydantic import BaseModel
 from api.files import validate_date_filter_bounds
 from api.v1._filter_resolution import merge_filter_overrides, resolve_filter_id
 from auth_context import set_auth_context, set_score_threshold, set_search_filters, set_search_limit
+from config.settings import DISABLE_CHAT_WITH_LANGFLOW
+from config.storage_mode import db_writes_enabled
 from dependencies import (
     get_chat_service,
     get_knowledge_filter_service,
@@ -26,6 +28,18 @@ from session_manager import User
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def _native_chat_storage_error() -> JSONResponse | None:
+    """Return the public error when native chat cannot persist history."""
+    if not DISABLE_CHAT_WITH_LANGFLOW or db_writes_enabled():
+        return None
+    from api.chat import NATIVE_CHAT_STORAGE_ERROR, NATIVE_CHAT_UNAVAILABLE_ERROR
+
+    logger.error(
+        "[CHAT V1] Native chat is unavailable", configuration_error=NATIVE_CHAT_STORAGE_ERROR
+    )
+    return JSONResponse({"error": NATIVE_CHAT_UNAVAILABLE_ERROR}, status_code=503)
 
 
 def _openrag_user_id(user: User) -> str:
@@ -75,6 +89,11 @@ async def _transform_stream_to_sse(raw_stream, chat_id_container: dict):
                 continue
 
             chunk_data = json.loads(chunk_str)
+            if chunk_data.get("status") == "failed":
+                error = chunk_data.get("error") or {}
+                message = error.get("message") if isinstance(error, dict) else str(error)
+                yield f"data: {json.dumps({'type': 'error', 'error': message})}\n\n"
+                continue
             delta_text = ""
 
             if "delta" in chunk_data:
@@ -125,6 +144,8 @@ async def chat_create_endpoint(
     knowledge_filter_service=Depends(get_knowledge_filter_service),
 ):
     """Send a chat message via Langflow. POST /v1/chat"""
+    if response := _native_chat_storage_error():
+        return response
     message = body.message.strip()
     if not message:
         return JSONResponse({"error": "Message is required"}, status_code=400)
@@ -231,7 +252,7 @@ async def chat_list_endpoint(
 ):
     """List all conversations for the authenticated user. GET /v1/chat"""
     try:
-        history = await chat_service.get_langflow_history(_openrag_user_id(user))
+        history = await chat_service.get_chat_history(_openrag_user_id(user))
         conversations = [
             {
                 "chat_id": conv.get("response_id"),
@@ -255,7 +276,7 @@ async def chat_get_endpoint(
 ):
     """Get a specific conversation with full message history. GET /v1/chat/{chat_id}"""
     try:
-        history = await chat_service.get_langflow_history(_openrag_user_id(user))
+        history = await chat_service.get_chat_history(_openrag_user_id(user))
 
         conversation = None
         for conv in history.get("conversations", []):

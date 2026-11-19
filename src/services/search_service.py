@@ -62,6 +62,7 @@ _SEARCH_FILTER_FIELDS = {
 }
 _MAPPING_COMPATIBLE_FILTER_FIELDS = {"web_source_id"}
 _CHUNK_SEARCH_EXCLUDED_RECORD_KINDS = {"web_source", "web_page_manifest"}
+_SAMPLE_DATA_EXCLUSION = {"bool": {"must_not": [{"term": {"is_sample_data": "true"}}]}}
 
 
 # Variable used to store the active instance for the tool wrapper
@@ -441,6 +442,15 @@ async def search_tool(query: str, embedding_model: str = None) -> dict[str, Any]
     return await _global_search_service.search_tool(query, embedding_model=embedding_model)
 
 
+@tool
+async def raw_search_tool(query: str | dict[str, Any]) -> dict[str, Any]:
+    """Run a raw OpenSearch DSL query using the caller's access-controlled client."""
+    if not _global_search_service:
+        logger.error("Raw search tool called before initialization")
+        return {"hits": {"hits": []}, "error": "Search service not available"}
+    return await _global_search_service.raw_search_tool(query)
+
+
 class SearchService:
     def __init__(self, session_manager=None, models_service=None):
         self.session_manager = session_manager
@@ -561,6 +571,48 @@ class SearchService:
             _record_search_response(search_trace, response)
             return response
 
+    async def raw_search_tool(self, query: str | dict[str, Any]) -> dict[str, Any]:
+        """Execute the flow's raw OpenSearch tool without semantic retrieval."""
+        from auth_context import get_search_filters
+        from utils.langflow_utils import fence_untrusted_text
+
+        if isinstance(query, dict):
+            body = copy.deepcopy(query)
+        elif isinstance(query, str):
+            try:
+                body = json.loads(query)
+            except json.JSONDecodeError:
+                body = {
+                    "query": {
+                        "multi_match": {
+                            "query": query,
+                            "fields": ["text^2", "filename^1.5"],
+                            "type": "best_fields",
+                            "fuzziness": "AUTO",
+                        }
+                    }
+                }
+        else:
+            raise TypeError("raw_search query must be an OpenSearch DSL object or string")
+        if not isinstance(body, dict):
+            raise ValueError("raw_search query must decode to an OpenSearch DSL object")
+
+        filters = _build_search_filter_clauses(get_search_filters() or {})
+        if filters:
+            original_query = body.get("query", {"match_all": {}})
+            body["query"] = {"bool": {"must": [original_query], "filter": filters}}
+
+        user_id, jwt_token = get_auth_context()
+        client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+        response = await client.search(
+            index=get_index_name(), body=body, params={"terminate_after": 0}
+        )
+        for hit in response.get("hits", {}).get("hits", []):
+            source = hit.get("_source") if isinstance(hit, dict) else None
+            if isinstance(source, dict) and isinstance(source.get("text"), str):
+                source["text"] = fence_untrusted_text(source["text"])
+        return response
+
     async def _search(self, query: str, embedding_model: str) -> dict[str, Any]:
         """The search itself; ``search_tool`` wraps it in its trace."""
         embedding_field_name = get_embedding_field_name(embedding_model)
@@ -576,6 +628,7 @@ class SearchService:
         user_id, jwt_token = get_auth_context()
         # Get search filters, limit, and score threshold from context
         from auth_context import (
+            get_exclude_sample_data,
             get_score_threshold,
             get_search_filters,
             get_search_limit,
@@ -601,6 +654,8 @@ class SearchService:
             filter_clauses = _add_result_mode_filter(
                 _build_search_filter_clauses(filters), result_mode
             )
+            if get_exclude_sample_data():
+                filter_clauses.append(_SAMPLE_DATA_EXCLUSION)
 
             try:
                 # Space discovery is several aggregation round-trips and the
@@ -752,6 +807,8 @@ class SearchService:
             filter_clauses = _add_result_mode_filter(
                 _build_search_filter_clauses(filters), result_mode
             )
+            if get_exclude_sample_data():
+                filter_clauses.append(_SAMPLE_DATA_EXCLUSION)
 
         # Build query body
         if is_wildcard_match_all:
@@ -1119,6 +1176,7 @@ class SearchService:
         result_mode: str = "chunks",
         *,
         source: str = "api",
+        exclude_sample_data: bool = False,
     ) -> dict[str, Any]:
         """Public search method for API endpoints
 
@@ -1126,6 +1184,8 @@ class SearchService:
             embedding_model: Embedding model to use for search (defaults to the
                 currently configured embedding model)
             source: Trace tag distinguishing who is searching (see ``search_tool``)
+            exclude_sample_data: Leave out the bundled sample documents
+                (``is_sample_data``), as the nudges flow does when no filter is set
         """
         # Set auth context if provided (for direct API calls)
         from config.settings import is_no_auth_mode
@@ -1136,6 +1196,8 @@ class SearchService:
             set_auth_context(user_id, jwt_token)
 
         from auth_context import (
+            get_exclude_sample_data,
+            set_exclude_sample_data,
             set_score_threshold,
             set_search_filters,
             set_search_limit,
@@ -1148,8 +1210,14 @@ class SearchService:
         set_search_limit(limit)
         set_score_threshold(score_threshold)
         set_search_result_mode(result_mode)
-
-        return await self.search_tool(query, embedding_model=embedding_model, source=source)
+        # Restore the sample-data flag afterwards: search_tool() does not reset
+        # it, so a later direct call in this task would otherwise inherit it.
+        previous_exclude_sample_data = get_exclude_sample_data()
+        set_exclude_sample_data(exclude_sample_data)
+        try:
+            return await self.search_tool(query, embedding_model=embedding_model, source=source)
+        finally:
+            set_exclude_sample_data(previous_exclude_sample_data)
 
     # ------------------------------------------------------------------
     # Search-as-you-type suggestions

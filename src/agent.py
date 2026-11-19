@@ -91,13 +91,13 @@ async def _persist_error_conversation(
     Claiming is required: otherwise the client may retry with this response_id and
     ``_assert_owns`` returns 404 (session_not_found) for an unclaimed session.
     """
-    from datetime import datetime
+    from datetime import UTC, datetime
 
     from services.session_ownership_service import session_ownership_service
 
     if not await session_ownership_service.claim_session(user_id, store_id):
         raise RuntimeError("Unable to establish chat session ownership")
-    conversation_state["last_activity"] = datetime.now()
+    conversation_state["last_activity"] = datetime.now(UTC)
     await store_conversation_thread(user_id, store_id, conversation_state)
 
 
@@ -123,7 +123,7 @@ async def get_user_conversations(user_id: str):
 
 def get_conversation_thread(user_id: str, previous_response_id: str = None):
     """Get or create a specific conversation thread with function call preservation"""
-    from datetime import datetime
+    from datetime import UTC, datetime
 
     # Create user namespace if it doesn't exist
     if user_id not in active_conversations:
@@ -145,8 +145,8 @@ def get_conversation_thread(user_id: str, previous_response_id: str = None):
             }
         ],
         "previous_response_id": previous_response_id,  # Parent response_id for branching
-        "created_at": datetime.now(),
-        "last_activity": datetime.now(),
+        "created_at": datetime.now(UTC),
+        "last_activity": datetime.now(UTC),
     }
 
     return new_conversation
@@ -197,6 +197,32 @@ async def store_conversation_thread(user_id: str, response_id: str, conversation
         ]
 
     await conversation_persistence.store_conversation_thread(user_id, response_id, metadata_only)
+    if user_assistant_messages and user_assistant_messages[-1].get("role") == "assistant":
+        # Mirror each completed turn once. This is also needed for a live
+        # Langflow thread: its in-memory state holds all preceding turns.
+        mirrored_message_count = conversation_state.get("_mirrored_message_count", 0)
+        if not isinstance(mirrored_message_count, int) or mirrored_message_count < 0:
+            mirrored_message_count = 0
+        messages_to_sync = user_assistant_messages[mirrored_message_count:]
+        try:
+            await conversation_persistence.sync_langflow_history(
+                user_id,
+                response_id,
+                metadata_only,
+                messages_to_sync,
+                # The native copy is best-effort and must never invalidate an
+                # answer Langflow has already delivered to the user.
+                append_only=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Failed to mirror Langflow history to native chat storage",
+                user_id=user_id,
+                response_id=response_id,
+                error=str(exc),
+            )
+        else:
+            conversation_state["_mirrored_message_count"] = len(user_assistant_messages)
 
 
 # Legacy function for backward compatibility
@@ -766,10 +792,10 @@ async def async_langflow_chat(
         )
 
     # Add user message to conversation with timestamp
-    from datetime import datetime
+    from datetime import UTC, datetime
 
     if store_conversation:
-        user_message = {"role": "user", "content": prompt, "timestamp": datetime.now()}
+        user_message = {"role": "user", "content": prompt, "timestamp": datetime.now(UTC)}
         conversation_state["messages"].append(user_message)
         logger.debug(
             "Added user message to langflow",
@@ -805,7 +831,7 @@ async def async_langflow_chat(
             "role": "assistant",
             "content": response_text,
             "response_id": response_id,
-            "timestamp": datetime.now(),
+            "timestamp": datetime.now(UTC),
             "response_data": response_obj.model_dump()
             if hasattr(response_obj, "model_dump")
             else str(response_obj),  # Store complete response for function calls
@@ -870,7 +896,10 @@ async def async_langflow_chat(
 
         if not await session_ownership_service.claim_session(user_id, response_id):
             raise RuntimeError("Unable to establish chat session ownership")
-        conversation_state["last_activity"] = datetime.now()
+        # Native history stores UTC timestamps. Keep the Langflow mirror in
+        # the same time base so recent Langflow turns sort above older native
+        # conversations after a source switch.
+        conversation_state["last_activity"] = datetime.now(UTC)
         await store_conversation_thread(user_id, response_id, conversation_state)
 
         logger.debug(
@@ -931,7 +960,7 @@ async def async_langflow_chat_stream(
                 persisted_metadata = await conversation_persistence.get_conversation_thread(
                     user_id, thread_id
                 )
-    from datetime import datetime
+    from datetime import UTC, datetime
 
     conversation_state = get_conversation_thread(user_id, thread_id)
     if persisted_metadata:
@@ -948,7 +977,7 @@ async def async_langflow_chat_stream(
         conversation_state["response_ids"] = list(owned_session_ids)
 
     conversation_state["messages"].append(
-        {"role": "user", "content": prompt, "timestamp": datetime.now()}
+        {"role": "user", "content": prompt, "timestamp": datetime.now(UTC)}
     )
     if filter_id:
         conversation_state["filter_id"] = filter_id
@@ -992,7 +1021,10 @@ async def async_langflow_chat_stream(
             response_ids = conversation_state.setdefault("response_ids", [])
             if session_id not in response_ids:
                 response_ids.append(session_id)
-        conversation_state["last_activity"] = datetime.now()
+        # Native history stores UTC timestamps. Keep the Langflow mirror in
+        # the same time base so recent Langflow turns sort above older native
+        # conversations after a source switch.
+        conversation_state["last_activity"] = datetime.now(UTC)
         await store_conversation_thread(user_id, store_id, conversation_state)
 
     upstream = async_stream(
@@ -1086,7 +1118,7 @@ async def async_langflow_chat_stream(
                     "role": "assistant",
                     "content": display_text,
                     "response_id": response_id,
-                    "timestamp": datetime.now(),
+                    "timestamp": datetime.now(UTC),
                     "chunks": collected_chunks,
                     "error": True,
                 }
@@ -1101,7 +1133,7 @@ async def async_langflow_chat_stream(
                 "role": "assistant",
                 "content": full_response,
                 "response_id": response_id,
-                "timestamp": datetime.now(),
+                "timestamp": datetime.now(UTC),
                 "chunks": collected_chunks,
                 "error": error_occurred,
             }
@@ -1122,7 +1154,7 @@ async def async_langflow_chat_stream(
                         "role": "assistant",
                         "content": full_response,
                         "response_id": response_id,
-                        "timestamp": datetime.now(),
+                        "timestamp": datetime.now(UTC),
                         "chunks": collected_chunks,
                         "interrupted": True,
                     }
@@ -1145,7 +1177,7 @@ async def async_langflow_chat_stream(
             {
                 "role": "assistant",
                 "content": display_text,
-                "timestamp": datetime.now(),
+                "timestamp": datetime.now(UTC),
                 "error": True,
             }
         )

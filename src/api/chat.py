@@ -5,6 +5,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from api.files import validate_date_filter_bounds
+from config.settings import DISABLE_CHAT_WITH_LANGFLOW
+from config.storage_mode import db_writes_enabled
 from dependencies import (
     get_chat_service,
     get_session_manager,
@@ -16,10 +18,23 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 MAX_BULK_DELETE = 100
+NATIVE_CHAT_STORAGE_ERROR = (
+    "Native /chat requires OPENRAG_STORAGE_MODE=db and "
+    "OPENRAG_DISABLE_DB_WORKSPACE_CONFIG=false; native chat history is stored only in the database."
+)
+NATIVE_CHAT_UNAVAILABLE_ERROR = "Chat is temporarily unavailable. Please try again later."
 
 
 def _openrag_user_id(user: User) -> str:
     return getattr(user, "db_user_id", None) or user.user_id
+
+
+def _native_chat_storage_error() -> JSONResponse | None:
+    """Return a configuration error when native chat cannot persist history."""
+    if db_writes_enabled():
+        return None
+    logger.error("[CHAT] Native chat is unavailable", configuration_error=NATIVE_CHAT_STORAGE_ERROR)
+    return JSONResponse({"error": NATIVE_CHAT_UNAVAILABLE_ERROR}, status_code=503)
 
 
 async def _assert_owns(session_id: str | None, user_id: str) -> None:
@@ -64,6 +79,8 @@ async def chat_endpoint(
     user: User = Depends(require_permission("chat:use")),
 ):
     """Handle chat requests"""
+    if response := _native_chat_storage_error():
+        return response
     if not body.prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
 
@@ -120,6 +137,8 @@ async def langflow_endpoint(
     user: User = Depends(require_permission("chat:use")),
 ):
     """Handle Langflow chat requests"""
+    if DISABLE_CHAT_WITH_LANGFLOW and (response := _native_chat_storage_error()):
+        return response
     if not body.prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
 
@@ -188,6 +207,8 @@ async def chat_history_endpoint(
     user: User = Depends(require_permission("conversations:read:own")),
 ):
     """Get chat history for a user"""
+    if response := _native_chat_storage_error():
+        return response
     try:
         history = await chat_service.get_chat_history(_openrag_user_id(user))
         return JSONResponse(history)
@@ -200,13 +221,13 @@ async def langflow_history_endpoint(
     chat_service=Depends(get_chat_service),
     user: User = Depends(require_permission("conversations:read:own")),
 ):
-    """Get langflow chat history for a user"""
+    """Get chat history through the Langflow-compatible route."""
     try:
-        history = await chat_service.get_langflow_history(_openrag_user_id(user))
+        history = await chat_service.get_chat_history(_openrag_user_id(user))
         return JSONResponse(history)
     except Exception:
-        logger.exception("[CHAT] Failed to get langflow history")
-        return JSONResponse({"error": "Failed to get langflow history"}, status_code=500)
+        logger.exception("[CHAT] Failed to get chat history")
+        return JSONResponse({"error": "Failed to get chat history"}, status_code=500)
 
 
 async def delete_session_endpoint(

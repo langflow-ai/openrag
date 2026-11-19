@@ -20,7 +20,7 @@ from uuid import uuid4
 
 from observability.tracing import gateway_trace_kwargs, trace_context
 from services import provider_error_log
-from services.model_catalog import is_known_provider, litellm_provider_key
+from services.model_catalog import CAPABILITY_FLAGS, is_known_provider, litellm_provider_key
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -1305,6 +1305,21 @@ def _model_info(model: str, provider: str | None = None) -> dict[str, Any]:
         return {}
     except Exception:
         return {}
+
+
+def model_capabilities(model: str, *, config=None) -> frozenset[str]:
+    """Capability flags (`structured_output`, `function_calling`, ...) for a model id.
+
+    Read from LiteLLM's model table, the same source as the model picker. Empty
+    when the model is unknown or cannot be resolved, so callers must treat a
+    missing flag as "unknown", not "unsupported".
+    """
+    try:
+        litellm_model, provider, _ = resolve_call(model, kind="chat", config=config)
+    except Exception:
+        return frozenset()
+    info = _model_info(litellm_model, provider)
+    return frozenset(flag for key, flag in CAPABILITY_FLAGS.items() if info.get(key))
 
 
 def _is_reasoning_tool_conflict(detail: str) -> bool:

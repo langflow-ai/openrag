@@ -1,9 +1,17 @@
 import json
 from typing import Any
 
-from agent import async_chat, async_chat_stream, async_langflow
+from agent import async_langflow
 from auth_context import set_auth_context
-from config.settings import LANGFLOW_CHAT_FLOW_ID, LANGFLOW_URL, NUDGES_FLOW_ID, clients
+from config.settings import (
+    DISABLE_CHAT_WITH_LANGFLOW,
+    DISABLE_NUDGES_WITH_LANGFLOW,
+    LANGFLOW_CHAT_FLOW_ID,
+    LANGFLOW_URL,
+    NUDGES_FLOW_ID,
+    clients,
+)
+from config.storage_mode import db_writes_enabled
 from utils.langflow_utils import fence_untrusted_text
 from utils.logging_config import get_logger
 from utils.opensearch_queries import build_filter_clauses
@@ -12,8 +20,33 @@ logger = get_logger(__name__)
 
 
 class ChatService:
-    def __init__(self, flows_service=None):
+    def __init__(
+        self,
+        flows_service=None,
+        native_chat_agent=None,
+        native_chat_history_service=None,
+        session_ownership_service=None,
+    ):
         self.flows_service = flows_service
+        from services.native_chat_agent import NativeChatAgent
+        from services.native_chat_history_service import NativeChatHistoryService
+        from services.session_ownership_service import (
+            session_ownership_service as default_ownership_service,
+        )
+
+        # Production constructs and injects these dependencies in the app
+        # container.  Retain a coherent fallback for direct callers (and the
+        # legacy service helpers): the history service must share the same DB
+        # session factory as ownership, rather than constructing an
+        # unconfigured standalone service.
+        self.session_ownership_service = session_ownership_service or default_ownership_service
+        self.native_chat_history_service = native_chat_history_service or NativeChatHistoryService(
+            self.session_ownership_service._session_factory
+        )
+        self.native_chat_agent = native_chat_agent or NativeChatAgent(
+            self.native_chat_history_service,
+            self.session_ownership_service,
+        )
 
     async def chat(
         self,
@@ -25,35 +58,48 @@ class ChatService:
         filter_id: str = None,
         storage_user_id: str = None,
     ):
-        """Handle chat requests using the patched OpenAI client"""
+        """Handle chat requests with OpenRAG's native Python agent."""
         if not prompt:
             raise ValueError("Prompt is required")
         conversation_user_id = storage_user_id or user_id
+
+        from config.settings import get_openrag_config
+
+        config = get_openrag_config()
+        agent_config = getattr(config, "agent", None)
+        knowledge_config = getattr(config, "knowledge", None)
+        logger.info(
+            "[CHAT] Native OpenRAG chat request",
+            stream=stream,
+            continuing=bool(previous_response_id),
+            prompt_chars=len(prompt),
+            llm_provider=getattr(agent_config, "llm_provider", None),
+            llm_model=getattr(agent_config, "llm_model", None),
+            embedding_provider=getattr(knowledge_config, "embedding_provider", None),
+            embedding_model=getattr(knowledge_config, "embedding_model", None),
+        )
 
         # Set authentication context for this request so tools can access it
         if user_id and jwt_token:
             set_auth_context(user_id, jwt_token)
 
         if stream:
-            return async_chat_stream(
-                clients.patched_llm_client,
-                prompt,
-                conversation_user_id,
+            return self.native_chat_agent.stream(
+                prompt=prompt,
+                user_id=conversation_user_id,
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
             )
-        else:
-            response_text, response_id = await async_chat(
-                clients.patched_llm_client,
-                prompt,
-                conversation_user_id,
-                previous_response_id=previous_response_id,
-                filter_id=filter_id,
-            )
-            response_data = {"response": response_text}
-            if response_id:
-                response_data["response_id"] = response_id
-            return response_data
+        response_text, response_id, sources = await self.native_chat_agent.run(
+            prompt=prompt,
+            user_id=conversation_user_id,
+            previous_response_id=previous_response_id,
+            filter_id=filter_id,
+        )
+        response_data: dict[str, Any] = {"response": response_text, "response_id": response_id}
+        if sources:
+            response_data["sources"] = sources
+        return response_data
 
     async def langflow_chat(
         self,
@@ -73,6 +119,29 @@ class ChatService:
         if not prompt:
             raise ValueError("Prompt is required")
         conversation_user_id = storage_user_id or user_id
+
+        if DISABLE_CHAT_WITH_LANGFLOW:
+            logger.info(
+                "[CHAT] DISABLE_CHAT_WITH_LANGFLOW enabled; routing /langflow to native /chat"
+            )
+            native_previous_response_id = previous_response_id
+            if (
+                native_previous_response_id is None
+                and conversation_id
+                and await self.native_chat_history_service.owns_conversation(
+                    conversation_id, conversation_user_id
+                )
+            ):
+                native_previous_response_id = conversation_id
+            return await self.chat(
+                prompt,
+                user_id,
+                jwt_token,
+                previous_response_id=native_previous_response_id,
+                stream=stream,
+                filter_id=filter_id,
+                storage_user_id=storage_user_id,
+            )
 
         if not LANGFLOW_URL or not LANGFLOW_CHAT_FLOW_ID:
             raise ValueError(
@@ -233,6 +302,236 @@ class ChatService:
                 response_data["sources"] = sources
             return response_data
 
+    async def nudges_chat(
+        self,
+        user_id: str = None,
+        jwt_token: str = None,
+        previous_response_id: str = None,
+        filters: dict = None,
+        limit: int = None,
+        score_threshold: float = None,
+        storage_user_id: str = None,
+        search_service=None,
+    ):
+        """Suggested prompts, from the Langflow nudges flow or natively without Langflow."""
+        if not DISABLE_NUDGES_WITH_LANGFLOW:
+            return await self.langflow_nudges_chat(
+                user_id,
+                jwt_token,
+                previous_response_id=previous_response_id,
+                filters=filters,
+                limit=limit,
+                score_threshold=score_threshold,
+                storage_user_id=storage_user_id,
+            )
+        return await self.native_nudges_chat(
+            user_id,
+            jwt_token,
+            previous_response_id=previous_response_id,
+            filters=filters,
+            limit=limit,
+            score_threshold=score_threshold,
+            storage_user_id=storage_user_id,
+            search_service=search_service,
+        )
+
+    async def native_nudges_chat(
+        self,
+        user_id: str = None,
+        jwt_token: str = None,
+        previous_response_id: str = None,
+        filters: dict = None,
+        limit: int = None,
+        score_threshold: float = None,
+        storage_user_id: str = None,
+        search_service=None,
+    ):
+        """Nudges from one LLM gateway call instead of the Langflow nudges flow.
+
+        Chat history still falls back to Langflow's stored sessions when the
+        conversation is not in memory, since Langflow is the only durable
+        history store until OpenRAG's own message table lands.
+        """
+        from services import native_nudges
+
+        conversation_user_id = storage_user_id or user_id
+        history_prompt = await self._nudges_history_prompt(
+            conversation_user_id, previous_response_id
+        )
+        documents: list[str] = []
+        # The prompt ignores documents once there is chat history, so skip the search.
+        if not history_prompt and search_service is not None:
+            documents = await native_nudges.sample_documents(
+                search_service,
+                user_id=user_id,
+                jwt_token=jwt_token,
+                filters=filters,
+                limit=limit,
+                score_threshold=score_threshold,
+            )
+        logger.info(
+            "[CHAT] Native nudges request",
+            with_history=bool(history_prompt),
+            documents=len(documents),
+            filters_applied=bool(filters),
+        )
+        return await native_nudges.generate_nudges(
+            history_prompt=history_prompt, documents=documents
+        )
+
+    async def _nudges_history_prompt(
+        self,
+        conversation_user_id: str,
+        previous_response_id: str | None,
+    ) -> str:
+        """The last chat turns, with their retrieved chunks, as the nudges prompt's history."""
+        if not previous_response_id:
+            return ""
+        messages: list[dict[str, Any]] = []
+        # Native history is scoped to the owner, including API-key storage identities.
+        try:
+            messages = await self.native_chat_history_service.messages_for(
+                previous_response_id, conversation_user_id
+            )
+        except Exception as e:
+            logger.warning(f"Failed to fetch native messages for nudges: {e}")
+
+        # Fall back to the legacy in-memory conversation.
+        from agent import active_conversations
+
+        if (
+            not messages
+            and conversation_user_id in active_conversations
+            and previous_response_id in active_conversations[conversation_user_id]
+        ):
+            messages = active_conversations[conversation_user_id][previous_response_id].get(
+                "messages", []
+            )
+
+        # Filter out system messages
+        user_ast_messages = [m for m in messages if m.get("role") in ["user", "assistant"]]
+
+        # If no history in memory, try fetching from Langflow persistent history
+        if not user_ast_messages:
+            from services.langflow_history_service import langflow_history_service
+
+            try:
+                lf_messages = await langflow_history_service.get_session_messages(
+                    conversation_user_id, previous_response_id
+                )
+                if lf_messages:
+                    messages = lf_messages
+                    user_ast_messages = [
+                        m for m in messages if m.get("role") in ["user", "assistant"]
+                    ]
+            except Exception as e:
+                logger.warning(f"Failed to fetch session messages for nudges: {e}")
+
+        if user_ast_messages:
+            # Return at max 8 messages (the last ones)
+            user_ast_messages = user_ast_messages[-8:]
+
+            formatted_messages = []
+
+            def trim_results(r, depth=0):
+                MAX_DEPTH = 3
+                MAX_LIST_LEN = 3
+                MAX_DICT_KEYS = 5
+                MAX_STR_LEN = 1000
+
+                if isinstance(r, str):
+                    return r[:MAX_STR_LEN] + ("..." if len(r) > MAX_STR_LEN else "")
+                elif isinstance(r, list):
+                    if depth >= MAX_DEPTH:
+                        return "[Max depth reached]"
+                    return [trim_results(x, depth + 1) for x in r[:MAX_LIST_LEN]]
+                elif isinstance(r, dict):
+                    if depth >= MAX_DEPTH:
+                        return "[Max depth reached]"
+                    trimmed = {}
+                    for i, (k, v) in enumerate(r.items()):
+                        if i >= MAX_DICT_KEYS:
+                            trimmed["_more_keys"] = f"... ({len(r) - MAX_DICT_KEYS} omitted)"
+                            break
+                        trimmed[k] = trim_results(v, depth + 1)
+                    return trimmed
+                return r
+
+            for msg in user_ast_messages:
+                role = msg.get("role")
+                content = msg.get("content", "")
+                msg_str = f"{role}: {content}"
+
+                # Extract tool calls and chunks if this is an assistant message
+                if role == "assistant":
+                    extracted_chunks = []
+
+                    # 1. From chunks list
+                    chunks = msg.get("chunks") or []
+                    if isinstance(chunks, list):
+                        last_tc = None
+                        for chunk in chunks:
+                            if isinstance(chunk, dict):
+                                item = chunk.get("item", {})
+                                if isinstance(item, dict) and item.get("type") in [
+                                    "tool_call",
+                                    "retrieval_call",
+                                ]:
+                                    t_name = item.get("tool_name") or item.get("name") or "tool"
+                                    res = trim_results(item.get("results"))
+                                    tc = {"tool_name": t_name, "results": res}
+                                    extracted_chunks.append(tc)
+                                    last_tc = tc
+                                elif chunk.get("type") in [
+                                    "response.tool_call.result",
+                                    "tool_call_result",
+                                ]:
+                                    res = trim_results(chunk.get("result") or chunk)
+                                    if last_tc:
+                                        last_tc["results"] = res
+                                    else:
+                                        extracted_chunks.append(
+                                            {"tool_name": "tool", "results": res}
+                                        )
+
+                    # 2. From response_data dict/string
+                    resp_data = msg.get("response_data")
+                    if resp_data:
+                        if isinstance(resp_data, str):
+                            try:
+                                resp_data = json.loads(resp_data)
+                            except Exception:
+                                resp_data = {}
+                        if isinstance(resp_data, dict):
+                            t_calls = resp_data.get("tool_calls") or []
+                            if isinstance(t_calls, list):
+                                for tc in t_calls:
+                                    if isinstance(tc, dict):
+                                        t_name = tc.get("name")
+                                        func = tc.get("function")
+                                        if isinstance(func, dict) and not t_name:
+                                            t_name = func.get("name")
+                                        res = trim_results(tc.get("result"))
+                                        extracted_chunks.append(
+                                            {"tool_name": t_name or "tool", "results": res}
+                                        )
+
+                    if extracted_chunks:
+                        chunks_strs = []
+                        for tc in extracted_chunks:
+                            t_name = tc.get("tool_name", "tool")
+                            res = tc.get("results")
+                            if res is not None:
+                                res_str = json.dumps(res, ensure_ascii=False, default=str)
+                                chunks_strs.append(f"[Tool: {t_name}, Results: {res_str}]")
+                        if chunks_strs:
+                            msg_str += "\nContext Chunks:\n" + "\n".join(chunks_strs)
+
+                formatted_messages.append(msg_str)
+
+            return "\n\n".join(formatted_messages)
+        return ""
+
     async def langflow_nudges_chat(
         self,
         user_id: str = None,
@@ -313,142 +612,7 @@ class ChatService:
             raise ValueError(
                 "Langflow client not initialized. Ensure LANGFLOW is reachable or set LANGFLOW_KEY."
             )
-        prompt = ""
-        if previous_response_id:
-            messages = []
-            # Try in-memory active conversation first
-            from agent import active_conversations
-
-            if (
-                conversation_user_id in active_conversations
-                and previous_response_id in active_conversations[conversation_user_id]
-            ):
-                messages = active_conversations[conversation_user_id][previous_response_id].get(
-                    "messages", []
-                )
-
-            # Filter out system messages
-            user_ast_messages = [m for m in messages if m.get("role") in ["user", "assistant"]]
-
-            # If no history in memory, try fetching from Langflow persistent history
-            if not user_ast_messages:
-                from services.langflow_history_service import langflow_history_service
-
-                try:
-                    lf_messages = await langflow_history_service.get_session_messages(
-                        conversation_user_id, previous_response_id
-                    )
-                    if lf_messages:
-                        messages = lf_messages
-                        user_ast_messages = [
-                            m for m in messages if m.get("role") in ["user", "assistant"]
-                        ]
-                except Exception as e:
-                    logger.warning(f"Failed to fetch session messages for nudges: {e}")
-
-            if user_ast_messages:
-                # Return at max 8 messages (the last ones)
-                user_ast_messages = user_ast_messages[-8:]
-
-                formatted_messages = []
-
-                def trim_results(r, depth=0):
-                    MAX_DEPTH = 3
-                    MAX_LIST_LEN = 3
-                    MAX_DICT_KEYS = 5
-                    MAX_STR_LEN = 1000
-
-                    if isinstance(r, str):
-                        return r[:MAX_STR_LEN] + ("..." if len(r) > MAX_STR_LEN else "")
-                    elif isinstance(r, list):
-                        if depth >= MAX_DEPTH:
-                            return "[Max depth reached]"
-                        return [trim_results(x, depth + 1) for x in r[:MAX_LIST_LEN]]
-                    elif isinstance(r, dict):
-                        if depth >= MAX_DEPTH:
-                            return "[Max depth reached]"
-                        trimmed = {}
-                        for i, (k, v) in enumerate(r.items()):
-                            if i >= MAX_DICT_KEYS:
-                                trimmed["_more_keys"] = f"... ({len(r) - MAX_DICT_KEYS} omitted)"
-                                break
-                            trimmed[k] = trim_results(v, depth + 1)
-                        return trimmed
-                    return r
-
-                for msg in user_ast_messages:
-                    role = msg.get("role")
-                    content = msg.get("content", "")
-                    msg_str = f"{role}: {content}"
-
-                    # Extract tool calls and chunks if this is an assistant message
-                    if role == "assistant":
-                        extracted_chunks = []
-
-                        # 1. From chunks list
-                        chunks = msg.get("chunks") or []
-                        if isinstance(chunks, list):
-                            last_tc = None
-                            for chunk in chunks:
-                                if isinstance(chunk, dict):
-                                    item = chunk.get("item", {})
-                                    if isinstance(item, dict) and item.get("type") in [
-                                        "tool_call",
-                                        "retrieval_call",
-                                    ]:
-                                        t_name = item.get("tool_name") or item.get("name") or "tool"
-                                        res = trim_results(item.get("results"))
-                                        tc = {"tool_name": t_name, "results": res}
-                                        extracted_chunks.append(tc)
-                                        last_tc = tc
-                                    elif chunk.get("type") in [
-                                        "response.tool_call.result",
-                                        "tool_call_result",
-                                    ]:
-                                        res = trim_results(chunk.get("result") or chunk)
-                                        if last_tc:
-                                            last_tc["results"] = res
-                                        else:
-                                            extracted_chunks.append(
-                                                {"tool_name": "tool", "results": res}
-                                            )
-
-                        # 2. From response_data dict/string
-                        resp_data = msg.get("response_data")
-                        if resp_data:
-                            if isinstance(resp_data, str):
-                                try:
-                                    resp_data = json.loads(resp_data)
-                                except Exception:
-                                    resp_data = {}
-                            if isinstance(resp_data, dict):
-                                t_calls = resp_data.get("tool_calls") or []
-                                if isinstance(t_calls, list):
-                                    for tc in t_calls:
-                                        if isinstance(tc, dict):
-                                            t_name = tc.get("name")
-                                            func = tc.get("function")
-                                            if isinstance(func, dict) and not t_name:
-                                                t_name = func.get("name")
-                                            res = trim_results(tc.get("result"))
-                                            extracted_chunks.append(
-                                                {"tool_name": t_name or "tool", "results": res}
-                                            )
-
-                        if extracted_chunks:
-                            chunks_strs = []
-                            for tc in extracted_chunks:
-                                t_name = tc.get("tool_name", "tool")
-                                res = tc.get("results")
-                                if res is not None:
-                                    res_str = json.dumps(res, ensure_ascii=False, default=str)
-                                    chunks_strs.append(f"[Tool: {t_name}, Results: {res_str}]")
-                            if chunks_strs:
-                                msg_str += "\nContext Chunks:\n" + "\n".join(chunks_strs)
-
-                    formatted_messages.append(msg_str)
-
-                prompt = "\n\n".join(formatted_messages)
+        prompt = await self._nudges_history_prompt(conversation_user_id, previous_response_id)
 
         from agent import async_langflow_chat
 
@@ -486,7 +650,7 @@ class ChatService:
         )
         conversation_user_id = storage_user_id or user_id
 
-        if endpoint == "langflow":
+        if endpoint == "langflow" and not DISABLE_CHAT_WITH_LANGFLOW:
             # Prepare extra headers for JWT authentication and embedding model.
             # NOTE: extra_headers accumulates raw secrets (JWT, provider API keys).
             # Never log this dict or pass it to a logger call
@@ -580,328 +744,55 @@ class ChatService:
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
             )
-        else:  # chat
-            # Set auth context for chat tools and provide user_id
-            if user_id and jwt_token:
-                set_auth_context(user_id, jwt_token)
-            response_text, response_id = await async_chat(
-                clients.patched_llm_client,
+        else:  # native chat
+            response = await self.chat(
                 document_prompt,
-                conversation_user_id,
+                user_id,
+                jwt_token,
                 previous_response_id=previous_response_id,
+                storage_user_id=conversation_user_id,
             )
+            response_text, response_id = response["response"], response["response_id"]
 
         return response_text, response_id
 
     async def get_chat_history(self, user_id: str):
-        """Get chat conversation history for a user"""
-        from agent import active_conversations, get_user_conversations
-
+        """Get durable native-agent history (never Langflow messages)."""
         if not user_id:
             return {"error": "User ID is required", "conversations": []}
-
-        # Get metadata from persistent storage
-        conversations_dict = await get_user_conversations(user_id)
-
-        # Get in-memory conversations (with function calls)
-        in_memory_conversations = active_conversations.get(user_id, {})
-
-        logger.debug(
-            "Getting chat history for user",
-            user_id=user_id,
-            persistent_count=len(conversations_dict),
-            in_memory_count=len(in_memory_conversations),
-        )
-
-        # Convert conversations dict to list format with metadata
-        conversations = []
-
-        # First, process in-memory conversations (they have function calls)
-        for response_id, conversation_state in in_memory_conversations.items():
-            # Filter out system messages
-            messages = []
-            for msg in conversation_state.get("messages", []):
-                if msg.get("role") in ["user", "assistant"]:
-                    message_data = {
-                        "role": msg["role"],
-                        "content": msg["content"],
-                        "timestamp": msg.get("timestamp").isoformat()
-                        if msg.get("timestamp")
-                        else None,
-                    }
-                    if msg.get("response_id"):
-                        message_data["response_id"] = msg["response_id"]
-
-                    # Include function call data if present
-                    if msg.get("chunks"):
-                        message_data["chunks"] = msg["chunks"]
-                    if msg.get("response_data"):
-                        message_data["response_data"] = msg["response_data"]
-
-                    messages.append(message_data)
-
-            if messages:  # Only include conversations with actual messages
-                # Generate title from first user message
-                first_user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
-                title = (
-                    first_user_msg["content"][:50] + "..."
-                    if first_user_msg and len(first_user_msg["content"]) > 50
-                    else first_user_msg["content"]
-                    if first_user_msg
-                    else "New chat"
-                )
-                persisted_metadata = conversation_state.get("_persisted_metadata", {})
-
-                conversations.append(
-                    {
-                        "response_id": response_id,
-                        "title": persisted_metadata.get("title") or title,
-                        "endpoint": "chat",
-                        "messages": messages,
-                        "created_at": conversation_state.get("created_at").isoformat()
-                        if conversation_state.get("created_at")
-                        else None,
-                        "last_activity": conversation_state.get("last_activity").isoformat()
-                        if conversation_state.get("last_activity")
-                        else None,
-                        "previous_response_id": conversation_state.get("previous_response_id"),
-                        "filter_id": conversation_state.get("filter_id"),
-                        "total_messages": (persisted_metadata.get("total_messages") or 0)
-                        + len(messages),
-                        "source": "in_memory",
-                    }
-                )
-
-        # Then, add any persistent metadata that doesn't have in-memory data
-        for response_id, metadata in conversations_dict.items():
-            if response_id not in in_memory_conversations:
-                # This is metadata-only conversation (no function calls)
-                conversations.append(
-                    {
-                        "response_id": response_id,
-                        "title": metadata.get("title", "New Chat"),
-                        "endpoint": "chat",
-                        "messages": [],  # No messages in metadata-only
-                        "created_at": metadata.get("created_at"),
-                        "last_activity": metadata.get("last_activity"),
-                        "previous_response_id": metadata.get("previous_response_id"),
-                        "filter_id": metadata.get("filter_id"),
-                        "total_messages": metadata.get("total_messages", 0),
-                        "source": "metadata_only",
-                    }
-                )
-
-        # Sort by last activity (most recent first)
-        conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
-
-        return {
-            "user_id": user_id,
-            "endpoint": "chat",
-            "conversations": conversations,
-            "total_conversations": len(conversations),
-        }
-
-    @staticmethod
-    def _messages_from_active_conversation(conversation_state: dict) -> list[dict]:
-        """Serialize in-memory OpenRAG thread messages for the history API."""
-        messages = []
-        for msg in conversation_state.get("messages", []):
-            if msg.get("role") not in ["user", "assistant"]:
-                continue
-            message_data = {
-                "role": msg["role"],
-                "content": msg["content"],
-                "timestamp": msg.get("timestamp").isoformat()
-                if hasattr(msg.get("timestamp"), "isoformat")
-                else msg.get("timestamp"),
-                "source": "openrag_memory",
-            }
-            if msg.get("error"):
-                message_data["error"] = True
-            if msg.get("chunks"):
-                message_data["chunks"] = msg["chunks"]
-            if msg.get("response_data"):
-                message_data["response_data"] = msg["response_data"]
-            messages.append(message_data)
-        return messages
-
-    async def get_langflow_history(self, user_id: str):
-        """Get langflow conversation history for a user - now fetches from both OpenRAG memory and Langflow database"""
-        from agent import active_conversations, get_user_conversations
-        from services.langflow_history_service import langflow_history_service
-
-        if not user_id:
-            return {"error": "User ID is required", "conversations": []}
-
-        all_conversations = []
-        local_metadata: dict = {}
-        in_memory = active_conversations.get(user_id, {})
-
-        try:
-            # 1. Get local conversation metadata (no actual messages stored here)
-            conversations_dict = await get_user_conversations(user_id)
-
-            for response_id, conversation_metadata in conversations_dict.items():
-                # Store metadata for later use with Langflow data
-                local_metadata[response_id] = conversation_metadata
-
-            # 2. Get actual conversations from Langflow database (source of truth for messages)
-            logger.debug(f"Attempting to fetch Langflow history for user: {user_id}")
-            langflow_history = await langflow_history_service.get_user_conversation_history(
-                user_id, flow_id=LANGFLOW_CHAT_FLOW_ID
-            )
-
-            if langflow_history.get("conversations"):
-                for conversation in langflow_history["conversations"]:
-                    session_id = conversation["session_id"]
-
-                    # Only process sessions that belong to this user (exist in local metadata)
-                    if session_id not in local_metadata:
-                        continue
-
-                    # Use Langflow messages (with function calls) as source of truth
-                    messages = []
-                    for msg in conversation.get("messages", []):
-                        message_data = {
-                            "role": msg["role"],
-                            "content": msg["content"],
-                            "timestamp": msg.get("timestamp"),
-                            "langflow_message_id": msg.get("langflow_message_id"),
-                            "source": "langflow",
-                        }
-
-                        if msg.get("error"):
-                            message_data["error"] = True
-
-                        # Include function call data if present
-                        if msg.get("chunks"):
-                            message_data["chunks"] = msg["chunks"]
-                        if msg.get("response_data"):
-                            message_data["response_data"] = msg["response_data"]
-
-                        messages.append(message_data)
-
-                    # Prefer OpenRAG memory when it has more turns (error retries use a
-                    # fresh Langflow session under the same OpenRAG thread id).
-                    memory_messages = self._messages_from_active_conversation(
-                        in_memory.get(session_id, {})
-                    )
-                    if len(memory_messages) > len(messages):
-                        messages = memory_messages
-                        source = "openrag_memory_preferred"
-                    else:
-                        source = "langflow_enhanced"
-
-                    if messages:
-                        metadata = local_metadata.get(session_id, {})
-                        first_user_msg = next(
-                            (msg for msg in messages if msg["role"] == "user"), None
-                        )
-                        title = metadata.get("title") or (
-                            first_user_msg["content"][:50] + "..."
-                            if first_user_msg and len(first_user_msg["content"]) > 50
-                            else first_user_msg["content"]
-                            if first_user_msg
-                            else "Langflow chat"
-                        )
-
-                        all_conversations.append(
-                            {
-                                "response_id": session_id,
-                                "title": title,
-                                "endpoint": "langflow",
-                                "messages": messages,
-                                "created_at": metadata.get("created_at")
-                                or conversation.get("created_at"),
-                                "last_activity": metadata.get("last_activity")
-                                or conversation.get("last_activity"),
-                                "filter_id": metadata.get("filter_id"),
-                                "total_messages": len(messages),
-                                "source": source,
-                                "langflow_session_id": session_id,
-                                "langflow_flow_id": conversation.get("flow_id"),
-                            }
-                        )
-
-        except Exception as e:
-            logger.error(f"Failed to fetch Langflow history: {e}")
-
-        # Local-only threads + upgrade listed ones from memory/metadata snapshots
-        # (Langflow history is incomplete after fresh-session error retries).
-        listed_ids = {c["response_id"] for c in all_conversations}
-        for response_id, metadata in local_metadata.items():
-            conversation_state = in_memory.get(response_id, {})
-            messages = self._messages_from_active_conversation(conversation_state)
-            if not messages and isinstance(metadata.get("messages"), list):
-                messages = [
-                    m
-                    for m in metadata["messages"]
-                    if isinstance(m, dict) and m.get("role") in ["user", "assistant"]
-                ]
-
-            if response_id in listed_ids:
-                existing = next(c for c in all_conversations if c["response_id"] == response_id)
-                if len(messages) > len(existing.get("messages") or []):
-                    existing["messages"] = messages
-                    existing["total_messages"] = len(messages)
-                    existing["source"] = "openrag_memory_preferred"
-                continue
-
-            if not messages and not metadata.get("title"):
-                continue
-
-            first_user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
-            title = metadata.get("title") or (
-                first_user_msg["content"][:50] + "..."
-                if first_user_msg and len(first_user_msg["content"]) > 50
-                else first_user_msg["content"]
-                if first_user_msg
-                else "New Chat"
-            )
-            created_at = metadata.get("created_at") or conversation_state.get("created_at")
-            last_activity = metadata.get("last_activity") or conversation_state.get("last_activity")
-            all_conversations.append(
-                {
-                    "response_id": response_id,
-                    "title": title,
-                    "endpoint": "langflow",
-                    "messages": messages,
-                    "created_at": created_at.isoformat()
-                    if hasattr(created_at, "isoformat")
-                    else created_at,
-                    "last_activity": last_activity.isoformat()
-                    if hasattr(last_activity, "isoformat")
-                    else last_activity,
-                    "filter_id": metadata.get("filter_id") or conversation_state.get("filter_id"),
-                    "total_messages": len(messages) or metadata.get("total_messages", 0),
-                    "source": "local_error_fallback",
-                }
-            )
-
-        # Sort by last activity (most recent first)
-        all_conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
-
-        logger.debug(
-            "[CHAT] Returning conversations",
-            total=len(all_conversations),
-            from_local_metadata=len(local_metadata),
-        )
-
-        return {
-            "user_id": user_id,
-            "endpoint": "langflow",
-            "conversations": all_conversations,
-            "total_conversations": len(all_conversations),
-        }
+        return await self.native_chat_history_service.history(user_id)
 
     async def delete_session(self, user_id: str, session_id: str):
         """Delete a session from both local storage and Langflow"""
+        native_conversation = (
+            db_writes_enabled()
+            and await self.native_chat_history_service.owns_conversation(session_id, user_id)
+        )
+        native_deleted = False
+        if native_conversation:
+            native_deleted = await self.native_chat_history_service.delete(session_id, user_id)
+            if not native_deleted:
+                return {
+                    "success": False,
+                    "not_found": True,
+                    "local_deleted": False,
+                    "langflow_deleted": False,
+                    "error": "Conversation not found",
+                }
+            if DISABLE_CHAT_WITH_LANGFLOW:
+                await self.session_ownership_service.release_session(user_id, session_id)
+                return {
+                    "success": True,
+                    "not_found": False,
+                    "local_deleted": True,
+                    "langflow_deleted": False,
+                    "error": None,
+                }
         try:
             # Resolve the complete, owned group before removing any associations.
             from agent import delete_user_conversation
-            from services.session_ownership_service import session_ownership_service
 
-            session_ids = await session_ownership_service.get_conversation_sessions(
+            session_ids = await self.session_ownership_service.get_conversation_sessions(
                 user_id, session_id
             )
 
@@ -916,16 +807,20 @@ class ChatService:
                 user_id, session_id, session_ids=session_ids
             )
 
-            if not local_deleted:
+            if not local_deleted and not native_deleted:
                 return {
                     "success": False,
                     "not_found": True,
                     "error": "Conversation not found",
                 }
 
+            if native_deleted and not local_deleted:
+                await self.session_ownership_service.release_session(user_id, session_id)
+
             return {
                 "success": True,
                 "local_deleted": local_deleted,
+                "native_deleted": native_deleted,
                 "langflow_deleted": langflow_deleted,
                 "error": None,
             }
@@ -939,14 +834,20 @@ class ChatService:
 
         Returns {"deleted": [ids], "failed": [ids]}.
         """
-        from services.session_ownership_service import session_ownership_service
+        ownership_service = getattr(self, "session_ownership_service", None)
+        if ownership_service is None:
+            # Compatibility for lightweight callers that construct this
+            # service without __init__ (including legacy extension hooks).
+            from services.session_ownership_service import session_ownership_service
+
+            ownership_service = session_ownership_service
 
         deleted: list[str] = []
         failed: list[str] = []
 
         for session_id in dict.fromkeys(session_ids):
             try:
-                owner = await session_ownership_service.get_session_owner(session_id)
+                owner = await ownership_service.get_session_owner(session_id)
                 if owner is not None and owner != user_id:
                     logger.warning("bulk_delete: %s not owned by %s", session_id, user_id)
                     failed.append(session_id)
@@ -989,6 +890,13 @@ class ChatService:
         """Delete all sessions for a user from both local storage and Langflow"""
         from agent import get_user_conversations
 
+        native_deleted_count = 0
+        if db_writes_enabled():
+            native_session_ids = await self.native_chat_history_service.conversation_ids(user_id)
+            native_deleted_count = await self.native_chat_history_service.delete_all(user_id)
+            await self.session_ownership_service.release_conversation_sessions(
+                user_id, native_session_ids
+            )
         conversations = await get_user_conversations(user_id)
         session_ids = list(conversations.keys())
 
@@ -997,8 +905,11 @@ class ChatService:
             result = await self.delete_session(user_id, session_id)
             results.append(result)
 
+        langflow_deleted_count = len([r for r in results if r.get("success")])
         return {
             "success": True,
-            "deleted_count": len([r for r in results if r.get("success")]),
-            "total_count": len(session_ids),
+            "deleted_count": native_deleted_count + langflow_deleted_count,
+            "total_count": native_deleted_count + len(session_ids),
+            "native_deleted_count": native_deleted_count,
+            "langflow_deleted_count": langflow_deleted_count,
         }

@@ -213,12 +213,53 @@ class ConversationPersistenceService:
         if db_writes_enabled():
             await self._db_upsert(user_id, response_id, serialized)
 
+    async def sync_langflow_history(
+        self,
+        user_id: str,
+        response_id: str,
+        metadata: dict[str, Any],
+        messages: list[dict[str, Any]],
+        *,
+        append_only: bool,
+    ) -> None:
+        """Mirror a completed Langflow thread into the native history store."""
+        if not db_writes_enabled():
+            return
+        session_factory = self._resolve_session_factory()
+        if session_factory is None:
+            return
+        from services.native_chat_history_service import NativeChatHistoryService
+
+        await NativeChatHistoryService(session_factory).sync_langflow_conversation(
+            conversation_id=response_id,
+            user_id=user_id,
+            title=metadata.get("title"),
+            filter_id=metadata.get("filter_id"),
+            total_messages=int(metadata.get("total_messages") or 0),
+            created_at=metadata.get("created_at"),
+            last_activity=metadata.get("last_activity"),
+            messages=messages,
+            replace_history=not append_only,
+        )
+
     async def get_conversation_thread(self, user_id: str, response_id: str) -> dict[str, Any]:
         mode = get_storage_mode()
         if mode != "files":
             payload = await self._db_get_one(response_id, user_id)
             if payload is not None:
                 return payload
+            # Native chats have no Langflow metadata row. Return their durable
+            # metadata so a later Langflow continuation appends its new turn
+            # instead of replacing the conversation's native history.
+            session_factory = self._resolve_session_factory()
+            if session_factory is not None:
+                from services.native_chat_history_service import NativeChatHistoryService
+
+                native_metadata = await NativeChatHistoryService(
+                    session_factory
+                ).conversation_metadata(response_id, user_id)
+                if native_metadata is not None:
+                    return native_metadata
             if mode == "db":
                 return {}
         # files or hybrid-with-no-db-row → JSON
@@ -312,13 +353,14 @@ class ConversationPersistenceService:
                 deleted += await self._prune_file_store(cutoff_local)
 
         if db_writes_enabled():
-            from db.repositories import ConversationRepo
+            from db.repositories import ChatHistoryRepo, ConversationRepo
 
             sess_factory = self._resolve_session_factory()
             if sess_factory is not None:
                 try:
                     async with sess_factory() as session:
                         n = await ConversationRepo(session).delete_stale(ttl_days)
+                        n += await ChatHistoryRepo(session).delete_stale(ttl_days)
                         await session.commit()
                         deleted += n
                 except Exception as exc:  # noqa: BLE001

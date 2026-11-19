@@ -50,7 +50,7 @@ def canonical_name(filename: str, run_prefix: str, corpus_names: Collection[str]
     return name if name in corpus_names else None
 
 
-def _normalize(text: str) -> str:
+def normalize(text: str) -> str:
     # Chunking can re-wrap lines, so compare on case-folded, single-spaced text.
     return " ".join(text.casefold().split())
 
@@ -66,7 +66,7 @@ def rank_files(
     With ``expected_text``, each file also records whether any of its fetched
     chunks contains the snippet (case- and whitespace-insensitive).
     """
-    needle = _normalize(expected_text) if expected_text else None
+    needle = normalize(expected_text) if expected_text else None
     order: list[str] = []
     first_score: dict[str, float] = {}
     found: dict[str, bool] = {}
@@ -78,7 +78,7 @@ def rank_files(
             order.append(name)
             first_score[name] = chunk.score
             found[name] = False
-        if needle is not None and not found[name] and needle in _normalize(chunk.text):
+        if needle is not None and not found[name] and needle in normalize(chunk.text):
             found[name] = True
     return [
         RankedFile(
@@ -155,7 +155,7 @@ def passage_rank(
     Matching on text rather than chunk IDs keeps the rank meaningful when the
     chunk size changes.
     """
-    needle = _normalize(expected_text)
+    needle = normalize(expected_text)
     expected = set(expected_files)
     position = 0
     for chunk in chunks:
@@ -163,9 +163,79 @@ def passage_rank(
         if name is None:
             continue
         position += 1
-        if name in expected and needle in _normalize(chunk.text):
+        if name in expected and needle in normalize(chunk.text):
             return position
     return None
+
+
+def chunk_scores(
+    chunks: Iterable[Chunk],
+    run_prefix: str,
+    corpus_names: Collection[str],
+    ranked: Sequence[RankedFile],
+    expected_files: Collection[str],
+    expected_text: str | None,
+) -> tuple[list[list[float]], list[int]]:
+    """Return ``(pairs, answer_positions)`` for every chunk of this run's files.
+
+    - ``pairs`` has one ``[file rank, score]`` per chunk, in the order search
+      returned them. The file rank points into ``ranked``; stray documents are
+      left out.
+    - ``answer_positions`` holds the 1-based positions in ``pairs`` of each
+      chunk of an expected file that contains ``expected_text``. It is empty
+      when the question has no ``expected_text``.
+
+    Together with ``ranked`` this is enough to re-score the question at any
+    score threshold without another search.
+    """
+    rank_of = {item.filename: item.rank for item in ranked}
+    needle = normalize(expected_text) if expected_text else None
+    expected = set(expected_files)
+    scores: list[list[float]] = []
+    answers: list[int] = []
+    for chunk in chunks:
+        name = canonical_name(chunk.filename, run_prefix, corpus_names)
+        if name is None:
+            continue
+        # Unrounded: rounding could lift a score onto a threshold and keep a
+        # chunk that the stack would cut.
+        scores.append([rank_of[name], chunk.score])
+        if needle is not None and name in expected and needle in normalize(chunk.text):
+            answers.append(len(scores))
+    return scores, answers
+
+
+def summarize_cut(
+    chunks: Sequence[Chunk],
+    run_prefix: str,
+    corpus_names: Collection[str],
+    expected_files: Collection[str],
+    expected_text: str | None,
+    k_values: Sequence[int],
+) -> dict[str, object]:
+    """Score what one search returned when the stack applied a score threshold itself.
+
+    Holds the file and passage metrics, whether an answer chunk survived (None
+    without ``expected_text``), and how many relevant and noise chunks were
+    kept, counting only this run's files.
+    """
+    ranked = rank_files(chunks, run_prefix, corpus_names, expected_text)
+    scores = score_query(ranked, expected_files, k_values)
+    answer_kept: bool | None = None
+    if expected_text is not None:
+        rank = passage_rank(chunks, run_prefix, corpus_names, expected_files, expected_text)
+        scores.update(score_passage(rank, k_values))
+        answer_kept = rank is not None
+    names = [canonical_name(chunk.filename, run_prefix, corpus_names) for chunk in chunks]
+    kept = [name for name in names if name is not None]
+    relevant = sum(1 for name in kept if name in expected_files)
+    return {
+        "metrics": scores,
+        "answer_kept": answer_kept,
+        "chunks": len(kept),
+        "relevant": relevant,
+        "noise": len(kept) - relevant,
+    }
 
 
 def score_passage(rank: int | None, k_values: Sequence[int] = DEFAULT_K_VALUES) -> dict[str, float]:

@@ -64,10 +64,11 @@ The rest of this file explains each step.
 |---|---|
 | `corpus/` | 21 Markdown documents: the handbook of a fictional product, "Relaywise" |
 | `queries.jsonl` | 83 hand-labeled questions, one JSON object per line |
-| `run_eval.py` | The command-line tool, with `run`, `check`, `cleanup`, `compare` and `promote` commands |
+| `run_eval.py` | The command-line tool, with `run`, `check`, `cleanup`, `compare`, `scores` and `promote` commands |
 | `dataset.py` | Loads and validates the corpus and questions |
 | `metrics.py` | Turns ranked chunks into ranked files and scores them |
 | `report.py` | Writes results, the summary and the baseline diff |
+| `scores.py` | Tests relevance-score thresholds and tiers offline from one run |
 | `FRAMEWORK_COMPARISON.md` | How this harness compares with RAGAS, DeepEval, LangSmith and others |
 | `results/` | Output of each run (not committed) |
 
@@ -258,6 +259,102 @@ them, so create the baseline on the same stack you test against. The GitHub
 Actions workflow keeps a tracked baseline for its own stack; see
 [Run it from GitHub Actions](#run-it-from-github-actions).
 
+## Tune relevance thresholds
+
+Search drops chunks scoring below its score threshold, and the UI groups results
+into High, Medium and Low relevance tiers by score. Each run records the score
+of every chunk search returned, so one run can test any threshold offline. The
+harness already knows which chunks matter:
+
+- a chunk from an expected file is relevant;
+- a relevant chunk that contains the question's `expected_text` is an answer
+  chunk;
+- a chunk from any other file is noise.
+
+```bash
+# Once, with no extra threshold, and a label saying what this run tests.
+make eval-run OUTPUT_DIR=results/before EVAL_ARGS='--label "weights 0.7/0.3"'
+uv run run_eval.py scores results/before/results.json
+```
+
+The report is printed and written to `scores.md` next to the results file. It
+has these parts:
+
+- **Simulated sweep.** For each threshold, the scores left after dropping every
+  chunk whose returned score is below it: recall@5, MRR and passage hit@5, how
+  many questions lost recall, how many lost every answer chunk, and the share
+  of noise and relevant chunks removed. Losses are counted against no cut.
+- **Simulated thresholds.** The highest threshold that keeps recall@5
+  (`--max-recall-loss` allows some loss), and the highest at which at most
+  one question loses every answer chunk. A threshold counts only if every lower one also stays
+  within the limit.
+- **Live cuts**, when the run measured them (see below). The same scores with
+  the stack applying each threshold itself, next to the simulation, and the
+  live thresholds that keep recall.
+- **Tiers.** How many answer, relevant and noise chunks land in each tier, and
+  how many expected files land in Low or other files in High. A file's tier is
+  that of its best chunk. It also counts the answer chunks that `--hide` (the
+  score below which results are hidden, default 0.1) would hide. Set the tier
+  cutoffs with `--tiers 0.65,0.35`.
+
+It ends with the questions the recommended threshold would cost, or those of
+`--candidate`.
+
+Use `--normalize none` (the default) when the stack already returns scores in
+[0, 1]. `--normalize minmax` rescales each question's scores to [0, 1] first.
+That previews min-max normalization on a stack that returns raw scores, but
+only approximately: a hybrid search pipeline normalizes the vector and keyword
+scores separately before combining them.
+
+Thresholds are swept from one run, so changing only a threshold or a tier
+cutoff needs no rerun. Changing the weights, the pipeline or the normalization
+changes the scores themselves; run again and compare the two:
+
+```bash
+# Change the scoring, restart the stack, then:
+make eval-run OUTPUT_DIR=results/after EVAL_ARGS='--label "weights 0.6/0.4"'
+make eval-scores RESULTS=results/after/results.json BASELINE=results/before/results.json
+```
+
+The comparison puts both runs side by side: the recommended thresholds, the
+noise removed and questions that lost their answer there, and the tier counts. Runs with different
+labels still compare with `compare`; the label difference is a note, not a
+warning, so it never fails the recall gate.
+
+### Simulated and live thresholds
+
+The sweep cuts on the score `/v1/search` returns. The stack may apply
+`score_threshold` to a different score. Since #2520, main applies it to the
+hybrid score before document-level security adds its own score to every hit,
+so the score search returns is higher than the one the stack cuts on. A
+simulated threshold is then not the same cut as `score_threshold` set to that
+value, and it can look safe while live search drops answer chunks.
+
+To measure the real cut, give the run the thresholds to test:
+
+```bash
+make eval-run OUTPUT_DIR=results/live EVAL_ARGS='--live-thresholds 0.5,1,1.5,2'
+uv run run_eval.py scores results/live/results.json
+```
+
+After the normal pass, while its documents are still uploaded, the run asks
+every question again once per threshold, with the stack applying the threshold
+itself. That costs one search per question per threshold and no extra uploads.
+The report then shows a **Live cuts** table and, at each threshold, how many
+questions differ from the simulation. A question differs when its live cut and
+the simulation disagree on recall@5, reciprocal rank, whether an answer chunk
+survived, or how many relevant or noise chunks were kept. Chunk identities are
+not recorded, so a match does not prove the same chunks were kept. Pick `score_threshold` from
+the live thresholds. Without live cuts, the report says its thresholds are
+simulated.
+
+Search never returns chunks below the run's `--score-threshold`, so the sweep
+starts there and says so. A backend that falls back to a default threshold when
+it is sent 0 does the same without the run knowing. To see every chunk on such a
+backend, pass a tiny positive threshold such as `--score-threshold 0.000001`.
+Results files written before chunk scores were recorded cannot be used; rerun
+the eval.
+
 ## Run it from GitHub Actions
 
 The **Retrieval Eval** workflow ([`eval-retrieval.yml`](../../../.github/workflows/eval-retrieval.yml))
@@ -388,7 +485,14 @@ the score of their first chunk, the rank of each expected file
 (`expected_ranks`, `null` when a file was not returned), whether the expected
 text was found, the rank of the answer chunk (`passage_rank`, only for questions
 with an `expected_text`, `null` when no chunk held it), and the metrics for that
-question.
+question. `chunk_scores` lists every returned chunk of this run's files as
+`[file rank, score]` in the order search returned them, where the file rank
+points into `ranked_files`. `answer_chunks` gives the 1-based positions in that
+list of the chunks holding the `expected_text`. `run.label` is the `--label` of
+the run, or `null`. With `--live-thresholds`, `run.live_thresholds` lists them
+and each record has `live_cuts`: one entry per threshold with that question's
+metrics, whether an answer chunk survived (`answer_kept`), and how many chunks,
+relevant chunks and noise chunks the stack kept.
 
 ## Add or change a question
 
@@ -439,4 +543,85 @@ From the repository root:
 
 ```bash
 uv run pytest tests/unit/test_retrieval_eval.py
+```
+
+## Answer quality
+
+Answer evaluation is opt-in and informational. The CI gate still checks file
+recall@5; answer scores do not affect gating or baseline promotion.
+
+```bash
+uv run run_eval.py check --answers
+uv run run_eval.py run --answers --output-dir results/answers
+# From the repository root:
+make eval-answers OUTPUT_DIR=results/answers BASELINE=results/answers/baseline.json
+```
+
+`make eval-answers` also accepts `EVAL_ARGS`. `--answer-limit` controls how many
+chunks chat may retrieve (default 10); it is independent of `--fetch-limit`.
+Chat uses the run's exact uploaded-file scope and the same score threshold as
+search. Every question starts a fresh conversation; conversations are deleted
+in the run's cleanup, including when a later request fails. `--keep-documents`
+keeps documents only, not conversations. Cleanup failures are printed as warnings.
+
+| Score | Meaning |
+|---|---|
+| Cites expected file | 1 when chat's returned sources include an expected file; 0 otherwise. This checks source metadata, not inline citation syntax. |
+| Contains answer phrase | 1 when the answer contains `expected_text`, ignoring case and whitespace; 0 otherwise. Only questions with that label contribute. A correct paraphrase can score 0. |
+| Answer correctness | Judge's 0–2 score divided by 2: wrong or absent = 0, partly correct or missing a key detail = 0.5, matches the reference = 1. |
+| Answer groundedness | Whether substantive claims are supported by the source text supplied to the judge: yes = 1, partial = 0.5, no = 0. |
+
+Add `expected_answer` as one or two non-empty sentences drawn from the corpus.
+Answer the question directly and include the essential conditions, units,
+plan limits or exceptions. It is a semantic reference, not a required verbatim
+phrase; keep `expected_text` for phrase matching. The field is optional; a
+question without it still gets deterministic scores but no judgement. The
+83 shipped references and their review status are described in
+[answer-label-review.md](answer-label-review.md).
+
+By default the judge calls the stack's OpenAI-compatible completions gateway
+with its default chat model, using the same API key. This can bias it toward
+its own answers. Choose another configured model with `--judge-model MODEL`
+to reduce that bias. `--no-judge` runs only the deterministic checks and avoids
+the judge calls. Unusable judge replies and request failures are recorded in
+`answer.judge_error`, counted in the summary and excluded from judged averages;
+they are never silently scored as wrong. A failed chat request is handled the
+same way: it is recorded in `answer.chat_error`, listed under "Chat errors" in
+the summary and left out of the answer averages, and the run continues. After
+three chat failures in a row the remaining questions are skipped and marked,
+so a dead chat endpoint cannot stall the run; the retrieval scores are still
+written. Chat and judge requests use `--chat-timeout` (default 180 seconds)
+instead of `--request-timeout`, since an agent answer with tool calls can take
+longer than a search.
+
+A full 83-question pass adds 83 chat calls and up to 83 judge calls. Budget
+roughly 10–20 minutes, depending on the provider; tokens and charges depend
+on the configured model, retrieved text and answer lengths. `check --answers`
+also costs one chat call and one judge call, unless `--no-judge` is passed;
+it uploads nothing and deletes its test conversation. Besides the existing
+permissions, the key needs `chat:use` and `conversations:delete:own`.
+
+Answers and judgements can vary across identical runs. Trust the averages
+more than a single question flipping, and compare two unchanged runs to
+establish the noise level for your stack. No measured noise level is claimed
+until those live runs have been completed. Review roughly ten answers against
+the corpus, including every answer judged 0, before relying on a judge.
+
+Results record agent provider/model, a SHA-256 of the system prompt (never the
+prompt text), judge model, judge enablement and chat retrieval limit in the
+separate `answer_settings` object. Differences produce comparison notes,
+not retrieval warnings. The full question-file hash is retained for provenance;
+`retrieval_queries_hash` excludes additive answer references so they do not
+invalidate the phase-1 retrieval baseline. Other retrieval-label edits still
+produce comparison warnings. The JSON schema remains version 1.
+
+The summary includes overall and by-tag answer scores and answers judged
+wrong. Comparing two answer runs lists correctness changes of at least one
+point on the judge's raw 0–2 scale. Comparing against a run without answers
+adds a note. Save the first run before rerunning so it is not overwritten:
+
+```bash
+uv run run_eval.py run --answers --output-dir results/answers-first
+uv run run_eval.py run --answers --output-dir results/answers-second
+uv run run_eval.py compare results/answers-first/results.json results/answers-second/results.json
 ```

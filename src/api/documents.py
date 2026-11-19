@@ -33,7 +33,10 @@ async def delete_documents_by_filename_core(
 ):
     """Shared delete-by-filename logic for v1 and non-v1 endpoints."""
     from config.settings import get_index_name
-    from utils.opensearch_delete import collect_visible_document_ids, delete_document_ids
+    from utils.opensearch_delete import (
+        bulk_delete_document_ids,
+        collect_visible_document_ids,
+    )
     from utils.opensearch_queries import (
         build_anonymous_filename_query,
         build_filename_query,
@@ -140,7 +143,7 @@ async def delete_documents_by_filename_core(
 
         if write_client is None:
             raise RuntimeError("Backend OpenSearch client is unavailable")
-        deleted_count = await delete_document_ids(
+        deleted_count = await bulk_delete_document_ids(
             write_client,
             index=index_name,
             document_ids=document_ids,
@@ -185,7 +188,8 @@ async def delete_documents_by_filename_core(
         return (
             {
                 "success": False,
-                "deleted_chunks": 0,
+                # Chunks already confirmed deleted before a partial bulk failure.
+                "deleted_chunks": getattr(e, "deleted_count", 0),
                 "filename": normalized_filename,
                 "message": None,
                 "error": (

@@ -114,8 +114,8 @@ endef
        azurite-up azurite-down \
        instana-agent-up instana-agent-down \
        shell-backend shell-frontend install \
-       test test-unit test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
-       eval-validate eval-check eval-cleanup eval-run eval-baseline eval-compare \
+       test test-unit test-customer-connectors test-integration test-ci test-ci-local test-ci-suite test-sdk test-os-jwt lint \
+       eval-validate eval-check eval-cleanup eval-run eval-answers eval-baseline eval-compare eval-scores \
        ci-build-images ci-save-images \
        backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
@@ -350,6 +350,7 @@ help_test: ## Show testing commands
 	@echo "$(PURPLE)Unit & Integration Tests:$(NC)"
 	@echo "  $(PURPLE)make test$(NC)            - Run all backend tests"
 	@echo "  $(PURPLE)make test-unit$(NC)       - Run unit tests only (tests/unit/)"
+	@echo "  $(PURPLE)make test-customer-connectors$(NC) - Run customer connector plug-in tests"
 	@echo "  $(PURPLE)make test-integration$(NC) - Run integration tests (requires infra)"
 	@echo ''
 	@echo "$(PURPLE)CI Tests:$(NC)"
@@ -367,9 +368,12 @@ help_test: ## Show testing commands
 	@echo "  $(PURPLE)make eval-cleanup$(NC)    - List documents interrupted runs left behind (CONFIRM=1 to delete them)"
 	@echo "  $(PURPLE)make eval-run$(NC)        - Score search quality (requires running OpenRAG and OPENRAG_API_KEY)"
 	@echo "                         (BASELINE=results/baseline.json to compare with an earlier run)"
+	@echo "  $(PURPLE)make eval-answers$(NC)    - Score chat answers and retrieval (opt-in LLM calls)"
 	@echo "  $(PURPLE)make eval-baseline$(NC)   - Run the eval and save it as results/baseline.json"
 	@echo "  $(PURPLE)make eval-compare$(NC)    - Compare two results files offline"
 	@echo "                         (BASELINE=... CURRENT=..., default baseline vs latest run)"
+	@echo "  $(PURPLE)make eval-scores$(NC)     - Work out relevance-score thresholds from a run"
+	@echo "                         (RESULTS=..., default latest run; BASELINE=... to compare two runs)"
 	@echo ''
 	@echo "$(PURPLE)Diagnostic Tests:$(NC)"
 	@echo "  $(PURPLE)make test-os-jwt$(NC)     - Test JWT authentication against OpenSearch"
@@ -880,6 +884,13 @@ backend: ## Run backend locally
 	@$(call fix_backend_volume_ownership)
 	uv run python src/main.py
 
+backend-sharepoint-onprem: ## Run host backend with the opt-in SharePoint Server NTLM package
+	@echo "$(YELLOW)Starting backend with the SharePoint Server NTLM connector...$(NC)"
+	@if [ ! -f $(ENV_FILE) ]; then echo "$(RED)$(ENV_FILE) file not found. Copy .env.example to it first$(NC)"; exit 1; fi
+	@$(call fix_backend_volume_ownership)
+	OPENRAG_CONNECTOR_PLUGINS=sharepoint_onprem uv run --frozen \
+		--with-editable ./customer_connectors/sharepoint_onprem python src/main.py
+
 frontend: ## Run frontend locally
 	@echo "$(YELLOW)Starting frontend locally at $(FRONTEND_LOCAL_URL)...$(NC)"
 	@if [ ! -d "frontend/node_modules" ]; then echo "$(YELLOW)Installing frontend dependencies first...$(NC)"; cd frontend && npm install; fi
@@ -1045,6 +1056,15 @@ test-unit: ## Run unit tests only
 	@# the collection error is still reported and still fails the target.
 	uv run pytest tests/unit/ -v --continue-on-collection-errors
 	@echo "$(PURPLE)Unit tests complete.$(NC)"
+
+test-customer-connectors: ## Run customer connector plug-in tests (customer_connectors/)
+	@echo "$(YELLOW)Running customer connector plug-in tests...$(NC)"
+	@# The plug-in is not a backend dependency (absent from uv.lock). Layer it and
+	@# its requests-ntlm dependency over the locked environment for this run only,
+	@# leaving .venv untouched. CI (test-backend.yml) runs the same command.
+	uv run --locked --with-editable ./customer_connectors/sharepoint_onprem \
+		pytest customer_connectors -q
+	@echo "$(PURPLE)Customer connector plug-in tests complete.$(NC)"
 
 test-integration: ## Run integration tests (requires infrastructure)
 	@echo "$(CYAN)════════════════════════════════════════$(NC)"
@@ -1375,6 +1395,9 @@ eval-check: ## Check that the stack at OPENRAG_URL is ready for a retrieval eval
 eval-cleanup: ## List documents interrupted retrieval eval runs left behind; CONFIRM=1 to delete them
 	cd $(EVAL_DIR) && uv run run_eval.py cleanup $(if $(filter 1 true yes,$(CONFIRM)),--yes) $(EVAL_ARGS)
 
+eval-answers: ## Score chat answers as well as retrieval (LLM calls); supports OUTPUT_DIR, BASELINE and EVAL_ARGS
+	cd $(EVAL_DIR) && uv run run_eval.py run --answers --output-dir $(OUTPUT_DIR) $(if $(BASELINE),--baseline $(BASELINE)) $(EVAL_ARGS)
+
 eval-run: ## Run the retrieval eval (requires running OpenRAG and OPENRAG_API_KEY); BASELINE=file to compare
 	cd $(EVAL_DIR) && uv run run_eval.py run --output-dir $(OUTPUT_DIR) $(if $(BASELINE),--baseline $(BASELINE)) $(EVAL_ARGS)
 
@@ -1385,6 +1408,9 @@ eval-baseline: ## Run the retrieval eval and save it as $(OUTPUT_DIR)/baseline.j
 
 eval-compare: ## Compare two retrieval eval results files offline (BASELINE=..., CURRENT=...)
 	cd $(EVAL_DIR) && uv run run_eval.py compare $(or $(BASELINE),$(OUTPUT_DIR)/baseline.json) $(CURRENT)
+
+eval-scores: ## Work out relevance-score thresholds from a retrieval eval run (RESULTS=..., BASELINE=... to compare)
+	cd $(EVAL_DIR) && uv run run_eval.py scores $(or $(RESULTS),$(CURRENT)) $(if $(BASELINE),--baseline $(BASELINE)) $(EVAL_ARGS)
 
 lint: ## Run linting checks
 	@echo "$(YELLOW)Running linting checks...$(NC)"

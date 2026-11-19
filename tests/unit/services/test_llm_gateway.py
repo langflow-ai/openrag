@@ -19,6 +19,7 @@ from services.llm_gateway import (
     LlmGatewayError,
     chat_completions,
     embeddings,
+    model_capabilities,
     provider_credentials,
     resolve_call,
     split_model_id,
@@ -2847,3 +2848,26 @@ async def test_chat_completions_are_traced_with_request_shape(monkeypatch, traci
     assert metadata["trace_metadata"]["openrag.chat.tools"] == 1
     assert metadata["trace_metadata"]["openrag.chat.stream"] is False
     assert "hello" not in json.dumps(metadata)
+
+
+def test_model_capabilities_reads_litellm_flags(monkeypatch):
+    import litellm
+
+    table = {
+        "gpt-4o-mini": {"supports_response_schema": True, "supports_function_calling": True},
+        "granite-3-8b-instruct": {"supports_function_calling": True},
+    }
+    monkeypatch.setattr(litellm, "model_cost", table)
+
+    assert {"structured_output", "function_calling"} <= model_capabilities(
+        "openai:gpt-4o-mini", config=_config()
+    )
+    assert model_capabilities("watsonx:ibm/granite-3-8b-instruct", config=_config()) == {
+        "function_calling"
+    }
+    assert model_capabilities("openai:unknown-model", config=_config()) == frozenset()
+
+
+def test_model_capabilities_is_empty_when_model_cannot_be_resolved():
+    cfg = _config(agent=SimpleNamespace(llm_model="", llm_provider="openai"))
+    assert model_capabilities("", config=cfg) == frozenset()

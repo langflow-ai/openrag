@@ -11,6 +11,7 @@ Standard library only, so it can be unit-tested without the SDK or a stack.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -64,6 +65,25 @@ def load_results(path: Path) -> dict[str, Any]:
     return data
 
 
+# A JSON array of numbers that json.dumps(indent=...) spread over several lines.
+# JSON strings cannot hold a raw newline, so this never matches inside a string.
+# Each part can match only one way: indentation is spaces only, which is all
+# json.dumps emits after a newline, and a number is one run of number
+# characters. That keeps a failed match linear instead of backtracking.
+_NUMBER_ARRAY = re.compile(r"\[\n *([-0-9.eE+]+(?:,\n *[-0-9.eE+]+)*)\n *\]")
+_ITEM_BREAK = re.compile(r",\n *")
+
+
+def dumps(results: Mapping[str, Any]) -> str:
+    """Indented JSON with each array of numbers on one line.
+
+    Chunk scores are thousands of short ``[file rank, score]`` pairs, which
+    plain indentation would spread over several lines each.
+    """
+    text = json.dumps(results, indent=2)
+    return _NUMBER_ARRAY.sub(lambda m: "[" + _ITEM_BREAK.sub(", ", m.group(1)) + "]", text) + "\n"
+
+
 def write_results(
     results: Mapping[str, Any],
     summary: str,
@@ -75,7 +95,7 @@ def write_results(
     output_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for stem, suffix, content in (
-        ("results", ".json", json.dumps(results, indent=2) + "\n"),
+        ("results", ".json", dumps(results)),
         ("summary", ".md", summary),
     ):
         for path in (output_dir / f"{stem}{suffix}", output_dir / f"{stem}_{stamp}{suffix}"):
@@ -123,15 +143,40 @@ def _snippet_missing(query: Mapping[str, Any]) -> list[str]:
     ]
 
 
-def _mismatch_warnings(baseline: Mapping[str, Any], current: Mapping[str, Any]) -> list[str]:
+def _run_field_mismatches(
+    base_run: Mapping[str, Any],
+    cur_run: Mapping[str, Any],
+    fields: Sequence[tuple[str, str]],
+) -> list[str]:
     warnings: list[str] = []
-    base_run, cur_run = baseline["run"], current["run"]
-    for field, label in _COMPARABLE_RUN_FIELDS:
-        if base_run.get(field) != cur_run.get(field):
+    for field, label in fields:
+        base_value = base_run.get(field)
+        cur_value = cur_run.get(field)
+        if field == "queries_hash":
+            # Answer references do not change retrieval, so prefer the hash
+            # that leaves them out.
+            base_value = base_run.get("retrieval_queries_hash", base_value)
+            cur_value = cur_run.get("retrieval_queries_hash", cur_value)
+        if base_value != cur_value:
             warnings.append(
                 f"The {label} differs between the runs "
                 f"(baseline {_short(base_run.get(field))}, current {_short(cur_run.get(field))})."
             )
+    return warnings
+
+
+def dataset_mismatches(base_run: Mapping[str, Any], cur_run: Mapping[str, Any]) -> list[str]:
+    """Why two runs did not score the same corpus and questions, empty when they did.
+
+    Unlike a baseline diff, a threshold comparison expects the scoring, the
+    settings and the label to differ, so only the dataset is checked.
+    """
+    return _run_field_mismatches(base_run, cur_run, _COMPARABLE_RUN_FIELDS[:2])
+
+
+def _mismatch_warnings(baseline: Mapping[str, Any], current: Mapping[str, Any]) -> list[str]:
+    base_run, cur_run = baseline["run"], current["run"]
+    warnings = _run_field_mismatches(base_run, cur_run, _COMPARABLE_RUN_FIELDS)
     base_settings = baseline.get("settings") or {}
     cur_settings = current.get("settings") or {}
     if not base_settings or not cur_settings:
@@ -233,11 +278,44 @@ def diff_results(
     # Notes are informational. Unlike warnings, they do not make the file scores
     # incomparable, so the recall gate and baseline promotion ignore them.
     notes: list[str] = []
+    base_label, cur_label = baseline["run"].get("label"), current["run"].get("label")
+    if base_label != cur_label:
+        notes.append(
+            f"The runs are labeled differently (baseline {base_label!r}, current {cur_label!r})."
+        )
     if "passage_mrr" in cur_overall and "passage_mrr" not in base_overall:
         notes.append(
             "The baseline has no passage scores, so only file scores are compared. "
             "Rerun the baseline to compare passages."
         )
+    answer_changes = []
+    base_answers = any("answer" in q for q in baseline["queries"])
+    cur_answers = any("answer" in q for q in current["queries"])
+    if base_answers != cur_answers:
+        notes.append("Only one run has answer scores; answer quality cannot be compared.")
+    if base_answers and cur_answers:
+        if baseline.get("answer_settings") != current.get("answer_settings"):
+            notes.append(
+                "Answer settings differ (agent, prompt, judge or retrieval limit); answer scores may not be comparable."
+            )
+        for query_id, cur in cur_by_id.items():
+            base = base_by_id.get(query_id, {})
+            before = (base.get("answer", {}).get("judgement") or {}).get("correctness")
+            after = (cur.get("answer", {}).get("judgement") or {}).get("correctness")
+            if before is not None and after is not None and abs(after - before) >= 1:
+                answer_changes.append(
+                    {
+                        "id": query_id,
+                        "query": cur["query"],
+                        "baseline": before,
+                        "current": after,
+                        "delta": after - before,
+                    }
+                )
+    if (base_answers or cur_answers) and baseline["run"].get("queries_hash") != current["run"].get(
+        "queries_hash"
+    ):
+        notes.append("The full question file differs; answer references may have changed.")
     if added or removed:
         warnings.append(
             "The runs do not cover the same questions, so the aggregate deltas "
@@ -251,6 +329,7 @@ def diff_results(
         "warnings": warnings,
         "notes": notes,
         "aggregate": aggregate,
+        "answer_changes": answer_changes,
         "regressed": regressed,
         "improved": improved,
         "unchanged": unchanged,
@@ -326,6 +405,14 @@ def _label(metric: str) -> str:
         return "MRR" if metric == "mrr" else "Reciprocal rank"
     if metric in ("passage_mrr", "passage_rr"):
         return "Passage MRR" if metric == "passage_mrr" else "Passage reciprocal rank"
+    answer_labels = {
+        "answer_cited": "Cites expected file",
+        "answer_has_phrase": "Contains answer phrase",
+        "answer_correct": "Answer correctness",
+        "answer_grounded": "Answer groundedness",
+    }
+    if metric in answer_labels:
+        return answer_labels[metric]
     return metric.replace("ndcg", "nDCG").replace("passage_hit", "passage hit")
 
 
@@ -401,6 +488,19 @@ def render_diff(diff: Mapping[str, Any]) -> str:
     lines += ["", f"### Improved ({len(improved)})", ""]
     lines += _changed_table(improved, metrics) if improved else ["No question improved."]
 
+    if diff.get("answer_changes"):
+        lines += [
+            "",
+            "### Answer correctness changes (0–2)",
+            "",
+            "| ID | Question | Baseline | Current |",
+            "|---|---|---|---|",
+        ]
+        for entry in sorted(diff["answer_changes"], key=lambda item: item["delta"]):
+            lines.append(
+                f"| {_cell(entry['id'])} | {_cell(entry['query'])} | {entry['baseline']} | {entry['current']} |"
+            )
+
     if diff["aggregate"]:
         lines += [
             "",
@@ -434,6 +534,16 @@ def _settings_line(results: Mapping[str, Any]) -> str:
     )
 
 
+def _scores_line(results: Mapping[str, Any]) -> list[str]:
+    values = [pair[1] for q in results["queries"] for pair in q.get("chunk_scores") or ()]
+    if not values:
+        return []
+    return [
+        f"- **Chunk scores:** {len(values)} recorded, from {min(values):.4f} to "
+        f"{max(values):.4f}; `run_eval.py scores` tests thresholds on them"
+    ]
+
+
 def render_summary(results: Mapping[str, Any], diff: Mapping[str, Any] | None = None) -> str:
     """Markdown summary of one run, followed by the baseline comparison if given."""
     run = results["run"]
@@ -453,13 +563,19 @@ def render_summary(results: Mapping[str, Any], diff: Mapping[str, Any] | None = 
         f"{run['query_count']} questions (`{_short(run['queries_hash'])}`)",
         f"- **Search:** fetch limit {run['fetch_limit']}, score threshold {run['score_threshold']}",
         f"- **Settings:** {_settings_line(results)}",
+        *([f"- **Label:** {_cell(run['label'])}"] if run.get("label") else []),
+        *_scores_line(results),
         "",
         "## Overall",
         "",
         "| Metric | Score |",
         "|---|---|",
     ]
-    lines += [f"| {_label(name)} | {value:.3f} |" for name, value in overall.items()]
+    lines += [
+        f"| {_label(name)} | {value:.3f} |"
+        for name, value in overall.items()
+        if not name.startswith("answer_")
+    ]
     if "passage_mrr" in overall:
         lines += [
             "",
@@ -504,6 +620,75 @@ def render_summary(results: Mapping[str, Any], diff: Mapping[str, Any] | None = 
             )
     else:
         lines.append(f"Every question reached full recall@{k}.")
+
+    answer_rows = [q for q in results["queries"] if "answer" in q]
+    if answer_rows:
+        answer_names = [name for name in overall if name.startswith("answer_")]
+        errors = [q for q in answer_rows if q["answer"].get("judge_error")]
+        parse_errors = sum("could not be parsed" in q["answer"]["judge_error"] for q in errors)
+        judged = sum(q["answer"].get("judgement") is not None for q in answer_rows)
+        chat_failed = [q for q in answer_rows if q["answer"].get("chat_error")]
+        lines += [
+            "",
+            "## Answer quality",
+            "",
+            f"{len(answer_rows) - len(chat_failed)} answers; {len(chat_failed)} chat errors; "
+            f"{judged} usable judgements; {len(errors)} judge errors "
+            f"({parse_errors} failed to parse). Questions without an answer or judgement "
+            "are excluded from the averages.",
+            "",
+            "| Metric | Score |",
+            "|---|---|",
+        ]
+        lines += [f"| {_label(name)} | {overall[name]:.3f} |" for name in answer_names]
+        if by_tag:
+            lines += [
+                "",
+                "### Answer quality by tag",
+                "",
+                "| Tag | " + " | ".join(_label(m) for m in answer_names) + " |",
+                "|---|" + "---|" * len(answer_names),
+            ]
+            for tag, scores in by_tag.items():
+                lines.append(
+                    f"| {_cell(tag)} | "
+                    + " | ".join(f"{scores[m]:.3f}" if m in scores else "n/a" for m in answer_names)
+                    + " |"
+                )
+        wrong = [
+            q for q in answer_rows if (q["answer"].get("judgement") or {}).get("correctness") == 0
+        ]
+        lines += ["", f"### Answers judged wrong ({len(wrong)})", ""]
+        if wrong:
+            lines += ["| Question | Reference | Answer excerpt | Reason |", "|---|---|---|---|"]
+            for q in wrong:
+                answer = q["answer"]
+                lines.append(
+                    "| "
+                    + " | ".join(
+                        _cell(v)
+                        for v in (
+                            q["query"],
+                            q.get("expected_answer") or "n/a",
+                            answer["text"][:240],
+                            answer["judgement"]["reason"],
+                        )
+                    )
+                    + " |"
+                )
+        else:
+            lines.append("No answers judged wrong.")
+        if chat_failed:
+            lines += [
+                "",
+                f"### Chat errors ({len(chat_failed)})",
+                "",
+                "| ID | Error |",
+                "|---|---|",
+            ]
+            lines += [
+                f"| {_cell(q['id'])} | {_cell(q['answer']['chat_error'])} |" for q in chat_failed
+            ]
 
     text = "\n".join(lines) + "\n"
     if diff is not None:
