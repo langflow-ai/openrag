@@ -10,6 +10,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import copy
+import hashlib
 import ipaddress
 import json
 import math
@@ -291,6 +292,16 @@ def _native_llm_gateway_url() -> str:
     return urlunsplit((parsed.scheme or "http", f"127.0.0.1:{port}", parsed.path, parsed.query, ""))
 
 
+def _url_filename(url: str) -> str:
+    """Return a bounded, stable filename unique to one URL page."""
+    parsed = urlsplit(url)
+    path_and_query = f"{parsed.netloc}{parsed.path or '/'}"
+    if parsed.query:
+        path_and_query = f"{path_and_query}?{parsed.query}"
+    digest = hashlib.sha256(url.encode()).hexdigest()[:16]
+    return f"{path_and_query[: 512 - len(digest) - 1]}-{digest}"
+
+
 class NativeChatAgent:
     """Run OpenRAG chat without starting Langflow."""
 
@@ -320,7 +331,7 @@ class NativeChatAgent:
         ingestion_page = copy.deepcopy(page)
         strip_untrusted_fence_recursive(ingestion_page)
         source_url = str(page["url"])
-        title = urlparse(source_url).hostname or "URL"
+        title = _url_filename(source_url)
         temp_file_path = materialize_url_text_file(
             str(ingestion_page["text"]),
             source_url=source_url,

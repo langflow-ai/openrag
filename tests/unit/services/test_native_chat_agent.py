@@ -27,6 +27,7 @@ from services.native_chat_agent import (
     _native_llm_gateway_url,
     _PinnedAddressTransport,
     _read_public_url,
+    _url_filename,
 )
 
 
@@ -165,6 +166,15 @@ def test_native_gateway_keeps_an_explicit_proxy_url(monkeypatch):
     )
 
     assert _native_llm_gateway_url() == "https://proxy.example/v1"
+
+
+def test_native_url_filename_is_stable_and_page_specific():
+    first = _url_filename("https://example.com/a?view=full")
+
+    assert first == _url_filename("https://example.com/a?view=full")
+    assert first != _url_filename("https://example.com/b?view=full")
+    assert first != _url_filename("https://example.com/a?view=compact")
+    assert first.startswith("example.com/a?view=full-")
 
 
 def test_native_agent_uses_the_configured_system_prompt(monkeypatch):
@@ -376,8 +386,10 @@ async def test_native_url_tool_indexes_the_validated_page_with_the_url_processor
     assert result["ingestion"] == {"status": "indexed", "id": "document-id"}
     assert captured["source_url"] == "https://example.com/doc"
     assert captured["connector_type"] == "url"
+    assert captured["original_filename"] == _url_filename("https://example.com/doc")
     assert captured["content"] == (
-        "example.com\n\nSource URL: https://example.com/doc\nCrawl depth: 1\n\nDocument body\n"
+        f"{_url_filename('https://example.com/doc')}\n\n"
+        "Source URL: https://example.com/doc\nCrawl depth: 1\n\nDocument body\n"
     )
 
 
