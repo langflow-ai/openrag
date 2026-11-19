@@ -9,7 +9,6 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform != 'win32'",
 ]
 
-
 [manifest]
 overrides = [
     { name = "filelock", specifier = ">=4.2.1" },
@@ -2800,7 +2799,7 @@ wheels = [
 
 [[package]]
 name = "openrag"
-version = "0.8.1"
+version = "0.8.2"
 source = { editable = "." }
 dependencies = [
     { name = "agentd" },
