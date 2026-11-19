@@ -86,6 +86,15 @@ async def resolve_datasets(
     if not user_id:
         return []
     visible = await list_visible_datasets(user_id)
+    if tool_requested is not None:
+        # Models often pass the dataset names they were shown instead of ids;
+        # map those to ids so the tool narrows rather than silently matching nothing.
+        by_name: dict[str, str] = {}
+        for record in visible:
+            for name in (record.display_name, record.source_index):
+                if name:
+                    by_name.setdefault(name.strip().lower(), record.id)
+        tool_requested = [by_name.get(str(item).strip().lower(), item) for item in tool_requested]
     keep = set(effective_ids(selection, [record.id for record in visible], tool_requested))
     return [record for record in visible if record.id in keep]
 

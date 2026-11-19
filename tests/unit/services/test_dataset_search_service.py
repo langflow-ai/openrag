@@ -470,6 +470,28 @@ async def test_resolve_applies_selection_and_tool_narrowing(visible, feature, au
 
 
 @pytest.mark.asyncio
+async def test_tool_may_name_datasets_instead_of_ids(visible, feature, auth):
+    """Models pass the names they were shown; those must narrow, not match nothing."""
+    visible.records.extend(
+        [
+            Record(
+                id="a", index_alias="x", display_name="Scientists", source_index="famous_scientists"
+            ),
+            Record(
+                id="b",
+                index_alias="y",
+                display_name="Discoveries",
+                source_index="scientific_discoveries",
+            ),
+        ]
+    )
+
+    assert [r.id for r in await resolve_datasets(None, ["scientific_discoveries"])] == ["b"]
+    assert [r.id for r in await resolve_datasets(None, ["SCIENTISTS", "b"])] == ["a", "b"]
+    assert await resolve_datasets(["a"], ["Discoveries"]) == []
+
+
+@pytest.mark.asyncio
 async def test_resolve_empty_selection_never_looks_anything_up(visible, feature, auth):
     visible.records.append(Record(id="a", index_alias="x"))
 
