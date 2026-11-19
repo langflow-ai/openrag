@@ -1,26 +1,27 @@
 """Persistence for answer feedback (see ``db.models.message_feedback``)."""
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
 from db.models import ChatConversation, ChatMessage, MessageFeedback
 
 
-def _upsert_insert(session: AsyncSession):
+def _upsert_insert(session: AsyncSession) -> Callable[..., Any]:
     """Return the dialect's INSERT supporting ON CONFLICT (SQLite and Postgres)."""
     name = session.get_bind().dialect.name
     if name == "postgresql":
-        from sqlalchemy.dialects.postgresql import insert
-    elif name == "sqlite":
-        from sqlalchemy.dialects.sqlite import insert
-    else:  # pragma: no cover - only the two supported databases
-        raise RuntimeError(f"Feedback upsert is unsupported on dialect {name!r}")
-    return insert
+        return pg_insert
+    if name == "sqlite":
+        return sqlite_insert
+    raise RuntimeError(f"Feedback upsert is unsupported on dialect {name!r}")
 
 
 def as_utc(value: datetime) -> datetime:
@@ -139,8 +140,8 @@ class FeedbackRepo:
         source text is selected.
         """
         stmt = (
-            select(MessageFeedback, ChatMessage.conversation_id)
-            .join(ChatMessage, ChatMessage.id == MessageFeedback.message_id)  # type: ignore[arg-type]
+            select(MessageFeedback, col(ChatMessage.conversation_id))
+            .join(ChatMessage, col(ChatMessage.id) == col(MessageFeedback.message_id))
             .where(*self._filters(start=start, end=end, rating=rating))
         )
         if after is not None:
