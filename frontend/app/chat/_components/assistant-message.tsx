@@ -24,6 +24,7 @@ import { trackButton } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import type {
   FunctionCall,
+  MessageFeedback,
   TokenUsage as TokenUsageType,
   ToolCallResult,
 } from "../_types/types";
@@ -67,6 +68,10 @@ interface AssistantMessageProps {
   usage?: TokenUsageType;
   timestamp?: Date;
   showFeedback?: boolean;
+  /** Durable server ids; feedback controls render only when both exist. */
+  conversationId?: string;
+  messageId?: string;
+  feedback?: MessageFeedback | null;
   showViewDocument?: boolean;
   showFunctionCalls?: boolean;
   unstyledMessageContent?: boolean;
@@ -89,6 +94,9 @@ export function AssistantMessage({
   usage,
   timestamp,
   showFeedback = true,
+  conversationId,
+  messageId,
+  feedback,
   showViewDocument = true,
   showFunctionCalls = true,
   unstyledMessageContent = false,
@@ -303,14 +311,27 @@ export function AssistantMessage({
               )}
 
               {!isStreaming &&
-                (usage || (!isInitialGreeting && showFeedback)) && (
+                (usage ||
+                  (!isInitialGreeting &&
+                    showFeedback &&
+                    messageId &&
+                    conversationId)) && (
                   <>
                     <Separator className="my-4 w-full bg-border" />
                     <div className="flex justify-end gap-4">
                       {usage && !isStreaming && <TokenUsage usage={usage} />}
-                      {!isInitialGreeting && showFeedback && !isStreaming && (
-                        <MessageActions trackFeedback={trackFeedback} />
-                      )}
+                      {!isInitialGreeting &&
+                        showFeedback &&
+                        !isStreaming &&
+                        messageId &&
+                        conversationId && (
+                          <MessageActions
+                            trackFeedback={trackFeedback}
+                            conversationId={conversationId}
+                            messageId={messageId}
+                            feedback={feedback}
+                          />
+                        )}
                     </div>
                   </>
                 )}

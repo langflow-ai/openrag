@@ -146,6 +146,31 @@ for (const msg of conversation.messages) {
 await client.chat.delete(chatId);
 ```
 
+### Answer Feedback
+
+Persist a thumbs-up/down (and an optional comment) for an answer. Use the
+server-provided `messageId` from the chat response, the stream's `done` event
+(`stream.messageId`), or conversation history. It is `null` when the answer
+could not be saved, in which case feedback is unavailable.
+
+```typescript
+const response = await client.chat.create({ message: "What is RAG?" });
+if (response.chatId && response.messageId) {
+  const saved = await client.chat.feedback(
+    response.chatId,
+    response.messageId,
+    "down",
+    "Missed a source"
+  );
+  console.log(saved.rating, saved.updatedAt);
+}
+```
+
+Each call replaces the whole saved value (omitting the comment clears it);
+repeating the same value is a no-op. Errors: `NotFoundError`,
+`AuthenticationError`, and `ValidationError` (bad rating, comment over 2,000
+characters, or a message that is not a final answer).
+
 ## Search
 
 ```typescript

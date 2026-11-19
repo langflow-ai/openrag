@@ -14,7 +14,7 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
-from db.repositories import ChatHistoryRepo
+from db.repositories import ChatHistoryRepo, FeedbackRepo
 
 
 class NativeChatHistoryService:
@@ -52,14 +52,17 @@ class NativeChatHistoryService:
         user_id: str,
         role: str,
         **message: Any,
-    ) -> None:
+    ) -> str:
+        """Persist one message and return its durable id (valid only after commit)."""
         async with self._factory() as session:
             repo = ChatHistoryRepo(session)
             conversation = await repo.get_conversation(conversation_id)
             if conversation is None or conversation.user_id != user_id:
                 raise PermissionError("Conversation is not owned by this user")
-            await repo.append_message(conversation=conversation, role=role, **message)
+            row = await repo.append_message(conversation=conversation, role=role, **message)
+            message_id = row.id
             await session.commit()
+            return message_id
 
     @staticmethod
     def _timestamp(value: Any) -> datetime | None:
@@ -228,15 +231,27 @@ class NativeChatHistoryService:
     async def history(self, user_id: str) -> dict[str, Any]:
         async with self._factory() as session:
             repo = ChatHistoryRepo(session)
+            feedback_repo = FeedbackRepo(session)
             conversations = await repo.list_conversations(user_id)
             rows_by_conversation: dict[str, list[Any]] = {
                 conversation.id: [] for conversation in conversations
             }
             for row in await repo.list_messages_for_conversations(list(rows_by_conversation)):
                 rows_by_conversation.setdefault(row.conversation_id, []).append(row)
+            own_feedback = await feedback_repo.for_user_messages(
+                user_id,
+                [
+                    row.id
+                    for rows in rows_by_conversation.values()
+                    for row in rows
+                    if getattr(row, "id", None)
+                ],
+            )
             payload = []
             for conversation in conversations:
-                messages = self._message_payload(rows_by_conversation[conversation.id])
+                messages = self._message_payload(
+                    rows_by_conversation[conversation.id], own_feedback
+                )
                 payload.append(
                     {
                         "response_id": conversation.id,
@@ -262,11 +277,37 @@ class NativeChatHistoryService:
             conversation = await repo.get_conversation(conversation_id)
             if conversation is None or conversation.user_id != user_id:
                 return []
-            return self._message_payload(await repo.list_messages(conversation_id))
+            rows = await repo.list_messages(conversation_id)
+            own_feedback = await FeedbackRepo(session).for_user_messages(
+                user_id, [row.id for row in rows]
+            )
+            return self._message_payload(rows, own_feedback)
 
     @staticmethod
-    def _message_payload(rows: list[Any]) -> list[dict[str, Any]]:
-        """Translate durable message rows to the public chat-history schema."""
+    def is_feedback_capable(row: Any) -> bool:
+        """Only final, successful, natively persisted assistant answers take feedback.
+
+        Native answers carry a ``provenance`` snapshot written at generation
+        time; mirrored Langflow rows and legacy rows do not, so they are
+        never advertised.
+        """
+        event_data = getattr(row, "event_data", None) or {}
+        return (
+            row.role == "assistant"
+            and not row.error
+            and not getattr(row, "interrupted", False)
+            and isinstance(event_data.get("provenance"), dict)
+        )
+
+    @classmethod
+    def _message_payload(
+        cls, rows: list[Any], own_feedback: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Translate durable message rows to the public chat-history schema.
+
+        ``own_feedback`` maps message id to the *caller's* feedback row; other
+        users' feedback is never included.
+        """
         messages: list[dict[str, Any]] = []
         for row in rows:
             if row.role not in {"user", "assistant"}:
@@ -282,6 +323,16 @@ class NativeChatHistoryService:
                 message["chunks"] = event_data["chunks"]
             if row.role == "assistant" and event_data.get("usage"):
                 message["response_data"] = {"usage": event_data["usage"]}
+            if cls.is_feedback_capable(row):
+                message["message_id"] = row.id
+                mine = (own_feedback or {}).get(row.id)
+                if mine is not None:
+                    message["feedback"] = {
+                        "rating": mine.rating,
+                        "comment": mine.comment,
+                        "created_at": mine.created_at.isoformat(),
+                        "updated_at": mine.updated_at.isoformat(),
+                    }
             messages.append(message)
         return messages
 

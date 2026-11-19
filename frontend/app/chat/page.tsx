@@ -43,6 +43,7 @@ import type {
   FunctionCall,
   KnowledgeFilterData,
   Message,
+  MessageFeedback,
   RequestBody,
   ToolCallResult,
 } from "./_types/types";
@@ -182,9 +183,14 @@ function ChatPage() {
       setLoading(false);
       setWaitingTooLong(false);
 
+      // Stamp the owning conversation: the stream's response id is the chat id.
+      const completed: Message =
+        message.messageId && responseId
+          ? { ...message, conversationId: responseId }
+          : message;
       setMessages((prev) => {
         if (!message.error) {
-          return [...prev, message];
+          return [...prev, completed];
         }
         // One error card per failure — drop a trailing duplicate if present.
         const withoutTrailingDup = [...prev];
@@ -454,6 +460,8 @@ function ChatPage() {
           content: string;
           timestamp?: string;
           response_id?: string;
+          message_id?: string;
+          feedback?: MessageFeedback | null;
           error?: boolean;
           chunks?: Array<{
             item?: {
@@ -489,6 +497,13 @@ function ChatPage() {
               : msg.content,
             timestamp: new Date(msg.timestamp || new Date()),
             error: isProviderError,
+            ...(msg.role === "assistant" && msg.message_id && !isProviderError
+              ? {
+                  messageId: msg.message_id,
+                  conversationId: conversationData.response_id,
+                  feedback: msg.feedback ?? null,
+                }
+              : {}),
           };
 
           // Extract function calls from chunks or response_data
@@ -796,6 +811,12 @@ function ChatPage() {
             content: result.response,
             timestamp: new Date(),
             usage: result.usage,
+            ...(typeof result.message_id === "string" && result.message_id
+              ? {
+                  messageId: result.message_id,
+                  conversationId: result.response_id,
+                }
+              : {}),
           };
           setMessages((prev) => [...prev, assistantMessage]);
           setChatError(false);
@@ -1167,6 +1188,9 @@ function ChatPage() {
                             isInitialGreeting={!!message.isGreeting}
                             usage={message.usage}
                             timestamp={message.timestamp}
+                            conversationId={message.conversationId}
+                            messageId={message.messageId}
+                            feedback={message.feedback}
                           />
                         )}
                       </div>

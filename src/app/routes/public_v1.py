@@ -48,6 +48,13 @@ def register_public_v1_routes(app: FastAPI):
         tags=["public"],
     )
 
+    app.add_api_route(
+        "/v1/chat/{chat_id}/messages/{message_id}/feedback",
+        v1_chat.chat_feedback_endpoint,
+        methods=["POST"],
+        tags=["public"],
+    )
+
     # Search endpoint
     app.add_api_route("/v1/search", v1_search.search_endpoint, methods=["POST"], tags=["public"])
 

@@ -12,7 +12,29 @@ export interface TokenUsage {
   };
 }
 
+/** The caller's own saved feedback for one answer (server-canonical). */
+export interface MessageFeedback {
+  rating: "up" | "down";
+  comment: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Message {
+  /**
+   * Durable server id of a persisted, feedback-capable assistant answer.
+   * Absent for greetings, errors, in-flight answers, failed persistence and
+   * legacy/Langflow rows. Never invented client-side.
+   */
+  messageId?: string;
+  /**
+   * Conversation that owns `messageId`. A forked chat inherits earlier
+   * messages from its parent, so this is NOT always the open conversation;
+   * feedback must target the owner.
+   */
+  conversationId?: string;
+  /** The current user's saved feedback, restored from history. */
+  feedback?: MessageFeedback | null;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;

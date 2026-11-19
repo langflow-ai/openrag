@@ -15,6 +15,8 @@ export interface ChatResponse {
   response: string;
   chatId?: string | null;
   sources: Source[];
+  /** Durable id of the saved answer for `chat.feedback`; null if not persisted. */
+  messageId?: string | null;
 }
 
 export type StreamEventType = "content" | "sources" | "done";
@@ -32,6 +34,7 @@ export interface SourcesEvent {
 export interface DoneEvent {
   type: "done";
   chatId?: string | null;
+  messageId?: string | null;
 }
 
 export type StreamEvent = ContentEvent | SourcesEvent | DoneEvent;
@@ -154,10 +157,25 @@ export interface ListFilesOptions {
 }
 
 // Chat history types
+export type FeedbackRating = "up" | "down";
+
+/** Canonical saved feedback for one answer. */
+export interface FeedbackResponse {
+  messageId: string;
+  rating: FeedbackRating;
+  comment: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Message {
   role: string;
   content: string;
   timestamp?: string | null;
+  /** Present only on persisted, feedback-capable assistant answers. */
+  messageId?: string | null;
+  /** The caller's own feedback for this answer, if any. */
+  feedback?: FeedbackResponse | null;
 }
 
 export interface Conversation {

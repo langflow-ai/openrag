@@ -38,6 +38,7 @@ export interface UsersMeResponse {
   roles?: string[];
   rbac_enforced?: boolean;
   cloud_context?: boolean;
+  activity_access?: boolean;
 }
 
 /** GET /api/onboarding-status — public, no auth required. */
@@ -112,6 +113,7 @@ export const authPresets = {
       roles: ["admin"],
       rbac_enforced: true,
       cloud_context: false,
+      activity_access: true,
     },
   ),
 

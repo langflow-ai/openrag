@@ -11,11 +11,24 @@ import type {
   ConversationDetail,
   ConversationListResponse,
   DoneEvent,
+  FeedbackRating,
+  FeedbackResponse,
   Message,
   Source,
   SourcesEvent,
   StreamEvent,
 } from "./types";
+
+function toFeedback(raw: unknown, fallbackMessageId?: unknown): FeedbackResponse {
+  const f = raw as Record<string, unknown>;
+  return {
+    messageId: String(f["message_id"] ?? fallbackMessageId ?? ""),
+    rating: f["rating"] as FeedbackRating,
+    comment: (f["comment"] as string | null | undefined) ?? null,
+    createdAt: String(f["created_at"] ?? ""),
+    updatedAt: String(f["updated_at"] ?? ""),
+  };
+}
 
 /**
  * Streaming chat response with helpers.
@@ -33,6 +46,7 @@ import type {
 export class ChatStream implements AsyncIterable<StreamEvent>, Disposable {
   private _text = "";
   private _chatId: string | null = null;
+  private _messageId: string | null = null;
   private _sources: Source[] = [];
   private _consumed = false;
   private _reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
@@ -51,6 +65,11 @@ export class ChatStream implements AsyncIterable<StreamEvent>, Disposable {
   /** The chat ID for continuing the conversation. */
   get chatId(): string | null {
     return this._chatId;
+  }
+
+  /** Durable id of the saved answer (available after the stream ends). */
+  get messageId(): string | null {
+    return this._messageId;
   }
 
   /** The sources retrieved during the conversation. */
@@ -132,7 +151,12 @@ export class ChatStream implements AsyncIterable<StreamEvent>, Disposable {
             yield { type: "sources", sources: this._sources } as SourcesEvent;
           } else if (eventType === "done") {
             this._chatId = data.chat_id || null;
-            yield { type: "done", chatId: this._chatId } as DoneEvent;
+            this._messageId = data.message_id || null;
+            yield {
+              type: "done",
+              chatId: this._chatId,
+              messageId: this._messageId,
+            } as DoneEvent;
           }
         } catch {
           // Ignore parse errors
@@ -235,6 +259,7 @@ export class ChatClient {
       response: data.response || "",
       chatId: data.chat_id || null,
       sources: data.sources || [],
+      messageId: data.message_id || null,
     };
   }
 
@@ -292,6 +317,8 @@ export class ChatClient {
         role: m["role"],
         content: m["content"],
         timestamp: m["timestamp"] || null,
+        messageId: m["message_id"] || null,
+        feedback: m["feedback"] ? toFeedback(m["feedback"], m["message_id"]) : null,
       })
     );
 
@@ -303,6 +330,32 @@ export class ChatClient {
       messageCount: messages.length,
       messages,
     };
+  }
+
+  /**
+   * Record thumbs-up/down feedback (and an optional comment) for an answer.
+   *
+   * Every call replaces the whole saved value, so omitting `comment` clears an
+   * earlier comment. Repeating the same value is safe. Get `messageId` from the
+   * chat response, the final stream event, or conversation history.
+   *
+   * @param chatId - The conversation the answer belongs to.
+   * @param messageId - The server-provided id of the answer.
+   * @param rating - "up" or "down".
+   * @param comment - Optional free text, at most 2,000 characters.
+   */
+  async feedback(
+    chatId: string,
+    messageId: string,
+    rating: FeedbackRating,
+    comment: string | null = null
+  ): Promise<FeedbackResponse> {
+    const response = await this.client._request(
+      "POST",
+      `/api/v1/chat/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}/feedback`,
+      { body: JSON.stringify({ rating, comment }) }
+    );
+    return toFeedback(await response.json());
   }
 
   /**

@@ -74,6 +74,7 @@ export function useSettingsTabAccess(): SettingsTabAccessContext {
     cloudContext,
     permissions,
     rbacEnforced,
+    activityAccess,
   } = useAuth();
   const { brand } = useBrand();
   return buildSettingsTabAccess({
@@ -81,6 +82,7 @@ export function useSettingsTabAccess(): SettingsTabAccessContext {
     cloudContext,
     isNoAuthMode,
     rbacEnforced,
+    activityAccess,
     permissions,
     brand,
   });

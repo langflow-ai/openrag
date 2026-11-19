@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useSettingsTabAccess } from "@/hooks/use-permissions";
 import {
+  canAccessActivityTab,
   canAccessConnectorAccessTab,
   canShowRbacGatedSettingsTab,
 } from "@/lib/brand";
@@ -23,6 +24,7 @@ const TABS = [
     label: "Connector Settings",
     perm: "connectors:manage:access",
   },
+  { value: "activity", label: "Activity", activityTab: true },
 ] as const;
 
 export function SettingsNav() {
@@ -34,6 +36,7 @@ export function SettingsNav() {
   const currentTab = pathname.split("/").pop() ?? "connectors";
 
   const visibleTabs = TABS.filter((tab) => {
+    if ("activityTab" in tab) return canAccessActivityTab(tabAccess);
     if (tab.value === "connector-access") {
       return canAccessConnectorAccessTab(tabAccess);
     }

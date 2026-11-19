@@ -97,7 +97,9 @@ class OpenRAGClient:
             response = await client.chat.create(message="Hello")
 
         # Using explicit arguments
-        async with OpenRAGClient(api_key="orag_...", base_url="https://api.example.com") as client:
+        async with OpenRAGClient(
+            api_key="orag_...", base_url="https://api.example.com"
+        ) as client:
             response = await client.chat.create(message="Hello")
 
         # Without context manager
@@ -123,11 +125,13 @@ class OpenRAGClient:
         Initialize the OpenRAG client.
 
         Args:
-            api_key: API key for authentication. Falls back to OPENRAG_API_KEY env var.
-                Optional when using IBM auth — pass credentials via extra_headers instead.
+            api_key: API key for authentication. Falls back to OPENRAG_API_KEY
+                env var. Optional when using IBM auth — pass credentials via
+                extra_headers instead.
             extra_headers: Additional headers forwarded on every request. Used in IBM
                 auth mode to pass X-Username and X-Api-Key from the user's MCP config.
-            base_url: Base URL for the API. Falls back to OPENRAG_URL env var, then default.
+            base_url: Base URL for the API. Falls back to OPENRAG_URL env var,
+                then default.
             timeout: Request timeout in seconds (default 30).
             http_client: Optional custom httpx.AsyncClient instance.
         """
@@ -228,7 +232,7 @@ class OpenRAGClient:
             raise AuthenticationError(message, status_code)
         elif status_code == 404:
             raise NotFoundError(message, status_code)
-        elif status_code == 400:
+        elif status_code in (400, 422):
             raise ValidationError(message, status_code)
         elif status_code == 429:
             raise RateLimitError(message, status_code)

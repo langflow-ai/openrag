@@ -48,6 +48,8 @@ interface AuthContextType {
   rbacEnforced: boolean;
   /** SaaS/cloud context from backend (connector policy, gated settings). */
   cloudContext: boolean;
+  /** Server-computed effective audit:read access (false when RBAC is off). */
+  activityAccess: boolean;
   /** False until the first /api/users/me permissions fetch finishes. */
   permissionsResolved: boolean;
   /** True iff the workspace has been onboarded. Sourced from the public
@@ -289,21 +291,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // this is just a UI affordance.
   const [rbacEnforced, setRbacEnforced] = useState<boolean>(true);
   const [cloudContext, setCloudContext] = useState<boolean>(false);
+  const [activityAccess, setActivityAccess] = useState<boolean>(false);
   const [permissionsResolved, setPermissionsResolved] =
     useState<boolean>(false);
+  // Bumped whenever the session changes or a newer fetch starts, so a slow
+  // response for a previous session can never overwrite current permissions.
+  const permissionsRequestId = useRef(0);
 
   const resetPermissionState = useCallback(() => {
+    permissionsRequestId.current += 1;
     setPermissions(new Set());
     setRoles([]);
     setRbacEnforced(true);
     setCloudContext(false);
+    setActivityAccess(false);
   }, []);
 
   const fetchPermissions = useCallback(async () => {
+    const requestId = ++permissionsRequestId.current;
+    const isCurrent = () => requestId === permissionsRequestId.current;
     try {
       const r = await apiClient.get("/users/me");
+      if (!isCurrent()) return;
       if (r.status < 200 || r.status >= 300) {
         resetPermissionState();
+        // The reset above advances the request id, so resolve explicitly.
+        setPermissionsResolved(true);
         return;
       }
       const data = r.data;
@@ -320,10 +333,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setCloudContext(
         typeof data?.cloud_context === "boolean" ? data.cloud_context : false,
       );
+      setActivityAccess(data?.activity_access === true);
     } catch {
-      resetPermissionState();
+      if (isCurrent()) {
+        resetPermissionState();
+        setPermissionsResolved(true);
+      }
     } finally {
-      setPermissionsResolved(true);
+      if (isCurrent()) setPermissionsResolved(true);
     }
   }, [resetPermissionState]);
 
@@ -405,6 +422,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     roles,
     rbacEnforced,
     cloudContext,
+    activityAccess,
     permissionsResolved,
     isOnboarded,
     onboardingStep,

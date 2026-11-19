@@ -9,7 +9,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
-from db.models import ChatConversation, ChatMessage
+from db.models import ChatConversation, ChatMessage, MessageFeedback
 
 
 class ChatHistoryRepo:
@@ -143,15 +143,31 @@ class ChatHistoryRepo:
 
     async def delete_messages(self, conversation_id: str) -> None:
         """Remove the complete stored message history for one conversation."""
+        await self._delete_feedback_for_conversations(
+            select(ChatMessage.id).where(col(ChatMessage.conversation_id) == conversation_id)  # type: ignore[call-overload]
+        )
         await self.session.execute(
             delete(ChatMessage).where(col(ChatMessage.conversation_id) == conversation_id)
         )
         await self.session.flush()
 
+    async def _delete_feedback_for_conversations(self, message_ids) -> None:
+        """Delete feedback for messages about to be removed.
+
+        The FK is ``ON DELETE CASCADE`` but SQLite does not enforce foreign
+        keys by default, so every bulk message delete removes feedback here.
+        """
+        await self.session.execute(
+            delete(MessageFeedback).where(col(MessageFeedback.message_id).in_(message_ids))
+        )
+
     async def delete_conversation(self, conversation_id: str, user_id: str) -> bool:
         conversation = await self.get_conversation(conversation_id)
         if conversation is None or conversation.user_id != user_id:
             return False
+        await self._delete_feedback_for_conversations(
+            select(ChatMessage.id).where(col(ChatMessage.conversation_id) == conversation_id)  # type: ignore[call-overload]
+        )
         await self.session.execute(
             delete(ChatMessage).where(col(ChatMessage.conversation_id) == conversation_id)
         )
@@ -163,6 +179,11 @@ class ChatHistoryRepo:
         """Delete every native conversation and message owned by ``user_id``."""
         conversation_ids = select(ChatConversation.id).where(  # type: ignore[call-overload]
             col(ChatConversation.user_id) == user_id
+        )
+        await self._delete_feedback_for_conversations(
+            select(ChatMessage.id).where(  # type: ignore[call-overload]
+                col(ChatMessage.conversation_id).in_(conversation_ids)
+            )
         )
         await self.session.execute(
             delete(ChatMessage).where(col(ChatMessage.conversation_id).in_(conversation_ids))
@@ -178,14 +199,35 @@ class ChatHistoryRepo:
         if ttl_days < 1:
             raise ValueError(f"ttl_days must be at least 1, got {ttl_days}")
         cutoff = datetime.now(UTC) - timedelta(days=ttl_days)
-        stale_conversations = select(ChatConversation.id).where(  # type: ignore[call-overload]
-            col(ChatConversation.last_activity) < cutoff
+        # Materialise (and row-lock on PostgreSQL) the expired ids once. A
+        # conversation that becomes active again mid-prune must not lose its
+        # feedback while keeping its messages, so every statement below uses
+        # this one fixed set instead of re-evaluating the TTL predicate.
+        stale_ids = list(
+            (
+                await self.session.execute(
+                    select(ChatConversation.id)  # type: ignore[call-overload]
+                    .where(col(ChatConversation.last_activity) < cutoff)
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .all()
         )
-        await self.session.execute(
-            delete(ChatMessage).where(col(ChatMessage.conversation_id).in_(stale_conversations))
-        )
-        result: CursorResult = await self.session.execute(  # type: ignore[assignment]
-            delete(ChatConversation).where(col(ChatConversation.last_activity) < cutoff)
-        )
+        deleted = 0
+        for start in range(0, len(stale_ids), 500):  # stay under SQLite's variable limit
+            batch = stale_ids[start : start + 500]
+            await self._delete_feedback_for_conversations(
+                select(ChatMessage.id).where(  # type: ignore[call-overload]
+                    col(ChatMessage.conversation_id).in_(batch)
+                )
+            )
+            await self.session.execute(
+                delete(ChatMessage).where(col(ChatMessage.conversation_id).in_(batch))
+            )
+            result: CursorResult = await self.session.execute(  # type: ignore[assignment]
+                delete(ChatConversation).where(col(ChatConversation.id).in_(batch))
+            )
+            deleted += result.rowcount or 0
         await self.session.flush()
-        return result.rowcount or 0
+        return deleted

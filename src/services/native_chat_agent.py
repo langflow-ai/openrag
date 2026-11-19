@@ -310,12 +310,30 @@ class NativeChatAgent:
         previous_response_id: str | None,
         filter_id: str | None,
     ) -> tuple[str, str, list[dict[str, Any]]]:
+        response, conversation_id, sources, _ = await self.run_with_message_id(
+            prompt=prompt,
+            user_id=user_id,
+            previous_response_id=previous_response_id,
+            filter_id=filter_id,
+        )
+        return response, conversation_id, sources
+
+    async def run_with_message_id(
+        self,
+        *,
+        prompt: str,
+        user_id: str,
+        previous_response_id: str | None,
+        filter_id: str | None,
+    ) -> tuple[str, str, list[dict[str, Any]], str | None]:
+        """Run one turn; also return the committed assistant message id, if any."""
         conversation_id: str | None = previous_response_id
         try:
             conversation_id, history = await self._start(
                 prompt, user_id, previous_response_id, filter_id
             )
             agent, model = self._agent(user_id)
+            provider = self._llm_provider()
             result = await agent.run(
                 _flow_prompt(prompt),
                 message_history=history,
@@ -325,7 +343,14 @@ class NativeChatAgent:
             response = str(result.output)
             self._require_response_text(response)
             sources = self._sources(result.new_messages())
-            await self._save_completed_turn(conversation_id, user_id, response, [], result)
+            message_id = await self._save_completed_turn(
+                conversation_id,
+                user_id,
+                response,
+                [],
+                result,
+                provenance=self._provenance(provider, model, result),
+            )
             logger.info(
                 "[CHAT] Native OpenRAG chat completed",
                 conversation_id=conversation_id,
@@ -334,7 +359,7 @@ class NativeChatAgent:
                 llm_model=model,
                 stream=False,
             )
-            return response, conversation_id, sources
+            return response, conversation_id, sources, message_id
         except Exception as exc:
             logger.warning(
                 "[CHAT] Native OpenRAG chat failed",
@@ -373,6 +398,7 @@ class NativeChatAgent:
                 prompt, user_id, previous_response_id, filter_id
             )
             agent, model = self._agent(user_id)
+            provider = self._llm_provider()
             events: asyncio.Queue[Any] = asyncio.Queue()
 
             async def collect_events(_context, event_stream) -> None:
@@ -413,8 +439,22 @@ class NativeChatAgent:
             chunks.extend(completed)
             # The user has already received the answer tokens. A persistence
             # outage must not turn that completed answer into a failed chat.
-            await self._save_completed_turn(conversation_id, user_id, response, chunks, result)
+            message_id = await self._save_completed_turn(
+                conversation_id,
+                user_id,
+                response,
+                chunks,
+                result,
+                provenance=self._provenance(provider, model, result),
+            )
             for payload in completed:
+                # The id is advertised only after the row committed; it is not
+                # part of the persisted chunks.
+                if message_id:
+                    payload = copy.deepcopy(payload)
+                    payload["message_id"] = message_id
+                    if isinstance(payload.get("response"), dict):
+                        payload["response"]["message_id"] = message_id
                 yield self._event(payload)
             logger.info(
                 "[CHAT] Native OpenRAG stream completed",
@@ -697,17 +737,21 @@ class NativeChatAgent:
         response: str,
         chunks: list[dict[str, Any]],
         result: Any,
-    ) -> None:
-        await self._history_service.append(
+        provenance: dict[str, Any] | None = None,
+    ) -> str | None:
+        event_data: dict[str, Any] = {
+            "chunks": chunks,
+            "pydantic_messages": json.loads(result.new_messages_json()),
+            "usage": self._usage_data(result),
+        }
+        if provenance is not None:
+            event_data["provenance"] = provenance
+        return await self._history_service.append(
             conversation_id,
             user_id,
             "assistant",
             content=response,
-            event_data={
-                "chunks": chunks,
-                "pydantic_messages": json.loads(result.new_messages_json()),
-                "usage": self._usage_data(result),
-            },
+            event_data=event_data,
         )
 
     async def _save_completed_turn(
@@ -717,14 +761,63 @@ class NativeChatAgent:
         response: str,
         chunks: list[dict[str, Any]],
         result: Any,
-    ) -> None:
+        provenance: dict[str, Any] | None = None,
+    ) -> str | None:
+        """Persist the answer; return its id only when the commit succeeded."""
         try:
-            await self._save_turn(conversation_id, user_id, response, chunks, result)
+            message_id = await self._save_turn(
+                conversation_id, user_id, response, chunks, result, provenance
+            )
         except Exception:
             logger.exception(
                 "[CHAT] Failed to persist completed native chat turn",
                 conversation_id=conversation_id,
             )
+            return None
+        return message_id if isinstance(message_id, str) else None
+
+    @staticmethod
+    def _llm_provider() -> str | None:
+        agent_config = getattr(get_openrag_config(), "agent", None)
+        provider = getattr(agent_config, "llm_provider", None)
+        return provider if isinstance(provider, str) else None
+
+    @classmethod
+    def _provenance(cls, provider: str | None, model: str, result: Any) -> dict[str, Any]:
+        """Snapshot generation-time model and retrieval identifiers (no text)."""
+        document_ids: list[str] = []
+        chunk_ids: list[str] = []
+
+        def add(doc_id: Any, chunk_id: Any) -> None:
+            if isinstance(doc_id, str) and doc_id and doc_id not in document_ids:
+                document_ids.append(doc_id)
+            if isinstance(chunk_id, str) and chunk_id and chunk_id not in chunk_ids:
+                chunk_ids.append(chunk_id)
+
+        for message in result.new_messages():
+            for part in getattr(message, "parts", []):
+                content = getattr(part, "content", None)
+                tool = getattr(part, "tool_name", None)
+                if tool not in {"search_documents", "raw_search"} or not isinstance(content, dict):
+                    continue
+                # Normalised semantic search: content["results"][*].
+                for item in content.get("results") or []:
+                    if isinstance(item, dict):
+                        add(item.get("document_id"), item.get("chunk_id") or item.get("id"))
+                # Raw OpenSearch DSL: content["hits"]["hits"][*] with _id/_source.
+                hits = (content.get("hits") or {}).get("hits") or []
+                for hit in hits if isinstance(hits, list) else []:
+                    if isinstance(hit, dict):
+                        source = hit.get("_source")
+                        add(
+                            source.get("document_id") if isinstance(source, dict) else None,
+                            hit.get("_id"),
+                        )
+        return {
+            "model_provider": provider,
+            "model": model,
+            "retrieval": {"document_ids": document_ids, "chunk_ids": chunk_ids},
+        }
 
     @staticmethod
     def _usage_data(result: Any) -> dict[str, Any]:

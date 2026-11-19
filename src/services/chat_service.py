@@ -90,13 +90,20 @@ class ChatService:
                 previous_response_id=previous_response_id,
                 filter_id=filter_id,
             )
-        response_text, response_id, sources = await self.native_chat_agent.run(
+        (
+            response_text,
+            response_id,
+            sources,
+            message_id,
+        ) = await self.native_chat_agent.run_with_message_id(
             prompt=prompt,
             user_id=conversation_user_id,
             previous_response_id=previous_response_id,
             filter_id=filter_id,
         )
         response_data: dict[str, Any] = {"response": response_text, "response_id": response_id}
+        if message_id:
+            response_data["message_id"] = message_id
         if sources:
             response_data["sources"] = sources
         return response_data
