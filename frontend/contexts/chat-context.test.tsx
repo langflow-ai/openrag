@@ -235,6 +235,53 @@ describe("ChatProvider — startNewConversation", () => {
     errorSpy.mockRestore();
   });
 
+  // #2416: Navigation's auto-load effect calls startNewConversation whenever
+  // the list is empty, so a call on already-reset state must not hand
+  // consumers new references (that re-renders them and feeds the loop).
+  it("keeps state references and skips re-renders when already reset", async () => {
+    let renders = 0;
+    const { result } = renderHook(
+      () => {
+        renders += 1;
+        return useChat();
+      },
+      { wrapper: ({ children }) => <ChatProvider>{children}</ChatProvider> },
+    );
+
+    const { previousResponseIds, conversationDocs } = result.current;
+    const rendersBefore = renders;
+
+    await act(async () => {
+      await result.current.startNewConversation({ showPlaceholder: false });
+    });
+    await act(async () => {
+      await result.current.startNewConversation({ showPlaceholder: false });
+    });
+
+    expect(result.current.previousResponseIds).toBe(previousResponseIds);
+    expect(result.current.conversationDocs).toBe(conversationDocs);
+    expect(renders).toBe(rendersBefore);
+  });
+
+  it("still resets docs and response ids when they are set", async () => {
+    const { result } = renderChatHook();
+
+    act(() => {
+      result.current.addConversationDoc("report.pdf");
+      result.current.setPreviousResponseIds({ chat: null, langflow: "r-1" });
+    });
+
+    await act(async () => {
+      await result.current.startNewConversation({ showPlaceholder: false });
+    });
+
+    expect(result.current.conversationDocs).toEqual([]);
+    expect(result.current.previousResponseIds).toEqual({
+      chat: null,
+      langflow: null,
+    });
+  });
+
   // line 295: the placeholder response_id contains "new-conversation-"
   it("gives the placeholder a response_id prefixed with 'new-conversation-'", async () => {
     const { result } = renderChatHook();
