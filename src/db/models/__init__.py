@@ -9,6 +9,7 @@ from db.models.audit_log import AuditLog
 from db.models.chat_conversation import ChatConversation
 from db.models.chat_message import ChatMessage
 from db.models.conversation import Conversation, LangflowConversation
+from db.models.failed_ingestion import FailedIngestion
 from db.models.migration_status import MigrationStatus
 from db.models.permission import Permission
 from db.models.role import Role
@@ -25,6 +26,7 @@ __all__ = [
     "ChatConversation",
     "ChatMessage",
     "Conversation",
+    "FailedIngestion",
     "LangflowConversation",
     "MigrationStatus",
     "Permission",

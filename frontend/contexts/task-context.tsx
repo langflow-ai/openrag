@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { useCancelFileMutation } from "@/app/api/mutations/useCancelFileMutation";
 import { useCancelTaskMutation } from "@/app/api/mutations/useCancelTaskMutation";
+import { FAILED_INGESTIONS_QUERY_KEY } from "@/app/api/queries/useFailedIngestionsQuery";
 import type { SearchResult } from "@/app/api/queries/useGetSearchQuery";
 import {
   TASKS_QUERY_KEY,
@@ -48,6 +49,7 @@ import {
   isDeletedAtSourceFile,
   isTaskInProgressStatus,
   isTerminalFailedTask,
+  isTerminalTaskStatus,
 } from "@/lib/task-utils";
 
 // Task interface is now imported from useGetTasksQuery
@@ -119,6 +121,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [taskDialogTaskId, setTaskDialogTaskId] = useState<string | null>(null);
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const previousTasksRef = useRef<Task[]>([]);
+  // True once the first task fetch has succeeded, even if it returned no
+  // tasks. Kept separate from the task list so an empty or cleared history is
+  // not mistaken for the initial load.
+  const initialTasksLoadedRef = useRef(false);
   const taskConnectorTypesRef = useRef<Map<string, string>>(new Map());
   const taskSourcesRef = useRef<Map<string, string>>(new Map());
 
@@ -162,6 +168,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const {
     data: tasks = [],
     isLoading,
+    isSuccess: isTasksLoaded,
     error,
     refetch: refetchTasks,
     isFetching,
@@ -343,8 +350,14 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     if (tasks.length === 0) {
       // Store current tasks as previous for next comparison
       previousTasksRef.current = tasks;
+      if (isTasksLoaded) {
+        initialTasksLoadedRef.current = true;
+      }
       return;
     }
+
+    // Terminal tasks in the first successful fetch are history, not new work.
+    const isInitialLoad = !initialTasksLoadedRef.current;
 
     // Check for task status changes by comparing with previous tasks
     tasks.forEach((currentTask) => {
@@ -353,9 +366,6 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       );
 
       const isTaskInProgress = isTaskInProgressStatus(currentTask.status);
-
-      // On initial load, previousTasksRef is empty, so we need to process all in-progress tasks
-      const isInitialLoad = previousTasksRef.current.length === 0;
 
       // Process files if:
       // 1. Task is in progress (always process to keep files list updated)
@@ -677,6 +687,21 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           currentTask,
         );
 
+        // A task submitted and finished between two polls is first seen already
+        // terminal. Historical tasks loaded at init are excluded (isInitialLoad).
+        const taskFirstSeenTerminal =
+          !previousTask &&
+          !isInitialLoad &&
+          isTerminalTaskStatus(currentTask.status);
+
+        if (taskJustReachedTerminal || taskFirstSeenTerminal) {
+          // Failures are recorded server-side as files fail, so refresh the
+          // Failed documents count whenever a task ends, toast or no toast.
+          queryClient.invalidateQueries({
+            queryKey: FAILED_INGESTIONS_QUERY_KEY,
+          });
+        }
+
         if (didTaskReachCompleted(previousTask, currentTask)) {
           const completedHasFailures = hasFailedFileEntries(currentTask);
 
@@ -820,8 +845,12 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
     // Store current tasks as previous for next comparison
     previousTasksRef.current = tasks;
+    if (isTasksLoaded) {
+      initialTasksLoadedRef.current = true;
+    }
   }, [
     tasks,
+    isTasksLoaded,
     refetchSearch,
     isOnboardingActive,
     clearTaskMetadata,
