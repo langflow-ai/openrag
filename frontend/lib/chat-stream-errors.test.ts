@@ -144,6 +144,28 @@ describe("looksLikeProviderErrorContent", () => {
     );
   });
 
+  /** Ordinary replies quote dicts with an "error" key; that alone is not a failure. */
+  it("does not flag a reply that shows a dict example with an error key", () => {
+    assert.equal(
+      looksLikeProviderErrorContent("Example: {'error': 'not found'}"),
+      false,
+    );
+    assert.equal(
+      looksLikeProviderErrorContent("A Python example: {'message': 'hello'}"),
+      false,
+    );
+  });
+
+  /** The relayed SDK dict error shape stays a provider failure. */
+  it("flags an SDK error printed as a Python dict with a nested message", () => {
+    assert.equal(
+      looksLikeProviderErrorContent(
+        "Error code: 400 - {'error': {'message': 'Bad request'}}",
+      ),
+      true,
+    );
+  });
+
   it("flags the exact generic stream fallback message", () => {
     assert.equal(
       looksLikeProviderErrorContent(

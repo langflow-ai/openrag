@@ -175,10 +175,11 @@ export function looksLikeProviderErrorContent(text: string): boolean {
     return true;
   }
   // Either quote: the OpenAI SDK prints an error body as a Python dict,
-  // `Error code: 400 - {'error': {...}}`, not as JSON.
+  // `Error code: 400 - {'error': {...}}`, not as JSON. A quoted "error" key
+  // alone is ordinary in replies that show dictionary examples, so require
+  // the nested message object the SDK prints after the key.
   if (
-    trimmed.includes("{") &&
-    /["'](?:error|errormessage|errorcode|errors)["']/.test(lowered)
+    /["'](?:error|errormessage|errorcode|errors)["']\s*:\s*\{/.test(lowered)
   ) {
     return true;
   }

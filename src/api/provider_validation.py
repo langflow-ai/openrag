@@ -320,7 +320,12 @@ def is_generic_upstream_error(text: str | BaseException | None) -> bool:
     return lowered in generics
 
 
-_ERROR_OBJECT_KEY_RE = re.compile(r"[\"'](?:error|errormessage|errorcode|errors)[\"']")
+# Match the nested message object the OpenAI SDK prints after the error key
+# (`Error code: 400 - {'error': {...}}`). A quoted "error" key alone is
+# ordinary in replies that show dictionary examples, so it is not evidence.
+_ERROR_OBJECT_KEY_RE = re.compile(
+    r"[\"'](?:error|errormessage|errorcode|errors)[\"']\s*:\s*\{"
+)
 
 
 def looks_like_provider_error_content(text: str | None) -> bool:
@@ -339,7 +344,7 @@ def looks_like_provider_error_content(text: str | None) -> bool:
         return True
     # Raw provider payloads often embed an error object: as JSON, or as the
     # Python dict the OpenAI SDK prints (`Error code: 400 - {'error': {...}}`).
-    if "{" in content and _ERROR_OBJECT_KEY_RE.search(lowered):
+    if _ERROR_OBJECT_KEY_RE.search(lowered):
         return True
     return False
 
