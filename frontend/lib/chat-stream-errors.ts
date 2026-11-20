@@ -183,6 +183,16 @@ export function looksLikeProviderErrorContent(text: string): boolean {
   ) {
     return true;
   }
+  // A flat string value (`Error code: 502 - {'error': 'Bad gateway'}`) only
+  // counts when the SDK's "Error code: <status> -" signature precedes it;
+  // without that prefix it is an ordinary dictionary example.
+  if (
+    /error code:\s*\d+\s*-\s*\{\s*["'](?:error|errormessage|errorcode|errors)["']\s*:\s*["']/.test(
+      lowered,
+    )
+  ) {
+    return true;
+  }
   return false;
 }
 

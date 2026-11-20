@@ -166,6 +166,38 @@ describe("looksLikeProviderErrorContent", () => {
     );
   });
 
+  /** A flat string value with the SDK signature is still a provider failure. */
+  it("flags an SDK error printed with a flat string error value", () => {
+    assert.equal(
+      looksLikeProviderErrorContent(
+        "Error code: 502 - {'error': 'Bad gateway'}",
+      ),
+      true,
+    );
+    assert.equal(
+      looksLikeProviderErrorContent(
+        `Error code: 500 - {"errors": 'upstream unavailable'}`,
+      ),
+      true,
+    );
+  });
+
+  /** Without the SDK signature, a quoted error key with a flat value stays prose. */
+  it("does not flag a dict example with a flat error value and no SDK signature", () => {
+    assert.equal(
+      looksLikeProviderErrorContent("Example: {'error': 'not found'}"),
+      false,
+    );
+    assert.equal(
+      looksLikeProviderErrorContent("{'error': 'Bad gateway'}"),
+      false,
+    );
+    assert.equal(
+      looksLikeProviderErrorContent("Error code: 502 - see the gateway docs."),
+      false,
+    );
+  });
+
   it("flags the exact generic stream fallback message", () => {
     assert.equal(
       looksLikeProviderErrorContent(
