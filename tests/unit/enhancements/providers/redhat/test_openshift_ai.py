@@ -2,6 +2,7 @@
 
 import time
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -261,7 +262,7 @@ def test_the_tls_setting_is_kept_off_the_wire() -> None:
 
 
 @pytest.mark.asyncio
-async def test_litellm_does_not_leak_the_tls_setting_into_the_request_body() -> None:
+async def test_litellm_does_not_leak_the_tls_setting_into_the_request_body(monkeypatch) -> None:
     """The real thing, against a local OpenAI-compatible stub: found with a
     capturing proxy in front of a live cluster, where the body arrived as
     `{"model": ..., "messages": ..., "ssl_verify": false}`. vLLM ignored it; a
@@ -271,6 +272,10 @@ async def test_litellm_does_not_leak_the_tls_setting_into_the_request_body() -> 
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
     import litellm
+
+    # This test exercises LiteLLM argument serialization against a local HTTP
+    # stub; the credential-path HTTPS guard is covered separately above.
+    monkeypatch.setattr(rhoai, "_require_https_endpoint", lambda *_: None)
 
     bodies: list[dict[str, Any]] = []
 
@@ -432,40 +437,17 @@ def test_the_disabled_tls_warning_is_not_repeated_per_request(monkeypatch) -> No
     assert len(disabled) == 1
 
 
-def test_a_plain_http_endpoint_is_warned_about_but_still_used(monkeypatch) -> None:
-    """The token goes out in the clear, which deserves the same treatment as
-    disabled verification — a warning, not a rejection, since a port-forward
-    and a cluster-local raw deployment are legitimately plain HTTP."""
-    warnings = _recorded_warnings(monkeypatch)
-
-    chat, embedding = rhoai.endpoints(
-        _stored(api_base="http://chat.svc:8080/v1", embedding_api_base="http://embed.svc:8080")
-    )
-
-    assert chat == "http://chat.svc:8080/v1"
-    assert embedding == "http://embed.svc:8080/v1"
-    cleartext = [m for m in warnings if "plain HTTP" in m]
-    assert len(cleartext) == 2  # one per distinct endpoint
+@pytest.mark.parametrize(
+    ("field", "kind"),
+    [("api_base", "chat"), ("embedding_api_base", "embedding")],
+)
+def test_http_endpoints_are_rejected_before_litellm_credentials(field, kind) -> None:
+    with pytest.raises(ValueError, match="OpenShift AI .* endpoint must use HTTPS"):
+        rhoai.litellm_credentials(_stored(**{field: "http://predictor.svc:8080/v1"}), kind=kind)
 
 
-def test_the_cleartext_warning_is_not_repeated_per_request(monkeypatch) -> None:
-    """`endpoints()` runs inside `litellm_credentials`, i.e. on every chat
-    message and every embedded chunk."""
-    warnings = _recorded_warnings(monkeypatch)
-
-    for _ in range(5):
-        rhoai.litellm_credentials(_stored(api_base="http://chat.svc:8080/v1"))
-
-    cleartext = [m for m in warnings if "plain HTTP" in m]
-    assert len(cleartext) == 1
-
-
-def test_https_endpoints_draw_no_cleartext_warning(monkeypatch) -> None:
-    warnings = _recorded_warnings(monkeypatch)
-
-    rhoai.endpoints(_stored())
-
-    assert not [m for m in warnings if "plain HTTP" in m]
+def test_https_endpoints_are_accepted() -> None:
+    assert rhoai.endpoints(_stored()) == (CHAT_BASE, EMBED_BASE)
 
 
 def test_the_tls_setting_rides_in_the_credential_bag(tmp_path) -> None:
@@ -1214,6 +1196,27 @@ async def test_a_healthy_deployment_passes_with_no_model_selected(monkeypatch) -
     assert seen["urls"] == [f"{CHAT_BASE}/models", f"{EMBED_BASE}/models"]
 
 
+@pytest.mark.parametrize("field", ["api_base", "embedding_api_base"])
+@pytest.mark.parametrize("request_path", ["health", "catalogue", "draft"])
+@pytest.mark.asyncio
+async def test_http_endpoint_is_rejected_before_credential_bearing_request(
+    monkeypatch, field, request_path
+) -> None:
+    def _unexpected_client(**kwargs):
+        raise AssertionError("No HTTP client may be created for an HTTP endpoint")
+
+    monkeypatch.setattr("httpx.AsyncClient", _unexpected_client)
+    credentials = _stored(**{field: "http://predictor.svc:8080/v1"})
+    request = {
+        "health": lambda: rhoai.lightweight_health_check(credentials),
+        "catalogue": lambda: rhoai.fetch_models(credentials),
+        "draft": lambda: rhoai.list_cluster_models(credentials),
+    }[request_path]
+
+    with pytest.raises(ValueError, match="OpenShift AI .* endpoint must use HTTPS"):
+        await request()
+
+
 @pytest.mark.asyncio
 async def test_the_litellm_form_still_checks_with_the_configured_tls_setting(monkeypatch) -> None:
     """Handed the narrowed bag, the check covers the one endpoint in it — but
@@ -1254,6 +1257,56 @@ async def test_validation_hands_the_check_the_stored_form(monkeypatch) -> None:
 
     assert received[0]["embedding_api_base"] == EMBED_BASE
     assert "embedding_api_base" not in received[1]  # no stored form given: falls back
+
+
+@pytest.mark.parametrize("field", ["api_base", "embedding_api_base"])
+@pytest.mark.asyncio
+async def test_model_validation_rejects_http_before_litellm_probe(monkeypatch, field) -> None:
+    from api import provider_validation
+
+    litellm_probe = AsyncMock(side_effect=AssertionError("No credential-bearing probe allowed"))
+    monkeypatch.setattr(provider_validation, "_test_litellm_provider", litellm_probe)
+    stored = _stored(**{field: "http://predictor.svc:8080/v1"})
+
+    with pytest.raises(ValueError, match="OpenShift AI .* endpoint must use HTTPS"):
+        await provider_validation.validate_provider_setup(
+            provider=PROVIDER,
+            llm_model=CHAT_MODEL,
+            verify_model=True,
+            credentials={"api_base": CHAT_BASE, "api_key": TOKEN},
+            stored_credentials=stored,
+        )
+
+    litellm_probe.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("model_field", "model", "kind"),
+    [("llm_model", CHAT_MODEL, "chat"), ("embedding_model", EMBED_MODEL, "embedding")],
+)
+@pytest.mark.asyncio
+async def test_model_validation_rejects_missing_endpoint_before_litellm_fallback(
+    monkeypatch, model_field, model, kind
+) -> None:
+    from api import provider_validation
+
+    monkeypatch.setenv("HOSTED_VLLM_API_BASE", "http://unexpected.example/v1")
+    monkeypatch.setenv("HOSTED_VLLM_API_KEY", "environment-token")
+    litellm_probe = AsyncMock(side_effect=AssertionError("LiteLLM fallback must not run"))
+    monkeypatch.setattr(provider_validation, "_test_litellm_provider", litellm_probe)
+
+    with pytest.raises(
+        ValueError, match=f"OpenShift AI {kind} endpoint is required for model validation"
+    ):
+        await provider_validation.validate_provider_setup(
+            provider=PROVIDER,
+            credentials={"api_key": TOKEN},
+            stored_credentials={"api_key": TOKEN},
+            verify_model=True,
+            **{model_field: model},
+        )
+
+    litellm_probe.assert_not_awaited()
 
 
 @pytest.mark.asyncio
