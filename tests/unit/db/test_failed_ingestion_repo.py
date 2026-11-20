@@ -5,7 +5,9 @@ budget is spent AND the source version (etag, modified time) is the one that
 failed. Changing the file at the source gives it a fresh budget.
 """
 
+import os
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -116,6 +118,24 @@ def test_migration_file_id_width_matches_the_model():
     assert match, "file_id column not found in migration 0011"
     assert int(match.group(1)) == FailedIngestion.__table__.c.file_id.type.length
     assert int(match.group(1)) >= len(MAX_S3_FILE_ID)
+
+
+def test_timestamp_columns_are_timezone_aware_in_model_and_migration():
+    # record_failure() binds datetime.now(UTC). asyncpg rejects an aware value
+    # for a naive TIMESTAMP column, and record_failure's caller swallows that
+    # error, so the mismatch silently disables failure tracking on Postgres.
+    # SQLite accepts both, so assert the declared types instead.
+    import re
+
+    from db.models.failed_ingestion import FailedIngestion
+
+    columns = FailedIngestion.__table__.c
+    assert columns.first_failed_at.type.timezone is True
+    assert columns.last_failed_at.type.timezone is True
+
+    migration = (ROOT / "alembic" / "versions" / "0011_failed_ingestion.py").read_text()
+    for name in ("first_failed_at", "last_failed_at"):
+        assert re.search(rf'sa\.Column\("{name}", sa\.DateTime\(timezone=True\)', migration), name
 
 
 @pytest.mark.asyncio
@@ -272,6 +292,57 @@ async def test_clear_all_scopes_to_user_and_optional_connector(session_factory):
 
         assert await repo.list_for_user(USER) == []
         assert len(await repo.list_for_user("bob")) == 1
+
+
+# ---------------------------------------------------------------------------
+# PostgreSQL / asyncpg
+# ---------------------------------------------------------------------------
+
+# Point at a disposable database, e.g.
+#   TEST_POSTGRES_URL=postgresql+asyncpg://user:pass@127.0.0.1:5432/openrag_test
+# The test creates and drops only the failed_ingestion table.
+POSTGRES_URL = os.getenv("TEST_POSTGRES_URL")
+
+
+@pytest_asyncio.fixture
+async def postgres_session_factory():
+    if not POSTGRES_URL:
+        pytest.skip("TEST_POSTGRES_URL is not set")
+    engine = create_async_engine(POSTGRES_URL)
+    table = SQLModel.metadata.tables["failed_ingestion"]
+    async with engine.begin() as conn:
+        await conn.run_sync(lambda sync_conn: table.drop(sync_conn, checkfirst=True))
+        await conn.run_sync(lambda sync_conn: table.create(sync_conn))
+    yield async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(lambda sync_conn: table.drop(sync_conn, checkfirst=True))
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_postgres_records_utc_timestamps_and_reaches_the_retry_limit(
+    postgres_session_factory, monkeypatch
+):
+    monkeypatch.delenv("FAILED_INGESTION_MAX_ATTEMPTS", raising=False)
+    before = datetime.now(UTC)
+    async with postgres_session_factory() as s:
+        repo = FailedIngestionRepo(s)
+        for _ in range(DEFAULT_MAX_ATTEMPTS):
+            await _fail(repo)
+        await s.commit()
+    after = datetime.now(UTC)
+
+    async with postgres_session_factory() as s:
+        (row,) = await FailedIngestionRepo(s).list_for_user(USER)
+
+    # Read back as aware values that represent the instants that were written.
+    for stamp in (row.first_failed_at, row.last_failed_at):
+        assert stamp.tzinfo is not None
+        assert before - timedelta(seconds=1) <= stamp <= after + timedelta(seconds=1)
+    assert row.first_failed_at <= row.last_failed_at
+
+    assert row.attempt_count == DEFAULT_MAX_ATTEMPTS
+    assert is_blocked(row, "e1", "2026-01-01T00:00:00Z")
 
 
 # ---------------------------------------------------------------------------

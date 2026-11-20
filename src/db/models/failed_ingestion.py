@@ -13,7 +13,7 @@ gap fail.
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Text, UniqueConstraint
+from sqlalchemy import DateTime, Text, UniqueConstraint
 from sqlmodel import Column, Field, SQLModel
 
 
@@ -39,5 +39,11 @@ class FailedIngestion(SQLModel, table=True):
         default=None, sa_column=Column("last_error", Text, nullable=True)
     )
     attempt_count: int = Field(default=1)
-    first_failed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    last_failed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    # Timezone-aware: record_failure() writes datetime.now(UTC), and asyncpg
+    # rejects an aware value bound to a naive TIMESTAMP column.
+    first_failed_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), sa_type=DateTime(timezone=True)
+    )
+    last_failed_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), sa_type=DateTime(timezone=True)
+    )

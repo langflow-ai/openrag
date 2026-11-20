@@ -26,8 +26,8 @@ def upgrade() -> None:
         sa.Column("modified_time", sa.String(64), nullable=True),
         sa.Column("last_error", sa.Text(), nullable=True),
         sa.Column("attempt_count", sa.Integer(), nullable=False),
-        sa.Column("first_failed_at", sa.DateTime(), nullable=False),
-        sa.Column("last_failed_at", sa.DateTime(), nullable=False),
+        sa.Column("first_failed_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("last_failed_at", sa.DateTime(timezone=True), nullable=False),
         sa.UniqueConstraint(
             "user_id",
             "connector_type",
