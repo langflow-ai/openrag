@@ -209,7 +209,7 @@ describe("KnowledgeSearchInput suggestions", () => {
 });
 
 describe("KnowledgeSearchInput suggestions and the date range", () => {
-  function renderWithRange(
+  async function renderWithRange(
     range: DateRangeValue | null,
     filter?: KnowledgeFilter,
   ) {
@@ -224,14 +224,14 @@ describe("KnowledgeSearchInput suggestions and the date range", () => {
     );
     return {
       user,
-      input: screen.getByPlaceholderText("Search your documents..."),
+      input: await screen.findByPlaceholderText("Search your documents..."),
     };
   }
 
   it("sends the toolbar date range with suggestion requests", async () => {
     const requests = serveSuggest();
     const day = new Date(2026, 10, 20);
-    const { user, input } = renderWithRange({ from: day, to: day });
+    const { user, input } = await renderWithRange({ from: day, to: day });
 
     await user.click(input);
     await user.type(input, "docl");
@@ -255,7 +255,7 @@ describe("KnowledgeSearchInput suggestions and the date range", () => {
         created_before: "2026-01-31T23:59:59.999Z",
       },
     });
-    const { user, input } = renderWithRange(null, filter);
+    const { user, input } = await renderWithRange(null, filter);
     await screen.findByText("Reports");
 
     await user.click(input);
