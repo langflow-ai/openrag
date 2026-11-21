@@ -8,10 +8,22 @@ import secrets
 from datetime import UTC, datetime
 from typing import Any
 
+from opensearchpy.exceptions import NotFoundError
+
 from config.settings import API_KEYS_INDEX_NAME
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+class ApiKeyValidationUnavailable(Exception):
+    """The key could not be checked because the key store is unreachable.
+
+    Distinct from an invalid key: callers should answer 503, not 401, so a
+    client is not told its key was revoked during a backend outage.
+    """
+
+
 API_KEY_HASH_PREFIX = "hmac-sha256:"
 
 
@@ -169,6 +181,9 @@ class APIKeyService:
 
         Returns:
             Dict with user info if valid, None if invalid
+
+        Raises:
+            ApiKeyValidationUnavailable: the key store could not be queried.
         """
         try:
             # Check key format
@@ -227,9 +242,12 @@ class APIKeyService:
                 "name": key_doc["name"],
             }
 
+        except NotFoundError:
+            # No keys index yet means no key has ever been created.
+            return None
         except Exception as e:
             logger.error("Failed to validate API key", error=str(e))
-            return None
+            raise ApiKeyValidationUnavailable(str(e)) from e
 
     async def list_keys(
         self,
