@@ -1,10 +1,11 @@
 import { ArrowRight, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type ChangeEvent, type FormEvent, useState } from "react";
+import { type ChangeEvent, type FormEvent, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { trackButton } from "@/lib/analytics";
 import { buildChunksUrl } from "@/lib/chunks-url";
+import type { FilterInput } from "@/lib/filter-normalization";
 import { limitSearchInput } from "@/lib/limit-search-input";
 import { cn } from "@/lib/utils";
 import { filterAccentClasses } from "./knowledge-filter-panel";
@@ -54,7 +55,20 @@ export function KnowledgeSearchInput({
     parsedFilterData,
     queryOverride,
     setQueryOverride,
+    effectiveDateRange,
   } = useKnowledgeFilter();
+
+  // Suggestions cover the same documents as the table: the selected filter's
+  // scope with the effective date range, which is the toolbar's range when one
+  // is set (it can also clear the filter's saved range), else the filter's own.
+  const suggestionFilters = useMemo<FilterInput>(
+    () => ({
+      ...parsedFilterData?.filters,
+      created_after: effectiveDateRange.createdAfter,
+      created_before: effectiveDateRange.createdBefore,
+    }),
+    [parsedFilterData?.filters, effectiveDateRange],
+  );
 
   // Uncontrolled (knowledge page): draft until submit; sync when override changes.
   const [draft, setDraft] = useState(queryOverride || "");
@@ -80,7 +94,7 @@ export function KnowledgeSearchInput({
   // inputs (file-scoped panels) already filter live as you type.
   const suggestions = useSearchSuggestionsBox({
     query: inputValue,
-    filters: parsedFilterData?.filters,
+    filters: suggestionFilters,
     scoreThreshold: parsedFilterData?.scoreThreshold,
     enabled: !controlled,
     onPickSuggestion: (text) => {

@@ -10,6 +10,7 @@ import {
   SUGGEST_MAX_CHARS,
 } from "@/app/api/queries/useGetSearchSuggestions";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import type { DateRangeValue } from "@/lib/saved-date-range";
 import { server } from "@/test-utils/msw/server";
 import { renderWithProviders } from "@/test-utils/render";
 import { mockRouter } from "@/test-utils/router";
@@ -62,6 +63,26 @@ function filterFixture(queryData: object): KnowledgeFilter {
     created_at: "",
     updated_at: "",
   };
+}
+
+/** Sets the toolbar date range the way the date picker does. */
+function DateRangeSeed({ range }: { range: DateRangeValue | null }) {
+  const { setDateRange } = useKnowledgeFilter();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: seed once on mount
+  useEffect(() => {
+    setDateRange(range);
+  }, []);
+  return null;
+}
+
+/** Clears the toolbar date range the way the date picker's clear does. */
+function ClearDateRange() {
+  const { setDateRange } = useKnowledgeFilter();
+  return (
+    <button type="button" onClick={() => setDateRange(null)}>
+      Clear date range
+    </button>
+  );
 }
 
 /** Selects a filter and exposes the committed query through the DOM. */
@@ -194,5 +215,88 @@ describe("KnowledgeSearchInput suggestions", () => {
 
     expect(requests.every((r) => r.scoreThreshold === 2.5)).toBe(true);
     expect(requests[0].filters).toEqual({ data_sources: ["a.pdf"] });
+  });
+});
+
+describe("KnowledgeSearchInput suggestions and the date range", () => {
+  async function renderWithRange(
+    range: DateRangeValue | null,
+    filter?: KnowledgeFilter,
+  ) {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <>
+        <FilterSeed filter={filter} />
+        <DateRangeSeed range={range} />
+        <KnowledgeSearchInput />
+      </>,
+      { providers: ["knowledgeFilter"] },
+    );
+    return {
+      user,
+      input: await screen.findByPlaceholderText("Search your documents..."),
+    };
+  }
+
+  it("sends the toolbar date range with suggestion requests", async () => {
+    const requests = serveSuggest();
+    const day = new Date(2026, 10, 20);
+    const { user, input } = await renderWithRange({ from: day, to: day });
+
+    await user.click(input);
+    await user.type(input, "docl");
+    await waitFor(() => expect(requests.length).toBeGreaterThan(0));
+
+    const filters = requests.at(-1)?.filters as Record<string, unknown>;
+    expect(typeof filters.created_after).toBe("string");
+    expect(typeof filters.created_before).toBe("string");
+    expect(new Date(filters.created_after as string).getTime()).toBeLessThan(
+      new Date(filters.created_before as string).getTime(),
+    );
+  });
+
+  it("drops a saved filter's dates when the toolbar clears the range", async () => {
+    const requests = serveSuggest();
+    const filter = filterFixture({
+      query: "",
+      filters: {
+        data_sources: ["a.pdf"],
+        created_after: "2026-01-01T00:00:00.000Z",
+        created_before: "2026-01-31T23:59:59.999Z",
+      },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(
+      <>
+        <FilterSeed filter={filter} />
+        <ClearDateRange />
+        <KnowledgeSearchInput />
+      </>,
+      { providers: ["knowledgeFilter"] },
+    );
+    const input = await screen.findByPlaceholderText(
+      "Search your documents...",
+    );
+    await screen.findByText("Reports");
+
+    // The saved range applies until the toolbar clears it.
+    await user.click(input);
+    await user.type(input, "docl");
+    await waitFor(() =>
+      expect(
+        (requests.at(-1)?.filters as Record<string, unknown>)?.created_after,
+      ).toBe("2026-01-01T00:00:00.000Z"),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Clear date range" }));
+    requests.length = 0;
+    await user.click(input);
+    await user.type(input, "i");
+    await waitFor(() => expect(requests.length).toBeGreaterThan(0));
+
+    const filters = requests.at(-1)?.filters as Record<string, unknown>;
+    expect(filters.data_sources).toEqual(["a.pdf"]);
+    expect(filters.created_after).toBeUndefined();
+    expect(filters.created_before).toBeUndefined();
   });
 });
