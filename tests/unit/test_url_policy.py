@@ -47,3 +47,37 @@ def test_path_scope_include_paths_cannot_expand_past_seed_path():
 
     assert spec.allows("https://docs.example.com/guides/getting-started") is True
     assert spec.allows("https://docs.example.com/admin") is False
+
+
+@pytest.mark.parametrize(
+    ("address", "expected"),
+    [
+        ("8.8.8.8", True),
+        ("127.0.0.1", False),
+        ("10.0.0.5", False),
+        ("169.254.169.254", False),
+        ("100.64.0.1", False),
+        ("::ffff:10.0.0.1", False),
+        # NAT64 well-known prefix: judged by the IPv4 address it reaches.
+        ("64:ff9b::7f00:1", False),  # 127.0.0.1
+        ("64:ff9b::a00:1", False),  # 10.0.0.1
+        ("64:ff9b::a9fe:a9fe", False),  # 169.254.169.254, cloud metadata
+        ("64:ff9b::808:808", True),  # 8.8.8.8
+        # NAT64 local-use prefix maps wherever the operator chooses.
+        ("64:ff9b:1::808:808", False),
+        ("2606:4700:4700::1111", True),
+    ],
+)
+def test_public_ip_judges_nat64_addresses_by_their_ipv4_destination(address, expected):
+    assert policy.public_ip(address) is expected
+
+
+def test_a_hostname_resolving_into_nat64_toward_a_private_network_is_rejected(monkeypatch):
+    monkeypatch.setattr(
+        policy.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [(None, None, None, "", ("64:ff9b::a00:1", 443, 0, 0))],
+    )
+
+    with pytest.raises(policy.CrawlPolicyError, match="public addresses"):
+        policy.resolve_public_addresses("internal.example.com", 443)
