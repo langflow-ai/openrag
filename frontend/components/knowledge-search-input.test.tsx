@@ -75,6 +75,16 @@ function DateRangeSeed({ range }: { range: DateRangeValue | null }) {
   return null;
 }
 
+/** Clears the toolbar date range the way the date picker's clear does. */
+function ClearDateRange() {
+  const { setDateRange } = useKnowledgeFilter();
+  return (
+    <button type="button" onClick={() => setDateRange(null)}>
+      Clear date range
+    </button>
+  );
+}
+
 /** Selects a filter and exposes the committed query through the DOM. */
 function FilterSeed({ filter }: { filter?: KnowledgeFilter }) {
   const { setSelectedFilter, queryOverride } = useKnowledgeFilter();
@@ -255,11 +265,33 @@ describe("KnowledgeSearchInput suggestions and the date range", () => {
         created_before: "2026-01-31T23:59:59.999Z",
       },
     });
-    const { user, input } = await renderWithRange(null, filter);
+    const user = userEvent.setup();
+    renderWithProviders(
+      <>
+        <FilterSeed filter={filter} />
+        <ClearDateRange />
+        <KnowledgeSearchInput />
+      </>,
+      { providers: ["knowledgeFilter"] },
+    );
+    const input = await screen.findByPlaceholderText(
+      "Search your documents...",
+    );
     await screen.findByText("Reports");
 
+    // The saved range applies until the toolbar clears it.
     await user.click(input);
     await user.type(input, "docl");
+    await waitFor(() =>
+      expect(
+        (requests.at(-1)?.filters as Record<string, unknown>)?.created_after,
+      ).toBe("2026-01-01T00:00:00.000Z"),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Clear date range" }));
+    requests.length = 0;
+    await user.click(input);
+    await user.type(input, "i");
     await waitFor(() => expect(requests.length).toBeGreaterThan(0));
 
     const filters = requests.at(-1)?.filters as Record<string, unknown>;
