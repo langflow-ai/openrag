@@ -65,6 +65,12 @@ def test_path_scope_include_paths_cannot_expand_past_seed_path():
         ("64:ff9b::808:808", True),  # 8.8.8.8
         # NAT64 local-use prefix maps wherever the operator chooses.
         ("64:ff9b:1::808:808", False),
+        # Deprecated IPv4-compatible form (::a.b.c.d) is never allowed.
+        ("::a00:1", False),  # 10.0.0.1
+        ("::808:808", False),  # 8.8.8.8
+        # Other IPv6 forms that embed IPv4 are already non-global.
+        ("2002:a9fe:a9fe::", False),  # 6to4 of 169.254.169.254
+        ("::ffff:a9fe:a9fe", False),  # IPv4-mapped metadata address
         ("2606:4700:4700::1111", True),
     ],
 )

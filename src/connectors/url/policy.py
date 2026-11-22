@@ -78,6 +78,10 @@ def canonicalize_url(value: str) -> str:
 # IPv4 address it reaches. Python's ipaddress counts both prefixes as global.
 _NAT64_WELL_KNOWN = ipaddress.ip_network("64:ff9b::/96")
 _NAT64_LOCAL_USE = ipaddress.ip_network("64:ff9b:1::/48")
+# Deprecated IPv4-compatible addresses (RFC 4291 section 2.5.5.1), such as
+# ::a00:1 for 10.0.0.1. Python counts most of them as global; no public host
+# is reached this way, so they are never allowed.
+_IPV4_COMPATIBLE = ipaddress.ip_network("::/96")
 _SHARED_ADDRESS_SPACE = ipaddress.ip_network("100.64.0.0/10")
 
 
@@ -90,8 +94,9 @@ def public_ip(value: str) -> bool:
         if address in _NAT64_WELL_KNOWN:
             # The IPv4 destination is the last 32 bits; judge that instead.
             return public_ip(str(ipaddress.IPv4Address(int(address) & 0xFFFFFFFF)))
-        if address in _NAT64_LOCAL_USE:
-            # The operator chooses how these map, so they can reach any network.
+        if address in _NAT64_LOCAL_USE or address in _IPV4_COMPATIBLE:
+            # Local-use NAT64 maps wherever the operator chooses, and
+            # IPv4-compatible addresses are deprecated; neither is trusted.
             return False
     return address.is_global and address not in _SHARED_ADDRESS_SPACE
 
