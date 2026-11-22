@@ -55,6 +55,32 @@ def test_preload_failure_does_not_raise(monkeypatch, capsys):
     assert "could not preload openai.resources" in capsys.readouterr().err
 
 
+def test_preload_resolves_the_resource_classes_the_client_imports(tmp_path):
+    """openai 3.x exports these classes lazily; the preload must resolve them,
+    not just import their packages, or the race moves to the class lookup."""
+    pytest.importorskip("openai")
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        "import importlib.util\n"
+        f"spec = importlib.util.spec_from_file_location('sc', {str(SCRIPT)!r})\n"
+        "sc = importlib.util.module_from_spec(spec); spec.loader.exec_module(sc)\n"
+        "sc.preload_openai_resources()\n"
+        "import sys\n"
+        "checks = [('openai.resources.beta', 'Beta'), ('openai.resources.beta', 'AsyncBeta'),\n"
+        "          ('openai.resources.chat', 'Chat'), ('openai.resources.chat', 'AsyncChat'),\n"
+        "          ('openai.resources.embeddings', 'Embeddings'),\n"
+        "          ('openai.resources.embeddings', 'AsyncEmbeddings')]\n"
+        "missing = [f'{m}.{n}' for m, n in checks if n not in vars(sys.modules[m])]\n"
+        "print(','.join(missing) or 'ok')\n"
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(probe)], capture_output=True, text=True, timeout=60
+    )
+
+    assert result.stdout.strip() == "ok", result.stdout + result.stderr
+
+
 def test_preload_prevents_concurrent_lazy_import_deadlock(tmp_path):
     """Three threads touching different lazy openai client resources at once
     deadlock on a cold interpreter; after the preload they don't."""
