@@ -1124,6 +1124,13 @@ async def test_onboarding_keeps_chunk_size_for_model_only_update_of_other_provid
         ("watsonx_onprem", 500, 100, (500, 100, None)),
         ("watsonx", 1000, 600, (1000, 600, None)),
         (None, 1000, 600, (1000, 600, None)),
+        # Persisted values are loaded unvalidated; invalid ones fall back to the
+        # defaults (1000 / 200) before the cap, instead of raising TypeError.
+        ("watsonx_onprem", None, None, (500, 200, 500)),
+        ("watsonx_onprem", "800", "50", (500, 50, 500)),
+        ("watsonx_onprem", "big", -5, (500, 200, 500)),
+        ("watsonx_onprem", 400, None, (400, 200, None)),
+        ("watsonx_onprem", True, 100, (500, 100, 500)),
     ],
 )
 def test_cap_watsonx_onprem_onboarding_chunk_size(provider, chunk_size, chunk_overlap, expected):

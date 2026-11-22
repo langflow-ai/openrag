@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi.responses import JSONResponse
 
-from config.settings import DEFAULT_CHUNK_OVERLAP, clients, is_no_auth_mode
+from config.settings import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, clients, is_no_auth_mode
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -312,6 +312,21 @@ def _get_flows_service():
     return FlowsService()
 
 
+def _persisted_int(value: Any, default: int, *, minimum: int) -> int:
+    """A persisted chunk setting as an int, or `default` when it is missing or invalid.
+
+    Saved config is loaded without validation, so a hand-edited or older file can
+    hold `null`, a string or a negative number here.
+    """
+    if isinstance(value, bool):
+        return default
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    return number if number >= minimum else default
+
+
 def _cap_watsonx_onprem_onboarding_chunk_size(knowledge) -> int | None:
     """Cap the chunk size for watsonx.ai on-prem embeddings during onboarding.
 
@@ -319,10 +334,15 @@ def _cap_watsonx_onprem_onboarding_chunk_size(knowledge) -> int | None:
     applies when a request changes only the embedding model. Returns the chunk
     size it was reduced to, or None when nothing changed.
     """
-    if (
-        (knowledge.embedding_provider or "").strip().lower() != "watsonx_onprem"
-        or knowledge.chunk_size <= WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
-    ):
+    if (knowledge.embedding_provider or "").strip().lower() != "watsonx_onprem":
+        return None
+
+    # A model-only request compares the persisted values, so make them usable first.
+    knowledge.chunk_size = _persisted_int(knowledge.chunk_size, DEFAULT_CHUNK_SIZE, minimum=1)
+    knowledge.chunk_overlap = _persisted_int(
+        knowledge.chunk_overlap, DEFAULT_CHUNK_OVERLAP, minimum=0
+    )
+    if knowledge.chunk_size <= WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE:
         return None
 
     knowledge.chunk_size = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
