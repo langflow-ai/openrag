@@ -174,3 +174,28 @@ async def test_validate_key_returns_none_for_unknown_or_unindexed_keys(monkeypat
     assert await service.validate_key("orag_unknown") is None
 
     assert await service.validate_key("not_an_orag_key") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        "connection_timeout",
+        "server_error",
+    ],
+)
+async def test_validate_key_treats_other_key_store_errors_as_unavailable(monkeypatch, error):
+    from opensearchpy.exceptions import ConnectionTimeout, TransportError
+
+    from services.api_key_service import APIKeyService, ApiKeyValidationUnavailable
+
+    monkeypatch.setattr("config.settings.SESSION_SECRET", "unit-test-session-secret")
+    opensearch_client = AsyncMock()
+    opensearch_client.search.side_effect = {
+        "connection_timeout": ConnectionTimeout("TIMEOUT", "read timed out", None),
+        "server_error": TransportError(503, "cluster_block_exception", {}),
+    }[error]
+    monkeypatch.setattr("config.settings.clients.opensearch", opensearch_client)
+
+    with pytest.raises(ApiKeyValidationUnavailable):
+        await APIKeyService().validate_key("orag_some_key")
