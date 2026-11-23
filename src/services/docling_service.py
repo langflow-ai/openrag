@@ -632,7 +632,14 @@ class DoclingService:
                         "Docling VLM is enabled but the OpenAI provider is not configured"
                     )
                 openai_credentials = config.providers.credential_values("openai")
-                url = openai_compatible_url(openai_credentials.get("api_base"), "chat/completions")
+                try:
+                    url = openai_compatible_url(
+                        openai_credentials.get("api_base"), "chat/completions"
+                    )
+                except ValueError as exc:
+                    raise DoclingServeError(
+                        "Docling VLM requires a valid OpenAI-compatible API base"
+                    ) from exc
                 options["picture_description_api"] = {
                     "url": url,
                     "headers": {"Authorization": f"Bearer {openai.api_key}"},

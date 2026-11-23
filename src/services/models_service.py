@@ -370,7 +370,9 @@ class ModelsService:
                                 "default": False,
                             }
                         )
-                    elif is_custom_endpoint or is_openai_language_model(model_id):
+                    elif not is_openai_non_chat_model(model_id) and (
+                        is_custom_endpoint or is_openai_language_model(model_id)
+                    ):
                         language_models.append(
                             {
                                 "value": model_id,

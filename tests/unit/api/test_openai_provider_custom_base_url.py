@@ -96,7 +96,15 @@ async def test_openai_model_discovery_uses_custom_base(monkeypatch):
         calls.append((method, url))
         return SimpleNamespace(
             status_code=200,
-            json=lambda: {"data": [{"id": "example-model"}, {"id": "text-embedding-3-small"}]},
+            json=lambda: {
+                "data": [
+                    {"id": "example-model"},
+                    {"id": "whisper-1"},
+                    {"id": "dall-e-3"},
+                    {"id": "gpt-4o-realtime-preview"},
+                    {"id": "text-embedding-3-small"},
+                ]
+            },
         )
 
     monkeypatch.setattr("services.models_service._http_request_with_retry", fake_request)
@@ -108,3 +116,4 @@ async def test_openai_model_discovery_uses_custom_base(monkeypatch):
 
     assert calls == [("GET", "https://gateway.example/openai/models")]
     assert [model["value"] for model in result["language_models"]] == ["example-model"]
+    assert [model["value"] for model in result["embedding_models"]] == ["text-embedding-3-small"]

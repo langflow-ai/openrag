@@ -680,6 +680,21 @@ async def test_build_vlm_options_openai_custom_base_url(docling_service):
 
 
 @pytest.mark.asyncio
+async def test_build_vlm_options_openai_invalid_custom_base_raises_docling_error(docling_service):
+    """Invalid OpenAI endpoint ports use Docling's standard configuration error."""
+    mock_config = _vlm_mock_config("openai")
+    mock_config.providers.credential_values.return_value = {
+        "api_base": "https://gateway.example:99999/openai"
+    }
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+        with pytest.raises(DoclingServeError, match="valid OpenAI-compatible API base") as exc_info:
+            await docling_service._build_docling_options_async()
+
+    assert isinstance(exc_info.value.__cause__, ValueError)
+    mock_config.providers.credential_values.assert_called_once_with("openai")
+
+
+@pytest.mark.asyncio
 async def test_build_vlm_options_watsonx(docling_service):
     """watsonx VLM options exchange the API key for an IAM bearer token."""
     mock_config = _vlm_mock_config("watsonx")
