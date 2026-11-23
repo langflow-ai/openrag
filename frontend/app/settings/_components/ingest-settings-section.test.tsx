@@ -597,3 +597,91 @@ describe("IngestSettingsSection OCR languages", () => {
     expect(save).toHaveBeenCalledOnce();
   });
 });
+
+describe("IngestSettingsSection VLM settings", () => {
+  it("sits inside the toggle card and saves edits to every advanced field", async () => {
+    let savedBody: Record<string, unknown> | undefined;
+    renderWithProviders(<IngestionTab />, {
+      providers: ["tooltip", "auth", "brand", "unsavedChanges"],
+      handlers: [
+        http.get("/api/settings", () =>
+          HttpResponse.json(
+            makeSettings({
+              knowledge: {
+                picture_descriptions: true,
+                vlm_enabled: true,
+                vlm_provider: "watsonx",
+                vlm_model: "granite-vision",
+                vlm_prompt: "Describe the page.",
+                vlm_response_format: "markdown",
+                vlm_max_tokens: 5000,
+                vlm_concurrency: 4,
+                vlm_timeout: 120,
+                vlm_watsonx_api_version: "2025-01-01",
+              },
+            }),
+          ),
+        ),
+        http.get("/api/models/catalog", () =>
+          HttpResponse.json({ providers: [] }),
+        ),
+        http.get("/api/models/providers", () => HttpResponse.json({})),
+        http.post("/api/settings", async ({ request }) => {
+          savedBody = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json({ message: "ok", settings: makeSettings() });
+        }),
+      ],
+    });
+
+    const trigger = await screen.findByRole("button", {
+      name: /advanced vision model \(vlm\) settings/i,
+    });
+    // The VLM panel belongs to the Picture Descriptions row, inside the same
+    // card as the other ingest toggles.
+    const pictureRow = screen
+      .getByRole("switch", { name: /picture descriptions/i })
+      .closest(".border-b");
+    expect(pictureRow).toContainElement(trigger);
+
+    await userEvent.click(trigger);
+
+    const apiVersion = await screen.findByRole("textbox", {
+      name: /watsonx api version/i,
+    });
+    fireEvent.change(apiVersion, { target: { value: "2025-06-01" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /^prompt/i }), {
+      target: { value: "Caption every figure." },
+    });
+    fireEvent.change(
+      screen.getByRole("spinbutton", { name: /max tokens per page/i }),
+      { target: { value: "2000" } },
+    );
+    fireEvent.change(screen.getByRole("spinbutton", { name: /concurrency/i }), {
+      target: { value: "2" },
+    });
+    fireEvent.change(screen.getByRole("spinbutton", { name: /api timeout/i }), {
+      target: { value: "60" },
+    });
+
+    await userEvent.click(
+      screen.getByRole("combobox", { name: /response format/i }),
+    );
+    await userEvent.click(await screen.findByRole("option", { name: "HTML" }));
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /save changes/i }),
+    );
+
+    await waitFor(() => expect(savedBody).toBeDefined());
+    expect(savedBody).toMatchObject({
+      vlm_provider: "watsonx",
+      vlm_model: "granite-vision",
+      vlm_watsonx_api_version: "2025-06-01",
+      vlm_prompt: "Caption every figure.",
+      vlm_response_format: "html",
+      vlm_max_tokens: 2000,
+      vlm_concurrency: 2,
+      vlm_timeout: 60,
+    });
+  });
+});
