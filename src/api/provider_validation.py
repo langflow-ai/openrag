@@ -915,24 +915,30 @@ async def validate_provider_setup(
         enhancement = get_provider_enhancement(provider_lower)
         if (
             provider_lower == "rhoai"
-            and enhancement is not None
             and bool(embedding_model or llm_model)
             and (test_completion or verify_model)
         ):
             # Validate both stored endpoints and require the selected one
             # before LiteLLM can fall back to HOSTED_VLLM_API_BASE/API_KEY.
-            from enhancements.providers.registry import credentials_for
-
             selected_kind = "embedding" if embedding_model else "chat"
-            selected_credentials = credentials_for(
-                enhancement,
-                stored_credentials if stored_credentials is not None else supplied,
-                kind=selected_kind,
-            )
-            if not selected_credentials.get("api_base"):
+            stored = stored_credentials if stored_credentials is not None else supplied
+            if enhancement is not None:
+                from enhancements.providers.registry import credentials_for
+
+                selected_endpoint = credentials_for(enhancement, stored, kind=selected_kind).get(
+                    "api_base"
+                )
+            else:
+                # The provider alias may still reach LiteLLM if its enhancement
+                # is unavailable; inspect the untranslated endpoint directly
+                # so an environment fallback cannot receive the credentials.
+                endpoint_field = "embedding_api_base" if embedding_model else "api_base"
+                selected_endpoint = stored.get(endpoint_field)
+            if not selected_endpoint:
                 raise ValueError(
                     f"OpenShift AI {selected_kind} endpoint is required for model validation"
                 )
+            _require_https_provider_endpoint(selected_endpoint, "OpenShift AI")
 
         # A provider enhancement has no bespoke model probe of its own: a real
         # call through LiteLLM *is* its model probe, and it is what makes

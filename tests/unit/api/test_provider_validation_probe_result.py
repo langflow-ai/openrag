@@ -65,7 +65,13 @@ async def test_a_native_embedding_call_probes_the_model(calls):
 async def test_the_litellm_probe_calls_the_model_without_tools(monkeypatch, calls):
     """RHOAI and every other enhancement: a plain `Reply with OK.` completion."""
     monkeypatch.setattr(
-        provider_validation, "get_provider_enhancement", lambda _p: SimpleNamespace()
+        provider_validation,
+        "get_provider_enhancement",
+        lambda _p: SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        "enhancements.providers.registry.credentials_for",
+        lambda *_a, **_k: {"api_base": "https://rhoai.example/v1"},
     )
     monkeypatch.setattr("enhancements.providers.registry.runtime_kwargs_for", lambda *_a, **_k: {})
 
@@ -80,7 +86,13 @@ async def test_the_litellm_probe_calls_the_model_without_tools(monkeypatch, call
 @pytest.fixture
 def enhancement(monkeypatch):
     monkeypatch.setattr(
-        provider_validation, "get_provider_enhancement", lambda _p: SimpleNamespace()
+        provider_validation,
+        "get_provider_enhancement",
+        lambda _p: SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        "enhancements.providers.registry.credentials_for",
+        lambda *_a, **_k: {"api_base": "https://rhoai.example/v1"},
     )
     monkeypatch.setattr("enhancements.providers.registry.runtime_kwargs_for", lambda *_a, **_k: {})
 
