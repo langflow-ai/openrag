@@ -10,7 +10,7 @@ from agentd.tool_decorator import tool
 
 from auth_context import get_auth_context
 from config.embedding_constants import get_declared_default_embedding_model
-from config.settings import get_embedding_model, get_index_name, get_openrag_config
+from config.settings import clients, get_embedding_model, get_index_name, get_openrag_config
 from observability.spans import Span, trace_root, trace_span
 from services.llm_gateway import LlmGatewayError
 from services.llm_gateway import embeddings as gateway_embeddings
@@ -822,7 +822,9 @@ class SearchService:
             # produced query embeddings)
             knn_queries = []
             vector_fields = (
-                await _get_vector_field_definitions(opensearch_client) if filter_clauses else None
+                await _get_vector_field_definitions(clients.opensearch or opensearch_client)
+                if filter_clauses
+                else None
             )
             for field_identity, embedding_vector in query_embeddings.items():
                 field_name = get_embedding_field_name(field_identity)

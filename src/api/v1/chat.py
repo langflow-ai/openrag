@@ -21,7 +21,9 @@ from config.storage_mode import db_writes_enabled
 from dependencies import (
     get_chat_service,
     get_knowledge_filter_service,
+    get_rbac_service,
     get_session_manager,
+    has_effective_permission,
     require_api_key_permission,
 )
 from session_manager import User
@@ -142,6 +144,7 @@ async def chat_create_endpoint(
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_api_key_permission("chat:use")),
     knowledge_filter_service=Depends(get_knowledge_filter_service),
+    rbac=Depends(get_rbac_service),
 ):
     """Send a chat message via Langflow. POST /v1/chat"""
     if response := _native_chat_storage_error():
@@ -176,6 +179,7 @@ async def chat_create_endpoint(
     if resolved_filters:
         validate_date_filter_bounds(resolved_filters)
         set_search_filters(resolved_filters)
+    can_upload_knowledge = await has_effective_permission(request, user, rbac, "knowledge:upload")
     set_search_limit(resolved_limit)
     set_score_threshold(resolved_score_threshold)
     set_auth_context(user_id, jwt_token)
@@ -201,6 +205,7 @@ async def chat_create_endpoint(
             owner_name=user.name,
             owner_email=user.email,
             storage_user_id=storage_user_id,
+            can_upload_knowledge=can_upload_knowledge,
         )
         logger.info(
             "[CHAT V1] Stream initialized",
@@ -229,6 +234,7 @@ async def chat_create_endpoint(
             owner_name=user.name,
             owner_email=user.email,
             storage_user_id=storage_user_id,
+            can_upload_knowledge=can_upload_knowledge,
         )
         logger.info(
             "[CHAT V1] Request completed",

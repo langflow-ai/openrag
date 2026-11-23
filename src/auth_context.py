@@ -9,6 +9,9 @@ from typing import Any
 # Context variables for current request authentication
 _current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default=None)
 _current_jwt_token: ContextVar[str | None] = ContextVar("current_jwt_token", default=None)
+_current_chat_ingestion_context: ContextVar[tuple[str | None, str | None, bool]] = ContextVar(
+    "current_chat_ingestion_context", default=(None, None, False)
+)
 _current_search_filters: ContextVar[dict[str, Any] | None] = ContextVar(
     "current_search_filters", default=None
 )
@@ -43,6 +46,18 @@ def get_current_jwt_token() -> str | None:
 def get_auth_context() -> tuple[str | None, str | None]:
     """Get current authentication context (user_id, jwt_token)"""
     return _current_user_id.get(), _current_jwt_token.get()
+
+
+def set_chat_ingestion_context(
+    owner_name: str | None, owner_email: str | None, can_upload_knowledge: bool
+) -> None:
+    """Set the metadata and write capability for chat-triggered URL ingestion."""
+    _current_chat_ingestion_context.set((owner_name, owner_email, can_upload_knowledge))
+
+
+def get_chat_ingestion_context() -> tuple[str | None, str | None, bool]:
+    """Get the metadata and write capability for chat-triggered URL ingestion."""
+    return _current_chat_ingestion_context.get()
 
 
 def set_search_filters(filters: dict[str, Any]):

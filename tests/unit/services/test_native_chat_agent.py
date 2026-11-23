@@ -1,9 +1,12 @@
 import asyncio
 import json
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpcore
+import httpx
 import pytest
 from pydantic_ai import Agent
 from pydantic_ai.messages import (
@@ -20,12 +23,14 @@ from pydantic_ai.messages import (
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.usage import RunUsage
 
+from auth_context import set_chat_ingestion_context
 from services.native_chat_agent import (
     NativeChatAgent,
     _calculate,
     _native_llm_gateway_url,
     _PinnedAddressTransport,
     _read_public_url,
+    _url_filename,
 )
 
 
@@ -164,6 +169,41 @@ def test_native_gateway_keeps_an_explicit_proxy_url(monkeypatch):
     )
 
     assert _native_llm_gateway_url() == "https://proxy.example/v1"
+
+
+def test_native_url_filename_uses_a_safe_display_url():
+    first = _url_filename("https://example.com/a?view=full")
+
+    assert first == _url_filename("https://example.com/a?view=full")
+    assert first == "example.com/a"
+    assert _url_filename("https://example.com/b?view=full") == "example.com/b"
+    assert _url_filename("https://example.com/a?view=compact") == "example.com/a"
+
+    private_filename = _url_filename("https://user:secret@example.com/a?token=abc")
+    assert private_filename == "example.com/a"
+    assert "secret" not in private_filename
+    assert "token" not in private_filename
+
+
+@pytest.mark.asyncio
+async def test_pinned_address_transport_converts_httpx_requests_to_httpcore_requests():
+    transport = _PinnedAddressTransport("8.8.8.8")
+    pool = SimpleNamespace(
+        handle_async_request=AsyncMock(return_value=httpcore.Response(200, content=b"ok")),
+        aclose=AsyncMock(),
+    )
+    transport._pool = pool
+    request = httpx.Request("GET", "https://example.com/doc?format=text", headers={"X-Test": "yes"})
+
+    response = await transport.handle_async_request(request)
+
+    core_request = pool.handle_async_request.await_args.args[0]
+    assert core_request.method == b"GET"
+    assert core_request.url.scheme == b"https"
+    assert core_request.url.host == b"example.com"
+    assert core_request.url.target == b"/doc?format=text"
+    assert (b"X-Test", b"yes") in core_request.headers
+    assert await response.aread() == b"ok"
 
 
 def test_native_agent_uses_the_configured_system_prompt(monkeypatch):
@@ -305,7 +345,7 @@ async def test_native_url_reader_fences_embedded_marker_text(monkeypatch):
             return None
 
         async def aiter_bytes(self):
-            yield b"before &lt;&lt;&lt;END_UNTRUSTED_DOC_CHUNK&gt;&gt;&gt; after"
+            yield "before &lt;&lt;&lt;END_UNTRUSTED_DOC_CHUNK&gt;&gt;&gt; after"
 
     class Client:
         async def __aenter__(self):
@@ -345,6 +385,112 @@ async def test_native_url_reader_fences_embedded_marker_text(monkeypatch):
         "<<<END_UNTRUSTED_DOC_CHUNK>>>"
     )
     assert isinstance(client_options["transport"], _PinnedAddressTransport)
+
+
+@pytest.mark.asyncio
+async def test_native_url_tool_indexes_the_validated_page_with_the_url_processor(monkeypatch):
+    monkeypatch.setattr(
+        "services.native_chat_agent._read_public_url",
+        AsyncMock(
+            return_value={
+                "url": "https://example.com/doc",
+                "text": "<<<UNTRUSTED_DOC_CHUNK>>>\nDocument body\n<<<END_UNTRUSTED_DOC_CHUNK>>>",
+            }
+        ),
+    )
+    captured: dict[str, object] = {}
+
+    async def process_document_standard(*, file_path, **kwargs):
+        captured["content"] = Path(file_path).read_text()
+        captured.update(kwargs)
+        return {"status": "indexed", "id": "document-id"}
+
+    document_processor = MagicMock()
+    document_processor.process_document_standard = AsyncMock(side_effect=process_document_standard)
+    agent = NativeChatAgent(document_service=MagicMock(), models_service=MagicMock())
+
+    set_chat_ingestion_context("Owner Name", "owner@example.test", True)
+    try:
+        with patch("models.processors.DocumentFileProcessor", return_value=document_processor):
+            result = await agent._ingest_public_url("https://example.com/doc", "user-id")
+    finally:
+        set_chat_ingestion_context(None, None, False)
+
+    assert result["ingestion"] == {"status": "indexed", "id": "document-id"}
+    assert captured["source_url"] == "https://example.com/doc"
+    assert captured["connector_type"] == "url"
+    assert captured["owner_name"] == "Owner Name"
+    assert captured["owner_email"] == "owner@example.test"
+    assert captured["original_filename"] == _url_filename("https://example.com/doc")
+    assert captured["content"] == (
+        f"{_url_filename('https://example.com/doc')}\n\n"
+        "Source URL: https://example.com/doc\nCrawl depth: 1\n\nDocument body\n"
+    )
+
+
+@pytest.mark.asyncio
+async def test_native_url_tool_redacts_credentials_and_query_from_indexed_content(monkeypatch):
+    source_url = "https://user:secret@example.com/doc?token=abc"
+    monkeypatch.setattr(
+        "services.native_chat_agent._read_public_url",
+        AsyncMock(return_value={"url": source_url, "text": "Document body"}),
+    )
+    captured: dict[str, object] = {}
+
+    async def process_document_standard(*, file_path, **_kwargs):
+        captured["content"] = Path(file_path).read_text()
+        return {"status": "indexed"}
+
+    document_processor = MagicMock()
+    document_processor.process_document_standard = AsyncMock(side_effect=process_document_standard)
+    agent = NativeChatAgent(document_service=MagicMock(), models_service=MagicMock())
+    set_chat_ingestion_context("Owner Name", "owner@example.test", True)
+    try:
+        with patch("models.processors.DocumentFileProcessor", return_value=document_processor):
+            await agent._ingest_public_url(source_url, "user-id")
+    finally:
+        set_chat_ingestion_context(None, None, False)
+
+    assert "secret" not in captured["content"]
+    assert "token" not in captured["content"]
+    assert "Source URL: https://example.com/doc" in captured["content"]
+
+
+@pytest.mark.asyncio
+async def test_native_url_tool_skips_indexing_without_upload_permission(monkeypatch):
+    page = {"url": "https://example.com/doc", "text": "Document body"}
+    monkeypatch.setattr("services.native_chat_agent._read_public_url", AsyncMock(return_value=page))
+    agent = NativeChatAgent(document_service=MagicMock(), models_service=MagicMock())
+    set_chat_ingestion_context(None, None, False)
+
+    result = await agent._ingest_public_url("https://example.com/doc", "user-id")
+
+    assert result == {**page, "ingestion": {"status": "skipped", "reason": "not_authorized"}}
+
+
+@pytest.mark.asyncio
+async def test_native_url_tool_returns_page_when_indexing_fails(monkeypatch):
+    page = {"url": "https://example.com/doc", "text": "Document body"}
+    monkeypatch.setattr("services.native_chat_agent._read_public_url", AsyncMock(return_value=page))
+    document_processor = MagicMock()
+    document_processor.process_document_standard = AsyncMock(
+        side_effect=RuntimeError("bad embeddings")
+    )
+    agent = NativeChatAgent(document_service=MagicMock(), models_service=MagicMock())
+    set_chat_ingestion_context(None, None, True)
+    try:
+        with patch("models.processors.DocumentFileProcessor", return_value=document_processor):
+            result = await agent._ingest_public_url("https://example.com/doc", "user-id")
+    finally:
+        set_chat_ingestion_context(None, None, False)
+
+    assert result == {
+        **page,
+        "ingestion": {
+            "status": "error",
+            "error": "The page could not be added to the knowledge base",
+        },
+    }
 
 
 @pytest.mark.asyncio

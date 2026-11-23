@@ -31,6 +31,9 @@ async def test_langflow_chat_uses_direct_chat_when_disabled(monkeypatch):
         stream=False,
         filter_id="filter-id",
         storage_user_id="db-user",
+        owner_name=None,
+        owner_email=None,
+        can_upload_knowledge=False,
     )
 
     assert result == {"response": "ok", "response_id": "direct-id"}
@@ -42,6 +45,9 @@ async def test_langflow_chat_uses_direct_chat_when_disabled(monkeypatch):
         stream=False,
         filter_id="filter-id",
         storage_user_id="db-user",
+        owner_name=None,
+        owner_email=None,
+        can_upload_knowledge=False,
     )
 
 
