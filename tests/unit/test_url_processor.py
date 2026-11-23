@@ -1,3 +1,5 @@
+import io
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -5,6 +7,7 @@ import pytest
 from models.tasks import FileTask, TaskStatus, UploadTask
 from models.url import UrlProcessor
 from services.task_service import TaskService
+from utils.hash_utils import hash_id
 
 
 @pytest.mark.asyncio
@@ -37,6 +40,49 @@ async def test_url_processor_retains_successful_processing_result(tmp_path):
     assert file_task.result == result
     assert upload_task.successful_files == 1
     assert upload_task.failed_files == 0
+    call = document_processor.process_document_standard.await_args
+    assert call is not None
+    assert call.kwargs["document_id"] == hash_id(io.BytesIO(processor.docs_url.encode("utf-8")))
+    assert call.kwargs["replace_existing"] is True
+    assert call.kwargs["reconcile_source_url"] is True
+
+
+@pytest.mark.asyncio
+async def test_url_processor_reindexes_changed_content_for_the_same_url(tmp_path):
+    first_file = tmp_path / "first.txt"
+    second_file = tmp_path / "second.txt"
+    first_file.write_text("first body")
+    second_file.write_text("changed body")
+    processed_bodies: list[str] = []
+
+    async def process_document_standard(*, file_path, **kwargs):
+        assert kwargs["replace_existing"] is True
+        processed_bodies.append(Path(file_path).read_text())
+        return {"status": "indexed", "id": kwargs["document_id"]}
+
+    document_processor = MagicMock()
+    document_processor.process_document_standard = AsyncMock(side_effect=process_document_standard)
+    processor = UrlProcessor(
+        document_service=MagicMock(),
+        models_service=MagicMock(),
+        docs_url="https://docs.example.test/page",
+        crawl_depth=1,
+    )
+    with (
+        patch(
+            "utils.url_content_fetcher.materialize_url_as_text_file",
+            new=AsyncMock(side_effect=[(str(first_file), "Docs"), (str(second_file), "Docs")]),
+        ),
+        patch("models.processors.DocumentFileProcessor", return_value=document_processor),
+    ):
+        for task_id in ("first", "second"):
+            await processor.process_item(
+                UploadTask(task_id=task_id, total_files=1),
+                processor.docs_url,
+                FileTask(file_path=processor.docs_url),
+            )
+
+    assert processed_bodies == ["first body", "changed body"]
 
 
 @pytest.mark.asyncio

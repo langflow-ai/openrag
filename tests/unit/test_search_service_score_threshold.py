@@ -299,6 +299,22 @@ async def test_unreadable_mapping_keeps_the_native_knn_filter(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_search_reads_mapping_with_the_trusted_client(monkeypatch):
+    user_client = _OpenSearch()
+    trusted_client = _OpenSearch(
+        vector_field={"type": "knn_vector", "method": {"engine": "nmslib", "space_type": "l2"}}
+    )
+    service = _make_service(user_client, monkeypatch)
+    monkeypatch.setattr("services.search_service.clients.opensearch", trusted_client)
+    _set_context(0)
+    set_search_filters(_DATE)
+
+    await service.search_tool("MCP")
+
+    assert _knn_params(user_client.bodies[-1]["query"]) == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("query", ['""', "*"])
 async def test_exclude_sample_data_adds_must_not_clause(monkeypatch, query):
     """Verify exclude_sample_data filters out sample documents and resets per search."""

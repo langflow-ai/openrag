@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -9,7 +9,9 @@ from config.settings import DISABLE_CHAT_WITH_LANGFLOW
 from config.storage_mode import db_writes_enabled
 from dependencies import (
     get_chat_service,
+    get_rbac_service,
     get_session_manager,
+    has_effective_permission,
     require_permission,
 )
 from session_manager import User
@@ -55,6 +57,13 @@ async def _assert_owns(session_id: str | None, user_id: str) -> None:
         raise HTTPException(status_code=403, detail={"error": "session_forbidden"})
 
 
+async def _can_upload_knowledge(request: Request, user: User, rbac) -> bool:
+    """Return whether a chat request may persist URL content."""
+    if request is None:
+        return False
+    return await has_effective_permission(request, user, rbac, "knowledge:upload")
+
+
 class ChatBody(BaseModel):
     prompt: str
     previous_response_id: str | None = None
@@ -77,6 +86,8 @@ async def chat_endpoint(
     chat_service=Depends(get_chat_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("chat:use")),
+    request: Request = None,
+    rbac=Depends(get_rbac_service),
 ):
     """Handle chat requests"""
     if response := _native_chat_storage_error():
@@ -86,6 +97,7 @@ async def chat_endpoint(
 
     storage_user_id = _openrag_user_id(user)
     await _assert_owns(body.previous_response_id, storage_user_id)
+    can_upload_knowledge = await _can_upload_knowledge(request, user, rbac)
 
     jwt_token = user.jwt_token
 
@@ -110,6 +122,9 @@ async def chat_endpoint(
                 stream=True,
                 filter_id=body.filter_id,
                 storage_user_id=storage_user_id,
+                owner_name=user.name,
+                owner_email=user.email,
+                can_upload_knowledge=can_upload_knowledge,
             ),
             media_type="text/event-stream",
             headers={
@@ -126,6 +141,9 @@ async def chat_endpoint(
             stream=False,
             filter_id=body.filter_id,
             storage_user_id=storage_user_id,
+            owner_name=user.name,
+            owner_email=user.email,
+            can_upload_knowledge=can_upload_knowledge,
         )
         return JSONResponse(result)
 
@@ -135,6 +153,8 @@ async def langflow_endpoint(
     chat_service=Depends(get_chat_service),
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_permission("chat:use")),
+    request: Request = None,
+    rbac=Depends(get_rbac_service),
 ):
     """Handle Langflow chat requests"""
     if DISABLE_CHAT_WITH_LANGFLOW and (response := _native_chat_storage_error()):
@@ -145,6 +165,7 @@ async def langflow_endpoint(
     storage_user_id = _openrag_user_id(user)
     await _assert_owns(body.previous_response_id, storage_user_id)
     await _assert_owns(body.conversation_id, storage_user_id)
+    can_upload_knowledge = await _can_upload_knowledge(request, user, rbac)
 
     jwt_token = user.jwt_token
 
@@ -174,6 +195,7 @@ async def langflow_endpoint(
                     owner_name=user.name,
                     owner_email=user.email,
                     storage_user_id=storage_user_id,
+                    can_upload_knowledge=can_upload_knowledge,
                 ),
                 media_type="text/event-stream",
                 headers={
@@ -194,6 +216,7 @@ async def langflow_endpoint(
                 owner_name=user.name,
                 owner_email=user.email,
                 storage_user_id=storage_user_id,
+                can_upload_knowledge=can_upload_knowledge,
             )
             return JSONResponse(result)
 

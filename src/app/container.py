@@ -220,7 +220,12 @@ async def initialize_services():
     session_ownership_service._session_factory = _lazy_session_factory
     conversation_persistence._session_factory = _lazy_session_factory
     native_history_service = NativeChatHistoryService(_lazy_session_factory)
-    native_chat_agent = NativeChatAgent(native_history_service, session_ownership_service)
+    native_chat_agent = NativeChatAgent(
+        native_history_service,
+        session_ownership_service,
+        document_service=document_service,
+        models_service=models_service,
+    )
     chat_service = ChatService(
         flows_service=flows_service,
         native_chat_agent=native_chat_agent,
