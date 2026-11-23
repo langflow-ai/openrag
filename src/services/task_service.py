@@ -376,6 +376,7 @@ class TaskService:
         *,
         allow_anonymous_delete: bool,
         existing_task_id: str | None = None,
+        filter_ids: list[str] | None = None,
     ) -> str:
         """Create a new upload task for bulk file processing.
 
@@ -407,6 +408,7 @@ class TaskService:
             temp_file_paths=file_paths,
             preview_mode=preview_mode,
             existing_task_id=existing_task_id,
+            filter_ids=filter_ids,
         )
 
     async def create_langflow_upload_task(
@@ -429,6 +431,7 @@ class TaskService:
         preview_mode: bool = False,
         *,
         allow_anonymous_delete: bool,
+        filter_ids: list[str] | None = None,
     ) -> str:
         """Create a new upload task for Langflow file processing with upload and ingest.
 
@@ -463,6 +466,7 @@ class TaskService:
             existing_task_id=existing_task_id,
             temp_file_paths=temp_file_paths if temp_file_paths is not None else file_paths,
             preview_mode=preview_mode,
+            filter_ids=filter_ids,
         )
 
     def record_rejected_uploads(
@@ -588,8 +592,14 @@ class TaskService:
         existing_task_id: str = None,
         temp_file_paths: list | None = None,
         preview_mode: bool = False,
+        filter_ids: list[str] | None = None,
     ) -> str:
-        """Create a new task with custom processor for any type of items"""
+        """Create a new task with custom processor for any type of items.
+
+        ``filter_ids`` are saved knowledge filters each file joins once the task
+        completes (see ``services.collection_membership``). The caller has
+        already checked that the user may edit them.
+        """
         import os
 
         # Store anonymous tasks under a stable key so they can be retrieved later
@@ -604,6 +614,7 @@ class TaskService:
             str(item): FileTask(
                 file_path=str(item),
                 filename=normalized_originals.get(str(item), os.path.basename(str(item))),
+                filter_ids=tuple(filter_ids or ()),
             )
             for item in items
         }
@@ -986,6 +997,20 @@ class TaskService:
                         await clients.opensearch.indices.refresh(index=get_index_name())
                     except Exception as e:
                         logger.debug("Index refresh after ingest failed (non-fatal)", error=str(e))
+
+                # Filter membership goes on after the refresh (update_by_query
+                # only sees refreshed chunks) and before COMPLETED, so a caller
+                # polling for COMPLETED can search the filter straight away.
+                from services.collection_membership import apply_collection_labels
+
+                try:
+                    await apply_collection_labels(upload_task, user_id)
+                except Exception as e:
+                    logger.error(
+                        "Applying collection labels failed",
+                        task_id=task_id,
+                        error=str(e),
+                    )
 
                 upload_task.status = TaskStatus.COMPLETED
                 upload_task.updated_at = time.time()

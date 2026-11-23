@@ -46,12 +46,14 @@ async def ingest_endpoint(
     tweaks: str | None = Form(None),
     replace_duplicates: str = Form("true"),
     create_filter: str = Form("false"),
+    filter_ids: list[str] | None = Form(None),
     document_service=Depends(get_document_service),
     langflow_file_service=Depends(get_langflow_file_service),
     session_manager=Depends(get_session_manager),
     task_service=Depends(get_task_service),
     user: User = Depends(require_api_key_permission("knowledge:upload")),
     rbac=Depends(get_rbac_service),
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
 ):
     """
     Ingest a document into the knowledge base.
@@ -63,6 +65,10 @@ async def ingest_endpoint(
     echoes it in the upload response so onboarding can create a saved knowledge
     filter after ingestion completes. It does not affect task creation or
     ingestion behavior, and the v1 SDK does not expose this option.
+
+    `filter_ids` (repeat the field for several) adds each ingested document to
+    those saved knowledge filters when the task completes. An unknown filter,
+    or one the caller can't edit, is rejected before a task is created.
     """
     return await upload_ingest_router(
         request=request,
@@ -76,12 +82,14 @@ async def ingest_endpoint(
         # it. Pass an explicit value so the Form("false") default sentinel is not
         # forwarded when this function is called directly (not via form parsing).
         preview="false",
+        filter_ids=filter_ids if isinstance(filter_ids, list) else None,
         document_service=document_service,
         langflow_file_service=langflow_file_service,
         session_manager=session_manager,
         task_service=task_service,
         user=user,
         rbac=rbac,
+        knowledge_filter_service=knowledge_filter_service,
     )
 
 

@@ -1032,6 +1032,8 @@ INDEX_BODY = {
             "connector_file_id": {"type": "keyword"},
             # Object-store entity tag of the source file, for sync change detection.
             "content_etag": {"type": "keyword"},
+            # General-purpose labels, e.g. collection:<filter id> for filter membership.
+            "labels": {"type": "keyword"},
             "owner": {"type": "keyword"},
             "allowed_users": {"type": "keyword"},
             "allowed_groups": {"type": "keyword"},

@@ -68,6 +68,10 @@ class FileTask:
     docling_status: DoclingPhaseStatus = DoclingPhaseStatus.PENDING
     phase: IngestionPhase = IngestionPhase.DOCLING
     document_id: str | None = None
+    # Saved knowledge filters this file joins once its task completes
+    # (services.collection_membership).
+    filter_ids: tuple[str, ...] = ()
+    collection_labels_applied: bool = False
 
     @property
     def duration_seconds(self) -> float:

@@ -284,6 +284,7 @@ def test_over_http_the_permission_comes_from_rbac_and_never_from_the_caller(monk
     app.dependency_overrides[router_api.get_task_service] = lambda: task_service
     app.dependency_overrides[router_api.get_current_user] = _user
     app.dependency_overrides[router_api.get_rbac_service] = lambda: rbac
+    app.dependency_overrides[router_api.get_knowledge_filter_service] = lambda: MagicMock()
 
     with patch("api.router.get_openrag_config") as config, TestClient(app) as client:
         config.return_value.knowledge.disable_ingest_with_langflow = False

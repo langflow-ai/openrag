@@ -132,6 +132,10 @@ def normalize_query_data(query_data: str | dict) -> str:
         "owners": filters.get("owners", ["*"]),
         "connector_types": filters.get("connector_types", ["*"]),
     }
+    labels = filters.get("labels")
+    if isinstance(labels, list) and labels:
+        # Membership condition written by services.collection_membership.
+        normalized_filters["labels"] = [label for label in labels if isinstance(label, str)]
     bounds, date_context = _normalize_date_range(data, filters)
     normalized_filters.update(bounds)
 

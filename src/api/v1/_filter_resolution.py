@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-_FILTER_DIMENSIONS = ("data_sources", "document_types", "owners", "connector_types")
+_FILTER_DIMENSIONS = ("data_sources", "document_types", "owners", "connector_types", "labels")
 _DATE_BOUNDS = ("created_after", "created_before")
 
 
