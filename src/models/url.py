@@ -78,6 +78,7 @@ class UrlProcessor(TaskProcessor):
                 file_path=temp_file_path,
                 file_hash=document_id,
                 document_id=document_id,
+                replace_existing=True,
                 reconcile_source_url=True,
                 owner_user_id=self.owner_user_id,
                 original_filename=title,

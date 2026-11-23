@@ -16,12 +16,12 @@ import json
 import math
 import operator
 import os
+import re
 import socket
 import time
 import uuid
 from collections.abc import AsyncIterable, AsyncIterator, Callable
 from dataclasses import asdict
-from html.parser import HTMLParser
 from typing import Any, cast
 from urllib.parse import urlparse, urlsplit, urlunsplit
 
@@ -62,6 +62,7 @@ from services.search_service import raw_search_tool, search_tool
 from services.session_ownership_service import SessionOwnershipService
 from utils.langflow_utils import fence_untrusted_text, strip_untrusted_fence_recursive
 from utils.logging_config import get_logger
+from utils.url_content_fetcher import VisibleTextHTMLParser
 
 logger = get_logger(__name__)
 
@@ -83,16 +84,6 @@ _UNARY_OPERATORS: dict[type[ast.unaryop], Callable[[int | float], int | float]] 
     ast.UAdd: operator.pos,
     ast.USub: operator.neg,
 }
-
-
-class _TextExtractor(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self.parts: list[str] = []
-
-    def handle_data(self, data: str) -> None:
-        if data.strip():
-            self.parts.append(data.strip())
 
 
 class _PinnedAddressBackend:
@@ -292,9 +283,10 @@ async def _read_public_url(value: str) -> dict[str, Any]:
         body_bytes=len(body),
         encoding=response.encoding,
     )
-    extractor = _TextExtractor()
+    extractor = VisibleTextHTMLParser()
     try:
         extractor.feed(bytes(body).decode(response.encoding or "utf-8", errors="replace"))
+        extractor.close()
     except (TypeError, UnicodeError) as exc:
         logger.exception(
             "[CHAT] Native URL content parsing failed",
@@ -304,7 +296,7 @@ async def _read_public_url(value: str) -> dict[str, Any]:
             error_type=type(exc).__name__,
         )
         return {"error": "Could not read URL content"}
-    text = " ".join(extractor.parts)[:50_000]
+    text = re.sub(r"\s+", " ", extractor.get_text()).strip()[:50_000]
     logger.info(
         "[CHAT] Native URL content extracted",
         url_host=url_host,
@@ -350,9 +342,7 @@ def _native_llm_gateway_url() -> str:
 def _url_filename(url: str) -> str:
     """Return a bounded, stable filename unique to one URL page."""
     parsed = urlsplit(url)
-    path_and_query = f"{parsed.netloc}{parsed.path or '/'}"
-    if parsed.query:
-        path_and_query = f"{path_and_query}?{parsed.query}"
+    path_and_query = f"{parsed.hostname or 'url'}{parsed.path or '/'}"
     digest = hashlib.sha256(url.encode()).hexdigest()[:16]
     return f"{path_and_query[: 512 - len(digest) - 1]}-{digest}"
 
@@ -419,9 +409,8 @@ class NativeChatAgent:
         logger.info(
             "[CHAT] Native URL indexing started",
             url_host=urlparse(source_url).hostname,
-            filename=title,
-            embedding_provider=getattr(config, "embedding_provider", None),
-            embedding_model=getattr(config, "embedding_model", None),
+            embedding_provider=getattr(config.knowledge, "embedding_provider", None),
+            embedding_model=getattr(config.knowledge, "embedding_model", None),
         )
         temp_file_path = materialize_url_text_file(
             str(ingestion_page["text"]),
@@ -453,7 +442,6 @@ class NativeChatAgent:
             logger.exception(
                 "[CHAT] Native URL ingestion failed",
                 url_host=urlparse(source_url).hostname,
-                filename=title,
                 error_type=type(exc).__name__,
                 error=str(exc),
             )
@@ -468,7 +456,6 @@ class NativeChatAgent:
             logger.warning(
                 "[CHAT] Native URL ingestion failed",
                 url_host=urlparse(source_url).hostname,
-                filename=title,
                 error=file_task.error,
             )
             return {
@@ -482,7 +469,6 @@ class NativeChatAgent:
         logger.info(
             "[CHAT] Native URL ingestion completed",
             url_host=urlparse(source_url).hostname,
-            filename=title,
             status=ingestion.get("status"),
         )
         return {**page, "ingestion": ingestion}

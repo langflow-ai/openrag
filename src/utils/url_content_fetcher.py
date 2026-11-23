@@ -8,11 +8,12 @@ import html
 import re
 import tempfile
 from html.parser import HTMLParser
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
 
-class _VisibleTextHTMLParser(HTMLParser):
+class VisibleTextHTMLParser(HTMLParser):
     """Extract visible text while skipping script/style content."""
 
     def __init__(self):
@@ -36,11 +37,30 @@ class _VisibleTextHTMLParser(HTMLParser):
         return " ".join(self._chunks)
 
 
+def redact_url_for_display(url: str) -> str:
+    """Return a URL safe for document content and other user-visible metadata."""
+    parsed = urlsplit(url)
+    hostname = parsed.hostname
+    if not hostname:
+        return "URL"
+    try:
+        port = parsed.port
+    except ValueError:
+        port = None
+    netloc = f"[{hostname}]" if ":" in hostname else hostname
+    if port is not None:
+        netloc = f"{netloc}:{port}"
+    return urlunsplit((parsed.scheme, netloc, parsed.path or "/", "", ""))
+
+
 def materialize_url_text_file(
     text: str, *, source_url: str, title: str, crawl_depth: int, prefix: str = "openrag-url-"
 ) -> str:
     """Write already-fetched URL text in the format used by URL ingestion."""
-    content = f"{title}\n\nSource URL: {source_url}\nCrawl depth: {crawl_depth}\n\n{text}\n"
+    content = (
+        f"{title}\n\nSource URL: {redact_url_for_display(source_url)}\n"
+        f"Crawl depth: {crawl_depth}\n\n{text}\n"
+    )
     temp_file = tempfile.NamedTemporaryFile(
         mode="w",
         suffix=".txt",
@@ -68,7 +88,7 @@ async def materialize_url_as_text_file(docs_url: str, crawl_depth: int) -> tuple
     title = html.unescape(title_match.group(1).strip()) if title_match else ""
     title = title or "OpenRAG"
 
-    text_parser = _VisibleTextHTMLParser()
+    text_parser = VisibleTextHTMLParser()
     text_parser.feed(raw_html)
     text_parser.close()
     normalized_text = re.sub(r"\s+", " ", text_parser.get_text()).strip()

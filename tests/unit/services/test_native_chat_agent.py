@@ -177,7 +177,11 @@ def test_native_url_filename_is_stable_and_page_specific():
     assert first == _url_filename("https://example.com/a?view=full")
     assert first != _url_filename("https://example.com/b?view=full")
     assert first != _url_filename("https://example.com/a?view=compact")
-    assert first.startswith("example.com/a?view=full-")
+    assert first.startswith("example.com/a-")
+
+    private_filename = _url_filename("https://user:secret@example.com/a?token=abc")
+    assert "secret" not in private_filename
+    assert "token" not in private_filename
 
 
 @pytest.mark.asyncio
@@ -421,6 +425,34 @@ async def test_native_url_tool_indexes_the_validated_page_with_the_url_processor
         f"{_url_filename('https://example.com/doc')}\n\n"
         "Source URL: https://example.com/doc\nCrawl depth: 1\n\nDocument body\n"
     )
+
+
+@pytest.mark.asyncio
+async def test_native_url_tool_redacts_credentials_and_query_from_indexed_content(monkeypatch):
+    source_url = "https://user:secret@example.com/doc?token=abc"
+    monkeypatch.setattr(
+        "services.native_chat_agent._read_public_url",
+        AsyncMock(return_value={"url": source_url, "text": "Document body"}),
+    )
+    captured: dict[str, object] = {}
+
+    async def process_document_standard(*, file_path, **_kwargs):
+        captured["content"] = Path(file_path).read_text()
+        return {"status": "indexed"}
+
+    document_processor = MagicMock()
+    document_processor.process_document_standard = AsyncMock(side_effect=process_document_standard)
+    agent = NativeChatAgent(document_service=MagicMock(), models_service=MagicMock())
+    set_chat_ingestion_context("Owner Name", "owner@example.test", True)
+    try:
+        with patch("models.processors.DocumentFileProcessor", return_value=document_processor):
+            await agent._ingest_public_url(source_url, "user-id")
+    finally:
+        set_chat_ingestion_context(None, None, False)
+
+    assert "secret" not in captured["content"]
+    assert "token" not in captured["content"]
+    assert "Source URL: https://example.com/doc" in captured["content"]
 
 
 @pytest.mark.asyncio
