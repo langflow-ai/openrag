@@ -1013,10 +1013,15 @@ export function IngestSettingsSection() {
               </CollapsibleContent>
             </Collapsible>
           </div>
-          <div className="border-b border-border last:border-b-0">
+          <div
+            role="group"
+            aria-labelledby="picture-descriptions-label"
+            className="border-b border-border last:border-b-0"
+          >
             <div className="flex items-center justify-between gap-6 py-6">
               <div className="flex-1 space-y-2 pl-3">
                 <Label
+                  id="picture-descriptions-label"
                   htmlFor="picture-descriptions"
                   className="text-base font-semibold cursor-pointer"
                 >

@@ -638,10 +638,10 @@ describe("IngestSettingsSection VLM settings", () => {
     });
     // The VLM panel belongs to the Picture Descriptions row, inside the same
     // card as the other ingest toggles.
-    const pictureRow = screen
-      .getByRole("switch", { name: /picture descriptions/i })
-      .closest(".border-b");
-    expect(pictureRow).toContainElement(trigger);
+    const pictureGroup = screen.getByRole("group", {
+      name: /picture descriptions/i,
+    });
+    expect(pictureGroup).toContainElement(trigger);
 
     await userEvent.click(trigger);
 
