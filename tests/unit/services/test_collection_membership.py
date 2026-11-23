@@ -188,25 +188,52 @@ async def test_router_forwards_filter_ids_on_both_ingest_paths(monkeypatch, disa
 # --- the stamp ---------------------------------------------------------------
 
 
+class _VersionConflict(Exception):
+    status_code = 409
+
+
 class _FakeOpenSearch:
-    def __init__(self, filters: dict[str, dict]):
+    """Filters with sequence numbers, so conditional writes behave like OpenSearch."""
+
+    def __init__(self, filters: dict[str, dict], ubq_responses: list[dict] | None = None):
         self.filters = filters
+        self.seq_no = dict.fromkeys(filters, 0)
         self.update_by_query_calls: list[dict] = []
         self.filter_updates: list[tuple[str, dict]] = []
+        self.ubq_responses = list(ubq_responses or [])
+        # Runs once, between the read and the conditional write of a filter.
+        self.before_write = None
 
     async def get(self, index, id):
         assert index == "knowledge_filters"
         if id in self.filters:
-            return {"found": True, "_source": self.filters[id]}
+            return {
+                "found": True,
+                "_source": dict(self.filters[id]),
+                "_seq_no": self.seq_no[id],
+                "_primary_term": 1,
+            }
         return {"found": False}
 
     async def update_by_query(self, index, body, **kwargs):
         self.update_by_query_calls.append({"index": index, "body": body, **kwargs})
-        return {"updated": 1}
+        if self.ubq_responses:
+            return self.ubq_responses.pop(0)
+        return {"updated": 1, "version_conflicts": 0, "failures": []}
 
-    async def update(self, index, id, body, **kwargs):
+    def edit(self, id, **fields):
+        """A concurrent writer, e.g. someone saving the filter."""
+        self.filters[id] = {**self.filters[id], **fields}
+        self.seq_no[id] += 1
+
+    async def update(self, index, id, body, if_seq_no=None, if_primary_term=None, **kwargs):
+        if self.before_write is not None:
+            hook, self.before_write = self.before_write, None
+            hook()
+        if if_seq_no is not None and if_seq_no != self.seq_no[id]:
+            raise _VersionConflict("version conflict")
         self.filter_updates.append((id, body["doc"]))
-        self.filters[id] = {**self.filters[id], **body["doc"]}
+        self.edit(id, **body["doc"])
         return {"result": "updated"}
 
 
@@ -338,6 +365,66 @@ def test_anonymous_user_also_owns_ownerless_chunks():
     assert {"bool": {"must_not": {"exists": {"field": "owner"}}}} in owner_clause["bool"]["should"]
 
 
+@pytest.mark.asyncio
+async def test_wildcard_label_is_replaced_by_the_collection_label(monkeypatch):
+    fake = _FakeOpenSearch(
+        {"f1": {"query_data": _query_data({"data_sources": ["*"], "labels": ["*", "team:a"]})}}
+    )
+    _install(monkeypatch, fake)
+
+    await apply_collection_labels(_task(_file("a", TaskStatus.COMPLETED)), "user-1")
+
+    saved = json.loads(fake.filters["f1"]["query_data"])
+    assert saved["filters"]["labels"] == ["team:a", "collection:f1"]
+    assert _strip_wildcards(saved["filters"])["labels"] == ["team:a", "collection:f1"]
+
+
+@pytest.mark.asyncio
+async def test_condition_write_keeps_an_edit_made_since_the_read(monkeypatch):
+    fake = _FakeOpenSearch({"f1": {"name": "old", "query_data": _query_data()}})
+    _install(monkeypatch, fake)
+    renamed = json.dumps({"filters": {"data_sources": ["*"]}, "limit": 25})
+    fake.before_write = lambda: fake.edit("f1", name="new", query_data=renamed)
+
+    await apply_collection_labels(_task(_file("a", TaskStatus.COMPLETED)), "user-1")
+
+    saved = json.loads(fake.filters["f1"]["query_data"])
+    assert fake.filters["f1"]["name"] == "new"
+    assert saved["limit"] == 25
+    assert saved["filters"]["labels"] == ["collection:f1"]
+
+
+@pytest.mark.asyncio
+async def test_version_conflicted_chunks_are_retried(monkeypatch):
+    fake = _FakeOpenSearch(
+        {"f1": {"query_data": _query_data()}},
+        ubq_responses=[{"updated": 2, "version_conflicts": 1, "failures": []}],
+    )
+    _install(monkeypatch, fake)
+    ft = _file("a", TaskStatus.COMPLETED, document_id="doc-a")
+
+    await apply_collection_labels(_task(ft), "user-1")
+
+    assert len(fake.update_by_query_calls) == 2
+    assert ft.collection_labels_applied
+    assert [fid for fid, _ in fake.filter_updates] == ["f1"]
+
+
+@pytest.mark.asyncio
+async def test_persistent_conflicts_leave_file_unlabeled_and_filter_unchanged(monkeypatch):
+    conflicted = {"updated": 0, "version_conflicts": 1, "failures": []}
+    fake = _FakeOpenSearch({"f1": {"query_data": _query_data()}}, ubq_responses=[conflicted] * 3)
+    _install(monkeypatch, fake)
+    ft = _file("a", TaskStatus.COMPLETED, document_id="doc-a")
+
+    await apply_collection_labels(_task(ft), "user-1")
+
+    assert len(fake.update_by_query_calls) == 3
+    assert not ft.collection_labels_applied
+    assert "collection_warning" in ft.result
+    assert fake.filter_updates == []
+
+
 # --- task completion order ---------------------------------------------------
 
 
@@ -391,6 +478,41 @@ async def test_create_custom_task_carries_filter_ids_onto_each_file(monkeypatch)
 
     task = service.task_store["user1"][task_id]
     assert {ft.filter_ids for ft in task.file_tasks.values()} == {("f1", "f2")}
+
+
+@pytest.mark.asyncio
+async def test_task_appended_to_while_labeling_stays_running(monkeypatch):
+    from services.task_service import TaskService
+
+    monkeypatch.setattr("config.settings.clients", SimpleNamespace(opensearch=MagicMock()))
+    monkeypatch.setattr(
+        "config.settings.clients.opensearch.indices.refresh", AsyncMock(), raising=False
+    )
+
+    async def append_a_batch(upload_task, user_id):
+        # Another upload joins this task (existing_task_id) mid-finalize.
+        upload_task.file_tasks["/b"] = FileTask(file_path="/b", filename="b")
+        upload_task.total_files += 1
+
+    monkeypatch.setattr(collection_membership, "apply_collection_labels", append_a_batch)
+
+    class _Processor:
+        async def process_item(self, upload_task, item, file_task):
+            file_task.status = TaskStatus.COMPLETED
+            upload_task.successful_files += 1
+
+    service = TaskService(document_service=Mock(), ingestion_timeout=2)
+    task = UploadTask(
+        task_id="t1",
+        total_files=1,
+        file_tasks={"/a": FileTask(file_path="/a", filename="a")},
+        processor=_Processor(),
+    )
+    service.task_store.setdefault("user1", {})["t1"] = task
+
+    await service.background_custom_processor("user1", "t1", ["/a"])
+
+    assert task.status == TaskStatus.RUNNING
 
 
 # --- scoped search -----------------------------------------------------------

@@ -33,6 +33,8 @@ KNOWLEDGE_FILTERS_INDEX = "knowledge_filters"
 FILTER_EDIT_PERMISSION = "kf:edit:own"
 
 _ANONYMOUS_USER_IDS = (None, "", "anonymous")
+# Attempts for a write that can lose a race with another writer.
+_MAX_WRITE_ATTEMPTS = 3
 
 # Appends each label the chunk does not already carry. Idempotent, so a retried
 # task can run it again safely.
@@ -150,7 +152,12 @@ def _labelable(file_task: FileTask) -> bool:
     return file_task.status in (TaskStatus.COMPLETED, TaskStatus.SKIPPED)
 
 
-async def _load_filter(os_client, filter_id: str) -> dict | None:
+def _is_version_conflict(error: Exception) -> bool:
+    return getattr(error, "status_code", None) == 409 or "ConflictError" in type(error).__name__
+
+
+async def _get_filter_hit(os_client, filter_id: str) -> dict | None:
+    """The raw ``get`` response for a filter (with seq_no), or None if it's gone."""
     try:
         result = await os_client.get(index=KNOWLEDGE_FILTERS_INDEX, id=filter_id)
     except Exception as e:
@@ -159,7 +166,14 @@ async def _load_filter(os_client, filter_id: str) -> dict | None:
         raise
     if not result.get("found"):
         return None
-    return result.get("_source") or {}
+    return result
+
+
+async def _load_filter(os_client, filter_id: str) -> dict | None:
+    hit = await _get_filter_hit(os_client, filter_id)
+    if hit is None:
+        return None
+    return hit.get("_source") or {}
 
 
 def _query_data(filter_doc: dict) -> dict:
@@ -173,32 +187,106 @@ def _query_data(filter_doc: dict) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
-async def _ensure_filter_condition(os_client, filter_id: str, filter_doc: dict) -> None:
-    """Add ``labels: [collection:<id>]`` to the filter if it isn't there yet."""
-    label = collection_label(filter_id)
-    query_data = _query_data(filter_doc)
+def _with_collection_condition(query_data: dict, label: str) -> dict | None:
+    """``query_data`` with ``label`` in its ``labels`` condition, or None if present.
+
+    A ``"*"`` entry is dropped: a dimension holding the wildcard is treated as
+    unscoped, which would stop the filter restricting to its members. Other
+    concrete labels are kept.
+    """
     filters = query_data.get("filters")
     if not isinstance(filters, dict):
         filters = {}
     labels = filters.get(LABELS_FIELD)
     if not isinstance(labels, list):
         labels = []
-    if label in labels:
+    if label in labels and "*" not in labels:
+        return None
+    concrete = [value for value in labels if value != "*" and value != label]
+    return {**query_data, "filters": {**filters, LABELS_FIELD: [*concrete, label]}}
+
+
+async def _ensure_filter_condition(os_client, filter_id: str) -> None:
+    """Add ``labels: [collection:<id>]`` to the filter if it isn't there yet.
+
+    Reads the current filter and writes back with its sequence number, so an
+    edit made since the read is never overwritten: on a conflict it reloads
+    and merges again.
+    """
+    label = collection_label(filter_id)
+    for attempt in range(1, _MAX_WRITE_ATTEMPTS + 1):
+        hit = await _get_filter_hit(os_client, filter_id)
+        if hit is None:
+            logger.warning(
+                "Knowledge filter no longer exists; skipping collection condition",
+                filter_id=filter_id,
+            )
+            return
+        updated = _with_collection_condition(_query_data(hit.get("_source") or {}), label)
+        if updated is None:
+            return
+        try:
+            await os_client.update(
+                index=KNOWLEDGE_FILTERS_INDEX,
+                id=filter_id,
+                body={
+                    "doc": {
+                        "query_data": json.dumps(updated),
+                        "updated_at": datetime.now(UTC).isoformat(),
+                    }
+                },
+                if_seq_no=hit.get("_seq_no"),
+                if_primary_term=hit.get("_primary_term"),
+                refresh="wait_for",
+            )
+        except Exception as e:
+            if _is_version_conflict(e) and attempt < _MAX_WRITE_ATTEMPTS:
+                continue
+            raise
+        logger.info("Added collection condition to knowledge filter", filter_id=filter_id)
         return
-    filters[LABELS_FIELD] = [*labels, label]
-    query_data["filters"] = filters
-    await os_client.update(
-        index=KNOWLEDGE_FILTERS_INDEX,
-        id=filter_id,
-        body={
-            "doc": {
-                "query_data": json.dumps(query_data),
-                "updated_at": datetime.now(UTC).isoformat(),
-            }
-        },
-        refresh="wait_for",
+
+
+async def _label_document_chunks(
+    os_client, index_name: str, document_id: str, user_id: str | None, labels: list[str]
+) -> None:
+    """Add ``labels`` to the caller's chunks of a document, retrying conflicts.
+
+    ``conflicts="proceed"`` lets OpenSearch finish the pass when a chunk changes
+    under it, but those chunks are left unlabeled; the script is idempotent, so
+    rerunning it picks them up. Raises if any chunk is still unlabeled after the
+    last attempt.
+    """
+    for attempt in range(1, _MAX_WRITE_ATTEMPTS + 1):
+        response = await os_client.update_by_query(
+            index=index_name,
+            body={
+                "query": build_own_document_chunks_query(document_id, user_id),
+                "script": {
+                    "lang": "painless",
+                    "source": _ADD_LABELS_SCRIPT,
+                    "params": {"labels": labels},
+                },
+            },
+            refresh=True,
+            conflicts="proceed",
+        )
+        response = response if isinstance(response, dict) else {}
+        failures = response.get("failures") or []
+        conflicts = response.get("version_conflicts") or 0
+        if failures:
+            raise RuntimeError(f"update_by_query reported {len(failures)} failure(s)")
+        if not conflicts:
+            return
+        logger.debug(
+            "Collection label write hit version conflicts; retrying",
+            document_id=document_id,
+            version_conflicts=conflicts,
+            attempt=attempt,
+        )
+    raise RuntimeError(
+        f"{conflicts} chunk(s) still conflicted after {_MAX_WRITE_ATTEMPTS} attempts"
     )
-    logger.info("Added collection condition to knowledge filter", filter_id=filter_id)
 
 
 async def apply_collection_labels(upload_task: UploadTask, user_id: str | None) -> None:
@@ -210,8 +298,10 @@ async def apply_collection_labels(upload_task: UploadTask, user_id: str | None) 
     finishes, and access was checked when the request came in.
 
     A filter deleted since the request was accepted is skipped with a warning.
-    A failed label write is logged and recorded as a warning on the file's
-    result; the file stays COMPLETED because its chunks were indexed.
+    A failed label write (including chunks still conflicted after retries) is
+    logged and recorded as a warning on the file's result; the file stays
+    COMPLETED because its chunks were indexed, and is not marked labeled. A
+    filter gets its condition only from files whose writes were confirmed.
     """
     pending = [ft for ft in upload_task.file_tasks.values() if _labelable(ft)]
     if not pending:
@@ -252,18 +342,8 @@ async def apply_collection_labels(upload_task: UploadTask, user_id: str | None) 
             continue
         labels = [collection_label(fid) for fid in live_ids]
         try:
-            await os_client.update_by_query(
-                index=index_name,
-                body={
-                    "query": build_own_document_chunks_query(file_task.document_id, user_id),
-                    "script": {
-                        "lang": "painless",
-                        "source": _ADD_LABELS_SCRIPT,
-                        "params": {"labels": labels},
-                    },
-                },
-                refresh=True,
-                conflicts="proceed",
+            await _label_document_chunks(
+                os_client, index_name, file_task.document_id, user_id, labels
             )
         except Exception as e:
             logger.error(
@@ -282,7 +362,7 @@ async def apply_collection_labels(upload_task: UploadTask, user_id: str | None) 
 
     for filter_id in labeled_filters:
         try:
-            await _ensure_filter_condition(os_client, filter_id, filter_docs[filter_id] or {})
+            await _ensure_filter_condition(os_client, filter_id)
         except Exception as e:
             logger.error(
                 "Failed to add collection condition to knowledge filter",

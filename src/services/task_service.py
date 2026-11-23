@@ -1012,8 +1012,12 @@ class TaskService:
                         error=str(e),
                     )
 
-                upload_task.status = TaskStatus.COMPLETED
-                upload_task.updated_at = time.time()
+                # Files can be appended (existing_task_id) while the awaits
+                # above run. Leave the task RUNNING for that batch's own
+                # finalizer instead of reporting it COMPLETED early.
+                if upload_task.processed_files >= upload_task.total_files:
+                    upload_task.status = TaskStatus.COMPLETED
+                    upload_task.updated_at = time.time()
 
             # Clean up upload temps that are not retryable; keep local RETRYABLE
             # failures so retry can re-read the staged source file.
