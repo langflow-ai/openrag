@@ -81,8 +81,7 @@ def test_verify_jwt_from_issuer_accepts_standard_jwks_response():
     def _b64(value: int) -> str:
         import base64
 
-        length = (value.bit_length() + 7) // 8
-        return base64.urlsafe_b64encode(value.to_bytes(length, "big")).rstrip(b"=").decode()
+        return base64.urlsafe_b64encode(value.to_bytes(32, "big")).rstrip(b"=").decode()
 
     jwks = {
         "keys": [
