@@ -1131,6 +1131,13 @@ async def test_onboarding_keeps_chunk_size_for_model_only_update_of_other_provid
         ("watsonx_onprem", "big", -5, (500, 200, 500)),
         ("watsonx_onprem", 400, None, (400, 200, None)),
         ("watsonx_onprem", True, 100, (500, 100, 500)),
+        # YAML `.inf` loads as float infinity; int(inf) raises OverflowError.
+        ("watsonx_onprem", float("inf"), float("inf"), (500, 200, 500)),
+        ("watsonx_onprem", 300, float("inf"), (300, 200, None)),
+        # A fallback overlap must still stay below a small retained chunk size.
+        ("watsonx_onprem", 100, None, (100, 20, None)),
+        ("watsonx_onprem", 100, 150, (100, 20, None)),
+        ("watsonx_onprem", 1, None, (1, 0, None)),
     ],
 )
 def test_cap_watsonx_onprem_onboarding_chunk_size(provider, chunk_size, chunk_overlap, expected):

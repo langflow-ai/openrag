@@ -316,13 +316,13 @@ def _persisted_int(value: Any, default: int, *, minimum: int) -> int:
     """A persisted chunk setting as an int, or `default` when it is missing or invalid.
 
     Saved config is loaded without validation, so a hand-edited or older file can
-    hold `null`, a string or a negative number here.
+    hold `null`, a string, a negative number or `.inf` here.
     """
     if isinstance(value, bool):
         return default
     try:
         number = int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # OverflowError: int(inf)
         return default
     return number if number >= minimum else default
 
@@ -342,13 +342,21 @@ def _cap_watsonx_onprem_onboarding_chunk_size(knowledge) -> int | None:
     knowledge.chunk_overlap = _persisted_int(
         knowledge.chunk_overlap, DEFAULT_CHUNK_OVERLAP, minimum=0
     )
-    if knowledge.chunk_size <= WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE:
+    capped = knowledge.chunk_size > WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+    if capped:
+        knowledge.chunk_size = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+    if knowledge.chunk_overlap >= knowledge.chunk_size:
+        # The overlap must stay below the chunk size (the settings endpoint rejects
+        # anything else). Use the default when it fits, else a fifth of the chunk,
+        # the same ratio as the defaults.
+        knowledge.chunk_overlap = (
+            DEFAULT_CHUNK_OVERLAP
+            if DEFAULT_CHUNK_OVERLAP < knowledge.chunk_size
+            else knowledge.chunk_size // 5
+        )
+    if not capped:
         return None
 
-    knowledge.chunk_size = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
-    if knowledge.chunk_overlap >= WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE:
-        # The overlap must stay below the new chunk size; fall back to the default.
-        knowledge.chunk_overlap = DEFAULT_CHUNK_OVERLAP
     logger.info(
         "Reduced chunk size for watsonx.ai on-prem embedding compatibility",
         chunk_size=knowledge.chunk_size,
