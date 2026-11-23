@@ -171,15 +171,16 @@ def test_native_gateway_keeps_an_explicit_proxy_url(monkeypatch):
     assert _native_llm_gateway_url() == "https://proxy.example/v1"
 
 
-def test_native_url_filename_is_stable_and_page_specific():
+def test_native_url_filename_uses_a_safe_display_url():
     first = _url_filename("https://example.com/a?view=full")
 
     assert first == _url_filename("https://example.com/a?view=full")
-    assert first != _url_filename("https://example.com/b?view=full")
-    assert first != _url_filename("https://example.com/a?view=compact")
-    assert first.startswith("example.com/a-")
+    assert first == "example.com/a"
+    assert _url_filename("https://example.com/b?view=full") == "example.com/b"
+    assert _url_filename("https://example.com/a?view=compact") == "example.com/a"
 
     private_filename = _url_filename("https://user:secret@example.com/a?token=abc")
+    assert private_filename == "example.com/a"
     assert "secret" not in private_filename
     assert "token" not in private_filename
 

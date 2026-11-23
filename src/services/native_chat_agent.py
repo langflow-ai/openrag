@@ -10,7 +10,6 @@ from __future__ import annotations
 import ast
 import asyncio
 import copy
-import hashlib
 import ipaddress
 import json
 import math
@@ -340,11 +339,9 @@ def _native_llm_gateway_url() -> str:
 
 
 def _url_filename(url: str) -> str:
-    """Return a bounded, stable filename unique to one URL page."""
+    """Return the safe, human-readable URL used as the document filename."""
     parsed = urlsplit(url)
-    path_and_query = f"{parsed.hostname or 'url'}{parsed.path or '/'}"
-    digest = hashlib.sha256(url.encode()).hexdigest()[:16]
-    return f"{path_and_query[: 512 - len(digest) - 1]}-{digest}"
+    return f"{parsed.hostname or 'url'}{parsed.path or '/'}"[:512]
 
 
 class NativeChatAgent:
