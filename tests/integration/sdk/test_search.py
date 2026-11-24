@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from openrag_sdk import SearchFilters
-from openrag_sdk.exceptions import ValidationError
+from openrag_sdk.exceptions import OpenRAGError, ValidationError
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("SKIP_SDK_INTEGRATION_TESTS") == "true",
@@ -107,6 +107,33 @@ class TestSearchExtended:
         """A whitespace-only query must raise ValidationError, not be treated as valid."""
         with pytest.raises(ValidationError):
             await client.search.query("   ")
+
+
+class TestSearchModes:
+    """The diagnostic vector-only and keyword-only search modes."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("search_mode", ["hybrid", "vector", "keyword"])
+    async def test_each_mode_finds_the_document(self, client, test_file: Path, search_mode: str):
+        """The document's unique phrase is found by each half of hybrid search alone."""
+        await client.documents.ingest(file_path=str(test_file))
+
+        try:
+            results = await client.search.query(
+                "purple elephants dancing",
+                filters=SearchFilters(data_sources=[test_file.name]),
+                search_mode=search_mode,
+            )
+            assert [r.filename for r in results.results][:1] == [test_file.name]
+        finally:
+            await client.documents.delete(test_file.name)
+
+    @pytest.mark.asyncio
+    async def test_unknown_mode_is_rejected(self, client):
+        """The API validates the mode instead of silently running hybrid search."""
+        with pytest.raises(OpenRAGError) as raised:
+            await client.search.query("test", search_mode="bm25")  # type: ignore[arg-type]
+        assert raised.value.status_code == 422
 
 
 class TestSearchFilenameFilter:

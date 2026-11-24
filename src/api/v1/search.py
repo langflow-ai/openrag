@@ -5,7 +5,7 @@ Provides semantic search functionality.
 Uses API key authentication.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import Depends
 from fastapi.responses import JSONResponse
@@ -33,6 +33,9 @@ class SearchV1Body(BaseModel):
     limit: int = 10
     score_threshold: float = 0
     filter_id: str | None = None
+    # Diagnostic: run only the vector or keyword half of hybrid search, to see
+    # which half finds or loses a document. Hybrid is what chat and the UI use.
+    search_mode: Literal["hybrid", "vector", "keyword"] = "hybrid"
 
 
 async def search_endpoint(
@@ -74,6 +77,7 @@ async def search_endpoint(
         limit=resolved_limit,
         score_threshold=resolved_score_threshold,
         filter_id=body.filter_id,
+        search_mode=body.search_mode,
     )
 
     try:
@@ -88,6 +92,7 @@ async def search_endpoint(
                 filters=resolved_filters or {},
                 limit=resolved_limit,
                 score_threshold=resolved_score_threshold,
+                search_mode=body.search_mode,
             )
 
         results = [

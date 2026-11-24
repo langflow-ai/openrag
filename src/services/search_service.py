@@ -64,6 +64,11 @@ _MAPPING_COMPATIBLE_FILTER_FIELDS = {"web_source_id"}
 _CHUNK_SEARCH_EXCLUDED_RECORD_KINDS = {"web_source", "web_page_manifest"}
 _SAMPLE_DATA_EXCLUSION = {"bool": {"must_not": [{"term": {"is_sample_data": "true"}}]}}
 
+# Which clauses of the hybrid query run. ``vector`` and ``keyword`` are for
+# diagnosing ranking (which half finds or loses a document); each keeps the boost
+# it has inside hybrid search, so its scores are that half of the hybrid score.
+SEARCH_MODES = ("hybrid", "vector", "keyword")
+
 
 # Variable used to store the active instance for the tool wrapper
 _global_search_service = None
@@ -632,10 +637,12 @@ class SearchService:
             get_score_threshold,
             get_search_filters,
             get_search_limit,
+            get_search_mode,
             get_search_result_mode,
         )
 
         filters = get_search_filters() or {}
+        search_mode = get_search_mode()
         limit = get_search_limit()
         score_threshold = get_score_threshold()
         result_mode = get_search_result_mode()
@@ -649,7 +656,7 @@ class SearchService:
 
         opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
 
-        if not is_wildcard_match_all:
+        if not is_wildcard_match_all and search_mode != "keyword":
             # Build filter clauses first so we can use them in model detection
             filter_clauses = _add_result_mode_filter(
                 _build_search_filter_clauses(filters), result_mode
@@ -803,7 +810,7 @@ class SearchService:
                 query_preview=query[:50],
             )
         else:
-            # Wildcard query - no embedding needed
+            # Wildcard or keyword-only query - no embedding needed
             filter_clauses = _add_result_mode_filter(
                 _build_search_filter_clauses(filters), result_mode
             )
@@ -867,6 +874,22 @@ class SearchService:
             # Hybrid search (semantic + keyword) when embeddings are available;
             # keyword-only fallback when none succeeded. When falling back, bump
             # the multi_match boost so keyword scoring isn't artificially damped.
+            if search_mode == "vector" and not knn_queries:
+                # Falling back to keywords would hide what this mode diagnoses.
+                return {
+                    "results": [],
+                    "warnings": [
+                        {
+                            "code": "vector_search_unavailable",
+                            "models": failed_models,
+                            "semantic_search_available": False,
+                            "message": (
+                                "Vector-only search returned nothing: no query embedding "
+                                "could be generated for the indexed embedding models."
+                            ),
+                        }
+                    ],
+                }
             should_clauses: list[dict[str, Any]] = []
             if knn_queries:
                 should_clauses.append(
@@ -878,34 +901,36 @@ class SearchService:
                         }
                     }
                 )
-            should_clauses.extend(
-                [
-                    {
-                        "multi_match": {
+            keyword_clauses = [
+                {
+                    "multi_match": {
+                        "query": query,
+                        "fields": ["text^2", "filename^1.5"],
+                        "type": "best_fields",
+                        "operator": "or",
+                        "fuzziness": "AUTO:4,7",
+                        # Keyword-only mode keeps its hybrid share, so its
+                        # scores stay comparable with the hybrid score.
+                        "boost": 0.3 if knn_queries or search_mode == "keyword" else 1.0,
+                    }
+                },
+                {
+                    # Prefix fallback for partial input (e.g. "vita" -> "vitamin").
+                    # Avoid bool_prefix here because our current mappings are:
+                    # - text: standard "text" (not search_as_you_type / edge-ngram)
+                    # - filename: "keyword"
+                    # match_phrase_prefix with a bounded expansion is safer.
+                    "match_phrase_prefix": {
+                        "text": {
                             "query": query,
-                            "fields": ["text^2", "filename^1.5"],
-                            "type": "best_fields",
-                            "operator": "or",
-                            "fuzziness": "AUTO:4,7",
-                            "boost": 0.3 if knn_queries else 1.0,
+                            "max_expansions": 50,
+                            "boost": 0.25,
                         }
-                    },
-                    {
-                        # Prefix fallback for partial input (e.g. "vita" -> "vitamin").
-                        # Avoid bool_prefix here because our current mappings are:
-                        # - text: standard "text" (not search_as_you_type / edge-ngram)
-                        # - filename: "keyword"
-                        # match_phrase_prefix with a bounded expansion is safer.
-                        "match_phrase_prefix": {
-                            "text": {
-                                "query": query,
-                                "max_expansions": 50,
-                                "boost": 0.25,
-                            }
-                        }
-                    },
-                ]
-            )
+                    }
+                },
+            ]
+            if search_mode != "vector":
+                should_clauses.extend(keyword_clauses)
 
             query_block = {
                 "bool": {
@@ -1179,6 +1204,7 @@ class SearchService:
         *,
         source: str = "api",
         exclude_sample_data: bool = False,
+        search_mode: str = "hybrid",
     ) -> dict[str, Any]:
         """Public search method for API endpoints
 
@@ -1188,7 +1214,11 @@ class SearchService:
             source: Trace tag distinguishing who is searching (see ``search_tool``)
             exclude_sample_data: Leave out the bundled sample documents
                 (``is_sample_data``), as the nudges flow does when no filter is set
+            search_mode: ``hybrid`` (default), or ``vector`` / ``keyword`` to run
+                only that half of the hybrid query (see ``SEARCH_MODES``)
         """
+        if search_mode not in SEARCH_MODES:
+            raise ValueError(f"search_mode must be one of {', '.join(SEARCH_MODES)}")
         # Set auth context if provided (for direct API calls)
         from config.settings import is_no_auth_mode
 
@@ -1199,10 +1229,12 @@ class SearchService:
 
         from auth_context import (
             get_exclude_sample_data,
+            get_search_mode,
             set_exclude_sample_data,
             set_score_threshold,
             set_search_filters,
             set_search_limit,
+            set_search_mode,
             set_search_result_mode,
         )
 
@@ -1216,10 +1248,15 @@ class SearchService:
         # it, so a later direct call in this task would otherwise inherit it.
         previous_exclude_sample_data = get_exclude_sample_data()
         set_exclude_sample_data(exclude_sample_data)
+        # Restored the same way, so an agent tool search later in this task
+        # never runs in a diagnostic mode.
+        previous_search_mode = get_search_mode()
+        set_search_mode(search_mode)
         try:
             return await self.search_tool(query, embedding_model=embedding_model, source=source)
         finally:
             set_exclude_sample_data(previous_exclude_sample_data)
+            set_search_mode(previous_search_mode)
 
     # ------------------------------------------------------------------
     # Search-as-you-type suggestions

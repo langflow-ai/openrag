@@ -33,6 +33,11 @@ export class SearchClient {
       body["filter_id"] = options.filterId;
     }
 
+    // Only sent when set, so default requests stay unchanged.
+    if (options?.searchMode && options.searchMode !== "hybrid") {
+      body["search_mode"] = options.searchMode;
+    }
+
     const response = await this.client._request("POST", "/api/v1/search", {
       body: JSON.stringify(body),
     });

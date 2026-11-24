@@ -143,6 +143,10 @@ results = await client.search.query(
     limit=5,
     score_threshold=0.5
 )
+
+# Run only one half of hybrid search, to see which half finds a document
+vector_only = await client.search.query("rotate an API key", search_mode="vector")
+keyword_only = await client.search.query("rotate an API key", search_mode="keyword")
 ```
 
 ## Documents

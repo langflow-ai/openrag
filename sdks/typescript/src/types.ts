@@ -339,6 +339,13 @@ export interface SearchQueryOptions {
   scoreThreshold?: number;
   /** Knowledge filter ID to apply to the search. */
   filterId?: string;
+  /**
+   * "hybrid" (default) runs vector and keyword search together, as chat does.
+   * "vector" or "keyword" runs only that half, to see which half finds or loses
+   * a document. Needs an OpenRAG server that supports it; older servers ignore
+   * the option and run hybrid search.
+   */
+  searchMode?: "hybrid" | "vector" | "keyword";
 }
 
 // Error types

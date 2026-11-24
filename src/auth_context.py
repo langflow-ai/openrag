@@ -22,6 +22,7 @@ _current_score_threshold: ContextVar[float | None] = ContextVar(
 _current_search_result_mode: ContextVar[str] = ContextVar(
     "current_search_result_mode", default="chunks"
 )
+_current_search_mode: ContextVar[str] = ContextVar("current_search_mode", default="hybrid")
 _current_exclude_sample_data: ContextVar[bool] = ContextVar(
     "current_exclude_sample_data", default=False
 )
@@ -98,6 +99,16 @@ def set_search_result_mode(result_mode: str):
 def get_search_result_mode() -> str:
     """Get the result surface that requested this search."""
     return _current_search_result_mode.get()
+
+
+def set_search_mode(search_mode: str):
+    """Set which half of hybrid search runs: hybrid, vector or keyword."""
+    _current_search_mode.set(search_mode)
+
+
+def get_search_mode() -> str:
+    """Get which half of hybrid search runs: hybrid, vector or keyword."""
+    return _current_search_mode.get()
 
 
 def set_exclude_sample_data(exclude: bool):
