@@ -3,6 +3,7 @@
 import { AlertTriangle, X } from "lucide-react";
 import { useState } from "react";
 import { useGetFlowsUpdatesQuery } from "@/app/api/queries/useGetFlowsUpdatesQuery";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { FlowsUpdateDialog } from "@/components/flows-update-dialog";
 import { useBrand } from "@/contexts/brand-context";
 import { useSettingsTabAccess } from "@/hooks/use-permissions";
@@ -14,15 +15,23 @@ export function LangflowUpdatesBanner() {
   const isIbm = brand === "ibm";
   const tabAccess = useSettingsTabAccess();
   const canView = canViewFlowUpdates(tabAccess);
+  const { data: settings } = useGetSettingsQuery();
   const { data: updates, isLoading } = useGetFlowsUpdatesQuery({
-    enabled: canView,
+    enabled: canView && settings?.langflow_enabled === true,
   });
   const [isDismissed, setIsDismissed] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
   const hasUpdates = (updates?.length ?? 0) > 0;
 
-  if (!canView || isLoading || !updates || !hasUpdates || isDismissed) {
+  if (
+    !canView ||
+    settings?.langflow_enabled !== true ||
+    isLoading ||
+    !updates ||
+    !hasUpdates ||
+    isDismissed
+  ) {
     return null;
   }
 

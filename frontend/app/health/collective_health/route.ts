@@ -14,27 +14,32 @@ interface HealthCheckResponse {
   timestamp: string;
 }
 
-async function checkPodLiveness(url: string, timeout = 3000): Promise<boolean> {
+interface PodHealth {
+  alive: boolean;
+  body?: unknown;
+}
+
+interface BackendHealthResponse {
+  langflow_enabled?: boolean;
+}
+
+async function checkPodHealth(url: string, timeout = 3000): Promise<PodHealth> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
   try {
-    const response = await axios.get(url, {
+    const response = await axios.get<unknown>(url, {
       signal: controller.signal,
       timeout,
       proxy: false,
-      responseType: "stream",
       validateStatus: () => true,
     });
-    // Liveness depends only on the status line. Do not wait for a pod that
-    // keeps the response body open indefinitely.
-    if (response.data && typeof response.data.destroy === "function") {
-      response.data.destroy();
-    }
-    // Pod is alive if it responds (any status code means it's running)
-    return response.status < 500;
+    return {
+      alive: response.status < 500,
+      body: response.data,
+    };
   } catch {
-    return false;
+    return { alive: false };
   } finally {
     clearTimeout(timeoutId);
   }
@@ -58,19 +63,22 @@ export async function GET() {
   const backendUrl = `${backendScheme}://${backendHost}:${backendPort}${backendHealthPath}`;
   const langflowUrl = `${langflowScheme}://${langflowHost}:${langflowPort}${langflowHealthPath}`;
 
-  // Check liveness of backend and langflow pods in parallel
-  const [backendAlive, langflowAlive] = await Promise.all([
-    checkPodLiveness(backendUrl),
-    checkPodLiveness(langflowUrl),
-  ]);
+  const backend = await checkPodHealth(backendUrl);
+  // Preserve the existing safe default during a staggered deployment with a
+  // backend that does not yet report the capability.
+  const langflowEnabled =
+    (backend.body as BackendHealthResponse)?.langflow_enabled !== false;
+  const langflow = langflowEnabled
+    ? await checkPodHealth(langflowUrl)
+    : { alive: true };
 
-  const allPodsAlive = backendAlive && langflowAlive;
+  const allPodsAlive = backend.alive && langflow.alive;
 
   const response: HealthCheckResponse = {
     status: allPodsAlive ? "ok" : "not_ok",
     pods: {
-      backend: { alive: backendAlive },
-      langflow: { alive: langflowAlive },
+      backend: { alive: backend.alive },
+      langflow: { alive: langflow.alive },
     },
     timestamp: new Date().toISOString(),
   };

@@ -465,13 +465,18 @@ class ConfigScreen(Screen):
                 self.env_manager.generate_secure_password()
             )
 
-        if not self.env_manager.config.langflow_superuser_password:
+        langflow_disabled = self.env_manager.config.disable_langflow.strip().lower() in (
+            "true",
+            "1",
+            "yes",
+        )
+        if not langflow_disabled and not self.env_manager.config.langflow_superuser_password:
             self.env_manager.config.langflow_superuser_password = (
                 self.env_manager.generate_secure_password()
             )
 
         # Update secret keys
-        if not self.env_manager.config.langflow_secret_key:
+        if not langflow_disabled and not self.env_manager.config.langflow_secret_key:
             self.env_manager.config.langflow_secret_key = (
                 self.env_manager.generate_langflow_secret_key()
             )

@@ -385,3 +385,34 @@ class TestNativeChatSetting:
 
         (langflow,) = [section for section in CONFIG_SECTIONS if section.name == "Langflow"]
         assert "DISABLE_CHAT_WITH_LANGFLOW" in {field.env_var for field in langflow.fields}
+
+
+class TestDisableLangflowSetting:
+    """The master switch must make TUI startup independent from Langflow."""
+
+    def test_disable_langflow_omits_langflow_credentials_and_data_path(self, env_manager, tmp_path):
+        env_manager.config.disable_langflow = "true"
+        env_manager.config.opensearch_password = "OpenSearchPass123!"
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            assert env_manager.save_env_file() is True
+
+        content = (tmp_path / ".env").read_text()
+        assert "DISABLE_LANGFLOW='true'" in content
+        assert "LANGFLOW_SECRET_KEY=" not in content
+        assert "LANGFLOW_SUPERUSER_PASSWORD=" not in content
+        assert "LANGFLOW_DATA_PATH=" not in content
+
+    def test_process_disable_langflow_overrides_a_persisted_tui_value(
+        self, tmp_path, monkeypatch
+    ):
+        from tui.managers.env_manager import EnvManager
+
+        env_file = tmp_path / ".env"
+        env_file.write_text("DISABLE_LANGFLOW=false\n")
+        monkeypatch.setenv("DISABLE_LANGFLOW", "true")
+
+        manager = EnvManager(env_file=env_file)
+        manager.load_existing_env()
+
+        assert manager.config.disable_langflow == "true"

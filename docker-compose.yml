@@ -55,8 +55,6 @@ services:
       context: .
       dockerfile: Dockerfile.backend
     container_name: ${COMPOSE_PROJECT_NAME:-openrag}-backend
-    depends_on:
-      - langflow
     environment:
       - OPENSEARCH_HOST=${OPENSEARCH_HOST:-opensearch}
       - LANGFLOW_URL=http://langflow:7860
@@ -71,6 +69,8 @@ services:
       - LANGFLOW_URL_INGEST_FLOW_ID=${LANGFLOW_URL_INGEST_FLOW_ID}
       - DISABLE_INGEST_WITH_LANGFLOW=${DISABLE_INGEST_WITH_LANGFLOW:-false}
       - DISABLE_CHAT_WITH_LANGFLOW=${DISABLE_CHAT_WITH_LANGFLOW:-false}
+      - DISABLE_NUDGES_WITH_LANGFLOW=${DISABLE_NUDGES_WITH_LANGFLOW:-false}
+      - DISABLE_LANGFLOW=${DISABLE_LANGFLOW:-false}
       - OPENRAG_EMBEDDING_OVERFLOW_POLICY=${OPENRAG_EMBEDDING_OVERFLOW_POLICY:-}
       - INGEST_SAMPLE_DATA=${INGEST_SAMPLE_DATA:-true}
       - NUDGES_FLOW_ID=${NUDGES_FLOW_ID}
@@ -221,10 +221,15 @@ services:
     environment:
       - OPENRAG_BACKEND_HOST=openrag-backend
       - OPENRAG_FRONTEND_BASE_PATH=${OPENRAG_FRONTEND_BASE_PATH:-}
+      - DISABLE_LANGFLOW=${DISABLE_LANGFLOW:-false}
+      - DISABLE_CHAT_WITH_LANGFLOW=${DISABLE_CHAT_WITH_LANGFLOW:-false}
+      - DISABLE_INGEST_WITH_LANGFLOW=${DISABLE_INGEST_WITH_LANGFLOW:-false}
+      - DISABLE_NUDGES_WITH_LANGFLOW=${DISABLE_NUDGES_WITH_LANGFLOW:-false}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
 
   langflow:
+    profiles: ["langflow"]
     image: docker.io/langflowai/openrag-langflow:${OPENRAG_VERSION:-latest}
     build:
       context: .

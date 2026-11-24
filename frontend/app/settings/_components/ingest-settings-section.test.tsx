@@ -76,6 +76,14 @@ describe("IngestSettingsSection", () => {
   // ── Baseline ──────────────────────────────────────────────────────────────
 
   describe("initial load", () => {
+    it("labels the file-processing controls as Ingest configuration", async () => {
+      renderSection();
+
+      expect(
+        await screen.findByRole("heading", { name: "Ingest configuration" }),
+      ).toBeInTheDocument();
+    });
+
     it("populates chunk size and overlap from server", async () => {
       // Use server values that differ from the component defaults (1024 / 50)
       // so this test fails if server→form synchronization stops working.
@@ -494,14 +502,11 @@ describe("IngestSettingsSection", () => {
   });
 
   describe("toggle switches", () => {
-    it("toggles Disable Langflow Ingestion, Table Structure, OCR, and Picture Descriptions", async () => {
+    it("moves the Langflow ingestion choice to Advanced and toggles document options", async () => {
       renderSection();
 
       await screen.findByRole("spinbutton", { name: /chunk size/i });
 
-      const langflowSwitch = screen.getByRole("switch", {
-        name: /disable langflow ingestion/i,
-      });
       const tableStructureSwitch = screen.getByRole("switch", {
         name: /table structure/i,
       });
@@ -510,9 +515,9 @@ describe("IngestSettingsSection", () => {
         name: /picture descriptions/i,
       });
 
-      expect(langflowSwitch).toHaveAttribute("aria-checked", "false");
-      fireEvent.click(langflowSwitch);
-      expect(langflowSwitch).toHaveAttribute("aria-checked", "true");
+      expect(
+        screen.queryByRole("switch", { name: /disable langflow ingestion/i }),
+      ).toBeNull();
 
       expect(tableStructureSwitch).toHaveAttribute("aria-checked", "true");
       fireEvent.click(tableStructureSwitch);

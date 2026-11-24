@@ -25,6 +25,7 @@ from config.settings import (
     config_manager,
     get_index_name,
     get_openrag_config,
+    is_langflow_disabled,
 )
 from utils.logging_config import get_logger
 from utils.telemetry import Category, MessageId, TelemetryClient
@@ -65,7 +66,7 @@ async def ingest_openrag_docs_when_ready(
             await TelemetryClient.send_event(
                 Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_URL_START
             )
-            if get_openrag_config().knowledge.disable_ingest_with_langflow:
+            if get_openrag_config().knowledge.disable_ingest_with_langflow or is_langflow_disabled():
                 task_id = await _ingest_default_documents_url(
                     task_service=task_service,
                     docs_url=DEFAULT_DOCS_URL,
@@ -141,7 +142,7 @@ async def ingest_default_documents_when_ready(
         if not file_paths:
             raise FileNotFoundError(f"No default documents found in {base_dir}")
 
-        if get_openrag_config().knowledge.disable_ingest_with_langflow:
+        if get_openrag_config().knowledge.disable_ingest_with_langflow or is_langflow_disabled():
             new_task_id = await _ingest_default_documents_openrag(
                 document_service,
                 models_service,

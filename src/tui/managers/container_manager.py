@@ -104,17 +104,10 @@ class ContainerManager:
         except Exception:
             self.use_gpu_compose = False
 
-        # Expected services based on compose files
-        self.expected_services = [
-            "openrag-backend",
-            "openrag-frontend",
-            "opensearch",
-            "dashboards",
-            "langflow",
-        ]
+        env = self._get_env_from_file()
+        self._set_expected_services(env.get("DISABLE_LANGFLOW", ""))
 
         # Get compose project name from env or default to "openrag"
-        env = self._get_env_from_file()
         project_name = env.get("COMPOSE_PROJECT_NAME", "openrag")
 
         # Map container names to service names
@@ -125,6 +118,18 @@ class ContainerManager:
             f"{project_name}-dashboards": "dashboards",
             f"{project_name}-langflow": "langflow",
         }
+
+    def _set_expected_services(self, disable_langflow: str) -> None:
+        """Update the service set after a TUI configuration save."""
+
+        self.expected_services = [
+            "openrag-backend",
+            "openrag-frontend",
+            "opensearch",
+            "dashboards",
+        ]
+        if disable_langflow.strip().lower() not in ("true", "1", "yes"):
+            self.expected_services.append("langflow")
 
     @staticmethod
     def _extract_repository(image_tag: str) -> str:
@@ -207,6 +212,7 @@ class ContainerManager:
         from utils.paths import get_tui_env_file
 
         env = dict(os.environ)  # Start with current environment
+        explicit_disable_langflow = os.environ.get("DISABLE_LANGFLOW")
 
         # Check centralized TUI .env location first
         tui_env_file = get_tui_env_file()
@@ -226,6 +232,9 @@ class ContainerManager:
                 logger.debug(f"Loaded environment from {env_file}")
             except Exception as e:
                 logger.debug(f"Error reading .env file for Docker Compose: {e}")
+
+        if explicit_disable_langflow is not None:
+            env["DISABLE_LANGFLOW"] = explicit_disable_langflow
 
         return env
 
@@ -330,6 +339,8 @@ class ContainerManager:
         conflicts: list[tuple[str, int, str]] = []
 
         for service_name, ports in service_ports.items():
+            if service_name not in self.expected_services:
+                continue
             for port in ports:
                 try:
                     # Try to bind to the port to check if it's available
@@ -374,6 +385,8 @@ class ContainerManager:
         cmd.extend(["-f", str(self.compose_file)])
         if use_gpu and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
+        if "langflow" in self.expected_services:
+            cmd.extend(["--profile", "langflow"])
         cmd.extend(args)
 
         try:
@@ -431,6 +444,8 @@ class ContainerManager:
         cmd.extend(["-f", str(self.compose_file)])
         if use_gpu and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
+        if "langflow" in self.expected_services:
+            cmd.extend(["--profile", "langflow"])
         cmd.extend(args)
 
         try:
@@ -515,6 +530,8 @@ class ContainerManager:
         cmd.extend(["-f", str(self.compose_file)])
         if use_gpu and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
+        if "langflow" in self.expected_services:
+            cmd.extend(["--profile", "langflow"])
         cmd.extend(args)
 
         try:
@@ -1094,7 +1111,11 @@ class ContainerManager:
             env_manager.load_existing_env()
             env_manager.setup_secure_defaults()
             env_manager.save_env_file()
-            if not env_manager.config.langflow_superuser_password:
+            self._set_expected_services(env_manager.config.disable_langflow)
+            if (
+                env_manager.config.disable_langflow.strip().lower() not in ("true", "1", "yes")
+                and not env_manager.config.langflow_superuser_password
+            ):
                 yield (
                     False,
                     "ERROR: Langflow superuser password is required but not configured.",

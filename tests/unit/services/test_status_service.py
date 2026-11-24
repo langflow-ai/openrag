@@ -83,6 +83,19 @@ async def test_check_exception_becomes_unknown(monkeypatch):
     assert result.overall_status == ComponentState.UNKNOWN
 
 
+@pytest.mark.asyncio
+async def test_langflow_check_is_omitted_when_langflow_is_disabled(monkeypatch):
+    async def healthy():
+        return _result("openrag", ComponentState.HEALTHY)
+
+    monkeypatch.setattr(status_service, "CHECK_SPECS", [healthy, status_service.check_langflow])
+    monkeypatch.setattr(status_service, "is_langflow_disabled", lambda: True)
+
+    result = await status_service.aggregate_status()
+
+    assert [component.name for component in result.components] == ["openrag"]
+
+
 # ---------------------------------------------------------------------------
 # Buffer recording assertions for _run_check (added by #2178)
 # ---------------------------------------------------------------------------

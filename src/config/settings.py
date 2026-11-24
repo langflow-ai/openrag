@@ -141,6 +141,12 @@ LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
 LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 
 
+DISABLE_LANGFLOW = os.getenv("DISABLE_LANGFLOW", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+
 DISABLE_CHAT_WITH_LANGFLOW = os.getenv("DISABLE_CHAT_WITH_LANGFLOW", "false").lower() in (
     "true",
     "1",
@@ -771,6 +777,31 @@ DISABLE_NUDGES_WITH_LANGFLOW = os.getenv("DISABLE_NUDGES_WITH_LANGFLOW", "false"
 )
 
 
+def is_langflow_env_disabled() -> bool:
+    """Whether deployment configuration makes Langflow unavailable.
+
+    The master switch is intentionally stronger than the legacy feature flags.
+    The legacy trio remains supported as a backwards-compatible no-Langflow
+    deployment declaration.
+    """
+
+    return DISABLE_LANGFLOW or (
+        DISABLE_CHAT_WITH_LANGFLOW
+        and DISABLE_INGEST_WITH_LANGFLOW
+        and DISABLE_NUDGES_WITH_LANGFLOW
+    )
+
+
+def is_langflow_disabled(config=None) -> bool:
+    """Whether this process must avoid every Langflow dependency."""
+
+    if is_langflow_env_disabled():
+        return True
+    if config is None:
+        config = get_openrag_config()
+    return bool(getattr(config, "disable_langflow", False))
+
+
 def embedding_overflow_policy() -> str:
     """What the gateway does with an embedding input the model rejects as too long.
 
@@ -1315,6 +1346,10 @@ class AppClients:
 
         self._docling_service = DoclingService(httpx_client=self.docling_http_client)
 
+        if is_langflow_disabled():
+            logger.info("Langflow disabled; skipping Langflow client setup")
+            return self
+
         # Initialize Langflow HTTP client with extended timeouts for large documents
         # Must be created before wait_for_langflow / get_langflow_api_key
         # Use explicit timeout configuration to handle large PDF ingestion (300+ pages)
@@ -1395,6 +1430,8 @@ class AppClients:
 
     async def ensure_langflow_client(self):
         """Ensure Langflow client exists; try to generate key and create client lazily."""
+        if is_langflow_disabled():
+            return None
         if self.langflow_client is not None:
             return self.langflow_client
         # Try generating key again (with retries)
@@ -2240,7 +2277,7 @@ def get_embedding_model() -> str:
     """Return the currently configured embedding model."""
     return get_openrag_config().knowledge.embedding_model or (
         OPENAI_DEFAULT_EMBEDDING_MODEL
-        if get_openrag_config().knowledge.disable_ingest_with_langflow
+        if get_openrag_config().knowledge.disable_ingest_with_langflow or is_langflow_disabled()
         else ""
     )
 

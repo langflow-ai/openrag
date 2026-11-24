@@ -483,7 +483,10 @@ class WelcomeScreen(Screen):
         self.env_manager.load_existing_env()
         self.env_manager.setup_secure_defaults()
         self.env_manager.save_env_file()
-        if not self.env_manager.config.langflow_superuser_password:
+        if (
+            self.env_manager.config.disable_langflow.strip().lower() not in ("true", "1", "yes")
+            and not self.env_manager.config.langflow_superuser_password
+        ):
             self.notify("Langflow password is required. Cannot start services.", severity="error")
             return
 

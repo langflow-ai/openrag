@@ -33,6 +33,7 @@ OCR_LANGUAGE_FAMILIES = {
 
 
 class SettingsUpdateBody(BaseModel):
+    disable_langflow: bool | None = None
     llm_model: str | None = Field(None, min_length=1)
     llm_provider: str | None = Field(None, min_length=1)
     system_prompt: str | None = None
@@ -316,6 +317,9 @@ class SettingsResponse(BaseModel):
     segment_write_key: str | None = None
     environment: str | None = None
     langflow_port: str | None = None
+    disable_langflow: bool = False
+    langflow_enabled: bool = True
+    langflow_configurable: bool = True
 
 
 class OnboardingResponse(BaseModel):

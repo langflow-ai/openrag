@@ -37,6 +37,7 @@ from api.settings.langflow_sync import (
     _update_langflow_model_values,
     _update_langflow_system_prompt,
     _update_mcp_server_urls,
+    sync_pending_langflow_settings,
 )
 from api.settings.models import (
     AgentConfig,
@@ -87,6 +88,8 @@ from config.settings import (
     clients,
     config_manager,
     get_openrag_config,
+    is_langflow_disabled,
+    is_langflow_env_disabled,
     is_url_connector_enabled,
     is_workspace_oauth_overrides_enabled,
 )
@@ -251,18 +254,19 @@ async def get_settings(
 
         # Only expose edit URLs when a public URL is configured
         langflow_edit_url = None
-        if LANGFLOW_PUBLIC_URL and LANGFLOW_CHAT_FLOW_ID:
+        langflow_enabled = not is_langflow_disabled(openrag_config)
+        if langflow_enabled and LANGFLOW_PUBLIC_URL and LANGFLOW_CHAT_FLOW_ID:
             langflow_edit_url = f"{LANGFLOW_PUBLIC_URL.rstrip('/')}/flow/{LANGFLOW_CHAT_FLOW_ID}"
 
         langflow_ingest_edit_url = None
-        if LANGFLOW_PUBLIC_URL and LANGFLOW_INGEST_FLOW_ID:
+        if langflow_enabled and LANGFLOW_PUBLIC_URL and LANGFLOW_INGEST_FLOW_ID:
             langflow_ingest_edit_url = (
                 f"{LANGFLOW_PUBLIC_URL.rstrip('/')}/flow/{LANGFLOW_INGEST_FLOW_ID}"
             )
 
         ingestion_defaults_obj = None
         # Fetch ingestion flow configuration to get actual component defaults
-        if LANGFLOW_INGEST_FLOW_ID and openrag_config.edited:
+        if langflow_enabled and LANGFLOW_INGEST_FLOW_ID and openrag_config.edited:
             try:
                 response = await clients.langflow_request(
                     "GET", f"/api/v1/flows/{LANGFLOW_INGEST_FLOW_ID}"
@@ -388,6 +392,9 @@ async def get_settings(
             segment_write_key=SEGMENT_WRITE_KEY or None,
             environment=ENVIRONMENT or None,
             langflow_port=str(LANGFLOW_PORT),
+            disable_langflow=openrag_config.disable_langflow,
+            langflow_enabled=langflow_enabled,
+            langflow_configurable=not is_langflow_env_disabled(),
         )
 
     except Exception:
@@ -406,6 +413,7 @@ async def update_settings(
     try:
         # Get current configuration
         current_config = get_openrag_config()
+        langflow_was_disabled = is_langflow_disabled(current_config)
 
         # Check if config is marked as edited
         if not current_config.edited:
@@ -675,6 +683,16 @@ async def update_settings(
         working_config = copy.deepcopy(current_config)
         config_updated = False
 
+        if body.disable_langflow is not None:
+            if is_langflow_env_disabled():
+                raise HTTPException(
+                    status_code=403,
+                    detail="DISABLE_LANGFLOW is controlled by deployment configuration",
+                )
+            working_config.disable_langflow = body.disable_langflow
+            config_updated = True
+            logger.info("Disable Langflow changed", disabled=body.disable_langflow)
+
         # Update agent settings
         if body.llm_model is not None:
             old_model = working_config.agent.llm_model
@@ -813,15 +831,16 @@ async def update_settings(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_CHUNK_UPDATED
             )
 
-            # Also update the ingest flow with the new chunk size
-            try:
-                flows_service = _get_flows_service()
-                await flows_service.update_ingest_flow_chunk_size(body.chunk_size)
-                logger.info(f"Successfully updated ingest flow chunk size to {body.chunk_size}")
-            except Exception as e:
-                logger.error(f"Failed to update ingest flow chunk size: {str(e)}")
-                # Don't fail the entire settings update if flow update fails
-                # The config will still be saved
+            if not is_langflow_disabled(working_config):
+                # Also update the ingest flow with the new chunk size
+                try:
+                    flows_service = _get_flows_service()
+                    await flows_service.update_ingest_flow_chunk_size(body.chunk_size)
+                    logger.info(f"Successfully updated ingest flow chunk size to {body.chunk_size}")
+                except Exception as e:
+                    logger.error(f"Failed to update ingest flow chunk size: {str(e)}")
+                    # Don't fail the entire settings update if flow update fails
+                    # The config will still be saved
 
         if body.chunk_overlap is not None:
             effective_chunk_size = (
@@ -839,16 +858,17 @@ async def update_settings(
                 Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_CHUNK_UPDATED
             )
 
-            # Also update the ingest flow with the new chunk overlap
-            try:
-                flows_service = _get_flows_service()
-                await flows_service.update_ingest_flow_chunk_overlap(body.chunk_overlap)
-                logger.info(
-                    f"Successfully updated ingest flow chunk overlap to {body.chunk_overlap}"
-                )
-            except Exception as e:
-                logger.error(f"Failed to update ingest flow chunk overlap: {str(e)}")
-                # Don't fail the entire settings update if flow update fails
+            if not is_langflow_disabled(working_config):
+                # Also update the ingest flow with the new chunk overlap
+                try:
+                    flows_service = _get_flows_service()
+                    await flows_service.update_ingest_flow_chunk_overlap(body.chunk_overlap)
+                    logger.info(
+                        f"Successfully updated ingest flow chunk overlap to {body.chunk_overlap}"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update ingest flow chunk overlap: {str(e)}")
+                    # Don't fail the entire settings update if flow update fails
         if body.index_name is not None:
             old_index_name = working_config.knowledge.index_name
             new_index_name = body.index_name.strip()
@@ -868,20 +888,21 @@ async def update_settings(
             )
             logger.info(f"Index name changed from {old_index_name} to {new_index_name}")
 
-            # Also update global variable with new index name
-            try:
-                await clients._create_langflow_global_variable(
-                    "OPENSEARCH_INDEX_NAME",
-                    new_index_name,
-                    modify=True,
-                    variable_type="Generic",
-                )
-                logger.info(
-                    f"Successfully updated global variable with new index name {new_index_name}"
-                )
-            except Exception as e:
-                logger.error(f"Failed to update global variable with new index name: {str(e)}")
-                # Don't fail the entire settings update if flow update fails
+            if not is_langflow_disabled(working_config):
+                # Also update global variable with new index name
+                try:
+                    await clients._create_langflow_global_variable(
+                        "OPENSEARCH_INDEX_NAME",
+                        new_index_name,
+                        modify=True,
+                        variable_type="Generic",
+                    )
+                    logger.info(
+                        f"Successfully updated global variable with new index name {new_index_name}"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update global variable with new index name: {str(e)}")
+                    # Don't fail the entire settings update if flow update fails
 
                 # The config will still be saved
 
@@ -1173,6 +1194,14 @@ async def update_settings(
         if not config_updated:
             return JSONResponse({"error": "No valid fields provided for update"}, status_code=400)
 
+        non_master_fields_changed = any(
+            field != "disable_langflow" for field in body.model_fields_set
+        )
+        if non_master_fields_changed and (
+            langflow_was_disabled or is_langflow_disabled(working_config)
+        ):
+            working_config.langflow_sync_pending = True
+
         # Save the updated configuration
         if not config_manager.save_config_file(working_config):
             return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
@@ -1185,6 +1214,18 @@ async def update_settings(
 
         # Refresh patched client immediately so subsequent requests pick up latest config.
         await clients.refresh_patched_client()
+
+        reenabled_langflow = (
+            current_config.disable_langflow
+            and not working_config.disable_langflow
+            and working_config.langflow_sync_pending
+        )
+        if reenabled_langflow:
+            task = asyncio.create_task(
+                sync_pending_langflow_settings(session_manager=session_manager)
+            )
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
 
         # Run expensive Langflow sync in the background to keep settings updates responsive.
         if should_validate or provider_updated:
@@ -1532,71 +1573,74 @@ async def onboarding(
                 status_code=400,
             )
 
-        # Ensure the Langflow service is ready before attempting to configure it
-        try:
-            await wait_for_langflow()
-        except LangflowNotReadyError as e:
-            message: str = "Aborted the Langflow service configuration process. The Langflow service is not ready."
-            logger.error(message, error=str(e))
+        if is_langflow_disabled(current_config):
+            logger.info("Langflow is disabled; skipping onboarding flow configuration")
+        else:
+            # Ensure the Langflow service is ready before attempting to configure it
+            try:
+                await wait_for_langflow()
+            except LangflowNotReadyError as e:
+                message: str = "Aborted the Langflow service configuration process. The Langflow service is not ready."
+                logger.error(message, error=str(e))
 
-            return JSONResponse(
-                {"error": message},
-                status_code=503,
-            )
-
-        # Set Langflow global variables and model values based on provider configuration
-        try:
-            # Check if any provider-related fields were provided
-            provider_fields_provided = any(
-                [
-                    body.openai_api_key,
-                    body.anthropic_api_key,
-                    body.watsonx_api_key,
-                    body.watsonx_endpoint,
-                    body.watsonx_project_id,
-                    body.ollama_endpoint,
-                    body.provider_credentials,
-                ]
-            )
-
-            # Update global variables if any provider fields were provided
-            # or if existing config has values (for OpenAI/Anthropic that might already be set)
-            if (
-                provider_fields_provided
-                or current_config.providers.openai.api_key != ""
-                or current_config.providers.anthropic.api_key != ""
-                or current_config.providers.any_configured()
-            ):
-                await _update_langflow_global_variables(current_config, flows_service=flows_service)
-
-            if body.embedding_provider or body.embedding_model:
-                await _update_mcp_server_urls(
-                    current_config,
-                    session_manager=session_manager,
-                    flows_service=flows_service,
+                return JSONResponse(
+                    {"error": message},
+                    status_code=503,
                 )
 
-            if (
-                body.llm_provider
-                or body.llm_model
-                or body.embedding_provider
-                or body.embedding_model
-            ):
-                await _update_langflow_model_values(
-                    current_config,
-                    flows_service,
-                    embedding_model=body.embedding_model,
-                    embedding_provider=body.embedding_provider,
-                    llm_model=body.llm_model,
-                    llm_provider=body.llm_provider,
+            # Set Langflow global variables and model values based on provider configuration
+            try:
+                # Check if any provider-related fields were provided
+                provider_fields_provided = any(
+                    [
+                        body.openai_api_key,
+                        body.anthropic_api_key,
+                        body.watsonx_api_key,
+                        body.watsonx_endpoint,
+                        body.watsonx_project_id,
+                        body.ollama_endpoint,
+                        body.provider_credentials,
+                    ]
                 )
 
-        except Exception as e:
-            logger.error(
-                "Failed to set Langflow global variables and model values",
-                error=str(e),
-            )
-            raise
+                # Update global variables if any provider fields were provided
+                # or if existing config has values (for OpenAI/Anthropic that might already be set)
+                if (
+                    provider_fields_provided
+                    or current_config.providers.openai.api_key != ""
+                    or current_config.providers.anthropic.api_key != ""
+                    or current_config.providers.any_configured()
+                ):
+                    await _update_langflow_global_variables(current_config, flows_service=flows_service)
+
+                if body.embedding_provider or body.embedding_model:
+                    await _update_mcp_server_urls(
+                        current_config,
+                        session_manager=session_manager,
+                        flows_service=flows_service,
+                    )
+
+                if (
+                    body.llm_provider
+                    or body.llm_model
+                    or body.embedding_provider
+                    or body.embedding_model
+                ):
+                    await _update_langflow_model_values(
+                        current_config,
+                        flows_service,
+                        embedding_provider=body.embedding_provider,
+                        embedding_model=body.embedding_model,
+                        llm_provider=body.llm_provider,
+                        llm_model=body.llm_model,
+                    )
+
+            except Exception as e:
+                logger.error(
+                    "Failed to set Langflow global variables and model values",
+                    error=str(e),
+                )
+                raise
 
         task_id = None
 
@@ -1967,20 +2011,23 @@ async def rollback_onboarding(
                         f"Purged task {task_id} completely from task_store for user {check_user_id}"
                     )
 
-        # 4. Reset Langflow flows to their original state
         reset_flows_count = 0
-        for flow_type in ["nudges", "retrieval", "ingest"]:
-            try:
-                result = await flows_service.reset_langflow_flow(flow_type)
-                if result.get("success"):
-                    reset_flows_count += 1
-                    logger.info(f"Successfully reset {flow_type} flow during rollback")
-                else:
-                    logger.warning(
-                        f"Failed to reset {flow_type} flow during rollback: {result.get('error')}"
-                    )
-            except Exception as e:
-                logger.error(f"Error resetting {flow_type} flow during rollback: {e}")
+        if is_langflow_disabled(current_config):
+            logger.info("Langflow is disabled; skipped flow reset during onboarding rollback")
+        else:
+            # Reset Langflow flows to their original state.
+            for flow_type in ["nudges", "retrieval", "ingest"]:
+                try:
+                    result = await flows_service.reset_langflow_flow(flow_type)
+                    if result.get("success"):
+                        reset_flows_count += 1
+                        logger.info(f"Successfully reset {flow_type} flow during rollback")
+                    else:
+                        logger.warning(
+                            f"Failed to reset {flow_type} flow during rollback: {result.get('error')}"
+                        )
+                except Exception as e:
+                    logger.error(f"Error resetting {flow_type} flow during rollback: {e}")
 
         # 5. Delete all user conversations
         deleted_conversations_count = 0
@@ -2125,11 +2172,13 @@ async def update_docling_preset(
         )
         preset_config = DoclingConfig(**preset_config_dict)
 
-        # Use the helper function to update the flow
-        flows_service = _get_flows_service()
-        await flows_service.update_flow_docling_preset("custom", preset_config_dict)
-
-        logger.info("Successfully updated docling settings in ingest flow")
+        if is_langflow_disabled():
+            logger.info("Langflow is disabled; skipped deprecated ingest-flow docling update")
+        else:
+            # Use the helper function to update the flow
+            flows_service = _get_flows_service()
+            await flows_service.update_flow_docling_preset("custom", preset_config_dict)
+            logger.info("Successfully updated docling settings in ingest flow")
 
         return DoclingPresetResponse(
             message="Successfully updated docling settings",

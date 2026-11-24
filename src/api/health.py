@@ -13,7 +13,7 @@ from api.schemas.status import (
     StatusResponse,
 )
 from api.status_utils import build_logs_response
-from config.settings import clients
+from config.settings import clients, is_langflow_disabled
 from dependencies import require_permission
 from services.component_logs import KNOWN_COMPONENTS, get_entries
 from services.status_diagnostics import diagnose_component
@@ -81,7 +81,9 @@ async def diagnose_console_component(
 
 async def health_check(request: Request):
     """Simple liveness probe: Indicates that the OpenRAG Backend service is online and running."""
-    return JSONResponse({"status": "ok"}, status_code=200)
+    return JSONResponse(
+        {"status": "ok", "langflow_enabled": not is_langflow_disabled()}, status_code=200
+    )
 
 
 async def opensearch_health_ready(request: Request):

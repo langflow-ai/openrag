@@ -3,6 +3,7 @@ Unit tests for api.settings.endpoints
 Validates error handling in update_docling_preset endpoint.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -124,6 +125,124 @@ def test_settings_models_accept_arbitrary_provider_credentials():
 
     assert settings.provider_credentials == credentials
     assert onboarding.provider_credentials == credentials
+
+
+@pytest.mark.asyncio
+async def test_settings_master_disable_langflow_is_persisted_without_syncing_langflow(monkeypatch):
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    saved_configs = []
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("api.settings.endpoints.get_openrag_config", lambda: config)
+    monkeypatch.setattr("api.settings.endpoints.is_langflow_env_disabled", lambda: False)
+    monkeypatch.setattr(
+        "api.settings.endpoints.config_manager.save_config_file",
+        lambda updated: saved_configs.append(updated) or True,
+    )
+    monkeypatch.setattr("api.settings.endpoints.clients.refresh_patched_client", noop)
+    monkeypatch.setattr("api.settings.endpoints.TelemetryClient.send_event", noop)
+
+    response = await update_settings(
+        SettingsUpdateBody(disable_langflow=True),
+        session_manager=object(),
+        user=None,
+    )
+
+    assert response.message == "Configuration updated successfully"
+    assert saved_configs[0].disable_langflow is True
+    assert saved_configs[0].langflow_sync_pending is False
+
+
+@pytest.mark.asyncio
+async def test_settings_changed_while_langflow_disabled_are_marked_for_sync(monkeypatch):
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({"disable_langflow": True})
+    config.edited = True
+    saved_configs = []
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("api.settings.endpoints.get_openrag_config", lambda: config)
+    monkeypatch.setattr(
+        "api.settings.endpoints.config_manager.save_config_file",
+        lambda updated: saved_configs.append(updated) or True,
+    )
+    monkeypatch.setattr("api.settings.endpoints.clients.refresh_patched_client", noop)
+    monkeypatch.setattr("api.settings.endpoints.TelemetryClient.send_event", noop)
+
+    response = await update_settings(
+        SettingsUpdateBody(system_prompt="Use citations."),
+        session_manager=object(),
+        user=None,
+    )
+
+    assert response.message == "Configuration updated successfully"
+    assert saved_configs[0].langflow_sync_pending is True
+
+
+@pytest.mark.asyncio
+async def test_reenabling_langflow_starts_pending_sync(monkeypatch):
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict(
+        {"disable_langflow": True, "langflow_sync_pending": True}
+    )
+    config.edited = True
+    sync_calls = []
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    async def sync_pending(**_kwargs):
+        sync_calls.append(True)
+        return True
+
+    monkeypatch.setattr("api.settings.endpoints.get_openrag_config", lambda: config)
+    monkeypatch.setattr("api.settings.endpoints.is_langflow_env_disabled", lambda: False)
+    monkeypatch.setattr("api.settings.endpoints.config_manager.save_config_file", lambda _updated: True)
+    monkeypatch.setattr("api.settings.endpoints.clients.refresh_patched_client", noop)
+    monkeypatch.setattr("api.settings.endpoints.TelemetryClient.send_event", noop)
+    monkeypatch.setattr("api.settings.endpoints.sync_pending_langflow_settings", sync_pending)
+
+    response = await update_settings(
+        SettingsUpdateBody(disable_langflow=False),
+        session_manager=object(),
+        user=None,
+    )
+    await asyncio.sleep(0)
+
+    assert response.message == "Configuration updated successfully"
+    assert sync_calls == [True]
+
+
+@pytest.mark.asyncio
+async def test_settings_master_disable_langflow_is_not_mutable_when_env_controls_it(monkeypatch):
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    monkeypatch.setattr("api.settings.endpoints.get_openrag_config", lambda: config)
+    monkeypatch.setattr("api.settings.endpoints.is_langflow_env_disabled", lambda: True)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await update_settings(
+            SettingsUpdateBody(disable_langflow=True),
+            session_manager=object(),
+            user=None,
+        )
+
+    assert exc_info.value.status_code == 403
 
 
 def test_custom_provider_payload_keeps_legacy_openai_secret():

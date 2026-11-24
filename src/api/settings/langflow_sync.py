@@ -19,7 +19,7 @@ from api.settings.helpers import (
     _get_flows_service,
 )
 from config import settings
-from config.settings import clients, get_openrag_config
+from config.settings import clients, config_manager, get_openrag_config
 from services.docling_service import get_docling_preset_configs
 from utils.logging_config import get_logger
 
@@ -131,6 +131,9 @@ async def ensure_required_langflow_global_variables(config=None):
     Credential placeholders stay non-empty so Langflow can resolve load_from_db fields.
     """
     config = config or get_openrag_config()
+    if settings.is_langflow_disabled(config):
+        logger.debug("Langflow is disabled; skipping global variable synchronization")
+        return
     required_values = _required_generic_global_values(config)
 
     existing_by_name = {}
@@ -286,6 +289,9 @@ async def ensure_required_langflow_global_variables(config=None):
 
 async def _update_langflow_global_variables(config, flows_service=None):
     """Push model selection and the LLM proxy URL into Langflow. No provider secrets."""
+    if settings.is_langflow_disabled(config):
+        logger.info("Langflow disabled; skipping global-variable synchronization")
+        return
     errors: list[str] = []
 
     async def _safe_upsert(name: str, value: str):
@@ -339,6 +345,9 @@ async def _run_async_post_save_langflow_updates(
     """Apply post-save Langflow synchronization asynchronously."""
     try:
         current_config = get_openrag_config()
+        if settings.is_langflow_disabled(current_config):
+            logger.info("Langflow disabled; skipping post-save synchronization")
+            return
         flows_service = _get_flows_service()
 
         # Refresh model registry so get_litellm_model_name(strict=True) sees the
@@ -380,16 +389,20 @@ async def _run_async_post_save_langflow_updates(
 
 async def _update_mcp_server_urls(config, session_manager=None, flows_service=None):
     """Update MCP server URLs (patch localhost and convert to streamable HTTP)."""
+    if settings.is_langflow_disabled(config):
+        return False
     try:
         from services.langflow_mcp_service import LangflowMCPService
 
         mcp_service = LangflowMCPService()
         result = await mcp_service.update_all_mcp_server_urls()
         logger.info("Updated MCP server URLs after settings change", **result)
+        return True
 
     except Exception as mcp_error:
         logger.warning(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
         # Don't fail the entire settings update if MCP update fails
+        return False
 
 
 async def _upsert_selected_model_variable(name: str, value: str | None) -> None:
@@ -416,6 +429,8 @@ async def _update_langflow_model_values(
     embedding_provider=None,
 ):
     """Update model values across Langflow flows for all configured providers"""
+    if settings.is_langflow_disabled(config):
+        return
     try:
         if llm_model or llm_provider:
             effective_llm_provider = (llm_provider or config.agent.llm_provider).lower()
@@ -506,6 +521,8 @@ async def _update_langflow_model_values(
 
 async def _update_langflow_system_prompt(config, flows_service):
     """Update system prompt in chat flow"""
+    if settings.is_langflow_disabled(config):
+        return
     try:
         await flows_service.update_chat_flow_system_prompt(config.agent.system_prompt)
         logger.info("Successfully updated chat flow system prompt")
@@ -516,6 +533,8 @@ async def _update_langflow_system_prompt(config, flows_service):
 
 async def _update_langflow_docling_settings(config, flows_service):
     """Update docling settings in ingest flow"""
+    if settings.is_langflow_disabled(config):
+        return
     try:
         preset_config = get_docling_preset_configs(
             table_structure=config.knowledge.table_structure,
@@ -532,6 +551,8 @@ async def _update_langflow_docling_settings(config, flows_service):
 
 async def _update_langflow_chunk_settings(config, flows_service):
     """Update chunk size and overlap in ingest flow"""
+    if settings.is_langflow_disabled(config):
+        return
     try:
         await flows_service.update_ingest_flow_chunk_size(config.knowledge.chunk_size)
         logger.info(f"Successfully updated ingest flow chunk size to {config.knowledge.chunk_size}")
@@ -545,19 +566,24 @@ async def _update_langflow_chunk_settings(config, flows_service):
         raise
 
 
-async def reapply_all_settings(session_manager=None):
+async def reapply_all_settings(session_manager=None) -> bool:
     """
     Reapply all current configuration settings to Langflow flows and global variables.
     This is called when flows are detected to have been reset.
     """
     try:
         config = get_openrag_config()
+        if settings.is_langflow_disabled(config):
+            logger.info("Langflow disabled; skipping settings reapplication")
+            return False
         flows_service = _get_flows_service()
+        sync_succeeded = True
 
         logger.info("Reapplying all settings to Langflow flows and global variables")
 
         # Update MCP server URLs (patch localhost and convert to streamable HTTP)
-        await _update_mcp_server_urls(config, session_manager, flows_service=flows_service)
+        if not await _update_mcp_server_urls(config, session_manager, flows_service=flows_service):
+            sync_succeeded = False
 
         # Update all Langflow settings using helper functions
         try:
@@ -565,26 +591,31 @@ async def reapply_all_settings(session_manager=None):
         except Exception as e:
             logger.error(f"Failed to update Langflow global variables: {str(e)}")
             # Continue with other updates even if global variables fail
+            sync_succeeded = False
 
         try:
             await _update_langflow_model_values(config, flows_service)
         except Exception as e:
             logger.error(f"Failed to update Langflow model values: {str(e)}")
+            sync_succeeded = False
 
         try:
             await _update_langflow_system_prompt(config, flows_service)
         except Exception as e:
             logger.error(f"Failed to update Langflow system prompt: {str(e)}")
+            sync_succeeded = False
 
         try:
             await _update_langflow_docling_settings(config, flows_service)
         except Exception as e:
             logger.error(f"Failed to update Langflow docling settings: {str(e)}")
+            sync_succeeded = False
 
         try:
             await _update_langflow_chunk_settings(config, flows_service)
         except Exception as e:
             logger.error(f"Failed to update Langflow chunk settings: {str(e)}")
+            sync_succeeded = False
 
         try:
             await flows_service.enable_mcp_none_for_url_ingest_flow()
@@ -592,7 +623,31 @@ async def reapply_all_settings(session_manager=None):
             logger.error(f"Failed to configure unauthenticated MCP for URL ingest flow: {str(e)}")
 
         logger.info("Successfully reapplied all settings to Langflow flows")
+        return sync_succeeded
 
     except Exception as e:
         logger.error(f"Failed to reapply settings: {str(e)}")
-        raise
+        return False
+
+
+async def sync_pending_langflow_settings(session_manager=None) -> bool:
+    """Reconcile a persisted native-mode settings change with Langflow."""
+    config = get_openrag_config()
+    if not config.langflow_sync_pending:
+        return True
+    if settings.is_langflow_disabled(config):
+        logger.info("Langflow disabled; leaving pending synchronization queued")
+        return False
+
+    if not await reapply_all_settings(session_manager=session_manager):
+        return False
+
+    config.langflow_sync_pending = False
+    try:
+        config_manager.save_config_file(config)
+    except Exception as e:
+        logger.error("Failed to clear pending Langflow synchronization", error=str(e))
+        return False
+
+    logger.info("Reconciled pending Langflow settings")
+    return True

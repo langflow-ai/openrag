@@ -383,7 +383,10 @@ def _start_services_cli(
 
     env_manager.ensure_openrag_version()
 
-    if not env_manager.config.langflow_superuser_password:
+    if (
+        env_manager.config.disable_langflow.strip().lower() not in ("true", "1", "yes")
+        and not env_manager.config.langflow_superuser_password
+    ):
         console.print("[red]✗ Error: Langflow password is required. Cannot start services.[/red]")
         return False
 

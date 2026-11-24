@@ -10,6 +10,7 @@ from config.settings import (
     LANGFLOW_URL,
     NUDGES_FLOW_ID,
     clients,
+    is_langflow_disabled,
 )
 from config.storage_mode import db_writes_enabled
 from utils.langflow_utils import fence_untrusted_text
@@ -125,7 +126,7 @@ class ChatService:
             raise ValueError("Prompt is required")
         conversation_user_id = storage_user_id or user_id
 
-        if DISABLE_CHAT_WITH_LANGFLOW:
+        if DISABLE_CHAT_WITH_LANGFLOW or is_langflow_disabled():
             logger.info(
                 "[CHAT] DISABLE_CHAT_WITH_LANGFLOW enabled; routing /langflow to native /chat"
             )
@@ -322,7 +323,7 @@ class ChatService:
         search_service=None,
     ):
         """Suggested prompts, from the Langflow nudges flow or natively without Langflow."""
-        if not DISABLE_NUDGES_WITH_LANGFLOW:
+        if not DISABLE_NUDGES_WITH_LANGFLOW and not is_langflow_disabled():
             return await self.langflow_nudges_chat(
                 user_id,
                 jwt_token,

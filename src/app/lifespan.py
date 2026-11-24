@@ -27,6 +27,7 @@ from config.settings import (
     get_openrag_service_token,
     get_opensearch_password,
     get_opensearch_username,
+    is_langflow_disabled,
 )
 from services.startup_orchestrator import startup_tasks
 from utils.logging_config import get_logger, log_bootstrap_env
@@ -380,22 +381,24 @@ async def run_startup(app: FastAPI):
     # Start periodic task cleanup scheduler
     services["task_service"].start_cleanup_scheduler()
 
-    # Start periodic flow backup task (every 5 minutes)
-    backup_task = asyncio.create_task(_periodic_backup(services))
-    app.state.background_tasks.add(backup_task)
-    backup_task.add_done_callback(app.state.background_tasks.discard)
+    if is_langflow_disabled():
+        logger.info("Langflow is disabled; skipping flow backup and history migration tasks")
+    else:
+        # Start periodic flow backup task (every 5 minutes)
+        backup_task = asyncio.create_task(_periodic_backup(services))
+        app.state.background_tasks.add(backup_task)
+        backup_task.add_done_callback(app.state.background_tasks.discard)
+
+        # Remote Langflow calls are best-effort. Keep them out of the startup
+        # transaction so a slow or unavailable Langflow cannot prevent readiness.
+        history_migration_task = asyncio.create_task(_migrate_langflow_history_in_background())
+        app.state.background_tasks.add(history_migration_task)
+        history_migration_task.add_done_callback(app.state.background_tasks.discard)
 
     # Start periodic webhook subscription renewal task
     renewal_task = asyncio.create_task(_periodic_webhook_renewal(services))
     app.state.background_tasks.add(renewal_task)
     renewal_task.add_done_callback(app.state.background_tasks.discard)
-
-    # Remote Langflow calls are best-effort. Keep them out of the startup
-    # transaction so a slow or unavailable Langflow cannot prevent readiness.
-    history_migration_task = asyncio.create_task(_migrate_langflow_history_in_background())
-    app.state.background_tasks.add(history_migration_task)
-    history_migration_task.add_done_callback(app.state.background_tasks.discard)
-
 
 async def run_shutdown(app: FastAPI):
     """Single source of truth for shutdown work."""

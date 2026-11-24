@@ -92,8 +92,6 @@ export function IngestSettingsSection() {
   ]);
   const [pictureDescriptions, setPictureDescriptions] =
     useState<boolean>(false);
-  const [disableIngestWithLangflow, setDisableIngestWithLangflow] =
-    useState<boolean>(false);
 
   const [vlmProvider, setVlmProvider] = useState<string>("");
   const [vlmModel, setVlmModel] = useState<string>("");
@@ -111,6 +109,7 @@ export function IngestSettingsSection() {
   const { data: settings = {} } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
+  const langflowEnabled = settings.langflow_enabled !== false;
 
   const showVlmSettings = settings.show_vlm_settings ?? true;
 
@@ -350,8 +349,6 @@ export function IngestSettingsSection() {
       setOcrLanguages(englishLast(k.ocr_languages));
     if (k.picture_descriptions !== undefined)
       setPictureDescriptions(k.picture_descriptions);
-    if (k.disable_ingest_with_langflow !== undefined)
-      setDisableIngestWithLangflow(k.disable_ingest_with_langflow);
     // Backend defaults vlm_model to "" and vlm_provider to "openai".
     // Only adopt backend's vlm_provider if backend also has a configured vlm_model,
     // so the static backend default does not clobber the locally auto-selected model's provider.
@@ -464,8 +461,6 @@ export function IngestSettingsSection() {
     ocrLanguages.join(",") !==
       englishLast(k?.ocr_languages ?? ocrLanguages).join(",") ||
     pictureDescriptions !== (k?.picture_descriptions ?? pictureDescriptions) ||
-    disableIngestWithLangflow !==
-      (k?.disable_ingest_with_langflow ?? disableIngestWithLangflow) ||
     vlmDirty;
 
   useRegisterDirty("ingest-settings", userEdited && knowledgeIngestDirty);
@@ -535,7 +530,6 @@ export function IngestSettingsSection() {
         ocr,
         ocr_languages: ocrLanguages,
         picture_descriptions: pictureDescriptions,
-        disable_ingest_with_langflow: disableIngestWithLangflow,
         ...vlmPayload,
       },
     });
@@ -571,7 +565,6 @@ export function IngestSettingsSection() {
         ocr,
         ocr_languages: ocrLanguages,
         picture_descriptions: pictureDescriptions,
-        disable_ingest_with_langflow: disableIngestWithLangflow,
         ...vlmPayload,
       });
     } catch {
@@ -638,7 +631,6 @@ export function IngestSettingsSection() {
             ocr_languages: [...DEFAULT_KNOWLEDGE_SETTINGS.ocr_languages],
             picture_descriptions:
               DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions,
-            disable_ingest_with_langflow: false,
           })
         );
       })
@@ -649,7 +641,6 @@ export function IngestSettingsSection() {
         setOcr(DEFAULT_KNOWLEDGE_SETTINGS.ocr);
         setOcrLanguages([...DEFAULT_KNOWLEDGE_SETTINGS.ocr_languages]);
         setPictureDescriptions(DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions);
-        setDisableIngestWithLangflow(false);
         setUserEdited(false);
         toast.success("Default ingest flow settings restored successfully");
         closeDialog();
@@ -747,58 +738,62 @@ export function IngestSettingsSection() {
                 isCloudBrand && "ibm-settings-section-title",
               )}
             >
-              Langflow configuration
+              Ingest configuration
             </h3>
             <p className="text-sm text-muted-foreground">
               Configure how files are chunked and parsed during ingest. These
-              options use Save changes. Edit in Langflow for full control.
+              options use Save changes.
+              {langflowEnabled ? " Edit in Langflow for full control." : ""}
             </p>
           </div>
-          <RequirePermission perm="flows:edit">
-            <div className="flex shrink-0 gap-2">
-              <ConfirmationDialog
-                trigger={
-                  <Button ignoreTitleCase={true} variant="outline">
-                    Restore flow
-                  </Button>
-                }
-                title="Restore default Ingest flow"
-                description="This restores defaults and discards all custom settings and overrides. This can't be undone."
-                confirmText="Restore"
-                variant="destructive"
-                onConfirm={handleRestoreIngestFlow}
-                isLoading={isRestoringFlow}
-              />
-              <ConfirmationDialog
-                trigger={
-                  <Button>
-                    <LangflowIcon />
-                    Edit in Langflow
-                  </Button>
-                }
-                title="Edit Ingest flow in Langflow"
-                description={
-                  <>
-                    <p className="mb-2">
-                      You&apos;re entering Langflow. You can edit the{" "}
-                      <b>Ingest flow</b> and other underlying flows. Manual
-                      changes to components, wiring, or I/O can break this
-                      experience.
-                    </p>
-                    <p className="mb-2">
-                      To enable editing, you need to unlock the flow by clicking
-                      on its name and disabling the <b>Lock flow</b> option.
-                    </p>
-                    <p>You can restore this flow from Settings.</p>
-                  </>
-                }
-                confirmText="Proceed"
-                confirmIcon={<ArrowUpRight />}
-                variant="warning"
-                onConfirm={handleEditInLangflow}
-              />
-            </div>
-          </RequirePermission>
+          {langflowEnabled ? (
+            <RequirePermission perm="flows:edit">
+              <div className="flex shrink-0 gap-2">
+                <ConfirmationDialog
+                  trigger={
+                    <Button ignoreTitleCase={true} variant="outline">
+                      Restore flow
+                    </Button>
+                  }
+                  title="Restore default Ingest flow"
+                  description="This restores defaults and discards all custom settings and overrides. This can't be undone."
+                  confirmText="Restore"
+                  variant="destructive"
+                  onConfirm={handleRestoreIngestFlow}
+                  isLoading={isRestoringFlow}
+                />
+                <ConfirmationDialog
+                  trigger={
+                    <Button>
+                      <LangflowIcon />
+                      Edit in Langflow
+                    </Button>
+                  }
+                  title="Edit Ingest flow in Langflow"
+                  description={
+                    <>
+                      <p className="mb-2">
+                        You&apos;re entering Langflow. You can edit the{" "}
+                        <b>Ingest flow</b> and other underlying flows. Manual
+                        changes to components, wiring, or I/O can break this
+                        experience.
+                      </p>
+                      <p className="mb-2">
+                        To enable editing, you need to unlock the flow by
+                        clicking on its name and disabling the <b>Lock flow</b>{" "}
+                        option.
+                      </p>
+                      <p>You can restore this flow from Settings.</p>
+                    </>
+                  }
+                  confirmText="Proceed"
+                  confirmIcon={<ArrowUpRight />}
+                  variant="warning"
+                  onConfirm={handleEditInLangflow}
+                />
+              </div>
+            </RequirePermission>
+          ) : null}
         </header>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
@@ -897,28 +892,6 @@ export function IngestSettingsSection() {
             whose rows are split by hairlines that stop short of the card edge
             (hence last:border-b-0). */}
         <div className="rounded-lg bg-muted/50 px-5">
-          <div className="flex items-center justify-between gap-6 border-b border-border py-6 last:border-b-0">
-            <div className="flex-1 space-y-2 pl-3">
-              <Label
-                htmlFor="disable-ingest-with-langflow"
-                className="text-base font-semibold cursor-pointer"
-              >
-                Disable Langflow Ingestion
-              </Label>
-              <div className="text-sm text-muted-foreground">
-                Bypass Langflow for document ingestion and use traditional
-                processing.
-              </div>
-            </div>
-            <Switch
-              id="disable-ingest-with-langflow"
-              checked={disableIngestWithLangflow}
-              onCheckedChange={(v) => {
-                setUserEdited(true);
-                setDisableIngestWithLangflow(v);
-              }}
-            />
-          </div>
           <div className="flex items-center justify-between gap-6 border-b border-border py-6 last:border-b-0">
             <div className="flex-1 space-y-2 pl-3">
               <Label

@@ -12,6 +12,7 @@ from config.settings import (
     OPENRAG_SKIP_OS_SECURITY_SETUP,
     clients,
     get_openrag_config,
+    is_langflow_disabled,
 )
 from services.default_docs_service import (
     _reingest_default_docs_on_upgrade_if_needed,
@@ -108,7 +109,7 @@ async def startup_tasks(services) -> None:
                     error=str(e),
                 )
 
-        if get_openrag_config().knowledge.disable_ingest_with_langflow:
+        if get_openrag_config().knowledge.disable_ingest_with_langflow or is_langflow_disabled():
             await _ensure_opensearch_index()
 
         # Ensure that the OpenSearch index exists if onboarding was already completed
@@ -167,11 +168,22 @@ async def startup_tasks(services) -> None:
         except Exception as e:
             logger.error("OpenRAG docs startup refresh failed", error=str(e))
 
+    if is_langflow_disabled():
+        logger.info("Langflow is disabled; skipping flow initialization and synchronization")
+        from services.indexed_time_backfill import run_indexed_time_backfill
+
+        await run_indexed_time_backfill()
+        return
+
     # Ensure all configured flows exist in Langflow (create-only, never overwrites existing).
     # If a flow does not exist, it is created and active configuration settings are reapplied.
     try:
         flows_service = services["flows_service"]
         await flows_service.ensure_flows_exist()
+
+        from api.settings.langflow_sync import sync_pending_langflow_settings
+
+        await sync_pending_langflow_settings()
 
         # Check if we should upgrade the system prompt (only if it's a legacy or default prompt, preserving user customizations)
         from config.config_manager import DEFAULT_SYSTEM_PROMPT

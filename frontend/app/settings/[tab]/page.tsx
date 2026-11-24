@@ -8,6 +8,7 @@ import {
   canAccessConnectorAccessTab,
   canShowRbacGatedSettingsTab,
 } from "@/lib/brand";
+import { AdvancedSettingsSection } from "../_components/advanced-settings-section";
 import { AgentSettingsSection } from "../_components/agent-settings-section";
 import { ApiKeysSection } from "../_components/api-keys-section";
 import { ConnectorAccessSection } from "../_components/connector-access-section";
@@ -20,6 +21,7 @@ const VALID_TABS = [
   "providers",
   "ingestion",
   "agent",
+  "advanced",
   "api-keys",
   "connector-access",
 ] as const;
@@ -142,7 +144,7 @@ export default async function SettingsTabPage({
     redirect("/settings/connectors");
   }
   if (
-    (tab === "agent" || tab === "ingestion") &&
+    (tab === "agent" || tab === "ingestion" || tab === "advanced") &&
     !canShowRbacGatedSettingsTab("config:write", tabAccess)
   ) {
     redirect("/settings/connectors");
@@ -193,6 +195,7 @@ export default async function SettingsTabPage({
       {tab === "providers" && <ModelProviders />}
       {tab === "ingestion" && <IngestionTab />}
       {tab === "agent" && <AgentSettingsSection />}
+      {tab === "advanced" && <AdvancedSettingsSection />}
       {tab === "api-keys" && <ApiKeysSection />}
       {tab === "connector-access" && <ConnectorAccessSection />}
     </HydrationBoundary>
