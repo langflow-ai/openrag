@@ -408,6 +408,7 @@ async def update_settings(
     user: User = Depends(require_permission("config:write")),
     models_service=Depends(get_models_service),
     rbac=Depends(get_rbac_service),
+    request: Request | None = None,
 ) -> SettingsUpdateResponse:
     """Update settings in configuration"""
     try:
@@ -690,6 +691,11 @@ async def update_settings(
                     detail="DISABLE_LANGFLOW is controlled by deployment configuration",
                 )
             working_config.disable_langflow = body.disable_langflow
+            if not body.disable_langflow:
+                # The master switch owns all three Langflow capabilities.
+                # Re-enabling it restores Langflow ingestion even on an older
+                # installation that had persisted its legacy ingest-only flag.
+                working_config.knowledge.disable_ingest_with_langflow = False
             config_updated = True
             logger.info("Disable Langflow changed", disabled=body.disable_langflow)
 
@@ -1221,6 +1227,10 @@ async def update_settings(
             and working_config.langflow_sync_pending
         )
         if reenabled_langflow:
+            if request is not None and hasattr(request.app.state, "services"):
+                from app.lifespan import ensure_langflow_maintenance_tasks
+
+                ensure_langflow_maintenance_tasks(request.app)
             task = asyncio.create_task(
                 sync_pending_langflow_settings(session_manager=session_manager)
             )
@@ -1575,6 +1585,9 @@ async def onboarding(
 
         if is_langflow_disabled(current_config):
             logger.info("Langflow is disabled; skipping onboarding flow configuration")
+            # Onboarding can persist provider/model settings while Langflow is
+            # disabled. Queue the full replay for the next enabled startup.
+            current_config.langflow_sync_pending = True
         else:
             # Ensure the Langflow service is ready before attempting to configure it
             try:

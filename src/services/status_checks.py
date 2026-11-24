@@ -3,7 +3,13 @@ from time import perf_counter
 import httpx
 
 from api.schemas.status import ComponentBuild, ComponentState, ComponentStatus
-from config.settings import DOCLING_SERVE_URL, LANGFLOW_URL, clients, get_openrag_config
+from config.settings import (
+    DOCLING_SERVE_URL,
+    LANGFLOW_URL,
+    clients,
+    get_openrag_config,
+    is_langflow_disabled,
+)
 from services.component_logs import record_check_result
 from utils.logging_config import get_logger
 from utils.version_utils import OPENRAG_VERSION
@@ -71,7 +77,7 @@ async def check_openrag_backend() -> ComponentStatus:
     missing = []
     if clients.opensearch is None:
         missing.append("opensearch client")
-    if clients.langflow_http_client is None:
+    if not is_langflow_disabled() and clients.langflow_http_client is None:
         missing.append("langflow client")
     if clients.docling_http_client is None:
         missing.append("docling client")

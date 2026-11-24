@@ -122,14 +122,18 @@ class ContainerManager:
     def _set_expected_services(self, disable_langflow: str) -> None:
         """Update the service set after a TUI configuration save."""
 
-        self.expected_services = [
+        expected_services = [
             "openrag-backend",
             "openrag-frontend",
             "opensearch",
             "dashboards",
         ]
         if disable_langflow.strip().lower() not in ("true", "1", "yes"):
-            self.expected_services.append("langflow")
+            expected_services.append("langflow")
+        if getattr(self, "expected_services", None) != expected_services:
+            self.services_cache = {}
+            self.last_status_update = 0.0
+        self.expected_services = expected_services
 
     @staticmethod
     def _extract_repository(image_tag: str) -> str:
@@ -207,12 +211,13 @@ class ContainerManager:
         This ensures Docker Compose commands use the latest values from .env file,
         even if os.environ has stale values.
         """
-        from dotenv import load_dotenv
+        from dotenv import dotenv_values
 
+        from config.settings import get_disable_langflow_env_value
         from utils.paths import get_tui_env_file
 
         env = dict(os.environ)  # Start with current environment
-        explicit_disable_langflow = os.environ.get("DISABLE_LANGFLOW")
+        explicit_disable_langflow = get_disable_langflow_env_value()
 
         # Check centralized TUI .env location first
         tui_env_file = get_tui_env_file()
@@ -224,11 +229,13 @@ class ContainerManager:
 
         if env_file.exists():
             try:
-                # Load .env file with override=True to ensure file values take precedence
-                # This loads into os.environ, then we copy to our dict
-                load_dotenv(dotenv_path=env_file, override=True)
-                # Update our dict with all environment variables (including those from .env)
-                env.update(os.environ)
+                env.update(
+                    {
+                        key: value
+                        for key, value in dotenv_values(env_file).items()
+                        if value is not None
+                    }
+                )
                 logger.debug(f"Loaded environment from {env_file}")
             except Exception as e:
                 logger.debug(f"Error reading .env file for Docker Compose: {e}")
@@ -385,7 +392,7 @@ class ContainerManager:
         cmd.extend(["-f", str(self.compose_file)])
         if use_gpu and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
-        if "langflow" in self.expected_services:
+        if self._should_include_langflow_profile(args):
             cmd.extend(["--profile", "langflow"])
         cmd.extend(args)
 
@@ -444,7 +451,7 @@ class ContainerManager:
         cmd.extend(["-f", str(self.compose_file)])
         if use_gpu and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
-        if "langflow" in self.expected_services:
+        if self._should_include_langflow_profile(args):
             cmd.extend(["--profile", "langflow"])
         cmd.extend(args)
 
@@ -530,7 +537,7 @@ class ContainerManager:
         cmd.extend(["-f", str(self.compose_file)])
         if use_gpu and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
-        if "langflow" in self.expected_services:
+        if self._should_include_langflow_profile(args):
             cmd.extend(["--profile", "langflow"])
         cmd.extend(args)
 
@@ -666,7 +673,13 @@ class ContainerManager:
         if compose_service and compose_service in self.expected_services:
             return compose_service
 
-        return self.container_name_map.get(container_name)
+        mapped_service = self.container_name_map.get(container_name)
+        return mapped_service if mapped_service in self.expected_services else None
+
+    def _should_include_langflow_profile(self, args: list[str]) -> bool:
+        """Include Langflow for enabled work and for cleanup of stale containers."""
+
+        return "langflow" in self.expected_services or bool(args and args[0] in {"stop", "down"})
 
     def _process_service_json(self, service: dict, services: dict[str, ServiceInfo]) -> None:
         """Process a service JSON object and add it to the services dict."""

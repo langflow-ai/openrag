@@ -421,7 +421,7 @@ class ChatService:
         user_ast_messages = [m for m in messages if m.get("role") in ["user", "assistant"]]
 
         # If no history in memory, try fetching from Langflow persistent history
-        if not user_ast_messages:
+        if not user_ast_messages and not is_langflow_disabled():
             from services.langflow_history_service import langflow_history_service
 
             try:
@@ -659,7 +659,7 @@ class ChatService:
         )
         conversation_user_id = storage_user_id or user_id
 
-        if endpoint == "langflow" and not DISABLE_CHAT_WITH_LANGFLOW:
+        if endpoint == "langflow" and not DISABLE_CHAT_WITH_LANGFLOW and not is_langflow_disabled():
             # Prepare extra headers for JWT authentication and embedding model.
             # NOTE: extra_headers accumulates raw secrets (JWT, provider API keys).
             # Never log this dict or pass it to a logger call
@@ -788,7 +788,7 @@ class ChatService:
                     "langflow_deleted": False,
                     "error": "Conversation not found",
                 }
-            if DISABLE_CHAT_WITH_LANGFLOW:
+            if DISABLE_CHAT_WITH_LANGFLOW or is_langflow_disabled():
                 await self.session_ownership_service.release_session(user_id, session_id)
                 return {
                     "success": True,

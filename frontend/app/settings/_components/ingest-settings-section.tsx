@@ -631,6 +631,7 @@ export function IngestSettingsSection() {
             ocr_languages: [...DEFAULT_KNOWLEDGE_SETTINGS.ocr_languages],
             picture_descriptions:
               DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions,
+            disable_ingest_with_langflow: false,
           })
         );
       })

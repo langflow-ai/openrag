@@ -49,6 +49,16 @@ async def test_openrag_missing_client_is_degraded(monkeypatch, config_ok):
 
 
 @pytest.mark.asyncio
+async def test_openrag_does_not_require_langflow_client_when_disabled(monkeypatch, config_ok):
+    monkeypatch.setattr(status_checks, "is_langflow_disabled", lambda: True)
+    monkeypatch.setattr(clients, "opensearch", MagicMock(), raising=False)
+    monkeypatch.setattr(clients, "langflow_http_client", None, raising=False)
+    monkeypatch.setattr(clients, "docling_http_client", MagicMock(), raising=False)
+
+    assert (await check_openrag_backend()).status == ComponentState.HEALTHY
+
+
+@pytest.mark.asyncio
 async def test_openrag_config_not_loaded_is_unhealthy(monkeypatch):
     def _raise():
         raise RuntimeError("config not loaded")

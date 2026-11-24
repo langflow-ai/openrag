@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 from utils.logging_config import get_logger
 
@@ -126,6 +126,16 @@ class EnvManager:
     """Manages environment configuration for OpenRAG."""
 
     assignment_pattern = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")
+    _LANGFLOW_ENV_VARS = {
+        "LANGFLOW_DATA_PATH",
+        "LANGFLOW_SECRET_KEY",
+        "LANGFLOW_SUPERUSER",
+        "LANGFLOW_SUPERUSER_PASSWORD",
+        "LANGFLOW_CHAT_FLOW_ID",
+        "LANGFLOW_INGEST_FLOW_ID",
+        "LANGFLOW_URL_INGEST_FLOW_ID",
+        "NUDGES_FLOW_ID",
+    }
 
     def __init__(self, env_file: Path | None = None):
         if env_file:
@@ -269,6 +279,11 @@ class EnvManager:
             return []
 
         managed_vars = set(self._env_attr_map().keys())
+        preserve_langflow_values = self.config.disable_langflow.strip().lower() in (
+            "true",
+            "1",
+            "yes",
+        )
         preserved_lines: list[str] = []
 
         try:
@@ -278,7 +293,9 @@ class EnvManager:
                 if match:
                     env_var = match.group(1)
                     is_managed_block = env_var in managed_vars
-                    if not is_managed_block:
+                    if not is_managed_block or (
+                        preserve_langflow_values and env_var in self._LANGFLOW_ENV_VARS
+                    ):
                         preserved_lines.append(raw_line)
                 elif not is_managed_block:
                     # Preserves multi-line backslash strings, empty splits and unmanaged comments natively inline
@@ -307,17 +324,25 @@ class EnvManager:
 
         loaded_from_file = False
 
-        # A command-line/master environment switch must win over a persisted
-        # TUI setting so `DISABLE_LANGFLOW=true openrag` can always start the
-        # stack without Langflow.
-        explicit_disable_langflow = os.environ.get("DISABLE_LANGFLOW")
+        # The settings module captures the process-level choice before any TUI
+        # file is parsed. Reuse it on every load so a prior file read cannot
+        # turn a command-line override into a persisted value.
+        from config.settings import get_disable_langflow_env_value
+
+        explicit_disable_langflow = get_disable_langflow_env_value()
+        values = dict(os.environ)
 
         # Load .env file using python-dotenv for standard parsing
         # override=True ensures .env file values take precedence over existing environment variables
         if self.env_file.exists():
             try:
-                # Load .env file with override=True to ensure file values take precedence
-                load_dotenv(dotenv_path=self.env_file, override=True)
+                values.update(
+                    {
+                        key: value
+                        for key, value in dotenv_values(self.env_file).items()
+                        if value is not None
+                    }
+                )
                 loaded_from_file = True
                 logger.debug(f"Loaded .env file from {self.env_file}")
             except Exception as e:
@@ -326,7 +351,7 @@ class EnvManager:
         # Map environment variables to config attributes
         # This works whether values came from .env file or existing environment variables
         for env_key, attr_name in attr_map.items():
-            value = os.environ.get(env_key, "")
+            value = values.get(env_key, "")
             if value:
                 setattr(self.config, attr_name, value)
 

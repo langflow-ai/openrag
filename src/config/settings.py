@@ -141,11 +141,23 @@ LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
 LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 
 
-DISABLE_LANGFLOW = os.getenv("DISABLE_LANGFLOW", "false").lower() in (
+DISABLE_LANGFLOW_ENV_VALUE = os.getenv("DISABLE_LANGFLOW")
+DISABLE_LANGFLOW = (DISABLE_LANGFLOW_ENV_VALUE or "false").strip().lower() in (
     "true",
     "1",
     "yes",
 )
+
+
+def get_disable_langflow_env_value() -> str | None:
+    """Return the process-level master override.
+
+    TUI .env parsing is intentionally non-mutating, so this remains the value
+    supplied by the process rather than a value from a previously loaded file.
+    """
+
+    return os.getenv("DISABLE_LANGFLOW")
+
 
 DISABLE_CHAT_WITH_LANGFLOW = os.getenv("DISABLE_CHAT_WITH_LANGFLOW", "false").lower() in (
     "true",

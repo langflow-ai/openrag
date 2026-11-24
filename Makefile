@@ -20,7 +20,8 @@ REQUIRED_ENV_VARS := LANGFLOW_SUPERUSER LANGFLOW_SUPERUSER_PASSWORD OPENSEARCH_P
 # Langflow is an optional compose profile. The master switch must let every
 # normal and local-development target run without Langflow credentials, image
 # work, or the Langflow data directory.
-ifneq ($(filter true TRUE 1 yes YES,$(DISABLE_LANGFLOW)),)
+LANGFLOW_DISABLE_VALUE := $(shell printf '%s' '$(DISABLE_LANGFLOW)' | tr '[:upper:]' '[:lower:]')
+ifneq ($(filter true 1 yes,$(LANGFLOW_DISABLE_VALUE)),)
   LANGFLOW_DISABLED := true
   LANGFLOW_PROFILE :=
   LANGFLOW_BUILD_SERVICES := opensearch
@@ -706,11 +707,15 @@ dev-branch-local-cpu: ensure-langflow-data ensure-backend-volumes check-env ## S
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
 build-langflow-dev: ## Build only the Langflow dev image (no cache)
-	@if [ "$(LANGFLOW_DISABLED)" = "true" ]; then echo "$(YELLOW)DISABLE_LANGFLOW=true; no Langflow image to build.$(NC)"; exit 0; fi
+ifeq ($(LANGFLOW_DISABLED),true)
+	@echo "$(YELLOW)DISABLE_LANGFLOW=true; no Langflow image to build.$(NC)"
+
+else
 	@echo "$(YELLOW)Building Langflow dev image from branch: $(BRANCH)$(NC)"
 	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
 	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.dev.yml build --no-cache langflow
 	@echo "$(PURPLE)Langflow dev image built!$(NC)"
+endif
 
 stop-dev: ## Stop dev environment containers
 	@echo "$(YELLOW)Stopping dev environment containers...$(NC)"

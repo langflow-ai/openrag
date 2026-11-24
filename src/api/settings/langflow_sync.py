@@ -397,7 +397,7 @@ async def _update_mcp_server_urls(config, session_manager=None, flows_service=No
         mcp_service = LangflowMCPService()
         result = await mcp_service.update_all_mcp_server_urls()
         logger.info("Updated MCP server URLs after settings change", **result)
-        return True
+        return not result.get("list_failed", False) and result.get("failed", 0) == 0
 
     except Exception as mcp_error:
         logger.warning(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
@@ -642,10 +642,22 @@ async def sync_pending_langflow_settings(session_manager=None) -> bool:
     if not await reapply_all_settings(session_manager=session_manager):
         return False
 
-    config.langflow_sync_pending = False
+    # Settings requests save a fresh config object. Re-read after the await so
+    # a newer request is never overwritten by this reconciliation's stale copy.
+    latest_config = get_openrag_config()
+    if latest_config is not config:
+        logger.info(
+            "Newer settings were saved during Langflow reconciliation; leaving sync pending"
+        )
+        return True
+
+    latest_config.langflow_sync_pending = False
     try:
-        config_manager.save_config_file(config)
+        if not config_manager.save_config_file(latest_config):
+            latest_config.langflow_sync_pending = True
+            return False
     except Exception as e:
+        latest_config.langflow_sync_pending = True
         logger.error("Failed to clear pending Langflow synchronization", error=str(e))
         return False
 

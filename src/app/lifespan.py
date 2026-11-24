@@ -83,6 +83,9 @@ async def _periodic_backup(services):
             await asyncio.sleep(5 * 60)
 
             config = get_openrag_config()
+            if is_langflow_disabled(config):
+                logger.debug("Langflow disabled; skipping periodic flow backup")
+                continue
             if not config.edited:
                 logger.debug("Onboarding not completed yet, skipping periodic backup")
                 continue
@@ -160,6 +163,33 @@ async def _migrate_langflow_history_in_background() -> None:
         raise
     except Exception as exc:  # noqa: BLE001
         logger.warning("Background Langflow history import failed", error=str(exc))
+
+
+def ensure_langflow_maintenance_tasks(app: FastAPI) -> None:
+    """Start Langflow-only maintenance exactly once while Langflow is enabled."""
+
+    if is_langflow_disabled():
+        return
+
+    tasks = getattr(app.state, "langflow_maintenance_tasks", {})
+    app.state.langflow_maintenance_tasks = tasks
+    task_specs = {
+        "backup": lambda: _periodic_backup(app.state.services),
+        "history_migration": _migrate_langflow_history_in_background,
+    }
+    for name, factory in task_specs.items():
+        existing = tasks.get(name)
+        if existing is not None and not existing.done():
+            continue
+        task = asyncio.create_task(factory())
+        tasks[name] = task
+        app.state.background_tasks.add(task)
+        task.add_done_callback(app.state.background_tasks.discard)
+        task.add_done_callback(
+            lambda completed, task_name=name: (
+                tasks.pop(task_name, None) if tasks.get(task_name) is completed else None
+            )
+        )
 
 
 async def run_startup(app: FastAPI):
@@ -384,16 +414,7 @@ async def run_startup(app: FastAPI):
     if is_langflow_disabled():
         logger.info("Langflow is disabled; skipping flow backup and history migration tasks")
     else:
-        # Start periodic flow backup task (every 5 minutes)
-        backup_task = asyncio.create_task(_periodic_backup(services))
-        app.state.background_tasks.add(backup_task)
-        backup_task.add_done_callback(app.state.background_tasks.discard)
-
-        # Remote Langflow calls are best-effort. Keep them out of the startup
-        # transaction so a slow or unavailable Langflow cannot prevent readiness.
-        history_migration_task = asyncio.create_task(_migrate_langflow_history_in_background())
-        app.state.background_tasks.add(history_migration_task)
-        history_migration_task.add_done_callback(app.state.background_tasks.discard)
+        ensure_langflow_maintenance_tasks(app)
 
     # Start periodic webhook subscription renewal task
     renewal_task = asyncio.create_task(_periodic_webhook_renewal(services))

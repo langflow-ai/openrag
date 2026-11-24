@@ -292,9 +292,16 @@ class LangflowMCPService:
         Also converts eligible stdio servers to streamable HTTP mode and ensures required headers.
         Returns a summary dict with counts.
         """
-        servers = await self.list_mcp_servers()
+        try:
+            # Do not use list_mcp_servers here: its public convenience API
+            # deliberately turns an unavailable Langflow into an empty list.
+            # Reconciliation must distinguish that failure from "no servers".
+            servers = await self._list_mcp_servers_with_retry()
+        except Exception as e:
+            logger.error("Failed to list MCP servers for URL reconciliation", error=str(e))
+            return {"patched": 0, "skipped": 0, "failed": 1, "total": 0, "list_failed": True}
         if not servers:
-            return {"patched": 0, "skipped": 0, "failed": 0, "total": 0}
+            return {"patched": 0, "skipped": 0, "failed": 0, "total": 0, "list_failed": False}
 
         patched_count = 0
         skipped_count = 0
@@ -319,6 +326,7 @@ class LangflowMCPService:
             "skipped": skipped_count,
             "failed": failed_count,
             "total": len(servers),
+            "list_failed": False,
         }
         if failed_count == 0:
             logger.info("MCP servers URL update completed", **summary)

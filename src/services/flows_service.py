@@ -17,6 +17,7 @@ from config.settings import (
     OPENAI_LLM_COMPONENT_DISPLAY_NAME,
     clients,
     get_openrag_config,
+    is_langflow_disabled,
 )
 from utils.langflow_utils import enable_mcp_none_for_project
 from utils.logging_config import get_logger
@@ -1211,8 +1212,10 @@ class FlowsService:
         provider_name = self._get_provider_name_display(provider)
 
         # Update embedding component
-        if not get_openrag_config().knowledge.disable_ingest_with_langflow and (
-            embedding_model or force_embedding_update
+        if (
+            not is_langflow_disabled()
+            and not get_openrag_config().knowledge.disable_ingest_with_langflow
+            and (embedding_model or force_embedding_update)
         ):
             if is_new_flow:
                 if embedding_model:

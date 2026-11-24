@@ -98,6 +98,24 @@ class TestSaveEnvFilePermissions:
         assert "OPENSEARCH_PASSWORD='NewSecurePass!123'" in content
         assert "OPENSEARCH_PASSWORD='old-password'" not in content
 
+    def test_disabled_langflow_preserves_existing_langflow_values(self, env_manager, tmp_path):
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "DISABLE_LANGFLOW=true\n"
+            "LANGFLOW_DATA_PATH=/srv/langflow-data\n"
+            "LANGFLOW_SECRET_KEY=keep-me\n"
+            "LANGFLOW_CHAT_FLOW_ID=chat-flow\n"
+        )
+        env_manager.load_existing_env()
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            assert env_manager.save_env_file() is True
+
+        content = env_file.read_text()
+        assert "LANGFLOW_DATA_PATH=/srv/langflow-data" in content
+        assert "LANGFLOW_SECRET_KEY=keep-me" in content
+        assert "LANGFLOW_CHAT_FLOW_ID=chat-flow" in content
+
     def test_preserves_unmanaged_multiline_quoted_value(self, env_manager, tmp_path):
         """Unmanaged python-dotenv–style multiline quoted values are preserved."""
         env_file = tmp_path / ".env"

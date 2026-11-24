@@ -5,7 +5,7 @@ Provides access to configuration settings.
 Uses API key authentication.
 """
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -73,6 +73,7 @@ async def get_settings_endpoint(
 
 async def update_settings_endpoint(
     body: SettingsUpdateBody,
+    request: Request,
     session_manager=Depends(get_session_manager),
     user: User = Depends(require_api_key_permission("config:write")),
     models_service=Depends(get_models_service),
@@ -87,4 +88,5 @@ async def update_settings_endpoint(
         user=user,
         models_service=models_service,
         rbac=rbac,
+        request=request,
     )
