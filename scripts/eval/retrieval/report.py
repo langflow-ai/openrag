@@ -407,6 +407,11 @@ def _cell(text: object) -> str:
     return str(text).replace("|", "\\|").replace("\n", " ")
 
 
+def lower_is_better(metric: str) -> bool:
+    """Metrics where a drop is the improvement."""
+    return metric.startswith("noise@")
+
+
 def _label(metric: str) -> str:
     if metric in ("mrr", "reciprocal_rank"):
         return "MRR" if metric == "mrr" else "Reciprocal rank"
@@ -559,14 +564,16 @@ def _scores_line(results: Mapping[str, Any]) -> list[str]:
 def _diagnosis_detail(query: Mapping[str, Any]) -> str:
     """The expected files behind a question's miss class, with where they landed."""
     diagnosis = query["diagnosis"]
-    if diagnosis["class"] == diagnose.PARAGRAPH_MISSED:
-        return f"answer chunk {_passage(query)}"
     files = diagnose.chunk_files(query)
+    answers = diagnose.first_answer_positions(query, files)
     parts = []
     for name, cls in diagnosis["files"].items():
         if cls is None:
             continue
-        where = f"first chunk #{files.index(name) + 1}" if name in files else "not returned"
+        if cls == diagnose.PARAGRAPH_MISSED:
+            where = f"answer chunk #{answers[name]}" if name in answers else "answer not returned"
+        else:
+            where = f"first chunk #{files.index(name) + 1}" if name in files else "not returned"
         parts.append(f"{name}: {where}")
     return ", ".join(parts)
 

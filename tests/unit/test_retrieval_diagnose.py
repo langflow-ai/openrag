@@ -175,10 +175,10 @@ def test_capped_recall_uses_the_file_relevance_rule_including_the_snippet() -> N
             "answer",
             7,
             "paragraph_missed",
-            {"a.md": None},
+            {"a.md": "paragraph_missed"},
         ),
         # The file is in the top 5 but no chunk holds the answer.
-        (["a.md", "b.md"], ["a.md"], "answer", None, "paragraph_missed", {"a.md": None}),
+        (["a.md", "b.md"], ["a.md"], "answer", None, "paragraph_missed", {"a.md": "paragraph_missed"}),
     ],
 )
 def test_classify_names_the_cause_of_each_miss(
@@ -327,3 +327,74 @@ def test_diagnose_command_refuses_a_results_file_without_chunk_scores(tmp_path: 
 
     assert completed.returncode == 1
     assert "no chunk scores" in completed.stderr
+
+
+def multi_file_record(files: list[str], answers: dict[str, int]) -> dict[str, Any]:
+    """A two-file question whose expected_text sits at given positions per file."""
+    rec = record("multi", files, ["a.md", "b.md"], expected_text="answer", answer_at=None)
+    rec["answer_chunks"] = sorted(answers.values())
+    rec["passage_rank"] = min(answers.values(), default=None)
+    return rec
+
+
+def test_each_expected_file_needs_its_own_answer_chunk_in_the_top_k() -> None:
+    # Review case: a.md's answer is chunk 1 and both files are in the top 5, but
+    # b.md's paragraph never came back. The question-level passage rank (#1)
+    # would call this fine.
+    missing = multi_file_record(["a.md", "b.md", "c.md"], {"a.md": 1})
+    assert diagnose.classify(missing, 5) == {
+        "class": "paragraph_missed",
+        "files": {"a.md": None, "b.md": "paragraph_missed"},
+    }
+
+    # b.md's answer chunk is #6, outside the top 5 the chat model sees.
+    deep = multi_file_record(
+        ["a.md", "b.md", "c.md", "d.md", "e.md", "b.md"], {"a.md": 1, "b.md": 6}
+    )
+    assert diagnose.classify(deep, 5)["files"]["b.md"] == "paragraph_missed"
+
+    both = multi_file_record(["a.md", "b.md"], {"a.md": 1, "b.md": 2})
+    assert diagnose.classify(both, 5)["class"] is None
+
+
+def test_paragraph_detail_names_the_file_and_its_answer_chunk() -> None:
+    deep = multi_file_record(
+        ["a.md", "b.md", "c.md", "d.md", "e.md", "b.md"], {"a.md": 1, "b.md": 6}
+    )
+    deep["diagnosis"] = diagnose.classify(deep, 5)
+    missing = multi_file_record(["a.md", "b.md"], {"a.md": 1})
+    missing["diagnosis"] = diagnose.classify(missing, 5)
+
+    assert report._diagnosis_detail(deep) == "b.md: answer chunk #6"
+    assert report._diagnosis_detail(missing) == "b.md: answer not returned"
+
+
+@pytest.mark.parametrize(
+    ("metric", "before", "after", "css", "words"),
+    [
+        # Review case: noise going up is worse, shown red with an up arrow.
+        ("noise@5", 0.0, 0.8, "bad", "(up, worse)"),
+        ("noise@5", 0.8, 0.0, "good", "(down, better)"),
+        ("recall@5", 0.5, 0.9, "good", "(up, better)"),
+        ("recall@5", 0.9, 0.5, "bad", "(down, worse)"),
+    ],
+)
+def test_deltas_follow_each_metrics_direction(
+    metric: str, before: float, after: float, css: str, words: str
+) -> None:
+    html = html_report._delta(after, before, noise=0.01, metric=metric)
+
+    assert f'class="delta {css}"' in html
+    assert words in html
+    assert ("▲" in html) == (after > before)
+
+
+def test_comparison_table_shows_more_noise_as_a_regression() -> None:
+    clean = results_for([record("q", ["a.md", "a.md", "a.md", "a.md", "a.md"], ["a.md"])])
+    noisy = results_for([record("q", ["a.md", "b.md", "c.md", "d.md", "e.md"], ["a.md"])])
+    diff = report.diff_results(clean, noisy)
+
+    page = html_report.render_html(noisy, diff, clean)
+    row = page.split(">noise@5<", 1)[1].split("</tr>", 1)[0]
+
+    assert 'class="delta bad"' in row and "+0.800" in row

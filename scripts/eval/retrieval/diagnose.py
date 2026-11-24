@@ -18,8 +18,9 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-# Most severe first. A question takes the most severe class of its expected
-# files; ``paragraph_missed`` applies only when every expected file is visible.
+# Most severe first. Each expected file gets a class and the question takes the
+# most severe one; a file is ``paragraph_missed`` when it is in the top k but its
+# own chunk holding the answer is not.
 NEVER_RETRIEVED = "never_retrieved"
 RANKED_LOW = "ranked_low"
 CROWDED_OUT = "crowded_out"
@@ -38,7 +39,7 @@ MISS_MEANINGS = {
     "a ranking problem.",
     CROWDED_OUT: "An expected file's first chunk is below the top k, behind mostly one "
     "other file's chunks: a diversity problem.",
-    PARAGRAPH_MISSED: "Every expected file is in the top k chunks, but the chunk holding "
+    PARAGRAPH_MISSED: "An expected file is in the top k chunks, but its chunk holding "
     "the answer is not: a chunking problem.",
 }
 
@@ -102,17 +103,28 @@ def _crowded(ahead: Sequence[str], name: str) -> bool:
     return others.most_common(1)[0][1] / len(ahead) > CROWDED_SHARE
 
 
+def first_answer_positions(record: Mapping[str, Any], files: Sequence[str]) -> dict[str, int]:
+    """Position of each expected file's first chunk holding the expected_text."""
+    first: dict[str, int] = {}
+    for position in record.get("answer_chunks", []):
+        first.setdefault(files[position - 1], position)
+    return first
+
+
 def classify(record: Mapping[str, Any], k: int) -> dict[str, Any]:
     """Why a question missed at the top k chunks.
 
     Returns ``{"class": <most severe class or None>, "files": {expected file:
     class or None}}``. A class of None means the question has nothing to fix
-    at this cutoff.
+    at this cutoff. With an ``expected_text``, every expected file must have its
+    own answer chunk in the top k, matching how the file scores treat it.
     """
     files = chunk_files(record)
     first_position: dict[str, int] = {}
     for position, name in enumerate(files, start=1):
         first_position.setdefault(name, position)
+    has_text = record.get("expected_text") is not None
+    answers = first_answer_positions(record, files) if has_text else {}
 
     per_file: dict[str, str | None] = {}
     for name in record["expected_files"]:
@@ -121,15 +133,13 @@ def classify(record: Mapping[str, Any], k: int) -> dict[str, Any]:
             per_file[name] = NEVER_RETRIEVED
         elif position > k:
             per_file[name] = CROWDED_OUT if _crowded(files[: position - 1], name) else RANKED_LOW
+        elif has_text and answers.get(name, k + 1) > k:
+            per_file[name] = PARAGRAPH_MISSED
         else:
             per_file[name] = None
 
     found = [cls for cls in per_file.values() if cls is not None]
     question_class: str | None = min(found, key=MISS_CLASSES.index) if found else None
-    if question_class is None and record.get("expected_text") is not None:
-        rank = record.get("passage_rank")
-        if rank is None or rank > k:
-            question_class = PARAGRAPH_MISSED
     return {"class": question_class, "files": per_file}
 
 

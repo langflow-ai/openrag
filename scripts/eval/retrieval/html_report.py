@@ -51,11 +51,13 @@ def noise_floor(results: Mapping[str, Any]) -> float:
     return max(0.5 / count, SHOWN_CHANGE) if count else 0.005
 
 
-def _delta(current: float, baseline: float | None, noise: float) -> str:
+def _delta(current: float, baseline: float | None, noise: float, metric: str = "") -> str:
     """A change with an arrow and a sign, so it never relies on color alone.
 
     Changes under ``noise`` are shown muted, with "≈" and no arrow: the number
-    stays visible but is not presented as a win or a loss.
+    stays visible but is not presented as a win or a loss. The arrow follows the
+    number; the color and the screen-reader word follow whether that is better,
+    which for ``metric`` like noise@k means lower.
     """
     if baseline is None:
         return ""
@@ -64,12 +66,13 @@ def _delta(current: float, baseline: float | None, noise: float) -> str:
         return '<span class="delta same">no change</span>'
     if abs(change) < noise:
         return f'<span class="delta same">≈ {change:+.3f}<span class="sr"> (noise)</span></span>'
-    good = change > 0  # every metric here is better when higher
-    arrow, word = ("▲", "up") if good else ("▼", "down")
+    good = (change < 0) if report.lower_is_better(metric) else (change > 0)
+    arrow, word = ("▲", "up") if change > 0 else ("▼", "down")
+    verdict = "better" if good else "worse"
     return (
         f'<span class="delta {"good" if good else "bad"}">'
         f'<span aria-hidden="true">{arrow}</span> {change:+.3f}'
-        f'<span class="sr"> ({word})</span></span>'
+        f'<span class="sr"> ({word}, {verdict})</span></span>'
     )
 
 
@@ -500,7 +503,7 @@ def _tiles(
         sub = f'<div class="was">baseline {_fmt(before)}</div>' if before is not None else ""
         tiles.append(
             f'<div class="tile"><div class="tile-label">{_e(report._label(name))}</div>'
-            f'<div class="tile-value">{_fmt(value)}</div>{_delta(value, before, noise)}{sub}</div>'
+            f'<div class="tile-value">{_fmt(value)}</div>{_delta(value, before, noise, name)}{sub}</div>'
         )
     return f'<div class="tiles">{"".join(tiles)}</div>' if tiles else ""
 
@@ -885,7 +888,7 @@ def _all_metrics(overall: Mapping[str, float], base: Mapping[str, float], noise:
                 _e(report._label(name)),
                 _fmt(value),
                 _fmt(before),
-                _delta(value, before, noise) or "n/a",
+                _delta(value, before, noise, name) or "n/a",
             ]
         )
     return (

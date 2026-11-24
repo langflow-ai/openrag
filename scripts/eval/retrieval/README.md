@@ -481,9 +481,11 @@ counts toward recall@5 as the second unique file can still be missing from it.
 | Never retrieved | No chunk of an expected file came back | Embedding model, query rewriting |
 | Ranked low | An expected file came back, but its first chunk is below the top k | A reranker, hybrid search weights |
 | Crowded out | As ranked low, but more than half of the chunks ahead of it come from one other file | A cap on chunks per file in results |
-| File found, paragraph missed | Every expected file is in the top k chunks, but the chunk holding the `expected_text` is not | Smaller chunks or more overlap |
+| File found, paragraph missed | An expected file is in the top k chunks, but its own chunk holding the `expected_text` is not | Smaller chunks or more overlap |
 
-A question with several expected files takes the most severe cause among them.
+Each expected file is checked on its own, including its own answer chunk, and
+a question takes the most severe cause among its files. In the report's
+comparisons, noise@k counts as better when it goes down.
 The summary and HTML report count the causes overall and per tag, and list each
 question with where its file or answer chunk landed.
 
