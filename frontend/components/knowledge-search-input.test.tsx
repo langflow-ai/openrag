@@ -10,6 +10,7 @@ import {
   SUGGEST_MAX_CHARS,
 } from "@/app/api/queries/useGetSearchSuggestions";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import type { DateRangeValue } from "@/lib/saved-date-range";
 import { server } from "@/test-utils/msw/server";
 import { renderWithProviders } from "@/test-utils/render";
 import { mockRouter } from "@/test-utils/router";
@@ -62,6 +63,32 @@ function filterFixture(queryData: object): KnowledgeFilter {
     created_at: "",
     updated_at: "",
   };
+}
+
+/** Sets the toolbar date range the way the date picker does. */
+function DateRangeSeed({ range }: { range: DateRangeValue | null }) {
+  const { setDateRange } = useKnowledgeFilter();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: seed once on mount
+  useEffect(() => {
+    setDateRange(range);
+  }, []);
+  return null;
+}
+
+/** Sets (or, with `null`, clears) the toolbar range on click, like the date picker. */
+function SetDateRange({
+  label,
+  range,
+}: {
+  label: string;
+  range: DateRangeValue | null;
+}) {
+  const { setDateRange } = useKnowledgeFilter();
+  return (
+    <button type="button" onClick={() => setDateRange(range)}>
+      {label}
+    </button>
+  );
 }
 
 /** Selects a filter and exposes the committed query through the DOM. */
@@ -194,5 +221,110 @@ describe("KnowledgeSearchInput suggestions", () => {
 
     expect(requests.every((r) => r.scoreThreshold === 2.5)).toBe(true);
     expect(requests[0].filters).toEqual({ data_sources: ["a.pdf"] });
+  });
+});
+
+describe("KnowledgeSearchInput suggestions and the date range", () => {
+  const SAVED_FILTER = filterFixture({
+    query: "",
+    filters: {
+      data_sources: ["a.pdf"],
+      created_after: "2026-01-01T00:00:00.000Z",
+      created_before: "2026-01-31T23:59:59.999Z",
+    },
+  });
+  const NOV_20 = new Date(2026, 10, 20);
+  // The picker sends the viewer's local day as UTC bounds, with the end bound
+  // running through the day's last microsecond (backend precision).
+  const NOV_20_START = new Date(2026, 10, 20, 0, 0, 0, 0).toISOString();
+  const NOV_20_END = new Date(2026, 10, 20, 23, 59, 59, 999)
+    .toISOString()
+    .replace(/\.999Z$/, ".999999Z");
+
+  type Filters = Record<string, unknown> | undefined;
+  const lastFilters = (requests: SuggestRequest[]) =>
+    requests.at(-1)?.filters as Filters;
+
+  async function renderWithControls(
+    filter?: KnowledgeFilter,
+    initialRange?: DateRangeValue,
+  ) {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <>
+        <FilterSeed filter={filter} />
+        {initialRange && <DateRangeSeed range={initialRange} />}
+        <SetDateRange
+          label="Pick Nov 20"
+          range={{ from: NOV_20, to: NOV_20 }}
+        />
+        <SetDateRange label="Clear date range" range={null} />
+        <KnowledgeSearchInput />
+      </>,
+      { providers: ["knowledgeFilter"] },
+    );
+    const input = await screen.findByPlaceholderText(
+      "Search your documents...",
+    );
+    if (filter) await screen.findByText("Reports");
+    return { user, input };
+  }
+
+  /** Types into the input and returns the filters of the request it triggers. */
+  async function suggestFor(
+    requests: SuggestRequest[],
+    user: ReturnType<typeof userEvent.setup>,
+    input: HTMLElement,
+    text: string,
+  ) {
+    requests.length = 0;
+    await user.click(input);
+    await user.type(input, text);
+    await waitFor(() => expect(requests.length).toBeGreaterThan(0));
+    return lastFilters(requests);
+  }
+
+  it("sends the toolbar range as the viewer's local-day UTC bounds", async () => {
+    const requests = serveSuggest();
+    const { user, input } = await renderWithControls(undefined, {
+      from: NOV_20,
+      to: NOV_20,
+    });
+
+    const filters = await suggestFor(requests, user, input, "docl");
+
+    expect(filters?.created_after).toBe(NOV_20_START);
+    expect(filters?.created_before).toBe(NOV_20_END);
+  });
+
+  it("uses a saved filter's range until the toolbar replaces it", async () => {
+    const requests = serveSuggest();
+    const { user, input } = await renderWithControls(SAVED_FILTER);
+
+    const saved = await suggestFor(requests, user, input, "docl");
+    expect(saved?.created_after).toBe("2026-01-01T00:00:00.000Z");
+    expect(saved?.created_before).toBe("2026-01-31T23:59:59.999Z");
+
+    await user.click(screen.getByRole("button", { name: "Pick Nov 20" }));
+    const replaced = await suggestFor(requests, user, input, "i");
+
+    expect(replaced?.data_sources).toEqual(["a.pdf"]);
+    expect(replaced?.created_after).toBe(NOV_20_START);
+    expect(replaced?.created_before).toBe(NOV_20_END);
+  });
+
+  it("drops a saved filter's dates when the toolbar clears the range", async () => {
+    const requests = serveSuggest();
+    const { user, input } = await renderWithControls(SAVED_FILTER);
+
+    const saved = await suggestFor(requests, user, input, "docl");
+    expect(saved?.created_after).toBe("2026-01-01T00:00:00.000Z");
+
+    await user.click(screen.getByRole("button", { name: "Clear date range" }));
+    const cleared = await suggestFor(requests, user, input, "i");
+
+    expect(cleared?.data_sources).toEqual(["a.pdf"]);
+    expect(cleared?.created_after).toBeUndefined();
+    expect(cleared?.created_before).toBeUndefined();
   });
 });
