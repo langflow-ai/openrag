@@ -28,6 +28,7 @@ logger = get_logger(__name__)
 # Strong refs to in-flight async post-save sync tasks so they aren't
 # garbage-collected mid-flight when the originating request returns.
 _background_tasks: set[asyncio.Task] = set()
+_pending_sync_lock = asyncio.Lock()
 
 LANGFLOW_CREDENTIAL_GLOBAL_VARIABLES = frozenset(
     {
@@ -632,34 +633,30 @@ async def reapply_all_settings(session_manager=None) -> bool:
 
 async def sync_pending_langflow_settings(session_manager=None) -> bool:
     """Reconcile a persisted native-mode settings change with Langflow."""
-    config = get_openrag_config()
-    if not config.langflow_sync_pending:
-        return True
-    if settings.is_langflow_disabled(config):
-        logger.info("Langflow disabled; leaving pending synchronization queued")
-        return False
-
-    if not await reapply_all_settings(session_manager=session_manager):
-        return False
-
-    # Settings requests save a fresh config object. Re-read after the await so
-    # a newer request is never overwritten by this reconciliation's stale copy.
-    latest_config = get_openrag_config()
-    if latest_config is not config:
-        logger.info(
-            "Newer settings were saved during Langflow reconciliation; leaving sync pending"
-        )
-        return await sync_pending_langflow_settings(session_manager=session_manager)
-
-    latest_config.langflow_sync_pending = False
-    try:
-        if not config_manager.save_config_file(latest_config):
-            latest_config.langflow_sync_pending = True
-            return False
-    except Exception as e:
-        latest_config.langflow_sync_pending = True
-        logger.error("Failed to clear pending Langflow synchronization", error=str(e))
-        return False
+    async with _pending_sync_lock:
+        while True:
+            config = get_openrag_config()
+            if not config.langflow_sync_pending:
+                return True
+            if settings.is_langflow_disabled(config):
+                logger.info("Langflow disabled; leaving pending synchronization queued")
+                return False
+            if not await reapply_all_settings(session_manager=session_manager):
+                return False
+            latest_config = get_openrag_config()
+            if latest_config is not config:
+                logger.info("Newer settings arrived during reconciliation; replaying them")
+                continue
+            latest_config.langflow_sync_pending = False
+            try:
+                if not config_manager.save_config_file(latest_config):
+                    latest_config.langflow_sync_pending = True
+                    return False
+            except Exception as e:
+                latest_config.langflow_sync_pending = True
+                logger.error("Failed to clear pending Langflow synchronization", error=str(e))
+                return False
+            break
 
     logger.info("Reconciled pending Langflow settings")
     return True

@@ -503,7 +503,9 @@ class WelcomeScreen(Screen):
         conflicts: list[tuple[str, int, str]] = []
 
         # Check container ports only if services are not already running
-        if self.container_manager.is_available() and not self.services_running:
+        if self.container_manager.is_available() and (
+            not self.services_running or expected_services_changed
+        ):
             ports_available, port_conflicts = await self.container_manager.check_ports_available()
             if not ports_available:
                 conflicts.extend(port_conflicts)
