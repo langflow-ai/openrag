@@ -90,6 +90,13 @@ const createNextConfig = (phase: string): NextConfig => {
     images: {
       unoptimized: true,
     },
+    // Keep the no-op sharp stub (stubs/sharp) out of the standalone output, so
+    // the production image ships no package named sharp for vulnerability
+    // scanners to match against sharp advisories. Next loads sharp lazily
+    // inside a try/catch, only for image optimization, which is disabled above.
+    outputFileTracingExcludes: {
+      "*": ["node_modules/sharp/**"],
+    },
     // Ignore TypeScript errors during build
     typescript: {
       ignoreBuildErrors: true,

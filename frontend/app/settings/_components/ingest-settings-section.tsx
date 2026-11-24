@@ -1013,198 +1013,205 @@ export function IngestSettingsSection() {
               </CollapsibleContent>
             </Collapsible>
           </div>
-          <div className="flex items-center justify-between gap-6 border-b border-border py-6 last:border-b-0">
-            <div className="flex-1 space-y-2 pl-3">
-              <Label
-                htmlFor="picture-descriptions"
-                className="text-base font-semibold cursor-pointer"
-              >
-                Picture Descriptions
-              </Label>
-              <div className="text-sm text-muted-foreground">
-                Adds captions for images. Ingest is slower when enabled.
-              </div>
-            </div>
-            <Switch
-              id="picture-descriptions"
-              checked={pictureDescriptions}
-              onCheckedChange={(v) => {
-                setUserEdited(true);
-                setPictureDescriptions(v);
-              }}
-            />
-          </div>
-        </div>
-        {showVlmSettings && (
-          <Collapsible
-            open={vlmOpen}
-            onOpenChange={setVlmOpen}
-            className={cn(
-              "px-4 transition-all duration-200",
-              !pictureDescriptions && "opacity-50",
-            )}
+          <div
+            role="group"
+            aria-labelledby="picture-descriptions-label"
+            className="border-b border-border last:border-b-0"
           >
-            <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-sm font-medium text-foreground hover:text-foreground/80">
-              Advanced Vision Model (VLM) Settings
-              <ChevronDown
-                className={cn(
-                  "h-4 w-4 text-muted-foreground transition-transform duration-200",
-                  vlmOpen && "rotate-180",
-                )}
-              />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="pt-4 space-y-6">
-              <div className="space-y-2">
-                <LabelWrapper
-                  id="vlm-model"
-                  label="Vision model"
-                  helperText="Pick a vision-capable model; the provider is set from your selection"
-                  required={pictureDescriptions}
+            <div className="flex items-center justify-between gap-6 py-6">
+              <div className="flex-1 space-y-2 pl-3">
+                <Label
+                  id="picture-descriptions-label"
+                  htmlFor="picture-descriptions"
+                  className="text-base font-semibold cursor-pointer"
                 >
-                  <ModelSelector
-                    groupedOptions={groupedVlmModels}
-                    custom
-                    noOptionsPlaceholder={
-                      isLoadingAnyVlmModels
-                        ? "Loading models..."
-                        : catalogError
-                          ? "Could not load the model catalogue. Retry later."
-                          : "No models detected. Configure a model provider with vision-capable models first."
-                    }
-                    value={vlmModel}
-                    selectedProvider={effectiveVlmProvider}
-                    onValueChange={handleVlmModelChange}
-                    hasError={!!validationError}
-                    disabled={!pictureDescriptions}
-                  />
-                </LabelWrapper>
-                {providerWarning && (
-                  <p className="text-sm text-destructive" role="alert">
-                    Configure a provider with vision-capable models in Settings
-                    &gt; Providers first.
-                  </p>
-                )}
+                  Picture Descriptions
+                </Label>
+                <div className="text-sm text-muted-foreground">
+                  Adds captions for images. Ingest is slower when enabled.
+                </div>
               </div>
+              <Switch
+                id="picture-descriptions"
+                checked={pictureDescriptions}
+                onCheckedChange={(v) => {
+                  setUserEdited(true);
+                  setPictureDescriptions(v);
+                }}
+              />
+            </div>
+            {showVlmSettings && (
+              <Collapsible
+                open={vlmOpen}
+                onOpenChange={setVlmOpen}
+                className={cn(
+                  "pl-3 pb-6 transition-all duration-200",
+                  !pictureDescriptions && "opacity-50",
+                )}
+              >
+                <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-sm font-medium text-foreground hover:text-foreground/80">
+                  Advanced Vision Model (VLM) Settings
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 mr-4 text-muted-foreground transition-transform duration-200",
+                      vlmOpen && "rotate-180",
+                    )}
+                  />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-4 space-y-6">
+                  <div className="space-y-2">
+                    <LabelWrapper
+                      id="vlm-model"
+                      label="Vision model"
+                      helperText="Pick a vision-capable model; the provider is set from your selection"
+                      required={pictureDescriptions}
+                    >
+                      <ModelSelector
+                        groupedOptions={groupedVlmModels}
+                        custom
+                        noOptionsPlaceholder={
+                          isLoadingAnyVlmModels
+                            ? "Loading models..."
+                            : catalogError
+                              ? "Could not load the model catalogue. Retry later."
+                              : "No models detected. Configure a model provider with vision-capable models first."
+                        }
+                        value={vlmModel}
+                        selectedProvider={effectiveVlmProvider}
+                        onValueChange={handleVlmModelChange}
+                        hasError={!!validationError}
+                        disabled={!pictureDescriptions}
+                      />
+                    </LabelWrapper>
+                    {providerWarning && (
+                      <p className="text-sm text-destructive" role="alert">
+                        Configure a provider with vision-capable models in
+                        Settings &gt; Providers first.
+                      </p>
+                    )}
+                  </div>
 
-              {effectiveVlmProvider === "watsonx" && (
-                <div className="space-y-2">
-                  <LabelWrapper
-                    id="vlm-watsonx-api-version"
-                    label="watsonx API version"
-                    helperText="API version date sent to watsonx.ai"
-                  >
-                    <Input
-                      id="vlm-watsonx-api-version"
-                      type="text"
-                      placeholder={DEFAULT_WATSONX_API_VERSION}
-                      value={vlmWatsonxApiVersion}
-                      onChange={(e) => {
+                  {effectiveVlmProvider === "watsonx" && (
+                    <div className="space-y-2">
+                      <LabelWrapper
+                        id="vlm-watsonx-api-version"
+                        label="watsonx API version"
+                        helperText="API version date sent to watsonx.ai"
+                      >
+                        <Input
+                          id="vlm-watsonx-api-version"
+                          type="text"
+                          placeholder={DEFAULT_WATSONX_API_VERSION}
+                          value={vlmWatsonxApiVersion}
+                          onChange={(e) => {
+                            setUserEdited(true);
+                            setVlmWatsonxApiVersion(e.target.value);
+                          }}
+                          disabled={!pictureDescriptions}
+                        />
+                      </LabelWrapper>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <LabelWrapper
+                      id="vlm-prompt"
+                      label="Prompt"
+                      helperText="Sent to the VLM for every page"
+                    >
+                      <Textarea
+                        id="vlm-prompt"
+                        rows={3}
+                        value={vlmPrompt}
+                        onChange={(e) => {
+                          setUserEdited(true);
+                          setVlmPrompt(e.target.value);
+                        }}
+                        disabled={!pictureDescriptions}
+                      />
+                    </LabelWrapper>
+                  </div>
+
+                  <div className="space-y-2">
+                    <LabelWrapper
+                      id="vlm-response-format"
+                      label="Response format"
+                      helperText="Per-page VLM output. Markdown is compatible with the existing pipeline; the final document is always Docling JSON."
+                    >
+                      <Select
+                        value={vlmResponseFormat}
+                        onValueChange={(v) => {
+                          setUserEdited(true);
+                          setVlmResponseFormat(v);
+                        }}
+                        disabled={!pictureDescriptions}
+                      >
+                        <SelectTrigger
+                          id="vlm-response-format"
+                          disabled={!pictureDescriptions}
+                        >
+                          <SelectValue placeholder="Select a format" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {RESPONSE_FORMATS.map((format) => (
+                            <SelectItem key={format.value} value={format.value}>
+                              {format.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </LabelWrapper>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <NumberInput
+                      id="vlm-max-tokens"
+                      label="Max tokens per page"
+                      value={vlmMaxTokens}
+                      onChange={(value) => {
                         setUserEdited(true);
-                        setVlmWatsonxApiVersion(e.target.value);
+                        setVlmMaxTokens(Math.max(1, value));
                       }}
+                      unit="tokens"
+                      min={1}
                       disabled={!pictureDescriptions}
                     />
-                  </LabelWrapper>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <LabelWrapper
-                  id="vlm-prompt"
-                  label="Prompt"
-                  helperText="Sent to the VLM for every page"
-                >
-                  <Textarea
-                    id="vlm-prompt"
-                    rows={3}
-                    value={vlmPrompt}
-                    onChange={(e) => {
-                      setUserEdited(true);
-                      setVlmPrompt(e.target.value);
-                    }}
-                    disabled={!pictureDescriptions}
-                  />
-                </LabelWrapper>
-              </div>
-
-              <div className="space-y-2">
-                <LabelWrapper
-                  id="vlm-response-format"
-                  label="Response format"
-                  helperText="Per-page VLM output. Markdown is compatible with the existing pipeline; the final document is always Docling JSON."
-                >
-                  <Select
-                    value={vlmResponseFormat}
-                    onValueChange={(v) => {
-                      setUserEdited(true);
-                      setVlmResponseFormat(v);
-                    }}
-                    disabled={!pictureDescriptions}
-                  >
-                    <SelectTrigger
-                      id="vlm-response-format"
+                    <NumberInput
+                      id="vlm-concurrency"
+                      label="Concurrency"
+                      value={vlmConcurrency}
+                      onChange={(value) => {
+                        setUserEdited(true);
+                        setVlmConcurrency(Math.max(1, value));
+                      }}
+                      unit="requests"
+                      min={1}
                       disabled={!pictureDescriptions}
-                    >
-                      <SelectValue placeholder="Select a format" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {RESPONSE_FORMATS.map((format) => (
-                        <SelectItem key={format.value} value={format.value}>
-                          {format.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </LabelWrapper>
-              </div>
+                    />
+                    <NumberInput
+                      id="vlm-timeout"
+                      label="API timeout"
+                      value={vlmTimeout}
+                      onChange={(value) => {
+                        setUserEdited(true);
+                        setVlmTimeout(Math.max(1, value));
+                      }}
+                      unit="seconds"
+                      min={1}
+                      disabled={!pictureDescriptions}
+                    />
+                  </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <NumberInput
-                  id="vlm-max-tokens"
-                  label="Max tokens per page"
-                  value={vlmMaxTokens}
-                  onChange={(value) => {
-                    setUserEdited(true);
-                    setVlmMaxTokens(Math.max(1, value));
-                  }}
-                  unit="tokens"
-                  min={1}
-                  disabled={!pictureDescriptions}
-                />
-                <NumberInput
-                  id="vlm-concurrency"
-                  label="Concurrency"
-                  value={vlmConcurrency}
-                  onChange={(value) => {
-                    setUserEdited(true);
-                    setVlmConcurrency(Math.max(1, value));
-                  }}
-                  unit="requests"
-                  min={1}
-                  disabled={!pictureDescriptions}
-                />
-                <NumberInput
-                  id="vlm-timeout"
-                  label="API timeout"
-                  value={vlmTimeout}
-                  onChange={(value) => {
-                    setUserEdited(true);
-                    setVlmTimeout(Math.max(1, value));
-                  }}
-                  unit="seconds"
-                  min={1}
-                  disabled={!pictureDescriptions}
-                />
-              </div>
-
-              {validationError && (
-                <p className="text-sm text-destructive" role="alert">
-                  {validationError}
-                </p>
-              )}
-            </CollapsibleContent>
-          </Collapsible>
-        )}
+                  {validationError && (
+                    <p className="text-sm text-destructive" role="alert">
+                      {validationError}
+                    </p>
+                  )}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+          </div>
+        </div>
       </div>
     </section>
   );
