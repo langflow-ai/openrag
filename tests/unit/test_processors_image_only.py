@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 
 import pytest
 
@@ -99,7 +99,13 @@ async def test_image_only_placeholder_succeeds_but_empty_document_fails(
         assert indexed == {}
         return
 
-    assert result == {"status": "indexed", "id": "image-hash", "chunk_count": 1}
+    assert result == {
+        "status": "indexed",
+        "id": "image-hash",
+        "chunk_count": 1,
+        "ingest_path": "openrag",
+        "ingest_run_id": ANY,
+    }
     # Provider-tagged so the gateway routes to the provider the processor
     # resolved, not to whatever happens to be the configured default.
     assert embedding_calls == [
