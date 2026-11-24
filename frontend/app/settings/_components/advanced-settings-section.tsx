@@ -25,7 +25,13 @@ export function AdvancedSettingsSection() {
   });
 
   if (isLoading) {
-    return <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />;
+    return (
+      <Loader2
+        aria-label="Loading advanced settings"
+        className="h-5 w-5 animate-spin text-muted-foreground"
+        role="status"
+      />
+    );
   }
 
   // DISABLE_LANGFLOW=true means there is no Langflow deployment to opt into,

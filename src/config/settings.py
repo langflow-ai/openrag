@@ -797,7 +797,7 @@ def is_langflow_disabled(config=None) -> bool:
         return True
     if config is None:
         config = get_openrag_config()
-    return bool(getattr(config, "disable_langflow", False))
+    return getattr(config, "disable_langflow", False) is True
 
 
 def embedding_overflow_policy() -> str:
