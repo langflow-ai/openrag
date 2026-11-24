@@ -119,7 +119,7 @@ class ContainerManager:
             f"{project_name}-langflow": "langflow",
         }
 
-    def _set_expected_services(self, disable_langflow: str) -> None:
+    def _set_expected_services(self, disable_langflow: str) -> bool:
         """Update the service set after a TUI configuration save."""
 
         expected_services = [
@@ -130,10 +130,12 @@ class ContainerManager:
         ]
         if disable_langflow.strip().lower() not in ("true", "1", "yes"):
             expected_services.append("langflow")
-        if getattr(self, "expected_services", None) != expected_services:
+        changed = getattr(self, "expected_services", None) != expected_services
+        if changed:
             self.services_cache = {}
             self.last_status_update = 0.0
         self.expected_services = expected_services
+        return changed
 
     @staticmethod
     def _extract_repository(image_tag: str) -> str:
@@ -1207,9 +1209,34 @@ class ContainerManager:
 
         if containers_exist:
             yield False, "Starting existing containers...", False
-            if self.runtime_info.runtime_type == RuntimeType.PODMAN:
+            env = self._get_env_from_file()
+            project_name = env.get("COMPOSE_PROJECT_NAME", "openrag")
+            desired_mode = env.get("DISABLE_LANGFLOW", "").strip().lower()
+            inspect_ok, inspect_out, _ = await self._run_runtime_command(
+                [
+                    "inspect",
+                    f"{project_name}-backend",
+                    "--format",
+                    "{{range .Config.Env}}{{println .}}{{end}}",
+                ]
+            )
+            current_mode = (
+                next(
+                    (
+                        line.split("=", 1)[1].strip().lower()
+                        for line in inspect_out.splitlines()
+                        if line.startswith("DISABLE_LANGFLOW=")
+                    ),
+                    None,
+                )
+                if inspect_ok
+                else None
+            )
+            mode_changed = current_mode != desired_mode
+            if self.runtime_info.runtime_type == RuntimeType.PODMAN or mode_changed:
                 # Podman doesn't support --no-recreate; force-recreate to avoid
-                # "name already in use" and dependency graph errors
+                # "name already in use" and dependency graph errors. Recreate
+                # Docker containers too when the backend's mode changed.
                 compose_cmd = ["up", "-d", "--force-recreate"]
             else:
                 # Use --no-recreate to start existing containers without recreating

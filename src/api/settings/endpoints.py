@@ -1221,16 +1221,13 @@ async def update_settings(
         # Refresh patched client immediately so subsequent requests pick up latest config.
         await clients.refresh_patched_client()
 
-        reenabled_langflow = (
-            current_config.disable_langflow
-            and not working_config.disable_langflow
-            and working_config.langflow_sync_pending
-        )
+        reenabled_langflow = current_config.disable_langflow and not working_config.disable_langflow
         if reenabled_langflow:
             if request is not None and hasattr(request.app.state, "services"):
                 from app.lifespan import ensure_langflow_maintenance_tasks
 
                 ensure_langflow_maintenance_tasks(request.app)
+        if reenabled_langflow and working_config.langflow_sync_pending:
             task = asyncio.create_task(
                 sync_pending_langflow_settings(session_manager=session_manager)
             )
@@ -1292,6 +1289,19 @@ async def update_settings(
             Category.SETTINGS_OPERATIONS, MessageId.ORB_SETTINGS_UPDATE_FAILED
         )
         return JSONResponse({"error": "Failed to update settings"}, status_code=500)
+
+
+async def update_settings_endpoint(
+    request: Request,
+    body: SettingsUpdateBody,
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(require_permission("config:write")),
+    models_service=Depends(get_models_service),
+    rbac=Depends(get_rbac_service),
+) -> SettingsUpdateResponse:
+    """FastAPI route wrapper with a required request object."""
+
+    return await update_settings(body, session_manager, user, models_service, rbac, request)
 
 
 async def onboarding(

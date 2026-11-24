@@ -426,7 +426,7 @@ class TestDisableLangflowSetting:
 
         env_file = tmp_path / ".env"
         env_file.write_text("DISABLE_LANGFLOW=false\n")
-        monkeypatch.setenv("DISABLE_LANGFLOW", "true")
+        monkeypatch.setattr("config.settings.DISABLE_LANGFLOW_ENV_VALUE", "true")
 
         manager = EnvManager(env_file=env_file)
         manager.load_existing_env()

@@ -10,6 +10,7 @@ production (the ASGI server drives it) and in tests (which enter/exit
 """
 
 import asyncio
+from collections.abc import Callable
 
 from fastapi import FastAPI
 
@@ -177,6 +178,14 @@ def ensure_langflow_maintenance_tasks(app: FastAPI) -> None:
         "backup": lambda: _periodic_backup(app.state.services),
         "history_migration": _migrate_langflow_history_in_background,
     }
+
+    def remove_completed_task(task_name: str) -> Callable[[asyncio.Task], None]:
+        def callback(completed: asyncio.Task) -> None:
+            if tasks.get(task_name) is completed:
+                tasks.pop(task_name, None)
+
+        return callback
+
     for name, factory in task_specs.items():
         existing = tasks.get(name)
         if existing is not None and not existing.done():
@@ -185,11 +194,7 @@ def ensure_langflow_maintenance_tasks(app: FastAPI) -> None:
         tasks[name] = task
         app.state.background_tasks.add(task)
         task.add_done_callback(app.state.background_tasks.discard)
-        task.add_done_callback(
-            lambda completed, task_name=name: (
-                tasks.pop(task_name, None) if tasks.get(task_name) is completed else None
-            )
-        )
+        task.add_done_callback(remove_completed_task(name))
 
 
 async def run_startup(app: FastAPI):

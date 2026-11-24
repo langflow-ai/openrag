@@ -24,6 +24,7 @@ from utils.upload_limits import max_upload_mb_from_env
 # Import configuration manager
 from .config_manager import config_manager
 
+DISABLE_LANGFLOW_ENV_VALUE = os.environ.get("DISABLE_LANGFLOW")
 load_dotenv(override=False)
 load_dotenv("../", override=False)
 
@@ -141,7 +142,6 @@ LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
 LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
 
 
-DISABLE_LANGFLOW_ENV_VALUE = os.getenv("DISABLE_LANGFLOW")
 DISABLE_LANGFLOW = (DISABLE_LANGFLOW_ENV_VALUE or "false").strip().lower() in (
     "true",
     "1",
@@ -156,7 +156,13 @@ def get_disable_langflow_env_value() -> str | None:
     supplied by the process rather than a value from a previously loaded file.
     """
 
-    return os.getenv("DISABLE_LANGFLOW")
+    return DISABLE_LANGFLOW_ENV_VALUE
+
+
+def get_process_environment() -> dict[str, str]:
+    """Return a copy of the inherited process environment for TUI consumers."""
+
+    return dict(os.environ)
 
 
 DISABLE_CHAT_WITH_LANGFLOW = os.getenv("DISABLE_CHAT_WITH_LANGFLOW", "false").lower() in (

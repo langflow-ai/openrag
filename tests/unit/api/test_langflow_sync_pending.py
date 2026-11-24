@@ -45,7 +45,7 @@ async def test_pending_sync_does_not_clear_a_newer_config(monkeypatch):
     newer = OpenRAGConfig.from_dict(
         {"langflow_sync_pending": True, "agent": {"system_prompt": "new"}}
     )
-    configs = iter([stale, newer])
+    configs = iter([stale, newer, newer, newer])
 
     monkeypatch.setattr(langflow_sync, "get_openrag_config", lambda: next(configs))
     monkeypatch.setattr(langflow_sync.settings, "is_langflow_disabled", lambda _config: False)
@@ -54,5 +54,5 @@ async def test_pending_sync_does_not_clear_a_newer_config(monkeypatch):
     monkeypatch.setattr(langflow_sync.config_manager, "save_config_file", save)
 
     assert await langflow_sync.sync_pending_langflow_settings() is True
-    assert newer.langflow_sync_pending is True
-    save.assert_not_called()
+    assert newer.langflow_sync_pending is False
+    save.assert_called_once_with(newer)

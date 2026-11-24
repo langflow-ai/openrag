@@ -327,10 +327,10 @@ class EnvManager:
         # The settings module captures the process-level choice before any TUI
         # file is parsed. Reuse it on every load so a prior file read cannot
         # turn a command-line override into a persisted value.
-        from config.settings import get_disable_langflow_env_value
+        from config.settings import get_disable_langflow_env_value, get_process_environment
 
         explicit_disable_langflow = get_disable_langflow_env_value()
-        values = dict(os.environ)
+        values = get_process_environment()
 
         # Load .env file using python-dotenv for standard parsing
         # override=True ensures .env file values take precedence over existing environment variables

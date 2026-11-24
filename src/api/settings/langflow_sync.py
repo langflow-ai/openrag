@@ -649,7 +649,7 @@ async def sync_pending_langflow_settings(session_manager=None) -> bool:
         logger.info(
             "Newer settings were saved during Langflow reconciliation; leaving sync pending"
         )
-        return True
+        return await sync_pending_langflow_settings(session_manager=session_manager)
 
     latest_config.langflow_sync_pending = False
     try:

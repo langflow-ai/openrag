@@ -36,7 +36,7 @@ class FlowsService:
         # Cache for flow file mappings to avoid repeated filesystem scans
         self._flow_file_cache: dict[str, str] = {}
         # Semaphores to prevent race conditions when updating the same flow concurrently
-        self._flow_locks = LRUCache(maxsize=128)
+        self._flow_locks: LRUCache[str, asyncio.Lock] = LRUCache(maxsize=128)
         self._lock_creation_lock = asyncio.Lock()
         # Cache for enabled models to avoid redundant API calls
         self._enabled_models_cache: dict[str, Any] | None = None
