@@ -230,8 +230,9 @@ export class Settings {
     await this.page.waitForTimeout(500);
     await expect(saveButton).toBeVisible();
     // Allow up to 30s: enabling picture-descriptions makes the save button
-    // wait until the VLM model catalogue has loaded and auto-selected a model
-    // (vlmModelPending gate). 10s was too short on slow CI runners.
+    // wait until settings have loaded and a VLM model (Docling default unless
+    // one is saved) is selected (vlmModelPending gate). 10s was too short on
+    // slow CI runners.
     await expect(saveButton).toBeEnabled({ timeout: 30000 });
     await saveButton.click();
     await expect(this.ingestSettingsSavedToast()).toBeVisible({

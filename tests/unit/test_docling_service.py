@@ -484,6 +484,38 @@ async def test_build_docling_options_toggles(docling_service):
 
 
 @pytest.mark.asyncio
+async def test_build_docling_options_docling_default_vlm_sends_no_model(docling_service):
+    """Picture descriptions with VLM off leave the model choice to docling-serve."""
+    mock_config = MagicMock()
+    mock_config.knowledge.table_structure = False
+    mock_config.knowledge.ocr = False
+    mock_config.knowledge.picture_descriptions = True
+    mock_config.knowledge.vlm_enabled = False
+    mock_config.knowledge.vlm_provider = "openai"
+    mock_config.knowledge.vlm_model = "gpt-4o"
+
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+        options = await docling_service._build_docling_options_async()
+
+    assert options["do_picture_description"] is True
+    assert "picture_description_local" not in options
+    assert "picture_description_api" not in options
+
+
+@pytest.mark.asyncio
+async def test_build_docling_options_docling_provider_never_sends_a_model(docling_service):
+    """The "docling" provider marker means docling-serve's default, even if enabled."""
+    mock_config = _vlm_mock_config("docling")
+
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+        options = await docling_service._build_docling_options_async()
+
+    assert options["do_picture_description"] is True
+    assert "picture_description_local" not in options
+    assert "picture_description_api" not in options
+
+
+@pytest.mark.asyncio
 async def test_build_docling_options_preview_mode_embeds_page_images(docling_service):
     """Preview mode requests embedded page rasters for PDF bbox overlays."""
     mock_config = MagicMock()

@@ -597,3 +597,119 @@ describe("IngestSettingsSection OCR languages", () => {
     expect(save).toHaveBeenCalledOnce();
   });
 });
+
+describe("IngestSettingsSection Docling default VLM", () => {
+  function renderWithVlm(
+    knowledge: Record<string, unknown>,
+    extraHandlers: RequestHandler[] = [],
+  ) {
+    return renderWithProviders(<IngestionTab />, {
+      providers: ["tooltip", "auth", "unsavedChanges"],
+      auth: authPresets.admin,
+      handlers: [
+        http.get("/api/settings", () =>
+          HttpResponse.json(
+            makeSettings({
+              knowledge: { chunk_size: 1024, chunk_overlap: 50, ...knowledge },
+              show_vlm_settings: true,
+            }),
+          ),
+        ),
+        http.get("/api/models/catalog", () =>
+          HttpResponse.json({ providers: [] }),
+        ),
+        http.get("/api/models/providers", () => HttpResponse.json({})),
+        ...extraHandlers,
+      ],
+    });
+  }
+
+  async function openVlmSettings() {
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: /advanced vision model \(vlm\) settings/i,
+      }),
+    );
+    return screen.findByRole("combobox", { name: /vision model/i });
+  }
+
+  it("selects the Docling default when no VLM model is saved", async () => {
+    renderWithVlm({ picture_descriptions: true, vlm_model: "" });
+
+    const selector = await openVlmSettings();
+    expect(selector).toHaveTextContent(
+      "Docling default (SmolVLM-256M-Instruct)",
+    );
+    expect(screen.getByRole("textbox", { name: /prompt/i })).toBeDisabled();
+    expect(
+      screen.getByText(/docling uses its own prompt and settings/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /save changes/i }),
+    ).toBeDisabled();
+  });
+
+  it("keeps a saved provider model", async () => {
+    renderWithVlm({
+      picture_descriptions: true,
+      vlm_enabled: true,
+      vlm_provider: "openai",
+      vlm_model: "gpt-4o",
+    });
+
+    const selector = await openVlmSettings();
+    await waitFor(() => expect(selector).toHaveTextContent("gpt-4o"));
+    expect(selector).not.toHaveTextContent("Docling default");
+    expect(screen.getByRole("textbox", { name: /prompt/i })).toBeEnabled();
+  });
+
+  it("shows the Docling default when picture descriptions are on but VLM is off", async () => {
+    renderWithVlm({
+      picture_descriptions: true,
+      vlm_enabled: false,
+      vlm_provider: "openai",
+      vlm_model: "gpt-4o",
+    });
+
+    const selector = await openVlmSettings();
+    expect(selector).toHaveTextContent("Docling default");
+  });
+
+  it("saves the Docling default as vlm_enabled false with no model", async () => {
+    let body: Record<string, unknown> | undefined;
+    renderWithVlm(
+      {
+        picture_descriptions: true,
+        vlm_enabled: true,
+        vlm_provider: "openai",
+        vlm_model: "gpt-4o",
+      },
+      [
+        http.post("/api/settings", async ({ request }) => {
+          body = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json({ message: "ok", settings: makeSettings() });
+        }),
+      ],
+    );
+
+    const selector = await openVlmSettings();
+    await waitFor(() => expect(selector).toHaveTextContent("gpt-4o"));
+    await userEvent.click(selector);
+    await userEvent.click(
+      await screen.findByTestId("model-option-__docling_default__"),
+    );
+    expect(selector).toHaveTextContent("Docling default");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /save changes/i }),
+    );
+
+    await waitFor(() => expect(body).toBeDefined());
+    expect(body).toMatchObject({
+      picture_descriptions: true,
+      vlm_enabled: false,
+    });
+    expect(body).toMatchObject({ vlm_provider: "docling" });
+    expect(body).not.toHaveProperty("vlm_model");
+  });
+});

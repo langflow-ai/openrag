@@ -61,6 +61,12 @@ import { allowedLanguages, englishLast } from "@/lib/ocr-languages";
 import { resolveLangflowEditUrl } from "@/lib/url-utils";
 import { cn } from "@/lib/utils";
 import { useUpdateSettingsMutation } from "../../api/mutations/useUpdateSettingsMutation";
+import {
+  DOCLING_DEFAULT_VLM_PROVIDER,
+  doclingDefaultVlmGroup,
+  isDoclingDefaultVlm,
+  savedVlmSelection,
+} from "./docling-default-vlm";
 import { useRegisterSave } from "./ingest-save-context";
 import { LangflowIcon } from "./langflow-icon";
 
@@ -231,6 +237,9 @@ export function IngestSettingsSection() {
       });
     }
 
+    // Always offered, so picture descriptions work with no provider at all.
+    list.unshift(doclingDefaultVlmGroup());
+
     return list;
   }, [catalog, configuredProviders, settings.local_vlm_models]);
 
@@ -352,13 +361,11 @@ export function IngestSettingsSection() {
       setPictureDescriptions(k.picture_descriptions);
     if (k.disable_ingest_with_langflow !== undefined)
       setDisableIngestWithLangflow(k.disable_ingest_with_langflow);
-    // Backend defaults vlm_model to "" and vlm_provider to "openai".
-    // Only adopt backend's vlm_provider if backend also has a configured vlm_model,
-    // so the static backend default does not clobber the locally auto-selected model's provider.
-    if (k.vlm_model) {
-      setVlmModel(k.vlm_model);
-      if (k.vlm_provider !== undefined) setVlmProvider(k.vlm_provider);
-    }
+    // Backend defaults vlm_model to "" and vlm_provider to "openai"; an empty
+    // model (or picture descriptions on with VLM off) means Docling default.
+    const savedVlm = savedVlmSelection(k);
+    setVlmModel(savedVlm.model);
+    setVlmProvider(savedVlm.provider);
     if (k.vlm_prompt !== undefined) setVlmPrompt(k.vlm_prompt);
     if (k.vlm_response_format !== undefined)
       setVlmResponseFormat(k.vlm_response_format);
@@ -371,48 +378,6 @@ export function IngestSettingsSection() {
 
   const [vlmOpen, setVlmOpen] = useState(false);
   const [ocrOpen, setOcrOpen] = useState(false);
-
-  const autoSelectedVlm = useRef(false);
-  useEffect(() => {
-    if (!showVlmSettings) return;
-    // The catalogue query can resolve before the settings query. Picking a
-    // model then would lock in a choice made without knowing what the agent
-    // runs — and the ref below makes that choice permanent.
-    if (!settings.knowledge) return;
-    if (settings.knowledge.vlm_model) {
-      autoSelectedVlm.current = false;
-      return;
-    }
-    if (autoSelectedVlm.current) return;
-    if (allVlmOptions.length > 0) {
-      // Prefer the model the agent already runs on, when it can see. The
-      // catalogue is ranked by how recent an id looks, so its first vision row
-      // is whatever the provider published most recently — which for Azure is a
-      // deployment name the operator very likely does not have, since Azure
-      // serves only the deployments they created. The agent's model is one that
-      // demonstrably resolves on this account.
-      const agentModel = settings.agent?.llm_model;
-      const agentProvider = settings.agent?.llm_provider;
-      const agentVisionOption = agentModel
-        ? (allVlmOptions.find(
-            (o) => o.value === agentModel && o.provider === agentProvider,
-          ) ?? allVlmOptions.find((o) => o.value === agentModel))
-        : undefined;
-      const fallback =
-        agentVisionOption ||
-        allVlmOptions.find((o) => o.default) ||
-        allVlmOptions[0];
-      setVlmModel(fallback.value);
-      setVlmProvider(fallback.provider || "");
-      autoSelectedVlm.current = true;
-    }
-  }, [
-    showVlmSettings,
-    settings.knowledge,
-    settings.agent?.llm_model,
-    settings.agent?.llm_provider,
-    allVlmOptions,
-  ]);
 
   const handleVlmModelChange = (value: string, provider?: string) => {
     setUserEdited(true);
@@ -430,11 +395,15 @@ export function IngestSettingsSection() {
     showVlmSettings && pictureDescriptions && !vlmModel.trim();
 
   const k = settings.knowledge;
+  const isDoclingDefault = isDoclingDefaultVlm(vlmModel);
+  const vlmEnabled = pictureDescriptions && !isDoclingDefault;
+  const savedVlm = k ? savedVlmSelection(k) : undefined;
   const vlmDirty =
     showVlmSettings &&
-    (pictureDescriptions !== (k?.vlm_enabled ?? pictureDescriptions) ||
-      effectiveVlmProvider !== (k?.vlm_provider ?? effectiveVlmProvider) ||
-      vlmModel !== (k?.vlm_model ?? vlmModel) ||
+    (vlmEnabled !== (k?.vlm_enabled ?? vlmEnabled) ||
+      (savedVlm !== undefined &&
+        (vlmModel !== savedVlm.model ||
+          (!isDoclingDefault && effectiveVlmProvider !== savedVlm.provider))) ||
       vlmPrompt !== (k?.vlm_prompt ?? vlmPrompt) ||
       vlmResponseFormat !== (k?.vlm_response_format ?? vlmResponseFormat) ||
       vlmMaxTokens !== (k?.vlm_max_tokens ?? vlmMaxTokens) ||
@@ -488,7 +457,8 @@ export function IngestSettingsSection() {
   const providerConfigured =
     settings.providers === undefined || settings.providers === null
       ? undefined
-      : effectiveVlmProvider === "local"
+      : effectiveVlmProvider === "local" ||
+          effectiveVlmProvider === DOCLING_DEFAULT_VLM_PROVIDER
         ? true
         : configuredProviders[
             effectiveVlmProvider as keyof typeof configuredProviders
@@ -509,12 +479,15 @@ export function IngestSettingsSection() {
   const handleKnowledgeIngestSave = async (): Promise<boolean> => {
     // Only include VLM fields when the VLM UI is enabled; a hidden section
     // must not drive backend VLM state or trip its validation.
+    // Docling default is saved as the "docling" provider with vlm_enabled
+    // false; vlm_model is left out because the API rejects an empty string.
     const vlmPayload = showVlmSettings
       ? {
-          vlm_enabled: pictureDescriptions,
+          vlm_enabled: vlmEnabled,
           vlm_provider: effectiveVlmProvider,
-          vlm_model:
-            (vlmModel || allVlmOptions[0]?.value || "").trim() || undefined,
+          ...(isDoclingDefault
+            ? {}
+            : { vlm_model: vlmModel.trim() || undefined }),
           vlm_prompt: vlmPrompt,
           vlm_response_format: vlmResponseFormat,
           vlm_max_tokens: vlmMaxTokens,
@@ -547,7 +520,7 @@ export function IngestSettingsSection() {
       return false;
     }
 
-    if (showVlmSettings && pictureDescriptions) {
+    if (showVlmSettings && vlmEnabled) {
       if (!vlmModel.trim()) {
         const msg =
           "Model name is required when picture descriptions are enabled";
@@ -1076,12 +1049,19 @@ export function IngestSettingsSection() {
                     onValueChange={handleVlmModelChange}
                     hasError={!!validationError}
                     disabled={!pictureDescriptions}
+                    aria-label="Vision model"
                   />
                 </LabelWrapper>
                 {providerWarning && (
                   <p className="text-sm text-destructive" role="alert">
                     Configure a provider with vision-capable models in Settings
                     &gt; Providers first.
+                  </p>
+                )}
+                {isDoclingDefault && (
+                  <p className="text-sm text-muted-foreground">
+                    Docling uses its own prompt and settings for its default
+                    model, which it downloads from Hugging Face on first use.
                   </p>
                 )}
               </div>
@@ -1122,7 +1102,7 @@ export function IngestSettingsSection() {
                       setUserEdited(true);
                       setVlmPrompt(e.target.value);
                     }}
-                    disabled={!pictureDescriptions}
+                    disabled={!vlmEnabled}
                   />
                 </LabelWrapper>
               </div>
@@ -1139,11 +1119,11 @@ export function IngestSettingsSection() {
                       setUserEdited(true);
                       setVlmResponseFormat(v);
                     }}
-                    disabled={!pictureDescriptions}
+                    disabled={!vlmEnabled}
                   >
                     <SelectTrigger
                       id="vlm-response-format"
-                      disabled={!pictureDescriptions}
+                      disabled={!vlmEnabled}
                     >
                       <SelectValue placeholder="Select a format" />
                     </SelectTrigger>
@@ -1169,7 +1149,7 @@ export function IngestSettingsSection() {
                   }}
                   unit="tokens"
                   min={1}
-                  disabled={!pictureDescriptions}
+                  disabled={!vlmEnabled}
                 />
                 <NumberInput
                   id="vlm-concurrency"
@@ -1181,7 +1161,7 @@ export function IngestSettingsSection() {
                   }}
                   unit="requests"
                   min={1}
-                  disabled={!pictureDescriptions}
+                  disabled={!vlmEnabled}
                 />
                 <NumberInput
                   id="vlm-timeout"
@@ -1193,7 +1173,7 @@ export function IngestSettingsSection() {
                   }}
                   unit="seconds"
                   min={1}
-                  disabled={!pictureDescriptions}
+                  disabled={!vlmEnabled}
                 />
               </div>
 

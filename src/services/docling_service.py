@@ -455,7 +455,13 @@ class DoclingService:
         #   trust one, since docling-serve holds whatever it is given for the
         #   life of the conversion. That is part of why Microsoft Entra
         #   authentication is not wired through here; see the Azure branches.
-        if is_pic_desc_enabled and knowledge_config.vlm_enabled:
+        # The "docling" provider is the settings UI's "Docling default" choice:
+        # send no model block so docling-serve uses its own default preset.
+        if (
+            is_pic_desc_enabled
+            and knowledge_config.vlm_enabled
+            and knowledge_config.vlm_provider != "docling"
+        ):
             provider = knowledge_config.vlm_provider
             vlm_model = knowledge_config.vlm_model
             prompt = knowledge_config.vlm_prompt
