@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useFailedIngestionsQuery } from "@/app/api/queries/useFailedIngestionsQuery";
 import type { Task } from "@/app/api/queries/useGetTasksQuery";
 import { TASKS_QUERY_KEY } from "@/app/api/queries/useGetTasksQuery";
 import { server } from "@/test-utils/msw/server";
@@ -9,6 +10,9 @@ import {
   act,
   createTestQueryClient,
   renderHook,
+  renderWithProviders,
+  screen,
+  userEvent,
   waitFor,
 } from "@/test-utils/render";
 import { TaskProvider, useTask } from "./task-context";
@@ -772,5 +776,275 @@ describe("TaskProvider — source-deleted overlays", () => {
         ).toBe(false),
       { timeout: 5000 },
     );
+  });
+});
+
+describe("TaskProvider — failed documents refresh", () => {
+  function TaskConsumer() {
+    useTask();
+    return null;
+  }
+
+  function serveRunningThenCompleted(finalStatus: Task["status"]) {
+    let callCount = 0;
+    const runningTask: Task = makeTask({
+      status: "running",
+      files: { "file.pdf": { status: "running", error: "" } },
+    });
+    const finalTask: Task = {
+      ...runningTask,
+      status: finalStatus,
+      successful_files: 0,
+      failed_files: 1,
+      files: { "file.pdf": { status: "failed", error: "corrupt file" } },
+    };
+    const handlers = [
+      http.get("/api/tasks/enhanced", () => {
+        callCount++;
+        return HttpResponse.json({
+          tasks: [callCount === 1 ? runningTask : finalTask],
+        });
+      }),
+    ];
+    return { handlers, calls: () => callCount };
+  }
+
+  it("invalidates the failed-ingestions query when a task completes", async () => {
+    const qc = createTestQueryClient();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    const { handlers, calls } = serveRunningThenCompleted("completed");
+
+    renderWithProviders(<TaskConsumer />, {
+      queryClient: qc,
+      providers: ["task"],
+      handlers,
+    });
+
+    await waitFor(() => expect(calls()).toBeGreaterThanOrEqual(2), {
+      timeout: 5000,
+    });
+    await waitFor(
+      () =>
+        expect(invalidate).toHaveBeenCalledWith({
+          queryKey: ["failed-ingestions"],
+        }),
+      { timeout: 5000 },
+    );
+  });
+
+  it("does not invalidate it while the task is still running", async () => {
+    const qc = createTestQueryClient();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    const { handlers, calls } = serveRunningThenCompleted("running");
+
+    renderWithProviders(<TaskConsumer />, {
+      queryClient: qc,
+      providers: ["task"],
+      handlers,
+    });
+
+    await waitFor(() => expect(calls()).toBeGreaterThanOrEqual(2), {
+      timeout: 5000,
+    });
+    expect(invalidate).not.toHaveBeenCalledWith({
+      queryKey: ["failed-ingestions"],
+    });
+  });
+
+  function serveSecondTaskAlreadyTerminal(historical: boolean) {
+    let callCount = 0;
+    const other: Task = makeTask({ task_id: "other", status: "running" });
+    const quick: Task = makeTask({
+      task_id: "quick",
+      status: "completed",
+      successful_files: 0,
+      failed_files: 1,
+      files: { "file.pdf": { status: "failed", error: "corrupt file" } },
+    });
+    const handlers = [
+      http.get("/api/tasks/enhanced", () => {
+        callCount++;
+        // Poll 1 loads `other` (and `quick` too when it is historical); poll 2
+        // shows `quick` for the first time when it is not.
+        const first = historical ? [other, quick] : [other];
+        return HttpResponse.json({
+          tasks: callCount === 1 ? first : [other, quick],
+        });
+      }),
+    ];
+    return { handlers, calls: () => callCount };
+  }
+
+  it("invalidates it for a task first seen already terminal", async () => {
+    const qc = createTestQueryClient();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    const { handlers, calls } = serveSecondTaskAlreadyTerminal(false);
+
+    renderWithProviders(<TaskConsumer />, {
+      queryClient: qc,
+      providers: ["task"],
+      handlers,
+    });
+
+    await waitFor(() => expect(calls()).toBeGreaterThanOrEqual(2), {
+      timeout: 5000,
+    });
+    await waitFor(
+      () =>
+        expect(invalidate).toHaveBeenCalledWith({
+          queryKey: ["failed-ingestions"],
+        }),
+      { timeout: 5000 },
+    );
+  });
+
+  it("does not invalidate it for terminal tasks loaded at initialization", async () => {
+    const qc = createTestQueryClient();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    const { handlers, calls } = serveSecondTaskAlreadyTerminal(true);
+
+    renderWithProviders(<TaskConsumer />, {
+      queryClient: qc,
+      providers: ["task"],
+      handlers,
+    });
+
+    await waitFor(() => expect(calls()).toBeGreaterThanOrEqual(2), {
+      timeout: 5000,
+    });
+    expect(invalidate).not.toHaveBeenCalledWith({
+      queryKey: ["failed-ingestions"],
+    });
+  });
+});
+
+describe("TaskProvider — failed documents button after a fast ingestion", () => {
+  const OLD_TERMINAL: Task = makeTask({
+    task_id: "old",
+    status: "completed",
+    successful_files: 1,
+    failed_files: 0,
+  });
+  const QUICK_FAILED: Task = makeTask({
+    task_id: "quick",
+    status: "completed",
+    successful_files: 0,
+    failed_files: 1,
+    files: { "file.pdf": { status: "failed", error: "corrupt file" } },
+  });
+
+  /** Mirrors how the search bar shows the "Failed documents" button. */
+  function Harness() {
+    const { addTask } = useTask();
+    const { data } = useFailedIngestionsQuery();
+    const count = data?.failures.length ?? 0;
+    return (
+      <>
+        <button type="button" onClick={() => addTask("quick")}>
+          add task
+        </button>
+        {count > 0 ? (
+          <button type="button">Failed documents ({count})</button>
+        ) : null}
+      </>
+    );
+  }
+
+  /**
+   * The server's task list is swapped by the test. A failure only exists once
+   * the tasks endpoint has served the terminal task, like the real backend
+   * records it as the file fails.
+   */
+  function serveStack(initialTasks: Task[]) {
+    const state = { tasks: initialTasks, failureRecorded: false };
+    server.use(
+      http.get("/api/tasks/enhanced", () => {
+        if (state.tasks.some((task) => task.task_id === "quick")) {
+          state.failureRecorded = true;
+        }
+        return HttpResponse.json({ tasks: state.tasks });
+      }),
+      http.get("/api/connectors/failed-ingestions", () =>
+        HttpResponse.json({
+          max_attempts: 3,
+          failures: state.failureRecorded
+            ? [
+                {
+                  connector_type: "aws_s3",
+                  file_id: "bucket::file.pdf",
+                  filename: "file.pdf",
+                  last_error: "corrupt file",
+                  attempt_count: 1,
+                  skipped: false,
+                  first_failed_at: "2026-09-08T10:00:00+00:00",
+                  last_failed_at: "2026-09-08T10:00:00+00:00",
+                },
+              ]
+            : [],
+        }),
+      ),
+    );
+    return state;
+  }
+
+  it("shows the button when the first fetch was empty and a task finishes before the delayed refetch", async () => {
+    const state = serveStack([]);
+    const qc = createTestQueryClient();
+    renderWithProviders(<Harness />, { queryClient: qc, providers: ["task"] });
+
+    await waitFor(() =>
+      expect(qc.getQueryState(["failed-ingestions"])?.status).toBe("success"),
+    );
+    expect(screen.queryByText(/Failed documents/)).toBeNull();
+
+    state.tasks = [QUICK_FAILED];
+    await userEvent.click(screen.getByText("add task"));
+
+    expect(
+      await screen.findByText("Failed documents (1)", {}, { timeout: 5000 }),
+    ).toBeTruthy();
+  });
+
+  it("shows the button when the history was cleared before the task finished", async () => {
+    const state = serveStack([OLD_TERMINAL]);
+    const qc = createTestQueryClient();
+    renderWithProviders(<Harness />, { queryClient: qc, providers: ["task"] });
+
+    await waitFor(() =>
+      expect(qc.getQueryState(["failed-ingestions"])?.status).toBe("success"),
+    );
+    await waitFor(() =>
+      expect(qc.getQueryData([...TASKS_QUERY_KEY])).toEqual([OLD_TERMINAL]),
+    );
+
+    // The user clears their task history.
+    act(() => {
+      qc.setQueryData<Task[]>([...TASKS_QUERY_KEY], []);
+    });
+    expect(screen.queryByText(/Failed documents/)).toBeNull();
+
+    state.tasks = [QUICK_FAILED];
+    await userEvent.click(screen.getByText("add task"));
+
+    expect(
+      await screen.findByText("Failed documents (1)", {}, { timeout: 5000 }),
+    ).toBeTruthy();
+  });
+
+  it("still treats terminal tasks in the first fetch as history", async () => {
+    serveStack([OLD_TERMINAL]);
+    const qc = createTestQueryClient();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    renderWithProviders(<Harness />, { queryClient: qc, providers: ["task"] });
+
+    await waitFor(() =>
+      expect(qc.getQueryData([...TASKS_QUERY_KEY])).toEqual([OLD_TERMINAL]),
+    );
+    // Let the effect that handles the first fetch run.
+    await act(async () => {});
+
+    expect(invalidate).not.toHaveBeenCalledWith({
+      queryKey: ["failed-ingestions"],
+    });
   });
 });
