@@ -12,11 +12,11 @@ def get_token_count(text: str, model: str = None) -> int:
     model = model or get_embedding_model()
     try:
         encoding = tiktoken.encoding_for_model(model)
-        return len(encoding.encode(text))
     except KeyError:
         # Fallback to cl100k_base for unknown models
         encoding = tiktoken.get_encoding("cl100k_base")
-        return len(encoding.encode(text))
+    # Extracted documents can contain "<|endoftext|>" literally; count it as text.
+    return len(encoding.encode(text, disallowed_special=()))
 
 
 def chunk_texts_for_embeddings(

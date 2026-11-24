@@ -291,65 +291,96 @@ def resplit_chunks_character_windows(
     return out
 
 
-def _prefix_token_count(encoding, text: str, start: int, length: int) -> int:
-    return len(encoding.encode(text[start : start + length]))
+def _is_surrogate_pair(text: str, pos: int) -> bool:
+    return (
+        "\ud800" <= text[pos] <= "\udbff"
+        and pos + 1 < len(text)
+        and "\udc00" <= text[pos + 1] <= "\udfff"
+    )
+
+
+def _char_end(text: str, pos: int) -> int:
+    """End of the character tiktoken reads at ``pos``."""
+    return pos + 2 if _is_surrogate_pair(text, pos) else pos + 1
+
+
+def _decoded_to_text_index(text: str) -> list[int]:
+    """Map each index of tiktoken's view of ``text`` to its index in ``text``.
+
+    tiktoken joins a surrogate pair stored as two halves into one character
+    and replaces a lone surrogate with U+FFFD, so ``decode_with_offsets``
+    indexes a string that can be shorter than ``text``.
+    """
+    index: list[int] = []
+    pos = 0
+    while pos < len(text):
+        index.append(pos)
+        pos = _char_end(text, pos)
+    return index
 
 
 def _split_text_to_max_tokens(text: str, encoding, max_tokens: int) -> list[str]:
     """Cut ``text`` into pieces that each encode to at most ``max_tokens``.
 
-    Slices the original string, so the pieces join back to ``text``. A probe
-    covers only the next doubled window, not the whole remaining suffix: a
-    500-token Watsonx cut can re-encode to 501, but finding that boundary
-    must not encode the rest of the document on every guess. A single code
-    point that is already over the cap is kept as its own piece so the cursor
-    still advances.
+    Encodes the chunk once and cuts on token start positions from
+    ``decode_with_offsets``. Each slice is re-encoded: a slice that comes back
+    over the cap (a 500-token Watsonx window can re-encode to 501) moves back
+    one token, and a slice that fits is extended until the next one would not.
+    A single code point that is already over the cap is kept
+    so the cursor still advances. The pieces join back to ``text``.
     """
-    if _prefix_token_count(encoding, text, 0, len(text)) <= max_tokens:
+    if max_tokens < 1:
+        raise ValueError(f"max_tokens must be at least 1, got {max_tokens}")
+
+    # Extracted documents can contain "<|endoftext|>" literally; count it as text.
+    tokens = encoding.encode(text, disallowed_special=())
+    if len(tokens) <= max_tokens:
         return [text]
 
+    decoded, offsets = encoding.decode_with_offsets(tokens)
+    if decoded != text:
+        text_index = _decoded_to_text_index(text)
+        offsets = [text_index[offset] for offset in offsets]
+
     pieces: list[str] = []
-    start = 0
-    length = len(text)
-    while start < length:
-        fit = 0
-        window = 1
-        over = False
-        while start + window <= length:
-            if _prefix_token_count(encoding, text, start, window) <= max_tokens:
-                fit = window
-                if start + window == length:
-                    break
-                grown = min(length - start, window * 2)
-                if grown == window:
-                    break
-                window = grown
-            else:
-                over = True
+    char_pos = 0
+    token_index = 0
+    token_count = len(tokens)
+    text_length = len(text)
+    while char_pos < text_length:
+        # The character cursor can sit inside a token after a one-character
+        # fallback. The next piece must start there, not at the next token.
+        while token_index + 1 < token_count and offsets[token_index + 1] <= char_pos:
+            token_index += 1
+        cut = min(token_count, token_index + max_tokens)
+        while cut < token_count and offsets[cut] <= char_pos:
+            cut += 1
+        first_char_end = _char_end(text, char_pos)
+        fit_end = 0
+        while True:
+            char_end = text_length if cut >= token_count else offsets[cut]
+            if char_end <= char_pos:
+                fit_end = fit_end or first_char_end
                 break
-        if fit == 0:
-            pieces.append(text[start : start + 1])
-            start += 1
-            continue
-        if not over:
-            pieces.append(text[start:])
-            break
-        low = fit
-        high = window
-        best = fit
-        while low <= high:
-            mid = (low + high) // 2
-            if _prefix_token_count(encoding, text, start, mid) <= max_tokens:
-                best = mid
-                low = mid + 1
-            else:
-                high = mid - 1
-        # `fit` was measured under the cap. A non-monotone boundary cannot
-        # push the piece back over it.
-        if _prefix_token_count(encoding, text, start, best) > max_tokens:
-            best = fit
-        pieces.append(text[start : start + best])
-        start += best
+            slice_tokens = len(encoding.encode(text[char_pos:char_end], disallowed_special=()))
+            if slice_tokens <= max_tokens:
+                fit_end = char_end
+                if cut >= token_count:
+                    break
+                # A slice can re-encode to fewer tokens than it spans (two
+                # spaces split across tokens become one), so try a longer one.
+                cut = min(token_count, cut + max(1, max_tokens - slice_tokens))
+                while cut < token_count and offsets[cut] <= char_end:
+                    cut += 1
+                continue
+            if fit_end:
+                break
+            if char_end <= first_char_end or cut <= token_index + 1:
+                fit_end = first_char_end
+                break
+            cut -= 1
+        pieces.append(text[char_pos:fit_end])
+        char_pos = fit_end
     return pieces
 
 
