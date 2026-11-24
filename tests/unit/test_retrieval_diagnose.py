@@ -178,7 +178,14 @@ def test_capped_recall_uses_the_file_relevance_rule_including_the_snippet() -> N
             {"a.md": "paragraph_missed"},
         ),
         # The file is in the top 5 but no chunk holds the answer.
-        (["a.md", "b.md"], ["a.md"], "answer", None, "paragraph_missed", {"a.md": "paragraph_missed"}),
+        (
+            ["a.md", "b.md"],
+            ["a.md"],
+            "answer",
+            None,
+            "paragraph_missed",
+            {"a.md": "paragraph_missed"},
+        ),
     ],
 )
 def test_classify_names_the_cause_of_each_miss(
