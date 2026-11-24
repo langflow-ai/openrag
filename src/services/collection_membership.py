@@ -301,7 +301,10 @@ async def apply_collection_labels(upload_task: UploadTask, user_id: str | None) 
     A failed label write (including chunks still conflicted after retries) is
     logged and recorded as a warning on the file's result; the file stays
     COMPLETED because its chunks were indexed, and is not marked labeled. A
-    filter gets its condition only from files whose writes were confirmed.
+    filter gets its condition only from files whose writes were confirmed. A
+    failed condition write is handled the same way for every file labeled into
+    that filter, so a retry relabels the chunks (idempotent) and reloads and
+    merges the filter again; a successful retry clears the warning.
     """
     pending = [ft for ft in upload_task.file_tasks.values() if _labelable(ft)]
     if not pending:
@@ -333,6 +336,15 @@ async def apply_collection_labels(upload_task: UploadTask, user_id: str | None) 
                 task_id=upload_task.task_id,
             )
 
+    def warn(file_task: FileTask) -> None:
+        result = file_task.result if isinstance(file_task.result, dict) else {}
+        result["collection_warning"] = "The document could not be added to its filters."
+        file_task.result = result
+
+    # Files whose chunks were labeled, with the live filters they belong to. A
+    # file is marked applied only once each of those filters has its condition,
+    # so a failed condition write leaves the file retryable.
+    labeled_files: list[tuple[FileTask, list[str]]] = []
     labeled_filters: set[str] = set()
     index_name = get_index_name()
     for file_task in pending:
@@ -353,22 +365,30 @@ async def apply_collection_labels(upload_task: UploadTask, user_id: str | None) 
                 filter_ids=live_ids,
                 error=str(e),
             )
-            result = file_task.result if isinstance(file_task.result, dict) else {}
-            result["collection_warning"] = "The document could not be added to its filters."
-            file_task.result = result
+            warn(file_task)
             continue
-        file_task.collection_labels_applied = True
+        labeled_files.append((file_task, live_ids))
         labeled_filters.update(live_ids)
 
+    failed_conditions: set[str] = set()
     for filter_id in labeled_filters:
         try:
             await _ensure_filter_condition(os_client, filter_id)
         except Exception as e:
+            failed_conditions.add(filter_id)
             logger.error(
                 "Failed to add collection condition to knowledge filter",
                 filter_id=filter_id,
                 error=str(e),
             )
+
+    for file_task, live_ids in labeled_files:
+        if failed_conditions.intersection(live_ids):
+            warn(file_task)
+            continue
+        file_task.collection_labels_applied = True
+        if isinstance(file_task.result, dict):
+            file_task.result.pop("collection_warning", None)
 
     if labeled_filters:
         try:

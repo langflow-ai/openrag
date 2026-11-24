@@ -425,6 +425,37 @@ async def test_persistent_conflicts_leave_file_unlabeled_and_filter_unchanged(mo
     assert fake.filter_updates == []
 
 
+@pytest.mark.asyncio
+async def test_failed_condition_write_leaves_file_retryable_until_it_succeeds(monkeypatch):
+    fake = _FakeOpenSearch({"f1": {"name": "old", "query_data": _query_data()}})
+    _install(monkeypatch, fake)
+    working_update = fake.update
+    fake.update = AsyncMock(side_effect=RuntimeError("boom"))
+    ft = _file("a", TaskStatus.COMPLETED, document_id="doc-a")
+    task = _task(ft)
+
+    await apply_collection_labels(task, "user-1")
+
+    assert ft.status == TaskStatus.COMPLETED
+    assert not ft.collection_labels_applied
+    assert "collection_warning" in ft.result
+    assert fake.filter_updates == []
+
+    # The retry reloads the filter and merges into whatever is there now.
+    fake.update = working_update
+    renamed = json.dumps({"filters": {"data_sources": ["*"]}, "limit": 25})
+    fake.edit("f1", name="new", query_data=renamed)
+
+    await apply_collection_labels(task, "user-1")
+
+    assert ft.collection_labels_applied
+    assert "collection_warning" not in ft.result
+    saved = json.loads(fake.filters["f1"]["query_data"])
+    assert fake.filters["f1"]["name"] == "new"
+    assert saved["limit"] == 25
+    assert saved["filters"]["labels"] == ["collection:f1"]
+
+
 # --- task completion order ---------------------------------------------------
 
 
