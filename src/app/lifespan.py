@@ -400,6 +400,7 @@ async def run_startup(app: FastAPI):
     app.state.background_tasks.add(renewal_task)
     renewal_task.add_done_callback(app.state.background_tasks.discard)
 
+
 async def run_shutdown(app: FastAPI):
     """Single source of truth for shutdown work."""
     services = app.state.services

@@ -442,10 +442,11 @@ class EnvManager:
         if not validate_non_empty(self.config.opensearch_password):
             self.config.validation_errors["opensearch_password"] = "OpenSearch password is required"
 
-        if (
-            self.config.disable_langflow.strip().lower() not in ("true", "1", "yes")
-            and not validate_non_empty(self.config.langflow_superuser_password)
-        ):
+        if self.config.disable_langflow.strip().lower() not in (
+            "true",
+            "1",
+            "yes",
+        ) and not validate_non_empty(self.config.langflow_superuser_password):
             self.config.validation_errors["langflow_superuser_password"] = (
                 "Langflow superuser password is required"
             )
@@ -513,9 +514,7 @@ class EnvManager:
 
                 # Core settings
                 f.write("# Core settings\n")
-                f.write(
-                    f"DISABLE_LANGFLOW={self._quote_env_value(self.config.disable_langflow)}\n"
-                )
+                f.write(f"DISABLE_LANGFLOW={self._quote_env_value(self.config.disable_langflow)}\n")
                 if not langflow_disabled:
                     f.write(
                         f"LANGFLOW_SECRET_KEY={self._quote_env_value(self.config.langflow_secret_key)}\n"
@@ -675,7 +674,9 @@ class EnvManager:
                         f"LANGFLOW_AUTO_LOGIN={self._quote_env_value(self.config.langflow_auto_login)}\n"
                     )
                     if self.config.langflow_port and self.config.langflow_port != "7860":
-                        f.write(f"LANGFLOW_PORT={self._quote_env_value(self.config.langflow_port)}\n")
+                        f.write(
+                            f"LANGFLOW_PORT={self._quote_env_value(self.config.langflow_port)}\n"
+                        )
                     f.write(
                         f"LANGFLOW_NEW_USER_IS_ACTIVE={self._quote_env_value(self.config.langflow_new_user_is_active)}\n"
                     )

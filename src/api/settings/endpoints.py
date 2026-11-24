@@ -1611,7 +1611,9 @@ async def onboarding(
                     or current_config.providers.anthropic.api_key != ""
                     or current_config.providers.any_configured()
                 ):
-                    await _update_langflow_global_variables(current_config, flows_service=flows_service)
+                    await _update_langflow_global_variables(
+                        current_config, flows_service=flows_service
+                    )
 
                 if body.embedding_provider or body.embedding_model:
                     await _update_mcp_server_urls(

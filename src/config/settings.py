@@ -786,9 +786,7 @@ def is_langflow_env_disabled() -> bool:
     """
 
     return DISABLE_LANGFLOW or (
-        DISABLE_CHAT_WITH_LANGFLOW
-        and DISABLE_INGEST_WITH_LANGFLOW
-        and DISABLE_NUDGES_WITH_LANGFLOW
+        DISABLE_CHAT_WITH_LANGFLOW and DISABLE_INGEST_WITH_LANGFLOW and DISABLE_NUDGES_WITH_LANGFLOW
     )
 
 

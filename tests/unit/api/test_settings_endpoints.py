@@ -194,9 +194,7 @@ async def test_reenabling_langflow_starts_pending_sync(monkeypatch):
     from api.settings.endpoints import update_settings
     from config.config_manager import OpenRAGConfig
 
-    config = OpenRAGConfig.from_dict(
-        {"disable_langflow": True, "langflow_sync_pending": True}
-    )
+    config = OpenRAGConfig.from_dict({"disable_langflow": True, "langflow_sync_pending": True})
     config.edited = True
     sync_calls = []
 
@@ -209,7 +207,9 @@ async def test_reenabling_langflow_starts_pending_sync(monkeypatch):
 
     monkeypatch.setattr("api.settings.endpoints.get_openrag_config", lambda: config)
     monkeypatch.setattr("api.settings.endpoints.is_langflow_env_disabled", lambda: False)
-    monkeypatch.setattr("api.settings.endpoints.config_manager.save_config_file", lambda _updated: True)
+    monkeypatch.setattr(
+        "api.settings.endpoints.config_manager.save_config_file", lambda _updated: True
+    )
     monkeypatch.setattr("api.settings.endpoints.clients.refresh_patched_client", noop)
     monkeypatch.setattr("api.settings.endpoints.TelemetryClient.send_event", noop)
     monkeypatch.setattr("api.settings.endpoints.sync_pending_langflow_settings", sync_pending)

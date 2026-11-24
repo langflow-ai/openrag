@@ -66,7 +66,10 @@ async def ingest_openrag_docs_when_ready(
             await TelemetryClient.send_event(
                 Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_URL_START
             )
-            if get_openrag_config().knowledge.disable_ingest_with_langflow or is_langflow_disabled():
+            if (
+                get_openrag_config().knowledge.disable_ingest_with_langflow
+                or is_langflow_disabled()
+            ):
                 task_id = await _ingest_default_documents_url(
                     task_service=task_service,
                     docs_url=DEFAULT_DOCS_URL,

@@ -403,9 +403,7 @@ class TestDisableLangflowSetting:
         assert "LANGFLOW_SUPERUSER_PASSWORD=" not in content
         assert "LANGFLOW_DATA_PATH=" not in content
 
-    def test_process_disable_langflow_overrides_a_persisted_tui_value(
-        self, tmp_path, monkeypatch
-    ):
+    def test_process_disable_langflow_overrides_a_persisted_tui_value(self, tmp_path, monkeypatch):
         from tui.managers.env_manager import EnvManager
 
         env_file = tmp_path / ".env"
