@@ -28,7 +28,7 @@ export const NumberInput = ({
     <LabelWrapper id={id} label={label}>
       <div className="relative">
         <Input
-          id="chunk-size"
+          id={id}
           type="number"
           disabled={disabled}
           max={max}
