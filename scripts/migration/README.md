@@ -2,7 +2,15 @@
 
 Copy this folder to the migration host. No OpenRAG checkout is needed. This guide covers file migration for `openrag.db` and `connections.json` only. For other layouts, see the [production runbook](https://github.com/langflow-ai/openrag/blob/main/docs/docs/reference/rotate-encryption-key.mdx).
 
-## 1. Prepare the tools
+## 1. Requirements and setup
+
+Have the current `OPENRAG_ENCRYPTION_KEY`, access to IBM Cloud Secrets Manager, and OpenSSL. If you haven't provisioned a replacement key yet, generate one in a private, unrecorded terminal:
+
+```bash
+openssl rand -base64 32
+```
+
+Save the exact output as a **new** secret in IBM Cloud Secrets Manager before cutover. Keep the current secret for rollback; do not overwrite it. Paste the replacement value into `prepare.sh` when prompted in step 2. The migration scripts do not generate a key or change any deployment secrets.
 
 Use Python 3.13 (the OpenRAG-supported version). From the copied folder, create an isolated environment before stopping writers:
 
