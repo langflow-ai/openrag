@@ -88,6 +88,8 @@ bash rotate-key.sh check \
 
 Paths default to `OLD_DATA_DIR` and `OLD_CONFIG_DIR`; pass explicit runtime paths if those exports refer to staging. The check uses `$MIGRATION_DIR/keys/new` if available, otherwise it prompts without echoing the key. Use `--key-file /secure/keys/replacement` to supply a protected one-line file, or `--prompt-key` to force the hidden prompt. It exits nonzero for decryption failure or if it finds no ciphertext. This checks the on-disk data, not which key OpenRAG will load.
 
+The check decrypts and authenticates the stored ciphertext without displaying the decrypted values. It logs the selected data and config paths and the key source, but never prints the key or any part of it.
+
 Clean up only when each directory is no longer needed. These commands ask for confirmation:
 
 ```bash

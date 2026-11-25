@@ -92,6 +92,8 @@ bash rotate-key.sh check --prompt-key
 
 If the exports point at staging, pass the real runtime paths explicitly. If no key file is specified or saved, `check` prompts automatically; `MIGRATION_DIR` is not needed when using an explicit key file or the prompt. The check fails if decryption fails or there is no ciphertext to authenticate. It does not check which key OpenRAG will load; configure the matching key separately.
 
+The command prints the selected data and config paths and the key source (the key file path or the hidden prompt) to stderr. It never prints the key or any part of it. A successful check means it decrypted and authenticated the ciphertext it found; it does not display the decrypted values.
+
 ## Clean up one directory at a time
 
 ```bash

@@ -561,6 +561,8 @@ def test_wrapper_data_cutover(restored_copy, tmp_path, monkeypatch, scenario):
     check = run("check")
     assert check.returncode == 0, check.stderr
     assert "workspace_config.value: 1" in check.stdout
+    assert f"Data directory: {source_data}; config directory: {source_config}" in check.stderr
+    assert f"saved replacement key file ({migration / 'keys/new'})" in check.stderr
     assert "config.yaml providers: 1" in check.stdout
     wrong = run(
         "check",
@@ -583,9 +585,15 @@ def test_wrapper_data_cutover(restored_copy, tmp_path, monkeypatch, scenario):
         str(migration / "keys/old"),
     )
     assert old.returncode == 0, old.stderr
+    assert f"explicit key file ({migration / 'keys/old'})" in old.stderr
+    assert (
+        f"Data directory: {saved_db.parent}; config directory: {saved_config.parent}" in old.stderr
+    )
     pasted = run("check", "--prompt-key", text=f"{NEW_KEY}\n")
     assert pasted.returncode == 0, pasted.stderr
+    assert "Key source: hidden prompt." in pasted.stderr
     for outcome in (check, wrong, old, pasted):
+        assert "Key value: [REDACTED]." in outcome.stderr
         assert OLD_KEY not in outcome.stdout + outcome.stderr
         assert NEW_KEY not in outcome.stdout + outcome.stderr
     assert (db.read_bytes(), config.read_bytes()) == before_check

@@ -100,6 +100,7 @@ PY
     data=${OLD_DATA_DIR:-}
     config=${OLD_CONFIG_DIR:-}
     key_file=''
+    key_source='explicit key file'
     prompt_key=false
     while (($#)); do
       case "$1" in
@@ -121,6 +122,7 @@ PY
     [[ "$prompt_key" = false || -z "$key_file" ]] || fail 'Choose --key-file or --prompt-key.'
     if [[ "$prompt_key" = false && -z "$key_file" && -n ${MIGRATION_DIR:-} && -f "$keys/new" ]]; then
       key_file="$keys/new"
+      key_source='saved replacement key file'
     fi
     command=(
       env -u OPENRAG_ENCRYPTION_KEY "${MIGRATION_PYTHON:-python3}"
@@ -130,10 +132,15 @@ PY
       --tenant-id "${OPENRAG_TENANT_ID:-openrag}"
     )
     step 'Checking stored ciphertext read-only. Keep OpenRAG writers stopped.'
+    printf -v targets 'Data directory: %q; config directory: %q' "$data" "$config"
+    step "$targets"
     if [[ -n "$key_file" ]]; then
-      step 'Using the supplied or saved key file.'
+      [[ -f "$key_file" && -r "$key_file" ]] || fail 'Key file must be a readable regular file.'
+      printf -v key_location 'Key source: %s (%q). Key value: [REDACTED].' "$key_source" "$key_file"
+      step "$key_location"
       "${command[@]}" --key-file "$key_file"
     else
+      step 'Key source: hidden prompt. Key value: [REDACTED].'
       IFS= read -r -s -p 'Paste the OPENRAG_ENCRYPTION_KEY to check: ' check_key ||
         fail 'No key read. Use --key-file for non-interactive checks.'
       printf '\n' >&2
