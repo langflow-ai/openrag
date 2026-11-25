@@ -25,7 +25,7 @@ fi
 
 case ${1:-}:${2:-} in
   cleanup:keys) ;;
-  *) fail 'Usage: bash rotate-key.sh files {backup|dry-run|apply|check|cutover}, or cleanup keys. Use bash prepare.sh to enter keys.' ;;
+  *) fail 'Usage: bash rotate-key.sh files {backup|dry-run|apply|check|cutover|cleanup}, or cleanup keys. Use bash prepare.sh to enter keys.' ;;
 esac
 : "${MIGRATION_DIR:?Set MIGRATION_DIR to a private directory for keys}"
 [[ "$MIGRATION_DIR" = /* && -d "$MIGRATION_DIR" && ! -L "$MIGRATION_DIR" ]] ||

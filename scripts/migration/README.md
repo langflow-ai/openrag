@@ -62,6 +62,7 @@ Review the ciphertext counts before proceeding. Stop on any error or unexpected 
 | `files apply` | Uses the existing backups after checking they still match the originals. If neither backup exists, creates both. Writes and verifies the two `.migrated` files and their verification receipt; does not replace the originals. |
 | `files check` | Decrypts and authenticates the specified files using the saved replacement key. Add `--migrated` to check their `.migrated` siblings instead, or `--key-file PATH` to use a different key. Does not modify either set. |
 | `files cutover` | Re-verifies the migrated files, checks that the originals still match the backups, and asks you to confirm. Replaces only the two specified originals. Keeps both sets of sibling copies. |
+| `files cleanup` | After confirmation, removes only the two `.migrated` copies and their verification receipt. Keeps originals, backups, and keys. |
 
 Backups are **files**, not a backup directory: for example, `/app/backend-data/openrag.db.backup` and `/app/backend-data/connections.json.backup`. The wrapper prints progress and artifact paths to stderr and ciphertext counts to stdout. It never prints key values or decrypted data.
 
@@ -108,7 +109,17 @@ bash rotate-key.sh files check \
 
 Configure OpenRAG to use the replacement key before restarting it. Then smoke-test the deployment before reopening traffic.
 
-## 6. Keep backups and clean up the keys
+## 6. Clean up migration artifacts and keep backups
+
+After cutover and smoke tests pass, the `.migrated` copies and their verification receipt are no longer needed. To remove them, run from an interactive terminal and type `cleanup-files` when prompted:
+
+```bash
+bash rotate-key.sh files cleanup \
+  --sqlite "$DATA/openrag.db" \
+  --connections "$DATA/connections.json"
+```
+
+This command does not need keys, modify either original, or remove backups or other files. Working directories are removed automatically on normal exit; cleanup does not scan for or recursively delete directories.
 
 If the data is staged at a different path, pass `--source-data-dir` with the token-reference prefix used by the app. Pass `--config-dir` if runtime config is not under `data/config`. The command inherits `OPENRAG_TENANT_ID` or defaults to `openrag`. No `OLD_*_DIR` exports are needed. With the default prompts, `MIGRATION_DIR` is only for the keys; `.backup` and `.migrated` still go beside the input files.
 

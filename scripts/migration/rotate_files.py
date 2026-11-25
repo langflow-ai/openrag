@@ -206,9 +206,35 @@ def _cutover(
         raise RotationError("Cutover failed and the original files were restored.") from None
 
 
+def _cleanup(directory: Path, artifacts: list[Path]) -> None:
+    paths = [
+        path
+        for artifact in artifacts
+        if (path := _file(directory, Path(artifact.name))) is not None
+    ]
+    if not paths:
+        print("[OK] No migrated files or verification receipt to remove.", file=sys.stderr)
+        return
+    if not sys.stdin.isatty():
+        raise RotationError("Cleanup requires an interactive terminal.")
+    print("[WARNING] Remove only these migration artifacts:", file=sys.stderr)
+    for path in paths:
+        print(f"  {str(path)!r}", file=sys.stderr)
+    print("Type cleanup-files to confirm: ", end="", file=sys.stderr, flush=True)
+    if input() != "cleanup-files":
+        raise RotationError("Cleanup cancelled.")
+    for path in paths:
+        path.unlink()
+        print(f"[OK] Removed: {str(path)!r}", file=sys.stderr)
+    _sync_directory(directory)
+    print("[OK] Original files, backups, and keys were not removed.", file=sys.stderr)
+
+
 def main() -> int:
     parser = _Parser(description=__doc__)
-    parser.add_argument("mode", choices=("backup", "dry-run", "apply", "check", "cutover"))
+    parser.add_argument(
+        "mode", choices=("backup", "dry-run", "apply", "check", "cutover", "cleanup")
+    )
     parser.add_argument("--sqlite", type=Path, required=True)
     parser.add_argument("--connections", type=Path, required=True)
     parser.add_argument(
@@ -235,6 +261,11 @@ def main() -> int:
             for name in ("openrag.db", "connections.json")
             if (path := _file(parent, Path(name), required=True)) is not None
         ]
+        migrated = [path.with_name(path.name + ".migrated") for path in originals]
+        receipt = parent / "openrag.db.migrated.sha256.json"
+        if args.mode == "cleanup":
+            _cleanup(parent, [*migrated, receipt])
+            return 0
         args.source_data_dir = args.source_data_dir or parent
         args.config_dir = args.config_dir or parent / "config"
         config_files = (parent / "config.yaml", args.config_dir / "config.yaml")
@@ -248,8 +279,6 @@ def main() -> int:
                 "OAuth caches or legacy state files found; use the full restore migration."
             )
         backups = [path.with_name(path.name + ".backup") for path in originals]
-        migrated = [path.with_name(path.name + ".migrated") for path in originals]
-        receipt = parent / "openrag.db.migrated.sha256.json"
         if args.mode == "backup":
             _backup(originals, backups)
             print("[OK] Both originals are unchanged.", file=sys.stderr)
