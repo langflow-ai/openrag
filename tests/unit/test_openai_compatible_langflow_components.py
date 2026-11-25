@@ -91,6 +91,12 @@ def test_langflow_image_installs_the_openrag_component_bundle():
     assert not (BUNDLE / "embedding_spaces.py").exists()
 
 
+def test_langflow_image_pins_langfuse_to_v3():
+    """Keep the SDK compatible with the bundled Langflow tracer."""
+    dockerfile = Path("Dockerfile.langflow").read_text(encoding="utf-8")
+    assert '"langfuse>=3.8,<4.0"' in dockerfile
+
+
 def test_docker_compose_seeds_openrag_llm_token_placeholder():
     compose = Path("docker-compose.yml").read_text(encoding="utf-8")
     assert "OPENRAG_LLM_TOKEN=None" in compose
