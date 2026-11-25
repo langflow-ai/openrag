@@ -52,7 +52,13 @@ At the hidden prompts, enter the current production key and then the replacement
 bash rotate-key.sh apply  # rotates $MIGRATION_DIR/restore and verifies with only the new key
 ```
 
-Do not mount the working copy in production until verification succeeds. For cleanup, run `bash rotate-key.sh cleanup keys` only after securing both keys. Remove `restore` only if no deployment uses it, and `backup` only after the rollback window closes.
+Do not mount the working copy in production until verification succeeds. Clean up only when each directory is no longer needed. These commands ask for confirmation:
+
+```bash
+bash rotate-key.sh cleanup keys     # after securing both keys
+bash rotate-key.sh cleanup restore  # only if no deployment uses it
+bash rotate-key.sh cleanup backup   # only after the rollback window closes
+```
 
 ## Run the Python CLI directly for other layouts
 
