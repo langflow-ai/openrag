@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Run with Bash. This wrapper prepares SQLite restores; it never switches a deployment.
+set +x
+set -euo pipefail
+umask 077
+
+fail() { printf '%s\n' "$1" >&2; exit 1; }
+: "${MIGRATION_DIR:?Set MIGRATION_DIR to an absolute path under a private parent directory}"
+[[ "$MIGRATION_DIR" = /* ]] || fail 'MIGRATION_DIR must be absolute.'
+[[ ! -L "$MIGRATION_DIR" ]] || fail 'MIGRATION_DIR cannot be a symlink.'
+
+repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
+backup="$MIGRATION_DIR/backup"
+restore="$MIGRATION_DIR/restore"
+keys="$MIGRATION_DIR/keys"
+
+rotate() {
+  env -u OPENRAG_ENCRYPTION_KEY PYTHONPATH="$repo/src" \
+    "${MIGRATION_PYTHON:-$repo/.venv/bin/python}" -m utils.rotate_encryption_key "$@" \
+    --data-dir "$restore/data" --config-dir "$restore/config" \
+    --sqlite "$restore/data/openrag.db" \
+    --source-data-dir "${OLD_DATA_PATH_AS_STORED:-data}" \
+    --tenant-id "${OPENRAG_TENANT_ID:-openrag}" --new-key-file "$keys/new"
+}
+
+case ${1:-} in
+  backup)
+    : "${OLD_DATA_DIR:?Set OLD_DATA_DIR to the existing data directory}"
+    : "${OLD_CONFIG_DIR:?Set OLD_CONFIG_DIR to the existing config directory}"
+    data=$(cd -- "$OLD_DATA_DIR" && pwd -P)
+    config=$(cd -- "$OLD_CONFIG_DIR" && pwd -P)
+    parent=$(cd -- "$(dirname -- "$MIGRATION_DIR")" && pwd -P)
+    for source in "$data" "$config"; do
+      case "$parent/" in "$source/"*) fail 'Migration destination must be outside the source directories.' ;; esac
+      [[ -z $(find "$source" ! -type d ! -type f -print -quit) ]] ||
+        fail 'Source contains symlinks or special files. Prepare an isolated restore manually.'
+    done
+    [[ -f "$data/openrag.db" ]] || fail 'Expected SQLite database at OLD_DATA_DIR/openrag.db.'
+    mkdir -m 700 -- "$MIGRATION_DIR" || fail 'Choose a new migration directory; nothing was overwritten.'
+    mkdir -p -- "$backup/data" "$backup/config" "$restore"
+    rsync -rt --exclude='/openrag.db' --exclude='/openrag.db-wal' \
+      --exclude='/openrag.db-shm' --exclude='/openrag.db-journal' -- "$data/" "$backup/data/"
+    rsync -rt -- "$config/" "$backup/config/"
+    # Read-only source; the backup API writes a consistent DB without copying sidecars.
+    python3 - "$data/openrag.db" "$backup/data/openrag.db" <<'PY'
+import sqlite3
+import sys
+from contextlib import closing
+from pathlib import Path
+
+with closing(sqlite3.connect(Path(sys.argv[1]).as_uri() + '?mode=ro', uri=True)) as source:
+    with closing(sqlite3.connect(sys.argv[2])) as target:
+        source.backup(target)
+PY
+    cp -R -- "$backup/data" "$backup/config" "$restore/"
+    printf '%s\n' 'Backup and independent working restore created.'
+    ;;
+  keys)
+    [[ -d "$restore/data" && -d "$restore/config" ]] || fail 'Run backup first.'
+    mkdir -m 700 -- "$keys" || fail 'Key directory already exists; nothing was overwritten.'
+    read -r -s -p 'Paste the current OPENRAG_ENCRYPTION_KEY: ' old_key
+    printf '\n' >&2
+    [[ -n "$old_key" ]] || fail 'The old key cannot be empty.'
+    printf '%s\n' "$old_key" > "$keys/old"
+    unset old_key
+    openssl rand -base64 32 > "$keys/new"
+    printf '%s\n' 'Key files created. Import the new key into your secret manager before cutover.'
+    ;;
+  dry-run) rotate check --old-key-file "$keys/old" ;;
+  apply)
+    rotate apply-to-copy --old-key-file "$keys/old"
+    rotate verify
+    ;;
+  *) fail 'Usage: bash scripts/migration/rotate-key.sh {backup|keys|dry-run|apply}' ;;
+esac
