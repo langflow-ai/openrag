@@ -500,3 +500,42 @@ async def test_x_username_headers_never_become_credentials(monkeypatch, _patch_a
     assert user.user_id == "alice"
     assert user.jwt_token == "Bearer tok"  # not a Basic token minted from X-*
     assert user.opensearch_credentials is None
+
+
+class _UnavailableKeyService:
+    async def validate_key(self, api_key):
+        from services.api_key_service import ApiKeyValidationUnavailable
+
+        raise ApiKeyValidationUnavailable("Cannot connect to host localhost:9200")
+
+
+class _NoKeyService:
+    async def validate_key(self, api_key):
+        return None
+
+
+@pytest.mark.asyncio
+async def test_key_store_outage_is_a_503_not_an_invalid_key(monkeypatch):
+    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+    req = _FakeRequest({"X-API-Key": "orag_valid_but_unverifiable"})
+
+    with pytest.raises(HTTPException) as exc:
+        await get_api_key_user_async(
+            req, api_key_service=_UnavailableKeyService(), session_manager=None
+        )
+
+    assert exc.value.status_code == 503
+    assert exc.value.detail["error"] == "Authentication unavailable"
+    assert exc.value.headers == {"Retry-After": "5"}
+
+
+@pytest.mark.asyncio
+async def test_unknown_api_key_is_still_a_401(monkeypatch):
+    monkeypatch.setenv("OPENRAG_RBAC_ENFORCE", "false")
+    req = _FakeRequest({"X-API-Key": "orag_unknown"})
+
+    with pytest.raises(HTTPException) as exc:
+        await get_api_key_user_async(req, api_key_service=_NoKeyService(), session_manager=None)
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail["error"] == "Invalid API key"

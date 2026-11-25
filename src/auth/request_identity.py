@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import HTTPException, Request
 
 from auth.user_identity_cache import _resolve_db_user_id
+from services.api_key_service import ApiKeyValidationUnavailable
 from session_manager import User
 from utils.logging_config import get_logger
 
@@ -670,7 +671,20 @@ async def resolve_api_key_user(request: Request, api_key_service, session_manage
             },
         )
 
-    user_info = await api_key_service.validate_key(api_key)
+    try:
+        user_info = await api_key_service.validate_key(api_key)
+    except ApiKeyValidationUnavailable as exc:
+        # The key store is down; the key itself may be fine. Answering 401
+        # here would tell clients their key was revoked.
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "Authentication unavailable",
+                "message": "The API key could not be checked because the search "
+                "backend is unavailable. Try again shortly.",
+            },
+            headers={"Retry-After": "5"},
+        ) from exc
     if not user_info:
         raise HTTPException(
             status_code=401,
