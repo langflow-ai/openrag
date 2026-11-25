@@ -1,0 +1,74 @@
+---
+title: Rotate the OpenRAG encryption key
+slug: /reference/rotate-encryption-key
+---
+
+Rotate `OPENRAG_ENCRYPTION_KEY` offline. Changing the environment variable alone does not re-encrypt persisted data. The rotation command only operates on an isolated restored copy; it does not start OpenRAG, change deployment secrets, or perform the cutover.
+
+The command rotates encrypted user and preference fields, workspace settings (including model and connector OAuth credentials), legacy provider settings in `config.yaml`, connector credentials in `connections.json`, and OAuth token caches. It handles legacy raw-key envelopes and snapshot-source credentials if the snapshot-source table is present. It leaves legacy plaintext values, row timestamps, lookup hashes, stored paths, and tenant bindings unchanged. Modified YAML and JSON files can be reformatted.
+
+:::caution
+The Kubernetes Operator rejects in-place changes to the encryption key, including switching the existing `OpenRAG` resource to a Secret with a different value. For Operator-managed deployments, plan a separate instance with new immutable key material and the verified restored data. Do not patch or remove protected Secrets to bypass reconciliation. Langflow's Fernet key (`LANGFLOW_SECRET_KEY`) and its data are a separate migration; keep that key unchanged during this procedure.
+:::
+
+## Rehearse backup and restore
+
+1. Identify the OpenRAG SQL database, `OPENRAG_DATA_PATH`, `OPENRAG_CONFIG_PATH`, and all custom OAuth cache locations. Record `OPENRAG_TENANT_ID` and the path prefix saved in connector token references. Back up any other deployment state needed for recovery, including OpenSearch and Langflow, separately from this key migration.
+2. Keep a consistent backup of the database, data and config files, and the matching old key. Store the key separately under access control. For SQLite use the SQLite backup API (for example, the `sqlite3` shell's `.backup`) or a checkpointed, closed database file; do not copy a live database file by itself. The restored SQLite file must have no `-wal`, `-shm`, or `-journal` sidecars. For PostgreSQL take a logical dump (`pg_dump`) or consistent database snapshot and restore it to a dedicated instance reachable only via loopback from the rotation runner. Do not use a production connection or tunnel from this runner.
+3. Restore into private directories with independent files, not symlinks, hardlinks, or production mounts. Rehearse the commands below and the reverse cutover using this copy. Confirm the version and schema match the deployment, and account for ciphertext counts and missing OAuth caches against the backup inventory. Do not start an application against the copy until rotation and verification are complete.
+
+## Stop writes and restore a final copy
+
+Block traffic and stop backend and background writers, including ingestion and connector sync jobs. Keep writes blocked for the rest of the procedure. Take a fresh, consistent backup after the write freeze; preserve it and the old key for rollback. Restore a new isolated copy from that backup. Do not promote the rehearsal copy: it can be stale.
+
+Put the exact old key in a protected, one-line file and generate a new 32-byte Base64 key in a separate protected file. Use a trusted secret manager or run this in a private working directory, with tracing off and a new `keys` directory. Never put key values in command arguments, shell history, or logs.
+
+```bash
+set +x
+umask 077
+mkdir -m 700 keys
+openssl rand -base64 32 > keys/new
+```
+
+Provision `keys/old` from the secret manager without printing it. Use the backend Python environment from an OpenRAG checkout containing the rotation command; install its dependencies with `uv sync --locked` if needed. Run the following from the checkout in Bash, replacing the example paths and tenant. The `--source-data-dir` path is only used to map stored references; the command does not read from it. Use `data` if the original deployment used the default relative data directory.
+
+```bash
+set -e
+
+# Change these paths to your own isolated restore and protected key files.
+old_key=/secure/rotation/keys/old
+new_key=/secure/rotation/keys/new
+restore=(
+  --data-dir /secure/rotation/restore/data
+  --config-dir /secure/rotation/restore/config
+  --sqlite /secure/rotation/restore/data/openrag.db
+  --source-data-dir /original/openrag/data
+  --tenant-id openrag
+)
+
+PYTHONPATH=src .venv/bin/python -m utils.rotate_encryption_key check "${restore[@]}" \
+  --old-key-file "$old_key" --new-key-file "$new_key"
+```
+
+Review the preflight counts against the backup inventory before applying. Stop if a count is unexpected, an expected cache is missing, or no ciphertext was found when you expected encrypted data.
+
+```bash
+
+PYTHONPATH=src .venv/bin/python -m utils.rotate_encryption_key apply-to-copy "${restore[@]}" \
+  --old-key-file "$old_key" --new-key-file "$new_key"
+
+env -u OPENRAG_ENCRYPTION_KEY PYTHONPATH=src .venv/bin/python -m utils.rotate_encryption_key verify "${restore[@]}" \
+  --new-key-file "$new_key"
+```
+
+For PostgreSQL, replace the `--sqlite` line in `restore` with `--postgres-url-file /secure/rotation/restore-postgres-url`. Put a one-line `postgresql://USER:PASSWORD@127.0.0.1:PORT/DATABASE` URL for the isolated restore in that protected file. Specify the loopback address, port, user, and database explicitly, percent-encode reserved characters in credentials, and omit query options.
+
+The tool discovers standard Google Drive, OneDrive, and SharePoint cache names and follows token-file references within the restored data tree. For other unreferenced caches, add `--token-cache PATH` to `restore`; `PATH` is relative to the restored data directory. For references that were stored outside the original data tree, stage each cache under the restored data directory and add `--map-token-cache STORED_PATH COPY_PATH`, with the exact stored reference and the copy-relative path. Preserve those locations when you deploy the rotated files. Include any nonstandard caches in the backup inventory before proceeding.
+
+`check` and `verify` are read-only. `check` authenticates stored ciphertext with the old key; `verify` authenticates it using only the new key. Compare the per-store counts from all three commands, investigate any unexpected missing caches, and stop on any error. If no ciphertext is found, the command cannot confirm the key: reconcile that result with your inventory. A decryption or tenant failure stops rotation before data changes. An I/O failure or interruption during apply can leave a mixed copy because SQL and file replacements cannot commit together. Discard that copy and start again from the untouched backup; do not retry on the same copy.
+
+## Cut over, smoke test, and roll back
+
+1. With writers stopped, switch the SQL database, data and config directories (including any custom OAuth caches), and `OPENRAG_ENCRYPTION_KEY` together. Put files at the runtime paths the deployment expects. Keep `OPENRAG_TENANT_ID` unchanged, and retain the original data and key separately. Never start the old data with the new key or the rotated data with the old key.
+2. Start the backend with general traffic and background jobs still blocked. Confirm it is healthy and that logs contain no decryption errors. With controlled traffic, sign in and check an existing profile and preferences, use a model configured with a stored provider key, and exercise an existing connector and its OAuth token refresh (where applicable). Smoke tests can write to the new copy. Reopen writes only after they pass.
+3. If validation fails, stop the new instance and restore the original database, files and **matching old key** as a unit, then smoke test the original before reopening traffic. If you roll back after reopening writes, writes accepted by the new deployment after cutover can be lost; take a backup of the rotated state with its matching key and plan reconciliation before restoring the old state. Keep the old backup/key pair until the rollback window closes under your retention policy.

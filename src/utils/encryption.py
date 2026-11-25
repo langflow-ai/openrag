@@ -1,12 +1,15 @@
+import base64
+import json
 import os
 import secrets
-import base64
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from typing import Union, Dict, Any, Tuple, Optional
+import sys
+from typing import Any
+
 import aiofiles
-import json
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -16,7 +19,8 @@ ENCRYPTION_ALGORITHM = "AES-256-GCM"
 KDF_ALGORITHM = hashes.SHA256()
 KDF_ITERATIONS = 100000
 
-_cached_master_secret: Optional[str] = None
+_cached_master_secret: str | None = None
+
 
 def get_master_secret() -> str | None:
     """Retrieve the master secret string from local environment."""
@@ -48,12 +52,10 @@ def enforce_startup_prerequisites():
         get_master_secret()
     except RuntimeError as e:
         logger.critical(str(e))
-        import sys
         sys.exit(1)
 
 
-
-def encrypt_secret(plaintext: str, tenant_id: str = "openrag") -> Union[Dict[str, Any], str]:
+def encrypt_secret(plaintext: str, tenant_id: str = "openrag") -> dict[str, Any] | str:
     """
     Encrypt a plaintext secret using AES-256-GCM and PBKDF2HMAC.
     Returns a JSON-serializable dictionary with the ciphertext and metadata.
@@ -67,42 +69,62 @@ def encrypt_secret(plaintext: str, tenant_id: str = "openrag") -> Union[Dict[str
         return plaintext
 
     try:
-        salt = secrets.token_bytes(16)
-        kdf = PBKDF2HMAC(
-            algorithm=KDF_ALGORITHM,
-            length=32,
-            salt=salt,
-            iterations=KDF_ITERATIONS,
-        )
-        derived_key = kdf.derive(master_secret.encode("utf-8"))
-
-        aesgcm = AESGCM(derived_key)
-        nonce = secrets.token_bytes(12)
-        plaintext_bytes = plaintext.encode("utf-8")
-        aad = f"tenant_id:{tenant_id}".encode("utf-8")
-
-        ciphertext = aesgcm.encrypt(nonce, plaintext_bytes, aad)
-
-        return {
-            "version": "1.0",
-            "algorithm": ENCRYPTION_ALGORITHM,
-            "kdf": "PBKDF2HMAC-SHA256",
-            "tenant_id": tenant_id,
-            "salt": base64.b64encode(salt).decode("ascii"),
-            "nonce": base64.b64encode(nonce).decode("ascii"),
-            "ciphertext": base64.b64encode(ciphertext).decode("ascii"),
-        }
+        return _encrypt_with_key(plaintext, master_secret, tenant_id)
     except Exception as e:
         logger.error(f"Failed to encrypt secret: {e}")
         # If encryption fails, fallback to plaintext so we don't lose data
         return plaintext
 
 
-def decrypt_secret(payload: Union[Dict[str, Any], str], expected_tenant_id: Optional[str] = None) -> str:
+def _derive_key(master_secret: str, salt: bytes) -> bytes:
+    return PBKDF2HMAC(
+        algorithm=KDF_ALGORITHM, length=32, salt=salt, iterations=KDF_ITERATIONS
+    ).derive(master_secret.encode("utf-8"))
+
+
+def _encrypt_with_key(plaintext: str, master_secret: str, tenant_id: str) -> dict[str, Any]:
+    salt = secrets.token_bytes(16)
+    nonce = secrets.token_bytes(12)
+    aad = f"tenant_id:{tenant_id}".encode()
+    ciphertext = AESGCM(_derive_key(master_secret, salt)).encrypt(nonce, plaintext.encode(), aad)
+    return {
+        "version": "1.0",
+        "algorithm": ENCRYPTION_ALGORITHM,
+        "kdf": "PBKDF2HMAC-SHA256",
+        "tenant_id": tenant_id,
+        "salt": base64.b64encode(salt).decode("ascii"),
+        "nonce": base64.b64encode(nonce).decode("ascii"),
+        "ciphertext": base64.b64encode(ciphertext).decode("ascii"),
+    }
+
+
+def _decrypt_with_key(
+    payload: dict[str, Any], master_secret: str, expected_tenant_id: str | None
+) -> str:
+    payload_tenant_id = payload.get("tenant_id")
+    if expected_tenant_id is not None and payload_tenant_id not in (None, expected_tenant_id):
+        raise ValueError("Tenant ID in payload does not match expected tenant ID.")
+    tenant_id = (
+        expected_tenant_id if expected_tenant_id is not None else payload_tenant_id or "openrag"
+    )
+    aad = f"tenant_id:{tenant_id}".encode()
+    # Before PBKDF2 was introduced, the master secret was used as a raw Base64 key.
+    key = (
+        _derive_key(master_secret, base64.b64decode(payload["salt"]))
+        if "salt" in payload
+        else base64.b64decode(master_secret)
+    )
+    plaintext = AESGCM(key).decrypt(
+        base64.b64decode(payload["nonce"]), base64.b64decode(payload["ciphertext"]), aad
+    )
+    return plaintext.decode()
+
+
+def decrypt_secret(payload: dict[str, Any] | str, expected_tenant_id: str | None = None) -> str:
     """
     Decrypt a secret payload using AES-256-GCM.
     Supports backward compatibility with non-KDF base64 raw keys.
-    If expected_tenant_id is provided, it is used as the authoritative tenant identifier 
+    If expected_tenant_id is provided, it is used as the authoritative tenant identifier
     for constructing the AES-GCM AAD, and the payload's tenant_id (if present) must match it.
     """
     if not isinstance(payload, dict):
@@ -121,54 +143,22 @@ def decrypt_secret(payload: Union[Dict[str, Any], str], expected_tenant_id: Opti
         )
 
     try:
-        # Backward compatibility for originally raw base64 32-byte keys
-        if "salt" in payload:
-            salt = base64.b64decode(payload["salt"])
-            kdf = PBKDF2HMAC(
-                algorithm=KDF_ALGORITHM,
-                length=32,
-                salt=salt,
-                iterations=KDF_ITERATIONS,
-            )
-            key = kdf.derive(master_secret.encode("utf-8"))
-        else:
-            # Legacy assumption: master_secret was exactly 32 bytes of raw base64 data
-            key = base64.b64decode(master_secret)
-
-        aesgcm = AESGCM(key)
-        nonce = base64.b64decode(payload["nonce"])
-        ciphertext = base64.b64decode(payload["ciphertext"])
-        
-        # Determine tenant_id for AAD using a trusted expected value when available.
-        payload_tenant_id = payload.get("tenant_id")
-        if expected_tenant_id is not None:
-            if payload_tenant_id is not None and payload_tenant_id != expected_tenant_id:
-                raise ValueError(
-                    f"Tenant ID in payload ('{payload_tenant_id}') does not match expected tenant ID."
-                )
-            tenant_id = expected_tenant_id
-        else:
-            # Backwards-compatible behaviour when no external tenant binding is configured.
-            tenant_id = payload_tenant_id or "openrag"
-            
-        aad = f"tenant_id:{tenant_id}".encode("utf-8")
-
-        plaintext_bytes = aesgcm.decrypt(nonce, ciphertext, aad)
-        return plaintext_bytes.decode("utf-8")
+        return _decrypt_with_key(payload, master_secret, expected_tenant_id)
     except Exception as e:
         logger.error(f"Failed to decrypt secret: {e}")
-        raise ValueError(f"Failed to decrypt secret: {e}")
+        raise ValueError(f"Failed to decrypt secret: {e}") from e
 
-async def read_encrypted_file(file_path: str) -> Tuple[Optional[str], bool]:
+
+async def read_encrypted_file(file_path: str) -> tuple[str | None, bool]:
     """
     Reads an encrypted or plaintext JSON/string file.
     Returns a tuple: (file_content_as_string, needs_upgrade_boolean)
     """
     if not os.path.exists(file_path):
         return None, False
-        
+
     try:
-        async with aiofiles.open(file_path, "r") as f:
+        async with aiofiles.open(file_path) as f:
             raw_data = await f.read()
 
         if not raw_data.strip():
@@ -191,6 +181,7 @@ async def read_encrypted_file(file_path: str) -> Tuple[Optional[str], bool]:
         logger.error(f"Failed to read encrypted file {file_path}: {e}")
         return None, False
 
+
 async def write_encrypted_file(file_path: str, data: str):
     """
     Encrypts string data (if key is present) and writes to file.
@@ -206,4 +197,3 @@ async def write_encrypted_file(file_path: str, data: str):
 
     async with aiofiles.open(file_path, "w") as f:
         await f.write(payload_to_write)
-

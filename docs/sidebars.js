@@ -75,6 +75,7 @@ const sidebars = {
       label: "Chat",
     },
     "reference/configuration",
+    "reference/rotate-encryption-key",
     {
       type: "doc",
       id: "reference/observability",
