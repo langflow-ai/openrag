@@ -101,6 +101,9 @@ PY
       --original-config-dir "${OLD_CONFIG_DIR:?Set OLD_CONFIG_DIR to the original config path}"
     step 'Verifying the restored copy with only the replacement key.'
     rotate verify
+    step 'Recording hashes of the verified working copy for cutover.'
+    "${MIGRATION_PYTHON:-python3}" "$script_dir/cutover_data.py" \
+      "$MIGRATION_DIR" --record-verified-restore
     done_step 'Rotation verified. No deployment was switched.'
     ;;
   cutover-data)

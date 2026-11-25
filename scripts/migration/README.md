@@ -2,10 +2,10 @@
 
 Copy this entire folder to the migration host. No OpenRAG checkout is needed. This wrapper assumes the SQLite database is `openrag.db` inside the existing data directory. For PostgreSQL, non-default database paths, or OAuth caches outside the normal data tree, follow the [full runbook](https://github.com/langflow-ai/openrag/blob/main/docs/docs/reference/rotate-encryption-key.mdx).
 
-From the copied folder, create an isolated Python environment:
+Use Python 3.13 (the OpenRAG-supported version). From the copied folder, create an isolated environment before stopping writers:
 
 ```bash
-python3 -m venv .venv
+python3.13 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 export MIGRATION_PYTHON="$PWD/.venv/bin/python"
 ```
@@ -67,6 +67,8 @@ bash rotate-key.sh cutover-data \
 With no arguments, `cutover-data` uses `OLD_DATA_DIR` and `OLD_CONFIG_DIR`. Use that shorthand only if both exports are the real runtime directories. If they point to a staged restore, pass both runtime paths explicitly. Always check the destinations shown before confirming.
 
 Use separate, non-mounted directories on the same filesystem as the restore. The command checks that the destinations still match the backup, asks for confirmation, and prints where it saved the old directories. It consumes `restore/data` and `restore/config` and leaves `backup/` untouched. It does not update secrets or start the app. Set the replacement key before starting the backend. Use the runbook for Operator-managed deployments and rollback.
+
+Cutover checks the restore against the file hashes recorded by `apply`. It refuses modified restores or runtime directories with ACLs; use manual cutover for ACL-dependent deployments.
 
 Progress messages go to stderr; rotation counts go to stdout. Terminal labels are colored unless `NO_COLOR=1` is set. When looping over deployments, use a distinct `MIGRATION_DIR` for each and stop on any nonzero exit. Review each dry run before applying; do not put dry run and apply in the same unattended loop.
 

@@ -23,6 +23,8 @@ Block traffic and stop backend and background writers, including ingestion and c
 
 ## Run the Bash wrapper for default SQLite deployments
 
+Prepare the migration tools with Python 3.13 before stopping writers.
+
 Copy `scripts/migration/` to a dedicated migration host. Use this wrapper only when the restored SQLite database is `openrag.db` inside the staged data directory and all OAuth caches are under that data directory. Point the `OLD_*_DIR` variables at the **staged production restore**, not live production mounts. The wrapper creates its own backup and separate working copy from that staged restore.
 
 | Step | What it changes |
@@ -36,7 +38,7 @@ Copy `scripts/migration/` to a dedicated migration host. Use this wrapper only w
 
 ```bash
 cd /secure/openrag-migration-tools
-python3 -m venv .venv &&
+python3.13 -m venv .venv &&
   .venv/bin/python -m pip install -r requirements.txt
 ```
 
@@ -73,6 +75,8 @@ bash rotate-key.sh cutover-data \
 If you omit both arguments, `cutover-data` uses `OLD_DATA_DIR` and `OLD_CONFIG_DIR`. The exports above point at a staged restore, so **use explicit runtime destinations** for this production example.
 
 Keep all writers stopped. The command re-verifies the restore, checks the destination against the old backup, and requires interactive confirmation. It moves the restore into place and prints the paths where it kept the old directories. It does not change the key: configure the matching new key separately **before starting OpenRAG**. If interrupted, keep OpenRAG stopped and use the printed rollback paths or the untouched backup to recover. The two directory swaps are not collectively atomic.
+
+The command compares the working copy against the hashes recorded by `apply` and rejects modified restores. Use manual cutover for paths with filesystem ACLs.
 
 Clean up only when each directory is no longer needed. These commands ask for confirmation:
 

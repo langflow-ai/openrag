@@ -374,13 +374,22 @@ def test_rejects_connector_envelope_bound_to_another_owner(restored_copy):
     assert (data / source.name).read_bytes() == source.read_bytes()
 
 
-@pytest.mark.parametrize("kind", ["data", "config"])
+@pytest.mark.parametrize("kind", ["data", "config", "alias"])
 def test_apply_rejects_original_directory_with_relative_token_prefix(restored_copy, kind):
     db, original_data, original_config, restore = restored_copy
     path = original_config / "config.yaml"
     path.write_text("providers: {}\n")
     _, _, _, run = restore()
     before = db.read_bytes(), path.read_bytes()
+    if kind == "alias":
+        alias = original_data.with_name(original_data.name.upper())
+        if not alias.exists():
+            pytest.skip("filesystem is case-sensitive")
+        result = run("apply-to-copy", "--data-dir", str(alias))
+        assert result.returncode == 1
+        assert "Restore directories must not overlap original directories" in result.stderr
+        assert (db.read_bytes(), path.read_bytes()) == before
+        return
     original = original_data if kind == "data" else original_config
     result = run("apply-to-copy", "--source-data-dir", "data", f"--{kind}-dir", str(original))
     assert result.returncode == 1
@@ -389,7 +398,18 @@ def test_apply_rejects_original_directory_with_relative_token_prefix(restored_co
 
 
 @pytest.mark.parametrize(
-    "scenario", ["promote", "stale", "unverified", "cancel", "backup-alias", "rollback"]
+    "scenario",
+    [
+        "promote",
+        "stale",
+        "nul-stale",
+        "modified",
+        "acl",
+        "unverified",
+        "cancel",
+        "backup-alias",
+        "rollback",
+    ],
 )
 def test_wrapper_data_cutover(restored_copy, tmp_path, monkeypatch, scenario):
     db, source_data, source_config, _ = restored_copy
@@ -409,6 +429,8 @@ def test_wrapper_data_cutover(restored_copy, tmp_path, monkeypatch, scenario):
             "INSERT INTO workspace_config (section, value, updated_at) VALUES (?, ?, ?)",
             ("providers", json.dumps({"key": old_payload}), "2026-01-01"),
         )
+        conn.execute("CREATE TABLE messages (content TEXT)")
+        conn.execute("INSERT INTO messages VALUES (?)", ("prefix\0old",))
     migration = tmp_path / "Migration"
     env_file = tmp_path / ".env"
     env_file.write_text(f"OPENRAG_ENCRYPTION_KEY={OLD_KEY}\n")
@@ -454,6 +476,22 @@ def test_wrapper_data_cutover(restored_copy, tmp_path, monkeypatch, scenario):
         assert result.returncode == 0, result.stderr
 
     saved_backup = (migration / "backup/data/openrag.db").read_bytes()
+    if scenario == "modified":
+        with sqlite3.connect(migration / "restore/data/openrag.db") as conn:
+            conn.execute("UPDATE workspace_config SET value = '{}'")
+        (migration / "restore/config/config.yaml").write_text("providers: {}\n")
+    if scenario == "nul-stale":
+        with sqlite3.connect(db) as conn:
+            conn.execute("UPDATE messages SET content = ?", ("prefix\0new",))
+        original_db = db.read_bytes()
+    if scenario == "acl":
+        if sys.platform == "darwin":
+            command = ["/bin/chmod", "+a", "everyone allow read", str(config)]
+        elif shutil.which("setfacl"):
+            command = ["setfacl", "-m", "u:65534:r", str(config)]
+        else:
+            pytest.skip("no ACL setter available")
+        subprocess.run(command, check=True, capture_output=True)
     if scenario == "stale":
         with sqlite3.connect(db) as conn:
             conn.execute("UPDATE workspace_config SET updated_at = '2026-01-02'")
@@ -491,6 +529,9 @@ def test_wrapper_data_cutover(restored_copy, tmp_path, monkeypatch, scenario):
         diagnostics = {
             "stale": "destination changed since backup",
             "unverified": "Replacement-key verification failed",
+            "modified": "Verified restore changed since apply",
+            "nul-stale": "destination changed since backup",
+            "acl": "Cutover cannot preserve filesystem ACLs",
             "cancel": "Cutover cancelled",
             "backup-alias": "must not overlap",
             "rollback": "completed moves were rolled back",

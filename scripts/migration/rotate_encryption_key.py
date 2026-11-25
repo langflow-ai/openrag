@@ -21,6 +21,7 @@ import yaml
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from rotation_paths import overlaps
 from sqlalchemy import Connection, MetaData, Table, inspect, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -393,10 +394,7 @@ async def _run(args: argparse.Namespace, rotation: _Rotation) -> None:
             raise RotationError("Apply requires absolute original data and config directory paths.")
         for original in originals:
             protected = original.resolve()
-            if any(
-                root.is_relative_to(protected) or protected.is_relative_to(root)
-                for root in (data, config)
-            ):
+            if any(overlaps(root, protected) for root in (data, config)):
                 raise RotationError("Restore directories must not overlap original directories.")
         print("[OK] Restore directories do not overlap the original directories.", file=sys.stderr)
     engine = _engine(args, data, apply=apply)
