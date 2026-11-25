@@ -1,4 +1,4 @@
-# Offline key rotation for OpenRAG SQLite files
+# OpenRAG encryption key rotation
 
 Copy this folder to the migration host. No OpenRAG checkout is needed. This guide covers file migration for `openrag.db` and `connections.json` only. For other layouts, see the [production runbook](https://github.com/langflow-ai/openrag/blob/main/docs/docs/reference/rotate-encryption-key.mdx).
 
