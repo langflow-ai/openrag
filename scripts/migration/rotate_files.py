@@ -40,7 +40,9 @@ def _preserve_acl(source: Path, destination_fd: int) -> None:
             elif not (source_acls or target_acls):
                 return
         except OSError:
-            raise RotationError("Cannot copy or verify the NFSv4 ACL; originals unchanged.") from None
+            raise RotationError(
+                "Cannot copy or verify the NFSv4 ACL; originals unchanged."
+            ) from None
     elif sys.platform == "darwin":
         listing = subprocess.check_output(["/bin/ls", "-ldeq", "--", str(source)])
         if len(listing.splitlines()) <= 1:
@@ -68,7 +70,9 @@ def _copy(source: Path, destination: Path, mode_from: Path | None = None) -> Non
             _preserve_acl(mode_from, output.fileno())
             copied = os.fstat(output.fileno())
             if (copied.st_uid, copied.st_gid, copied.st_mode) != (
-                original.st_uid, original.st_gid, original.st_mode
+                original.st_uid,
+                original.st_gid,
+                original.st_mode,
             ):
                 raise RotationError("Cannot verify cutover file permissions; originals unchanged.")
         os.fsync(output.fileno())
