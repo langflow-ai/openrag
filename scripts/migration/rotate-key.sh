@@ -16,13 +16,19 @@ log() {
 step() { log STEP '1;36' "$1"; }
 done_step() { log OK '1;32' "$1"; }
 fail() { log ERROR '1;31' "$1"; exit 1; }
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+if [[ ${1:-} = files ]]; then
+  shift
+  exec env -u OPENRAG_ENCRYPTION_KEY "${MIGRATION_PYTHON:-python3}" \
+    "$script_dir/rotate_files.py" "$@"
+fi
+
 if [[ ${1:-} != check || -n ${MIGRATION_DIR:-} ]]; then
   : "${MIGRATION_DIR:?Set MIGRATION_DIR to an absolute path under a private parent directory}"
   [[ "$MIGRATION_DIR" = /* ]] || fail 'MIGRATION_DIR must be absolute.'
   [[ ! -L "$MIGRATION_DIR" ]] || fail 'MIGRATION_DIR cannot be a symlink.'
 fi
 
-script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 backup="${MIGRATION_DIR:-}/backup"
 restore="${MIGRATION_DIR:-}/restore"
 keys="${MIGRATION_DIR:-}/keys"
@@ -203,5 +209,5 @@ PY
     rm -r -- "$target"
     done_step "Removed the selected $2 directory."
     ;;
-  *) fail 'Usage: bash rotate-key.sh {backup|keys|dry-run|check|apply|cutover-data|cleanup}' ;;
+  *) fail 'Usage: bash rotate-key.sh {backup|keys|dry-run|check|apply|cutover-data|cleanup|files}' ;;
 esac

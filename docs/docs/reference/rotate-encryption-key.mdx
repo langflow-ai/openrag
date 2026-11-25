@@ -21,6 +21,8 @@ The Kubernetes Operator rejects in-place changes to the encryption key, includin
 
 Block traffic and stop backend and background writers, including ingestion and connector sync jobs. Keep writes blocked for the rest of the procedure. Take a fresh, consistent backup after the write freeze; preserve it and the old key for rollback. Restore a new isolated copy from that backup. Do not promote the rehearsal copy: it can be stale.
 
+If `openrag.db` and `connections.json` are the only files that need rotation, the [explicit-file workflow](https://github.com/langflow-ai/openrag/tree/main/scripts/migration#pass-two-explicit-files-instead-of-directories) takes their individual paths. It writes `.backup` and `.migrated` copies beside the input files. Only its separate, interactive cutover replaces the originals. Rehearse on an isolated restore. Do not cut over files on an existing Operator-managed instance whose key cannot be changed.
+
 ## Run the Bash wrapper for default SQLite deployments
 
 Prepare the migration tools with Python 3.13 before stopping writers.

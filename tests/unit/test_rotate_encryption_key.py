@@ -632,3 +632,93 @@ def test_wrapper_check_without_ciphertext_does_not_confirm_key(restored_copy, mo
     assert result.returncode == 1
     assert "No ciphertext found; the key could not be authenticated." in result.stderr
     assert db.read_bytes() == before
+
+
+def test_file_rotation_keeps_originals_until_verified_cutover(restored_copy, monkeypatch):
+    db, data, _, _ = restored_copy
+    db = db.rename(data / "openrag.db")
+    connections = data / "connections.json"
+    payload = encryption.encrypt_secret("connector-secret")
+    connections.write_text(json.dumps({"connections": [{"config": {"password": payload}}]}))
+    connections.chmod(0o640)
+    flow_dir = data / "flow-backups"
+    flow_dir.mkdir()
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            "INSERT INTO workspace_config (section, value, updated_at) VALUES (?, ?, ?)",
+            ("providers", json.dumps({"key": payload}), "2026-01-01"),
+        )
+
+    script = Path(__file__).resolve().parents[2] / "scripts/migration/rotate-key.sh"
+    env = dict(os.environ, MIGRATION_PYTHON=sys.executable, OPENRAG_TENANT_ID="openrag")
+    common = [
+        "--sqlite",
+        str(db),
+        "--connections",
+        str(connections),
+        "--new-key-file",
+        str(data.parent / "new.key"),
+    ]
+
+    def run(mode, stdin=None):
+        before_cutover = ["--old-key-file", str(data.parent / "old.key")]
+        return subprocess.run(
+            [
+                "bash",
+                str(script),
+                "files",
+                mode,
+                *common,
+                *([] if mode == "cutover" else before_cutover),
+            ],
+            stdin=stdin,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+
+    originals = (db, connections)
+    before = [path.read_bytes() for path in originals]
+    backups = [path.with_name(path.name + ".backup") for path in originals]
+    migrated = [path.with_name(path.name + ".migrated") for path in originals]
+
+    check = run("dry-run")
+    assert check.returncode == 0, check.stderr
+    assert not any(path.exists() for path in backups + migrated)
+    apply = run("apply")
+    assert apply.returncode == 0, apply.stderr
+    assert [path.read_bytes() for path in originals] == before
+    assert [path.read_bytes() for path in backups] == before
+    assert all(path.stat().st_mode & 0o777 == 0o600 for path in backups + migrated)
+
+    def confirm():
+        master, slave = pty.openpty()
+        try:
+            os.write(master, b"cutover-files\n")
+            return run("cutover", stdin=slave)
+        finally:
+            os.close(slave)
+            os.close(master)
+
+    rotated_connections = migrated[1].read_bytes()
+    migrated[1].write_text("{}")
+    rejected = confirm()
+    assert rejected.returncode == 1
+    assert "changed since apply" in rejected.stderr
+    assert [path.read_bytes() for path in originals] == before
+    migrated[1].write_bytes(rotated_connections)
+
+    result = confirm()
+    assert result.returncode == 0, result.stderr
+    assert [path.read_bytes() for path in backups] == before
+    assert [path.read_bytes() for path in originals] == [path.read_bytes() for path in migrated]
+    assert flow_dir.is_dir()
+    assert connections.stat().st_mode & 0o777 == 0o640
+    monkeypatch.setattr(encryption, "_cached_master_secret", NEW_KEY)
+    with sqlite3.connect(db) as conn:
+        (value,) = conn.execute("SELECT value FROM workspace_config").fetchone()
+    assert encryption.decrypt_secret(json.loads(value)["key"]) == "connector-secret"
+    stored = json.loads(connections.read_text())["connections"][0]["config"]["password"]
+    assert encryption.decrypt_secret(stored) == "connector-secret"
