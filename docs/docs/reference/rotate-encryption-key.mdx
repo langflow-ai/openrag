@@ -21,16 +21,44 @@ The Kubernetes Operator rejects in-place changes to the encryption key, includin
 
 Block traffic and stop backend and background writers, including ingestion and connector sync jobs. Keep writes blocked for the rest of the procedure. Take a fresh, consistent backup after the write freeze; preserve it and the old key for rollback. Restore a new isolated copy from that backup. Do not promote the rehearsal copy: it can be stale.
 
-Put the exact old key in a protected, one-line file and generate a new 32-byte Base64 key in a separate protected file. Use a trusted secret manager or run this in a private working directory, with tracing off and a new `keys` directory. Never put key values in command arguments, shell history, or logs.
+## Run the Bash wrapper for default SQLite deployments
+
+Copy `scripts/migration/` to a dedicated migration host. Use this wrapper only when the restored SQLite database is `openrag.db` inside the staged data directory and all OAuth caches are under that data directory. Point the `OLD_*_DIR` variables at the **staged production restore**, not live production mounts. The wrapper creates its own backup and separate working copy from that staged restore.
 
 ```bash
-set +x
-umask 077
-mkdir -m 700 keys
-openssl rand -base64 32 > keys/new
+cd /secure/openrag-migration-tools
+python3 -m venv .venv &&
+  .venv/bin/python -m pip install -r requirements.txt
 ```
 
-Provision `keys/old` from the secret manager without printing it. Copy `scripts/migration/` to the migration host, then run `python3 -m venv .venv` and `.venv/bin/python -m pip install -r requirements.txt` from that folder. Run the following there in Bash. The `--source-data-dir` path is only used to map stored references; the command does not read from it. Use `data` if the original deployment used the default relative data directory.
+Once the dependencies are installed, set the paths and run preflight:
+
+```bash
+export MIGRATION_PYTHON="$PWD/.venv/bin/python"
+export OLD_DATA_DIR=/secure/staged-production-restore/data
+export OLD_CONFIG_DIR=/secure/staged-production-restore/config
+export OLD_DATA_PATH_AS_STORED=data  # exact prefix recorded in connector references
+export OPENRAG_TENANT_ID=openrag     # existing deployment tenant
+export MIGRATION_DIR=/secure/rotation/final-cutover  # new directory under a private parent
+
+bash rotate-key.sh backup &&
+  bash rotate-key.sh keys &&
+  bash rotate-key.sh dry-run
+```
+
+At the hidden prompts, enter the current production key and then the replacement key from your secret manager. The wrapper does not generate a key. If the dry run succeeds and its counts match your backup inventory:
+
+```bash
+bash rotate-key.sh apply  # rotates $MIGRATION_DIR/restore and verifies with only the new key
+```
+
+Do not mount the working copy in production until verification succeeds. For cleanup, run `bash rotate-key.sh cleanup keys` only after securing both keys. Remove `restore` only if no deployment uses it, and `backup` only after the rollback window closes.
+
+## Run the Python CLI directly for other layouts
+
+For PostgreSQL, a non-default SQLite path, or custom OAuth cache mappings, use the Python CLI instead of the Bash wrapper. Put the exact old key and the replacement key (Base64 for 32 bytes) in separate protected one-line files. Never put key values in command arguments, shell history, or logs.
+
+From the copied `scripts/migration/` folder, use the same Python environment setup shown above. Run the following in Bash. The `--source-data-dir` path is only used to map stored references; the command does not read from it. Use `data` if the original deployment used the default relative data directory.
 
 ```bash
 set -e
