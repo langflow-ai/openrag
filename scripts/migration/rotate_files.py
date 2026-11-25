@@ -7,12 +7,12 @@ import json
 import os
 import shutil
 import stat
+import subprocess
 import sys
 from argparse import Namespace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from cutover_data import CutoverError, _reject_acl
 from rotate_encryption_key import (
     _CACHE_NAME,
     _LEGACY_FILES,
@@ -23,6 +23,18 @@ from rotate_encryption_key import (
     _Rotation,
     _run,
 )
+
+
+def _reject_acl(path: Path) -> None:
+    if sys.platform.startswith("linux"):
+        has_acl = any("acl" in name.lower() for name in os.listxattr(path))
+    elif sys.platform == "darwin":
+        listing = subprocess.check_output(["/bin/ls", "-ldeq", "--", str(path)])
+        has_acl = len(listing.splitlines()) > 1
+    else:
+        raise RotationError("Cutover ACL checks are supported only on Linux and macOS.")
+    if has_acl:
+        raise RotationError("Cutover cannot preserve filesystem ACLs; use manual cutover.")
 
 
 def _hash(path: Path) -> str:
@@ -116,12 +128,15 @@ def _backup(originals: list[Path], backups: list[Path]) -> None:
     if any(path.exists() or path.is_symlink() for path in backups):
         raise RotationError("Backup files already exist; nothing was overwritten.")
     _require_offline_sqlite(originals[0])
+    print("[STEP] Copying the original files into protected backups.", file=sys.stderr)
     with TemporaryDirectory(prefix=".openrag-file-backup-", dir=parent) as temp:
         staged = [Path(temp) / backup.name for backup in backups]
         for original, copy in zip(originals, staged, strict=True):
             _copy(original, copy)
         _unchanged(originals, staged)
         _publish(parent, staged, backups)
+    for backup in backups:
+        print(f"[OK] Backup saved: {str(backup)!r}", file=sys.stderr)
 
 
 def _report(rotation: _Rotation) -> None:
@@ -145,6 +160,7 @@ def _key_path(explicit: Path | None, name: str, flag: str) -> Path:
 def _cutover(
     originals: list[Path], backups: list[Path], promoted: list[Path], scratch: Path
 ) -> None:
+    print("[STEP] Staging rollback copies and preserving file permissions.", file=sys.stderr)
     rollback = []
     for original, backup in zip(originals, backups, strict=True):
         _reject_acl(original)
@@ -152,6 +168,7 @@ def _cutover(
         _copy(backup, copy, mode_from=original)
         rollback.append(copy)
     _unchanged(originals, backups)
+    print("[STEP] Replacing the two original files. Backups remain in place.", file=sys.stderr)
     try:
         for source, target in zip(promoted, originals, strict=True):
             source.replace(target)
@@ -215,7 +232,7 @@ def main() -> int:
         receipt = parent / "openrag.db.migrated.sha256.json"
         if args.mode == "backup":
             _backup(originals, backups)
-            print("[OK] Created both .backup files. Originals were not changed.")
+            print("[OK] Both originals are unchanged.", file=sys.stderr)
             return 0
         if args.mode == "check":
             check_key = _key_path(args.key_file or args.new_key_file, "new", "--key-file")
@@ -237,7 +254,7 @@ def main() -> int:
             else:
                 _inspect(args, parent, parent, verification)
             _report(verification)
-            print("[OK] The supplied key authenticated the stored ciphertext.")
+            print("[OK] The supplied key authenticated the stored ciphertext.", file=sys.stderr)
             return 0
         if args.mode in ("dry-run", "apply"):
             old = _key(_key_path(args.old_key_file, "old", "--old-key-file"), new=False)
@@ -282,11 +299,14 @@ def main() -> int:
                     os.fsync(stream.fileno())
                 _unchanged(originals, backups)
                 _publish(parent, [*files, seal], [*migrated, receipt])
-            print("[OK] Created and verified .migrated files. Originals and backups are unchanged.")
+            for path in migrated:
+                print(f"[OK] Verified migrated file: {str(path)!r}", file=sys.stderr)
+            print("[OK] Originals and backups are unchanged.", file=sys.stderr)
             return 0
         new = _key(_key_path(args.new_key_file, "new", "--new-key-file"), new=True)
         if not sys.stdin.isatty():
             raise RotationError("Cutover requires an interactive terminal.")
+        print("[STEP] Checking the recorded hashes and original files.", file=sys.stderr)
         _require_offline_sqlite(migrated[0])
         for artifact in [*backups, *migrated, receipt]:
             _file(parent, Path(artifact.name), required=True)
@@ -301,6 +321,7 @@ def main() -> int:
                 _copy(migrated_file, replica, mode_from=original)
             if hashes[2:] != [_hash(path) for path in promoted]:
                 raise RotationError("Migrated files changed during cutover.")
+            print("[STEP] Verifying the staged files with the replacement key.", file=sys.stderr)
             _inspect(args, stage, stage, _Rotation(new, None))
             print(
                 f"[WARNING] Replace {str(originals[0])!r} and {str(originals[1])!r}. "
@@ -312,13 +333,12 @@ def main() -> int:
                 raise RotationError("Cutover cancelled.")
             _cutover(originals, backups, promoted, stage)
         print(
-            "[OK] Data cutover complete. Configure the replacement key before restarting OpenRAG."
+            "[OK] Data cutover complete. Configure the replacement key before restarting OpenRAG.",
+            file=sys.stderr,
         )
         return 0
     except (Exception, KeyboardInterrupt) as error:
-        detail = (
-            str(error) if isinstance(error, (RotationError, CutoverError)) else type(error).__name__
-        )
+        detail = str(error) if isinstance(error, RotationError) else type(error).__name__
         print(f"[ERROR] {detail}", file=sys.stderr)
         return 1
 

@@ -41,6 +41,8 @@ bash rotate-key.sh files backup "${files[@]}" &&
 | `files check` | Decrypts and authenticates the specified files using the saved replacement key. Add `--migrated` to check their `.migrated` siblings instead, or `--key-file PATH` to use a different key. Does not modify either set. |
 | `files cutover` | Re-verifies the migrated files, checks that the originals still match the backups, and asks you to confirm. Replaces only the two specified originals. Keeps both sets of sibling copies. |
 
+Backups are **files**, not a backup directory: for example, `/app/backend-data/openrag.db.backup` and `/app/backend-data/connections.json.backup`. The wrapper prints progress and artifact paths to stderr and ciphertext counts to stdout. It never prints key values or decrypted data.
+
 After reviewing the dry run and confirming the old key is recoverable:
 
 ```bash

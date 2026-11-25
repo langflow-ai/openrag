@@ -4,7 +4,6 @@ import base64
 import json
 import os
 import pty
-import shlex
 import shutil
 import sqlite3
 import subprocess
@@ -398,242 +397,6 @@ def test_apply_rejects_original_directory_with_relative_token_prefix(restored_co
     assert (db.read_bytes(), path.read_bytes()) == before
 
 
-@pytest.mark.parametrize(
-    "scenario",
-    [
-        "promote",
-        "stale",
-        "nul-stale",
-        "modified",
-        "acl",
-        "unverified",
-        "cancel",
-        "backup-alias",
-        "rollback",
-    ],
-)
-def test_wrapper_data_cutover(restored_copy, tmp_path, monkeypatch, scenario):
-    db, source_data, source_config, _ = restored_copy
-    db = db.rename(source_data / "openrag.db")
-    if scenario == "rollback":
-        config_parent = tmp_path / "runtime"
-        config_parent.mkdir()
-        source_config = source_config.rename(config_parent / source_config.name)
-        if os.geteuid() == 0:
-            pytest.skip("root can rename directories in a read-only parent")
-    config = source_config / "config.yaml"
-    old_payload = encryption.encrypt_secret("provider credential")
-    config.write_text(yaml.safe_dump({"providers": {"openai": {"api_key": old_payload}}}))
-    config.chmod(0o640)
-    with sqlite3.connect(db) as conn:
-        conn.execute(
-            "INSERT INTO workspace_config (section, value, updated_at) VALUES (?, ?, ?)",
-            ("providers", json.dumps({"key": old_payload}), "2026-01-01"),
-        )
-        conn.execute("CREATE TABLE messages (content TEXT)")
-        conn.execute("INSERT INTO messages VALUES (?)", ("prefix\0old",))
-    migration = tmp_path / "Migration"
-    env_file = tmp_path / ".env"
-    env_file.write_text(f"OPENRAG_ENCRYPTION_KEY={OLD_KEY}\n")
-    original_config = config.read_bytes()
-    original_db = db.read_bytes()
-    script = Path(__file__).resolve().parents[2] / "scripts/migration/rotate-key.sh"
-    env = {
-        **os.environ,
-        "OLD_DATA_DIR": str(source_data),
-        "OLD_CONFIG_DIR": str(source_config),
-        "OLD_DATA_PATH_AS_STORED": "data",
-        "OPENRAG_TENANT_ID": "openrag",
-        "MIGRATION_DIR": str(migration),
-        "MIGRATION_PYTHON": sys.executable,
-    }
-
-    def run(*args, text=None, interactive=False):
-        command = ["bash", str(script), *args]
-        if not interactive:
-            return subprocess.run(
-                command, input=text, env=env, capture_output=True, text=True, timeout=20
-            )
-        master, slave = pty.openpty()
-        try:
-            # Only the confirmation word goes through the terminal; no keys.
-            os.write(master, text.encode())
-            with subprocess.Popen(
-                command, stdin=slave, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
-            ) as proc:
-                stdout, stderr = proc.communicate(timeout=20)
-                return subprocess.CompletedProcess(
-                    command, proc.returncode, stdout.decode(), stderr.decode()
-                )
-        finally:
-            os.close(slave)
-            os.close(master)
-
-    stages = [("backup", None), ("keys", f"{OLD_KEY}\n{NEW_KEY}\n"), ("dry-run", None)]
-    if scenario != "unverified":
-        stages.append(("apply", None))
-    for mode, text in stages:
-        result = run(mode, text=text)
-        assert result.returncode == 0, result.stderr
-
-    saved_backup = (migration / "backup/data/openrag.db").read_bytes()
-    if scenario == "modified":
-        with sqlite3.connect(migration / "restore/data/openrag.db") as conn:
-            conn.execute("UPDATE workspace_config SET value = '{}'")
-        (migration / "restore/config/config.yaml").write_text("providers: {}\n")
-    if scenario == "nul-stale":
-        with sqlite3.connect(db) as conn:
-            conn.execute("UPDATE messages SET content = ?", ("prefix\0new",))
-        original_db = db.read_bytes()
-    if scenario == "acl":
-        if sys.platform == "darwin":
-            command = ["/bin/chmod", "+a", "everyone allow read", str(config)]
-        elif shutil.which("setfacl"):
-            command = ["setfacl", "-m", "u:65534:r", str(config)]
-        else:
-            pytest.skip("no ACL setter available")
-        subprocess.run(command, check=True, capture_output=True)
-    if scenario == "stale":
-        with sqlite3.connect(db) as conn:
-            conn.execute("UPDATE workspace_config SET updated_at = '2026-01-02'")
-        original_db = db.read_bytes()
-
-    confirmation = "cancel\n" if scenario == "cancel" else "cutover-data\n"
-    destination = source_data
-    if scenario == "backup-alias":
-        destination = tmp_path / "migration/backup/data"
-        if not destination.exists():
-            pytest.skip("filesystem is case-sensitive")
-    if scenario == "rollback":
-        config_parent.chmod(0o500)
-    try:
-        paths = [
-            "--original-config-dir",
-            str(source_config),
-            "--original-data-dir",
-            str(destination),
-        ]
-        result = run(
-            "cutover-data",
-            *([] if scenario == "promote" else paths),
-            text=confirmation,
-            interactive=True,
-        )
-    finally:
-        if scenario == "rollback":
-            config_parent.chmod(0o700)
-    assert (migration / "backup/data/openrag.db").read_bytes() == saved_backup
-    assert (migration / "backup/config/config.yaml").read_bytes() == original_config
-    assert env_file.read_text() == f"OPENRAG_ENCRYPTION_KEY={OLD_KEY}\n"
-    assert all(key not in result.stdout + result.stderr for key in (OLD_KEY, NEW_KEY))
-    if scenario != "promote":
-        diagnostics = {
-            "stale": "destination changed since backup",
-            "unverified": "Replacement-key verification failed",
-            "modified": "Verified restore changed since apply",
-            "nul-stale": "destination changed since backup",
-            "acl": "Cutover cannot preserve filesystem ACLs",
-            "cancel": "Cutover cancelled",
-            "backup-alias": "must not overlap",
-            "rollback": "completed moves were rolled back",
-        }
-        assert result.returncode == 1
-        assert diagnostics[scenario] in result.stderr
-        assert db.read_bytes() == original_db
-        assert config.read_bytes() == original_config
-        return
-
-    assert result.returncode == 0, result.stderr
-    saved_db = next(tmp_path.glob(".original-data.openrag-rollback-*/original-data/openrag.db"))
-    saved_config = next(
-        tmp_path.glob(".original-config.openrag-rollback-*/original-config/config.yaml")
-    )
-    assert saved_db.read_bytes() == original_db
-    assert saved_config.read_bytes() == original_config
-    assert config.stat().st_mode & 0o777 == 0o640
-    monkeypatch.setattr(encryption, "_cached_master_secret", NEW_KEY)
-    with sqlite3.connect(db) as conn:
-        (value,) = conn.execute("SELECT value FROM workspace_config").fetchone()
-    assert encryption.decrypt_secret(json.loads(value)["key"]) == "provider credential"
-    credentials = yaml.safe_load(config.read_text())["providers"]["openai"]
-    assert encryption.decrypt_secret(credentials["api_key"]) == "provider credential"
-
-    def logged_paths(stderr, label):
-        line = next(line for line in stderr.splitlines() if label in line)
-        return shlex.split(line)
-
-    before_check = db.read_bytes(), config.read_bytes()
-    check = run("check")
-    assert check.returncode == 0, check.stderr
-    assert "workspace_config.value: 1" in check.stdout
-    assert logged_paths(check.stderr, "Data directory:") == [
-        "[STEP]",
-        "Data",
-        "directory:",
-        f"{source_data};",
-        "config",
-        "directory:",
-        str(source_config),
-    ]
-    assert f"({migration / 'keys/new'})." in logged_paths(
-        check.stderr, "saved replacement key file"
-    )
-    assert "config.yaml providers: 1" in check.stdout
-    wrong = run(
-        "check",
-        "--data-dir",
-        str(source_data),
-        "--config-dir",
-        str(source_config),
-        "--key-file",
-        str(migration / "keys/old"),
-    )
-    assert wrong.returncode == 1
-    assert "unreadable encryption envelope" in wrong.stderr
-    old = run(
-        "check",
-        "--data-dir",
-        str(saved_db.parent),
-        "--config-dir",
-        str(saved_config.parent),
-        "--key-file",
-        str(migration / "keys/old"),
-    )
-    assert old.returncode == 0, old.stderr
-    assert f"({migration / 'keys/old'})." in logged_paths(old.stderr, "explicit key file")
-    paths = logged_paths(old.stderr, "Data directory:")
-    assert (paths[3], paths[-1]) == (f"{saved_db.parent};", str(saved_config.parent))
-    pasted = run("check", "--prompt-key", text=f"{NEW_KEY}\n")
-    assert pasted.returncode == 0, pasted.stderr
-    assert "Key source: hidden prompt." in pasted.stderr
-    for outcome in (check, wrong, old, pasted):
-        assert "Key value: [REDACTED]." in outcome.stderr
-        assert OLD_KEY not in outcome.stdout + outcome.stderr
-        assert NEW_KEY not in outcome.stdout + outcome.stderr
-    assert (db.read_bytes(), config.read_bytes()) == before_check
-
-
-def test_wrapper_check_without_ciphertext_does_not_confirm_key(restored_copy, monkeypatch):
-    db, data, config, _ = restored_copy
-    db = db.rename(data / "openrag.db")
-    before = db.read_bytes()
-    for name in ("MIGRATION_DIR", "OLD_DATA_DIR", "OLD_CONFIG_DIR"):
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("MIGRATION_PYTHON", sys.executable)
-    script = Path(__file__).resolve().parents[2] / "scripts/migration/rotate-key.sh"
-    result = subprocess.run(
-        ["bash", str(script), "check", "--data-dir", str(data), "--config-dir", str(config)],
-        input=f"{NEW_KEY}\n",
-        capture_output=True,
-        text=True,
-        timeout=20,
-        check=False,
-    )
-    assert result.returncode == 1
-    assert "No ciphertext found; the key could not be authenticated." in result.stderr
-    assert db.read_bytes() == before
-
-
 def test_file_rotation_keeps_originals_until_verified_cutover(restored_copy, monkeypatch):
     db, data, _, _ = restored_copy
     db = db.rename(data / "openrag.db")
@@ -710,6 +473,7 @@ def test_file_rotation_keeps_originals_until_verified_cutover(restored_copy, mon
     backup = run("backup")
     assert backup.returncode == 0, backup.stderr
     assert [path.read_bytes() for path in backups] == before
+    assert all(f"Backup saved: {str(path)!r}" in backup.stderr for path in backups)
     assert not any(path.exists() for path in migrated)
     repeated = run("backup")
     assert repeated.returncode == 1
@@ -725,6 +489,7 @@ def test_file_rotation_keeps_originals_until_verified_cutover(restored_copy, mon
     assert [path.read_bytes() for path in originals] == before
     assert [path.read_bytes() for path in backups] == before
     assert all(path.stat().st_mode & 0o777 == 0o600 for path in backups + migrated)
+    assert all(f"Verified migrated file: {str(path)!r}" in apply.stderr for path in migrated)
     migrated_before = [path.read_bytes() for path in migrated]
     check = run("check", "--migrated")
     assert check.returncode == 0, check.stderr
@@ -754,6 +519,8 @@ def test_file_rotation_keeps_originals_until_verified_cutover(restored_copy, mon
 
     result = confirm()
     assert result.returncode == 0, result.stderr
+    assert "Backups remain in place." in result.stderr
+    assert all(key not in result.stdout + result.stderr for key in (OLD_KEY, NEW_KEY))
     assert [path.read_bytes() for path in backups] == before
     assert [path.read_bytes() for path in originals] == [path.read_bytes() for path in migrated]
     assert flow_dir.is_dir()
