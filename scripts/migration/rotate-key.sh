@@ -57,14 +57,18 @@ PY
     ;;
   keys)
     [[ -d "$restore/data" && -d "$restore/config" ]] || fail 'Run backup first.'
-    mkdir -m 700 -- "$keys" || fail 'Key directory already exists; nothing was overwritten.'
     read -r -s -p 'Paste the current OPENRAG_ENCRYPTION_KEY: ' old_key
     printf '\n' >&2
     [[ -n "$old_key" ]] || fail 'The old key cannot be empty.'
+    read -r -s -p 'Paste the replacement OPENRAG_ENCRYPTION_KEY: ' new_key
+    printf '\n' >&2
+    [[ -n "$new_key" ]] || fail 'The replacement key cannot be empty.'
+    [[ "$old_key" != "$new_key" ]] || fail 'The old and replacement keys must differ.'
+    mkdir -m 700 -- "$keys" || fail 'Key directory already exists; nothing was overwritten.'
     printf '%s\n' "$old_key" > "$keys/old"
-    unset old_key
-    openssl rand -base64 32 > "$keys/new"
-    printf '%s\n' 'Key files created. Import the new key into your secret manager before cutover.'
+    printf '%s\n' "$new_key" > "$keys/new"
+    unset old_key new_key
+    printf '%s\n' 'Old and replacement key files saved.'
     ;;
   dry-run) rotate check --old-key-file "$keys/old" ;;
   apply)

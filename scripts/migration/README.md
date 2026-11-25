@@ -18,12 +18,14 @@ export MIGRATION_DIR=/private/existing/parent/openrag-key-rotation
 # 1. Create the untouched backup and separate working restore.
 bash scripts/migration/rotate-key.sh backup
 
-# 2. Paste the existing key at the hidden prompt. This also generates a new key.
+# 2. Paste the existing key and then your replacement key at the hidden prompts.
 bash scripts/migration/rotate-key.sh keys
 
 # 3. Read-only preflight against the working restore.
 bash scripts/migration/rotate-key.sh dry-run
 ```
+
+The script does not generate a key. Supply a replacement key that is Base64 for exactly 32 bytes; the dry run validates its format.
 
 Review the preflight counts against your backup inventory. Stop on any error or unexpected count. Once satisfied:
 
