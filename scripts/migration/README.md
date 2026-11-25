@@ -90,6 +90,8 @@ bash rotate-key.sh files check \
 
 For cutover, run this separately while writers are still stopped. Skip this step during rehearsal or on an existing Kubernetes Operator-managed instance.
 
+On Linux, cutover preserves and checks NFSv4 ACLs (`system.nfs4_acl`) on both the staged replacements and the rollback copies. It stops before replacing either original if it cannot preserve the permissions or encounters an unsupported ACL.
+
 ```bash
 bash rotate-key.sh files cutover \
   --sqlite "$DATA/openrag.db" \

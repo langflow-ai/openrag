@@ -25,16 +25,29 @@ from rotate_encryption_key import (
 )
 
 
-def _reject_acl(path: Path) -> None:
+def _preserve_acl(source: Path, destination_fd: int) -> None:
     if sys.platform.startswith("linux"):
-        has_acl = any("acl" in name.lower() for name in os.listxattr(path))
+        name = "system.nfs4_acl"
+        try:
+            source_acls = {key for key in os.listxattr(source) if "acl" in key.lower()}
+            target_acls = {key for key in os.listxattr(destination_fd) if "acl" in key.lower()}
+            if source_acls == {name} and target_acls <= {name}:
+                expected = os.getxattr(source, name)
+                if name not in target_acls or os.getxattr(destination_fd, name) != expected:
+                    os.setxattr(destination_fd, name, expected)
+                if os.getxattr(destination_fd, name) == expected:
+                    return
+            elif not (source_acls or target_acls):
+                return
+        except OSError:
+            raise RotationError("Cannot copy or verify the NFSv4 ACL; originals unchanged.") from None
     elif sys.platform == "darwin":
-        listing = subprocess.check_output(["/bin/ls", "-ldeq", "--", str(path)])
-        has_acl = len(listing.splitlines()) > 1
+        listing = subprocess.check_output(["/bin/ls", "-ldeq", "--", str(source)])
+        if len(listing.splitlines()) <= 1:
+            return
     else:
         raise RotationError("Cutover ACL checks are supported only on Linux and macOS.")
-    if has_acl:
-        raise RotationError("Cutover cannot preserve filesystem ACLs; use manual cutover.")
+    raise RotationError("Cutover cannot preserve filesystem ACLs; originals unchanged.")
 
 
 def _hash(path: Path) -> str:
@@ -52,6 +65,12 @@ def _copy(source: Path, destination: Path, mode_from: Path | None = None) -> Non
             if (copy.st_uid, copy.st_gid) != (original.st_uid, original.st_gid):
                 os.fchown(output.fileno(), original.st_uid, original.st_gid)
             os.fchmod(output.fileno(), stat.S_IMODE(original.st_mode))
+            _preserve_acl(mode_from, output.fileno())
+            copied = os.fstat(output.fileno())
+            if (copied.st_uid, copied.st_gid, copied.st_mode) != (
+                original.st_uid, original.st_gid, original.st_mode
+            ):
+                raise RotationError("Cannot verify cutover file permissions; originals unchanged.")
         os.fsync(output.fileno())
 
 
@@ -161,7 +180,6 @@ def _cutover(
     print("[STEP] Staging rollback copies and preserving file permissions.", file=sys.stderr)
     rollback = []
     for original, backup in zip(originals, backups, strict=True):
-        _reject_acl(original)
         copy = scratch / (original.name + ".rollback")
         _copy(backup, copy, mode_from=original)
         rollback.append(copy)
