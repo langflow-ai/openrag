@@ -98,13 +98,48 @@ def _sync_directory(path: Path) -> None:
         os.close(fd)
 
 
-def _unchanged(originals: list[Path], backups: list[Path]) -> None:
+def _require_offline_sqlite(database: Path) -> None:
     for suffix in ("-wal", "-shm", "-journal"):
-        sidecar = originals[0].with_name(originals[0].name + suffix)
+        sidecar = database.with_name(database.name + suffix)
         if sidecar.exists() or sidecar.is_symlink():
             raise RotationError("SQLite sidecars found. Stop writers and checkpoint the database.")
+
+
+def _unchanged(originals: list[Path], backups: list[Path]) -> None:
+    _require_offline_sqlite(originals[0])
     if any(_hash(a) != _hash(b) for a, b in zip(originals, backups, strict=True)):
-        raise RotationError("Original files changed since backup; cutover refused.")
+        raise RotationError("Original files changed since backup; take a fresh backup.")
+
+
+def _backup(originals: list[Path], backups: list[Path]) -> None:
+    parent = originals[0].parent
+    if any(path.exists() or path.is_symlink() for path in backups):
+        raise RotationError("Backup files already exist; nothing was overwritten.")
+    _require_offline_sqlite(originals[0])
+    with TemporaryDirectory(prefix=".openrag-file-backup-", dir=parent) as temp:
+        staged = [Path(temp) / backup.name for backup in backups]
+        for original, copy in zip(originals, staged, strict=True):
+            _copy(original, copy)
+        _unchanged(originals, staged)
+        _publish(parent, staged, backups)
+
+
+def _report(rotation: _Rotation) -> None:
+    for area, count in sorted(rotation.counts.items()):
+        print(f"{area}: {count}")
+
+
+def _key_path(explicit: Path | None, name: str, flag: str) -> Path:
+    if explicit is not None:
+        return explicit
+    if workspace := os.getenv("MIGRATION_DIR"):
+        root = Path(workspace)
+        keys = root / "keys"
+        path = keys / name
+        if root.is_absolute() and not any(p.is_symlink() for p in (root, keys, path)):
+            if path.is_file():
+                return path
+    raise RotationError(f"Run files keys first or pass {flag}.")
 
 
 def _cutover(
@@ -136,7 +171,7 @@ def _cutover(
 
 def main() -> int:
     parser = _Parser(description=__doc__)
-    parser.add_argument("mode", choices=("dry-run", "apply", "cutover"))
+    parser.add_argument("mode", choices=("backup", "dry-run", "apply", "check", "cutover"))
     parser.add_argument("--sqlite", type=Path, required=True)
     parser.add_argument("--connections", type=Path, required=True)
     parser.add_argument(
@@ -145,9 +180,14 @@ def main() -> int:
     parser.add_argument("--source-data-dir", type=Path)
     parser.add_argument("--tenant-id", default=os.getenv("OPENRAG_TENANT_ID") or "openrag")
     parser.add_argument("--old-key-file", type=Path)
-    parser.add_argument("--new-key-file", type=Path, required=True)
+    key = parser.add_mutually_exclusive_group()
+    key.add_argument("--new-key-file", type=Path)
+    key.add_argument("--key-file", type=Path, help="check only: use this key to decrypt the files")
+    parser.add_argument("--migrated", action="store_true", help="check the .migrated files instead")
     args = parser.parse_args()
     try:
+        if (args.migrated or args.key_file is not None) and args.mode != "check":
+            raise RotationError("--migrated and --key-file are only available with check.")
         if args.sqlite.name != "openrag.db" or args.connections.name != "connections.json":
             raise RotationError("Use the original filenames openrag.db and connections.json.")
         parent = args.sqlite.parent.resolve()
@@ -173,13 +213,34 @@ def main() -> int:
         backups = [path.with_name(path.name + ".backup") for path in originals]
         migrated = [path.with_name(path.name + ".migrated") for path in originals]
         receipt = parent / "openrag.db.migrated.sha256.json"
-        new = _key(args.new_key_file, new=True)
-        if args.mode != "cutover":
-            if args.old_key_file is None:
-                raise RotationError("This command requires --old-key-file.")
-            old = _key(args.old_key_file, new=False)
-            if old == new:
-                raise RotationError("Old and replacement keys must differ.")
+        if args.mode == "backup":
+            _backup(originals, backups)
+            print("[OK] Created both .backup files. Originals were not changed.")
+            return 0
+        if args.mode == "check":
+            check_key = _key_path(args.key_file or args.new_key_file, "new", "--key-file")
+            selected = migrated if args.migrated else originals
+            print(
+                f"[STEP] Checking {str(selected[0])!r} and {str(selected[1])!r} "
+                f"with key file {str(check_key)!r}.",
+                file=sys.stderr,
+            )
+            verification = _Rotation(_key(check_key, new=args.key_file is None), None)
+            if args.migrated:
+                _require_offline_sqlite(migrated[0])
+                with TemporaryDirectory(prefix="openrag-file-check-") as temp:
+                    stage = Path(temp)
+                    for original, moved in zip(originals, migrated, strict=True):
+                        _file(parent, Path(moved.name), required=True)
+                        _copy(moved, stage / original.name)
+                    _inspect(args, stage, stage, verification)
+            else:
+                _inspect(args, parent, parent, verification)
+            _report(verification)
+            print("[OK] The supplied key authenticated the stored ciphertext.")
+            return 0
+        if args.mode in ("dry-run", "apply"):
+            old = _key(_key_path(args.old_key_file, "old", "--old-key-file"), new=False)
             print(
                 "[STEP] Checking the original SQLite database and connections read-only.",
                 file=sys.stderr,
@@ -187,19 +248,23 @@ def main() -> int:
             preflight = _Rotation(old, None)
             _inspect(args, parent, parent, preflight)
             if args.mode == "dry-run":
-                for area, count in sorted(preflight.counts.items()):
-                    print(f"{area}: {count}")
+                _report(preflight)
                 return 0
-            if any(path.exists() or path.is_symlink() for path in [*backups, *migrated, receipt]):
-                raise RotationError("Rotation artifacts already exist; nothing was overwritten.")
+            new = _key(_key_path(args.new_key_file, "new", "--new-key-file"), new=True)
+            if old == new:
+                raise RotationError("Old and replacement keys must differ.")
+            if any(path.exists() or path.is_symlink() for path in [*migrated, receipt]):
+                raise RotationError("Migrated files already exist; nothing was overwritten.")
+            if not any(path.exists() or path.is_symlink() for path in backups):
+                _backup(originals, backups)
+            for backup in backups:
+                _file(parent, Path(backup.name), required=True)
+            _unchanged(originals, backups)
             with TemporaryDirectory(prefix="openrag-file-rotation-") as temp:
                 stage = Path(temp)
                 files = [stage / path.name for path in originals]
-                saved = [stage / path.name for path in backups]
-                for original, backup, replica in zip(originals, saved, files, strict=True):
-                    _copy(original, backup)
+                for backup, replica in zip(backups, files, strict=True):
                     _copy(backup, replica)
-                _unchanged(originals, saved)
                 print(
                     "[STEP] Rotating temporary copies and verifying with the new key.",
                     file=sys.stderr,
@@ -212,14 +277,17 @@ def main() -> int:
                 seal = stage / receipt.name
                 fd = os.open(seal, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                 with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                    json.dump([_hash(path) for path in [*saved, *files]], stream)
+                    json.dump([_hash(path) for path in [*backups, *files]], stream)
                     stream.flush()
                     os.fsync(stream.fileno())
-                _publish(parent, [*saved, *files, seal], [*backups, *migrated, receipt])
-            print("[OK] Created .backup and .migrated files. Originals were not changed.")
+                _unchanged(originals, backups)
+                _publish(parent, [*files, seal], [*migrated, receipt])
+            print("[OK] Created and verified .migrated files. Originals and backups are unchanged.")
             return 0
+        new = _key(_key_path(args.new_key_file, "new", "--new-key-file"), new=True)
         if not sys.stdin.isatty():
             raise RotationError("Cutover requires an interactive terminal.")
+        _require_offline_sqlite(migrated[0])
         for artifact in [*backups, *migrated, receipt]:
             _file(parent, Path(artifact.name), required=True)
         hashes = json.loads(receipt.read_text(encoding="utf-8"))

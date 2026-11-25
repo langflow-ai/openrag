@@ -650,18 +650,38 @@ def test_file_rotation_keeps_originals_until_verified_cutover(restored_copy, mon
         )
 
     script = Path(__file__).resolve().parents[2] / "scripts/migration/rotate-key.sh"
-    env = dict(os.environ, MIGRATION_PYTHON=sys.executable, OPENRAG_TENANT_ID="openrag")
+    workspace = data.parent / "key-workspace"
+    workspace.mkdir(mode=0o700)
+    env = dict(
+        os.environ,
+        MIGRATION_PYTHON=sys.executable,
+        OPENRAG_TENANT_ID="openrag",
+        MIGRATION_DIR=str(workspace),
+    )
+    keys = subprocess.run(
+        ["bash", str(script), "files", "keys"],
+        input=f"{OLD_KEY}\n{NEW_KEY}\n",
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+        timeout=20,
+    )
+    assert keys.returncode == 0, keys.stderr
+    assert all(key not in keys.stdout + keys.stderr for key in (OLD_KEY, NEW_KEY))
+    assert (workspace / "keys").stat().st_mode & 0o777 == 0o700
+    for name, value in (("old", OLD_KEY), ("new", NEW_KEY)):
+        path = workspace / "keys" / name
+        assert path.read_text() == f"{value}\n"
+        assert path.stat().st_mode & 0o777 == 0o600
     common = [
         "--sqlite",
         str(db),
         "--connections",
         str(connections),
-        "--new-key-file",
-        str(data.parent / "new.key"),
     ]
 
-    def run(mode, stdin=None):
-        before_cutover = ["--old-key-file", str(data.parent / "old.key")]
+    def run(mode, *key_args, stdin=None):
         return subprocess.run(
             [
                 "bash",
@@ -669,7 +689,7 @@ def test_file_rotation_keeps_originals_until_verified_cutover(restored_copy, mon
                 "files",
                 mode,
                 *common,
-                *([] if mode == "cutover" else before_cutover),
+                *key_args,
             ],
             stdin=stdin,
             env=env,
@@ -687,11 +707,33 @@ def test_file_rotation_keeps_originals_until_verified_cutover(restored_copy, mon
     check = run("dry-run")
     assert check.returncode == 0, check.stderr
     assert not any(path.exists() for path in backups + migrated)
+    backup = run("backup")
+    assert backup.returncode == 0, backup.stderr
+    assert [path.read_bytes() for path in backups] == before
+    assert not any(path.exists() for path in migrated)
+    repeated = run("backup")
+    assert repeated.returncode == 1
+    assert "nothing was overwritten" in repeated.stderr
+    connections.write_bytes(before[1] + b"\n")
+    stale = run("apply")
+    assert stale.returncode == 1
+    assert "Original files changed since backup" in stale.stderr
+    assert not any(path.exists() for path in migrated)
+    connections.write_bytes(before[1])
     apply = run("apply")
     assert apply.returncode == 0, apply.stderr
     assert [path.read_bytes() for path in originals] == before
     assert [path.read_bytes() for path in backups] == before
     assert all(path.stat().st_mode & 0o777 == 0o600 for path in backups + migrated)
+    migrated_before = [path.read_bytes() for path in migrated]
+    check = run("check", "--migrated")
+    assert check.returncode == 0, check.stderr
+    assert "workspace_config.value: 1" in check.stdout
+    assert "connector config: 1" in check.stdout
+    wrong = run("check", "--migrated", "--key-file", str(data.parent / "old.key"))
+    assert wrong.returncode == 1
+    assert "unreadable encryption envelope" in wrong.stderr
+    assert [path.read_bytes() for path in migrated] == migrated_before
 
     def confirm():
         master, slave = pty.openpty()
@@ -716,6 +758,8 @@ def test_file_rotation_keeps_originals_until_verified_cutover(restored_copy, mon
     assert [path.read_bytes() for path in originals] == [path.read_bytes() for path in migrated]
     assert flow_dir.is_dir()
     assert connections.stat().st_mode & 0o777 == 0o640
+    check = run("check")
+    assert check.returncode == 0, check.stderr
     monkeypatch.setattr(encryption, "_cached_master_secret", NEW_KEY)
     with sqlite3.connect(db) as conn:
         (value,) = conn.execute("SELECT value FROM workspace_config").fetchone()
