@@ -30,7 +30,7 @@ mkdir -m 700 keys
 openssl rand -base64 32 > keys/new
 ```
 
-Provision `keys/old` from the secret manager without printing it. Use the backend Python environment from an OpenRAG checkout containing the rotation command; install its dependencies with `uv sync --locked` if needed. Run the following from the checkout in Bash, replacing the example paths and tenant. The `--source-data-dir` path is only used to map stored references; the command does not read from it. Use `data` if the original deployment used the default relative data directory.
+Provision `keys/old` from the secret manager without printing it. Copy `scripts/migration/` to the migration host, then run `python3 -m venv .venv` and `.venv/bin/python -m pip install -r requirements.txt` from that folder. Run the following there in Bash. The `--source-data-dir` path is only used to map stored references; the command does not read from it. Use `data` if the original deployment used the default relative data directory.
 
 ```bash
 set -e
@@ -46,7 +46,7 @@ restore=(
   --tenant-id openrag
 )
 
-PYTHONPATH=src .venv/bin/python -m utils.rotate_encryption_key check "${restore[@]}" \
+.venv/bin/python rotate_encryption_key.py check "${restore[@]}" \
   --old-key-file "$old_key" --new-key-file "$new_key"
 ```
 
@@ -54,10 +54,10 @@ Review the preflight counts against the backup inventory before applying. Stop i
 
 ```bash
 
-PYTHONPATH=src .venv/bin/python -m utils.rotate_encryption_key apply-to-copy "${restore[@]}" \
+.venv/bin/python rotate_encryption_key.py apply-to-copy "${restore[@]}" \
   --old-key-file "$old_key" --new-key-file "$new_key"
 
-env -u OPENRAG_ENCRYPTION_KEY PYTHONPATH=src .venv/bin/python -m utils.rotate_encryption_key verify "${restore[@]}" \
+env -u OPENRAG_ENCRYPTION_KEY .venv/bin/python rotate_encryption_key.py verify "${restore[@]}" \
   --new-key-file "$new_key"
 ```
 

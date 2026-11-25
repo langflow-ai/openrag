@@ -9,14 +9,14 @@ fail() { printf '%s\n' "$1" >&2; exit 1; }
 [[ "$MIGRATION_DIR" = /* ]] || fail 'MIGRATION_DIR must be absolute.'
 [[ ! -L "$MIGRATION_DIR" ]] || fail 'MIGRATION_DIR cannot be a symlink.'
 
-repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 backup="$MIGRATION_DIR/backup"
 restore="$MIGRATION_DIR/restore"
 keys="$MIGRATION_DIR/keys"
 
 rotate() {
-  env -u OPENRAG_ENCRYPTION_KEY PYTHONPATH="$repo/src" \
-    "${MIGRATION_PYTHON:-$repo/.venv/bin/python}" -m utils.rotate_encryption_key "$@" \
+  env -u OPENRAG_ENCRYPTION_KEY \
+    "${MIGRATION_PYTHON:-python3}" "$script_dir/rotate_encryption_key.py" "$@" \
     --data-dir "$restore/data" --config-dir "$restore/config" \
     --sqlite "$restore/data/openrag.db" \
     --source-data-dir "${OLD_DATA_PATH_AS_STORED:-data}" \

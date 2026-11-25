@@ -47,7 +47,10 @@ def restored_copy(tmp_path, monkeypatch):
             env = os.environ.copy()
             env.pop("OPENRAG_ENCRYPTION_KEY", None)
             env.pop("DATABASE_URL", None)
-            env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src")
+            env.pop("PYTHONPATH", None)
+            script = (
+                Path(__file__).resolve().parents[2] / "scripts/migration/rotate_encryption_key.py"
+            )
             args = [
                 "--data-dir",
                 str(data_dir),
@@ -65,7 +68,7 @@ def restored_copy(tmp_path, monkeypatch):
             if mode != "verify":
                 args.extend(("--old-key-file", str(old_key_file)))
             return subprocess.run(
-                [sys.executable, "-m", "utils.rotate_encryption_key", mode, *args, *extra],
+                [sys.executable, str(script), mode, *args, *extra],
                 cwd=tmp_path,
                 env=env,
                 capture_output=True,

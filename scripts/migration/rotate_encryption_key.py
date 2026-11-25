@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import re
+import secrets
 import stat
 import sys
 from collections import Counter
@@ -17,11 +18,53 @@ from typing import Any
 
 import aiosqlite
 import yaml
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from sqlalchemy import Connection, MetaData, Table, inspect, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from utils.encryption import ENCRYPTION_ALGORITHM, _decrypt_with_key, _encrypt_with_key
+# Match the on-disk format in src/utils/encryption.py without importing the
+# target deployment's OpenRAG code. This folder can run on older checkouts.
+ENCRYPTION_ALGORITHM = "AES-256-GCM"
+
+
+def _derive_key(master_secret: str, salt: bytes) -> bytes:
+    return PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=100000).derive(
+        master_secret.encode()
+    )
+
+
+def _encrypt_with_key(plaintext: str, master_secret: str, tenant: str) -> dict[str, Any]:
+    salt = secrets.token_bytes(16)
+    nonce = secrets.token_bytes(12)
+    aad = f"tenant_id:{tenant}".encode()
+    ciphertext = AESGCM(_derive_key(master_secret, salt)).encrypt(nonce, plaintext.encode(), aad)
+    return {
+        "version": "1.0",
+        "algorithm": ENCRYPTION_ALGORITHM,
+        "kdf": "PBKDF2HMAC-SHA256",
+        "tenant_id": tenant,
+        "salt": base64.b64encode(salt).decode("ascii"),
+        "nonce": base64.b64encode(nonce).decode("ascii"),
+        "ciphertext": base64.b64encode(ciphertext).decode("ascii"),
+    }
+
+
+def _decrypt_with_key(payload: dict[str, Any], master_secret: str, tenant: str) -> str:
+    key = (
+        _derive_key(master_secret, base64.b64decode(payload["salt"]))
+        if "salt" in payload
+        else base64.b64decode(master_secret)
+    )
+    plaintext = AESGCM(key).decrypt(
+        base64.b64decode(payload["nonce"]),
+        base64.b64decode(payload["ciphertext"]),
+        f"tenant_id:{tenant}".encode(),
+    )
+    return plaintext.decode()
+
 
 _DB_FIELDS = {
     "users": ("id", "user_pii", ("email", "display_name")),
