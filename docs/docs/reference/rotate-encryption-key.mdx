@@ -27,10 +27,12 @@ Copy `scripts/migration/` to a dedicated migration host. Use this wrapper only w
 
 | Step | What it changes |
 | --- | --- |
-| `backup` | Creates an untouched backup (`backup/`) and a working copy (`restore/`). Both still use the old key. |
-| `dry-run` | Checks that the old key can decrypt the working copy. Changes nothing. |
-| `apply` | Migrates `restore/` to the new key and verifies it. The original and `backup/` stay untouched. There is no separate migrate command. |
-| `cutover-data` | Moves the verified restore into the specified existing runtime paths and keeps the replaced directories for rollback. Does not change keys or start OpenRAG. For other deployment layouts, change the data paths or mounts manually. |
+| `backup` | Copies the source into `backup/` and creates a separate working copy in `restore/`. Both still use the old key. |
+| `keys` | Prompts for both keys without echoing them and saves them in protected files under `keys/`. Does not generate or install a key. |
+| `dry-run` | Checks that the old key decrypts the working copy and reports ciphertext counts. Changes nothing. |
+| `apply` | Rotates and verifies `restore/` using the replacement key. Leaves the original and `backup/` untouched. |
+| `cutover-data` | Re-verifies the rotated copy, checks the destinations against `backup/`, then moves the restore into place after confirmation. Keeps the replaced directories for rollback. Does not change keys or start OpenRAG. |
+| `cleanup keys`, `cleanup restore`, `cleanup backup` | Removes only the named workspace directory after confirmation. Does not remove the saved original runtime directories. |
 
 ```bash
 cd /secure/openrag-migration-tools

@@ -21,6 +21,17 @@ export OPENRAG_TENANT_ID=openrag      # use the existing deployment's tenant
 export MIGRATION_DIR=/private/existing/parent/openrag-key-rotation
 ```
 
+## What each command does
+
+| Command | What it changes |
+| --- | --- |
+| `backup` | Copies the source into `backup/` and creates a separate working copy in `restore/`. Both still use the old key. |
+| `keys` | Prompts for both keys without echoing them and saves them in protected files under `keys/`. Does not generate or install a key. |
+| `dry-run` | Checks that the old key decrypts the working copy and reports ciphertext counts. Changes nothing. |
+| `apply` | Rotates and verifies `restore/` using the replacement key. Leaves the original and `backup/` untouched. |
+| `cutover-data` | Re-verifies the rotated copy, checks the destinations against `backup/`, then moves the restore into place after confirmation. Keeps the replaced directories for rollback. Does not change keys or start OpenRAG. |
+| `cleanup keys`, `cleanup restore`, `cleanup backup` | Removes only the named workspace directory after confirmation. Does not remove the saved original runtime directories. |
+
 `MIGRATION_DIR` must not exist yet. Use a private parent outside both source directories. `OLD_DATA_PATH_AS_STORED` is how the app saw the data directory (such as `data` or an absolute container path), not necessarily the host's `OLD_DATA_DIR`.
 
 ```bash
