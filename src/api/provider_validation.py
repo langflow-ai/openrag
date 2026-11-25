@@ -320,7 +320,19 @@ def is_generic_upstream_error(text: str | BaseException | None) -> bool:
     return lowered in generics
 
 
-_ERROR_OBJECT_KEY_RE = re.compile(r"[\"'](?:error|errormessage|errorcode|errors)[\"']")
+# Match the nested message object the OpenAI SDK prints after the error key
+# (`Error code: 400 - {'error': {...}}`). A quoted "error" key alone is
+# ordinary in replies that show dictionary examples, so it is not evidence.
+_ERROR_OBJECT_KEY_RE = re.compile(
+    r"[\"'](?:error|errormessage|errorcode|errors)[\"']\s*:\s*\{"
+)
+# Flat string values (`Error code: 502 - {'error': 'Bad gateway'}`) are only
+# evidence when the SDK's `Error code: <status> -` signature precedes them;
+# without that prefix a quoted error key with a string value is just a
+# dictionary example (`{'error': 'not found'}`).
+_ERROR_FLAT_STRING_VALUE_RE = re.compile(
+    r"error code:\s*\d+\s*-\s*\{\s*[\"'](?:error|errormessage|errorcode|errors)[\"']\s*:\s*[\"']"
+)
 
 
 def looks_like_provider_error_content(text: str | None) -> bool:
@@ -339,7 +351,11 @@ def looks_like_provider_error_content(text: str | None) -> bool:
         return True
     # Raw provider payloads often embed an error object: as JSON, or as the
     # Python dict the OpenAI SDK prints (`Error code: 400 - {'error': {...}}`).
-    if "{" in content and _ERROR_OBJECT_KEY_RE.search(lowered):
+    if _ERROR_OBJECT_KEY_RE.search(lowered):
+        return True
+    # Flat string values only count with the SDK's `Error code: <status> -`
+    # signature in front (`Error code: 502 - {'error': 'Bad gateway'}`).
+    if _ERROR_FLAT_STRING_VALUE_RE.search(lowered):
         return True
     return False
 

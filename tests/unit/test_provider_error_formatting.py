@@ -121,6 +121,21 @@ def test_looks_like_provider_error_content_reads_the_sdk_python_dict():
     )
 
 
+def test_looks_like_provider_error_content_flags_the_flat_sdk_error_string():
+    """`Error code: 502 - {'error': 'Bad gateway'}` is a provider failure, not a dict example."""
+    assert looks_like_provider_error_content("Error code: 502 - {'error': 'Bad gateway'}")
+    assert looks_like_provider_error_content(
+        "Error code: 500 - {\"errors\": 'upstream unavailable'}"
+    )
+
+
+def test_looks_like_provider_error_content_still_ignores_plain_dict_examples():
+    """Without the SDK signature a quoted error key with a flat value is ordinary prose."""
+    assert not looks_like_provider_error_content("Example: {'error': 'not found'}")
+    assert not looks_like_provider_error_content("{'error': 'Bad gateway'}")
+    assert not looks_like_provider_error_content("Error code: 502 - see the gateway docs.")
+
+
 def test_resolve_chat_stream_error_message_keeps_generic_without_probing():
     # Sync helper must not probe — that stays in the async path.
     assert (
