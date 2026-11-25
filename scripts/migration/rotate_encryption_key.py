@@ -383,10 +383,17 @@ def _engine(args: argparse.Namespace, data: Path, *, apply: bool) -> AsyncEngine
 async def _run(args: argparse.Namespace, rotation: _Rotation) -> None:
     data, config = _root(args.data_dir), _root(args.config_dir)
     apply = args.mode == "apply-to-copy"
-    if apply and args.source_data_dir.is_absolute():
-        source = args.source_data_dir.resolve()
-        if data.is_relative_to(source) or config.is_relative_to(source):
-            raise RotationError("The original data directory cannot be a rotation target.")
+    if apply:
+        originals = (args.original_data_dir, args.original_config_dir)
+        if any(path is None or not path.is_absolute() for path in originals):
+            raise RotationError("Apply requires absolute original data and config directory paths.")
+        for original in originals:
+            protected = original.resolve()
+            if any(
+                root.is_relative_to(protected) or protected.is_relative_to(root)
+                for root in (data, config)
+            ):
+                raise RotationError("Restore directories must not overlap original directories.")
     engine = _engine(args, data, apply=apply)
     try:
         async with engine.begin() as conn:
@@ -405,13 +412,27 @@ async def _run(args: argparse.Namespace, rotation: _Rotation) -> None:
                 with ExitStack() as cleanup:
                     staged = []
                     for target, text in files.items():
+                        original = target.stat()
                         with NamedTemporaryFile(dir=target.parent, delete=False) as output:
                             temp = Path(output.name)
                             cleanup.callback(temp.unlink, missing_ok=True)
                             output.write(text.encode())
                             output.flush()
-                            os.fchmod(output.fileno(), stat.S_IMODE(target.stat().st_mode))
-                            os.fsync(output.fileno())
+                            fd = output.fileno()
+                            staged_stat = os.fstat(fd)
+                            if (staged_stat.st_uid, staged_stat.st_gid) != (
+                                original.st_uid,
+                                original.st_gid,
+                            ):
+                                try:
+                                    os.fchown(fd, original.st_uid, original.st_gid)
+                                except PermissionError:
+                                    raise RotationError(
+                                        "Cannot preserve restored file ownership; "
+                                        "run with permission to preserve its owner and group."
+                                    ) from None
+                            os.fchmod(fd, stat.S_IMODE(original.st_mode))
+                            os.fsync(fd)
                         staged.append((temp, target))
                     for table, pk, identity, values in updates:
                         await conn.execute(
@@ -458,6 +479,12 @@ def main() -> int:
         default=Path("data"),
         help="original data path as stored in connector token references",
     )
+    for kind in ("data", "config"):
+        parser.add_argument(
+            f"--original-{kind}-dir",
+            type=Path,
+            help=f"absolute original {kind} path to protect (required for apply-to-copy)",
+        )
     parser.add_argument(
         "--token-cache",
         action="append",

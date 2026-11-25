@@ -95,7 +95,10 @@ PY
     ;;
   apply)
     step 'Rotating the restored copy only. The backup is not modified.'
-    rotate apply-to-copy --old-key-file "$keys/old"
+    [[ -d "$restore" && ! -L "$restore" ]] || fail 'Restore must be an existing non-symlink directory.'
+    rotate apply-to-copy --old-key-file "$keys/old" \
+      --original-data-dir "${OLD_DATA_DIR:?Set OLD_DATA_DIR to the original data path}" \
+      --original-config-dir "${OLD_CONFIG_DIR:?Set OLD_CONFIG_DIR to the original config path}"
     step 'Verifying the restored copy with only the replacement key.'
     rotate verify
     done_step 'Rotation verified. No deployment was switched.'

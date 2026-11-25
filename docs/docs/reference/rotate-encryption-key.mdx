@@ -86,9 +86,13 @@ restore=(
 
 Review the preflight counts against the backup inventory before applying. Stop if a count is unexpected, an expected cache is missing, or no ciphertext was found when you expected encrypted data.
 
+For apply, supply the absolute original data and config directory paths separately from the stored token-path prefix. Neither restore directory may overlap either original directory. These paths are used for comparison, not for reading source data. For PostgreSQL, the directory checks do not identify the database server; use only the isolated restore URL.
+
 ```bash
 
 .venv/bin/python rotate_encryption_key.py apply-to-copy "${restore[@]}" \
+  --original-data-dir /original/openrag/data \
+  --original-config-dir /original/openrag/config \
   --old-key-file "$old_key" --new-key-file "$new_key"
 
 env -u OPENRAG_ENCRYPTION_KEY .venv/bin/python rotate_encryption_key.py verify "${restore[@]}" \
@@ -98,6 +102,8 @@ env -u OPENRAG_ENCRYPTION_KEY .venv/bin/python rotate_encryption_key.py verify "
 For PostgreSQL, replace the `--sqlite` line in `restore` with `--postgres-url-file /secure/rotation/restore-postgres-url`. Put a one-line `postgresql://USER:PASSWORD@127.0.0.1:PORT/DATABASE` URL for the isolated restore in that protected file. Specify the loopback address, port, user, and database explicitly, percent-encode reserved characters in credentials, and omit query options.
 
 The tool discovers standard Google Drive, OneDrive, and SharePoint cache names and follows token-file references within the restored data tree. For other unreferenced caches, add `--token-cache PATH` to `restore`; `PATH` is relative to the restored data directory. For references that were stored outside the original data tree, stage each cache under the restored data directory and add `--map-token-cache STORED_PATH COPY_PATH`, with the exact stored reference and the copy-relative path. Preserve those locations when you deploy the rotated files. Include any nonstandard caches in the backup inventory before proceeding.
+
+Rotation preserves the owner, group, and mode of rewritten files on the working copy. If it cannot preserve ownership, it aborts before replacing files or updating rows. Before promotion, confirm the backend runtime identity can read the restored files: the backup or restore itself may have changed ownership.
 
 `check` and `verify` are read-only. `check` authenticates stored ciphertext with the old key; `verify` authenticates it using only the new key. Compare the per-store counts from all three commands, investigate any unexpected missing caches, and stop on any error. If no ciphertext is found, the command cannot confirm the key: reconcile that result with your inventory. A decryption or tenant failure stops rotation before data changes. An I/O failure or interruption during apply can leave a mixed copy because SQL and file replacements cannot commit together. Discard that copy and start again from the untouched backup; do not retry on the same copy.
 

@@ -65,6 +65,15 @@ def restored_copy(tmp_path, monkeypatch):
                 "--tenant-id",
                 "tenant",
             ]
+            if mode == "apply-to-copy":
+                args.extend(
+                    (
+                        "--original-data-dir",
+                        str(original_data),
+                        "--original-config-dir",
+                        str(original_config),
+                    )
+                )
             if mode != "verify":
                 args.extend(("--old-key-file", str(old_key_file)))
             return subprocess.run(
@@ -362,3 +371,17 @@ def test_rejects_connector_envelope_bound_to_another_owner(restored_copy):
     assert "connector config: tenant mismatch" in result.stderr
     assert "different-owner" not in result.stderr
     assert (data / source.name).read_bytes() == source.read_bytes()
+
+
+@pytest.mark.parametrize("kind", ["data", "config"])
+def test_apply_rejects_original_directory_with_relative_token_prefix(restored_copy, kind):
+    db, original_data, original_config, restore = restored_copy
+    path = original_config / "config.yaml"
+    path.write_text("providers: {}\n")
+    _, _, _, run = restore()
+    before = db.read_bytes(), path.read_bytes()
+    original = original_data if kind == "data" else original_config
+    result = run("apply-to-copy", "--source-data-dir", "data", f"--{kind}-dir", str(original))
+    assert result.returncode == 1
+    assert "Restore directories must not overlap original directories" in result.stderr
+    assert (db.read_bytes(), path.read_bytes()) == before
