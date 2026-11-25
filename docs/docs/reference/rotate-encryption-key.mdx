@@ -21,7 +21,7 @@ The Kubernetes Operator rejects in-place changes to the encryption key, includin
 
 Block traffic and stop backend and background writers, including ingestion and connector sync jobs. Keep writes blocked for the rest of the procedure. Take a fresh, consistent backup after the write freeze; preserve it and the old key for rollback. Restore a new isolated copy from that backup. Do not promote the rehearsal copy: it can be stale.
 
-If `openrag.db` and `connections.json` are the only files that need rotation, the [explicit-file workflow](https://github.com/langflow-ai/openrag/tree/main/scripts/migration#pass-two-explicit-files-instead-of-directories) takes their individual paths. It writes `.backup` and `.migrated` copies beside the input files. Only its separate, interactive cutover replaces the originals. Rehearse on an isolated restore. Do not cut over files on an existing Operator-managed instance whose key cannot be changed.
+If `openrag.db` and `connections.json` are the only files that need rotation, the [explicit-file workflow](https://github.com/langflow-ai/openrag/blob/main/scripts/migration/README.md) takes their individual paths. It writes `.backup` and `.migrated` copies beside the input files. Only its separate, interactive cutover replaces the originals. Rehearse on an isolated restore. Do not cut over files on an existing Operator-managed instance whose key cannot be changed.
 
 Prepare the migration tools on the migration host using Python 3.13. From the copied `scripts/migration/` folder:
 
@@ -40,18 +40,21 @@ From the copied `scripts/migration/` folder, use the same Python environment set
 set -e
 
 # Change these paths to your own isolated restore and protected key files.
-old_key=/secure/rotation/keys/old
-new_key=/secure/rotation/keys/new
-restore=(
-  --data-dir /secure/rotation/restore/data
-  --config-dir /secure/rotation/restore/config
-  --sqlite /secure/rotation/restore/data/openrag.db
-  --source-data-dir /original/openrag/data
-  --tenant-id openrag
-)
+old_key_file=/secure/rotation/keys/old
+new_key_file=/secure/rotation/keys/new
+restore_data_dir=/secure/rotation/restore/data
+restore_config_dir=/secure/rotation/restore/config
+source_data_dir=/original/openrag/data
+tenant_id=openrag
 
-.venv/bin/python rotate_encryption_key.py check "${restore[@]}" \
-  --old-key-file "$old_key" --new-key-file "$new_key"
+.venv/bin/python rotate_encryption_key.py check \
+  --data-dir "$restore_data_dir" \
+  --config-dir "$restore_config_dir" \
+  --sqlite "$restore_data_dir/openrag.db" \
+  --source-data-dir "$source_data_dir" \
+  --tenant-id "$tenant_id" \
+  --old-key-file "$old_key_file" \
+  --new-key-file "$new_key_file"
 ```
 
 Review the preflight counts against the backup inventory before applying. Stop if a count is unexpected, an expected cache is missing, or no ciphertext was found when you expected encrypted data.
@@ -59,19 +62,29 @@ Review the preflight counts against the backup inventory before applying. Stop i
 For apply, supply the absolute original data and config directory paths separately from the stored token-path prefix. Neither restore directory may overlap either original directory. These paths are used for comparison, not for reading source data. For PostgreSQL, the directory checks do not identify the database server; use only the isolated restore URL.
 
 ```bash
-
-.venv/bin/python rotate_encryption_key.py apply-to-copy "${restore[@]}" \
+.venv/bin/python rotate_encryption_key.py apply-to-copy \
+  --data-dir "$restore_data_dir" \
+  --config-dir "$restore_config_dir" \
+  --sqlite "$restore_data_dir/openrag.db" \
+  --source-data-dir "$source_data_dir" \
+  --tenant-id "$tenant_id" \
   --original-data-dir /original/openrag/data \
   --original-config-dir /original/openrag/config \
-  --old-key-file "$old_key" --new-key-file "$new_key"
+  --old-key-file "$old_key_file" \
+  --new-key-file "$new_key_file"
 
-env -u OPENRAG_ENCRYPTION_KEY .venv/bin/python rotate_encryption_key.py verify "${restore[@]}" \
-  --new-key-file "$new_key"
+env -u OPENRAG_ENCRYPTION_KEY .venv/bin/python rotate_encryption_key.py verify \
+  --data-dir "$restore_data_dir" \
+  --config-dir "$restore_config_dir" \
+  --sqlite "$restore_data_dir/openrag.db" \
+  --source-data-dir "$source_data_dir" \
+  --tenant-id "$tenant_id" \
+  --new-key-file "$new_key_file"
 ```
 
-For PostgreSQL, replace the `--sqlite` line in `restore` with `--postgres-url-file /secure/rotation/restore-postgres-url`. Put a one-line `postgresql://USER:PASSWORD@127.0.0.1:PORT/DATABASE` URL for the isolated restore in that protected file. Specify the loopback address, port, user, and database explicitly, percent-encode reserved characters in credentials, and omit query options.
+For PostgreSQL, replace the `--sqlite` line in each command with `--postgres-url-file /secure/rotation/restore-postgres-url`. Put a one-line `postgresql://USER:PASSWORD@127.0.0.1:PORT/DATABASE` URL for the isolated restore in that protected file. Specify the loopback address, port, user, and database explicitly, percent-encode reserved characters in credentials, and omit query options.
 
-The tool discovers standard Google Drive, OneDrive, and SharePoint cache names and follows token-file references within the restored data tree. For other unreferenced caches, add `--token-cache PATH` to `restore`; `PATH` is relative to the restored data directory. For references that were stored outside the original data tree, stage each cache under the restored data directory and add `--map-token-cache STORED_PATH COPY_PATH`, with the exact stored reference and the copy-relative path. Preserve those locations when you deploy the rotated files. Include any nonstandard caches in the backup inventory before proceeding.
+The tool discovers standard Google Drive, OneDrive, and SharePoint cache names and follows token-file references within the restored data tree. For other unreferenced caches, add `--token-cache PATH` to each command; `PATH` is relative to the restored data directory. For references that were stored outside the original data tree, stage each cache under the restored data directory and add `--map-token-cache STORED_PATH COPY_PATH` to each command, with the exact stored reference and the copy-relative path. Preserve those locations when you deploy the rotated files. Include any nonstandard caches in the backup inventory before proceeding.
 
 Rotation preserves the owner, group, and mode of rewritten files on the working copy. If it cannot preserve ownership, it aborts before replacing files or updating rows. Before promotion, confirm the backend runtime identity can read the restored files: the backup or restore itself may have changed ownership.
 

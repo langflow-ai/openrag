@@ -44,15 +44,12 @@ bash rotate-key.sh files backup \
   --connections "$DATA/connections.json"
 ```
 
-Use the original files, not the `.backup` copies. If backup succeeds, set the file arguments for the remaining commands and run preflight:
+If backup succeeds, run the dry-run with the same original paths, not the `.backup` copies:
 
 ```bash
-files=(
-  --sqlite "$DATA/openrag.db"
+bash rotate-key.sh files dry-run \
+  --sqlite "$DATA/openrag.db" \
   --connections "$DATA/connections.json"
-)
-
-bash rotate-key.sh files dry-run "${files[@]}"
 ```
 
 Review the ciphertext counts before proceeding. Stop on any error or unexpected count.
@@ -75,8 +72,18 @@ Temporary working copies are staged in private subdirectories beside the inputs 
 Confirm the old key is recoverable before applying.
 
 ```bash
-bash rotate-key.sh files apply "${files[@]}" &&
-  bash rotate-key.sh files check "${files[@]}" --migrated
+bash rotate-key.sh files apply \
+  --sqlite "$DATA/openrag.db" \
+  --connections "$DATA/connections.json"
+```
+
+If apply succeeds, check the migrated copies with the replacement key:
+
+```bash
+bash rotate-key.sh files check \
+  --sqlite "$DATA/openrag.db" \
+  --connections "$DATA/connections.json" \
+  --migrated
 ```
 
 ## 5. Cut over and check the original paths
@@ -84,13 +91,17 @@ bash rotate-key.sh files apply "${files[@]}" &&
 For cutover, run this separately while writers are still stopped. Skip this step during rehearsal or on an existing Kubernetes Operator-managed instance.
 
 ```bash
-bash rotate-key.sh files cutover "${files[@]}"
+bash rotate-key.sh files cutover \
+  --sqlite "$DATA/openrag.db" \
+  --connections "$DATA/connections.json"
 ```
 
 Before restarting, confirm that the replacement key decrypts the promoted originals:
 
 ```bash
-bash rotate-key.sh files check "${files[@]}"
+bash rotate-key.sh files check \
+  --sqlite "$DATA/openrag.db" \
+  --connections "$DATA/connections.json"
 ```
 
 Configure OpenRAG to use the replacement key before restarting it. Then smoke-test the deployment before reopening traffic.
