@@ -32,6 +32,7 @@ Copy `scripts/migration/` to a dedicated migration host. Use this wrapper only w
 | `backup` | Copies the source into `backup/` and creates a separate working copy in `restore/`. Both still use the old key. |
 | `keys` | Prompts for both keys without echoing them and saves them in protected files under `keys/`. Does not generate or install a key. |
 | `dry-run` | Checks that the old key decrypts the working copy and reports ciphertext counts. Changes nothing. |
+| `check` | Authenticates ciphertext with a supplied key in the selected SQLite data and config directories. Reports counts without changing anything. |
 | `apply` | Rotates and verifies `restore/` using the replacement key. Leaves the original and `backup/` untouched. |
 | `cutover-data` | Re-verifies the rotated copy, checks the destinations against `backup/`, then moves the restore into place after confirmation. Keeps the replaced directories for rollback. Does not change keys or start OpenRAG. |
 | `cleanup keys`, `cleanup restore`, `cleanup backup` | Removes only the named workspace directory after confirmation. Does not remove the saved original runtime directories. |
@@ -77,6 +78,15 @@ If you omit both arguments, `cutover-data` uses `OLD_DATA_DIR` and `OLD_CONFIG_D
 Keep all writers stopped. The command re-verifies the restore, checks the destination against the old backup, and requires interactive confirmation. It moves the restore into place and prints the paths where it kept the old directories. It does not change the key: configure the matching new key separately **before starting OpenRAG**. If interrupted, keep OpenRAG stopped and use the printed rollback paths or the untouched backup to recover. The two directory swaps are not collectively atomic.
 
 The command compares the working copy against the hashes recorded by `apply` and rejects modified restores. Use manual cutover for paths with filesystem ACLs.
+
+Before starting OpenRAG, you can check the promoted data while writers are still stopped:
+
+```bash
+bash rotate-key.sh check \
+  --data-dir /absolute/runtime/data --config-dir /absolute/runtime/config
+```
+
+Paths default to `OLD_DATA_DIR` and `OLD_CONFIG_DIR`; pass explicit runtime paths if those exports refer to staging. The check uses `$MIGRATION_DIR/keys/new` if available, otherwise it prompts without echoing the key. Use `--key-file /secure/keys/replacement` to supply a protected one-line file, or `--prompt-key` to force the hidden prompt. It exits nonzero for decryption failure or if it finds no ciphertext. This checks the on-disk data, not which key OpenRAG will load.
 
 Clean up only when each directory is no longer needed. These commands ask for confirmation:
 

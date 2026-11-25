@@ -16,14 +16,16 @@ log() {
 step() { log STEP '1;36' "$1"; }
 done_step() { log OK '1;32' "$1"; }
 fail() { log ERROR '1;31' "$1"; exit 1; }
-: "${MIGRATION_DIR:?Set MIGRATION_DIR to an absolute path under a private parent directory}"
-[[ "$MIGRATION_DIR" = /* ]] || fail 'MIGRATION_DIR must be absolute.'
-[[ ! -L "$MIGRATION_DIR" ]] || fail 'MIGRATION_DIR cannot be a symlink.'
+if [[ ${1:-} != check || -n ${MIGRATION_DIR:-} ]]; then
+  : "${MIGRATION_DIR:?Set MIGRATION_DIR to an absolute path under a private parent directory}"
+  [[ "$MIGRATION_DIR" = /* ]] || fail 'MIGRATION_DIR must be absolute.'
+  [[ ! -L "$MIGRATION_DIR" ]] || fail 'MIGRATION_DIR cannot be a symlink.'
+fi
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
-backup="$MIGRATION_DIR/backup"
-restore="$MIGRATION_DIR/restore"
-keys="$MIGRATION_DIR/keys"
+backup="${MIGRATION_DIR:-}/backup"
+restore="${MIGRATION_DIR:-}/restore"
+keys="${MIGRATION_DIR:-}/keys"
 
 rotate() {
   env -u OPENRAG_ENCRYPTION_KEY \
@@ -93,6 +95,53 @@ PY
     rotate check --old-key-file "$keys/old"
     done_step 'Dry run finished. Review the ciphertext counts before applying.'
     ;;
+  check)
+    shift
+    data=${OLD_DATA_DIR:-}
+    config=${OLD_CONFIG_DIR:-}
+    key_file=''
+    prompt_key=false
+    while (($#)); do
+      case "$1" in
+        --data-dir|--config-dir|--key-file)
+          [[ -n ${2:-} && "$2" != --* ]] || fail "Missing value for $1."
+          case "$1" in
+            --data-dir) data=$2 ;;
+            --config-dir) config=$2 ;;
+            --key-file) key_file=$2 ;;
+          esac
+          shift 2
+          ;;
+        --prompt-key) prompt_key=true; shift ;;
+        *) fail 'Usage: bash rotate-key.sh check [--data-dir PATH] [--config-dir PATH] [--key-file PATH | --prompt-key]' ;;
+      esac
+    done
+    [[ -n "$data" && -n "$config" ]] ||
+      fail 'Set OLD_DATA_DIR and OLD_CONFIG_DIR or pass --data-dir and --config-dir.'
+    [[ "$prompt_key" = false || -z "$key_file" ]] || fail 'Choose --key-file or --prompt-key.'
+    if [[ "$prompt_key" = false && -z "$key_file" && -n ${MIGRATION_DIR:-} && -f "$keys/new" ]]; then
+      key_file="$keys/new"
+    fi
+    command=(
+      env -u OPENRAG_ENCRYPTION_KEY "${MIGRATION_PYTHON:-python3}"
+      "$script_dir/rotate_encryption_key.py" verify
+      --data-dir "$data" --config-dir "$config" --sqlite "$data/openrag.db"
+      --source-data-dir "${OLD_DATA_PATH_AS_STORED:-data}"
+      --tenant-id "${OPENRAG_TENANT_ID:-openrag}"
+    )
+    step 'Checking stored ciphertext read-only. Keep OpenRAG writers stopped.'
+    if [[ -n "$key_file" ]]; then
+      step 'Using the supplied or saved key file.'
+      "${command[@]}" --key-file "$key_file"
+    else
+      IFS= read -r -s -p 'Paste the OPENRAG_ENCRYPTION_KEY to check: ' check_key ||
+        fail 'No key read. Use --key-file for non-interactive checks.'
+      printf '\n' >&2
+      printf '%s\n' "$check_key" | "${command[@]}" --key-file /dev/stdin
+      unset check_key
+    fi
+    done_step 'The supplied key authenticated the stored ciphertext.'
+    ;;
   apply)
     step 'Rotating the restored copy only. The backup is not modified.'
     [[ -d "$restore" && ! -L "$restore" ]] || fail 'Restore must be an existing non-symlink directory.'
@@ -147,5 +196,5 @@ PY
     rm -r -- "$target"
     done_step "Removed the selected $2 directory."
     ;;
-  *) fail 'Usage: bash rotate-key.sh {backup|keys|dry-run|apply|cutover-data|cleanup}' ;;
+  *) fail 'Usage: bash rotate-key.sh {backup|keys|dry-run|check|apply|cutover-data|cleanup}' ;;
 esac

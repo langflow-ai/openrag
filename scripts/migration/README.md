@@ -28,6 +28,7 @@ export MIGRATION_DIR=/private/existing/parent/openrag-key-rotation
 | `backup` | Copies the source into `backup/` and creates a separate working copy in `restore/`. Both still use the old key. |
 | `keys` | Prompts for both keys without echoing them and saves them in protected files under `keys/`. Does not generate or install a key. |
 | `dry-run` | Checks that the old key decrypts the working copy and reports ciphertext counts. Changes nothing. |
+| `check` | Authenticates ciphertext in the selected SQLite data and config directories with a supplied key. Reports counts without changing anything. Unlike `dry-run`, it is not tied to `restore/` or the old key. |
 | `apply` | Rotates and verifies `restore/` using the replacement key. Leaves the original and `backup/` untouched. |
 | `cutover-data` | Re-verifies the rotated copy, checks the destinations against `backup/`, then moves the restore into place after confirmation. Keeps the replaced directories for rollback. Does not change keys or start OpenRAG. |
 | `cleanup keys`, `cleanup restore`, `cleanup backup` | Removes only the named workspace directory after confirmation. Does not remove the saved original runtime directories. |
@@ -71,6 +72,25 @@ Use separate, non-mounted directories on the same filesystem as the restore. The
 Cutover checks the restore against the file hashes recorded by `apply`. It refuses modified restores or runtime directories with ACLs; use manual cutover for ACL-dependent deployments.
 
 Progress messages go to stderr; rotation counts go to stdout. Terminal labels are colored unless `NO_COLOR=1` is set. When looping over deployments, use a distinct `MIGRATION_DIR` for each and stop on any nonzero exit. Review each dry run before applying; do not put dry run and apply in the same unattended loop.
+
+## Check runtime data before restarting
+
+Keep OpenRAG writers stopped. After cutover, check the actual runtime directories with the replacement key before restarting:
+
+```bash
+# Use OLD_DATA_DIR, OLD_CONFIG_DIR, and $MIGRATION_DIR/keys/new if available.
+bash rotate-key.sh check
+
+# Override the directories and use a protected one-line key file.
+bash rotate-key.sh check \
+  --data-dir /absolute/runtime/data --config-dir /absolute/runtime/config \
+  --key-file /secure/keys/replacement
+
+# Ignore the saved replacement key and paste a key at a hidden prompt.
+bash rotate-key.sh check --prompt-key
+```
+
+If the exports point at staging, pass the real runtime paths explicitly. If no key file is specified or saved, `check` prompts automatically; `MIGRATION_DIR` is not needed when using an explicit key file or the prompt. The check fails if decryption fails or there is no ciphertext to authenticate. It does not check which key OpenRAG will load; configure the matching key separately.
 
 ## Clean up one directory at a time
 

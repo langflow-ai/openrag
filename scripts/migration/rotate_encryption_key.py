@@ -477,15 +477,21 @@ def _key(path: Path, *, new: bool) -> str:
 def main() -> int:
     parser = _Parser(description=__doc__)
     parser.add_argument("mode", choices=("check", "apply-to-copy", "verify"))
-    parser.add_argument("--data-dir", type=Path, required=True, help="restored data directory")
-    parser.add_argument("--config-dir", type=Path, required=True, help="restored config directory")
+    parser.add_argument("--data-dir", type=Path, required=True, help="data directory to inspect")
+    parser.add_argument(
+        "--config-dir", type=Path, required=True, help="config directory to inspect"
+    )
     database = parser.add_mutually_exclusive_group(required=True)
     database.add_argument("--sqlite", type=Path, help="restored SQLite file inside --data-dir")
     database.add_argument(
         "--postgres-url-file", type=Path, help="file with the isolated PostgreSQL URL"
     )
     parser.add_argument("--old-key-file", type=Path, help="required for check and apply-to-copy")
-    parser.add_argument("--new-key-file", type=Path, required=True)
+    verify_key = parser.add_mutually_exclusive_group(required=True)
+    verify_key.add_argument("--new-key-file", type=Path)
+    verify_key.add_argument(
+        "--key-file", type=Path, help="verify only: authenticate stored ciphertext with this key"
+    )
     parser.add_argument(
         "--tenant-id", default="openrag", help="deployment tenant for encrypted files"
     )
@@ -517,17 +523,26 @@ def main() -> int:
         help="map a custom token reference to a path relative to --data-dir",
     )
     args = parser.parse_args()
-    if (args.mode == "verify") == (args.old_key_file is not None) or not args.tenant_id:
+    if (
+        (args.mode == "verify") == (args.old_key_file is not None)
+        or (args.key_file is not None and args.mode != "verify")
+        or not args.tenant_id
+    ):
         parser.error("invalid key or tenant arguments")
     try:
-        replacement = _key(args.new_key_file, new=True)
-        previous = _key(args.old_key_file, new=False) if args.old_key_file is not None else None
-        if previous == replacement:
-            raise RotationError("Old and replacement keys must differ.")
-        rotation = _Rotation(
-            previous or replacement, replacement if args.mode == "apply-to-copy" else None
-        )
+        if args.key_file is not None:
+            rotation = _Rotation(_key(args.key_file, new=False), None)
+        else:
+            replacement = _key(args.new_key_file, new=True)
+            previous = _key(args.old_key_file, new=False) if args.old_key_file is not None else None
+            if previous == replacement:
+                raise RotationError("Old and replacement keys must differ.")
+            rotation = _Rotation(
+                previous or replacement, replacement if args.mode == "apply-to-copy" else None
+            )
         asyncio.run(_run(args, rotation))
+        if args.key_file is not None and not rotation.counts.keys() - {"absent OAuth cache paths"}:
+            raise RotationError("No ciphertext found; the key could not be authenticated.")
     except (Exception, KeyboardInterrupt) as error:
         # YAML/JSON, SQL, and crypto errors can contain values. Never render their text.
         detail = str(error) if isinstance(error, RotationError) else type(error).__name__

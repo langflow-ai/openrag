@@ -556,3 +556,57 @@ def test_wrapper_data_cutover(restored_copy, tmp_path, monkeypatch, scenario):
     assert encryption.decrypt_secret(json.loads(value)["key"]) == "provider credential"
     credentials = yaml.safe_load(config.read_text())["providers"]["openai"]
     assert encryption.decrypt_secret(credentials["api_key"]) == "provider credential"
+
+    before_check = db.read_bytes(), config.read_bytes()
+    check = run("check")
+    assert check.returncode == 0, check.stderr
+    assert "workspace_config.value: 1" in check.stdout
+    assert "config.yaml providers: 1" in check.stdout
+    wrong = run(
+        "check",
+        "--data-dir",
+        str(source_data),
+        "--config-dir",
+        str(source_config),
+        "--key-file",
+        str(migration / "keys/old"),
+    )
+    assert wrong.returncode == 1
+    assert "unreadable encryption envelope" in wrong.stderr
+    old = run(
+        "check",
+        "--data-dir",
+        str(saved_db.parent),
+        "--config-dir",
+        str(saved_config.parent),
+        "--key-file",
+        str(migration / "keys/old"),
+    )
+    assert old.returncode == 0, old.stderr
+    pasted = run("check", "--prompt-key", text=f"{NEW_KEY}\n")
+    assert pasted.returncode == 0, pasted.stderr
+    for outcome in (check, wrong, old, pasted):
+        assert OLD_KEY not in outcome.stdout + outcome.stderr
+        assert NEW_KEY not in outcome.stdout + outcome.stderr
+    assert (db.read_bytes(), config.read_bytes()) == before_check
+
+
+def test_wrapper_check_without_ciphertext_does_not_confirm_key(restored_copy, monkeypatch):
+    db, data, config, _ = restored_copy
+    db = db.rename(data / "openrag.db")
+    before = db.read_bytes()
+    for name in ("MIGRATION_DIR", "OLD_DATA_DIR", "OLD_CONFIG_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("MIGRATION_PYTHON", sys.executable)
+    script = Path(__file__).resolve().parents[2] / "scripts/migration/rotate-key.sh"
+    result = subprocess.run(
+        ["bash", str(script), "check", "--data-dir", str(data), "--config-dir", str(config)],
+        input=f"{NEW_KEY}\n",
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert "No ciphertext found; the key could not be authenticated." in result.stderr
+    assert db.read_bytes() == before
