@@ -1918,12 +1918,11 @@ class LangflowFileProcessor(TaskProcessor):
         # Update task status
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
+        original_filename = file_task.filename or os.path.basename(item)
 
         try:
             # Use the ORIGINAL filename stored in file_task (not the transformed temp path)
             # This ensures we check/store the original filename with spaces, etc.
-            original_filename = file_task.filename or os.path.basename(item)
-
             # Check if document with same filename already exists
             opensearch_client = self.session_manager.get_user_opensearch_client(
                 self.owner_user_id, self.jwt_token
@@ -2066,4 +2065,14 @@ class LangflowFileProcessor(TaskProcessor):
             file_task.error = str(e) or repr(e)
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
+            # Keep the raw service error in backend logs. The task API exposes
+            # a deliberately safe, actionable message instead, so this is the
+            # correlation point for failed onboarding/sample-document ingests.
+            logger.error(
+                "Langflow ingestion task failed",
+                task_id=upload_task.task_id,
+                filename=original_filename,
+                connector_type=self.connector_type,
+                error=file_task.error,
+            )
             raise

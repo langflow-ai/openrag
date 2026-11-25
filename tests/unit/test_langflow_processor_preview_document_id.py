@@ -42,3 +42,45 @@ async def test_langflow_processor_threads_document_id_for_index_proof(tmp_path):
     assert file_task.document_id == expected_id
     call_kwargs = langflow_file_service.upload_and_ingest_file.await_args.kwargs
     assert call_kwargs["document_id"] == expected_id
+
+
+@pytest.mark.asyncio
+async def test_langflow_processor_logs_raw_error_with_task_context(monkeypatch, tmp_path):
+    """The safe task message must remain traceable to its backend cause."""
+    session_manager = MagicMock()
+    session_manager.get_user_opensearch_client = MagicMock(return_value=AsyncMock())
+    langflow_file_service = MagicMock()
+    langflow_file_service.upload_and_ingest_file = AsyncMock(
+        side_effect=RuntimeError("Server disconnected without sending a response")
+    )
+    log_error = MagicMock()
+    monkeypatch.setattr("models.processors.logger.error", log_error)
+
+    processor = LangflowFileProcessor(
+        langflow_file_service=langflow_file_service,
+        session_manager=session_manager,
+        owner_user_id=None,
+        jwt_token=None,
+        connector_type="openrag_docs",
+        allow_anonymous_delete=True,
+    )
+    processor.resolve_duplicate_filename = AsyncMock(return_value="proceed")
+    processor.check_document_exists = AsyncMock(return_value=False)
+
+    item = tmp_path / "sample.pdf"
+    item.write_bytes(b"%PDF-1.4 dummy")
+    file_task = FileTask(file_path=str(item), filename="sample.pdf")
+    upload_task = UploadTask(task_id="onboarding-task", total_files=1)
+
+    with pytest.raises(RuntimeError, match="Server disconnected"):
+        await processor.process_item(upload_task, str(item), file_task)
+
+    assert file_task.status == TaskStatus.FAILED
+    assert file_task.error == "Server disconnected without sending a response"
+    log_error.assert_called_once_with(
+        "Langflow ingestion task failed",
+        task_id="onboarding-task",
+        filename="sample.pdf",
+        connector_type="openrag_docs",
+        error="Server disconnected without sending a response",
+    )
