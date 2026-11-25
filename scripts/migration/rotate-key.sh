@@ -4,7 +4,18 @@ set +x
 set -euo pipefail
 umask 077
 
-fail() { printf '%s\n' "$1" >&2; exit 1; }
+log() {
+  local label=$1 color=$2 message=$3
+  if [[ -t 2 && -z ${NO_COLOR:-} && ${TERM:-dumb} != dumb ]]; then
+    printf '\033[%sm[%s]\033[0m %s\n' "$color" "$label" "$message" >&2
+  else
+    printf '[%s] %s\n' "$label" "$message" >&2
+  fi
+}
+
+step() { log STEP '1;36' "$1"; }
+done_step() { log OK '1;32' "$1"; }
+fail() { log ERROR '1;31' "$1"; exit 1; }
 : "${MIGRATION_DIR:?Set MIGRATION_DIR to an absolute path under a private parent directory}"
 [[ "$MIGRATION_DIR" = /* ]] || fail 'MIGRATION_DIR must be absolute.'
 [[ ! -L "$MIGRATION_DIR" ]] || fail 'MIGRATION_DIR cannot be a symlink.'
@@ -25,6 +36,7 @@ rotate() {
 
 case ${1:-} in
   backup)
+    step 'Checking source directories and backup destination.'
     : "${OLD_DATA_DIR:?Set OLD_DATA_DIR to the existing data directory}"
     : "${OLD_CONFIG_DIR:?Set OLD_CONFIG_DIR to the existing config directory}"
     data=$(cd -- "$OLD_DATA_DIR" && pwd -P)
@@ -36,12 +48,15 @@ case ${1:-} in
         fail 'Source contains symlinks or special files. Prepare an isolated restore manually.'
     done
     [[ -f "$data/openrag.db" ]] || fail 'Expected SQLite database at OLD_DATA_DIR/openrag.db.'
+    step 'Creating private backup and restore directories.'
     mkdir -m 700 -- "$MIGRATION_DIR" || fail 'Choose a new migration directory; nothing was overwritten.'
     mkdir -p -- "$backup/data" "$backup/config" "$restore"
+    step 'Copying data and config files into the backup.'
     rsync -rt --exclude='/openrag.db' --exclude='/openrag.db-wal' \
       --exclude='/openrag.db-shm' --exclude='/openrag.db-journal' -- "$data/" "$backup/data/"
     rsync -rt -- "$config/" "$backup/config/"
     # Read-only source; the backup API writes a consistent DB without copying sidecars.
+    step 'Backing up SQLite using the read-only source connection.'
     python3 - "$data/openrag.db" "$backup/data/openrag.db" <<'PY'
 import sqlite3
 import sys
@@ -52,11 +67,13 @@ with closing(sqlite3.connect(Path(sys.argv[1]).as_uri() + '?mode=ro', uri=True))
     with closing(sqlite3.connect(sys.argv[2])) as target:
         source.backup(target)
 PY
+    step 'Making a separate working restore from the backup.'
     cp -R -- "$backup/data" "$backup/config" "$restore/"
-    printf '%s\n' 'Backup and independent working restore created.'
+    done_step 'Backup and working restore created.'
     ;;
   keys)
     [[ -d "$restore/data" && -d "$restore/config" ]] || fail 'Run backup first.'
+    step 'Reading both keys without echoing their values.'
     read -r -s -p 'Paste the current OPENRAG_ENCRYPTION_KEY: ' old_key
     printf '\n' >&2
     [[ -n "$old_key" ]] || fail 'The old key cannot be empty.'
@@ -64,16 +81,24 @@ PY
     printf '\n' >&2
     [[ -n "$new_key" ]] || fail 'The replacement key cannot be empty.'
     [[ "$old_key" != "$new_key" ]] || fail 'The old and replacement keys must differ.'
+    step 'Writing both keys to protected files.'
     mkdir -m 700 -- "$keys" || fail 'Key directory already exists; nothing was overwritten.'
     printf '%s\n' "$old_key" > "$keys/old"
     printf '%s\n' "$new_key" > "$keys/new"
     unset old_key new_key
-    printf '%s\n' 'Old and replacement key files saved.'
+    done_step 'Both key files saved.'
     ;;
-  dry-run) rotate check --old-key-file "$keys/old" ;;
+  dry-run)
+    step 'Checking the restored copy with the old key (read-only).'
+    rotate check --old-key-file "$keys/old"
+    done_step 'Dry run finished. Review the ciphertext counts before applying.'
+    ;;
   apply)
+    step 'Rotating the restored copy only. The backup is not modified.'
     rotate apply-to-copy --old-key-file "$keys/old"
+    step 'Verifying the restored copy with only the replacement key.'
     rotate verify
+    done_step 'Rotation verified. No deployment was switched.'
     ;;
   cleanup)
     [[ $# = 2 ]] || fail 'Usage: bash rotate-key.sh cleanup {keys|restore|backup}'
@@ -85,11 +110,13 @@ PY
     esac
     [[ -d "$target" && ! -L "$target" ]] || fail 'Cleanup target must be an existing non-symlink directory.'
     [[ -t 0 ]] || fail 'Cleanup requires an interactive terminal.'
-    printf '%s\n' "$warning" >&2
+    log WARNING '1;33' "$warning"
     printf 'Remove %s? Type %s to confirm: ' "$(cd -- "$target" && pwd -P)" "$2" >&2
     read -r confirmation
     [[ "$confirmation" = "$2" ]] || fail 'Cleanup cancelled.'
+    step "Removing the selected $2 directory."
     rm -r -- "$target"
+    done_step "Removed the selected $2 directory."
     ;;
   *) fail 'Usage: bash rotate-key.sh {backup|keys|dry-run|apply|cleanup}' ;;
 esac
