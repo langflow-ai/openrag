@@ -17,6 +17,7 @@ export OLD_DATA_DIR=/absolute/path/to/existing/data
 export OLD_CONFIG_DIR=/absolute/path/to/existing/config
 export OLD_DATA_PATH_AS_STORED=data  # original prefix in connector references
 export OPENRAG_TENANT_ID=openrag      # use the existing deployment's tenant
+# New workspace for backup/, restore/, and keys/. Its private parent must already exist.
 export MIGRATION_DIR=/private/existing/parent/openrag-key-rotation
 ```
 
@@ -47,8 +48,12 @@ bash rotate-key.sh apply
 For **self-managed SQLite only**, with OpenRAG and all writers stopped, promote the verified restore into the existing runtime paths:
 
 ```bash
-bash rotate-key.sh cutover-data /absolute/runtime/data /absolute/runtime/config
+bash rotate-key.sh cutover-data \
+  --original-data-dir /absolute/runtime/data \
+  --original-config-dir /absolute/runtime/config
 ```
+
+With no arguments, `cutover-data` uses `OLD_DATA_DIR` and `OLD_CONFIG_DIR`. Use that shorthand only if both exports are the real runtime directories. If they point to a staged restore, pass both runtime paths explicitly. Always check the destinations shown before confirming.
 
 Use separate, non-mounted directories on the same filesystem as the restore. The command checks that the destinations still match the backup, asks for confirmation, and prints where it saved the old directories. It consumes `restore/data` and `restore/config` and leaves `backup/` untouched. It does not update secrets or start the app. Set the replacement key before starting the backend. Use the runbook for Operator-managed deployments and rollback.
 

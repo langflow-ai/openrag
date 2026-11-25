@@ -46,7 +46,8 @@ export OLD_DATA_DIR=/secure/staged-production-restore/data
 export OLD_CONFIG_DIR=/secure/staged-production-restore/config
 export OLD_DATA_PATH_AS_STORED=data  # exact prefix recorded in connector references
 export OPENRAG_TENANT_ID=openrag     # existing deployment tenant
-export MIGRATION_DIR=/secure/rotation/final-cutover  # new directory under a private parent
+# New workspace for backup/, restore/, and keys/. Its private parent must already exist.
+export MIGRATION_DIR=/secure/rotation/final-cutover
 
 bash rotate-key.sh backup &&
   bash rotate-key.sh keys &&
@@ -62,8 +63,12 @@ bash rotate-key.sh apply  # rotates $MIGRATION_DIR/restore and verifies with onl
 For a self-managed deployment with ordinary, separate data and config directories, run the following from the host that can access their real backing paths. The workspace and destinations must be on the same filesystem, and neither destination may be a mount point. Do not use this command for an existing Kubernetes Operator instance, PostgreSQL, or layouts that require manual cache mapping.
 
 ```bash
-bash rotate-key.sh cutover-data /absolute/runtime/data /absolute/runtime/config
+bash rotate-key.sh cutover-data \
+  --original-data-dir /absolute/runtime/data \
+  --original-config-dir /absolute/runtime/config
 ```
+
+If you omit both arguments, `cutover-data` uses `OLD_DATA_DIR` and `OLD_CONFIG_DIR`. The exports above point at a staged restore, so **use explicit runtime destinations** for this production example.
 
 Keep all writers stopped. The command re-verifies the restore, checks the destination against the old backup, and requires interactive confirmation. It moves the restore into place and prints the paths where it kept the old directories. It does not change the key: configure the matching new key separately **before starting OpenRAG**. If interrupted, keep OpenRAG stopped and use the printed rollback paths or the untouched backup to recover. The two directory swaps are not collectively atomic.
 

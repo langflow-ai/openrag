@@ -468,10 +468,15 @@ def test_wrapper_data_cutover(restored_copy, tmp_path, monkeypatch, scenario):
     if scenario == "rollback":
         config_parent.chmod(0o500)
     try:
+        paths = [
+            "--original-config-dir",
+            str(source_config),
+            "--original-data-dir",
+            str(destination),
+        ]
         result = run(
             "cutover-data",
-            str(destination),
-            str(source_config),
+            *([] if scenario == "promote" else paths),
             text=confirmation,
             interactive=True,
         )

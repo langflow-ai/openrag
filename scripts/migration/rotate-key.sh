@@ -104,7 +104,23 @@ PY
     done_step 'Rotation verified. No deployment was switched.'
     ;;
   cutover-data)
-    [[ $# = 3 ]] || fail 'Usage: bash rotate-key.sh cutover-data /absolute/data /absolute/config'
+    case $# in
+      1)
+        set -- "$1" "${OLD_DATA_DIR:?Set OLD_DATA_DIR or pass both runtime paths}" \
+          "${OLD_CONFIG_DIR:?Set OLD_CONFIG_DIR or pass both runtime paths}"
+        ;;
+      3)
+        [[ "$2" = /* && "$3" = /* ]] || fail 'Pass two absolute paths or both named flags.'
+        ;;
+      5)
+        case "$2:$4" in
+          --original-data-dir:--original-config-dir) set -- "$1" "$3" "$5" ;;
+          --original-config-dir:--original-data-dir) set -- "$1" "$5" "$3" ;;
+          *) fail 'Pass both --original-data-dir and --original-config-dir.' ;;
+        esac
+        ;;
+      *) fail 'Usage: bash rotate-key.sh cutover-data [--original-data-dir PATH --original-config-dir PATH]' ;;
+    esac
     step 'Preparing data-only cutover. No keys or services will be changed.'
     env -u OPENRAG_ENCRYPTION_KEY "${MIGRATION_PYTHON:-python3}" \
       "$script_dir/cutover_data.py" "$MIGRATION_DIR" "$2" "$3"
