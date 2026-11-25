@@ -2,6 +2,8 @@
 
 Copy this folder to the migration host. No OpenRAG checkout is needed. This guide covers file migration for `openrag.db` and `connections.json` only. For other layouts, see the [production runbook](https://github.com/langflow-ai/openrag/blob/main/docs/docs/reference/rotate-encryption-key.mdx).
 
+## 1. Prepare the tools
+
 Use Python 3.13 (the OpenRAG-supported version). From the copied folder, create an isolated environment before stopping writers:
 
 ```bash
@@ -10,19 +12,24 @@ python3.13 -m venv .venv
 export MIGRATION_PYTHON="$PWD/.venv/bin/python"
 ```
 
-## Pass two explicit files instead of directories
+## 2. Set the paths and enter both keys
 
 Use this mode only for a SQLite deployment where `openrag.db` and `connections.json` share a directory and are the only files that need rotation. It refuses `config.yaml`, discovered OAuth caches, and legacy state files; use the full restore workflow for those layouts. Keep writers stopped from backup through cutover, and checkpoint SQLite so no journal, WAL, or SHM files remain.
 
-Create a private directory **outside the data directory** for the key files. `files keys` prompts for your current and replacement keys without echoing them. It saves them under `$MIGRATION_DIR/keys/` and does not generate a key. The replacement must be Base64 for exactly 32 bytes.
+Use a private key directory. If `/app/backend-data` is your only writable location, create a new `.openrag-keys` subdirectory as shown below. `mkdir` refuses to reuse an existing directory. The key command prompts for the current and replacement values without echoing them; it does not generate a key. The replacement must be Base64 for exactly 32 bytes.
 
 ```bash
-export MIGRATION_DIR="$(mktemp -d)"
-bash rotate-key.sh files keys
+DATA=/app/backend-data  # For a rehearsal, use the restored copy instead.
+export MIGRATION_DIR="$DATA/.openrag-keys"
+mkdir -m 700 -- "$MIGRATION_DIR" &&
+  bash rotate-key.sh files keys
 ```
 
+The key files are plaintext with restricted permissions. Do not include `.openrag-keys` in data backups, snapshots, or support bundles.
+
+## 3. Back up the files and run preflight
+
 ```bash
-DATA=/app/backend-data  # Use the actual parent of the two files.
 files=(
   --sqlite "$DATA/openrag.db"
   --connections "$DATA/connections.json"
@@ -31,6 +38,8 @@ files=(
 bash rotate-key.sh files backup "${files[@]}" &&
   bash rotate-key.sh files dry-run "${files[@]}"
 ```
+
+Review the ciphertext counts before proceeding. Stop on any error or unexpected count.
 
 | Command | What changes |
 | --- | --- |
@@ -43,14 +52,18 @@ bash rotate-key.sh files backup "${files[@]}" &&
 
 Backups are **files**, not a backup directory: for example, `/app/backend-data/openrag.db.backup` and `/app/backend-data/connections.json.backup`. The wrapper prints progress and artifact paths to stderr and ciphertext counts to stdout. It never prints key values or decrypted data.
 
-After reviewing the dry run and confirming the old key is recoverable:
+## 4. Rotate and verify the copies
+
+Confirm the old key is recoverable before applying.
 
 ```bash
 bash rotate-key.sh files apply "${files[@]}" &&
   bash rotate-key.sh files check "${files[@]}" --migrated
 ```
 
-For cutover, run this separately while writers are still stopped:
+## 5. Cut over and check the original paths
+
+For cutover, run this separately while writers are still stopped. Skip this step during rehearsal or on an existing Kubernetes Operator-managed instance.
 
 ```bash
 bash rotate-key.sh files cutover "${files[@]}"
@@ -61,6 +74,10 @@ Before restarting, confirm that the replacement key decrypts the promoted origin
 ```bash
 bash rotate-key.sh files check "${files[@]}"
 ```
+
+Configure OpenRAG to use the replacement key before restarting it. Then smoke-test the deployment before reopening traffic.
+
+## 6. Keep backups and clean up the keys
 
 If the data is staged at a different path, pass `--source-data-dir` with the token-reference prefix used by the app. Pass `--config-dir` if runtime config is not under `data/config`. The command inherits `OPENRAG_TENANT_ID` or defaults to `openrag`. No `OLD_*_DIR` exports are needed. With the default prompts, `MIGRATION_DIR` is only for the keys; `.backup` and `.migrated` still go beside the input files.
 
