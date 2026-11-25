@@ -152,7 +152,7 @@ def _key_path(explicit: Path | None, name: str, flag: str) -> Path:
         if root.is_absolute() and not any(p.is_symlink() for p in (root, keys, path)):
             if path.is_file():
                 return path
-    raise RotationError(f"Run files keys first or pass {flag}.")
+    raise RotationError(f"Run bash prepare.sh first or pass {flag}.")
 
 
 def _cutover(

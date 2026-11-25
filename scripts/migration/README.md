@@ -16,13 +16,12 @@ export MIGRATION_PYTHON="$PWD/.venv/bin/python"
 
 Use this mode only for a SQLite deployment where `openrag.db` and `connections.json` share a directory and are the only files that need rotation. It refuses `config.yaml`, discovered OAuth caches, and legacy state files; use the full restore workflow for those layouts. Keep writers stopped from backup through cutover, and checkpoint SQLite so no journal, WAL, or SHM files remain.
 
-Use a private key directory. If `/app/backend-data` is your only writable location, create a new `.openrag-keys` subdirectory as shown below. `mkdir` refuses to reuse an existing directory. The key command prompts for the current and replacement values without echoing them; it does not generate a key. The replacement must be Base64 for exactly 32 bytes.
+`prepare.sh` creates a private workspace and prompts for the current and replacement keys without echoing them. It does not generate a key, back up data, or overwrite existing key files. The replacement key must be Base64 for exactly 32 bytes.
 
 ```bash
 DATA=/app/backend-data  # For a rehearsal, use the restored copy instead.
 export MIGRATION_DIR="$DATA/.openrag-keys"
-mkdir -m 700 -- "$MIGRATION_DIR" &&
-  bash rotate-key.sh files keys
+bash prepare.sh
 ```
 
 The key files are plaintext with restricted permissions. Do not include `.openrag-keys` in data backups, snapshots, or support bundles.
@@ -43,7 +42,7 @@ Review the ciphertext counts before proceeding. Stop on any error or unexpected 
 
 | Command | What changes |
 | --- | --- |
-| `files keys` | Reads both keys from hidden prompts and saves protected `keys/old` and `keys/new` files. Does not modify the application or existing key files. |
+| `bash prepare.sh` | Prompts for both keys and saves protected `keys/old` and `keys/new` files. Does not modify application data or existing keys. |
 | `files backup` | Creates `openrag.db.backup` and `connections.json.backup` beside the originals. Requires no keys and never overwrites a backup. |
 | `files dry-run` | Checks the old key and reports ciphertext counts without writing files. |
 | `files apply` | Uses the existing backups after checking they still match the originals. If neither backup exists, creates both. Writes and verifies the two `.migrated` files and their verification receipt; does not replace the originals. |

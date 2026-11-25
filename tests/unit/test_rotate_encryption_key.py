@@ -414,7 +414,6 @@ def test_file_rotation_keeps_originals_until_verified_cutover(restored_copy, mon
 
     script = Path(__file__).resolve().parents[2] / "scripts/migration/rotate-key.sh"
     workspace = data / ".openrag-keys"
-    workspace.mkdir(mode=0o700)
     temp = data / "operator temp"
     temp.mkdir(mode=0o700)
     env = dict(
@@ -424,8 +423,9 @@ def test_file_rotation_keeps_originals_until_verified_cutover(restored_copy, mon
         MIGRATION_DIR=str(workspace),
         TMPDIR=str(temp),
     )
+    before_prepare = db.read_bytes(), connections.read_bytes()
     keys = subprocess.run(
-        ["bash", str(script), "files", "keys"],
+        ["bash", str(script.with_name("prepare.sh"))],
         input=f"{OLD_KEY}\n{NEW_KEY}\n",
         capture_output=True,
         text=True,
@@ -433,6 +433,8 @@ def test_file_rotation_keeps_originals_until_verified_cutover(restored_copy, mon
         check=False,
         timeout=20,
     )
+    assert (db.read_bytes(), connections.read_bytes()) == before_prepare
+    assert workspace.stat().st_mode & 0o777 == 0o700
     assert keys.returncode == 0, keys.stderr
     assert all(key not in keys.stdout + keys.stderr for key in (OLD_KEY, NEW_KEY))
     assert (workspace / "keys").stat().st_mode & 0o777 == 0o700

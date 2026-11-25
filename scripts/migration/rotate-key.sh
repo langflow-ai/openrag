@@ -19,18 +19,13 @@ fail() { log ERROR '1;31' "$1"; exit 1; }
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 if [[ ${1:-} = files ]]; then
   shift
-  if [[ ${1:-} = keys ]]; then
-    [[ $# = 1 ]] || fail 'Usage: bash rotate-key.sh files keys'
-    set -- keys
-  else
-    exec env -u OPENRAG_ENCRYPTION_KEY "${MIGRATION_PYTHON:-python3}" \
-      "$script_dir/rotate_files.py" "$@"
-  fi
+  exec env -u OPENRAG_ENCRYPTION_KEY "${MIGRATION_PYTHON:-python3}" \
+    "$script_dir/rotate_files.py" "$@"
 fi
 
 case ${1:-}:${2:-} in
-  keys:|cleanup:keys) ;;
-  *) fail 'Usage: bash rotate-key.sh files {keys|backup|dry-run|apply|check|cutover}, or cleanup keys' ;;
+  cleanup:keys) ;;
+  *) fail 'Usage: bash rotate-key.sh files {backup|dry-run|apply|check|cutover}, or cleanup keys. Use bash prepare.sh to enter keys.' ;;
 esac
 : "${MIGRATION_DIR:?Set MIGRATION_DIR to a private directory for keys}"
 [[ "$MIGRATION_DIR" = /* && -d "$MIGRATION_DIR" && ! -L "$MIGRATION_DIR" ]] ||
@@ -38,22 +33,6 @@ esac
 keys="$MIGRATION_DIR/keys"
 
 case ${1:-} in
-  keys)
-    step 'Reading both keys without echoing their values.'
-    IFS= read -r -s -p 'Paste the current OPENRAG_ENCRYPTION_KEY: ' old_key
-    printf '\n' >&2
-    [[ -n "$old_key" ]] || fail 'The old key cannot be empty.'
-    IFS= read -r -s -p 'Paste the replacement OPENRAG_ENCRYPTION_KEY: ' new_key
-    printf '\n' >&2
-    [[ -n "$new_key" ]] || fail 'The replacement key cannot be empty.'
-    [[ "$old_key" != "$new_key" ]] || fail 'The old and replacement keys must differ.'
-    step 'Writing both keys to protected files.'
-    mkdir -m 700 -- "$keys" || fail 'Key directory already exists; nothing was overwritten.'
-    printf '%s\n' "$old_key" > "$keys/old"
-    printf '%s\n' "$new_key" > "$keys/new"
-    unset old_key new_key
-    done_step 'Both key files saved.'
-    ;;
   cleanup)
     [[ $# = 2 && "$2" = keys ]] || fail 'Usage: bash rotate-key.sh cleanup keys'
     target=$keys
