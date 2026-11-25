@@ -42,7 +42,15 @@ Review the preflight counts against your backup inventory. Stop on any error or 
 bash rotate-key.sh apply
 ```
 
-`$MIGRATION_DIR/backup` stays untouched during rotation. `$MIGRATION_DIR/restore` is the copy that gets rotated. `$MIGRATION_DIR/keys/old` and `keys/new` contain the key values; protect them and save both in your secret manager before cutover. The script does not start services or switch deployment data or keys. If apply or verification fails, don't promote that copy; start with a fresh restore. Follow the runbook for cutover and rollback. The Kubernetes Operator does not support an in-place key change.
+`apply` leaves the original and `$MIGRATION_DIR/backup` untouched. If it fails, start with a fresh restore. Save both keys in your secret manager before cutover.
+
+For **self-managed SQLite only**, with OpenRAG and all writers stopped, promote the verified restore into the existing runtime paths:
+
+```bash
+bash rotate-key.sh cutover-data /absolute/runtime/data /absolute/runtime/config
+```
+
+Use separate, non-mounted directories on the same filesystem as the restore. The command checks that the destinations still match the backup, asks for confirmation, and prints where it saved the old directories. It consumes `restore/data` and `restore/config` and leaves `backup/` untouched. It does not update secrets or start the app. Set the replacement key before starting the backend. Use the runbook for Operator-managed deployments and rollback.
 
 Progress messages go to stderr; rotation counts go to stdout. Terminal labels are colored unless `NO_COLOR=1` is set. When looping over deployments, use a distinct `MIGRATION_DIR` for each and stop on any nonzero exit. Review each dry run before applying; do not put dry run and apply in the same unattended loop.
 

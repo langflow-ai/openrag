@@ -25,6 +25,13 @@ Block traffic and stop backend and background writers, including ingestion and c
 
 Copy `scripts/migration/` to a dedicated migration host. Use this wrapper only when the restored SQLite database is `openrag.db` inside the staged data directory and all OAuth caches are under that data directory. Point the `OLD_*_DIR` variables at the **staged production restore**, not live production mounts. The wrapper creates its own backup and separate working copy from that staged restore.
 
+| Step | What it changes |
+| --- | --- |
+| `backup` | Creates an untouched backup (`backup/`) and a working copy (`restore/`). Both still use the old key. |
+| `dry-run` | Checks that the old key can decrypt the working copy. Changes nothing. |
+| `apply` | Migrates `restore/` to the new key and verifies it. The original and `backup/` stay untouched. There is no separate migrate command. |
+| `cutover-data` | Moves the verified restore into the specified existing runtime paths and keeps the replaced directories for rollback. Does not change keys or start OpenRAG. For other deployment layouts, change the data paths or mounts manually. |
+
 ```bash
 cd /secure/openrag-migration-tools
 python3 -m venv .venv &&
@@ -52,7 +59,15 @@ At the hidden prompts, enter the current production key and then the replacement
 bash rotate-key.sh apply  # rotates $MIGRATION_DIR/restore and verifies with only the new key
 ```
 
-Do not mount the working copy in production until verification succeeds. Clean up only when each directory is no longer needed. These commands ask for confirmation:
+For a self-managed deployment with ordinary, separate data and config directories, run the following from the host that can access their real backing paths. The workspace and destinations must be on the same filesystem, and neither destination may be a mount point. Do not use this command for an existing Kubernetes Operator instance, PostgreSQL, or layouts that require manual cache mapping.
+
+```bash
+bash rotate-key.sh cutover-data /absolute/runtime/data /absolute/runtime/config
+```
+
+Keep all writers stopped. The command re-verifies the restore, checks the destination against the old backup, and requires interactive confirmation. It moves the restore into place and prints the paths where it kept the old directories. It does not change the key: configure the matching new key separately **before starting OpenRAG**. If interrupted, keep OpenRAG stopped and use the printed rollback paths or the untouched backup to recover. The two directory swaps are not collectively atomic.
+
+Clean up only when each directory is no longer needed. These commands ask for confirmation:
 
 ```bash
 bash rotate-key.sh cleanup keys     # after securing both keys

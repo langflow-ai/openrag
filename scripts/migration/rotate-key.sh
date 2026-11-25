@@ -103,6 +103,13 @@ PY
     rotate verify
     done_step 'Rotation verified. No deployment was switched.'
     ;;
+  cutover-data)
+    [[ $# = 3 ]] || fail 'Usage: bash rotate-key.sh cutover-data /absolute/data /absolute/config'
+    step 'Preparing data-only cutover. No keys or services will be changed.'
+    env -u OPENRAG_ENCRYPTION_KEY "${MIGRATION_PYTHON:-python3}" \
+      "$script_dir/cutover_data.py" "$MIGRATION_DIR" "$2" "$3"
+    done_step 'Data cutover complete. Set the replacement key before starting OpenRAG.'
+    ;;
   cleanup)
     [[ $# = 2 ]] || fail 'Usage: bash rotate-key.sh cleanup {keys|restore|backup}'
     case "$2" in
@@ -121,5 +128,5 @@ PY
     rm -r -- "$target"
     done_step "Removed the selected $2 directory."
     ;;
-  *) fail 'Usage: bash rotate-key.sh {backup|keys|dry-run|apply|cleanup}' ;;
+  *) fail 'Usage: bash rotate-key.sh {backup|keys|dry-run|apply|cutover-data|cleanup}' ;;
 esac
