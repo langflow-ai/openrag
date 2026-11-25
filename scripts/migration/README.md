@@ -36,14 +36,23 @@ The key files are plaintext with restricted permissions. Do not include `.openra
 
 ## 3. Back up the files and run preflight
 
+From the migration folder, with OpenRAG writers stopped, run:
+
+```bash
+bash rotate-key.sh files backup \
+  --sqlite "$DATA/openrag.db" \
+  --connections "$DATA/connections.json"
+```
+
+Use the original files, not the `.backup` copies. If backup succeeds, set the file arguments for the remaining commands and run preflight:
+
 ```bash
 files=(
   --sqlite "$DATA/openrag.db"
   --connections "$DATA/connections.json"
 )
 
-bash rotate-key.sh files backup "${files[@]}" &&
-  bash rotate-key.sh files dry-run "${files[@]}"
+bash rotate-key.sh files dry-run "${files[@]}"
 ```
 
 Review the ciphertext counts before proceeding. Stop on any error or unexpected count.
