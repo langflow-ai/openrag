@@ -384,6 +384,10 @@ async def _run(args: argparse.Namespace, rotation: _Rotation) -> None:
     data, config = _root(args.data_dir), _root(args.config_dir)
     apply = args.mode == "apply-to-copy"
     if apply:
+        print(
+            "[STEP] Checking that restore and original directories do not overlap.",
+            file=sys.stderr,
+        )
         originals = (args.original_data_dir, args.original_config_dir)
         if any(path is None or not path.is_absolute() for path in originals):
             raise RotationError("Apply requires absolute original data and config directory paths.")
@@ -394,6 +398,7 @@ async def _run(args: argparse.Namespace, rotation: _Rotation) -> None:
                 for root in (data, config)
             ):
                 raise RotationError("Restore directories must not overlap original directories.")
+        print("[OK] Restore directories do not overlap the original directories.", file=sys.stderr)
     engine = _engine(args, data, apply=apply)
     try:
         async with engine.begin() as conn:
@@ -407,6 +412,10 @@ async def _run(args: argparse.Namespace, rotation: _Rotation) -> None:
             updates = await conn.run_sync(_db_plan, rotation)
             files = _file_plan(args, data, config, rotation)
             if apply:
+                print(
+                    f"[STEP] Staging {len(files)} file(s) with their existing owner, group, and mode.",
+                    file=sys.stderr,
+                )
                 # Authenticate all inputs before touching any data. Stage every file before
                 # committing the DB or replacing paths. Cross-store commit is not atomic.
                 with ExitStack() as cleanup:
@@ -440,6 +449,15 @@ async def _run(args: argparse.Namespace, rotation: _Rotation) -> None:
                         )
                     for temp, target in staged:
                         temp.replace(target)
+        if apply:
+            print(
+                f"[OK] Rotated {len(files)} file(s) without changing ownership or mode.",
+                file=sys.stderr,
+            )
+            print(
+                "[WARNING] Before cutover, confirm the backend can read the restored files.",
+                file=sys.stderr,
+            )
     finally:
         await engine.dispose()
 
