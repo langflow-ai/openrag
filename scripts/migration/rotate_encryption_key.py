@@ -383,8 +383,7 @@ def _engine(args: argparse.Namespace, data: Path, *, apply: bool) -> AsyncEngine
 
 async def _run(args: argparse.Namespace, rotation: _Rotation) -> None:
     data, config = _root(args.data_dir), _root(args.config_dir)
-    apply = args.mode == "apply-to-copy"
-    if apply:
+    if args.mode == "apply-to-copy":
         print(
             "[STEP] Checking that restore and original directories do not overlap.",
             file=sys.stderr,
@@ -397,6 +396,14 @@ async def _run(args: argparse.Namespace, rotation: _Rotation) -> None:
             if any(overlaps(root, protected) for root in (data, config)):
                 raise RotationError("Restore directories must not overlap original directories.")
         print("[OK] Restore directories do not overlap the original directories.", file=sys.stderr)
+    await _run_on_validated_paths(args, rotation, data, config)
+
+
+async def _run_on_validated_paths(
+    args: argparse.Namespace, rotation: _Rotation, data: Path, config: Path
+) -> None:
+    """Run after the caller has validated isolation for its write targets."""
+    apply = args.mode == "apply-to-copy"
     engine = _engine(args, data, apply=apply)
     try:
         async with engine.begin() as conn:

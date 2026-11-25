@@ -21,7 +21,7 @@ from rotate_encryption_key import (
     _key,
     _Parser,
     _Rotation,
-    _run,
+    _run_on_validated_paths,
 )
 
 
@@ -55,22 +55,20 @@ def _copy(source: Path, destination: Path, mode_from: Path | None = None) -> Non
         os.fsync(output.fileno())
 
 
-def _inspect(args: argparse.Namespace, data: Path, config: Path, rotation: _Rotation) -> None:
+def _inspect(args: argparse.Namespace, data: Path, rotation: _Rotation) -> None:
     mode = "apply-to-copy" if rotation.write_key is not None else "check"
     options = Namespace(
         mode=mode,
         data_dir=data,
-        config_dir=config,
+        config_dir=data,
         sqlite=data / "openrag.db",
         postgres_url_file=None,
-        original_data_dir=args.sqlite.parent.resolve(),
-        original_config_dir=args.config_dir.resolve(),
         source_data_dir=args.source_data_dir,
         tenant_id=args.tenant_id,
         token_cache=[],
         map_token_cache=[],
     )
-    asyncio.run(_run(options, rotation))
+    asyncio.run(_run_on_validated_paths(options, rotation, data, data))
     extras = {
         "config.yaml providers",
         "legacy state files",
@@ -245,14 +243,14 @@ def main() -> int:
             verification = _Rotation(_key(check_key, new=args.key_file is None), None)
             if args.migrated:
                 _require_offline_sqlite(migrated[0])
-                with TemporaryDirectory(prefix="openrag-file-check-") as temp:
+                with TemporaryDirectory(prefix=".openrag-file-check-", dir=parent) as temp:
                     stage = Path(temp)
                     for original, moved in zip(originals, migrated, strict=True):
                         _file(parent, Path(moved.name), required=True)
                         _copy(moved, stage / original.name)
-                    _inspect(args, stage, stage, verification)
+                    _inspect(args, stage, verification)
             else:
-                _inspect(args, parent, parent, verification)
+                _inspect(args, parent, verification)
             _report(verification)
             print("[OK] The supplied key authenticated the stored ciphertext.", file=sys.stderr)
             return 0
@@ -263,7 +261,7 @@ def main() -> int:
                 file=sys.stderr,
             )
             preflight = _Rotation(old, None)
-            _inspect(args, parent, parent, preflight)
+            _inspect(args, parent, preflight)
             if args.mode == "dry-run":
                 _report(preflight)
                 return 0
@@ -277,18 +275,20 @@ def main() -> int:
             for backup in backups:
                 _file(parent, Path(backup.name), required=True)
             _unchanged(originals, backups)
-            with TemporaryDirectory(prefix="openrag-file-rotation-") as temp:
+            with TemporaryDirectory(prefix=".openrag-file-rotation-", dir=parent) as temp:
                 stage = Path(temp)
                 files = [stage / path.name for path in originals]
                 for backup, replica in zip(backups, files, strict=True):
                     _copy(backup, replica)
+                if any(replica.samefile(original) for replica in files for original in originals):
+                    raise RotationError("Temporary copies must not alias the originals.")
                 print(
                     "[STEP] Rotating temporary copies and verifying with the new key.",
                     file=sys.stderr,
                 )
-                _inspect(args, stage, stage, _Rotation(old, new))
+                _inspect(args, stage, _Rotation(old, new))
                 verification = _Rotation(new, None)
-                _inspect(args, stage, stage, verification)
+                _inspect(args, stage, verification)
                 if verification.counts != preflight.counts:
                     raise RotationError("Ciphertext counts changed during rotation.")
                 seal = stage / receipt.name
@@ -322,7 +322,7 @@ def main() -> int:
             if hashes[2:] != [_hash(path) for path in promoted]:
                 raise RotationError("Migrated files changed during cutover.")
             print("[STEP] Verifying the staged files with the replacement key.", file=sys.stderr)
-            _inspect(args, stage, stage, _Rotation(new, None))
+            _inspect(args, stage, _Rotation(new, None))
             print(
                 f"[WARNING] Replace {str(originals[0])!r} and {str(originals[1])!r}. "
                 "Keep writers stopped. This does not change the key.",

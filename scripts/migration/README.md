@@ -52,6 +52,8 @@ Review the ciphertext counts before proceeding. Stop on any error or unexpected 
 
 Backups are **files**, not a backup directory: for example, `/app/backend-data/openrag.db.backup` and `/app/backend-data/connections.json.backup`. The wrapper prints progress and artifact paths to stderr and ciphertext counts to stdout. It never prints key values or decrypted data.
 
+Temporary working copies are staged in private subdirectories beside the inputs and removed when each command exits normally. Make sure that volume has room for the backups, migrated files, and working copies; it does not need a separate writable `/tmp`.
+
 ## 4. Rotate and verify the copies
 
 Confirm the old key is recoverable before applying.
