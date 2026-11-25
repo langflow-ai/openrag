@@ -75,5 +75,21 @@ PY
     rotate apply-to-copy --old-key-file "$keys/old"
     rotate verify
     ;;
-  *) fail 'Usage: bash scripts/migration/rotate-key.sh {backup|keys|dry-run|apply}' ;;
+  cleanup)
+    [[ $# = 2 ]] || fail 'Usage: bash rotate-key.sh cleanup {keys|restore|backup}'
+    case "$2" in
+      keys) target=$keys; warning='Save both keys in your secret manager first.' ;;
+      restore) target=$restore; warning='Do not remove a restore that a deployment uses.' ;;
+      backup) target=$backup; warning='Keep the backup until the rollback window closes.' ;;
+      *) fail 'Cleanup target must be keys, restore, or backup.' ;;
+    esac
+    [[ -d "$target" && ! -L "$target" ]] || fail 'Cleanup target must be an existing non-symlink directory.'
+    [[ -t 0 ]] || fail 'Cleanup requires an interactive terminal.'
+    printf '%s\n' "$warning" >&2
+    printf 'Remove %s? Type %s to confirm: ' "$(cd -- "$target" && pwd -P)" "$2" >&2
+    read -r confirmation
+    [[ "$confirmation" = "$2" ]] || fail 'Cleanup cancelled.'
+    rm -r -- "$target"
+    ;;
+  *) fail 'Usage: bash rotate-key.sh {backup|keys|dry-run|apply|cleanup}' ;;
 esac

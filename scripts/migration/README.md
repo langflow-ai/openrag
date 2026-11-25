@@ -43,3 +43,13 @@ bash rotate-key.sh apply
 ```
 
 `$MIGRATION_DIR/backup` stays untouched during rotation. `$MIGRATION_DIR/restore` is the copy that gets rotated. `$MIGRATION_DIR/keys/old` and `keys/new` contain the key values; protect them and save both in your secret manager before cutover. The script does not start services or switch deployment data or keys. If apply or verification fails, don't promote that copy; start with a fresh restore. Follow the runbook for cutover and rollback. The Kubernetes Operator does not support an in-place key change.
+
+## Clean up one directory at a time
+
+```bash
+bash rotate-key.sh cleanup keys     # After saving both keys securely
+bash rotate-key.sh cleanup restore  # Only when no deployment uses it
+bash rotate-key.sh cleanup backup   # Only after the rollback window closes
+```
+
+Each command shows the exact directory and asks you to type its name. Cleanup is never automatic.
