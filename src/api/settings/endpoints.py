@@ -20,6 +20,7 @@ from api.provider_validation import (
 )
 from api.settings.helpers import (
     _affected_embedding_models,
+    _cap_watsonx_onprem_onboarding_chunk_size,
     _create_openrag_docs_filter,
     _default_embedding_model,
     _default_llm_model,
@@ -115,8 +116,6 @@ from utils.telemetry import Category, MessageId, TelemetryClient
 from utils.version_utils import OPENRAG_VERSION
 
 logger = get_logger(__name__)
-
-WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE = 500
 
 
 def _provider_key(provider: str | None) -> str:
@@ -1328,19 +1327,11 @@ async def onboarding(
             logger.info(
                 f"Embedding provider selected during onboarding: {embedding_provider_selected}"
             )
-            if (
-                embedding_provider_selected.lower() == "watsonx_onprem"
-                and current_config.knowledge.chunk_size > WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
-            ):
-                current_config.knowledge.chunk_size = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
-                if current_config.knowledge.chunk_overlap >= WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE:
-                    current_config.knowledge.chunk_overlap = 200
-                chunk_size_adjusted_to = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
-                logger.info(
-                    "Reduced chunk size for watsonx.ai on-prem embedding compatibility",
-                    chunk_size=chunk_size_adjusted_to,
-                    chunk_overlap=current_config.knowledge.chunk_overlap,
-                )
+
+        if body.embedding_provider or body.embedding_model:
+            chunk_size_adjusted_to = _cap_watsonx_onprem_onboarding_chunk_size(
+                current_config.knowledge
+            )
 
         # Update provider-specific credentials
         if body.openai_api_key:

@@ -2,7 +2,8 @@
 
 Provider-fallback selection, embedding-model conflict detection (used to
 warn before removing a provider whose embeddings are still indexed), the
-OpenRAG-docs knowledge-filter creator, and a flows-service factory.
+OpenRAG-docs knowledge-filter creator, a flows-service factory, and the
+watsonx.ai on-prem onboarding chunk-size cap.
 
 Lifted verbatim from the original `src/api/settings.py` (lines 371–480 and
 1388–1455). No behavior change.
@@ -13,7 +14,7 @@ from typing import Any
 
 from fastapi.responses import JSONResponse
 
-from config.settings import clients, is_no_auth_mode
+from config.settings import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, clients, is_no_auth_mode
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -22,6 +23,8 @@ logger = get_logger(__name__)
 # Provider names in priority order. LLM supports anthropic; embeddings do not.
 _LLM_PROVIDER_NAMES = ("openai", "anthropic", "watsonx", "ollama")
 _EMBEDDING_PROVIDER_NAMES = ("openai", "watsonx", "ollama")
+
+WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE = 500
 
 
 def _has_other_configured_provider(config, excluding: str) -> bool:
@@ -307,3 +310,56 @@ def _get_flows_service():
     from services.flows_service import FlowsService
 
     return FlowsService()
+
+
+def _persisted_int(value: Any, default: int, *, minimum: int) -> int:
+    """A persisted chunk setting as an int, or `default` when it is missing or invalid.
+
+    Saved config is loaded without validation, so a hand-edited or older file can
+    hold `null`, a string, a negative number or `.inf` here.
+    """
+    if isinstance(value, bool):
+        return default
+    try:
+        number = int(value)
+    except (TypeError, ValueError, OverflowError):  # OverflowError: int(inf)
+        return default
+    return number if number >= minimum else default
+
+
+def _cap_watsonx_onprem_onboarding_chunk_size(knowledge) -> int | None:
+    """Cap the chunk size for watsonx.ai on-prem embeddings during onboarding.
+
+    Keys off the effective embedding provider on `knowledge`, so the cap also
+    applies when a request changes only the embedding model. Returns the chunk
+    size it was reduced to, or None when nothing changed.
+    """
+    if (knowledge.embedding_provider or "").strip().lower() != "watsonx_onprem":
+        return None
+
+    # A model-only request compares the persisted values, so make them usable first.
+    knowledge.chunk_size = _persisted_int(knowledge.chunk_size, DEFAULT_CHUNK_SIZE, minimum=1)
+    knowledge.chunk_overlap = _persisted_int(
+        knowledge.chunk_overlap, DEFAULT_CHUNK_OVERLAP, minimum=0
+    )
+    capped = knowledge.chunk_size > WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+    if capped:
+        knowledge.chunk_size = WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
+    if knowledge.chunk_overlap >= knowledge.chunk_size:
+        # The overlap must stay below the chunk size (the settings endpoint rejects
+        # anything else). Use the default when it fits, else a fifth of the chunk,
+        # the same ratio as the defaults.
+        knowledge.chunk_overlap = (
+            DEFAULT_CHUNK_OVERLAP
+            if DEFAULT_CHUNK_OVERLAP < knowledge.chunk_size
+            else knowledge.chunk_size // 5
+        )
+    if not capped:
+        return None
+
+    logger.info(
+        "Reduced chunk size for watsonx.ai on-prem embedding compatibility",
+        chunk_size=knowledge.chunk_size,
+        chunk_overlap=knowledge.chunk_overlap,
+    )
+    return WATSONX_ONPREM_ONBOARDING_CHUNK_SIZE
