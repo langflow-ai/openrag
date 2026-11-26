@@ -102,6 +102,7 @@ class TestSaveEnvFilePermissions:
         env_file = tmp_path / ".env"
         env_file.write_text(
             "DISABLE_LANGFLOW=true\n"
+            "COMPOSE_PROFILES=langflow\n"
             "LANGFLOW_DATA_PATH=/srv/langflow-data\n"
             "LANGFLOW_SECRET_KEY=keep-me\n"
             "LANGFLOW_CHAT_FLOW_ID=chat-flow\n"
@@ -115,6 +116,7 @@ class TestSaveEnvFilePermissions:
         assert "LANGFLOW_DATA_PATH=/srv/langflow-data" in content
         assert "LANGFLOW_SECRET_KEY=keep-me" in content
         assert "LANGFLOW_CHAT_FLOW_ID=chat-flow" in content
+        assert "COMPOSE_PROFILES=" not in content
 
     def test_preserves_unmanaged_multiline_quoted_value(self, env_manager, tmp_path):
         """Unmanaged python-dotenv–style multiline quoted values are preserved."""
@@ -259,6 +261,7 @@ class TestLangflowPasswordAndAutoLogin:
         assert "LANGFLOW_SUPERUSER_PASSWORD='LangflowPass123!'" in content
         assert "LANGFLOW_AUTO_LOGIN='True'" in content
         assert "LANGFLOW_SUPERUSER='langflow'" in content
+        assert "COMPOSE_PROFILES=langflow" in content
 
     def test_validate_config_requires_langflow_password(self, env_manager):
         env_manager.config.opensearch_password = "Pass123!"
@@ -420,6 +423,7 @@ class TestDisableLangflowSetting:
         assert "LANGFLOW_SECRET_KEY=" not in content
         assert "LANGFLOW_SUPERUSER_PASSWORD=" not in content
         assert "LANGFLOW_DATA_PATH=" not in content
+        assert "COMPOSE_PROFILES=" not in content
 
     def test_process_disable_langflow_overrides_a_persisted_tui_value(self, tmp_path, monkeypatch):
         from tui.managers.env_manager import EnvManager

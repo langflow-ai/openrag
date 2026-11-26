@@ -122,6 +122,10 @@ The following variables are required or recommended:
 
 8. Save your `.env` file.
 
+   The default deployment starts the `langflow` Compose profile. To run without
+   Langflow, set `DISABLE_LANGFLOW=true`, remove `COMPOSE_PROFILES=langflow`
+   from the `.env` file, and run `docker compose up -d` without `--profile langflow`.
+
 ## Deploy from a private registry {#private-registry}
 
 By default, OpenRAG pulls its container images from Docker Hub.
@@ -226,21 +230,21 @@ If the containers fail to start with an image pull error, see [Container image p
    * **CPU-only deployment (Default and recommended)**: If your host machine doesn't have NVIDIA GPU support, use the base `docker-compose.yml` file:
 
       ```bash title="Docker"
-      docker compose up -d
+      docker compose --profile langflow up -d
       ```
 
       ```bash title="Podman"
-      podman compose up -d
+      podman compose --profile langflow up -d
       ```
 
    * **GPU-accelerated deployment**: If your host machine has an NVIDIA GPU with CUDA support and compatible NVIDIA drivers, use the base `docker-compose.yml` file with the `docker-compose.gpu.yml` override:
 
       ```bash title="Docker"
-      docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+      docker compose --profile langflow -f docker-compose.yml -f docker-compose.gpu.yml up -d
       ```
 
       ```bash title="Podman"
-      podman compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+      podman compose --profile langflow -f docker-compose.yml -f docker-compose.gpu.yml up -d
       ```
 
    :::tip

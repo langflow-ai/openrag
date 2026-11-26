@@ -37,7 +37,6 @@ from api.settings.langflow_sync import (
     _update_langflow_model_values,
     _update_langflow_system_prompt,
     _update_mcp_server_urls,
-    sync_pending_langflow_settings,
 )
 from api.settings.models import (
     AgentConfig,
@@ -1208,6 +1207,33 @@ async def update_settings(
         ):
             working_config.langflow_sync_pending = True
 
+        reenabled_langflow = current_config.disable_langflow and not working_config.disable_langflow
+        if reenabled_langflow:
+            # Prepare Langflow against the staged configuration before saving it.
+            # Until the save below, requests still observe the native-only config,
+            # so a failed preparation cannot send traffic to missing flows.
+            try:
+                from services.flows_service import FlowsService
+                from services.startup_orchestrator import initialize_langflow_services
+
+                services = (
+                    request.app.state.services
+                    if request is not None and hasattr(request.app.state, "services")
+                    else {"flows_service": FlowsService()}
+                )
+                await initialize_langflow_services(
+                    services,
+                    config=working_config,
+                    session_manager=session_manager,
+                    strict=True,
+                )
+            except Exception as e:
+                logger.error("Failed to re-enable Langflow; keeping native mode active", error=str(e))
+                return JSONResponse(
+                    {"error": "Langflow could not be initialized. It remains disabled."},
+                    status_code=503,
+                )
+
         # Save the updated configuration
         if not config_manager.save_config_file(working_config):
             return JSONResponse({"error": "Failed to save configuration"}, status_code=500)
@@ -1221,18 +1247,11 @@ async def update_settings(
         # Refresh patched client immediately so subsequent requests pick up latest config.
         await clients.refresh_patched_client()
 
-        reenabled_langflow = current_config.disable_langflow and not working_config.disable_langflow
         if reenabled_langflow:
             if request is not None and hasattr(request.app.state, "services"):
                 from app.lifespan import ensure_langflow_maintenance_tasks
 
                 ensure_langflow_maintenance_tasks(request.app)
-        if reenabled_langflow and working_config.langflow_sync_pending:
-            task = asyncio.create_task(
-                sync_pending_langflow_settings(session_manager=session_manager)
-            )
-            _background_tasks.add(task)
-            task.add_done_callback(_background_tasks.discard)
 
         # Run expensive Langflow sync in the background to keep settings updates responsive.
         if should_validate or provider_updated:

@@ -567,13 +567,13 @@ async def _update_langflow_chunk_settings(config, flows_service):
         raise
 
 
-async def reapply_all_settings(session_manager=None) -> bool:
+async def reapply_all_settings(session_manager=None, config=None) -> bool:
     """
     Reapply all current configuration settings to Langflow flows and global variables.
     This is called when flows are detected to have been reset.
     """
     try:
-        config = get_openrag_config()
+        config = config or get_openrag_config()
         if settings.is_langflow_disabled(config):
             logger.info("Langflow disabled; skipping settings reapplication")
             return False

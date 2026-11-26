@@ -278,7 +278,7 @@ class EnvManager:
         if not self.env_file.exists():
             return []
 
-        managed_vars = set(self._env_attr_map().keys())
+        managed_vars = {*self._env_attr_map().keys(), "COMPOSE_PROFILES"}
         preserve_langflow_values = self.config.disable_langflow.strip().lower() in (
             "true",
             "1",
@@ -541,6 +541,7 @@ class EnvManager:
                 f.write("# Core settings\n")
                 f.write(f"DISABLE_LANGFLOW={self._quote_env_value(self.config.disable_langflow)}\n")
                 if not langflow_disabled:
+                    f.write("COMPOSE_PROFILES=langflow\n")
                     f.write(
                         f"LANGFLOW_SECRET_KEY={self._quote_env_value(self.config.langflow_secret_key)}\n"
                     )

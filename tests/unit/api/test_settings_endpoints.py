@@ -3,7 +3,6 @@ Unit tests for api.settings.endpoints
 Validates error handling in update_docling_preset endpoint.
 """
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -190,7 +189,7 @@ async def test_settings_changed_while_langflow_disabled_are_marked_for_sync(monk
 
 
 @pytest.mark.asyncio
-async def test_reenabling_langflow_starts_pending_sync(monkeypatch):
+async def test_reenabling_langflow_initializes_before_saving(monkeypatch):
     from api.settings.endpoints import update_settings
     from config.config_manager import OpenRAGConfig
 
@@ -202,15 +201,13 @@ async def test_reenabling_langflow_starts_pending_sync(monkeypatch):
         }
     )
     config.edited = True
-    sync_calls = []
     saved_configs = []
 
     async def noop(*_args, **_kwargs):
         return None
 
-    async def sync_pending(**_kwargs):
-        sync_calls.append(True)
-        return True
+    async def initialize(_services, *, config, **_kwargs):
+        config.langflow_sync_pending = False
 
     monkeypatch.setattr("api.settings.endpoints.get_openrag_config", lambda: config)
     monkeypatch.setattr("api.settings.endpoints.is_langflow_env_disabled", lambda: False)
@@ -220,18 +217,51 @@ async def test_reenabling_langflow_starts_pending_sync(monkeypatch):
     )
     monkeypatch.setattr("api.settings.endpoints.clients.refresh_patched_client", noop)
     monkeypatch.setattr("api.settings.endpoints.TelemetryClient.send_event", noop)
-    monkeypatch.setattr("api.settings.endpoints.sync_pending_langflow_settings", sync_pending)
+    monkeypatch.setattr(
+        "services.startup_orchestrator.initialize_langflow_services", initialize
+    )
 
     response = await update_settings(
         SettingsUpdateBody(disable_langflow=False),
         session_manager=object(),
         user=None,
     )
-    await asyncio.sleep(0)
-
     assert response.message == "Configuration updated successfully"
-    assert sync_calls == [True]
     assert saved_configs[0].knowledge.disable_ingest_with_langflow is False
+    assert saved_configs[0].langflow_sync_pending is False
+
+
+@pytest.mark.asyncio
+async def test_reenabling_langflow_keeps_native_mode_when_initialization_fails(monkeypatch):
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({"disable_langflow": True})
+    config.edited = True
+    saved_configs = []
+
+    async def initialize(*_args, **_kwargs):
+        raise RuntimeError("ingest flow is missing")
+
+    monkeypatch.setattr("api.settings.endpoints.get_openrag_config", lambda: config)
+    monkeypatch.setattr("api.settings.endpoints.is_langflow_env_disabled", lambda: False)
+    monkeypatch.setattr(
+        "api.settings.endpoints.config_manager.save_config_file",
+        lambda updated: saved_configs.append(updated) or True,
+    )
+    monkeypatch.setattr(
+        "services.startup_orchestrator.initialize_langflow_services", initialize
+    )
+
+    response = await update_settings(
+        SettingsUpdateBody(disable_langflow=False),
+        session_manager=object(),
+        user=None,
+    )
+
+    assert response.status_code == 503
+    assert saved_configs == []
+    assert config.disable_langflow is True
 
 
 @pytest.mark.asyncio

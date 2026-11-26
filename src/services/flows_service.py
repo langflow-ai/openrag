@@ -1059,6 +1059,24 @@ class FlowsService:
 
         return created_flow_types
 
+    async def verify_configured_flows_exist(self) -> None:
+        """Raise when any configured OpenRAG flow is still absent from Langflow."""
+        missing: list[str] = []
+        for flow_type, flow_id in (
+            ("nudges", NUDGES_FLOW_ID),
+            ("retrieval", LANGFLOW_CHAT_FLOW_ID),
+            ("ingest", LANGFLOW_INGEST_FLOW_ID),
+            ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
+        ):
+            if not flow_id:
+                continue
+            response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+            if response.status_code != 200:
+                missing.append(f"{flow_type} ({flow_id}, HTTP {response.status_code})")
+
+        if missing:
+            raise RuntimeError(f"Configured Langflow flows are unavailable: {', '.join(missing)}")
+
     async def enable_mcp_none_for_url_ingest_flow(self) -> bool:
         """Configure auth_type='none' for MCP on the URL ingest flow project."""
         flow_id = LANGFLOW_URL_INGEST_FLOW_ID
