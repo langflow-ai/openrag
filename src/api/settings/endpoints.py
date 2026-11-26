@@ -1228,7 +1228,9 @@ async def update_settings(
                     strict=True,
                 )
             except Exception as e:
-                logger.error("Failed to re-enable Langflow; keeping native mode active", error=str(e))
+                logger.error(
+                    "Failed to re-enable Langflow; keeping native mode active", error=str(e)
+                )
                 return JSONResponse(
                     {"error": "Langflow could not be initialized. It remains disabled."},
                     status_code=503,

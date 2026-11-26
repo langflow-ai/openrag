@@ -217,9 +217,7 @@ async def test_reenabling_langflow_initializes_before_saving(monkeypatch):
     )
     monkeypatch.setattr("api.settings.endpoints.clients.refresh_patched_client", noop)
     monkeypatch.setattr("api.settings.endpoints.TelemetryClient.send_event", noop)
-    monkeypatch.setattr(
-        "services.startup_orchestrator.initialize_langflow_services", initialize
-    )
+    monkeypatch.setattr("services.startup_orchestrator.initialize_langflow_services", initialize)
 
     response = await update_settings(
         SettingsUpdateBody(disable_langflow=False),
@@ -249,9 +247,7 @@ async def test_reenabling_langflow_keeps_native_mode_when_initialization_fails(m
         "api.settings.endpoints.config_manager.save_config_file",
         lambda updated: saved_configs.append(updated) or True,
     )
-    monkeypatch.setattr(
-        "services.startup_orchestrator.initialize_langflow_services", initialize
-    )
+    monkeypatch.setattr("services.startup_orchestrator.initialize_langflow_services", initialize)
 
     response = await update_settings(
         SettingsUpdateBody(disable_langflow=False),
