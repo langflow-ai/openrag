@@ -107,7 +107,9 @@ bash rotate-key.sh files check \
   --connections "$DATA/connections.json"
 ```
 
-Configure OpenRAG to use the replacement key before restarting it. Then smoke-test the deployment before reopening traffic.
+Keep the backend stopped. In IBM Cloud Secrets Manager, save the replacement key as a new secret if you haven't already. Keep the old secret for rollback. Set the backend environment variable `OPENRAG_ENCRYPTION_KEY` to the same replacement value for the next startup: update the backend's protected `.env` if it is file-managed, or point the deployment's secret reference to the new secret if it is secret-managed. Do not edit an Operator-managed Secret in place.
+
+Start the backend only after the migrated files and replacement key are both configured. Smoke-test chat and confirm the conversation is saved before reopening traffic.
 
 ## 6. Clean up migration artifacts and keep backups
 
