@@ -1,6 +1,6 @@
 # OpenRAG encryption key rotation
 
-Copy this folder to the migration host. No OpenRAG checkout is needed. This guide covers file migration for `openrag.db` and `connections.json` only. For other layouts, see the [production runbook](https://github.com/langflow-ai/openrag/blob/main/docs/docs/reference/rotate-encryption-key.mdx).
+Copy this folder to the migration host. No OpenRAG checkout is needed. This guide covers file migration for `openrag.db` and `connections.json` only. It is **not** the procedure for an OAuth-enabled deployment: the presence of Google Drive, OneDrive, or SharePoint token caches makes the wrapper stop before it writes anything. Use the [production runbook](https://github.com/langflow-ai/openrag/blob/main/docs/docs/reference/rotate-encryption-key.mdx) and its direct Python CLI on an isolated restored copy instead.
 
 ## 1. Requirements and setup
 
@@ -22,7 +22,9 @@ export MIGRATION_PYTHON="$PWD/.venv/bin/python"
 
 ## 2. Set the paths and enter both keys
 
-Use this mode only for a SQLite deployment where `openrag.db` and `connections.json` share a directory and are the only files that need rotation. It refuses `config.yaml`, discovered OAuth caches, and legacy state files; use the full restore workflow for those layouts. Keep writers stopped from backup through cutover, and checkpoint SQLite so no journal, WAL, or SHM files remain.
+Use this mode only for a SQLite deployment where `openrag.db` and `connections.json` share a directory and are the only files that need rotation. It refuses `config.yaml`, discovered OAuth caches, and legacy state files; use the full restore workflow for those layouts. This includes deployments with one or more Google Drive, OneDrive, or SharePoint connections, even when several users have their own connections in `connections.json`. Keep writers stopped from backup through cutover, and checkpoint SQLite so no journal, WAL, or SHM files remain.
+
+Before running `files backup`, inspect the directory. If the command reports `OAuth caches or legacy state files found; use the full restore migration`, stop: the originals are unchanged, and retrying the same command will not help. Do not delete cache files to make the wrapper run; they contain credentials encrypted with the old key.
 
 `prepare.sh` creates a private workspace and prompts for the current and replacement keys without echoing them. It does not generate a key, back up data, or overwrite existing key files. The replacement key must be Base64 for exactly 32 bytes.
 
