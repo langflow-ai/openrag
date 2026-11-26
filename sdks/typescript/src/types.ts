@@ -45,8 +45,17 @@ export interface SearchResult {
   mimetype?: string | null;
 }
 
+/** A non-fatal problem with a search, such as an unreachable embedding model. */
+export interface SearchWarning {
+  code: string;
+  message: string;
+  models?: string[];
+  semantic_search_available?: boolean | null;
+}
+
 export interface SearchResponse {
   results: SearchResult[];
+  warnings: SearchWarning[];
 }
 
 export interface SearchFilters {

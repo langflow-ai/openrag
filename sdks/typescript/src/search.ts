@@ -45,6 +45,7 @@ export class SearchClient {
     const data = await response.json();
     return {
       results: data.results || [],
+      warnings: data.warnings || [],
     };
   }
 }

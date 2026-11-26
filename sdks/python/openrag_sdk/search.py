@@ -2,9 +2,7 @@
 
 from typing import TYPE_CHECKING, Any, Literal
 
-import httpx
-
-from .models import SearchFilters, SearchResponse, SearchResult
+from .models import SearchFilters, SearchResponse, SearchResult, SearchWarning
 
 if TYPE_CHECKING:
     from .client import OpenRAGClient
@@ -70,5 +68,6 @@ class SearchClient:
 
         data = response.json()
         return SearchResponse(
-            results=[SearchResult(**r) for r in data.get("results", [])]
+            results=[SearchResult(**r) for r in data.get("results", [])],
+            warnings=[SearchWarning(**w) for w in data.get("warnings", [])],
         )

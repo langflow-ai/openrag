@@ -901,7 +901,7 @@ class SearchService:
                         }
                     }
                 )
-            keyword_clauses = [
+            keyword_clauses: list[dict[str, Any]] = [
                 {
                     "multi_match": {
                         "query": query,

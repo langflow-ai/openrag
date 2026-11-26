@@ -6,6 +6,7 @@ Unit tests for the diagnostic search modes in services/search_service.py.
 a caller can see which half finds or loses a document.
 """
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -221,6 +222,32 @@ async def test_v1_search_passes_the_mode_through():
     )
 
     assert [call["search_mode"] for call in received] == ["vector", "hybrid"]
+
+
+@pytest.mark.asyncio
+async def test_v1_search_returns_warnings_only_when_the_search_has_them():
+    warning = {
+        "code": "vector_search_unavailable",
+        "models": ["m"],
+        "semantic_search_available": False,
+        "message": "no embedding",
+    }
+    responses = [{"results": [], "warnings": [warning]}, {"results": []}]
+
+    async def _search(query, **kwargs):
+        return responses.pop(0)
+
+    bodies = []
+    for _ in range(2):
+        response = await v1_search.search_endpoint(
+            v1_search.SearchV1Body(query="q", search_mode="vector"),
+            search_service=SimpleNamespace(search=_search),
+            user=SimpleNamespace(user_id="u1", jwt_token=None),
+            knowledge_filter_service=None,
+        )
+        bodies.append(json.loads(response.body))
+
+    assert bodies == [{"results": [], "warnings": [warning]}, {"results": []}]
 
 
 def test_v1_search_rejects_an_unknown_mode():

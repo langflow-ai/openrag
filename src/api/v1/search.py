@@ -106,7 +106,11 @@ async def search_endpoint(
             for item in result.get("results", [])
         ]
 
-        return JSONResponse({"results": results})
+        payload: dict[str, Any] = {"results": results}
+        # Without the warning, a failed embedding looks like a search with no matches.
+        if result.get("warnings"):
+            payload["warnings"] = result["warnings"]
+        return JSONResponse(payload)
 
     except OpenSearchDiskSpaceError as e:
         logger.error("Search blocked by disk space constraint", error=str(e), user_id=user.user_id)

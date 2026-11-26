@@ -62,10 +62,20 @@ class SearchResult(BaseModel):
     mimetype: str | None = None
 
 
+class SearchWarning(BaseModel):
+    """A non-fatal problem with a search, such as an unreachable embedding model."""
+
+    code: str
+    message: str
+    models: list[str] = Field(default_factory=list)
+    semantic_search_available: bool | None = None
+
+
 class SearchResponse(BaseModel):
     """Response from a search request."""
 
     results: list[SearchResult]
+    warnings: list[SearchWarning] = Field(default_factory=list)
 
 
 # Document models

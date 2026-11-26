@@ -62,6 +62,7 @@ export {
   // Search types
   SearchResponse,
   SearchResult,
+  SearchWarning,
   // Document types
   IngestResponse,
   DeleteDocumentResponse,
