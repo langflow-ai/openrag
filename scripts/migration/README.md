@@ -10,7 +10,7 @@ Have the current `OPENRAG_ENCRYPTION_KEY`, access to IBM Cloud Secrets Manager, 
 openssl rand -base64 32
 ```
 
-Save the exact output as a **new** secret in IBM Cloud Secrets Manager before cutover. Keep the current secret for rollback; do not overwrite it. Paste the replacement value into `prepare.sh` when prompted in step 2. The migration scripts do not generate a key or change any deployment secrets.
+Store the exact output in IBM Cloud Secrets Manager before cutover. Keep the old key recoverable for rollback. Paste the replacement value into `prepare.sh` when prompted in step 2. The migration scripts do not generate a key or change any deployment secrets.
 
 Use Python 3.13 (the OpenRAG-supported version). From the copied folder, create an isolated environment before stopping writers:
 
@@ -107,7 +107,7 @@ bash rotate-key.sh files check \
   --connections "$DATA/connections.json"
 ```
 
-Keep the backend stopped. In IBM Cloud Secrets Manager, save the replacement key as a new secret if you haven't already. Keep the old secret for rollback. Set the backend environment variable `OPENRAG_ENCRYPTION_KEY` to the same replacement value for the next startup: update the backend's protected `.env` if it is file-managed, or point the deployment's secret reference to the new secret if it is secret-managed. Do not edit an Operator-managed Secret in place.
+Keep the backend stopped. If you haven't already, store the replacement key in IBM Cloud Secrets Manager and keep the old key recoverable for rollback. Set the backend environment variable `OPENRAG_ENCRYPTION_KEY` to the same replacement value for the next startup: update the backend's protected `.env` if it is file-managed, or configure the deployment to load the replacement value if it is secret-managed. Do not edit an Operator-managed Secret in place.
 
 Start the backend only after the migrated files and replacement key are both configured. Smoke-test chat and confirm the conversation is saved before reopening traffic.
 
