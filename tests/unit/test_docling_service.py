@@ -667,7 +667,8 @@ async def test_build_vlm_options_openai_custom_base_url(docling_service):
     """OpenAI VLM requests preserve a configured gateway path prefix."""
     mock_config = _vlm_mock_config("openai")
     mock_config.providers.credential_values.return_value = {
-        "api_base": "https://gateway.example/openai"
+        "api_base": "https://gateway.example/openai",
+        "api_key": "custom-gateway-key",
     }
     with patch("services.docling_service.get_openrag_config", return_value=mock_config):
         options = await docling_service._build_docling_options_async()
@@ -675,6 +676,10 @@ async def test_build_vlm_options_openai_custom_base_url(docling_service):
     assert (
         options["picture_description_api"]["url"]
         == "https://gateway.example/openai/chat/completions"
+    )
+    assert (
+        options["picture_description_api"]["headers"]["Authorization"]
+        == "Bearer custom-gateway-key"
     )
     mock_config.providers.credential_values.assert_called_once_with("openai")
 
