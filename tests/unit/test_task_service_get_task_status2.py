@@ -16,6 +16,7 @@ import pytest
 from models.tasks import DoclingPhaseStatus, FileTask, IngestionPhase, TaskStatus, UploadTask
 from services.docling_service import PASSWORD_PROTECTED_PDF_DETAIL
 from services.task_service import TaskService, _opensearch_failure_metadata
+from utils.embedding_fields import EmbeddingDimensionMismatchError
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -440,6 +441,23 @@ class TestInferFailureMetadata:
         assert meta["component"] == "openrag"
         assert meta["failure_phase"] == "file_validation"
         assert meta["actionable_by"] == "USER_ACTIONABLE"
+
+    def test_embedding_dimension_mismatch_is_not_a_duplicate_file(self, task_service):
+        """A model whose dimension changed must not be reported as a duplicate upload."""
+        error = EmbeddingDimensionMismatchError("chunk_embedding_nomic_embed_text", 768, 1024)
+        ft = _make_file_task(
+            phase=IngestionPhase.LANGFLOW,
+            docling_status=DoclingPhaseStatus.SUCCESS,
+            error=f"Failed to index document: {error}",
+        )
+        meta = task_service._infer_failure_metadata(ft)
+        assert meta == {
+            "component": "opensearch",
+            "failure_phase": "indexing",
+            "user_facing_message": str(error),
+            "actionable_by": "USER_ACTIONABLE",
+        }
+        assert meta["user_facing_message"] != "A file with this name already exists."
 
     def test_unknown_failure_returns_none(self, task_service):
         ft = _make_file_task(
