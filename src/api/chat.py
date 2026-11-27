@@ -83,28 +83,23 @@ async def _apply_search_scope(body: ChatBody, user: User, knowledge_filter_servi
     """Set retrieval filters, limit and threshold for this request.
 
     A `filter_id` resolves to the saved filter, which replaces any inline values:
-    the browser may hold a copy taken before the filter was edited.
+    the browser may hold a copy taken before the filter was edited. If that
+    filter cannot be loaded, the request is rejected instead of searching with
+    the inline copy.
     """
     filters = body.filters
     limit = body.limit
     score_threshold = body.scoreThreshold
     if body.filter_id and knowledge_filter_service is not None:
-        try:
-            resolved = await resolve_filter_id(
-                body.filter_id,
-                knowledge_filter_service,
-                user_id=user.user_id,
-                jwt_token=user.jwt_token,
-            )
-        except HTTPException:
-            logger.warning(
-                "[CHAT] Knowledge filter not found; using request filters",
-                filter_id=body.filter_id,
-            )
-        else:
-            filters = resolved["filters"]
-            limit = resolved["limit"]
-            score_threshold = resolved["score_threshold"]
+        resolved = await resolve_filter_id(
+            body.filter_id,
+            knowledge_filter_service,
+            user_id=user.user_id,
+            jwt_token=user.jwt_token,
+        )
+        filters = resolved["filters"]
+        limit = resolved["limit"]
+        score_threshold = resolved["score_threshold"]
 
     from auth_context import set_score_threshold, set_search_filters, set_search_limit
 

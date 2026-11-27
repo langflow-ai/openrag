@@ -166,13 +166,28 @@ function ChatPage() {
   const setConversationFilterRef = useRef(setConversationFilter);
   setConversationFilterRef.current = setConversationFilter;
   const conversationFilterId = conversationFilter?.id;
+  const sendGenerationRef = useRef(0);
+  const seenConversationIdRef = useRef(currentConversationId);
+  if (seenConversationIdRef.current !== currentConversationId) {
+    seenConversationIdRef.current = currentConversationId;
+    sendGenerationRef.current += 1;
+  }
   useEffect(() => {
     if (!conversationFilterId) return;
     let cancelled = false;
+    let requestId = 0;
     const refresh = () => {
+      const refreshId = ++requestId;
       void getFilterById(conversationFilterId).then((fresh) => {
         const current = conversationFilterRef.current;
-        if (cancelled || !fresh || current?.id !== fresh.id) return;
+        if (
+          cancelled ||
+          refreshId !== requestId ||
+          !fresh ||
+          current?.id !== fresh.id
+        ) {
+          return;
+        }
         if (
           fresh.query_data !== current.query_data ||
           fresh.name !== current.name
@@ -413,6 +428,7 @@ function ChatPage() {
   // Explicitly handle external new conversation trigger
   useEffect(() => {
     const handleNewConversation = () => {
+      sendGenerationRef.current += 1;
       // Abort any in-flight streaming so it doesn't bleed into new chat
       abortStream();
       // Reset chat UI even if context state was already 'new'
@@ -728,9 +744,10 @@ function ChatPage() {
     },
   );
 
-  const resolveSendScope = async () => {
+  const resolveSendScope = async (generation: number) => {
     const current = conversationFilterRef.current;
     const filter = await latestSavedFilter(current);
+    if (generation !== sendGenerationRef.current) return null;
     if (
       filter &&
       current &&
@@ -763,7 +780,7 @@ function ChatPage() {
   const handleSSEStream = async (
     userMessage: Message,
     previousResponseId: string | undefined,
-    scope: Awaited<ReturnType<typeof resolveSendScope>>,
+    scope: NonNullable<Awaited<ReturnType<typeof resolveSendScope>>>,
   ) => {
     // OpenRAG sidebar thread vs Langflow session are separate:
     // - conversationId keeps the same list entry after errors
@@ -817,7 +834,12 @@ function ChatPage() {
       duration: 1000,
     });
 
-    const scope = await resolveSendScope();
+    const generation = sendGenerationRef.current;
+    const scope = await resolveSendScope(generation);
+    if (!scope || generation !== sendGenerationRef.current) {
+      setLoading(false);
+      return;
+    }
 
     if (asyncMode) {
       await handleSSEStream(userMessage, previousResponseId, scope);

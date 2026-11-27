@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 
 from api import chat as chat_api
 from auth_context import (
@@ -137,29 +138,27 @@ async def test_unscoped_saved_filter_sets_no_search_filters(user):
 
 
 @pytest.mark.asyncio
-async def test_missing_filter_falls_back_to_request_filters(user):
-    captured, capture = _captured_scope()
-    chat_service = SimpleNamespace(chat=AsyncMock(side_effect=capture))
+async def test_missing_filter_is_rejected(user):
+    chat_service = SimpleNamespace(chat=AsyncMock())
 
-    await chat_api.chat_endpoint(
-        chat_api.ChatBody(
-            prompt="hi",
-            filter_id="gone",
-            filters={"data_sources": ["aurora.txt"]},
-            limit=3,
-            scoreThreshold=0.2,
-        ),
-        chat_service,
-        None,
-        user,
-        knowledge_filter_service=_missing_filter_service(),
-    )
+    with pytest.raises(HTTPException) as exc:
+        await chat_api.chat_endpoint(
+            chat_api.ChatBody(
+                prompt="hi",
+                filter_id="gone",
+                filters={"data_sources": ["aurora.txt"]},
+                limit=3,
+                scoreThreshold=0.2,
+            ),
+            chat_service,
+            None,
+            user,
+            knowledge_filter_service=_missing_filter_service(),
+        )
 
-    assert captured == {
-        "filters": {"data_sources": ["aurora.txt"]},
-        "limit": 3,
-        "score_threshold": 0.2,
-    }
+    assert exc.value.status_code == 404
+    chat_service.chat.assert_not_awaited()
+    assert get_search_filters() is None
 
 
 @pytest.mark.asyncio

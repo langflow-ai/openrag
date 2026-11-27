@@ -15,6 +15,14 @@ def test_no_filters_returns_empty():
     assert build_filter_clauses({}) == []
 
 
+def test_id_filters_use_indexed_fields():
+    clauses = build_filter_clauses({"document_ids": ["d1"], "web_source_ids": ["w1", "w2"]})
+    assert clauses == [
+        {"term": {"document_id": "d1"}},
+        {"terms": {"web_source_id": ["w1", "w2"]}},
+    ]
+
+
 def test_single_and_multiple_values():
     clauses = build_filter_clauses({"document_types": ["application/pdf"], "owners": ["a", "b"]})
     assert clauses == [

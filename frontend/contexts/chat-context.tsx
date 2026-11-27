@@ -119,6 +119,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
   // the callback every time conversationData or placeholderConversation changes.
   const conversationDataRef = useRef<ConversationData | null>(null);
   conversationDataRef.current = conversationData;
+  const loadTokenRef = useRef(0);
   const placeholderConversationRef = useRef<ConversationData | null>(null);
   placeholderConversationRef.current = placeholderConversation;
   const [conversationLoaded, setConversationLoaded] = useState(false);
@@ -183,6 +184,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
 
   const loadConversation = useCallback(
     async (conversation: ConversationData) => {
+      const loadToken = ++loadTokenRef.current;
       setCurrentConversationId(conversation.response_id);
       setEndpoint(conversation.endpoint);
       // Store the full conversation data for the chat page to use
@@ -204,7 +206,9 @@ export function ChatProvider({ children }: ChatProviderProps) {
           );
           try {
             const filter = await getFilterById(savedFilterId);
-            // A filter picked while this request was in flight wins.
+            // A newer load, or a filter picked while this request was in
+            // flight, wins over this result.
+            if (loadToken !== loadTokenRef.current) return;
             if (filter && localStorage.getItem(filterKey) === savedFilterId) {
               setConversationFilterState((prev) => {
                 if (
@@ -225,6 +229,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
             }
           } catch (error) {
             console.error("[CONVERSATION] Failed to load filter:", error);
+            if (loadToken !== loadTokenRef.current) return;
             if (isDifferentConversation) {
               localStorage.removeItem(filterKey);
               setConversationFilterState(null);
@@ -234,6 +239,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
           setConversationFilterState(null);
         }
       }
+
+      if (loadToken !== loadTokenRef.current) return;
 
       // Clear placeholder when loading a real conversation
       setPlaceholderConversation(null);

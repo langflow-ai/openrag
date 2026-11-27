@@ -650,10 +650,7 @@ export function ChatInput({
                   ))}
                   {tableOnlyFilters.length > 0 && (
                     <TooltipProvider>
-                      <div
-                        role="separator"
-                        className="-mx-2 my-1 border-t border-border"
-                      />
+                      <hr className="-mx-2 my-1 border-border" />
                       <div className="px-2 pt-1 pb-1 text-sm font-semibold text-foreground">
                         Knowledge table only
                       </div>

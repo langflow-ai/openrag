@@ -20,6 +20,20 @@ export type ChatScopePatch =
   | { data_sources: string[] }
   | { document_types: string[] };
 
+function filenameSuggestions(
+  sourceOptions: ChatScopeOption[],
+  needle: string,
+): ChatScopeOption[] {
+  if (!needle) return [];
+  const matched: ChatScopeOption[] = [];
+  for (const option of sourceOptions) {
+    if (option.value.toLowerCase().includes(needle)) {
+      matched.push({ value: option.value, label: option.value });
+    }
+  }
+  return matched;
+}
+
 interface ChatScopeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -56,15 +70,7 @@ export function ChatScopeDialog({
 
   const options: ChatScopeOption[] = suggestsTypes
     ? typeSuggestions
-    : needle
-      ? sourceOptions
-          .filter(
-            (option) =>
-              option.label.toLowerCase().includes(needle) ||
-              option.value.toLowerCase().includes(needle),
-          )
-          .map((option) => ({ value: option.value, label: option.value }))
-      : [];
+    : filenameSuggestions(sourceOptions, needle);
 
   const [deselected, setDeselected] = useState<Set<string>>(new Set());
   const [prevOptionsKey, setPrevOptionsKey] = useState("");

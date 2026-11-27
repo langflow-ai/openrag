@@ -529,6 +529,16 @@ describe("KnowledgeFilterPanel chat scope", () => {
     expect(data.filters.document_types).toEqual(["*"]);
   });
 
+  it("does not treat a facet count as part of the filename", async () => {
+    await renderScope("1", ["labs.pdf"]);
+    await clickUpdate();
+
+    expect(await screen.findByText(/no files match "1"/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: "labs.pdf" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("suggests the document type when the query is a file extension", async () => {
     await renderScope(".txt", [], [{ key: "text/plain", label: "Text" }]);
     await waitFor(() =>
