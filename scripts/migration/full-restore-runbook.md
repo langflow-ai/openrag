@@ -165,6 +165,30 @@ echo "data dir=$DATA  config dir=$CFG  tenant=$TENANT"
 
 Do not copy a key from the Operator's key secret, if there is one. It can differ from the key the pod actually uses.
 
+
+## 2.1 Adding the Newly Generated Key to IBM Cloud Secrets Manager
+
+Before proceeding with the key rotation, ensure that you have a backup of the existing encryption key. This is required in case a rollback is needed.
+
+1. Use the replacement key generated in Step 2 of the migration procedure.
+
+2. Navigate to **IBM Cloud Secrets Manager** and search for the relevant **Instance ID**.
+
+3. Locate the secret named `<uuid>--openrag-encryption-key` in the search results.
+
+4. Click the secret to open its details in the side panel.
+
+5. Click **Actions** in the top-right corner of the side panel to open the menu.
+
+6. Select **Rotate** from the menu.
+
+7. In the **Secret value** section, select **Enter value** and paste the newly generated key into the input field.
+
+8. Click the blue **Rotate** button to complete the rotation.
+
+The replacement encryption key is now stored in IBM Cloud Secrets Manager.
+
+
 ## 3. Stop the backend
 
 ```bash
