@@ -9,6 +9,7 @@ import httpcore
 import httpx
 import pytest
 from pydantic_ai import Agent
+from pydantic_ai.exceptions import ModelConnectionError, ModelHTTPError
 from pydantic_ai.messages import (
     FunctionToolResultEvent,
     PartDeltaEvent,
@@ -151,10 +152,18 @@ def test_native_stream_adapter_handles_initial_text_part():
     assert events[0]["delta"] == {"content": "Hello"}
 
 
-def test_native_gateway_uses_loopback_for_the_langflow_docker_hostname(monkeypatch):
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://openrag-backend:8000/v1",
+        "http://host.docker.internal:8000/v1",
+        "http://host.containers.internal:8000/v1",
+    ],
+)
+def test_native_gateway_uses_loopback_for_container_backend_hostnames(monkeypatch, base_url):
     monkeypatch.setattr(
         "services.native_chat_agent.get_langflow_llm_base_url",
-        lambda: "http://openrag-backend:8000/v1",
+        lambda: base_url,
     )
     monkeypatch.setattr("services.native_chat_agent.OPENRAG_BACKEND_ROUTER_ENABLE", False)
     monkeypatch.setattr("services.native_chat_agent.OPENRAG_BACKEND_PORT", 8000)
@@ -514,6 +523,57 @@ async def test_native_stream_returns_a_browser_readable_error_when_setup_fails(m
             "error": {"message": "The chat request could not be completed. Please try again."},
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_native_stream_surfaces_the_gateway_error_body(monkeypatch):
+    agent = NativeChatAgent()
+    monkeypatch.setattr(agent, "_start", AsyncMock(return_value=("chat-1", [])))
+    monkeypatch.setattr(agent._history_service, "append", AsyncMock())
+
+    class FailingAgent:
+        async def run(self, *_args, **_kwargs):
+            raise ModelHTTPError(
+                502,
+                "qwen2.5-0.5b-instruct",
+                {"error": {"message": "Could not reach the rhoai model server."}},
+            )
+
+    monkeypatch.setattr(agent, "_agent", lambda _user_id: (FailingAgent(), "test-model"))
+
+    chunks = [
+        json.loads(chunk)
+        async for chunk in agent.stream(
+            prompt="hello", user_id="user", previous_response_id=None, filter_id=None
+        )
+    ]
+
+    assert chunks[-1]["error"]["message"] == "Could not reach the rhoai model server."
+
+
+@pytest.mark.asyncio
+async def test_native_stream_reports_an_unreachable_gateway(monkeypatch):
+    agent = NativeChatAgent()
+    monkeypatch.setattr(agent, "_start", AsyncMock(return_value=("chat-1", [])))
+    monkeypatch.setattr(agent._history_service, "append", AsyncMock())
+
+    class FailingAgent:
+        async def run(self, *_args, **_kwargs):
+            raise ModelConnectionError("qwen", "connection failed")
+
+    monkeypatch.setattr(agent, "_agent", lambda _user_id: (FailingAgent(), "test-model"))
+
+    chunks = [
+        json.loads(chunk)
+        async for chunk in agent.stream(
+            prompt="hello", user_id="user", previous_response_id=None, filter_id=None
+        )
+    ]
+
+    assert (
+        chunks[-1]["error"]["message"]
+        == "The language model gateway could not be reached. Please try again."
+    )
 
 
 @pytest.mark.asyncio

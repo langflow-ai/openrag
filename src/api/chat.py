@@ -5,10 +5,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from api.files import validate_date_filter_bounds
+from api.v1._filter_resolution import resolve_filter_id
 from config.settings import DISABLE_CHAT_WITH_LANGFLOW
 from config.storage_mode import db_writes_enabled
 from dependencies import (
     get_chat_service,
+    get_knowledge_filter_service,
     get_rbac_service,
     get_session_manager,
     has_effective_permission,
@@ -77,6 +79,42 @@ class ChatBody(BaseModel):
     filter_id: str | None = None
 
 
+async def _apply_search_scope(body: ChatBody, user: User, knowledge_filter_service) -> None:
+    """Set retrieval filters, limit and threshold for this request.
+
+    A `filter_id` resolves to the saved filter, which replaces any inline values:
+    the browser may hold a copy taken before the filter was edited. If that
+    filter cannot be loaded, the request is rejected instead of searching with
+    the inline copy.
+    """
+    filters = body.filters
+    limit = body.limit
+    score_threshold = body.scoreThreshold
+    if body.filter_id and knowledge_filter_service is not None:
+        resolved = await resolve_filter_id(
+            body.filter_id,
+            knowledge_filter_service,
+            user_id=user.user_id,
+            jwt_token=user.jwt_token,
+        )
+        filters = resolved["filters"]
+        limit = resolved["limit"]
+        score_threshold = resolved["score_threshold"]
+
+    from auth_context import set_score_threshold, set_search_filters, set_search_limit
+
+    if filters:
+        validate_date_filter_bounds(filters)
+        set_search_filters(filters)
+    set_search_limit(limit)
+    set_score_threshold(score_threshold)
+    logger.info(
+        "[CHAT] Search scope",
+        filter_id=body.filter_id,
+        data_sources=(filters or {}).get("data_sources") if isinstance(filters, dict) else None,
+    )
+
+
 class BulkDeleteBody(BaseModel):
     session_ids: list[str]
 
@@ -88,6 +126,7 @@ async def chat_endpoint(
     user: User = Depends(require_permission("chat:use")),
     request: Request = None,
     rbac=Depends(get_rbac_service),
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
 ):
     """Handle chat requests"""
     if response := _native_chat_storage_error():
@@ -101,16 +140,7 @@ async def chat_endpoint(
 
     jwt_token = user.jwt_token
 
-    if body.filters:
-        from auth_context import set_search_filters
-
-        validate_date_filter_bounds(body.filters)
-        set_search_filters(body.filters)
-
-    from auth_context import set_score_threshold, set_search_limit
-
-    set_search_limit(body.limit)
-    set_score_threshold(body.scoreThreshold)
+    await _apply_search_scope(body, user, knowledge_filter_service)
 
     if body.stream:
         return StreamingResponse(
@@ -155,6 +185,7 @@ async def langflow_endpoint(
     user: User = Depends(require_permission("chat:use")),
     request: Request = None,
     rbac=Depends(get_rbac_service),
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
 ):
     """Handle Langflow chat requests"""
     if DISABLE_CHAT_WITH_LANGFLOW and (response := _native_chat_storage_error()):
@@ -169,16 +200,7 @@ async def langflow_endpoint(
 
     jwt_token = user.jwt_token
 
-    if body.filters:
-        from auth_context import set_search_filters
-
-        validate_date_filter_bounds(body.filters)
-        set_search_filters(body.filters)
-
-    from auth_context import set_score_threshold, set_search_limit
-
-    set_search_limit(body.limit)
-    set_score_threshold(body.scoreThreshold)
+    await _apply_search_scope(body, user, knowledge_filter_service)
 
     try:
         if body.stream:

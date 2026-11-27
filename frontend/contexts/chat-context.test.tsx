@@ -248,3 +248,130 @@ describe("ChatProvider — startNewConversation", () => {
     );
   });
 });
+
+describe("ChatProvider — loadConversation filter refresh", () => {
+  const conversation = {
+    messages: [],
+    endpoint: "chat" as const,
+    response_id: "conv-1",
+    title: "Old chat",
+  };
+
+  const filter = {
+    id: "f1",
+    name: "stale-test",
+    description: "",
+    query_data: JSON.stringify({ filters: { data_sources: ["borealis.txt"] } }),
+    owner: "me",
+    created_at: "",
+    updated_at: "1",
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("reloads the saved filter when the same chat is opened again", async () => {
+    const { getFilterById } = await import(
+      "@/app/api/queries/useGetFilterByIdQuery"
+    );
+    const fresh = {
+      ...filter,
+      query_data: JSON.stringify({ filters: { data_sources: ["aurora.txt"] } }),
+      updated_at: "2",
+    };
+    const mockGetFilter = vi.mocked(getFilterById);
+    mockGetFilter.mockReset();
+    mockGetFilter.mockResolvedValueOnce(filter).mockResolvedValueOnce(fresh);
+    localStorage.setItem("conversation_filter_conv-1", "f1");
+
+    const { result } = renderChatHook();
+
+    await act(async () => {
+      await result.current.loadConversation(conversation);
+    });
+    expect(result.current.conversationFilter?.query_data).toContain(
+      "borealis.txt",
+    );
+
+    await act(async () => {
+      await result.current.loadConversation(conversation);
+    });
+
+    expect(getFilterById).toHaveBeenCalledTimes(2);
+    expect(result.current.conversationFilter?.query_data).toContain(
+      "aurora.txt",
+    );
+  });
+
+  it("keeps a filter picked while an older lookup is still in flight", async () => {
+    const { getFilterById } = await import(
+      "@/app/api/queries/useGetFilterByIdQuery"
+    );
+    let release: (value: typeof filter | null) => void = () => {};
+    const mockGetFilter = vi.mocked(getFilterById);
+    mockGetFilter.mockReset();
+    mockGetFilter.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    localStorage.setItem("conversation_filter_conv-1", "f1");
+
+    const { result } = renderChatHook();
+    let pending: Promise<void> = Promise.resolve();
+    act(() => {
+      pending = result.current.loadConversation(conversation);
+    });
+
+    await waitFor(() => expect(getFilterById).toHaveBeenCalledWith("f1"));
+
+    const newer = { ...filter, id: "f2", name: "newer" };
+    act(() => {
+      result.current.setConversationFilter(newer, "conv-1");
+    });
+
+    await act(async () => {
+      release(filter);
+      await pending;
+    });
+
+    expect(result.current.conversationFilter?.id).toBe("f2");
+  });
+
+  it("drops a filter reload that finishes after a new chat starts", async () => {
+    const { getFilterById } = await import(
+      "@/app/api/queries/useGetFilterByIdQuery"
+    );
+    let release: (value: typeof filter | null) => void = () => {};
+    const mockGetFilter = vi.mocked(getFilterById);
+    mockGetFilter.mockReset();
+    mockGetFilter.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    localStorage.setItem("conversation_filter_conv-1", "f1");
+
+    const { result } = renderChatHook();
+    let pending: Promise<void> = Promise.resolve();
+    act(() => {
+      pending = result.current.loadConversation(conversation);
+    });
+    await waitFor(() => expect(getFilterById).toHaveBeenCalledWith("f1"));
+
+    await act(async () => {
+      result.current.startNewConversation({ showPlaceholder: false });
+    });
+
+    await act(async () => {
+      release(filter);
+      await pending;
+    });
+
+    expect(result.current.conversationFilter).toBeNull();
+    expect(result.current.currentConversationId).toBeNull();
+  });
+});

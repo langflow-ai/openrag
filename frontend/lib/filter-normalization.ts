@@ -85,3 +85,39 @@ export function buildSearchPayloadFilters(
 
   return Object.keys(payloadFilters).length > 0 ? payloadFilters : undefined;
 }
+
+/**
+ * Whether a filter narrows chat retrieval. Chat only applies sources, types,
+ * owners, connectors and dates; the saved search query affects the Knowledge
+ * table alone.
+ */
+export function filterRestrictsChat(filters?: FilterInput): boolean {
+  return buildSearchPayloadFilters(filters) !== undefined;
+}
+
+/** `filterRestrictsChat` for a saved filter's raw `query_data` string. */
+export function queryDataRestrictsChat(queryData?: string | null): boolean {
+  if (!queryData) return false;
+  try {
+    const parsed = JSON.parse(queryData) as { filters?: FilterInput };
+    return filterRestrictsChat(parsed?.filters);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Mimetypes named by a query that is a bare file extension (`.txt`, `*.pdf`,
+ * `PDF`). Returns an empty list for any other query.
+ */
+export function extensionMimetypes(
+  query: string,
+  fileTypes: Record<string, string[]>,
+): string[] {
+  const match = query.trim().match(/^\*?\.?([a-z0-9]+)$/i);
+  if (!match) return [];
+  const extension = `.${match[1].toLowerCase()}`;
+  return Object.entries(fileTypes)
+    .filter(([, extensions]) => extensions.includes(extension))
+    .map(([mimetype]) => mimetype);
+}

@@ -415,3 +415,186 @@ describe("KnowledgeFilterPanel keeps unsaved editor dates", () => {
     await draftSurvives();
   });
 });
+
+describe("KnowledgeFilterPanel chat scope", () => {
+  const ALL = {
+    data_sources: ["*"],
+    document_types: ["*"],
+    owners: ["*"],
+    connector_types: ["*"],
+  };
+
+  function unscoped(query: string) {
+    return {
+      ...saved(false),
+      name: "Labs",
+      query_data: JSON.stringify({
+        query,
+        filters: ALL,
+        limit: 10,
+        scoreThreshold: 0,
+        color: "zinc",
+        icon: "filter",
+      }),
+    };
+  }
+
+  function ScopeHarness({ query }: { query: string }) {
+    const { setSelectedFilter } = useKnowledgeFilter();
+    // biome-ignore lint/correctness/useExhaustiveDependencies: select once on mount
+    useEffect(() => {
+      setSelectedFilter(unscoped(query));
+    }, []);
+    return <KnowledgeFilterPanel />;
+  }
+
+  let searchBodies: Array<Record<string, unknown>>;
+
+  async function renderScope(
+    query: string,
+    matches: string[] = [],
+    typeBuckets: Array<{ key: string; label?: string }> = [],
+  ) {
+    putBody = undefined;
+    searchBodies = [];
+    renderWithProviders(<ScopeHarness query={query} />, {
+      providers: ["auth", "knowledgeFilter"],
+      auth,
+      handlers: [
+        http.post("/api/search", async ({ request }) => {
+          const body = (await request.json()) as Record<string, unknown>;
+          searchBodies.push(body);
+          return HttpResponse.json({
+            aggregations: {
+              data_sources: {
+                buckets: matches.map((filename) => ({
+                  key: filename,
+                  doc_count: 1,
+                })),
+              },
+              document_types: {
+                buckets: typeBuckets.map((b) => ({ ...b, doc_count: 1 })),
+              },
+            },
+          });
+        }),
+        http.put("/api/knowledge-filter/f1", async ({ request }) => {
+          putBody = (await request.json()) as { queryData?: string };
+          return HttpResponse.json({ success: true, filter: unscoped(query) });
+        }),
+      ],
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /update filter/i }),
+      ).toBeEnabled(),
+    );
+  }
+
+  const clickUpdate = async () =>
+    click(screen.getByRole("button", { name: /update filter/i }));
+
+  it("says the filter is not applied in chat while nothing is selected", async () => {
+    await renderScope("labs");
+    expect(screen.getByText(/not applied in chat/i)).toBeInTheDocument();
+  });
+
+  it("offers filenames from the sources list and saves the ticked ones", async () => {
+    await renderScope("labs", ["labs.pdf", "labs-notes.txt", "other.md"]);
+    await clickUpdate();
+
+    expect(
+      await screen.findByRole("heading", {
+        name: /this filter won't apply in chat/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/2 files match "labs"/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: "other.md" }),
+    ).not.toBeInTheDocument();
+    expect(putBody).toBeUndefined();
+    expect(searchBodies.some((b) => b.resultMode === "knowledge_sources")).toBe(
+      false,
+    );
+
+    await click(screen.getByRole("checkbox", { name: "labs-notes.txt" }));
+    await click(screen.getByRole("button", { name: /apply and save/i }));
+
+    await waitFor(() => expect(putBody).toBeDefined());
+    const data = savedQueryData();
+    expect(data.query).toBe("labs");
+    expect(data.filters.data_sources).toEqual(["labs.pdf"]);
+    expect(data.filters.document_types).toEqual(["*"]);
+  });
+
+  it("does not treat a facet count as part of the filename", async () => {
+    await renderScope("1", ["labs.pdf"]);
+    await clickUpdate();
+
+    expect(await screen.findByText(/no files match "1"/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: "labs.pdf" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("suggests the document type when the query is a file extension", async () => {
+    await renderScope(".txt", [], [{ key: "text/plain", label: "Text" }]);
+    await waitFor(() =>
+      expect(searchBodies.some((b) => b.query === "*")).toBe(true),
+    );
+    await clickUpdate();
+
+    expect(await screen.findByRole("checkbox", { name: "Text" })).toBeChecked();
+    expect(searchBodies.some((b) => b.resultMode === "knowledge_sources")).toBe(
+      false,
+    );
+
+    await click(screen.getByRole("button", { name: /apply and save/i }));
+    await waitFor(() => expect(putBody).toBeDefined());
+    const data = savedQueryData();
+    expect(data.filters.document_types).toEqual(["text/plain"]);
+    expect(data.filters.data_sources).toEqual(["*"]);
+  });
+
+  it("saves unchanged for the Knowledge table only", async () => {
+    await renderScope("labs", ["labs.pdf"]);
+    await clickUpdate();
+    await screen.findByText(/1 file matches "labs"/i);
+
+    await click(
+      screen.getByRole("button", { name: /save for knowledge table only/i }),
+    );
+    await waitFor(() => expect(putBody).toBeDefined());
+    const data = savedQueryData();
+    expect(data.query).toBe("labs");
+    expect(data.filters).toMatchObject(ALL);
+  });
+
+  it("saves nothing on Cancel", async () => {
+    await renderScope("labs", ["labs.pdf"]);
+    await clickUpdate();
+    await screen.findByText(/1 file matches "labs"/i);
+
+    await click(screen.getByRole("button", { name: /^cancel$/i }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: /won't apply in chat/i }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(putBody).toBeUndefined();
+  });
+
+  it("only offers a table-only save when nothing matches", async () => {
+    await renderScope("nothing-here", []);
+    await clickUpdate();
+
+    expect(
+      await screen.findByText(/no files match "nothing-here"/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /apply and save/i }),
+    ).not.toBeInTheDocument();
+  });
+});

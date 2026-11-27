@@ -208,6 +208,8 @@ FILTER_FIELD_MAPPING = {
     "document_types": "mimetype",
     "owners": "owner",
     "connector_types": "connector_type",
+    "document_ids": "document_id",
+    "web_source_ids": "web_source_id",
 }
 
 
