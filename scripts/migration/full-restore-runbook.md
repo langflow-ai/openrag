@@ -542,27 +542,61 @@ If any check fails:
 
 Never run old data with the new key, or rotated data with the old key. Keep the old key and the backups until your rollback window closes.
 
-## 12. Create new cluster secret.
-- There can be an openrag failure if cluster secret and secret located in the `openrag-be-env` cluster-secret patched in step #9.
-- Inorder to create a new cluster secret:
-  1. scale down intermediate-openrag-operator
-  `kubectl scale deploy intermediate-openrag-operator --replicas=0 -n openrag-control`
-  2. Delete the secret c-<uuid>-openrag-encryption-key.
-  If that isnt deleted immediately remove the finaliser from the secret:
-  ```sh
-  kubectl patch secret c-<uuid>-openrag-encryption-key -n <namespace> \
-  --type=merge -p '{"metadata":{"finalizers":[]}}'
-  ```
-  3. Once the secret is deleted, scale the intermediate-openrag-operator back ip.
-  4. New `c-<uuid>-openrag-encryption-key` will be created within a minute, compare the key in `c-<uuid>-openrag-encryption-key`secret and `openrag-be-env`secret and make sure it matches.
-  ```sh
-  kubectl get secret openrag-be-env -n <namespace> \
-  -o jsonpath='{.data.<key>}' | base64 -d | grep -i encrypt
 
-  kubectl get secret c-<uuid>-openrag-encryption-key -n <namespace> \
-  -o jsonpath='{.data.<key>}' | base64 -d 
-  ```
-  5. Rollout restart the `openrag-be` deployment once the secret is created with the new key.
+## 12. Recreate the Cluster Secret
+
+A mismatch between the cluster secret and the encryption key configured in the `openrag-be-env` Secret (patched in Step 9) can cause OpenRAG failures.
+
+To recreate the cluster secret and ensure both secrets contain the same encryption key, follow these steps:
+
+1. **Scale down the `intermediate-openrag-operator** to prevent reconciliation while deleting the secret.
+
+   ```bash
+   kubectl scale deployment intermediate-openrag-operator \
+     --replicas=0 -n openrag-control
+   ```
+
+2. **Delete the existing cluster secret.**
+
+   ```bash
+   kubectl delete secret c-<uuid>-openrag-encryption-key -n <namespace>
+   ```
+
+   If the secret remains stuck in `Terminating`, remove its finalizers:
+
+   ```bash
+   kubectl patch secret c-<uuid>-openrag-encryption-key -n <namespace> \
+     --type=merge -p '{"metadata":{"finalizers":[]}}'
+   ```
+
+3. **Scale the operator back up** once the old secret has been deleted.
+
+   ```bash
+   kubectl scale deployment intermediate-openrag-operator \
+     --replicas=1 -n openrag-control
+   ```
+
+4. **Verify that the new cluster secret is created.**
+
+   The operator should recreate the `c-<uuid>-openrag-encryption-key` Secret within approximately one minute. Verify that the encryption key in the newly created cluster secret matches the key configured in `openrag-be-env`.
+
+   ```bash
+   kubectl get secret openrag-be-env -n <namespace> \
+     -o jsonpath='{.data.<key>}' | base64 -d | grep -i encrypt
+
+   kubectl get secret c-<uuid>-openrag-encryption-key -n <namespace> \
+     -o jsonpath='{.data.<key>}' | base64 -d
+   ```
+
+5. **Restart the OpenRAG backend.**
+
+   Once the new cluster secret is created and the encryption keys are confirmed to match, restart the `openrag-be` deployment:
+
+   ```bash
+   kubectl rollout restart deployment openrag-be -n <namespace>
+   ```
+
+   Verify that the backend pods come up successfully and OpenRAG is functioning as expected.
 
 ## 13. Cleanup
 
