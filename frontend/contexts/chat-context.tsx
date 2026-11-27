@@ -254,6 +254,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const startNewConversation = useCallback(
     async (opts?: { showPlaceholder?: boolean }) => {
       const showPlaceholder = opts?.showPlaceholder ?? true;
+      // Drop a filter reload still in flight for the chat being left.
+      loadTokenRef.current += 1;
       // Read current values via refs so this callback doesn't need them as deps.
       const hasExistingConversation =
         conversationDataRef.current !== null ||

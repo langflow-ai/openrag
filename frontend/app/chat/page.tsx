@@ -171,6 +171,7 @@ function ChatPage() {
   if (seenConversationIdRef.current !== currentConversationId) {
     seenConversationIdRef.current = currentConversationId;
     sendGenerationRef.current += 1;
+    setLoading(false);
   }
   useEffect(() => {
     if (!conversationFilterId) return;
@@ -836,10 +837,7 @@ function ChatPage() {
 
     const generation = sendGenerationRef.current;
     const scope = await resolveSendScope(generation);
-    if (!scope || generation !== sendGenerationRef.current) {
-      setLoading(false);
-      return;
-    }
+    if (!scope || generation !== sendGenerationRef.current) return;
 
     if (asyncMode) {
       await handleSSEStream(userMessage, previousResponseId, scope);

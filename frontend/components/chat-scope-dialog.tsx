@@ -80,9 +80,10 @@ export function ChatScopeDialog({
     setDeselected(new Set());
   }
 
-  const selected = options
-    .map((option) => option.value)
-    .filter((value) => !deselected.has(value));
+  const selected: string[] = [];
+  for (const option of options) {
+    if (!deselected.has(option.value)) selected.push(option.value);
+  }
 
   const toggle = (value: string) => {
     setDeselected((prev) => {

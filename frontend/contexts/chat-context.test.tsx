@@ -339,4 +339,39 @@ describe("ChatProvider — loadConversation filter refresh", () => {
 
     expect(result.current.conversationFilter?.id).toBe("f2");
   });
+
+  it("drops a filter reload that finishes after a new chat starts", async () => {
+    const { getFilterById } = await import(
+      "@/app/api/queries/useGetFilterByIdQuery"
+    );
+    let release: (value: typeof filter | null) => void = () => {};
+    const mockGetFilter = vi.mocked(getFilterById);
+    mockGetFilter.mockReset();
+    mockGetFilter.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    localStorage.setItem("conversation_filter_conv-1", "f1");
+
+    const { result } = renderChatHook();
+    let pending: Promise<void> = Promise.resolve();
+    act(() => {
+      pending = result.current.loadConversation(conversation);
+    });
+    await waitFor(() => expect(getFilterById).toHaveBeenCalledWith("f1"));
+
+    await act(async () => {
+      result.current.startNewConversation({ showPlaceholder: false });
+    });
+
+    await act(async () => {
+      release(filter);
+      await pending;
+    });
+
+    expect(result.current.conversationFilter).toBeNull();
+    expect(result.current.currentConversationId).toBeNull();
+  });
 });

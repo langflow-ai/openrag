@@ -11,6 +11,7 @@ import {
 } from "@/app/api/queries/useGetSearchAggregations";
 import {
   ChatScopeDialog,
+  type ChatScopeOption,
   type ChatScopePatch,
 } from "@/components/chat-scope-dialog";
 import { FilterIconPopover } from "@/components/filter-icon-popover";
@@ -238,12 +239,14 @@ export function KnowledgeFilterPanel() {
       bucket.label ?? bucket.key,
     ]),
   );
-  const typeSuggestions = extensionMimetypes(query, ALL_FILE_TYPES)
-    .filter((mimetype) => indexedTypeLabels.has(mimetype))
-    .map((mimetype) => ({
+  const typeSuggestions: ChatScopeOption[] = [];
+  for (const mimetype of extensionMimetypes(query, ALL_FILE_TYPES)) {
+    if (!indexedTypeLabels.has(mimetype)) continue;
+    typeSuggestions.push({
       value: mimetype,
       label: indexedTypeLabels.get(mimetype) ?? mimetype,
-    }));
+    });
+  }
 
   const handleSaveConfiguration = async () => {
     if (!name.trim()) {
