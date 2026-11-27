@@ -28,7 +28,7 @@ import platform
 import random
 import secrets
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 
 from cryptography.exceptions import InvalidTag
@@ -51,7 +51,9 @@ SSO_NONCE_BYTES = 12
 SSO_TAG_BYTES = 16
 SSO_ENVELOPE_PARTS = 6
 SSO_HEADER_PARTS = 4
-SSO_BASE64URL_ALPHABET = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+SSO_BASE64URL_ALPHABET = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+)
 
 
 def get_default_config_dir() -> Path:
@@ -80,9 +82,13 @@ def set_secure_permissions(file_path: Path) -> None:
             # The user SID must come from the process token: resolving by name
             # (LookupAccountName + GetUserName) returns the machine-domain SID
             # when the computer name equals the username, locking the user out.
-            token = win32security.OpenProcessToken(win32api.GetCurrentProcess(), win32con.TOKEN_QUERY)
+            token = win32security.OpenProcessToken(
+                win32api.GetCurrentProcess(), win32con.TOKEN_QUERY
+            )
             user, _attributes = win32security.GetTokenInformation(token, win32security.TokenUser)
-            sd = win32security.GetFileSecurity(str(file_path), win32security.DACL_SECURITY_INFORMATION)
+            sd = win32security.GetFileSecurity(
+                str(file_path), win32security.DACL_SECURITY_INFORMATION
+            )
             dacl = win32security.ACL()
             dacl.AddAccessAllowedAce(
                 win32security.ACL_REVISION,
@@ -90,7 +96,9 @@ def set_secure_permissions(file_path: Path) -> None:
                 user,
             )
             sd.SetSecurityDescriptorDacl(1, dacl, 0)
-            win32security.SetFileSecurity(str(file_path), win32security.DACL_SECURITY_INFORMATION, sd)
+            win32security.SetFileSecurity(
+                str(file_path), win32security.DACL_SECURITY_INFORMATION, sd
+            )
         except ImportError:
             print("Warning: Could not set secure permissions on Windows (pywin32 not installed)")
 
@@ -166,7 +174,10 @@ def _derive_sso_key(master_key: str) -> bytes:
 
 def _decode_sso_envelope(envelope: str) -> tuple[bytes, bytes]:
     parts = envelope.split(":")
-    if len(parts) != SSO_ENVELOPE_PARTS or ":".join(parts[:SSO_HEADER_PARTS]) != SSO_ENVELOPE_HEADER:
+    if (
+        len(parts) != SSO_ENVELOPE_PARTS
+        or ":".join(parts[:SSO_HEADER_PARTS]) != SSO_ENVELOPE_HEADER
+    ):
         msg = "Unsupported SSO client-secret envelope"
         raise ValueError(msg)
     decoded_payloads: list[bytes] = []
@@ -175,7 +186,9 @@ def _decode_sso_envelope(envelope: str) -> tuple[bytes, bytes]:
             msg = "Invalid base64url data in SSO client-secret envelope"
             raise ValueError(msg)
         try:
-            decoded_payloads.append(base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True))
+            decoded_payloads.append(
+                base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
+            )
         except (binascii.Error, ValueError) as exc:
             msg = "Invalid base64url data in SSO client-secret envelope"
             raise ValueError(msg) from exc
@@ -211,7 +224,9 @@ def migrate_sso_secret(envelope: str, old_key: str, new_key: str) -> str | None:
         return None
 
 
-def migrate_auth_settings(auth_settings: dict, old_key: str, new_key: str) -> tuple[dict, list[str]]:
+def migrate_auth_settings(
+    auth_settings: dict, old_key: str, new_key: str
+) -> tuple[dict, list[str]]:
     """Re-encrypt sensitive fields in auth_settings dict.
 
     Returns:
@@ -242,7 +257,9 @@ def verify_migration(conn, new_key: str) -> tuple[int, int]:
 
     # Verify user.store_api_key (sample up to 3). Empty strings mean "unset" and are not encrypted.
     users = conn.execute(
-        text("""SELECT id, store_api_key FROM "user" WHERE store_api_key IS NOT NULL AND store_api_key != '' LIMIT 3""")
+        text(
+            """SELECT id, store_api_key FROM "user" WHERE store_api_key IS NOT NULL AND store_api_key != '' LIMIT 3"""
+        )
     ).fetchall()
     for _, encrypted_key in users:
         try:
@@ -271,7 +288,9 @@ def verify_migration(conn, new_key: str) -> tuple[int, int]:
         if not auth_settings:
             continue
         try:
-            settings_dict = auth_settings if isinstance(auth_settings, dict) else json.loads(auth_settings)
+            settings_dict = (
+                auth_settings if isinstance(auth_settings, dict) else json.loads(auth_settings)
+            )
             # A JSON null (stored as the text 'null') means "no auth settings"; nothing to verify.
             if settings_dict is None:
                 continue
@@ -287,7 +306,9 @@ def verify_migration(conn, new_key: str) -> tuple[int, int]:
 
     if inspect(conn).has_table("sso_config"):
         configs = conn.execute(
-            text("SELECT id, client_secret_encrypted FROM sso_config WHERE client_secret_encrypted IS NOT NULL LIMIT 3")
+            text(
+                "SELECT id, client_secret_encrypted FROM sso_config WHERE client_secret_encrypted IS NOT NULL LIMIT 3"
+            )
         ).fetchall()
         for _, encrypted_secret in configs:
             try:
@@ -374,7 +395,9 @@ def migrate(
         # Migrate user.store_api_key (empty strings mean "unset" and are not encrypted)
         print("\n1. Migrating user.store_api_key...")
         users = conn.execute(
-            text("""SELECT id, store_api_key FROM "user" WHERE store_api_key IS NOT NULL AND store_api_key != ''""")
+            text(
+                """SELECT id, store_api_key FROM "user" WHERE store_api_key IS NOT NULL AND store_api_key != ''"""
+            )
         ).fetchall()
 
         migrated, failed = 0, 0
@@ -419,7 +442,9 @@ def migrate(
                 failed += 1
                 print(f"   Warning: Could not decrypt variable '{var_name}' ({var_id})")
 
-        print(f"   {'Would migrate' if dry_run else 'Migrated'}: {migrated}, Failed: {failed}, Skipped: {skipped}")
+        print(
+            f"   {'Would migrate' if dry_run else 'Migrated'}: {migrated}, Failed: {failed}, Skipped: {skipped}"
+        )
         total_migrated += migrated
         total_failed += failed
 
@@ -434,7 +459,9 @@ def migrate(
             if not auth_settings:
                 continue
             try:
-                settings_dict = auth_settings if isinstance(auth_settings, dict) else json.loads(auth_settings)
+                settings_dict = (
+                    auth_settings if isinstance(auth_settings, dict) else json.loads(auth_settings)
+                )
                 # A JSON null (stored as the text 'null') passes the SQL NOT NULL filter but means "no auth settings".
                 if settings_dict is None:
                     continue
@@ -445,7 +472,9 @@ def migrate(
                 new_settings, failed_fields = migrate_auth_settings(settings_dict, old_key, new_key)
                 if failed_fields:
                     failed += 1
-                    print(f"   Warning: Could not migrate folder '{folder_name}' fields: {', '.join(failed_fields)}")
+                    print(
+                        f"   Warning: Could not migrate folder '{folder_name}' fields: {', '.join(failed_fields)}"
+                    )
                     continue
                 if not dry_run:
                     conn.execute(
@@ -466,14 +495,18 @@ def migrate(
         migrated, failed = 0, 0
         if inspect(conn).has_table("sso_config"):
             configs = conn.execute(
-                text("SELECT id, client_secret_encrypted FROM sso_config WHERE client_secret_encrypted IS NOT NULL")
+                text(
+                    "SELECT id, client_secret_encrypted FROM sso_config WHERE client_secret_encrypted IS NOT NULL"
+                )
             ).fetchall()
             for config_id, encrypted_secret in configs:
                 new_encrypted = migrate_sso_secret(encrypted_secret, old_key, new_key)
                 if new_encrypted:
                     if not dry_run:
                         conn.execute(
-                            text("UPDATE sso_config SET client_secret_encrypted = :secret WHERE id = :id"),
+                            text(
+                                "UPDATE sso_config SET client_secret_encrypted = :secret WHERE id = :id"
+                            ),
                             {"secret": new_encrypted, "id": config_id},
                         )
                     migrated += 1
@@ -511,7 +544,9 @@ def migrate(
 
     # Save new key only after successful database migration
     if not dry_run:
-        backup_file = config_dir / f"secret_key.backup.{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+        backup_file = (
+            config_dir / f"secret_key.backup.{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
+        )
         write_secret_key_to_file(config_dir, old_key, backup_file.name)
         print(f"\n6. Backed up old key to: {backup_file}")
         write_secret_key_to_file(config_dir, new_key)
