@@ -17,9 +17,9 @@ test.describe("Fetch Latest Docs Functionality", () => {
     await navigateToKnowledge(page);
     logger.info("Successfully loaded the app UI");
 
-    // --- Phase 1: Test with Langflow Ingestion DISABLED (Traditional OpenRAG processing) ---
-    logger.info("PHASE 1: Testing with Langflow Ingestion DISABLED");
-    await settings.setDisableLangflowIngestion(true);
+    // --- Phase 1: Test with Langflow DISABLED (native OpenRAG processing) ---
+    logger.info("PHASE 1: Testing with Langflow DISABLED");
+    await settings.setDisableLangflow(true);
 
     await navigateToKnowledge(page);
     logger.info("Successfully navigated to Knowledge page");
@@ -31,9 +31,9 @@ test.describe("Fetch Latest Docs Functionality", () => {
     logger.info(`Verifying default document '${expectedDocName}' is active`);
     await knowledge.verifyDocumentActive(expectedDocName);
 
-    // --- Phase 2: Test with Langflow Ingestion ENABLED (Langflow processing) ---
-    logger.info("PHASE 2: Testing with Langflow Ingestion ENABLED");
-    await settings.setDisableLangflowIngestion(false);
+    // --- Phase 2: Test with Langflow ENABLED (Langflow processing) ---
+    logger.info("PHASE 2: Testing with Langflow ENABLED");
+    await settings.setDisableLangflow(false);
 
     await navigateToKnowledge(page);
     logger.info("Successfully navigated to Knowledge page");

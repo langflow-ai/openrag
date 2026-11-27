@@ -13,6 +13,12 @@ def task_service():
     return TaskService(document_service=Mock(), ingestion_timeout=2)
 
 
+def _close_background_coroutine(coroutine):
+    """Mirror create_task ownership when a retry worker is mocked out."""
+    coroutine.close()
+    return Mock()
+
+
 def _retryable_failed_file(
     file_path: str = "/data/doc.pdf",
     *,
@@ -82,7 +88,7 @@ async def test_retry_all_failed_retryable_files(task_service):
             "background_custom_processor",
             new_callable=AsyncMock,
         ) as mock_bg,
-        patch("asyncio.create_task", return_value=Mock()),
+        patch("asyncio.create_task", side_effect=_close_background_coroutine),
     ):
         result = await task_service.retry_failed_files("user1", "task-1")
 
@@ -117,7 +123,7 @@ async def test_retry_subset_by_file_paths(task_service):
             "background_custom_processor",
             new_callable=AsyncMock,
         ) as mock_bg,
-        patch("asyncio.create_task", return_value=Mock()),
+        patch("asyncio.create_task", side_effect=_close_background_coroutine),
     ):
         result = await task_service.retry_failed_files(
             "user1",
@@ -186,7 +192,7 @@ async def test_retry_connector_connectivity_error_is_retryable(task_service):
             "background_custom_processor",
             new_callable=AsyncMock,
         ) as mock_bg,
-        patch("asyncio.create_task", return_value=Mock()),
+        patch("asyncio.create_task", side_effect=_close_background_coroutine),
     ):
         result = await task_service.retry_failed_files("user1", "task-connector")
 
@@ -227,7 +233,7 @@ async def test_langflow_disconnect_error_is_retryable(task_service):
             "background_custom_processor",
             new_callable=AsyncMock,
         ) as mock_bg,
-        patch("asyncio.create_task", return_value=Mock()),
+        patch("asyncio.create_task", side_effect=_close_background_coroutine),
     ):
         result = await task_service.retry_failed_files("user1", "task-langflow-disconnect")
 
@@ -262,7 +268,7 @@ async def test_retry_connector_id_path_does_not_require_local_file(task_service)
             "background_custom_processor",
             new_callable=AsyncMock,
         ) as mock_bg,
-        patch("asyncio.create_task", return_value=Mock()),
+        patch("asyncio.create_task", side_effect=_close_background_coroutine),
     ):
         result = await task_service.retry_failed_files("user1", "task-connector-id")
 

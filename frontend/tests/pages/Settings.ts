@@ -12,6 +12,7 @@ export type SettingsTab =
   | "Providers"
   | "Ingestion"
   | "Agent"
+  | "Advanced"
   | "Connectors Permission";
 
 export class Settings {
@@ -33,8 +34,10 @@ export class Settings {
   private readonly chunkSizeInput = () => this.page.getByLabel(/chunk size/i);
   private readonly chunkOverlapInput = () =>
     this.page.getByLabel(/chunk overlap/i);
-  private readonly disableLangflowIngestionToggle = () =>
-    this.page.getByRole("switch", { name: /disable langflow ingestion/i });
+  private readonly disableLangflowToggle = () =>
+    this.page.getByRole("switch", { name: /^disable langflow$/i });
+  private readonly advancedSettingsSavedToast = () =>
+    this.page.getByText(/advanced settings updated/i).first();
   private readonly watsonxProjectIDInput = () =>
     this.page.locator("#project-id");
   private readonly apiKeyInput = () => this.page.locator("#api-key");
@@ -281,17 +284,17 @@ export class Settings {
     }
   }
 
-  async setDisableLangflowIngestion(enabled: boolean) {
-    await this.clickTab("Ingestion");
-    await this.page.waitForTimeout(500);
-    const toggle = this.disableLangflowIngestionToggle();
+  async setDisableLangflow(enabled: boolean) {
+    await this.clickTab("Advanced");
+    const toggle = this.disableLangflowToggle();
     await toggle.scrollIntoViewIfNeeded();
     const state = await toggle.getAttribute("data-state");
     const isChecked = state === "checked";
-    await this.page.waitForTimeout(500);
     if (isChecked !== enabled) {
       await toggle.click();
-      await this.saveIngestSettings();
+      await expect(this.advancedSettingsSavedToast()).toBeVisible({
+        timeout: 10000,
+      });
     }
   }
 

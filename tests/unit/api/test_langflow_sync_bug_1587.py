@@ -32,6 +32,16 @@ def mock_config():
     return config
 
 
+@pytest.fixture(autouse=True)
+def skip_langflow_global_variable_writes(monkeypatch):
+    """These tests exercise flow updates, not the Langflow variables API."""
+
+    monkeypatch.setattr(
+        "api.settings.langflow_sync._upsert_selected_model_variable",
+        AsyncMock(),
+    )
+
+
 def _calls_by_kwarg(flows_service, kwarg):
     """Return {provider: kwarg_value} for change_langflow_model_value calls carrying `kwarg`."""
     result = {}

@@ -483,7 +483,19 @@ class WelcomeScreen(Screen):
         self.env_manager.load_existing_env()
         self.env_manager.setup_secure_defaults()
         self.env_manager.save_env_file()
-        if not self.env_manager.config.langflow_superuser_password:
+        expected_services_changed = self.container_manager._set_expected_services(
+            self.env_manager.config.disable_langflow
+        )
+        if expected_services_changed and self.container_manager.is_available():
+            services = await self.container_manager.get_service_status(force_refresh=True)
+            expected = set(self.container_manager.expected_services)
+            self.services_running = all(
+                services[name].status == ServiceStatus.RUNNING for name in expected
+            )
+        if (
+            self.env_manager.config.disable_langflow.strip().lower() not in ("true", "1", "yes")
+            and not self.env_manager.config.langflow_superuser_password
+        ):
             self.notify("Langflow password is required. Cannot start services.", severity="error")
             return
 
@@ -491,7 +503,9 @@ class WelcomeScreen(Screen):
         conflicts: list[tuple[str, int, str]] = []
 
         # Check container ports only if services are not already running
-        if self.container_manager.is_available() and not self.services_running:
+        if self.container_manager.is_available() and (
+            not self.services_running or expected_services_changed
+        ):
             ports_available, port_conflicts = await self.container_manager.check_ports_available()
             if not ports_available:
                 conflicts.extend(port_conflicts)

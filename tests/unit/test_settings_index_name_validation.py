@@ -10,6 +10,8 @@ import api.settings.endpoints as settings_endpoints
 def _make_config(index_name="documents"):
     return SimpleNamespace(
         edited=True,
+        disable_langflow=False,
+        langflow_sync_pending=False,
         agent=SimpleNamespace(
             llm_provider="openai", llm_model="gpt-4o", system_prompt="original prompt"
         ),

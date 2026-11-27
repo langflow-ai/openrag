@@ -33,6 +33,9 @@ class MCPServerURLUpdateError(Exception):
 
 
 class LangflowMCPService:
+    def __init__(self) -> None:
+        self._last_list_failed = False
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=4),
@@ -62,8 +65,11 @@ class LangflowMCPService:
         Includes retry logic to handle startup timing issues.
         """
         try:
-            return await self._list_mcp_servers_with_retry()
+            servers = await self._list_mcp_servers_with_retry()
+            self._last_list_failed = False
+            return servers
         except Exception as e:
+            self._last_list_failed = True
             logger.error("Failed to list MCP servers after retries", error=str(e))
             return []
 
@@ -293,8 +299,13 @@ class LangflowMCPService:
         Returns a summary dict with counts.
         """
         servers = await self.list_mcp_servers()
+        if self._last_list_failed:
+            summary = {"patched": 0, "skipped": 0, "failed": 1, "total": 0, "list_failed": True}
+            if strict:
+                raise MCPServerURLUpdateError("Failed to list MCP servers", summary=summary)
+            return summary
         if not servers:
-            return {"patched": 0, "skipped": 0, "failed": 0, "total": 0}
+            return {"patched": 0, "skipped": 0, "failed": 0, "total": 0, "list_failed": False}
 
         patched_count = 0
         skipped_count = 0
@@ -319,6 +330,7 @@ class LangflowMCPService:
             "skipped": skipped_count,
             "failed": failed_count,
             "total": len(servers),
+            "list_failed": False,
         }
         if failed_count == 0:
             logger.info("MCP servers URL update completed", **summary)

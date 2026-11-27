@@ -76,7 +76,27 @@ async def test_save_config_writes_to_yaml_and_db(monkeypatch, tmp_config_manager
         assert agent is not None
         assert agent.get("system_prompt") == "Be helpful."
         meta = await repo.get_section("meta")
-        assert meta == {"edited": True}
+        assert meta == {
+            "edited": True,
+            "disable_langflow": False,
+            "langflow_sync_pending": False,
+        }
+
+
+@pytest.mark.asyncio
+async def test_db_config_preserves_langflow_master_fields(
+    monkeypatch, tmp_config_manager, session_factory
+):
+    monkeypatch.setenv("OPENRAG_STORAGE_MODE", "db")
+    svc = WorkspaceConfigService(config_manager=tmp_config_manager, session_factory=session_factory)
+    config = OpenRAGConfig.from_dict({"disable_langflow": True, "langflow_sync_pending": True})
+
+    assert await svc.save_config(config) is True
+    tmp_config_manager._config = None
+    restored = await svc.load_config()
+
+    assert restored.disable_langflow is True
+    assert restored.langflow_sync_pending is True
 
 
 @pytest.mark.asyncio

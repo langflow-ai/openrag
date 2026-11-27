@@ -12,6 +12,7 @@ from config.settings import (
     OPENRAG_SKIP_OS_SECURITY_SETUP,
     clients,
     get_openrag_config,
+    is_langflow_disabled,
 )
 from services.default_docs_service import (
     _reingest_default_docs_on_upgrade_if_needed,
@@ -36,6 +37,103 @@ async def _update_mcp_server_urls(langflow_mcp_service) -> None:
         logger.info("Updated MCP server URLs after settings change", **result)
     except Exception as mcp_error:
         logger.warning(f"Failed to update MCP server URLs after settings change: {str(mcp_error)}")
+
+
+async def initialize_langflow_services(
+    services,
+    *,
+    config=None,
+    session_manager=None,
+    strict: bool = False,
+) -> None:
+    """Create and synchronize Langflow flows for startup or a live re-enable.
+
+    ``strict`` is used before persisting a live re-enable. It verifies that
+    traffic will not be switched to Langflow until every configured flow exists
+    and the complete current configuration has been replayed.
+    """
+    config = config or get_openrag_config()
+    if is_langflow_disabled(config):
+        logger.info("Langflow is disabled; skipping flow initialization and synchronization")
+        return
+
+    from api.settings.langflow_sync import (
+        ensure_required_langflow_global_variables,
+        reapply_all_settings,
+        sync_pending_langflow_settings,
+    )
+
+    flows_service = services["flows_service"]
+
+    if strict:
+        from utils.langflow_utils import wait_for_langflow
+
+        await wait_for_langflow(clients._ensure_langflow_http_client())
+
+    try:
+        await flows_service.ensure_flows_exist()
+        if strict:
+            await flows_service.verify_configured_flows_exist()
+            await ensure_required_langflow_global_variables(config)
+            if not await reapply_all_settings(session_manager=session_manager, config=config):
+                raise RuntimeError("Failed to synchronize settings to Langflow")
+            config.langflow_sync_pending = False
+            return
+
+        await sync_pending_langflow_settings()
+
+        # Check if we should upgrade the system prompt (only if it's a legacy or default prompt, preserving user customizations)
+        from config.config_manager import DEFAULT_SYSTEM_PROMPT
+        from config.legacy_prompts import LEGACY_SYSTEM_PROMPTS
+
+        config_prompt = config.agent.system_prompt
+        # If the config prompt is a user customization, we don't need to auto-upgrade anything
+        if config_prompt in LEGACY_SYSTEM_PROMPTS or config_prompt == DEFAULT_SYSTEM_PROMPT:
+            try:
+                current_prompt = await flows_service.get_chat_flow_system_prompt()
+            except Exception as e:
+                logger.warning(
+                    "Could not read current chat flow system prompt; skipping system prompt sync",
+                    error=str(e),
+                )
+            else:
+                # Only update if the Langflow prompt is a known default/legacy AND it differs from our config prompt
+                if (
+                    not current_prompt
+                    or current_prompt in LEGACY_SYSTEM_PROMPTS
+                    or current_prompt == DEFAULT_SYSTEM_PROMPT
+                ):
+                    if current_prompt != config_prompt:
+                        await flows_service.update_chat_flow_system_prompt(
+                            config_prompt, expected_prompt=current_prompt
+                        )
+                        logger.info("Ensured system prompt is synced to Langflow")
+                else:
+                    logger.info("Preserved custom system prompt in Langflow")
+    except Exception as e:
+        if strict:
+            raise
+        logger.error(
+            "Failed to ensure Langflow flows exist at startup — "
+            "flows may be missing until the next restart",
+            error=str(e),
+        )
+
+    # Older Langflow databases may have plain-string globals stored as Credential
+    # variables because environment-seeded globals used Credential by default.
+    try:
+        await ensure_required_langflow_global_variables(config)
+        logger.info("Ensured required Langflow global variables")
+    except Exception as e:
+        if strict:
+            raise
+        logger.error(
+            "Failed to ensure required Langflow global variables at startup",
+            error=str(e),
+        )
+
+    # Update MCP server URLs and required global-var headers after flows and variables exist
+    await _update_mcp_server_urls(services["langflow_mcp_service"])
 
 
 async def startup_tasks(services) -> None:
@@ -108,7 +206,7 @@ async def startup_tasks(services) -> None:
                     error=str(e),
                 )
 
-        if get_openrag_config().knowledge.disable_ingest_with_langflow:
+        if get_openrag_config().knowledge.disable_ingest_with_langflow or is_langflow_disabled():
             await _ensure_opensearch_index()
 
         # Ensure that the OpenSearch index exists if onboarding was already completed
@@ -167,62 +265,14 @@ async def startup_tasks(services) -> None:
         except Exception as e:
             logger.error("OpenRAG docs startup refresh failed", error=str(e))
 
-    # Ensure all configured flows exist in Langflow (create-only, never overwrites existing).
-    # If a flow does not exist, it is created and active configuration settings are reapplied.
-    try:
-        flows_service = services["flows_service"]
-        await flows_service.ensure_flows_exist()
+    if is_langflow_disabled():
+        logger.info("Langflow is disabled; skipping flow initialization and synchronization")
+        from services.indexed_time_backfill import run_indexed_time_backfill
 
-        # Check if we should upgrade the system prompt (only if it's a legacy or default prompt, preserving user customizations)
-        from config.config_manager import DEFAULT_SYSTEM_PROMPT
-        from config.legacy_prompts import LEGACY_SYSTEM_PROMPTS
+        await run_indexed_time_backfill()
+        return
 
-        config_prompt = get_openrag_config().agent.system_prompt
-        # If the config prompt is a user customization, we don't need to auto-upgrade anything
-        if config_prompt in LEGACY_SYSTEM_PROMPTS or config_prompt == DEFAULT_SYSTEM_PROMPT:
-            try:
-                current_prompt = await flows_service.get_chat_flow_system_prompt()
-            except Exception as e:
-                logger.warning(
-                    "Could not read current chat flow system prompt; skipping system prompt sync",
-                    error=str(e),
-                )
-            else:
-                # Only update if the Langflow prompt is a known default/legacy AND it differs from our config prompt
-                if (
-                    not current_prompt
-                    or current_prompt in LEGACY_SYSTEM_PROMPTS
-                    or current_prompt == DEFAULT_SYSTEM_PROMPT
-                ):
-                    if current_prompt != config_prompt:
-                        await flows_service.update_chat_flow_system_prompt(
-                            config_prompt, expected_prompt=current_prompt
-                        )
-                        logger.info("Ensured system prompt is synced to Langflow")
-                else:
-                    logger.info("Preserved custom system prompt in Langflow")
-    except Exception as e:
-        logger.error(
-            "Failed to ensure Langflow flows exist at startup — "
-            "flows may be missing until the next restart",
-            error=str(e),
-        )
-
-    # Older Langflow databases may have plain-string globals stored as Credential
-    # variables because environment-seeded globals used Credential by default.
-    try:
-        from api.settings.langflow_sync import ensure_required_langflow_global_variables
-
-        await ensure_required_langflow_global_variables(get_openrag_config())
-        logger.info("Ensured required Langflow global variables")
-    except Exception as e:
-        logger.error(
-            "Failed to ensure required Langflow global variables at startup",
-            error=str(e),
-        )
-
-    # Update MCP server URLs and required global-var headers after flows and variables exist
-    await _update_mcp_server_urls(services["langflow_mcp_service"])
+    await initialize_langflow_services(services)
 
     from services.indexed_time_backfill import run_indexed_time_backfill
 

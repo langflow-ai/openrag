@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 from utils.logging_config import get_logger
 
@@ -99,6 +99,9 @@ class EnvConfig:
 
     # Chat settings
     disable_chat_with_langflow: str = "False"
+    # Master deployment switch. When true, no Langflow container or credentials
+    # are required and OpenRAG uses native chat, ingest, and nudges.
+    disable_langflow: str = "False"
 
     # Document paths (comma-separated) - use centralized location by default
     openrag_documents_paths: str = "$HOME/.openrag/documents"
@@ -123,6 +126,16 @@ class EnvManager:
     """Manages environment configuration for OpenRAG."""
 
     assignment_pattern = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")
+    _LANGFLOW_ENV_VARS = {
+        "LANGFLOW_DATA_PATH",
+        "LANGFLOW_SECRET_KEY",
+        "LANGFLOW_SUPERUSER",
+        "LANGFLOW_SUPERUSER_PASSWORD",
+        "LANGFLOW_CHAT_FLOW_ID",
+        "LANGFLOW_INGEST_FLOW_ID",
+        "LANGFLOW_URL_INGEST_FLOW_ID",
+        "NUDGES_FLOW_ID",
+    }
 
     def __init__(self, env_file: Path | None = None):
         if env_file:
@@ -247,6 +260,7 @@ class EnvManager:
             "LANGFLOW_ENABLE_SUPERUSER_CLI": "langflow_enable_superuser_cli",
             "DISABLE_INGEST_WITH_LANGFLOW": "disable_ingest_with_langflow",
             "DISABLE_CHAT_WITH_LANGFLOW": "disable_chat_with_langflow",
+            "DISABLE_LANGFLOW": "disable_langflow",
             "INGEST_SAMPLE_DATA": "ingest_sample_data",
             "OPENRAG_VERSION": "openrag_version",
             "LANGFUSE_SECRET_KEY": "langfuse_secret_key",  # pragma: allowlist secret
@@ -264,7 +278,12 @@ class EnvManager:
         if not self.env_file.exists():
             return []
 
-        managed_vars = set(self._env_attr_map().keys())
+        managed_vars = {*self._env_attr_map().keys(), "COMPOSE_PROFILES"}
+        preserve_langflow_values = self.config.disable_langflow.strip().lower() in (
+            "true",
+            "1",
+            "yes",
+        )
         preserved_lines: list[str] = []
 
         try:
@@ -274,7 +293,9 @@ class EnvManager:
                 if match:
                     env_var = match.group(1)
                     is_managed_block = env_var in managed_vars
-                    if not is_managed_block:
+                    if not is_managed_block or (
+                        preserve_langflow_values and env_var in self._LANGFLOW_ENV_VARS
+                    ):
                         preserved_lines.append(raw_line)
                 elif not is_managed_block:
                     # Preserves multi-line backslash strings, empty splits and unmanaged comments natively inline
@@ -303,12 +324,25 @@ class EnvManager:
 
         loaded_from_file = False
 
+        # The settings module captures the process-level choice before any TUI
+        # file is parsed. Reuse it on every load so a prior file read cannot
+        # turn a command-line override into a persisted value.
+        from config.settings import get_disable_langflow_env_value, get_process_environment
+
+        explicit_disable_langflow = get_disable_langflow_env_value()
+        values = get_process_environment()
+
         # Load .env file using python-dotenv for standard parsing
         # override=True ensures .env file values take precedence over existing environment variables
         if self.env_file.exists():
             try:
-                # Load .env file with override=True to ensure file values take precedence
-                load_dotenv(dotenv_path=self.env_file, override=True)
+                values.update(
+                    {
+                        key: value
+                        for key, value in dotenv_values(self.env_file).items()
+                        if value is not None
+                    }
+                )
                 loaded_from_file = True
                 logger.debug(f"Loaded .env file from {self.env_file}")
             except Exception as e:
@@ -317,9 +351,12 @@ class EnvManager:
         # Map environment variables to config attributes
         # This works whether values came from .env file or existing environment variables
         for env_key, attr_name in attr_map.items():
-            value = os.environ.get(env_key, "")
+            value = values.get(env_key, "")
             if value:
                 setattr(self.config, attr_name, value)
+
+        if explicit_disable_langflow is not None:
+            self.config.disable_langflow = explicit_disable_langflow
 
         return loaded_from_file
 
@@ -328,13 +365,15 @@ class EnvManager:
         if not self.config.opensearch_password:
             self.config.opensearch_password = self.generate_secure_password()
 
-        if not self.config.langflow_secret_key:
+        langflow_disabled = self.config.disable_langflow.strip().lower() in ("true", "1", "yes")
+
+        if not langflow_disabled and not self.config.langflow_secret_key:
             self.config.langflow_secret_key = self.generate_langflow_secret_key()
 
         if not self.config.openrag_encryption_key:
             self.config.openrag_encryption_key = self.generate_openrag_encryption_key()
 
-        if not self.config.langflow_superuser_password:
+        if not langflow_disabled and not self.config.langflow_superuser_password:
             self.config.langflow_superuser_password = self.generate_secure_password()
 
         # Set OPENRAG_VERSION to TUI version if not already set
@@ -350,9 +389,10 @@ class EnvManager:
                 pass
 
         # Always enable autologin mode per requirements
-        self.config.langflow_auto_login = "True"
-        self.config.langflow_new_user_is_active = "True"
-        self.config.langflow_enable_superuser_cli = "True"
+        if not langflow_disabled:
+            self.config.langflow_auto_login = "True"
+            self.config.langflow_new_user_is_active = "True"
+            self.config.langflow_enable_superuser_cli = "True"
 
     def validate_config(self, mode: str = "full") -> bool:
         """
@@ -427,7 +467,11 @@ class EnvManager:
         if not validate_non_empty(self.config.opensearch_password):
             self.config.validation_errors["opensearch_password"] = "OpenSearch password is required"
 
-        if not validate_non_empty(self.config.langflow_superuser_password):
+        if self.config.disable_langflow.strip().lower() not in (
+            "true",
+            "1",
+            "yes",
+        ) and not validate_non_empty(self.config.langflow_superuser_password):
             self.config.validation_errors["langflow_superuser_password"] = (
                 "Langflow superuser password is required"
             )
@@ -487,27 +531,36 @@ class EnvManager:
                 f.write("# OpenRAG Environment Configuration\n")
                 f.write("# Generated by OpenRAG TUI\n\n")
 
+                langflow_disabled = self.config.disable_langflow.strip().lower() in (
+                    "true",
+                    "1",
+                    "yes",
+                )
+
                 # Core settings
                 f.write("# Core settings\n")
-                f.write(
-                    f"LANGFLOW_SECRET_KEY={self._quote_env_value(self.config.langflow_secret_key)}\n"
-                )
-                f.write(
-                    f"LANGFLOW_SUPERUSER={self._quote_env_value(self.config.langflow_superuser or 'langflow')}\n"
-                )
-                f.write(
-                    f"LANGFLOW_SUPERUSER_PASSWORD={self._quote_env_value(self.config.langflow_superuser_password)}\n"
-                )
-                f.write(
-                    f"LANGFLOW_CHAT_FLOW_ID={self._quote_env_value(self.config.langflow_chat_flow_id)}\n"
-                )
-                f.write(
-                    f"LANGFLOW_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_ingest_flow_id)}\n"
-                )
-                f.write(
-                    f"LANGFLOW_URL_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_url_ingest_flow_id)}\n"
-                )
-                f.write(f"NUDGES_FLOW_ID={self._quote_env_value(self.config.nudges_flow_id)}\n")
+                f.write(f"DISABLE_LANGFLOW={self._quote_env_value(self.config.disable_langflow)}\n")
+                if not langflow_disabled:
+                    f.write("COMPOSE_PROFILES=langflow\n")
+                    f.write(
+                        f"LANGFLOW_SECRET_KEY={self._quote_env_value(self.config.langflow_secret_key)}\n"
+                    )
+                    f.write(
+                        f"LANGFLOW_SUPERUSER={self._quote_env_value(self.config.langflow_superuser or 'langflow')}\n"
+                    )
+                    f.write(
+                        f"LANGFLOW_SUPERUSER_PASSWORD={self._quote_env_value(self.config.langflow_superuser_password)}\n"
+                    )
+                    f.write(
+                        f"LANGFLOW_CHAT_FLOW_ID={self._quote_env_value(self.config.langflow_chat_flow_id)}\n"
+                    )
+                    f.write(
+                        f"LANGFLOW_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_ingest_flow_id)}\n"
+                    )
+                    f.write(
+                        f"LANGFLOW_URL_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_url_ingest_flow_id)}\n"
+                    )
+                    f.write(f"NUDGES_FLOW_ID={self._quote_env_value(self.config.nudges_flow_id)}\n")
                 f.write(
                     f"OPENRAG_ENCRYPTION_KEY={self._quote_env_value(self.config.openrag_encryption_key)}\n"
                 )
@@ -573,9 +626,10 @@ class EnvManager:
                 f.write(
                     f"OPENRAG_DATA_PATH={self._quote_env_value(expand_path(self.config.openrag_data_path))}\n"
                 )
-                f.write(
-                    f"LANGFLOW_DATA_PATH={self._quote_env_value(expand_path(self.config.langflow_data_path))}\n"
-                )
+                if not langflow_disabled:
+                    f.write(
+                        f"LANGFLOW_DATA_PATH={self._quote_env_value(expand_path(self.config.langflow_data_path))}\n"
+                    )
                 # Write OPENRAG_VERSION once
                 version_to_write = self.config.openrag_version
                 if not version_to_write:
@@ -639,20 +693,23 @@ class EnvManager:
                 )
                 f.write("\n")
 
-                # Langflow auth settings
-                f.write("# Langflow auth settings\n")
-                f.write(
-                    f"LANGFLOW_AUTO_LOGIN={self._quote_env_value(self.config.langflow_auto_login)}\n"
-                )
-                if self.config.langflow_port and self.config.langflow_port != "7860":
-                    f.write(f"LANGFLOW_PORT={self._quote_env_value(self.config.langflow_port)}\n")
-                f.write(
-                    f"LANGFLOW_NEW_USER_IS_ACTIVE={self._quote_env_value(self.config.langflow_new_user_is_active)}\n"
-                )
-                f.write(
-                    f"LANGFLOW_ENABLE_SUPERUSER_CLI={self._quote_env_value(self.config.langflow_enable_superuser_cli)}\n"
-                )
-                f.write("\n")
+                if not langflow_disabled:
+                    # Langflow auth settings
+                    f.write("# Langflow auth settings\n")
+                    f.write(
+                        f"LANGFLOW_AUTO_LOGIN={self._quote_env_value(self.config.langflow_auto_login)}\n"
+                    )
+                    if self.config.langflow_port and self.config.langflow_port != "7860":
+                        f.write(
+                            f"LANGFLOW_PORT={self._quote_env_value(self.config.langflow_port)}\n"
+                        )
+                    f.write(
+                        f"LANGFLOW_NEW_USER_IS_ACTIVE={self._quote_env_value(self.config.langflow_new_user_is_active)}\n"
+                    )
+                    f.write(
+                        f"LANGFLOW_ENABLE_SUPERUSER_CLI={self._quote_env_value(self.config.langflow_enable_superuser_cli)}\n"
+                    )
+                    f.write("\n")
 
                 # OAuth settings
                 if self.config.google_oauth_client_id or self.config.google_oauth_client_secret:
@@ -689,7 +746,6 @@ class EnvManager:
                     ("AWS_SECRET_ACCESS_KEY", self.config.aws_secret_access_key),
                     ("AWS_S3_ENDPOINT", self.config.aws_s3_endpoint),
                     ("AWS_REGION", self.config.aws_region),
-                    ("LANGFLOW_PUBLIC_URL", self.config.langflow_public_url),
                     ("IBM_COS_API_KEY", self.config.ibm_cos_api_key),
                     ("IBM_COS_SERVICE_INSTANCE_ID", self.config.ibm_cos_service_instance_id),
                     ("IBM_COS_ENDPOINT", self.config.ibm_cos_endpoint),
@@ -697,6 +753,8 @@ class EnvManager:
                     ("IBM_COS_HMAC_SECRET_ACCESS_KEY", self.config.ibm_cos_hmac_secret_access_key),
                     ("IBM_COS_AUTH_ENDPOINT", self.config.ibm_cos_auth_endpoint),
                 ]
+                if not langflow_disabled:
+                    optional_vars.append(("LANGFLOW_PUBLIC_URL", self.config.langflow_public_url))
 
                 optional_written = False
                 for var_name, var_value in optional_vars:

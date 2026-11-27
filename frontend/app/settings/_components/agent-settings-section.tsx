@@ -51,6 +51,7 @@ export function AgentSettingsSection() {
   const { data: settings = {} } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
+  const langflowEnabled = settings.langflow_enabled !== false;
 
   const {
     data: catalog,
@@ -268,53 +269,57 @@ export function AgentSettingsSection() {
           </h3>
           <p className="text-sm text-muted-foreground">
             This Agent retrieves from your knowledge and generates chat
-            responses. Edit in Langflow for full control.
+            responses.
+            {langflowEnabled ? " Edit in Langflow for full control." : ""}
           </p>
         </div>
-        <RequirePermission perm="flows:edit">
-          <div className="flex shrink-0 gap-2">
-            <ConfirmationDialog
-              trigger={
-                <Button ignoreTitleCase={true} variant="outline">
-                  Restore flow
-                </Button>
-              }
-              title="Restore default Agent flow"
-              description="This restores defaults and discards all custom settings and overrides. This can't be undone."
-              confirmText="Restore"
-              variant="destructive"
-              onConfirm={handleRestoreRetrievalFlow}
-              isLoading={isRestoringFlow}
-            />
-            <ConfirmationDialog
-              trigger={
-                <Button>
-                  <LangflowIcon />
-                  Edit in Langflow
-                </Button>
-              }
-              title="Edit Agent flow in Langflow"
-              description={
-                <>
-                  <p className="mb-2">
-                    You&apos;re entering Langflow. You can edit the{" "}
-                    <b>Agent flow</b> and other underlying flows. Manual changes
-                    to components, wiring, or I/O can break this experience.
-                  </p>
-                  <p className="mb-2">
-                    To enable editing, you need to unlock the flow by clicking
-                    on its name and disabling the <b>Lock flow</b> option.
-                  </p>
-                  <p>You can restore this flow from Settings.</p>
-                </>
-              }
-              confirmText="Proceed"
-              confirmIcon={<ArrowUpRight />}
-              onConfirm={handleEditInLangflow}
-              variant="warning"
-            />
-          </div>
-        </RequirePermission>
+        {langflowEnabled ? (
+          <RequirePermission perm="flows:edit">
+            <div className="flex shrink-0 gap-2">
+              <ConfirmationDialog
+                trigger={
+                  <Button ignoreTitleCase={true} variant="outline">
+                    Restore flow
+                  </Button>
+                }
+                title="Restore default Agent flow"
+                description="This restores defaults and discards all custom settings and overrides. This can't be undone."
+                confirmText="Restore"
+                variant="destructive"
+                onConfirm={handleRestoreRetrievalFlow}
+                isLoading={isRestoringFlow}
+              />
+              <ConfirmationDialog
+                trigger={
+                  <Button>
+                    <LangflowIcon />
+                    Edit in Langflow
+                  </Button>
+                }
+                title="Edit Agent flow in Langflow"
+                description={
+                  <>
+                    <p className="mb-2">
+                      You&apos;re entering Langflow. You can edit the{" "}
+                      <b>Agent flow</b> and other underlying flows. Manual
+                      changes to components, wiring, or I/O can break this
+                      experience.
+                    </p>
+                    <p className="mb-2">
+                      To enable editing, you need to unlock the flow by clicking
+                      on its name and disabling the <b>Lock flow</b> option.
+                    </p>
+                    <p>You can restore this flow from Settings.</p>
+                  </>
+                }
+                confirmText="Proceed"
+                confirmIcon={<ArrowUpRight />}
+                onConfirm={handleEditInLangflow}
+                variant="warning"
+              />
+            </div>
+          </RequirePermission>
+        ) : null}
       </header>
       <div className="space-y-6">
         <div className="space-y-6">

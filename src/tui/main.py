@@ -851,19 +851,25 @@ def setup_host_directories():
             # already set on first run so this is non-fatal.
             logger.error(f"Cannot chmod {directory} (not owner), skipping")
 
-    # Resolve the configured LANGFLOW_DATA_PATH so we pre-create the exact
-    # directory that Docker/Podman will mount, regardless of user customisation.
-    langflow_data_dir = _resolve_langflow_data_path(base_dir)
-    langflow_data_dir.mkdir(parents=True, exist_ok=True)
-    logger.debug(f"Ensured directory exists: {langflow_data_dir}")
+    from .managers.env_manager import EnvManager
 
-    # langflow-data must be world-writable so the Langflow container user (uid 1000)
-    # can write into it on macOS where Podman's :U uid-remapping does not reliably
-    # update host directory ownership through the VM layer.
-    try:
-        os.chmod(langflow_data_dir, 0o777)
-    except PermissionError:
-        logger.error(f"Cannot chmod {langflow_data_dir} (not owner), skipping")
+    env_manager = EnvManager()
+    env_manager.load_existing_env()
+    langflow_disabled = env_manager.config.disable_langflow.strip().lower() in ("true", "1", "yes")
+    if not langflow_disabled:
+        # Resolve the configured LANGFLOW_DATA_PATH so we pre-create the exact
+        # directory that Docker/Podman will mount, regardless of user customisation.
+        langflow_data_dir = _resolve_langflow_data_path(base_dir)
+        langflow_data_dir.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Ensured directory exists: {langflow_data_dir}")
+
+        # langflow-data must be world-writable so the Langflow container user (uid 1000)
+        # can write into it on macOS where Podman's :U uid-remapping does not reliably
+        # update host directory ownership through the VM layer.
+        try:
+            os.chmod(langflow_data_dir, 0o777)
+        except PermissionError:
+            logger.error(f"Cannot chmod {langflow_data_dir} (not owner), skipping")
 
     # Generate JWT keys on host to avoid container permission issues
     generate_jwt_keys(base_dir / "keys")

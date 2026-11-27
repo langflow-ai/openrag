@@ -266,6 +266,16 @@ async def test_ensure_flows_exist_does_not_auto_update_on_startup():
 
 
 @pytest.mark.asyncio
+async def test_verify_configured_flows_exist_rejects_missing_flow():
+    service = FlowsService()
+    missing = MagicMock(status_code=404)
+
+    with patch("services.flows_service.clients.langflow_request", return_value=missing):
+        with pytest.raises(RuntimeError, match="Configured Langflow flows are unavailable"):
+            await service.verify_configured_flows_exist()
+
+
+@pytest.mark.asyncio
 async def test_get_flows_updates_available_includes_all_flows():
     """Verify that get_flows_updates_available surfaces updates regardless of locked status."""
     service = FlowsService()

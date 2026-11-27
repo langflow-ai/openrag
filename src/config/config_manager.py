@@ -722,6 +722,12 @@ class OpenRAGConfig:
     agent: AgentConfig
     onboarding: OnboardingState
     edited: bool = False  # Track if manually edited
+    # This is the user-configurable counterpart to DISABLE_LANGFLOW.  It
+    # switches every Langflow-backed capability to the native implementation
+    # without requiring an operator to edit environment variables.
+    disable_langflow: bool = False
+    # Survives restarts until managed Langflow settings are reconciled.
+    langflow_sync_pending: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "OpenRAGConfig":
@@ -768,6 +774,8 @@ class OpenRAGConfig:
             agent=AgentConfig(**data.get("agent", {})),
             onboarding=OnboardingState(**data.get("onboarding", {})),
             edited=data.get("edited", False),
+            disable_langflow=data.get("disable_langflow", False),
+            langflow_sync_pending=data.get("langflow_sync_pending", False),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -866,6 +874,10 @@ class ConfigManager:
                         config_data[section].update(file_config[section])
 
                 config_data["edited"] = file_config.get("edited", False)
+                config_data["disable_langflow"] = file_config.get("disable_langflow", False)
+                config_data["langflow_sync_pending"] = file_config.get(
+                    "langflow_sync_pending", False
+                )
 
                 logger.info(f"Loaded configuration from {_sanitize_for_log(self.config_file)}")
             except Exception as e:

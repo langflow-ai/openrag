@@ -6,6 +6,7 @@ from fastapi import Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from config.settings import is_langflow_disabled
 from dependencies import get_flows_service, require_permission
 from session_manager import User
 from utils.logging_config import get_logger
@@ -15,12 +16,21 @@ logger = get_logger(__name__)
 FlowType = Literal["nudges", "retrieval", "ingest"]
 
 
+def _langflow_disabled_response() -> JSONResponse:
+    return JSONResponse(
+        {"success": False, "error": "Langflow is disabled"},
+        status_code=404,
+    )
+
+
 async def reset_flow_endpoint(
     flow_type: str,
     flows_service=Depends(get_flows_service),
     user: User = Depends(require_permission("flows:edit")),
 ):
     """Reset a Langflow flow by type (nudges, retrieval, or ingest)"""
+    if is_langflow_disabled():
+        return _langflow_disabled_response()
     if flow_type not in ["nudges", "retrieval", "ingest"]:
         return JSONResponse(
             {
@@ -58,6 +68,8 @@ async def get_flows_updates_endpoint(
     user: User = Depends(require_permission("flows:read")),
 ):
     """Get available updates for core flows"""
+    if is_langflow_disabled():
+        return _langflow_disabled_response()
     try:
         user_id = getattr(user, "db_user_id", None) or getattr(user, "user_id", None)
         updates = await flows_service.get_flows_updates_available(user_id=user_id)
@@ -73,6 +85,8 @@ async def bulk_update_flows_endpoint(
     user: User = Depends(require_permission("config:write")),
 ):
     """Bulk update multiple flows and optionally backup custom flows"""
+    if is_langflow_disabled():
+        return _langflow_disabled_response()
     try:
         results = await flows_service.bulk_update_flows(request.flow_types, request.backup_custom)
         overall_success = all(r.get("success", False) for r in results)
@@ -92,6 +106,8 @@ async def dismiss_flows_update_endpoint(
     user: User = Depends(require_permission("flows:read")),
 ):
     """Dismiss available flow update notifications ephemerally in backend memory"""
+    if is_langflow_disabled():
+        return _langflow_disabled_response()
     try:
         flow_types = request.flow_types if request else None
         user_id = getattr(user, "db_user_id", None) or getattr(user, "user_id", None)

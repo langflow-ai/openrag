@@ -61,3 +61,10 @@ def test_resolve_service_name_falls_back_to_name_map():
 
     assert manager._resolve_service_name(None, "openrag-opensearch") == "opensearch"
     assert manager._resolve_service_name(None, "unrelated-container") is None
+
+
+def test_resolve_service_name_ignores_stale_langflow_container_when_disabled():
+    manager = _make_manager()
+    manager.container_name_map["openrag-langflow"] = "langflow"
+
+    assert manager._resolve_service_name(None, "openrag-langflow") is None

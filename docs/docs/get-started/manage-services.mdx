@@ -64,9 +64,9 @@ When you restart or start services in the terminal session, the following proces
 
 1. OpenRAG automatically detects your container runtime, and then checks if your machine has compatible GPU support by checking for `CUDA`, `NVIDIA_SMI`, and Docker/Podman runtime support. This check determines which Docker Compose file OpenRAG uses because there are separate Docker Compose files for GPU and CPU deployments.
 
-2. OpenRAG pulls the OpenRAG container images with `docker compose pull` if any images are missing.
+2. OpenRAG pulls the images for the configured deployment mode if any are missing.
 
-3. OpenRAG deploys the containers with `docker compose up -d`.
+3. OpenRAG deploys the containers, including Langflow when that deployment mode is selected.
 
 </details>
 
@@ -74,7 +74,7 @@ Alternatively, you can manually run the Docker/Podman commands to stop and start
 Typically, this is only necessary if you don't want to use `--tui` or there is an error preventing the terminal session from managing the containers.
 
 * Stop all containers: [`docker compose down`](https://docs.docker.com/reference/cli/docker/compose/down/) or `podman compose down`
-* Start all containers: [`docker compose up -d`](https://docs.docker.com/reference/cli/docker/compose/up/) or `podman compose up -d`
+* Start all containers with Langflow (the default): [`docker compose --profile langflow up -d`](https://docs.docker.com/reference/cli/docker/compose/up/) or `podman compose --profile langflow up -d`. For a native-only deployment with `DISABLE_LANGFLOW=true`, omit `--profile langflow`.
 * Stop one container: `docker stop CONTAINER_ID` or `podman stop CONTAINER_ID`
 * Start one container: `docker start CONTAINER_ID` or `podman start CONTAINER_ID`
 
@@ -84,7 +84,7 @@ Typically, this is only necessary if you don't want to use `--tui` or there is a
 For self-managed deployments, run the Docker/Podman commands to stop and start containers:
 
 * Stop all containers: [`docker compose down`](https://docs.docker.com/reference/cli/docker/compose/down/) or `podman compose down`
-* Start all containers: [`docker compose up -d`](https://docs.docker.com/reference/cli/docker/compose/up/) or `podman compose up -d`
+* Start all containers with Langflow (the default): [`docker compose --profile langflow up -d`](https://docs.docker.com/reference/cli/docker/compose/up/) or `podman compose --profile langflow up -d`. For a native-only deployment with `DISABLE_LANGFLOW=true`, omit `--profile langflow`.
 * Stop one container: `docker stop CONTAINER_ID` or `podman stop CONTAINER_ID`
 * Start one container: `docker start CONTAINER_ID` or `podman start CONTAINER_ID`
 
@@ -176,11 +176,11 @@ To reset your OpenRAG deployment _and_ delete all OpenRAG data, see [Reinstall O
 2. Recreate the containers:
 
    ```bash title="Docker"
-   docker compose up --build --force-recreate --remove-orphans
+   docker compose --profile langflow up --build --force-recreate --remove-orphans
    ```
 
    ```bash title="Podman"
-   podman compose up --build --force-recreate --remove-orphans
+   podman compose --profile langflow up --build --force-recreate --remove-orphans
    ```
 
 3. Launch the OpenRAG app, and then repeat the [application onboarding process](/docker#application-onboarding).

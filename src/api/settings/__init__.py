@@ -23,6 +23,7 @@ from api.settings.endpoints import (
     update_docling_preset,
     update_onboarding_state,
     update_settings,
+    update_settings_endpoint,
 )
 from api.settings.langflow_sync import reapply_all_settings
 from api.settings.models import (
@@ -54,6 +55,7 @@ __all__ = [
     # Endpoints
     "get_settings",
     "update_settings",
+    "update_settings_endpoint",
     "onboarding",
     "update_onboarding_state",
     "rollback_onboarding",

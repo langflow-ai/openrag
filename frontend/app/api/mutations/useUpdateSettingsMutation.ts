@@ -12,6 +12,8 @@ import {
 import type { Settings } from "../queries/useGetSettingsQuery";
 
 export interface UpdateSettingsRequest {
+  // Deployment capabilities
+  disable_langflow?: boolean;
   // Agent settings
   llm_model?: string;
   llm_provider?: string;

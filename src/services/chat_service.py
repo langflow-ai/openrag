@@ -10,6 +10,7 @@ from config.settings import (
     LANGFLOW_URL,
     NUDGES_FLOW_ID,
     clients,
+    is_langflow_disabled,
 )
 from config.storage_mode import db_writes_enabled
 from utils.langflow_utils import fence_untrusted_text
@@ -125,7 +126,7 @@ class ChatService:
             raise ValueError("Prompt is required")
         conversation_user_id = storage_user_id or user_id
 
-        if DISABLE_CHAT_WITH_LANGFLOW:
+        if DISABLE_CHAT_WITH_LANGFLOW or is_langflow_disabled():
             logger.info(
                 "[CHAT] DISABLE_CHAT_WITH_LANGFLOW enabled; routing /langflow to native /chat"
             )
@@ -322,7 +323,7 @@ class ChatService:
         search_service=None,
     ):
         """Suggested prompts, from the Langflow nudges flow or natively without Langflow."""
-        if not DISABLE_NUDGES_WITH_LANGFLOW:
+        if not DISABLE_NUDGES_WITH_LANGFLOW and not is_langflow_disabled():
             return await self.langflow_nudges_chat(
                 user_id,
                 jwt_token,
@@ -420,7 +421,7 @@ class ChatService:
         user_ast_messages = [m for m in messages if m.get("role") in ["user", "assistant"]]
 
         # If no history in memory, try fetching from Langflow persistent history
-        if not user_ast_messages:
+        if not user_ast_messages and not is_langflow_disabled():
             from services.langflow_history_service import langflow_history_service
 
             try:
@@ -658,7 +659,7 @@ class ChatService:
         )
         conversation_user_id = storage_user_id or user_id
 
-        if endpoint == "langflow" and not DISABLE_CHAT_WITH_LANGFLOW:
+        if endpoint == "langflow" and not DISABLE_CHAT_WITH_LANGFLOW and not is_langflow_disabled():
             # Prepare extra headers for JWT authentication and embedding model.
             # NOTE: extra_headers accumulates raw secrets (JWT, provider API keys).
             # Never log this dict or pass it to a logger call
@@ -787,7 +788,7 @@ class ChatService:
                     "langflow_deleted": False,
                     "error": "Conversation not found",
                 }
-            if DISABLE_CHAT_WITH_LANGFLOW:
+            if DISABLE_CHAT_WITH_LANGFLOW or is_langflow_disabled():
                 await self.session_ownership_service.release_session(user_id, session_id)
                 return {
                     "success": True,

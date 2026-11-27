@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/settings-tabs";
 import { useAuth } from "@/contexts/auth-context";
 import { useIsCloudBrand } from "@/contexts/brand-context";
@@ -17,6 +18,7 @@ const TABS = [
   { value: "providers", label: "Providers", perm: "providers:write" },
   { value: "ingestion", label: "Ingestion", perm: "config:write" },
   { value: "agent", label: "Agent", perm: "config:write" },
+  { value: "advanced", label: "Advanced", perm: "config:write" },
   { value: "api-keys", label: "API Keys", apiKeysTab: true },
   {
     value: "connector-access",
@@ -30,10 +32,16 @@ export function SettingsNav() {
   const { isAuthenticated, isNoAuthMode, isIbmAuthMode } = useAuth();
   const isCloudBrand = useIsCloudBrand();
   const tabAccess = useSettingsTabAccess();
+  const { data: settings } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
 
   const currentTab = pathname.split("/").pop() ?? "connectors";
 
   const visibleTabs = TABS.filter((tab) => {
+    if (tab.value === "advanced" && settings?.langflow_configurable === false) {
+      return false;
+    }
     if (tab.value === "connector-access") {
       return canAccessConnectorAccessTab(tabAccess);
     }

@@ -437,6 +437,16 @@ CONFIG_SECTIONS: list[ConfigSection] = [
         "Advanced",
         [
             ConfigField(
+                "disable_langflow",
+                "DISABLE_LANGFLOW",
+                "Disable Langflow",
+                placeholder="false",
+                default="False",
+                helper_text=(
+                    "Use native OpenRAG chat, ingestion, and suggested prompts, and do not start Langflow."
+                ),
+            ),
+            ConfigField(
                 "webhook_base_url",
                 "WEBHOOK_BASE_URL",
                 "Webhook Base URL",

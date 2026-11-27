@@ -76,6 +76,14 @@ describe("IngestSettingsSection", () => {
   // ── Baseline ──────────────────────────────────────────────────────────────
 
   describe("initial load", () => {
+    it("labels the file-processing controls as Ingest configuration", async () => {
+      renderSection();
+
+      expect(
+        await screen.findByRole("heading", { name: "Ingest configuration" }),
+      ).toBeInTheDocument();
+    });
+
     it("populates chunk size and overlap from server", async () => {
       // Use server values that differ from the component defaults (1024 / 50)
       // so this test fails if server→form synchronization stops working.
@@ -379,6 +387,7 @@ describe("IngestSettingsSection", () => {
 
   describe("restore flow", () => {
     it("persists the restored defaults to the server, leaving Save disabled", async () => {
+      let restoredSettings: Record<string, unknown> | undefined;
       // Server state differs from DEFAULT_KNOWLEDGE_SETTINGS so restoring
       // produces a real diff to persist.
       // "flows:edit" isn't in the admin preset's permission list, so grant it
@@ -406,15 +415,16 @@ describe("IngestSettingsSection", () => {
 
       server.use(
         http.post("/api/reset-flow/ingest", () => HttpResponse.json({})),
-        http.post("/api/settings", () =>
-          HttpResponse.json({
+        http.post("/api/settings", async ({ request }) => {
+          restoredSettings = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json({
             message: "ok",
             settings: makeSettings({
               knowledge: { chunk_size: 1000, chunk_overlap: 200 },
               show_vlm_settings: false,
             }),
-          }),
-        ),
+          });
+        }),
         http.get("/api/settings", () =>
           HttpResponse.json(
             makeSettings({
@@ -438,6 +448,9 @@ describe("IngestSettingsSection", () => {
         expect(
           screen.getByRole("spinbutton", { name: /chunk size/i }),
         ).toHaveValue(1000);
+      });
+      expect(restoredSettings).toMatchObject({
+        disable_ingest_with_langflow: false,
       });
       await waitFor(() => {
         expect(
@@ -494,14 +507,11 @@ describe("IngestSettingsSection", () => {
   });
 
   describe("toggle switches", () => {
-    it("toggles Disable Langflow Ingestion, Table Structure, OCR, and Picture Descriptions", async () => {
+    it("moves the Langflow ingestion choice to Advanced and toggles document options", async () => {
       renderSection();
 
       await screen.findByRole("spinbutton", { name: /chunk size/i });
 
-      const langflowSwitch = screen.getByRole("switch", {
-        name: /disable langflow ingestion/i,
-      });
       const tableStructureSwitch = screen.getByRole("switch", {
         name: /table structure/i,
       });
@@ -510,9 +520,9 @@ describe("IngestSettingsSection", () => {
         name: /picture descriptions/i,
       });
 
-      expect(langflowSwitch).toHaveAttribute("aria-checked", "false");
-      fireEvent.click(langflowSwitch);
-      expect(langflowSwitch).toHaveAttribute("aria-checked", "true");
+      expect(
+        screen.queryByRole("switch", { name: /disable langflow ingestion/i }),
+      ).toBeNull();
 
       expect(tableStructureSwitch).toHaveAttribute("aria-checked", "true");
       fireEvent.click(tableStructureSwitch);

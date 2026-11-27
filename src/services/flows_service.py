@@ -17,6 +17,7 @@ from config.settings import (
     OPENAI_LLM_COMPONENT_DISPLAY_NAME,
     clients,
     get_openrag_config,
+    is_langflow_disabled,
 )
 from utils.langflow_utils import enable_mcp_none_for_project
 from utils.logging_config import get_logger
@@ -35,7 +36,7 @@ class FlowsService:
         # Cache for flow file mappings to avoid repeated filesystem scans
         self._flow_file_cache: dict[str, str] = {}
         # Semaphores to prevent race conditions when updating the same flow concurrently
-        self._flow_locks = LRUCache(maxsize=128)
+        self._flow_locks: LRUCache[str, asyncio.Lock] = LRUCache(maxsize=128)
         self._lock_creation_lock = asyncio.Lock()
         # Cache for enabled models to avoid redundant API calls
         self._enabled_models_cache: dict[str, Any] | None = None
@@ -1058,6 +1059,24 @@ class FlowsService:
 
         return created_flow_types
 
+    async def verify_configured_flows_exist(self) -> None:
+        """Raise when any configured OpenRAG flow is still absent from Langflow."""
+        missing: list[str] = []
+        for flow_type, flow_id in (
+            ("nudges", NUDGES_FLOW_ID),
+            ("retrieval", LANGFLOW_CHAT_FLOW_ID),
+            ("ingest", LANGFLOW_INGEST_FLOW_ID),
+            ("url_ingest", LANGFLOW_URL_INGEST_FLOW_ID),
+        ):
+            if not flow_id:
+                continue
+            response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+            if response.status_code != 200:
+                missing.append(f"{flow_type} ({flow_id}, HTTP {response.status_code})")
+
+        if missing:
+            raise RuntimeError(f"Configured Langflow flows are unavailable: {', '.join(missing)}")
+
     async def enable_mcp_none_for_url_ingest_flow(self) -> bool:
         """Configure auth_type='none' for MCP on the URL ingest flow project."""
         flow_id = LANGFLOW_URL_INGEST_FLOW_ID
@@ -1211,8 +1230,10 @@ class FlowsService:
         provider_name = self._get_provider_name_display(provider)
 
         # Update embedding component
-        if not get_openrag_config().knowledge.disable_ingest_with_langflow and (
-            embedding_model or force_embedding_update
+        if (
+            not is_langflow_disabled()
+            and not get_openrag_config().knowledge.disable_ingest_with_langflow
+            and (embedding_model or force_embedding_update)
         ):
             if is_new_flow:
                 if embedding_model:

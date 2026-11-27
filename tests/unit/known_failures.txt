@@ -15,7 +15,6 @@
 ignore:test_agent_response.py
 ignore:test_agent_sources.py
 
-tests/unit/api/test_langflow_sync_bug_1587.py::test_explicit_llm_arguments_bypass_fallback
 tests/unit/api/test_model_providers_endpoint.py::test_oss_and_on_prem_still_publish_ollama[on_prem]
 tests/unit/api/test_model_providers_endpoint.py::test_an_override_file_drives_the_payload
 tests/unit/config/test_model_providers_config.py::test_shipped_defaults_keep_ollama_out_of_saas_only

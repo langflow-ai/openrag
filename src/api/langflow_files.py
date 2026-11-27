@@ -6,6 +6,7 @@ from fastapi import Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from config.settings import is_langflow_disabled
 from dependencies import (
     get_current_user,
     get_langflow_file_service,
@@ -19,6 +20,10 @@ from utils.logging_config import get_logger
 from utils.upload_limits import UploadTooLarge, read_upload_within_limit, upload_too_large_message
 
 logger = get_logger(__name__)
+
+
+def _langflow_disabled_response() -> JSONResponse:
+    return JSONResponse({"error": "Langflow is disabled"}, status_code=404)
 
 
 class RunIngestionBody(BaseModel):
@@ -40,6 +45,8 @@ async def upload_user_file(
     user: User = Depends(require_permission("knowledge:upload")),
 ):
     """Upload a file to Langflow's Files API"""
+    if is_langflow_disabled():
+        return _langflow_disabled_response()
     try:
         logger.debug("upload_user_file endpoint called")
         logger.debug("Processing file", filename=file.filename, size=file.size)
@@ -74,6 +81,8 @@ async def run_ingestion(
     user: User = Depends(require_permission("knowledge:upload")),
 ):
     """Run a Langflow ingestion flow"""
+    if is_langflow_disabled():
+        return _langflow_disabled_response()
     if not body.file_paths and not body.file_ids:
         return JSONResponse({"error": "Provide file_paths or file_ids"}, status_code=400)
 
@@ -130,6 +139,8 @@ async def upload_and_ingest_user_file(
     user: User = Depends(require_permission("knowledge:upload")),
 ):
     """Upload and ingest a file via Langflow (async background task)"""
+    if is_langflow_disabled():
+        return _langflow_disabled_response()
     try:
         settings = None
         tweaks = None
@@ -202,6 +213,8 @@ async def delete_user_files(
     user: User = Depends(get_current_user),
 ):
     """Delete files from Langflow's Files API"""
+    if is_langflow_disabled():
+        return _langflow_disabled_response()
     errors = []
     for fid in body.file_ids:
         try:

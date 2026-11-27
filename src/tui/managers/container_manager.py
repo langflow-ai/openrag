@@ -104,17 +104,10 @@ class ContainerManager:
         except Exception:
             self.use_gpu_compose = False
 
-        # Expected services based on compose files
-        self.expected_services = [
-            "openrag-backend",
-            "openrag-frontend",
-            "opensearch",
-            "dashboards",
-            "langflow",
-        ]
+        env = self._get_env_from_file()
+        self._set_expected_services(env.get("DISABLE_LANGFLOW", ""))
 
         # Get compose project name from env or default to "openrag"
-        env = self._get_env_from_file()
         project_name = env.get("COMPOSE_PROJECT_NAME", "openrag")
 
         # Map container names to service names
@@ -125,6 +118,24 @@ class ContainerManager:
             f"{project_name}-dashboards": "dashboards",
             f"{project_name}-langflow": "langflow",
         }
+
+    def _set_expected_services(self, disable_langflow: str) -> bool:
+        """Update the service set after a TUI configuration save."""
+
+        expected_services = [
+            "openrag-backend",
+            "openrag-frontend",
+            "opensearch",
+            "dashboards",
+        ]
+        if disable_langflow.strip().lower() not in ("true", "1", "yes"):
+            expected_services.append("langflow")
+        changed = getattr(self, "expected_services", None) != expected_services
+        if changed:
+            self.services_cache = {}
+            self.last_status_update = 0.0
+        self.expected_services = expected_services
+        return changed
 
     @staticmethod
     def _extract_repository(image_tag: str) -> str:
@@ -202,11 +213,13 @@ class ContainerManager:
         This ensures Docker Compose commands use the latest values from .env file,
         even if os.environ has stale values.
         """
-        from dotenv import load_dotenv
+        from dotenv import dotenv_values
 
+        from config.settings import get_disable_langflow_env_value
         from utils.paths import get_tui_env_file
 
         env = dict(os.environ)  # Start with current environment
+        explicit_disable_langflow = get_disable_langflow_env_value()
 
         # Check centralized TUI .env location first
         tui_env_file = get_tui_env_file()
@@ -218,14 +231,19 @@ class ContainerManager:
 
         if env_file.exists():
             try:
-                # Load .env file with override=True to ensure file values take precedence
-                # This loads into os.environ, then we copy to our dict
-                load_dotenv(dotenv_path=env_file, override=True)
-                # Update our dict with all environment variables (including those from .env)
-                env.update(os.environ)
+                env.update(
+                    {
+                        key: value
+                        for key, value in dotenv_values(env_file).items()
+                        if value is not None
+                    }
+                )
                 logger.debug(f"Loaded environment from {env_file}")
             except Exception as e:
                 logger.debug(f"Error reading .env file for Docker Compose: {e}")
+
+        if explicit_disable_langflow is not None:
+            env["DISABLE_LANGFLOW"] = explicit_disable_langflow
 
         return env
 
@@ -330,6 +348,8 @@ class ContainerManager:
         conflicts: list[tuple[str, int, str]] = []
 
         for service_name, ports in service_ports.items():
+            if service_name not in self.expected_services:
+                continue
             for port in ports:
                 try:
                     # Try to bind to the port to check if it's available
@@ -374,6 +394,8 @@ class ContainerManager:
         cmd.extend(["-f", str(self.compose_file)])
         if use_gpu and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
+        if self._should_include_langflow_profile(args):
+            cmd.extend(["--profile", "langflow"])
         cmd.extend(args)
 
         try:
@@ -431,6 +453,8 @@ class ContainerManager:
         cmd.extend(["-f", str(self.compose_file)])
         if use_gpu and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
+        if self._should_include_langflow_profile(args):
+            cmd.extend(["--profile", "langflow"])
         cmd.extend(args)
 
         try:
@@ -515,6 +539,8 @@ class ContainerManager:
         cmd.extend(["-f", str(self.compose_file)])
         if use_gpu and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
+        if self._should_include_langflow_profile(args):
+            cmd.extend(["--profile", "langflow"])
         cmd.extend(args)
 
         try:
@@ -649,7 +675,13 @@ class ContainerManager:
         if compose_service and compose_service in self.expected_services:
             return compose_service
 
-        return self.container_name_map.get(container_name)
+        mapped_service = self.container_name_map.get(container_name)
+        return mapped_service if mapped_service in self.expected_services else None
+
+    def _should_include_langflow_profile(self, args: list[str]) -> bool:
+        """Include Langflow for enabled work and for cleanup of stale containers."""
+
+        return "langflow" in self.expected_services or bool(args and args[0] in {"stop", "down"})
 
     def _process_service_json(self, service: dict, services: dict[str, ServiceInfo]) -> None:
         """Process a service JSON object and add it to the services dict."""
@@ -1094,7 +1126,11 @@ class ContainerManager:
             env_manager.load_existing_env()
             env_manager.setup_secure_defaults()
             env_manager.save_env_file()
-            if not env_manager.config.langflow_superuser_password:
+            self._set_expected_services(env_manager.config.disable_langflow)
+            if (
+                env_manager.config.disable_langflow.strip().lower() not in ("true", "1", "yes")
+                and not env_manager.config.langflow_superuser_password
+            ):
                 yield (
                     False,
                     "ERROR: Langflow superuser password is required but not configured.",
@@ -1173,9 +1209,34 @@ class ContainerManager:
 
         if containers_exist:
             yield False, "Starting existing containers...", False
-            if self.runtime_info.runtime_type == RuntimeType.PODMAN:
+            env = self._get_env_from_file()
+            project_name = env.get("COMPOSE_PROJECT_NAME", "openrag")
+            desired_mode = env.get("DISABLE_LANGFLOW", "").strip().lower()
+            inspect_ok, inspect_out, _ = await self._run_runtime_command(
+                [
+                    "inspect",
+                    f"{project_name}-backend",
+                    "--format",
+                    "{{range .Config.Env}}{{println .}}{{end}}",
+                ]
+            )
+            current_mode = (
+                next(
+                    (
+                        line.split("=", 1)[1].strip().lower()
+                        for line in inspect_out.splitlines()
+                        if line.startswith("DISABLE_LANGFLOW=")
+                    ),
+                    None,
+                )
+                if inspect_ok
+                else None
+            )
+            mode_changed = current_mode != desired_mode
+            if self.runtime_info.runtime_type == RuntimeType.PODMAN or mode_changed:
                 # Podman doesn't support --no-recreate; force-recreate to avoid
-                # "name already in use" and dependency graph errors
+                # "name already in use" and dependency graph errors. Recreate
+                # Docker containers too when the backend's mode changed.
                 compose_cmd = ["up", "-d", "--force-recreate"]
             else:
                 # Use --no-recreate to start existing containers without recreating

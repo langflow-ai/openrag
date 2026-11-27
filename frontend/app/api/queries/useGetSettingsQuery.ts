@@ -83,6 +83,7 @@ export interface OnboardingState {
 }
 
 export interface Settings {
+  disable_langflow?: boolean;
   langflow_url?: string;
   flow_id?: string;
   ingest_flow_id?: string;
@@ -111,6 +112,8 @@ export interface Settings {
   segment_write_key?: string;
   environment?: string;
   langflow_port?: string | number | null;
+  langflow_enabled?: boolean;
+  langflow_configurable?: boolean;
 }
 
 export async function getSettings(): Promise<Settings> {

@@ -17,6 +17,22 @@ hostname ?= 0.0.0.0
 # Add new vars here as they become required.
 REQUIRED_ENV_VARS := LANGFLOW_SUPERUSER LANGFLOW_SUPERUSER_PASSWORD OPENSEARCH_PASSWORD LANGFLOW_SECRET_KEY
 
+# Langflow is an optional compose profile. The master switch must let every
+# normal and local-development target run without Langflow credentials, image
+# work, or the Langflow data directory.
+LANGFLOW_DISABLE_VALUE := $(shell printf '%s' '$(DISABLE_LANGFLOW)' | tr '[:upper:]' '[:lower:]')
+ifneq ($(filter true 1 yes,$(LANGFLOW_DISABLE_VALUE)),)
+  LANGFLOW_DISABLED := true
+  LANGFLOW_PROFILE :=
+  LANGFLOW_BUILD_SERVICES := opensearch
+  LANGFLOW_INFRA_SERVICES := opensearch dashboards
+else
+  LANGFLOW_DISABLED := false
+  LANGFLOW_PROFILE := --profile langflow
+  LANGFLOW_BUILD_SERVICES := langflow opensearch
+  LANGFLOW_INFRA_SERVICES := opensearch dashboards langflow
+endif
+
 # Default values for dev-branch builds (can be overridden via command line)
 # Usage: make dev-branch BRANCH=test-openai-responses REPO=https://github.com/myorg/langflow.git
 BRANCH ?= main
@@ -470,8 +486,7 @@ help_utils: ## Show utility commands
 ######################
 
 ensure-langflow-data: ## Create the langflow-data directory if it does not exist
-	@mkdir -p langflow-data
-	@chmod 777 langflow-data
+	@if [ "$(LANGFLOW_DISABLED)" != "true" ]; then mkdir -p langflow-data && chmod 777 langflow-data; fi
 
 ensure-backend-volumes: ## Create and permission backend volume directories
 	@mkdir -p flows keys config data openrag-documents
@@ -480,7 +495,7 @@ ensure-backend-volumes: ## Create and permission backend volume directories
 
 check-env: ## Verify required environment variables are set in .env
 	@missing=""; \
-	for var in $(REQUIRED_ENV_VARS); do \
+	for var in $(if $(filter true,$(LANGFLOW_DISABLED)),OPENSEARCH_PASSWORD,$(REQUIRED_ENV_VARS)); do \
 		val="$$(eval echo "\$$$$var")"; \
 		if [ -z "$$val" ]; then \
 			missing="$$missing $$var"; \
@@ -547,67 +562,67 @@ generate-langflow-password: ## Auto-generate and append Langflow superuser crede
 
 dev: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack with GPU support
 	@echo "$(YELLOW)Starting OpenRAG with GPU support...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
+	$(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Frontend:$(NC)   $(FRONTEND_LOCAL_URL)"
-	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@if [ "$(LANGFLOW_DISABLED)" != "true" ]; then echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"; fi
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
 dev-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack with CPU only
 	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
-	$(COMPOSE_CMD) up -d $(SERVICES)
+	$(COMPOSE_CMD) $(LANGFLOW_PROFILE) up -d $(SERVICES)
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Frontend:$(NC)   $(FRONTEND_LOCAL_URL)"
-	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@if [ "$(LANGFLOW_DISABLED)" != "true" ]; then echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"; fi
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
 dev-build: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack with GPU support, building all images first
 	@echo "$(YELLOW)Building all OpenRAG images...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build
+	$(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.gpu.yml build
 	@echo "$(YELLOW)Starting OpenRAG with GPU support...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
+	$(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Frontend:$(NC)   $(FRONTEND_LOCAL_URL)"
-	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@if [ "$(LANGFLOW_DISABLED)" != "true" ]; then echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"; fi
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
 dev-build-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start full stack with CPU only, building all images first
 	@echo "$(YELLOW)Building all OpenRAG images (CPU)...$(NC)"
-	$(COMPOSE_CMD) build
+	$(COMPOSE_CMD) $(LANGFLOW_PROFILE) build
 	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
-	$(COMPOSE_CMD) up -d
+	$(COMPOSE_CMD) $(LANGFLOW_PROFILE) up -d
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Frontend:$(NC)   $(FRONTEND_LOCAL_URL)"
-	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@if [ "$(LANGFLOW_DISABLED)" != "true" ]; then echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"; fi
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
 dev-local: ensure-langflow-data ensure-backend-volumes check-env ## Start infrastructure for local development
-	@echo "$(YELLOW)Building Langflow and OpenSearch images...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build langflow opensearch
+	@echo "$(YELLOW)Building local infrastructure images...$(NC)"
+	$(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.gpu.yml build $(LANGFLOW_BUILD_SERVICES)
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
+	$(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.host-backend.yml up -d $(LANGFLOW_INFRA_SERVICES)
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
-	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@if [ "$(LANGFLOW_DISABLED)" != "true" ]; then echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"; fi
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
 dev-local-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start infrastructure for local development, with CPU only
-	@echo "$(YELLOW)Building Langflow and OpenSearch images (CPU)...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml build langflow opensearch
+	@echo "$(YELLOW)Building local infrastructure images (CPU)...$(NC)"
+	$(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.host-backend.yml build $(LANGFLOW_BUILD_SERVICES)
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
+	$(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.host-backend.yml up -d $(LANGFLOW_INFRA_SERVICES)
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
-	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"
+	@if [ "$(LANGFLOW_DISABLED)" != "true" ]; then echo "   $(CYAN)Langflow:$(NC)   http://localhost:$${LANGFLOW_PORT:-7860}"; fi
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 	@echo ""
@@ -620,74 +635,87 @@ dev-local-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start in
 #        make dev-branch BRANCH=feature-x REPO=https://github.com/myorg/langflow.git
 
 dev-branch: ensure-langflow-data ensure-backend-volumes check-env ## Build & run full stack with custom Langflow branch
-	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
-	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
+	@if [ "$(LANGFLOW_DISABLED)" != "true" ]; then \
+		echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"; \
+		echo "   $(CYAN)Repository:$(NC) $(REPO)"; \
+		echo ""; \
+		echo "$(YELLOW)This may take several minutes for the first build...$(NC)"; \
+		GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml build langflow; \
+	fi
 	@echo ""
-	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
-	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml build langflow
-	@echo ""
-	@echo "$(YELLOW)Starting OpenRAG with custom Langflow build...$(NC)"
-	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml up -d
+	@echo "$(YELLOW)Starting OpenRAG$(if $(filter true,$(LANGFLOW_DISABLED)), without Langflow,)$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml up -d
 	@echo ""
 	@echo "$(PURPLE)Dev environment started!$(NC)"
-	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
+	@if [ "$(LANGFLOW_DISABLED)" != "true" ]; then echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"; fi
 	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:$${FRONTEND_PORT:-3000}"
 	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
 dev-branch-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Build & run full stack with custom Langflow branch and CPU only mode
-	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
-	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
+	@if [ "$(LANGFLOW_DISABLED)" != "true" ]; then \
+		echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"; \
+		echo "   $(CYAN)Repository:$(NC) $(REPO)"; \
+		echo ""; \
+		echo "$(YELLOW)This may take several minutes for the first build...$(NC)"; \
+		GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.dev.yml build langflow; \
+	fi
 	@echo ""
-	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
-	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml build langflow
-	@echo ""
-	@echo "$(YELLOW)Starting OpenRAG (CPU only) with custom Langflow build...$(NC)"
-	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml up -d
+	@echo "$(YELLOW)Starting OpenRAG (CPU only)$(if $(filter true,$(LANGFLOW_DISABLED)), without Langflow,)$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.dev.yml up -d
 	@echo ""
 	@echo "$(PURPLE)Dev environment started!$(NC)"
-	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
+	@if [ "$(LANGFLOW_DISABLED)" != "true" ]; then echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"; fi
 	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:$${FRONTEND_PORT:-3000}"
 	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 
 dev-branch-local: ensure-langflow-data ensure-backend-volumes check-env ## Start infrastructure for local development with custom Langflow branch
-	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
-	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
-	@echo ""
-	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
-	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml build langflow
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build opensearch
-	@echo "$(YELLOW)Starting infrastructure only (for local development) with custom Langflow build...$(NC)"
-	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
+	@if [ "$(LANGFLOW_DISABLED)" != "true" ]; then \
+		echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"; \
+		echo "   $(CYAN)Repository:$(NC) $(REPO)"; \
+		echo ""; \
+		echo "$(YELLOW)This may take several minutes for the first build...$(NC)"; \
+		GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml build langflow; \
+	fi
+	$(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.gpu.yml build opensearch
+	@echo "$(YELLOW)Starting infrastructure only (for local development)$(if $(filter true,$(LANGFLOW_DISABLED)), without Langflow,)$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml -f docker-compose.host-backend.yml up -d $(LANGFLOW_INFRA_SERVICES)
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
-	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
+	@if [ "$(LANGFLOW_DISABLED)" != "true" ]; then echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"; fi
 	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
 dev-branch-local-cpu: ensure-langflow-data ensure-backend-volumes check-env ## Start infrastructure for local development, with CPU only and custom Langflow branch
-	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
-	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
-	@echo ""
-	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
-	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml build langflow
-	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.host-backend.yml build opensearch
-	@echo "$(YELLOW)Starting infrastructure only (for local development) with CPU only and custom Langflow build...$(NC)"
-	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.host-backend.yml up -d opensearch dashboards langflow
+	@if [ "$(LANGFLOW_DISABLED)" != "true" ]; then \
+		echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"; \
+		echo "   $(CYAN)Repository:$(NC) $(REPO)"; \
+		echo ""; \
+		echo "$(YELLOW)This may take several minutes for the first build...$(NC)"; \
+		GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.dev.yml build langflow; \
+	fi
+	$(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.host-backend.yml build opensearch
+	@echo "$(YELLOW)Starting infrastructure only (for local development, CPU only)$(if $(filter true,$(LANGFLOW_DISABLED)), without Langflow,)$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.host-backend.yml up -d $(LANGFLOW_INFRA_SERVICES)
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
-	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"
+	@if [ "$(LANGFLOW_DISABLED)" != "true" ]; then echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:$${LANGFLOW_PORT:-7860}"; fi
 	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:$${OPENSEARCH_PORT:-9200}"
 	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:$${OPENSEARCH_DASHBOARDS_PORT:-5601}"
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
 build-langflow-dev: ## Build only the Langflow dev image (no cache)
+ifeq ($(LANGFLOW_DISABLED),true)
+	@echo "$(YELLOW)DISABLE_LANGFLOW=true; no Langflow image to build.$(NC)"
+
+else
 	@echo "$(YELLOW)Building Langflow dev image from branch: $(BRANCH)$(NC)"
 	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
 	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.dev.yml build --no-cache langflow
 	@echo "$(PURPLE)Langflow dev image built!$(NC)"
+endif
 
 stop-dev: ## Stop dev environment containers
 	@echo "$(YELLOW)Stopping dev environment containers...$(NC)"
@@ -696,8 +724,8 @@ stop-dev: ## Stop dev environment containers
 
 restart-dev: ensure-langflow-data ensure-backend-volumes ## Restart dev environment
 	@echo "$(YELLOW)Restarting dev environment with branch: $(BRANCH)$(NC)"
-	$(COMPOSE_CMD) -f docker-compose.dev.yml down
-	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.dev.yml up -d
+	$(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.dev.yml down
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(LANGFLOW_PROFILE) -f docker-compose.yml -f docker-compose.dev.yml up -d
 	@echo "$(PURPLE)Dev environment restarted!$(NC)"
 
 clean-dev: ## Stop dev containers and remove volumes

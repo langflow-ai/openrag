@@ -121,12 +121,15 @@ class WorkspaceConfigService:
                 return self._config_from_db_dict({})
             return self._cm.load_config()  # hybrid fallback
 
+        meta = rows.get("meta") or {}
         merged: dict[str, Any] = {
             "providers": rows.get("providers", {}),
             "knowledge": rows.get("knowledge", {}),
             "agent": rows.get("agent", {}),
             "onboarding": rows.get("onboarding", {}),
-            "edited": (rows.get("meta") or {}).get("edited", False),
+            "edited": meta.get("edited", False),
+            "disable_langflow": meta.get("disable_langflow", False),
+            "langflow_sync_pending": meta.get("langflow_sync_pending", False),
         }
         config = self._config_from_db_dict(merged)
         self._cm._config = config
@@ -439,11 +442,15 @@ class WorkspaceConfigService:
             ):
                 await repo.upsert(section, value, actor_user_id=actor_user_id)
 
-            # For "meta", only touch the "edited" flag — preserve every other
-            # key atomically via a locked merge.
+            # Preserve unrelated metadata atomically while mirroring the
+            # deployment-wide settings that are not part of a nested section.
             await repo.merge_section_keys(
                 "meta",
-                updates={"edited": bool(config_dict.get("edited", False))},
+                updates={
+                    "edited": bool(config_dict.get("edited", False)),
+                    "disable_langflow": bool(config_dict.get("disable_langflow", False)),
+                    "langflow_sync_pending": bool(config_dict.get("langflow_sync_pending", False)),
+                },
                 actor_user_id=actor_user_id,
             )
 

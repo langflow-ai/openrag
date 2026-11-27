@@ -91,7 +91,11 @@ async def upload_ingest_router(
     - If DISABLE_INGEST_WITH_LANGFLOW is True: uses traditional OpenRAG upload
     - If DISABLE_INGEST_WITH_LANGFLOW is False (default): uses Langflow upload-ingest via task service
     """
-    disable_ingest_with_langflow = get_openrag_config().knowledge.disable_ingest_with_langflow
+    from config.settings import is_langflow_disabled
+
+    disable_ingest_with_langflow = (
+        get_openrag_config().knowledge.disable_ingest_with_langflow or is_langflow_disabled()
+    )
     requested_preview = preview.lower() == "true"
     preview_mode = requested_preview and is_ingest_preview_enabled()
     if requested_preview and not preview_mode:

@@ -98,6 +98,26 @@ class TestSaveEnvFilePermissions:
         assert "OPENSEARCH_PASSWORD='NewSecurePass!123'" in content
         assert "OPENSEARCH_PASSWORD='old-password'" not in content
 
+    def test_disabled_langflow_preserves_existing_langflow_values(self, env_manager, tmp_path):
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "DISABLE_LANGFLOW=true\n"
+            "COMPOSE_PROFILES=langflow\n"
+            "LANGFLOW_DATA_PATH=/srv/langflow-data\n"
+            "LANGFLOW_SECRET_KEY=keep-me\n"
+            "LANGFLOW_CHAT_FLOW_ID=chat-flow\n"
+        )
+        env_manager.load_existing_env()
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            assert env_manager.save_env_file() is True
+
+        content = env_file.read_text()
+        assert "LANGFLOW_DATA_PATH=/srv/langflow-data" in content
+        assert "LANGFLOW_SECRET_KEY=keep-me" in content
+        assert "LANGFLOW_CHAT_FLOW_ID=chat-flow" in content
+        assert "COMPOSE_PROFILES=" not in content
+
     def test_preserves_unmanaged_multiline_quoted_value(self, env_manager, tmp_path):
         """Unmanaged python-dotenv–style multiline quoted values are preserved."""
         env_file = tmp_path / ".env"
@@ -241,6 +261,7 @@ class TestLangflowPasswordAndAutoLogin:
         assert "LANGFLOW_SUPERUSER_PASSWORD='LangflowPass123!'" in content
         assert "LANGFLOW_AUTO_LOGIN='True'" in content
         assert "LANGFLOW_SUPERUSER='langflow'" in content
+        assert "COMPOSE_PROFILES=langflow" in content
 
     def test_validate_config_requires_langflow_password(self, env_manager):
         env_manager.config.opensearch_password = "Pass123!"
@@ -385,3 +406,33 @@ class TestNativeChatSetting:
 
         (langflow,) = [section for section in CONFIG_SECTIONS if section.name == "Langflow"]
         assert "DISABLE_CHAT_WITH_LANGFLOW" in {field.env_var for field in langflow.fields}
+
+
+class TestDisableLangflowSetting:
+    """The master switch must make TUI startup independent from Langflow."""
+
+    def test_disable_langflow_omits_langflow_credentials_and_data_path(self, env_manager, tmp_path):
+        env_manager.config.disable_langflow = "true"
+        env_manager.config.opensearch_password = "OpenSearchPass123!"
+
+        with patch("tui.utils.version_check.get_current_version", return_value="1.0.0"):
+            assert env_manager.save_env_file() is True
+
+        content = (tmp_path / ".env").read_text()
+        assert "DISABLE_LANGFLOW='true'" in content
+        assert "LANGFLOW_SECRET_KEY=" not in content
+        assert "LANGFLOW_SUPERUSER_PASSWORD=" not in content
+        assert "LANGFLOW_DATA_PATH=" not in content
+        assert "COMPOSE_PROFILES=" not in content
+
+    def test_process_disable_langflow_overrides_a_persisted_tui_value(self, tmp_path, monkeypatch):
+        from tui.managers.env_manager import EnvManager
+
+        env_file = tmp_path / ".env"
+        env_file.write_text("DISABLE_LANGFLOW=false\n")
+        monkeypatch.setattr("config.settings.DISABLE_LANGFLOW_ENV_VALUE", "true")
+
+        manager = EnvManager(env_file=env_file)
+        manager.load_existing_env()
+
+        assert manager.config.disable_langflow == "true"

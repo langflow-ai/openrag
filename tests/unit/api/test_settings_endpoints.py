@@ -126,6 +126,160 @@ def test_settings_models_accept_arbitrary_provider_credentials():
     assert onboarding.provider_credentials == credentials
 
 
+@pytest.mark.asyncio
+async def test_settings_master_disable_langflow_is_persisted_without_syncing_langflow(monkeypatch):
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    saved_configs = []
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("api.settings.endpoints.get_openrag_config", lambda: config)
+    monkeypatch.setattr("api.settings.endpoints.is_langflow_env_disabled", lambda: False)
+    monkeypatch.setattr(
+        "api.settings.endpoints.config_manager.save_config_file",
+        lambda updated: saved_configs.append(updated) or True,
+    )
+    monkeypatch.setattr("api.settings.endpoints.clients.refresh_patched_client", noop)
+    monkeypatch.setattr("api.settings.endpoints.TelemetryClient.send_event", noop)
+
+    response = await update_settings(
+        SettingsUpdateBody(disable_langflow=True),
+        session_manager=object(),
+        user=None,
+    )
+
+    assert response.message == "Configuration updated successfully"
+    assert saved_configs[0].disable_langflow is True
+    assert saved_configs[0].langflow_sync_pending is False
+
+
+@pytest.mark.asyncio
+async def test_settings_changed_while_langflow_disabled_are_marked_for_sync(monkeypatch):
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({"disable_langflow": True})
+    config.edited = True
+    saved_configs = []
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("api.settings.endpoints.get_openrag_config", lambda: config)
+    monkeypatch.setattr(
+        "api.settings.endpoints.config_manager.save_config_file",
+        lambda updated: saved_configs.append(updated) or True,
+    )
+    monkeypatch.setattr("api.settings.endpoints.clients.refresh_patched_client", noop)
+    monkeypatch.setattr("api.settings.endpoints.TelemetryClient.send_event", noop)
+
+    response = await update_settings(
+        SettingsUpdateBody(system_prompt="Use citations."),
+        session_manager=object(),
+        user=None,
+    )
+
+    assert response.message == "Configuration updated successfully"
+    assert saved_configs[0].langflow_sync_pending is True
+
+
+@pytest.mark.asyncio
+async def test_reenabling_langflow_initializes_before_saving(monkeypatch):
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict(
+        {
+            "disable_langflow": True,
+            "langflow_sync_pending": True,
+            "knowledge": {"disable_ingest_with_langflow": True},
+        }
+    )
+    config.edited = True
+    saved_configs = []
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    async def initialize(_services, *, config, **_kwargs):
+        config.langflow_sync_pending = False
+
+    monkeypatch.setattr("api.settings.endpoints.get_openrag_config", lambda: config)
+    monkeypatch.setattr("api.settings.endpoints.is_langflow_env_disabled", lambda: False)
+    monkeypatch.setattr(
+        "api.settings.endpoints.config_manager.save_config_file",
+        lambda updated: saved_configs.append(updated) or True,
+    )
+    monkeypatch.setattr("api.settings.endpoints.clients.refresh_patched_client", noop)
+    monkeypatch.setattr("api.settings.endpoints.TelemetryClient.send_event", noop)
+    monkeypatch.setattr("services.startup_orchestrator.initialize_langflow_services", initialize)
+
+    response = await update_settings(
+        SettingsUpdateBody(disable_langflow=False),
+        session_manager=object(),
+        user=None,
+    )
+    assert response.message == "Configuration updated successfully"
+    assert saved_configs[0].knowledge.disable_ingest_with_langflow is False
+    assert saved_configs[0].langflow_sync_pending is False
+
+
+@pytest.mark.asyncio
+async def test_reenabling_langflow_keeps_native_mode_when_initialization_fails(monkeypatch):
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({"disable_langflow": True})
+    config.edited = True
+    saved_configs = []
+
+    async def initialize(*_args, **_kwargs):
+        raise RuntimeError("ingest flow is missing")
+
+    monkeypatch.setattr("api.settings.endpoints.get_openrag_config", lambda: config)
+    monkeypatch.setattr("api.settings.endpoints.is_langflow_env_disabled", lambda: False)
+    monkeypatch.setattr(
+        "api.settings.endpoints.config_manager.save_config_file",
+        lambda updated: saved_configs.append(updated) or True,
+    )
+    monkeypatch.setattr("services.startup_orchestrator.initialize_langflow_services", initialize)
+
+    response = await update_settings(
+        SettingsUpdateBody(disable_langflow=False),
+        session_manager=object(),
+        user=None,
+    )
+
+    assert response.status_code == 503
+    assert saved_configs == []
+    assert config.disable_langflow is True
+
+
+@pytest.mark.asyncio
+async def test_settings_master_disable_langflow_is_not_mutable_when_env_controls_it(monkeypatch):
+    from api.settings.endpoints import update_settings
+    from config.config_manager import OpenRAGConfig
+
+    config = OpenRAGConfig.from_dict({})
+    config.edited = True
+    monkeypatch.setattr("api.settings.endpoints.get_openrag_config", lambda: config)
+    monkeypatch.setattr("api.settings.endpoints.is_langflow_env_disabled", lambda: True)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await update_settings(
+            SettingsUpdateBody(disable_langflow=True),
+            session_manager=object(),
+            user=None,
+        )
+
+    assert exc_info.value.status_code == 403
+
+
 def test_custom_provider_payload_keeps_legacy_openai_secret():
     from api.settings.endpoints import _custom_providers_for_settings
     from config.config_manager import OpenRAGConfig
