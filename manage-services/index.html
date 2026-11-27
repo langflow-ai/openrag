@@ -7,7 +7,7 @@
 <script>!function(){function e(){if(void 0!==window.truste&&window.truste.cma){var e=window.truste.cma.callApi("getConsent",window.location.href)||{},n=1===e[2],t=1===e[3];gtag("consent","update",{ad_storage:n?"granted":"denied",ad_user_data:n?"granted":"denied",ad_personalization:n?"granted":"denied",analytics_storage:t?"granted":"denied"})}}window.addEventListener&&(window.addEventListener("cm_data_subject_consent_changed",e),window.addEventListener("cm_consent_preferences_set",e)),"complete"===document.readyState?e():window.addEventListener("load",e)}()</script>
 <script>window._ibmAnalytics={settings:{name:"DataStax",tealiumProfileName:"ibm-subsidiary"},trustarc:{privacyPolicyLink:"https://ibm.com/privacy"}},window.digitalData={page:{pageInfo:{ibm:{siteId:"IBM_DataStax"}},category:{primaryCategory:"PC230"}}}</script>
 <script src="//1.www.s81c.com/common/stats/ibm-common.js" async="true"></script><link rel="stylesheet" href="/assets/css/styles.d0904ab7.css">
-<script src="/assets/js/runtime~main.03ff2f07.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.cc073428.js" defer="defer"></script>
 <script src="/assets/js/main.73f0ea2a.js" defer="defer"></script>
 </head>
 <body>
@@ -33,20 +33,20 @@ The minimum recommendation is 8 GB of RAM and at least 50 GB of free disk space.
 <p>OpenRAG automatically detects your container runtime, and then checks if your machine has compatible GPU support by checking for <code>CUDA</code>, <code>NVIDIA_SMI</code>, and Docker/Podman runtime support. This check determines which Docker Compose file OpenRAG uses because there are separate Docker Compose files for GPU and CPU deployments.</p>
 </li>
 <li class="">
-<p>OpenRAG pulls the OpenRAG container images with <code>docker compose pull</code> if any images are missing.</p>
+<p>OpenRAG pulls the images for the configured deployment mode if any are missing.</p>
 </li>
 <li class="">
-<p>OpenRAG deploys the containers with <code>docker compose up -d</code>.</p>
+<p>OpenRAG deploys the containers, including Langflow when that deployment mode is selected.</p>
 </li>
 </ol></div></div></details><p>Alternatively, you can manually run the Docker/Podman commands to stop and start containers.
 Typically, this is only necessary if you don&#x27;t want to use <code>--tui</code> or there is an error preventing the terminal session from managing the containers.</p><ul>
 <li class="">Stop all containers: <a href="https://docs.docker.com/reference/cli/docker/compose/down/" target="_blank" rel="noopener noreferrer" class=""><code>docker compose down</code></a> or <code>podman compose down</code></li>
-<li class="">Start all containers: <a href="https://docs.docker.com/reference/cli/docker/compose/up/" target="_blank" rel="noopener noreferrer" class=""><code>docker compose up -d</code></a> or <code>podman compose up -d</code></li>
+<li class="">Start all containers with Langflow (the default): <a href="https://docs.docker.com/reference/cli/docker/compose/up/" target="_blank" rel="noopener noreferrer" class=""><code>docker compose --profile langflow up -d</code></a> or <code>podman compose --profile langflow up -d</code>. For a native-only deployment with <code>DISABLE_LANGFLOW=true</code>, omit <code>--profile langflow</code>.</li>
 <li class="">Stop one container: <code>docker stop CONTAINER_ID</code> or <code>podman stop CONTAINER_ID</code></li>
 <li class="">Start one container: <code>docker start CONTAINER_ID</code> or <code>podman start CONTAINER_ID</code></li>
 </ul></div><div role="tabpanel" class="tabItem_Ymn6" hidden=""><p>For self-managed deployments, run the Docker/Podman commands to stop and start containers:</p><ul>
 <li class="">Stop all containers: <a href="https://docs.docker.com/reference/cli/docker/compose/down/" target="_blank" rel="noopener noreferrer" class=""><code>docker compose down</code></a> or <code>podman compose down</code></li>
-<li class="">Start all containers: <a href="https://docs.docker.com/reference/cli/docker/compose/up/" target="_blank" rel="noopener noreferrer" class=""><code>docker compose up -d</code></a> or <code>podman compose up -d</code></li>
+<li class="">Start all containers with Langflow (the default): <a href="https://docs.docker.com/reference/cli/docker/compose/up/" target="_blank" rel="noopener noreferrer" class=""><code>docker compose --profile langflow up -d</code></a> or <code>podman compose --profile langflow up -d</code>. For a native-only deployment with <code>DISABLE_LANGFLOW=true</code>, omit <code>--profile langflow</code>.</li>
 <li class="">Stop one container: <code>docker stop CONTAINER_ID</code> or <code>podman stop CONTAINER_ID</code></li>
 <li class="">Start one container: <code>docker start CONTAINER_ID</code> or <code>podman start CONTAINER_ID</code></li>
 </ul></div></div></div>
@@ -104,8 +104,8 @@ Your documents are reingested into a fresh OpenSearch index after the reset.</p>
 </ol><ol start="2">
 <li class="">
 <p>Recreate the containers:</p>
-<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockTitle_OeMC">Docker</div><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token function" style="color:#d73a49">docker</span><span class="token plain"> compose up </span><span class="token parameter variable" style="color:#36acaa">--build</span><span class="token plain"> --force-recreate --remove-orphans</span><br></div></code></pre></div></div>
-<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockTitle_OeMC">Podman</div><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token function" style="color:#d73a49">podman</span><span class="token plain"> compose up </span><span class="token parameter variable" style="color:#36acaa">--build</span><span class="token plain"> --force-recreate --remove-orphans</span><br></div></code></pre></div></div>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockTitle_OeMC">Docker</div><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token function" style="color:#d73a49">docker</span><span class="token plain"> compose </span><span class="token parameter variable" style="color:#36acaa">--profile</span><span class="token plain"> langflow up </span><span class="token parameter variable" style="color:#36acaa">--build</span><span class="token plain"> --force-recreate --remove-orphans</span><br></div></code></pre></div></div>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockTitle_OeMC">Podman</div><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token function" style="color:#d73a49">podman</span><span class="token plain"> compose </span><span class="token parameter variable" style="color:#36acaa">--profile</span><span class="token plain"> langflow up </span><span class="token parameter variable" style="color:#36acaa">--build</span><span class="token plain"> --force-recreate --remove-orphans</span><br></div></code></pre></div></div>
 </li>
 <li class="">
 <p>Launch the OpenRAG app, and then repeat the <a class="" href="/docker#application-onboarding">application onboarding process</a>.</p>
