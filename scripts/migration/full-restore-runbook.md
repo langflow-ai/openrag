@@ -542,7 +542,29 @@ If any check fails:
 
 Never run old data with the new key, or rotated data with the old key. Keep the old key and the backups until your rollback window closes.
 
-## 12. Cleanup
+## 12. Create new cluster secret.
+- There can be an openrag failure if cluster secret and secret located in the `openrag-be-env` cluster-secret patched in step #9.
+- Inorder to create a new cluster secret:
+  1. scale down intermediate-openrag-operator
+  `kubectl scale deploy intermediate-openrag-operator --replicas=0 -n openrag-control`
+  2. Delete the secret c-<uuid>-openrag-encryption-key.
+  If that isnt deleted immediately remove the finaliser from the secret:
+  ```sh
+  kubectl patch secret c-<uuid>-openrag-encryption-key -n <namespace> \
+  --type=merge -p '{"metadata":{"finalizers":[]}}'
+  ```
+  3. Once the secret is deleted, scale the intermediate-openrag-operator back ip.
+  4. New `c-<uuid>-openrag-encryption-key` will be created within a minute, compare the key in `c-<uuid>-openrag-encryption-key`secret and `openrag-be-env`secret and make sure it matches.
+  ```sh
+  kubectl get secret openrag-be-env -n <namespace> \
+  -o jsonpath='{.data.<key>}' | base64 -d | grep -i encrypt
+
+  kubectl get secret c-<uuid>-openrag-encryption-key -n <namespace> \
+  -o jsonpath='{.data.<key>}' | base64 -d 
+  ```
+  5. Rollout restart the `openrag-be` deployment once the secret is created with the new key.
+
+## 13. Cleanup
 
 - Delete the helper pod if it still exists: `kubectl -n $NS delete pod $H --ignore-not-found`. This also wipes `/tmp/work` with both key files.
 - On your workstation: `rm -rf "$TOOLS"`, and move `pre-rotation.tar` into controlled storage together with the old key.
