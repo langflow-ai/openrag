@@ -116,14 +116,19 @@ The commands to upgrade the package depend on how you installed OpenRAG.
 
 3. Fetch and apply the latest container images while preserving your OpenRAG data:
 
+   If this is an existing deployment that uses Langflow, add
+   `COMPOSE_PROFILES=langflow` to its `.env` file before upgrading. For a
+   native-only deployment with `DISABLE_LANGFLOW=true`, leave that variable
+   unset and omit `--profile langflow` from the commands below.
+
    ```bash title="Docker"
-   docker compose pull
-   docker compose up -d --force-recreate
+   docker compose --profile langflow pull
+   docker compose --profile langflow up -d --force-recreate
    ```
 
    ```bash title="Podman"
-   podman compose pull
-   podman compose up -d --force-recreate
+   podman compose --profile langflow pull
+   podman compose --profile langflow up -d --force-recreate
    ```
 
    By default, OpenRAG's `docker-compose` files pull the latest container images.
