@@ -1,0 +1,5 @@
+aiosqlite
+asyncpg
+cryptography
+PyYAML
+SQLAlchemy[asyncio]>=2.0.16,<2.1
