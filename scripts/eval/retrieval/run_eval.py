@@ -34,6 +34,7 @@ from typing import Any
 
 import answers
 import dataset
+import diagnose
 import html_report
 import metrics
 import report
@@ -284,6 +285,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="where to write the report (default: scores.md next to the results file)",
     )
+
+    diagnosis = commands.add_parser(
+        "diagnose",
+        help="explain why each question in a results file missed, offline",
+        description=(
+            "Classify every miss in an existing results file (never retrieved, ranked low, "
+            "crowded out, paragraph missed), add context precision, noise and capped recall, "
+            "and list unlabeled files that outrank the expected ones. Needs a results file "
+            "that recorded chunk scores."
+        ),
+    )
+    diagnosis.add_argument("results", type=Path, help="results.json from a run")
+    diagnosis.add_argument("--html", type=Path, help="also write the HTML report to this path")
 
     compare = commands.add_parser("compare", help="diff two results files offline")
     compare.add_argument("baseline", type=Path)
@@ -763,6 +777,7 @@ async def run(args: argparse.Namespace) -> int:
             settings, settings_note = await _settings_snapshot(client)
             print("Running questions...")
             records = await _run_queries(client, queries, manifest, run_prefix, args)
+            diagnose.annotate(records, metrics.primary_k(args.k_values), args.k_values)
             if args.live_thresholds:
                 print(f"Running questions at {len(args.live_thresholds)} live thresholds...")
                 await _run_live_cuts(client, queries, records, manifest, run_prefix, args)
@@ -812,6 +827,7 @@ async def run(args: argparse.Namespace) -> int:
             [record["tags"] for record in records],
         ),
         "queries": records,
+        "diagnosis": diagnose.summarize(records, metrics.primary_k(args.k_values)),
     }
     if args.answers:
         results["answer_settings"] = answer_settings
@@ -1063,6 +1079,34 @@ def score_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def rediagnose(results: dict[str, Any]) -> dict[str, Any]:
+    """Diagnose a loaded results file in place and recompute its aggregates."""
+    run = results["run"]
+    k_values = run.get("k_values") or [run["primary_k"]]
+    records = results["queries"]
+    if not any(diagnose.diagnosable(record) for record in records):
+        raise report.ResultsError(
+            "this results file has no chunk scores, so its misses cannot be diagnosed; "
+            "rerun it with the current harness"
+        )
+    diagnose.annotate(records, run["primary_k"], k_values)
+    results["metrics"] = metrics.aggregate(
+        [record["metrics"] for record in records], [record["tags"] for record in records]
+    )
+    results["diagnosis"] = diagnose.summarize(records, run["primary_k"])
+    return results
+
+
+def diagnose_results(args: argparse.Namespace) -> int:
+    results = rediagnose(report.load_results(args.results))
+    print(report.render_diagnosis(results))
+    if args.html is not None:
+        args.html.parent.mkdir(parents=True, exist_ok=True)
+        args.html.write_text(html_report.render_html(results), encoding="utf-8")
+        print(f"Wrote: {args.html}")
+    return 0
+
+
 def compare(args: argparse.Namespace) -> int:
     baseline = report.load_results(args.baseline)
     current = report.load_results(args.current)
@@ -1115,6 +1159,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "compare":
             return compare(args)
+        if args.command == "diagnose":
+            return diagnose_results(args)
         if args.command == "promote":
             return promote(args)
         if args.command == "scores":

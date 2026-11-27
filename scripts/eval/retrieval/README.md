@@ -66,9 +66,10 @@ The rest of this file explains each step.
 |---|---|
 | `corpus/` | 21 Markdown documents: the handbook of a fictional product, "Relaywise" |
 | `queries.jsonl` | 83 hand-labeled questions, one JSON object per line |
-| `run_eval.py` | The command-line tool, with `run`, `check`, `cleanup`, `compare`, `scores` and `promote` commands |
+| `run_eval.py` | The command-line tool, with `run`, `check`, `cleanup`, `compare`, `diagnose`, `scores` and `promote` commands |
 | `dataset.py` | Loads and validates the corpus and questions |
 | `metrics.py` | Turns ranked chunks into ranked files and scores them |
+| `diagnose.py` | Says why each question missed, and scores how clean its top chunks are |
 | `report.py` | Writes results, the summary and the baseline diff |
 | `scores.py` | Tests relevance-score thresholds and tiers offline from one run |
 | `html_report.py` | Renders the same results as a self-contained HTML report |
@@ -466,6 +467,49 @@ Passage scores are reported for information. Questions are still classified as
 regressed or improved on the file scores above. A baseline written before
 passage scores existed still compares; the comparison notes that only file
 scores were compared.
+
+## Find out why questions missed
+
+The scores say how well retrieval works. To improve it you also need to know
+why a question failed, because each cause has a different fix. Every run
+diagnoses each question at the top k chunks (k is the primary cutoff, 5 by
+default). That is the context a chat answer is built from, so a file that
+counts toward recall@5 as the second unique file can still be missing from it.
+
+| Cause | What happened | What to try |
+|---|---|---|
+| Never retrieved | No chunk of an expected file came back | Embedding model, query rewriting |
+| Ranked low | An expected file came back, but its first chunk is below the top k | A reranker, hybrid search weights |
+| Crowded out | As ranked low, but more than half of the chunks ahead of it come from one other file | A cap on chunks per file in results |
+| File found, paragraph missed | An expected file is in the top k chunks, but its own chunk holding the `expected_text` is not | Smaller chunks or more overlap |
+
+Each expected file is checked on its own, including its own answer chunk, and
+a question takes the most severe cause among its files. In the report's
+comparisons, noise@k counts as better when it goes down.
+The summary and HTML report count the causes overall and per tag, and list each
+question with where its file or answer chunk landed.
+
+Three scores describe the top chunks themselves. Like the file scores, they run
+from 0 to 1 and are reported at every k.
+
+| Metric | Meaning | Better |
+|---|---|---|
+| context precision@k | Rank-weighted precision of the top k chunks: the mean of precision@i at each position i holding a chunk of an expected file | Higher |
+| noise@k | Share of the top k chunks that come from files nobody expected | Lower |
+| capped recall@k | Relevant files in the top k divided by min(expected files, k), so a two-document question can reach 1 at k=1 | Higher |
+
+The report also lists **unlabeled files ranked above every expected file**.
+Each is either a confuser the ranking should push down, or a relevant file the
+question's labels are missing. Check a few before treating them as misses.
+
+To diagnose a results file from an earlier run, without searching again:
+
+```bash
+uv run run_eval.py diagnose results/main/results.json --html results/main/diagnosis.html
+```
+
+This needs a results file that recorded chunk scores, which every run since
+threshold tuning was added does.
 
 ## Results files
 
