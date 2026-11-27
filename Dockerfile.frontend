@@ -26,6 +26,11 @@ FROM registry.access.redhat.com/ubi10/nodejs-24-minimal AS builder
 WORKDIR /opt/app-root/src
 USER 0
 
+# The base image still ships Node 24.21.0, which is affected by CVE-2026-111497
+# (Brotli decoder RCE, fixed in 24.22.1). Update OS packages so the build runs
+# on the patched runtime; the runtime stage does the same before shipping Node.
+RUN microdnf update -y && microdnf clean all && rm -rf /var/cache/yum
+
 # Restrict the placeholder to container image builds. The entrypoint replaces
 # it in a writable per-pod copy of the assets before starting the server.
 ENV OPENRAG_FRONTEND_RUNTIME_BASE_PATH=true
@@ -53,6 +58,11 @@ USER 0
 RUN microdnf update -y \
     && microdnf remove -y nodejs24-npm \
     && microdnf clean all && rm -rf /var/cache/yum
+
+# CVE-2026-111497 is fixed in Node 24.22.1, and until the base image catches up
+# the update above is what patches the runtime. Fail the build rather than ship
+# an older Node again.
+RUN node -e "const [a,b,c]=process.versions.node.split('.').map(Number); if (a<24 || (a===24 && (b<22 || (b===22 && c<1)))) throw new Error('Node '+process.versions.node+' < 24.22.1 (CVE-2026-111497)')"
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1
