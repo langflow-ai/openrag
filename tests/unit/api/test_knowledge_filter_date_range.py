@@ -87,6 +87,21 @@ def test_v1_resolution_keeps_date_bounds():
     assert _strip_wildcards({"created_after": 5}) == {}
 
 
+def test_v1_resolution_keeps_id_scopes_and_drops_wildcards():
+    out = _strip_wildcards(
+        {
+            "data_sources": ["*"],
+            "document_ids": ["doc-1", "doc-2"],
+            "web_source_ids": ["web-1"],
+        }
+    )
+    assert out == {
+        "document_ids": ["doc-1", "doc-2"],
+        "web_source_ids": ["web-1"],
+    }
+    assert _strip_wildcards({"document_ids": ["*"], "web_source_ids": ["*"]}) == {}
+
+
 def test_unpadded_calendar_days_rejected():
     # "2026-2-9" would string-compare as later than "2026-10-10".
     for context in (

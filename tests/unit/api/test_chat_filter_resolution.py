@@ -121,6 +121,33 @@ async def test_langflow_endpoint_uses_saved_filter(monkeypatch, user, native):
 
 
 @pytest.mark.asyncio
+async def test_saved_id_scopes_constrain_chat_retrieval(user):
+    captured, capture = _captured_scope()
+    chat_service = SimpleNamespace(chat=AsyncMock(side_effect=capture))
+    saved = {
+        "data_sources": ["*"],
+        "document_types": ["*"],
+        "owners": ["*"],
+        "connector_types": ["*"],
+        "document_ids": ["doc-1"],
+        "web_source_ids": ["web-1", "web-2"],
+    }
+
+    await chat_api.chat_endpoint(
+        chat_api.ChatBody(prompt="hi", filter_id="f1"),
+        chat_service,
+        None,
+        user,
+        knowledge_filter_service=_filter_service(saved),
+    )
+
+    assert captured["filters"] == {
+        "document_ids": ["doc-1"],
+        "web_source_ids": ["web-1", "web-2"],
+    }
+
+
+@pytest.mark.asyncio
 async def test_unscoped_saved_filter_sets_no_search_filters(user):
     captured, capture = _captured_scope()
     chat_service = SimpleNamespace(langflow_chat=AsyncMock(side_effect=capture))

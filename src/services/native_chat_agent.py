@@ -322,17 +322,25 @@ def _tool_result(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {"result": value}
 
 
+# Hostnames that mean "this backend" to other containers. None of them is a
+# reliable way for the backend process to call its own gateway: ``openrag-backend``
+# exists only on the compose network, and the ``host.docker.internal`` /
+# ``host.containers.internal`` aliases are how containers reach a host-run
+# backend. From that host process they often do not resolve at all.
+_LOCAL_BACKEND_HOSTS = frozenset(
+    {"openrag-backend", "host.docker.internal", "host.containers.internal"}
+)
+
+
 def _native_llm_gateway_url() -> str:
     """Reach the same gateway as Langflow from the backend process itself.
 
-    ``openrag-backend`` is the Docker service hostname used by Langflow. It is
-    intentionally not resolvable when ``make backend`` runs on the host, so a
-    native request replaces only that default with loopback. Explicit proxy
-    URLs keep their configured host unchanged.
+    Container-facing hostnames are rewritten to loopback. An explicit proxy on
+    any other host is left unchanged.
     """
     base_url = get_langflow_llm_base_url()
     parsed = urlsplit(base_url)
-    if parsed.hostname != "openrag-backend":
+    if (parsed.hostname or "").lower() not in _LOCAL_BACKEND_HOSTS:
         return base_url
     port = OPENRAG_BACKEND_ROUTER_PORT if OPENRAG_BACKEND_ROUTER_ENABLE else OPENRAG_BACKEND_PORT
     return urlunsplit((parsed.scheme or "http", f"127.0.0.1:{port}", parsed.path, parsed.query, ""))
@@ -930,8 +938,37 @@ class NativeChatAgent:
 
     @staticmethod
     def _public_error_message(exc: Exception) -> str:
+        from pydantic_ai.exceptions import ModelAPIError, ModelConnectionError
+
         from services.llm_gateway import LlmGatewayError
 
         if isinstance(exc, LlmGatewayError):
             return exc.message
+        # The agent calls the local gateway over HTTP, so a provider failure
+        # arrives as the gateway's already-sanitized OpenAI error body rather
+        # than as LlmGatewayError.
+        if isinstance(exc, ModelAPIError):
+            message = NativeChatAgent._gateway_error_message(exc.body)
+            if message:
+                return message
+        if isinstance(exc, ModelConnectionError):
+            return "The language model gateway could not be reached. Please try again."
         return "The chat request could not be completed. Please try again."
+
+    @staticmethod
+    def _gateway_error_message(body: Any) -> str | None:
+        if isinstance(body, str):
+            try:
+                body = json.loads(body)
+            except ValueError:
+                return None
+        if not isinstance(body, dict):
+            return None
+        error = body.get("error")
+        message = error.get("message") if isinstance(error, dict) else None
+        if not isinstance(message, str):
+            return None
+        cleaned = message.strip()
+        if not cleaned or "Traceback (most recent call last)" in cleaned:
+            return None
+        return cleaned[:500]
