@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from scripts.eval.retrieval import answers, dataset, html_report, metrics, report, scores
+from scripts.eval.retrieval import answers, dataset, diagnose, html_report, metrics, report, scores
 
 PREFIX = "eval-abc12345-"
 CORPUS = frozenset({"a.md", "b.md", "c.md", "d.md"})
@@ -1106,6 +1106,7 @@ def load_answer_runner(monkeypatch: pytest.MonkeyPatch) -> Any:
     for name, module in (
         ("answers", answers),
         ("dataset", dataset),
+        ("diagnose", diagnose),
         ("html_report", html_report),
         ("metrics", metrics),
         ("report", report),

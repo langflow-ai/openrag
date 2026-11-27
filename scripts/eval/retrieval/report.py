@@ -10,6 +10,7 @@ Standard library only, so it can be unit-tested without the SDK or a stack.
 
 from __future__ import annotations
 
+import importlib
 import json
 import re
 from collections.abc import Mapping, Sequence
@@ -17,6 +18,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
+
+# Imported both as a top-level script module (run_eval.py) and from the
+# scripts.eval.retrieval package (the tests); see html_report.py.
+diagnose = importlib.import_module(f"{__package__}.diagnose" if __package__ else "diagnose")
 
 SCHEMA_VERSION = 1
 EPSILON = 1e-9
@@ -402,6 +407,11 @@ def _cell(text: object) -> str:
     return str(text).replace("|", "\\|").replace("\n", " ")
 
 
+def lower_is_better(metric: str) -> bool:
+    """Metrics where a drop is the improvement."""
+    return metric.startswith("noise@")
+
+
 def _label(metric: str) -> str:
     if metric in ("mrr", "reciprocal_rank"):
         return "MRR" if metric == "mrr" else "Reciprocal rank"
@@ -415,7 +425,12 @@ def _label(metric: str) -> str:
     }
     if metric in answer_labels:
         return answer_labels[metric]
-    return metric.replace("ndcg", "nDCG").replace("passage_hit", "passage hit")
+    return (
+        metric.replace("ndcg", "nDCG")
+        .replace("passage_hit", "passage hit")
+        .replace("context_precision", "context precision")
+        .replace("capped_recall", "capped recall")
+    )
 
 
 def _passage(query: Mapping[str, Any]) -> str:
@@ -546,6 +561,96 @@ def _scores_line(results: Mapping[str, Any]) -> list[str]:
     ]
 
 
+def _diagnosis_detail(query: Mapping[str, Any]) -> str:
+    """The expected files behind a question's miss class, with where they landed."""
+    diagnosis = query["diagnosis"]
+    files = diagnose.chunk_files(query)
+    answers = diagnose.first_answer_positions(query, files)
+    parts = []
+    for name, cls in diagnosis["files"].items():
+        if cls is None:
+            continue
+        if cls == diagnose.PARAGRAPH_MISSED:
+            where = f"answer chunk #{answers[name]}" if name in answers else "answer not returned"
+        else:
+            where = f"first chunk #{files.index(name) + 1}" if name in files else "not returned"
+        parts.append(f"{name}: {where}")
+    return ", ".join(parts)
+
+
+def _meaning(miss_class: str, k: int) -> str:
+    return diagnose.MISS_MEANINGS[miss_class].replace("top k", f"top {k}")
+
+
+def render_diagnosis(results: Mapping[str, Any]) -> str:
+    """Markdown section on why questions missed, or "" for a run without a diagnosis."""
+    summary = results.get("diagnosis")
+    if not summary:
+        return ""
+    k = summary["k"]
+    overall = summary["overall"]
+    lines = [
+        f"## Why questions missed (top {k} chunks)",
+        "",
+        f"The context a chat answer is built from is the top {k} chunks, so each question is "
+        f"checked there: {overall['questions'] - sum(overall[c] for c in diagnose.MISS_CLASSES)} "
+        f"of {overall['questions']} have every expected file and answer chunk in it.",
+        "",
+        "| Cause | Questions | What it means |",
+        "|---|---|---|",
+    ]
+    lines += [
+        f"| {diagnose.MISS_LABELS[cls]} | {overall[cls]} | {_meaning(cls, k)} |"
+        for cls in diagnose.MISS_CLASSES
+    ]
+    if summary.get("skipped"):
+        lines += ["", f"{summary['skipped']} questions had no chunk scores and were skipped."]
+    if summary["by_tag"]:
+        lines += [
+            "",
+            "### By tag",
+            "",
+            "| Tag | Questions | "
+            + " | ".join(diagnose.MISS_LABELS[c] for c in diagnose.MISS_CLASSES)
+            + " |",
+            "|---|---|" + "---|" * len(diagnose.MISS_CLASSES),
+        ]
+        for tag, counts in summary["by_tag"].items():
+            lines.append(
+                f"| {_cell(tag)} | {counts['questions']} | "
+                + " | ".join(str(counts[c]) for c in diagnose.MISS_CLASSES)
+                + " |"
+            )
+    flagged = [q for q in results["queries"] if (q.get("diagnosis") or {}).get("class")]
+    if flagged:
+        flagged.sort(key=lambda q: (diagnose.MISS_CLASSES.index(q["diagnosis"]["class"]), q["id"]))
+        lines += ["", "### Questions", "", "| ID | Cause | Where it landed |", "|---|---|---|"]
+        lines += [
+            f"| {_cell(q['id'])} | {diagnose.MISS_LABELS[q['diagnosis']['class']]} "
+            f"| {_cell(_diagnosis_detail(q))} |"
+            for q in flagged
+        ]
+    holes = summary["label_holes"]
+    lines += ["", f"### Unlabeled files ranked above every expected file ({len(holes)})", ""]
+    if holes:
+        lines += [
+            "Each is either a confuser the ranking should push down or a relevant file the "
+            "question's labels are missing. Check a few before treating them as misses.",
+            "",
+            "| ID | Unlabeled files (file rank) |",
+            "|---|---|",
+        ]
+        lines += [
+            f"| {_cell(hole['id'])} | "
+            + _cell(", ".join(f"{f['filename']} (#{f['rank']})" for f in hole["files"]))
+            + " |"
+            for hole in holes
+        ]
+    else:
+        lines.append(f"No unlabeled file outranks every expected file in the top {k}.")
+    return "\n".join(lines) + "\n"
+
+
 def render_summary(results: Mapping[str, Any], diff: Mapping[str, Any] | None = None) -> str:
     """Markdown summary of one run, followed by the baseline comparison if given."""
     run = results["run"]
@@ -603,6 +708,10 @@ def render_summary(results: Mapping[str, Any], diff: Mapping[str, Any] | None = 
                 + " | ".join(f"{scores[m]:.3f}" if m in scores else "n/a" for m in headline)
                 + " |"
             )
+
+    diagnosis = render_diagnosis(results)
+    if diagnosis:
+        lines += ["", diagnosis.rstrip("\n")]
 
     missed = [q for q in results["queries"] if q["metrics"][f"recall@{k}"] < 1 - EPSILON]
     lines += ["", f"## Questions below full recall@{k} ({len(missed)})", ""]

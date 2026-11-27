@@ -23,6 +23,7 @@ from typing import Any
 # import it from the scripts.eval.retrieval package. A plain "import report"
 # works only in the first case and "from . import report" only in the second.
 report = importlib.import_module(f"{__package__}.report" if __package__ else "report")
+diagnose = importlib.import_module(f"{__package__}.diagnose" if __package__ else "diagnose")
 
 # A change smaller than this rounds to 0.000 at three decimals.
 SHOWN_CHANGE = 0.0005
@@ -50,11 +51,13 @@ def noise_floor(results: Mapping[str, Any]) -> float:
     return max(0.5 / count, SHOWN_CHANGE) if count else 0.005
 
 
-def _delta(current: float, baseline: float | None, noise: float) -> str:
+def _delta(current: float, baseline: float | None, noise: float, metric: str = "") -> str:
     """A change with an arrow and a sign, so it never relies on color alone.
 
     Changes under ``noise`` are shown muted, with "≈" and no arrow: the number
-    stays visible but is not presented as a win or a loss.
+    stays visible but is not presented as a win or a loss. The arrow follows the
+    number; the color and the screen-reader word follow whether that is better,
+    which for ``metric`` like noise@k means lower.
     """
     if baseline is None:
         return ""
@@ -63,12 +66,13 @@ def _delta(current: float, baseline: float | None, noise: float) -> str:
         return '<span class="delta same">no change</span>'
     if abs(change) < noise:
         return f'<span class="delta same">≈ {change:+.3f}<span class="sr"> (noise)</span></span>'
-    good = change > 0  # every metric here is better when higher
-    arrow, word = ("▲", "up") if good else ("▼", "down")
+    good = (change < 0) if report.lower_is_better(metric) else (change > 0)
+    arrow, word = ("▲", "up") if change > 0 else ("▼", "down")
+    verdict = "better" if good else "worse"
     return (
         f'<span class="delta {"good" if good else "bad"}">'
         f'<span aria-hidden="true">{arrow}</span> {change:+.3f}'
-        f'<span class="sr"> ({word})</span></span>'
+        f'<span class="sr"> ({word}, {verdict})</span></span>'
     )
 
 
@@ -499,7 +503,7 @@ def _tiles(
         sub = f'<div class="was">baseline {_fmt(before)}</div>' if before is not None else ""
         tiles.append(
             f'<div class="tile"><div class="tile-label">{_e(report._label(name))}</div>'
-            f'<div class="tile-value">{_fmt(value)}</div>{_delta(value, before, noise)}{sub}</div>'
+            f'<div class="tile-value">{_fmt(value)}</div>{_delta(value, before, noise, name)}{sub}</div>'
         )
     return f'<div class="tiles">{"".join(tiles)}</div>' if tiles else ""
 
@@ -736,6 +740,100 @@ def _missed(results: Mapping[str, Any]) -> str:
     return _collapsible(title, len(missed), _table(head, rows, numeric_from=2))
 
 
+def _diagnosis(results: Mapping[str, Any]) -> str:
+    """Why questions missed at the top k chunks, and unlabeled files that outrank labels."""
+    summary = results.get("diagnosis")
+    if not summary:
+        return ""
+    k = summary["k"]
+    overall = summary["overall"]
+    metrics_overall = results["metrics"].get("overall", {})
+    clean = overall["questions"] - sum(overall[c] for c in diagnose.MISS_CLASSES)
+    context = ""
+    if f"context_precision@{k}" in metrics_overall:
+        context = (
+            f" Across all questions, context precision@{k} is "
+            f"{_fmt(metrics_overall[f'context_precision@{k}'])} and "
+            f"{metrics_overall[f'noise@{k}']:.0%} of the top {k} chunks come from files "
+            "nobody expected."
+        )
+    causes = _table(
+        ["Cause", "What it means", "Questions"],
+        [
+            [_e(diagnose.MISS_LABELS[c]), _e(report._meaning(c, k)), str(overall[c])]
+            for c in diagnose.MISS_CLASSES
+        ],
+        numeric_from=2,
+    )
+    by_tag = ""
+    if summary["by_tag"]:
+        by_tag = "<h3>By tag</h3>" + _table(
+            ["Tag", "Questions", *(_e(diagnose.MISS_LABELS[c]) for c in diagnose.MISS_CLASSES)],
+            [
+                [
+                    _e(tag),
+                    str(counts["questions"]),
+                    *(str(counts[c]) for c in diagnose.MISS_CLASSES),
+                ]
+                for tag, counts in summary["by_tag"].items()
+            ],
+        )
+    flagged = [q for q in results["queries"] if (q.get("diagnosis") or {}).get("class")]
+    flagged.sort(key=lambda q: (diagnose.MISS_CLASSES.index(q["diagnosis"]["class"]), q["id"]))
+    questions = _collapsible(
+        f"Questions with a cause to fix at the top {k} chunks",
+        len(flagged),
+        _table(
+            ["ID", "Question", "Cause", "Where it landed"],
+            [
+                [
+                    f"<code>{_e(q['id'])}</code>",
+                    _e(q["query"]),
+                    _e(diagnose.MISS_LABELS[q["diagnosis"]["class"]]),
+                    _e(report._diagnosis_detail(q)),
+                ]
+                for q in flagged
+            ],
+            numeric_from=99,
+        )
+        if flagged
+        else f'<p class="empty">Every question has its expected files and answer chunk in the top {k}.</p>',
+    )
+    holes = summary["label_holes"]
+    hole_body = (
+        '<p class="lede">Each is either a confuser the ranking should push down or a relevant '
+        "file the question's labels are missing. Check a few before treating them as misses.</p>"
+        + _table(
+            ["ID", "Unlabeled files (file rank)"],
+            [
+                [
+                    f"<code>{_e(hole['id'])}</code>",
+                    _e(", ".join(f"{f['filename']} (#{f['rank']})" for f in hole["files"])),
+                ]
+                for hole in holes
+            ],
+            numeric_from=99,
+        )
+        if holes
+        else f'<p class="empty">No unlabeled file outranks every expected file in the top {k}.</p>'
+    )
+    skipped = (
+        f'<p class="summary-note">{summary["skipped"]} questions had no chunk scores and were '
+        "skipped.</p>"
+        if summary.get("skipped")
+        else ""
+    )
+    return (
+        f"<section><h2>Why questions missed</h2>"
+        f'<p class="lede">A chat answer is built from the top {k} chunks, so each question is '
+        f"checked there: {clean} of {overall['questions']} have every expected file and the "
+        f"answer chunk in it.{context}</p>"
+        f"{causes}{by_tag}{skipped}</section>"
+        + questions
+        + _collapsible("Unlabeled files ranked above every expected file", len(holes), hole_body)
+    )
+
+
 def _answers(results: Mapping[str, Any], base: Mapping[str, float], noise: float) -> str:
     rows = [q for q in results["queries"] if "answer" in q]
     if not rows:
@@ -790,7 +888,7 @@ def _all_metrics(overall: Mapping[str, float], base: Mapping[str, float], noise:
                 _e(report._label(name)),
                 _fmt(value),
                 _fmt(before),
-                _delta(value, before, noise) or "n/a",
+                _delta(value, before, noise, name) or "n/a",
             ]
         )
     return (
@@ -862,6 +960,7 @@ def render_html(
         + "</section>"
         + f'<section class="charts">{recall_chart}{tags if tag_rows else ""}</section>'
         + (_changed(diff) if diff is not None else "")
+        + _diagnosis(results)
         + _missed(results)
         + _answers(results, base, noise)
         + _all_metrics(overall, base, noise)
