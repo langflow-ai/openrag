@@ -132,7 +132,7 @@ class TestSearchModes:
     async def test_unknown_mode_is_rejected(self, client):
         """The API validates the mode instead of silently running hybrid search."""
         with pytest.raises(OpenRAGError) as raised:
-            await client.search.query("test", search_mode="bm25")  # type: ignore[arg-type]
+            await client.search.query("test", search_mode="bm25")
         assert raised.value.status_code == 422
 
 
