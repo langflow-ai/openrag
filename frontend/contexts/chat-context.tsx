@@ -188,16 +188,14 @@ export function ChatProvider({ children }: ChatProviderProps) {
       // Store the full conversation data for the chat page to use
       setConversationData(conversation);
 
-      // Load the filter if one exists for this conversation
-      // Always update the filter to match the conversation being loaded
+      // Reload the saved filter even when this chat is already open. The
+      // in-memory copy is from when it was picked and misses later edits.
       const isDifferentConversation =
         conversation.response_id !== conversationData?.response_id;
 
-      if (isDifferentConversation && typeof window !== "undefined") {
-        // Try to load the saved filter from localStorage
-        const savedFilterId = localStorage.getItem(
-          `conversation_filter_${conversation.response_id}`,
-        );
+      if (typeof window !== "undefined") {
+        const filterKey = `conversation_filter_${conversation.response_id}`;
+        const savedFilterId = localStorage.getItem(filterKey);
 
         if (savedFilterId) {
           // Import getFilterById dynamically to avoid circular dependency
@@ -206,24 +204,33 @@ export function ChatProvider({ children }: ChatProviderProps) {
           );
           try {
             const filter = await getFilterById(savedFilterId);
-
-            if (filter) {
-              setConversationFilterState(filter);
-              // Update conversation data with the loaded filter
+            // A filter picked while this request was in flight wins.
+            if (filter && localStorage.getItem(filterKey) === savedFilterId) {
+              setConversationFilterState((prev) => {
+                if (
+                  prev?.id === filter.id &&
+                  prev.query_data === filter.query_data &&
+                  prev.name === filter.name
+                ) {
+                  return prev;
+                }
+                return filter;
+              });
               setConversationData((prev) => {
-                if (!prev) return prev;
+                if (!prev || prev.response_id !== conversation.response_id) {
+                  return prev;
+                }
                 return { ...prev, filter };
               });
             }
           } catch (error) {
             console.error("[CONVERSATION] Failed to load filter:", error);
-            // Filter was deleted, clean up localStorage
-            localStorage.removeItem(
-              `conversation_filter_${conversation.response_id}`,
-            );
-            setConversationFilterState(null);
+            if (isDifferentConversation) {
+              localStorage.removeItem(filterKey);
+              setConversationFilterState(null);
+            }
           }
-        } else {
+        } else if (isDifferentConversation) {
           setConversationFilterState(null);
         }
       }

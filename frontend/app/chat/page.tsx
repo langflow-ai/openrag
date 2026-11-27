@@ -32,6 +32,10 @@ import { uploadFailureText, uploadFileForContext } from "@/lib/upload-utils";
 import { resolveDisplayName } from "@/lib/user";
 import { cn } from "@/lib/utils";
 import { useGetConversationsQuery } from "../api/queries/useGetConversationsQuery";
+import {
+  getFilterById,
+  latestSavedFilter,
+} from "../api/queries/useGetFilterByIdQuery";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
 import { useGetSettingsQuery } from "../api/queries/useGetSettingsQuery";
 import { AssistantMessage } from "./_components/assistant-message";
@@ -154,6 +158,42 @@ function ChatPage() {
 
   // Use conversation-specific filter instead of global filter
   const selectedFilter = conversationFilter;
+
+  // The context keeps the filter as it was when picked. Refresh it when this
+  // chat is shown, when the user comes back to the tab, and again before send.
+  const conversationFilterRef = useRef(conversationFilter);
+  conversationFilterRef.current = conversationFilter;
+  const setConversationFilterRef = useRef(setConversationFilter);
+  setConversationFilterRef.current = setConversationFilter;
+  const conversationFilterId = conversationFilter?.id;
+  useEffect(() => {
+    if (!conversationFilterId) return;
+    let cancelled = false;
+    const refresh = () => {
+      void getFilterById(conversationFilterId).then((fresh) => {
+        const current = conversationFilterRef.current;
+        if (cancelled || !fresh || current?.id !== fresh.id) return;
+        if (
+          fresh.query_data !== current.query_data ||
+          fresh.name !== current.name
+        ) {
+          setConversationFilterRef.current(fresh);
+        }
+      });
+    };
+    refresh();
+    const onFocus = () => refresh();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [conversationFilterId]);
 
   // Parse the conversation filter data
   const parsedFilterData = useMemo(() => {
@@ -688,17 +728,43 @@ function ChatPage() {
     },
   );
 
+  const resolveSendScope = async () => {
+    const current = conversationFilterRef.current;
+    const filter = await latestSavedFilter(current);
+    if (
+      filter &&
+      current &&
+      (filter.query_data !== current.query_data || filter.name !== current.name)
+    ) {
+      setConversationFilterRef.current(filter);
+    }
+    let parsed: {
+      filters?: Parameters<typeof buildSearchPayloadFilters>[0];
+      limit?: number;
+      scoreThreshold?: number;
+    } | null = null;
+    if (filter?.query_data) {
+      try {
+        parsed = JSON.parse(filter.query_data);
+      } catch (error) {
+        console.error("Error parsing filter data:", error);
+      }
+    }
+    return {
+      filter,
+      processedFilters: parsed?.filters
+        ? buildSearchPayloadFilters(parsed.filters)
+        : undefined,
+      limit: parsed?.limit ?? 10,
+      scoreThreshold: parsed?.scoreThreshold ?? 0,
+    };
+  };
+
   const handleSSEStream = async (
     userMessage: Message,
-    previousResponseId?: string,
+    previousResponseId: string | undefined,
+    scope: Awaited<ReturnType<typeof resolveSendScope>>,
   ) => {
-    // Prepare filters
-    const processedFilters = parsedFilterData?.filters
-      ? (() => {
-          return buildSearchPayloadFilters(parsedFilterData.filters);
-        })()
-      : undefined;
-
     // OpenRAG sidebar thread vs Langflow session are separate:
     // - conversationId keeps the same list entry after errors
     // - previousResponseId is omitted after an error so Langflow starts fresh
@@ -714,10 +780,10 @@ function ChatPage() {
       prompt: userMessage.content,
       previousResponseId: langflowSessionId,
       conversationId: currentConversationId || undefined,
-      filters: processedFilters,
-      filter_id: conversationFilter?.id, // ✅ Add filter_id for this conversation
-      limit: parsedFilterData?.limit ?? 10,
-      scoreThreshold: parsedFilterData?.scoreThreshold ?? 0,
+      filters: scope.processedFilters,
+      filter_id: scope.filter?.id,
+      limit: scope.limit,
+      scoreThreshold: scope.scoreThreshold,
     });
     scrollToBottom({
       animation: "smooth",
@@ -751,8 +817,10 @@ function ChatPage() {
       duration: 1000,
     });
 
+    const scope = await resolveSendScope();
+
     if (asyncMode) {
-      await handleSSEStream(userMessage, previousResponseId);
+      await handleSSEStream(userMessage, previousResponseId, scope);
     } else {
       // Original non-streaming logic
       try {
@@ -760,16 +828,11 @@ function ChatPage() {
 
         const requestBody: RequestBody = {
           prompt: userMessage.content,
-          ...(parsedFilterData?.filters
-            ? (() => {
-                const processedFilters = buildSearchPayloadFilters(
-                  parsedFilterData.filters,
-                );
-                return processedFilters ? { filters: processedFilters } : {};
-              })()
+          ...(scope.processedFilters
+            ? { filters: scope.processedFilters }
             : {}),
-          limit: parsedFilterData?.limit ?? 10,
-          scoreThreshold: parsedFilterData?.scoreThreshold ?? 0,
+          limit: scope.limit,
+          scoreThreshold: scope.scoreThreshold,
         };
 
         // Add previous_response_id if we have one for this endpoint
@@ -778,9 +841,8 @@ function ChatPage() {
           requestBody.previous_response_id = currentResponseId;
         }
 
-        // Add filter_id if a filter is selected for this conversation
-        if (conversationFilter) {
-          requestBody.filter_id = conversationFilter.id;
+        if (scope.filter) {
+          requestBody.filter_id = scope.filter.id;
         }
 
         const response = await apiClient.post(
@@ -820,9 +882,9 @@ function ChatPage() {
             }
 
             // Carry forward the filter association to the new response_id
-            if (conversationFilter && typeof window !== "undefined") {
+            if (scope.filter && typeof window !== "undefined") {
               const newKey = `conversation_filter_${result.response_id}`;
-              localStorage.setItem(newKey, conversationFilter.id);
+              localStorage.setItem(newKey, scope.filter.id);
             }
           }
         } else {

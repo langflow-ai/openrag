@@ -162,6 +162,38 @@ export function resolveScoreThreshold(
     : baseScoreThreshold;
 }
 
+/** Most files the filter panel offers to pin from a saved search query. */
+export const MATCHING_SOURCES_LIMIT = 100;
+
+/**
+ * Filenames the Knowledge table shows for `query`, in relevance order, so the
+ * filter panel can turn a table-only search into a chat-applicable source list.
+ */
+export async function searchMatchingSources(
+  query: string,
+  scoreThreshold: number,
+): Promise<string[]> {
+  const normalized = query.trim();
+  const response = await apiClient.post<{ results?: ChunkResult[] }>(
+    `/search`,
+    {
+      query: normalized,
+      limit: MATCHING_SOURCES_LIMIT,
+      scoreThreshold: resolveScoreThreshold(normalized, scoreThreshold),
+      resultMode: "knowledge_sources",
+    } satisfies SearchPayload,
+  );
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`Search failed with status ${response.status}`);
+  }
+  const filenames = new Set<string>();
+  for (const chunk of response.data.results ?? []) {
+    const filename = chunk.filename?.trim();
+    if (filename) filenames.add(filename);
+  }
+  return Array.from(filenames).slice(0, MATCHING_SOURCES_LIMIT);
+}
+
 export const useGetSearchQuery = (
   query: string,
   queryData?: ParsedQueryData | null,

@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test-utils/render";
 import type { KnowledgeFilterData } from "../_types/types";
 import { ChatInput } from "./chat-input";
+import { TABLE_ONLY_FILTER_TOOLTIP } from "./selected-knowledge-filter";
 
 vi.mock("@/contexts/brand-context", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/contexts/brand-context")>()),
@@ -52,7 +53,7 @@ const docsFilter: KnowledgeFilterData = {
   id: "docs",
   name: "Docs",
   description: "Documentation",
-  query_data: "{}",
+  query_data: JSON.stringify({ filters: { data_sources: ["docs.md"] } }),
   owner: "me",
   created_at: "",
   updated_at: "",
@@ -181,5 +182,63 @@ describe("ChatInput", () => {
 
     fireEvent.keyDown(box, { key: " " });
     expect(onFilterSelect).toHaveBeenCalledWith(docsFilter);
+  });
+
+  it("lists table-only filters as disabled with an explanation", async () => {
+    const tableOnly: KnowledgeFilterData = {
+      ...docsFilter,
+      id: "labs",
+      name: "Labs",
+      description: "",
+      query_data: JSON.stringify({
+        query: "labs.pdf",
+        filters: { data_sources: ["*"], document_types: ["*"] },
+      }),
+    };
+    filtersQuery.mockReturnValue({ data: [tableOnly, docsFilter] });
+    const onFilterSelect = vi.fn();
+    const props = { ...defaultProps, onFilterSelect, input: "" };
+    const { rerender } = renderWithProviders(<ChatInput {...props} />);
+    const box = chatBox();
+
+    fireEvent.change(box, { target: { value: "@" } });
+    rerender(<ChatInput {...props} input="@" />);
+
+    expect(await screen.findByText("Knowledge table only")).toBeInTheDocument();
+    expect(screen.getByRole("separator")).toBeInTheDocument();
+    const labs = screen.getByRole("button", { name: /labs/i });
+    expect(labs).toBeDisabled();
+    expect(labs).toHaveAccessibleDescription(TABLE_ONLY_FILTER_TOOLTIP);
+
+    fireEvent.click(labs);
+    expect(onFilterSelect).not.toHaveBeenCalled();
+
+    // Keyboard selection skips the table-only filter listed first.
+    box.selectionStart = 1;
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(onFilterSelect).toHaveBeenCalledWith(docsFilter);
+  });
+
+  it("mutes the selected chip once its filter no longer restricts chat", () => {
+    const edited: KnowledgeFilterData = {
+      ...docsFilter,
+      query_data: JSON.stringify({ filters: { data_sources: ["*"] } }),
+    };
+    renderWithProviders(
+      <ChatInput {...defaultProps} selectedFilter={edited} />,
+    );
+    expect(
+      screen.getByText("Docs", { selector: "[aria-description]" }),
+    ).toHaveAttribute("aria-description", TABLE_ONLY_FILTER_TOOLTIP);
+  });
+
+  it("shows a scoped chip without the table-only note", () => {
+    renderWithProviders(
+      <ChatInput {...defaultProps} selectedFilter={docsFilter} />,
+    );
+    expect(screen.getByTestId("selected-knowledge-filter")).toHaveTextContent(
+      "Docs",
+    );
+    expect(document.querySelector("[aria-description]")).toBeNull();
   });
 });

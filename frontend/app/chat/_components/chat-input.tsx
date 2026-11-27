@@ -9,17 +9,27 @@ import {
   PopoverAnchor,
   PopoverContent,
 } from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useIsCloudBrand } from "@/contexts/brand-context";
 import { useFileDrag } from "@/hooks/use-file-drag";
 import { useImeComposition } from "@/hooks/use-ime-composition";
 import { useSupportedFileTypes } from "@/hooks/use-supported-file-types";
 import type { FilterColor } from "@/lib/filter-constants";
+import { queryDataRestrictsChat } from "@/lib/filter-normalization";
 import type { ImeCompositionState } from "@/lib/ime-composition";
 import { cn } from "@/lib/utils";
 import { useGetAllFiltersQuery } from "../../api/queries/useGetAllFiltersQuery";
 import type { KnowledgeFilterData } from "../_types/types";
 import { FilePreview } from "./file-preview";
-import { SelectedKnowledgeFilter } from "./selected-knowledge-filter";
+import {
+  SelectedKnowledgeFilter,
+  TABLE_ONLY_FILTER_TOOLTIP,
+} from "./selected-knowledge-filter";
 
 export interface ChatInputHandle {
   focusInput: () => void;
@@ -108,6 +118,19 @@ export function ChatInput({
     const results = fuse.search(filterSearchTerm);
     return results.map((result) => result.item).slice(0, 20);
   }, [allFilters, filterSearchTerm]);
+
+  // Filters that restrict nothing chat applies are listed but not selectable,
+  // and keyboard navigation only moves through the selectable ones.
+  const [chatFilters, tableOnlyFilters] = useMemo(() => {
+    const selectable: KnowledgeFilterData[] = [];
+    const tableOnly: KnowledgeFilterData[] = [];
+    for (const filter of filteredFilters) {
+      (queryDataRestrictsChat(filter.query_data) ? selectable : tableOnly).push(
+        filter,
+      );
+    }
+    return [selectable, tableOnly];
+  }, [filteredFilters]);
 
   useImperativeHandle(ref, () => ({
     focusInput: () => {
@@ -287,7 +310,7 @@ export function ChatInput({
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedFilterIndex((prev) =>
-          prev < filteredFilters.length - 1 ? prev + 1 : 0,
+          prev < chatFilters.length - 1 ? prev + 1 : 0,
         );
         return;
       }
@@ -295,7 +318,7 @@ export function ChatInput({
       if (e.key === "ArrowUp") {
         e.preventDefault();
         setSelectedFilterIndex((prev) =>
-          prev > 0 ? prev - 1 : filteredFilters.length - 1,
+          prev > 0 ? prev - 1 : chatFilters.length - 1,
         );
         return;
       }
@@ -307,9 +330,9 @@ export function ChatInput({
         const words = textBeforeCursor.split(" ");
         const lastWord = words[words.length - 1];
 
-        if (lastWord.startsWith("@") && filteredFilters[selectedFilterIndex]) {
+        if (lastWord.startsWith("@") && chatFilters[selectedFilterIndex]) {
           e.preventDefault();
-          handleFilterSelect(filteredFilters[selectedFilterIndex]);
+          handleFilterSelect(chatFilters[selectedFilterIndex]);
           return;
         }
       }
@@ -325,9 +348,9 @@ export function ChatInput({
         const words = textBeforeCursor.split(" ");
         const lastWord = words[words.length - 1];
 
-        if (lastWord.startsWith("@") && filteredFilters[selectedFilterIndex]) {
+        if (lastWord.startsWith("@") && chatFilters[selectedFilterIndex]) {
           e.preventDefault();
-          handleFilterSelect(filteredFilters[selectedFilterIndex]);
+          handleFilterSelect(chatFilters[selectedFilterIndex]);
           return;
         }
       }
@@ -594,7 +617,7 @@ export function ChatInput({
                       )}
                     </button>
                   )}
-                  {filteredFilters.map((filter, index) => (
+                  {chatFilters.map((filter, index) => (
                     <button
                       key={filter.id}
                       type="button"
@@ -625,6 +648,47 @@ export function ChatInput({
                       )}
                     </button>
                   ))}
+                  {tableOnlyFilters.length > 0 && (
+                    <TooltipProvider>
+                      <div
+                        role="separator"
+                        className="-mx-2 my-1 border-t border-border"
+                      />
+                      <div className="px-2 pb-1 text-xs text-muted-foreground">
+                        Knowledge table only
+                      </div>
+                      {tableOnlyFilters.map((filter) => (
+                        <Tooltip key={filter.id}>
+                          <TooltipTrigger asChild>
+                            <span className="block">
+                              <button
+                                type="button"
+                                disabled
+                                aria-describedby={`table-only-${filter.id}`}
+                                className="w-full overflow-hidden text-left px-2 py-2 text-sm rounded text-muted-foreground cursor-not-allowed"
+                              >
+                                <div className="truncate">{filter.name}</div>
+                                {filter.description && (
+                                  <div className="text-xs truncate opacity-80">
+                                    {filter.description}
+                                  </div>
+                                )}
+                              </button>
+                              <span
+                                id={`table-only-${filter.id}`}
+                                className="sr-only"
+                              >
+                                {TABLE_ONLY_FILTER_TOOLTIP}
+                              </span>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-56">
+                            {TABLE_ONLY_FILTER_TOOLTIP}
+                          </TooltipContent>
+                        </Tooltip>
+                      ))}
+                    </TooltipProvider>
+                  )}
                   {filteredFilters.length === 0 && filterSearchTerm && (
                     <div className="px-2 py-3 text-sm text-muted-foreground">
                       No filters match &quot;{filterSearchTerm}&quot;

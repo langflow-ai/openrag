@@ -9,6 +9,10 @@ import {
   type FacetBucket,
   useGetSearchAggregations,
 } from "@/app/api/queries/useGetSearchAggregations";
+import {
+  ChatScopeDialog,
+  type ChatScopePatch,
+} from "@/components/chat-scope-dialog";
 import { FilterIconPopover } from "@/components/filter-icon-popover";
 import { useDateRangeFilterEnabled } from "@/components/knowledge-date-range-filter";
 import { KnowledgeFilterDateField } from "@/components/knowledge-filter-date-field";
@@ -30,6 +34,10 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { trackButton } from "@/lib/analytics";
 import type { FilterColor, IconKey } from "@/lib/filter-constants";
 import {
+  extensionMimetypes,
+  filterRestrictsChat,
+} from "@/lib/filter-normalization";
+import {
   applySelection,
   displayRangeFromSaved,
   foreignTimeZone,
@@ -38,6 +46,10 @@ import {
   type SavedDateRange,
   savedDateRangeOf,
 } from "@/lib/saved-date-range";
+import { getSupportedFileTypes } from "@/lib/supported-file-types";
+
+/** Includes OCR types: images indexed earlier stay indexed after OCR is turned off. */
+const ALL_FILE_TYPES = getSupportedFileTypes(true);
 
 interface AvailableFacets {
   data_sources: FacetBucket[];
@@ -97,6 +109,7 @@ export function KnowledgeFilterPanel() {
   const [color, setColor] = useState<FilterColor>("zinc");
   const [iconKey, setIconKey] = useState<IconKey>("filter");
   const [nameError, setNameError] = useState<string | null>(null);
+  const [isScopeDialogOpen, setIsScopeDialogOpen] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   // Filter configuration states (mirror search page exactly)
@@ -208,23 +221,58 @@ export function KnowledgeFilterPanel() {
   // Don't render if panel is closed or we don't have any data
   if (!isPanelOpen || !parsedFilterData) return null;
 
+  const draftFilters = {
+    ...selectedFilters,
+    ...(dateDraft.createdAfter && {
+      created_after: dateDraft.createdAfter,
+    }),
+    ...(dateDraft.createdBefore && {
+      created_before: dateDraft.createdBefore,
+    }),
+  };
+  const draftRestrictsChat = filterRestrictsChat(draftFilters);
+
+  const indexedTypeLabels = new Map(
+    (availableFacets.document_types || []).map((bucket) => [
+      bucket.key,
+      bucket.label ?? bucket.key,
+    ]),
+  );
+  const typeSuggestions = extensionMimetypes(query, ALL_FILE_TYPES)
+    .filter((mimetype) => indexedTypeLabels.has(mimetype))
+    .map((mimetype) => ({
+      value: mimetype,
+      label: indexedTypeLabels.get(mimetype) ?? mimetype,
+    }));
+
   const handleSaveConfiguration = async () => {
     if (!name.trim()) {
       setNameError("Name is required");
       nameInputRef.current?.focus();
       return;
     }
+    if (!draftRestrictsChat) {
+      setIsScopeDialogOpen(true);
+      return;
+    }
+    await saveFilter();
+  };
+
+  const handleApplyScope = async (patch: ChatScopePatch) => {
+    setSelectedFilters((prev) => ({ ...prev, ...patch }));
+    await saveFilter(patch);
+    setIsScopeDialogOpen(false);
+  };
+
+  const handleSaveTableOnly = async () => {
+    await saveFilter();
+    setIsScopeDialogOpen(false);
+  };
+
+  const saveFilter = async (patch?: ChatScopePatch) => {
     const filterData = {
       query,
-      filters: {
-        ...selectedFilters,
-        ...(dateDraft.createdAfter && {
-          created_after: dateDraft.createdAfter,
-        }),
-        ...(dateDraft.createdBefore && {
-          created_before: dateDraft.createdBefore,
-        }),
-      },
+      filters: { ...draftFilters, ...patch },
       ...(hasDateBounds(dateDraft) &&
         dateDraft.context && { date_range_context: dateDraft.context }),
       limit: resultLimit,
@@ -457,6 +505,13 @@ export function KnowledgeFilterPanel() {
               />
             </div>
 
+            {!draftRestrictsChat && (
+              <p className="text-xs text-muted-foreground">
+                Not applied in chat: pick a source, type, owner, connector or
+                date range. The search query only filters the Knowledge table.
+              </p>
+            )}
+
             {dateRangeEnabled && (
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Date ingested</Label>
@@ -578,6 +633,16 @@ export function KnowledgeFilterPanel() {
           </Button>
         </CardFooter>
       </Card>
+      <ChatScopeDialog
+        open={isScopeDialogOpen}
+        onOpenChange={setIsScopeDialogOpen}
+        query={query}
+        scoreThreshold={scoreThreshold}
+        typeSuggestions={typeSuggestions}
+        saving={isSaving}
+        onApply={handleApplyScope}
+        onSaveTableOnly={handleSaveTableOnly}
+      />
     </div>
   );
 }

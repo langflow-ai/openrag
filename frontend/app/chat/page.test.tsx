@@ -12,6 +12,7 @@
  * and stub ProtectedRoute to a passthrough.
  */
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiClient } from "@/lib/api-client";
 import { authPresets, makeUser, withAuth } from "@/test-utils/fixtures/auth";
@@ -42,13 +43,32 @@ vi.mock("use-stick-to-bottom", () => {
   );
   return {
     StickToBottom,
-    useStickToBottomContext: () => ({ isAtBottom: true }),
+    useStickToBottomContext: () => ({
+      isAtBottom: true,
+      scrollToBottom: vi.fn(),
+    }),
   };
 });
 
 vi.mock("@/contexts/brand-context", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/contexts/brand-context")>()),
   useIsCloudBrand: () => false,
+}));
+
+const { chatFilterState, sendStreamingMessageMock } = vi.hoisted(() => ({
+  chatFilterState: {
+    conversationFilter: null as null | {
+      id: string;
+      name: string;
+      description: string;
+      query_data: string;
+      owner: string;
+      created_at: string;
+      updated_at: string;
+    },
+    setConversationFilter: vi.fn(),
+  },
+  sendStreamingMessageMock: vi.fn(),
 }));
 
 vi.mock("@/contexts/chat-context", async (importOriginal) => ({
@@ -68,8 +88,8 @@ vi.mock("@/contexts/chat-context", async (importOriginal) => ({
     previousResponseIds: { chat: null, langflow: null },
     setPreviousResponseIds: vi.fn(),
     placeholderConversation: null,
-    conversationFilter: null,
-    setConversationFilter: vi.fn(),
+    conversationFilter: chatFilterState.conversationFilter,
+    setConversationFilter: chatFilterState.setConversationFilter,
     loading: false,
     setLoading: vi.fn(),
     setChatError: vi.fn(),
@@ -96,7 +116,7 @@ vi.mock("@/hooks/useChatStreaming", () => ({
   useChatStreaming: () => ({
     streamingMessage: null,
     isLoading: false,
-    sendMessage: vi.fn(),
+    sendMessage: sendStreamingMessageMock,
     abortStream: vi.fn(),
     isChatStreaming: false,
   }),
@@ -217,6 +237,9 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
     };
     submitSpy.mockClear();
     uploadFileForContextMock.mockReset();
+    chatFilterState.conversationFilter = null;
+    chatFilterState.setConversationFilter.mockReset();
+    sendStreamingMessageMock.mockReset();
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -355,6 +378,146 @@ describe("ChatPage — coverage for diff-flagged lines", () => {
     await waitFor(() => {
       expect(screen.getByTestId("assistant-message").textContent).not.toBe(
         PLACEHOLDER_GREETING.content,
+      );
+    });
+  });
+
+  describe("conversation filter refresh", () => {
+    const stale = {
+      id: "f1",
+      name: "stale-test",
+      description: "",
+      query_data: JSON.stringify({
+        query: "",
+        filters: { data_sources: ["*"] },
+      }),
+      owner: "me",
+      created_at: "",
+      updated_at: "1",
+    };
+
+    it("loads the saved filter when the chat page opens", async () => {
+      vi.useRealTimers();
+      const fresh = {
+        ...stale,
+        query_data: JSON.stringify({
+          query: "",
+          filters: { data_sources: ["aurora.txt"] },
+        }),
+        updated_at: "2",
+      };
+      chatFilterState.conversationFilter = stale;
+      renderWithProviders(<ProtectedChatPage />, {
+        providers: ["auth"],
+        auth: authPresets.noAuthMode,
+        handlers: [
+          http.get("/api/knowledge-filter/f1", () =>
+            HttpResponse.json({ success: true, filter: fresh }),
+          ),
+        ],
+      });
+
+      await waitFor(() =>
+        expect(chatFilterState.setConversationFilter).toHaveBeenCalledWith(
+          fresh,
+        ),
+      );
+    });
+
+    it("keeps the current filter when nothing changed", async () => {
+      vi.useRealTimers();
+      let fetched = false;
+      chatFilterState.conversationFilter = stale;
+      renderWithProviders(<ProtectedChatPage />, {
+        providers: ["auth"],
+        auth: authPresets.noAuthMode,
+        handlers: [
+          http.get("/api/knowledge-filter/f1", () => {
+            fetched = true;
+            return HttpResponse.json({ success: true, filter: stale });
+          }),
+        ],
+      });
+
+      await waitFor(() => expect(fetched).toBe(true));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(chatFilterState.setConversationFilter).not.toHaveBeenCalled();
+    });
+
+    it("sends the saved filter when the open chat still has the old copy", async () => {
+      vi.useRealTimers();
+      const fresh = {
+        ...stale,
+        query_data: JSON.stringify({
+          query: "",
+          filters: { data_sources: ["aurora.txt"] },
+          limit: 10,
+          scoreThreshold: 0,
+        }),
+        updated_at: "2",
+      };
+      chatFilterState.conversationFilter = stale;
+      renderWithProviders(<ProtectedChatPage />, {
+        providers: ["auth"],
+        auth: authPresets.noAuthMode,
+        handlers: [
+          http.get("/api/knowledge-filter/f1", () =>
+            HttpResponse.json({ success: true, filter: fresh }),
+          ),
+        ],
+      });
+
+      fireEvent.change(screen.getByTestId("chat-input"), {
+        target: { value: "what is in the file?" },
+      });
+      await act(async () => {
+        void chatCallbacks.onSubmit?.({ preventDefault() {} });
+      });
+
+      await waitFor(() =>
+        expect(sendStreamingMessageMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            filter_id: "f1",
+            filters: { data_sources: ["aurora.txt"] },
+          }),
+        ),
+      );
+    });
+
+    it("sends the open chat's copy when the saved filter cannot be loaded", async () => {
+      vi.useRealTimers();
+      const snapshot = {
+        ...stale,
+        query_data: JSON.stringify({
+          filters: { data_sources: ["borealis.txt"] },
+        }),
+      };
+      chatFilterState.conversationFilter = snapshot;
+      renderWithProviders(<ProtectedChatPage />, {
+        providers: ["auth"],
+        auth: authPresets.noAuthMode,
+        handlers: [
+          http.get(
+            "/api/knowledge-filter/f1",
+            () => new HttpResponse(null, { status: 500 }),
+          ),
+        ],
+      });
+
+      fireEvent.change(screen.getByTestId("chat-input"), {
+        target: { value: "what is in the file?" },
+      });
+      await act(async () => {
+        void chatCallbacks.onSubmit?.({ preventDefault() {} });
+      });
+
+      await waitFor(() =>
+        expect(sendStreamingMessageMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            filter_id: "f1",
+            filters: { data_sources: ["borealis.txt"] },
+          }),
+        ),
       );
     });
   });
