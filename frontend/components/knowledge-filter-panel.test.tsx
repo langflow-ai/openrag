@@ -464,16 +464,14 @@ describe("KnowledgeFilterPanel chat scope", () => {
         http.post("/api/search", async ({ request }) => {
           const body = (await request.json()) as Record<string, unknown>;
           searchBodies.push(body);
-          if (body.resultMode === "knowledge_sources") {
-            return HttpResponse.json({
-              results: matches.flatMap((filename) => [
-                { filename, text: "a", score: 2 },
-                { filename, text: "b", score: 1 },
-              ]),
-            });
-          }
           return HttpResponse.json({
             aggregations: {
+              data_sources: {
+                buckets: matches.map((filename) => ({
+                  key: filename,
+                  doc_count: 1,
+                })),
+              },
               document_types: {
                 buckets: typeBuckets.map((b) => ({ ...b, doc_count: 1 })),
               },
@@ -501,7 +499,7 @@ describe("KnowledgeFilterPanel chat scope", () => {
     expect(screen.getByText(/not applied in chat/i)).toBeInTheDocument();
   });
 
-  it("offers the files the query matches and saves the ticked ones", async () => {
+  it("offers filenames from the sources list and saves the ticked ones", async () => {
     await renderScope("labs", ["labs.pdf", "labs-notes.txt", "other.md"]);
     await clickUpdate();
 
@@ -511,20 +509,23 @@ describe("KnowledgeFilterPanel chat scope", () => {
       }),
     ).toBeInTheDocument();
     expect(
-      await screen.findByText(/3 files match "labs"/i),
+      await screen.findByText(/2 files match "labs"/i),
     ).toBeInTheDocument();
-    expect(putBody).toBeUndefined();
     expect(
-      searchBodies.find((b) => b.resultMode === "knowledge_sources"),
-    ).toMatchObject({ query: "labs", limit: 100 });
+      screen.queryByRole("checkbox", { name: "other.md" }),
+    ).not.toBeInTheDocument();
+    expect(putBody).toBeUndefined();
+    expect(searchBodies.some((b) => b.resultMode === "knowledge_sources")).toBe(
+      false,
+    );
 
-    await click(screen.getByRole("checkbox", { name: "other.md" }));
+    await click(screen.getByRole("checkbox", { name: "labs-notes.txt" }));
     await click(screen.getByRole("button", { name: /apply and save/i }));
 
     await waitFor(() => expect(putBody).toBeDefined());
     const data = savedQueryData();
     expect(data.query).toBe("labs");
-    expect(data.filters.data_sources).toEqual(["labs.pdf", "labs-notes.txt"]);
+    expect(data.filters.data_sources).toEqual(["labs.pdf"]);
     expect(data.filters.document_types).toEqual(["*"]);
   });
 

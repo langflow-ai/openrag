@@ -637,7 +637,7 @@ export function KnowledgeFilterPanel() {
         open={isScopeDialogOpen}
         onOpenChange={setIsScopeDialogOpen}
         query={query}
-        scoreThreshold={scoreThreshold}
+        sourceOptions={sourceOptions}
         typeSuggestions={typeSuggestions}
         saving={isSaving}
         onApply={handleApplyScope}

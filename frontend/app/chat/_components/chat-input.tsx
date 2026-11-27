@@ -654,7 +654,7 @@ export function ChatInput({
                         role="separator"
                         className="-mx-2 my-1 border-t border-border"
                       />
-                      <div className="px-2 pb-1 text-xs text-muted-foreground">
+                      <div className="px-2 pt-1 pb-1 text-sm font-semibold text-foreground">
                         Knowledge table only
                       </div>
                       {tableOnlyFilters.map((filter) => (

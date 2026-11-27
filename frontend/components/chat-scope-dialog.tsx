@@ -1,16 +1,12 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 import { useState } from "react";
-import { searchMatchingSources } from "@/app/api/queries/useGetSearchQuery";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -28,7 +24,8 @@ interface ChatScopeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   query: string;
-  scoreThreshold: number;
+  /** Filenames already loaded for the sources menu. */
+  sourceOptions: ChatScopeOption[];
   /** Document types the query names (`.txt`), already limited to indexed ones. */
   typeSuggestions: ChatScopeOption[];
   saving: boolean;
@@ -38,40 +35,36 @@ interface ChatScopeDialogProps {
 
 /**
  * Shown when a filter about to be saved restricts nothing chat can apply. It
- * offers the types or files the search query points at, or a table-only save.
+ * offers the types or filenames the query matches, or a table-only save.
+ *
+ * Filenames come from the same list as the sources menu and are filtered the
+ * same way, in the browser.
  */
 export function ChatScopeDialog({
   open,
   onOpenChange,
   query,
-  scoreThreshold,
+  sourceOptions,
   typeSuggestions,
   saving,
   onApply,
   onSaveTableOnly,
 }: ChatScopeDialogProps) {
   const trimmedQuery = query.trim();
+  const needle = trimmedQuery.toLowerCase();
   const suggestsTypes = typeSuggestions.length > 0;
-  const suggestsFiles = !suggestsTypes && trimmedQuery !== "";
-
-  const matches = useQuery({
-    queryKey: [
-      "knowledge-filter-matching-sources",
-      trimmedQuery,
-      scoreThreshold,
-    ],
-    queryFn: () => searchMatchingSources(trimmedQuery, scoreThreshold),
-    enabled: open && suggestsFiles,
-    staleTime: 0,
-    retry: false,
-  });
 
   const options: ChatScopeOption[] = suggestsTypes
     ? typeSuggestions
-    : (matches.data ?? []).map((filename) => ({
-        value: filename,
-        label: filename,
-      }));
+    : needle
+      ? sourceOptions
+          .filter(
+            (option) =>
+              option.label.toLowerCase().includes(needle) ||
+              option.value.toLowerCase().includes(needle),
+          )
+          .map((option) => ({ value: option.value, label: option.value }))
+      : [];
 
   const [deselected, setDeselected] = useState<Set<string>>(new Set());
   const [prevOptionsKey, setPrevOptionsKey] = useState("");
@@ -100,7 +93,6 @@ export function ChatScopeDialog({
     );
   };
 
-  const isSearching = suggestsFiles && matches.isLoading;
   const hasSuggestion = options.length > 0;
 
   return (
@@ -115,19 +107,6 @@ export function ChatScopeDialog({
         </DialogHeader>
 
         <div className="space-y-3 text-sm">
-          {isSearching && (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Finding files that match &quot;{trimmedQuery}&quot;...
-            </div>
-          )}
-
-          {suggestsFiles && matches.isError && (
-            <p className="text-muted-foreground">
-              Couldn&apos;t look up files matching &quot;{trimmedQuery}&quot;.
-            </p>
-          )}
-
           {hasSuggestion && (
             <>
               <p>
@@ -167,21 +146,19 @@ export function ChatScopeDialog({
             </>
           )}
 
-          {!isSearching &&
-            !hasSuggestion &&
-            !(suggestsFiles && matches.isError) && (
-              <p className="text-muted-foreground">
-                {trimmedQuery
-                  ? `No files match "${trimmedQuery}". You can still keep this search on the Knowledge table.`
-                  : "Pick a source, type, owner, connector or date range to apply it in chat. You can still save it for the Knowledge table."}
-              </p>
-            )}
+          {!hasSuggestion && (
+            <p className="text-muted-foreground">
+              {trimmedQuery
+                ? `No files match "${trimmedQuery}". You can still keep this search on the Knowledge table.`
+                : "Pick a source, type, owner, connector or date range to apply it in chat. You can still save it for the Knowledge table."}
+            </p>
+          )}
         </div>
 
-        <DialogFooter>
+        <div className="flex flex-wrap justify-end gap-2">
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             ignoreTitleCase
             onClick={() => onOpenChange(false)}
             disabled={saving}
@@ -204,12 +181,10 @@ export function ChatScopeDialog({
               onClick={onSaveTableOnly}
               disabled={saving}
             >
-              <span className="whitespace-normal text-left">
-                Save for Knowledge table only
-              </span>
+              Save for Knowledge table only
             </Button>
           )}
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );
