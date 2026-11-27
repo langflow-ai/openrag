@@ -166,7 +166,7 @@ echo "data dir=$DATA  config dir=$CFG  tenant=$TENANT"
 Do not copy a key from the Operator's key secret, if there is one. It can differ from the key the pod actually uses.
 
 
-## 2.1 Adding the Newly Generated Key to IBM Cloud Secrets Manager
+## 2.1 Adding the Newly Generated Key to IBM Cloud Secrets Manager[IBMCloud Specific]
 
 Before proceeding with the key rotation, ensure that you have a backup of the existing encryption key. This is required in case a rollback is needed.
 
@@ -567,7 +567,7 @@ If any check fails:
 Never run old data with the new key, or rotated data with the old key. Keep the old key and the backups until your rollback window closes.
 
 
-## 12. Recreate the Cluster Secret
+## 12. Recreate the Cluster Secret[IBMCloud Specific]
 
 A mismatch between the cluster secret and the encryption key configured in the `openrag-be-env` Secret (patched in Step 9) can cause OpenRAG failures.
 
