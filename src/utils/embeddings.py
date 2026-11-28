@@ -60,6 +60,8 @@ async def create_index_body(
         "ingest_run_id": {"type": "keyword"},
         # Object-store entity tag of the source file, for sync change detection.
         "content_etag": {"type": "keyword"},
+        # General-purpose labels, e.g. collection:<filter id> for filter membership.
+        "labels": {"type": "keyword"},
         "owner": {"type": "keyword"},
         "owner_email": {"type": "keyword"},
         "allowed_users": {"type": "keyword"},

@@ -222,6 +222,7 @@ async def _ensure_opensearch_index():
                     "allowed_principals",
                     "ingest_run_id",
                     "connector_file_id",
+                    "labels",
                 ],
             )
             await _ensure_field_mappings(
@@ -309,6 +310,7 @@ async def init_index(opensearch_client=None, admin_username: str = None):
                     "allowed_principals",
                     "ingest_run_id",
                     "connector_file_id",
+                    "labels",
                 ],
             )
             await _ensure_field_mappings(

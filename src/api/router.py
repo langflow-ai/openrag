@@ -12,6 +12,7 @@ from config.settings import get_openrag_config
 from dependencies import (
     get_current_user,
     get_document_service,
+    get_knowledge_filter_service,
     get_langflow_file_service,
     get_rbac_service,
     get_session_manager,
@@ -78,18 +79,25 @@ async def upload_ingest_router(
     replace_duplicates: str = Form("true"),
     create_filter: str = Form("false"),
     preview: str = Form("false"),
+    filter_ids: list[str] | None = Form(None),
     document_service=Depends(get_document_service),
     langflow_file_service=Depends(get_langflow_file_service),
     session_manager=Depends(get_session_manager),
     task_service=Depends(get_task_service),
     user: User = Depends(get_current_user),
     rbac=Depends(get_rbac_service),
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
 ):
     """
     Router endpoint that automatically routes upload requests based on configuration.
 
     - If DISABLE_INGEST_WITH_LANGFLOW is True: uses traditional OpenRAG upload
     - If DISABLE_INGEST_WITH_LANGFLOW is False (default): uses Langflow upload-ingest via task service
+
+    ``filter_ids`` (a repeated form field) names saved knowledge filters the
+    uploaded files join once the task completes. Each must exist and be
+    editable by the caller; otherwise the request is rejected before a task
+    is created.
     """
     from config.settings import is_langflow_disabled
 
@@ -117,6 +125,22 @@ async def upload_ingest_router(
     existing_task_id = _form_str(existing_task_id)
     rejections = _rejected_uploads(rejected_files)
 
+    from services.collection_membership import normalize_filter_ids, validate_ingest_filter_ids
+
+    requested_filter_ids = normalize_filter_ids(
+        filter_ids if isinstance(filter_ids, list | str) else None
+    )
+    if requested_filter_ids:
+        rejection = await validate_ingest_filter_ids(
+            requested_filter_ids,
+            request=request,
+            user=user,
+            rbac=rbac,
+            knowledge_filter_service=knowledge_filter_service,
+        )
+        if rejection is not None:
+            return rejection
+
     if disable_ingest_with_langflow:
         logger.debug("Routing to traditional OpenRAG upload via task service")
         return await _traditional_upload_ingest_task(
@@ -131,6 +155,7 @@ async def upload_ingest_router(
             settings_json=settings_json,
             existing_task_id=existing_task_id,
             rejected_uploads=rejections,
+            filter_ids=requested_filter_ids,
         )
 
     logger.debug("Routing to Langflow upload-ingest pipeline via task service")
@@ -149,6 +174,7 @@ async def upload_ingest_router(
         allow_anonymous_delete=allow_anonymous_delete,
         existing_task_id=existing_task_id,
         rejected_uploads=rejections,
+        filter_ids=requested_filter_ids,
     )
 
 
@@ -164,6 +190,7 @@ async def _traditional_upload_ingest_task(
     settings_json: str | None = None,
     existing_task_id: str | None = None,
     rejected_uploads: list[tuple[str, int]] | None = None,
+    filter_ids: list[str] | None = None,
 ):
     """Task-based traditional upload and ingest for single/multiple files"""
     rejections = rejected_uploads or []
@@ -231,6 +258,7 @@ async def _traditional_upload_ingest_task(
                 preview_mode=preview_mode,
                 allow_anonymous_delete=allow_anonymous_delete,
                 existing_task_id=existing_task_id,
+                filter_ids=filter_ids,
             )
             if rejections and not existing_task_id:
                 task_service.record_rejected_uploads(user_id, rejections, task_id=task_id)
@@ -241,6 +269,7 @@ async def _traditional_upload_ingest_task(
                     "message": f"Upload task created for {len(upload_files)} file(s)",
                     "file_count": len(upload_files),
                     "create_filter": create_filter,
+                    "filter_ids": filter_ids or [],
                     "filename": original_filenames[0] if len(original_filenames) == 1 else None,
                     "preview_mode": preview_mode,
                 },
@@ -282,6 +311,7 @@ async def _langflow_upload_ingest_task(
     allow_anonymous_delete: bool,
     existing_task_id: str | None = None,
     rejected_uploads: list[tuple[str, int]] | None = None,
+    filter_ids: list[str] | None = None,
 ):
     """Task-based langflow upload and ingest for single/multiple files"""
     rejections = rejected_uploads or []
@@ -356,6 +386,7 @@ async def _langflow_upload_ingest_task(
                 preview_mode=preview_mode,
                 allow_anonymous_delete=allow_anonymous_delete,
                 existing_task_id=existing_task_id,
+                filter_ids=filter_ids,
             )
             if rejections and not existing_task_id:
                 task_service.record_rejected_uploads(user_id, rejections, task_id=task_id)
@@ -366,6 +397,7 @@ async def _langflow_upload_ingest_task(
                     "message": f"Langflow upload task created for {len(upload_files)} file(s)",
                     "file_count": len(upload_files),
                     "create_filter": create_filter,
+                    "filter_ids": filter_ids or [],
                     "filename": original_filenames[0] if len(original_filenames) == 1 else None,
                     "preview_mode": preview_mode,
                 },
