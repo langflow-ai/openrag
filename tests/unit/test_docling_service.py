@@ -639,6 +639,7 @@ def _vlm_mock_config(provider: str) -> MagicMock:
     k.ocr = False
     k.picture_descriptions = True
     mock_config.providers.openai.api_key = "sk-test"
+    mock_config.providers.credential_values.return_value = {}
     mock_config.providers.watsonx.api_key = "wx-key"
     mock_config.providers.watsonx.endpoint = "https://us-south.ml.cloud.ibm.com/"
     mock_config.providers.watsonx.project_id = "proj-123"
@@ -659,6 +660,43 @@ async def test_build_vlm_options_openai(docling_service):
     assert api["headers"]["Authorization"] == "Bearer sk-test"
     assert api["params"] == {"model": "gpt-4o", "max_completion_tokens": 5000}
     assert api["prompt"] == "Extract all text."
+
+
+@pytest.mark.asyncio
+async def test_build_vlm_options_openai_custom_base_url(docling_service):
+    """OpenAI VLM requests preserve a configured gateway path prefix."""
+    mock_config = _vlm_mock_config("openai")
+    mock_config.providers.credential_values.return_value = {
+        "api_base": "https://gateway.example/openai",
+        "api_key": "custom-gateway-key",
+    }
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+        options = await docling_service._build_docling_options_async()
+
+    assert (
+        options["picture_description_api"]["url"]
+        == "https://gateway.example/openai/chat/completions"
+    )
+    assert (
+        options["picture_description_api"]["headers"]["Authorization"]
+        == "Bearer custom-gateway-key"
+    )
+    mock_config.providers.credential_values.assert_called_once_with("openai")
+
+
+@pytest.mark.asyncio
+async def test_build_vlm_options_openai_invalid_custom_base_raises_docling_error(docling_service):
+    """Invalid OpenAI endpoint ports use Docling's standard configuration error."""
+    mock_config = _vlm_mock_config("openai")
+    mock_config.providers.credential_values.return_value = {
+        "api_base": "https://gateway.example:99999/openai"
+    }
+    with patch("services.docling_service.get_openrag_config", return_value=mock_config):
+        with pytest.raises(DoclingServeError, match="valid OpenAI-compatible API base") as exc_info:
+            await docling_service._build_docling_options_async()
+
+    assert isinstance(exc_info.value.__cause__, ValueError)
+    mock_config.providers.credential_values.assert_called_once_with("openai")
 
 
 @pytest.mark.asyncio

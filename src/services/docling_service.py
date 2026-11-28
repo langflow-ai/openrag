@@ -19,6 +19,7 @@ from config.settings import (
 )
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
+from utils.provider_urls import openai_compatible_url
 from utils.run_mode_utils import is_run_mode_on_prem, is_run_mode_saas
 
 logger = get_logger(__name__)
@@ -626,14 +627,23 @@ class DoclingService:
                 }
             else:  # openai or default
                 openai = config.providers.openai
-                if not openai.api_key:
+                openai_credentials = config.providers.credential_values("openai")
+                api_key = openai_credentials.get("api_key") or openai.api_key
+                if not api_key:
                     raise DoclingServeError(
                         "Docling VLM is enabled but the OpenAI provider is not configured"
                     )
-                url = "https://api.openai.com/v1/chat/completions"
+                try:
+                    url = openai_compatible_url(
+                        openai_credentials.get("api_base"), "chat/completions"
+                    )
+                except ValueError as exc:
+                    raise DoclingServeError(
+                        "Docling VLM requires a valid OpenAI-compatible API base"
+                    ) from exc
                 options["picture_description_api"] = {
                     "url": url,
-                    "headers": {"Authorization": f"Bearer {openai.api_key}"},
+                    "headers": {"Authorization": f"Bearer {api_key}"},
                     "params": {
                         "model": vlm_model,
                         "max_completion_tokens": knowledge_config.vlm_max_tokens,
