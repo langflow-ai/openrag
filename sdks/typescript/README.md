@@ -165,6 +165,10 @@ const results = await client.search.query("API documentation", {
   limit: 5,
   scoreThreshold: 0.5,
 });
+
+// Run only one half of hybrid search, to see which half finds a document
+const vectorOnly = await client.search.query("rotate an API key", { searchMode: "vector" });
+const keywordOnly = await client.search.query("rotate an API key", { searchMode: "keyword" });
 ```
 
 ## Documents
