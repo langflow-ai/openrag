@@ -350,6 +350,13 @@ def model_specs_url(api_base: str) -> str:
     return f"{(api_base or '').rstrip('/')}{MODEL_SPECS_PATH}"
 
 
+def _require_https_api_base(api_base: str) -> None:
+    """Refuse credential-bearing cluster requests over cleartext HTTP."""
+    parsed = urlsplit(api_base)
+    if parsed.scheme.lower() != "https" or not parsed.netloc:
+        raise ValueError("The watsonx.ai on-prem cluster URL must use HTTPS")
+
+
 def model_specs_params(**extra: Any) -> dict[str, Any]:
     """Query parameters for the catalogue endpoint. `version` is mandatory."""
     return {"version": API_VERSION, **extra}
@@ -476,9 +483,7 @@ async def list_spaces(credentials: Mapping[str, Any]) -> list[dict[str, str]]:
     header = auth_header(values)
     if not api_base:
         raise ValueError("Enter the watsonx.ai on-prem cluster URL first")
-    parsed_base = urlsplit(api_base)
-    if parsed_base.scheme != "https" or not parsed_base.netloc:
-        raise ValueError("The watsonx.ai on-prem cluster URL must use HTTPS")
+    _require_https_api_base(api_base)
     if not header:
         raise ValueError(
             "Enter a username and API key, or a Zen API key, to load deployment spaces"
@@ -565,6 +570,7 @@ async def lightweight_health_check(credentials: Mapping[str, Any]) -> None:
     api_base = str(credentials.get("api_base") or "").strip()
     if not api_base:
         raise Exception("No cluster URL is configured for watsonx.ai on-prem")
+    _require_https_api_base(api_base)
     header = auth_header(credentials)
     if not header:
         raise Exception(
@@ -780,6 +786,7 @@ async def list_cluster_models(credentials: Mapping[str, Any]) -> ClusterModels |
     params: dict[str, Any] | None = model_specs_params(limit=MODELS_PAGE_LIMIT)
     resources: list[Any] = []
     try:
+        _require_https_api_base(api_base)
         async with httpx.AsyncClient(verify=ssl_verify(credentials), timeout=15.0) as client:
             for _ in range(MAX_MODEL_PAGES):
                 response = await client.get(url, headers=headers, params=params)
